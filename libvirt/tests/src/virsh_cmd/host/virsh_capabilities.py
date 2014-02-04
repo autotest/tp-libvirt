@@ -32,13 +32,14 @@ def run(test, params, env):
             raise error.TestFail("The host arch in capabilities_xml is wrong!")
 
         # check the host cpus num.
-        cpus = dom.getElementsByTagName('cpus')[0]
-        host_cpus_output = cpus.getAttribute('num')
-        logging.info("Host cpus num (capabilities_xml):%s",
-                     host_cpus_output)
+        cpus = dom.getElementsByTagName('cpus')
+        host_cpus = 0
+        for cpu in cpus:
+            host_cpus += int(cpu.getAttribute('num'))
+        logging.info("Host cpus num (capabilities_xml):%s", host_cpus)
         cmd = "less /proc/cpuinfo | grep processor | wc -l"
         cmd_result = utils.run(cmd, ignore_status=True)
-        if cmp(host_cpus_output, cmd_result.stdout.strip()) != 0:
+        if cmp(host_cpus, int(cmd_result.stdout.strip())) != 0:
             raise error.TestFail("Host cpus num (capabilities_xml) is "
                                  "wrong")
 
