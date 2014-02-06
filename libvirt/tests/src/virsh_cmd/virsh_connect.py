@@ -5,7 +5,10 @@ import shutil
 
 from autotest.client import os_dep
 from autotest.client.shared import error
-from virttest import libvirt_vm, utils_libvirtd, virsh, utils_conn
+from virttest import libvirt_vm
+from virttest import utils_libvirtd
+from virttest import utils_conn
+from provider import virsh
 
 
 def do_virsh_connect(uri, options):

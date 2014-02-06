@@ -3,8 +3,9 @@ import re
 import shutil
 import logging
 from autotest.client.shared import utils, error
-from virttest import utils_misc, virsh
+from virttest import utils_misc
 from virttest.libvirt_xml import vol_xml
+from provider import virsh
 
 
 def run(test, params, env):

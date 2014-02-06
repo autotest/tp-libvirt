@@ -2,8 +2,11 @@ import re
 import time
 import logging
 from autotest.client.shared import error
-from virttest import virsh, aexpect, utils_test, remote
+from virttest import aexpect
+from virttest import remote
+from virttest import utils_test
 from virttest.libvirt_xml import vm_xml
+from provider import virsh
 
 
 def run(test, params, env):

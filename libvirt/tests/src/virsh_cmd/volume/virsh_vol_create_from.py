@@ -2,9 +2,10 @@ import logging
 import re
 import os
 import shutil
-from virttest import iscsi, virsh
 from autotest.client import utils
 from autotest.client.shared import error
+from virttest import iscsi
+from provider import virsh
 
 
 def run(test, params, env):

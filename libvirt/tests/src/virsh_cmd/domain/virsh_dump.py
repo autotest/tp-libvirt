@@ -4,7 +4,8 @@ import commands
 import time
 import signal
 from autotest.client.shared import error, utils
-from virttest import virsh, utils_libvirtd
+from virttest import utils_libvirtd
+from provider import virsh
 
 
 def wait_pid_active(pid, timeout=5):

@@ -1,8 +1,9 @@
 import logging
 import re
 from autotest.client.shared import error
-from virttest import virsh, utils_libvirtd
 from virttest import utils_test
+from virttest import utils_libvirtd
+from provider import virsh
 
 
 try:

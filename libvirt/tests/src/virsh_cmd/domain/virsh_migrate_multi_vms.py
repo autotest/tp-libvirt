@@ -1,12 +1,9 @@
-import re
-import os
 import logging
-import commands
-import shutil
 import threading
 import time
-from autotest.client.shared import utils, error
-from virttest import libvirt_vm, virsh
+from autotest.client.shared import error
+from virttest import libvirt_vm
+from provider import virsh
 
 
 # To get result in thread, using global parameters

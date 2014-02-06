@@ -1,6 +1,6 @@
 import logging
 from autotest.client.shared import error
-from virttest import virsh
+from provider import virsh
 
 UINT32_MAX = (1 << 32) - 1
 INT64_MAX = (1 << 63) - 1

@@ -2,7 +2,10 @@ import logging
 import re
 from xml.dom.minidom import parseString
 from autotest.client.shared import utils, error
-from virttest import libvirt_vm, virsh, utils_libvirtd, utils_misc
+from virttest import libvirt_vm
+from virttest import utils_libvirtd
+from virttest import utils_misc
+from provider import virsh
 
 
 def run(test, params, env):

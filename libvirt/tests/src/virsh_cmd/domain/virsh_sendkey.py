@@ -1,7 +1,7 @@
 import logging
 import time
 from autotest.client.shared import error
-from virttest import virsh
+from provider import virsh
 
 
 def run(test, params, env):

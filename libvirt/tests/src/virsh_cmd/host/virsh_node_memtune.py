@@ -1,7 +1,7 @@
 import os
 import logging
 from autotest.client.shared import error
-from virttest import virsh
+from provider import virsh
 
 
 _SYSFS_MEMORY_KSM_PATH = "/sys/kernel/mm/ksm"

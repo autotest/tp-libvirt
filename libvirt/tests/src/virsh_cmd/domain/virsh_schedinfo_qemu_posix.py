@@ -2,7 +2,7 @@ import re
 import logging
 import os
 from autotest.client.shared import utils, error
-from virttest import virsh
+from provider import virsh
 
 try:
     from virttest.staging import utils_cgroup

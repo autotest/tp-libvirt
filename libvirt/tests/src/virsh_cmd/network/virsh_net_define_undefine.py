@@ -1,7 +1,10 @@
 import logging
 from autotest.client.shared import error
-from virttest import virsh, libvirt_vm, xml_utils
-from virttest.libvirt_xml import network_xml, xcepts
+from virttest import xml_utils
+from virttest import libvirt_vm
+from virttest.libvirt_xml import network_xml
+from virttest.libvirt_xml import xcepts
+from provider import virsh
 
 
 def get_network_xml_instance(virsh_dargs, test_xml, net_name,

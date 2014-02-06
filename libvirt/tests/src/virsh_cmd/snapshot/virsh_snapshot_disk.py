@@ -1,10 +1,11 @@
 import os
-import logging
 import re
 import tempfile
 
 from autotest.client.shared import error
-from virttest import virsh, qemu_storage, data_dir
+from virttest import data_dir
+from virttest import qemu_storage
+from provider import virsh
 
 
 def run(test, params, env):

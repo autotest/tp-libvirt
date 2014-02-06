@@ -2,7 +2,10 @@ import re
 import logging
 import time
 from autotest.client.shared import error
-from virttest import virsh, libvirt_vm, remote, utils_libvirtd
+from virttest import remote
+from virttest import libvirt_vm
+from virttest import utils_libvirtd
+from provider import virsh
 
 
 def run(test, params, env):

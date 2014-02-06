@@ -3,8 +3,11 @@ import os
 import commands
 import logging
 from autotest.client.shared import error
-from virttest import virsh, utils_misc, xml_utils, libvirt_xml
+from virttest import utils_misc
+from virttest import xml_utils
+from virttest import libvirt_xml
 from virttest.libvirt_xml import vm_xml, xcepts
+from provider import virsh
 
 
 def xml_recover(vmxml):
