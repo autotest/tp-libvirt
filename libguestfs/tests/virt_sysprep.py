@@ -1,10 +1,15 @@
 import logging
 import os
 from autotest.client.shared import error
-from virttest import libvirt_vm, virsh, remote, aexpect, virt_vm, utils_test
+from autotest.client import utils
+from virttest import libvirt_vm
+from virttest import remote
+from virttest import aexpect
+from virttest import virt_vm
+from virttest import utils_test
 from virttest.libvirt_xml import vm_xml
 import virttest.utils_libguestfs as lgf
-from autotest.client import utils
+from provider import virsh
 
 
 def run(test, params, env):

@@ -2,7 +2,9 @@ import time
 import commands
 import logging
 from autotest.client.shared import error
-from virttest import aexpect, utils_test, virsh
+from virttest import aexpect
+from virttest import utils_test
+from provider import virsh
 
 
 def run(test, params, env):

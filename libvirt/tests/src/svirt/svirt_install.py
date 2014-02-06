@@ -1,6 +1,9 @@
 from autotest.client.shared import error
-from virttest import data_dir, storage, utils_selinux, virsh
+from virttest import data_dir
+from virttest import storage
+from virttest import utils_selinux
 from virttest.tests import unattended_install
+from provider import virsh
 
 
 def run(test, params, env):

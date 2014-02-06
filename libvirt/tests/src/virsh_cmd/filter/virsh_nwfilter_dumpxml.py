@@ -1,6 +1,7 @@
 import logging
 from autotest.client.shared import error
-from virttest import virsh, libvirt_xml
+from virttest import libvirt_xml
+from provider import virsh
 
 
 def check_list(uuid, name):

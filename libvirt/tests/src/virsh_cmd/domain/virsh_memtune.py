@@ -1,6 +1,6 @@
 import logging
 from autotest.client.shared import error
-from virttest import virsh
+from provider import virsh
 
 try:
     from virttest.staging import utils_memory

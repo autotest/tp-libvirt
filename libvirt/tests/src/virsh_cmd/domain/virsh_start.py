@@ -1,5 +1,9 @@
 from autotest.client.shared import error
-from virttest import remote, libvirt_vm, virsh, libvirt_xml, utils_libvirtd
+from virttest import remote
+from virttest import libvirt_vm
+from virttest import libvirt_xml
+from virttest import utils_libvirtd
+from provider import virsh
 
 
 class StartError(Exception):

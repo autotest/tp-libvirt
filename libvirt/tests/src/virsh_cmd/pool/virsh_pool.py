@@ -3,7 +3,8 @@ import re
 import os
 import shutil
 from autotest.client.shared import error
-from virttest import virsh, utils_libvirtd
+from virttest import utils_libvirtd
+from provider import virsh
 
 
 def run(test, params, env):
