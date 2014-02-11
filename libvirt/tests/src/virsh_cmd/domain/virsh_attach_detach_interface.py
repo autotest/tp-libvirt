@@ -1,7 +1,7 @@
 import logging
 import re
 from autotest.client.shared import error
-from virttest import libvirt_vm, virsh, utils_net
+from virttest import libvirt_vm, virsh, utils_net, utils_misc
 from virttest.libvirt_xml import vm_xml
 
 
@@ -95,6 +95,13 @@ def run(test, params, env):
 
     # Interface specific attributes.
     iface_type = params.get("at_detach_iface_type", "network")
+    if iface_type == "bridge":
+        try:
+            utils_misc.find_command("brctl")
+        except ValueError:
+            raise error.TestNAError("Command 'brctl' is missing. You must "
+                                    "install it.")
+
     iface_source = params.get("at_detach_iface_source", "default")
     iface_mac = params.get("at_detach_iface_mac", "created")
     virsh_dargs = {'ignore_status': True, 'uri': uri}
