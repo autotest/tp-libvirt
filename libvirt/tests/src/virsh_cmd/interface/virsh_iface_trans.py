@@ -5,6 +5,7 @@ import commands
 
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import utils_misc
 from autotest.client.shared import error
 
 
@@ -181,6 +182,12 @@ def run(test, params, env):
            2.3.1 begin and commit testing with libvirtd restart
            2.3.2 begin and rollback testing with libvirtd restart
     """
+
+    try:
+        utils_misc.find_command("locate")
+    except ValueError:
+        raise error.TestNAError("Command 'locate' is missing. You must "
+                                "install it.")
     # Run test case
     status_error = params.get("status_error", "no")
     libvirtd = params.get("libvirtd", "on")
