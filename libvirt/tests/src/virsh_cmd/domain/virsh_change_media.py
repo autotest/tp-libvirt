@@ -131,6 +131,12 @@ def run(test, params, env):
     if device_type not in ['cdrom', 'floppy']:
         raise error.TestNAError("Got a invalid device type:/n%s" % device_type)
 
+    try:
+        utils_misc.find_command("mkisofs")
+    except ValueError:
+        raise error.TestNAError("Command 'mkisofs' is missing. You must "
+                                "install it (try 'genisoimage' package.")
+
     # Backup for recovery.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
