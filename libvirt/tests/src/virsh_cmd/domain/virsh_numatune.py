@@ -2,7 +2,7 @@ import re
 import logging
 from virttest.utils_test.libvirt import cpus_parser
 from autotest.client.shared import error, utils
-from virttest import libvirt_xml, virsh, utils_libvirtd
+from virttest import libvirt_xml, virsh, utils_libvirtd, utils_misc
 from virttest.libvirt_xml.xcepts import LibvirtXMLAccessorError
 try:
     from virttest.staging import utils_cgroup
@@ -173,6 +173,12 @@ def run(test, params, env):
                   'interleave' or 'preferred' numa mode
            2.2.5) stop cgroup service
     """
+
+    try:
+        utils_misc.find_command("numactl")
+    except ValueError:
+        raise error.TestNAError("Command 'numactl' is missing. You must "
+                                "install it.")
 
     # Run test case
     vm_name = params.get("vms")
