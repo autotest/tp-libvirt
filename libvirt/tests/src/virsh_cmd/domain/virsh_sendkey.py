@@ -20,7 +20,6 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "virt-tests-vm1")
     status_error = ("yes" == params.get("status_error", "no"))
     options = params.get("sendkey_options", "")
-    params_test = ("yes" == params.get("sendkey_params", "no"))
     sysrq_test = ("yes" == params.get("sendkey_sysrq", "no"))
     readonly = params.get("readonly", False)
     username = params.get("username")
@@ -41,13 +40,29 @@ def run(test, params, env):
     session = vm.wait_for_login()
 
     if sysrq_test:
-        # clear messages before test
-        session.cmd("echo '' > /var/log/message")
+        # Is 'rsyslog' installed on guest? It'll be what writes out
+        # to /var/log/messages
+        rpm_stat = session.cmd_status("rpm -q rsyslog")
+        if rpm_stat != 0:
+            logging.debug("rsyslog not found in guest installing")
+            stat_install = session.cmd_status("yum install -y rsyslog", 300)
+            if stat_install != 0:
+                raise error.TestFail("Fail to install rsyslog, make"
+                                     "sure that you have usable repo in guest")
+
+        # clear messages, restart rsyslog, and make sure it's running
+        session.cmd("echo '' > /var/log/messages")
+        session.cmd("service rsyslog restart")
+        ps_stat = session.cmd_status("ps aux |grep rsyslog")
+        if ps_stat != 0:
+            raise error.TestFail("rsyslog is not running in guest")
+
         # enable sysrq
         session.cmd("echo 1 > /proc/sys/kernel/sysrq")
 
     # make sure the environment is clear
-    session.cmd("rm -rf %s" % create_file)
+    if create_file is not None:
+        session.cmd("rm -rf %s" % create_file)
 
     try:
         # wait for tty1 started
@@ -79,7 +94,7 @@ def run(test, params, env):
         elif status_error:
             raise error.TestFail("Expect fail, but succeed indeed.")
 
-        if params_test:
+        if create_file is not None:
             # check if created file exist
             cmd_ls = "ls %s" % create_file
             sec_status, sec_output = session.get_command_status_output(cmd_ls)
@@ -90,21 +105,38 @@ def run(test, params, env):
                                      "Error:%s" % sec_output)
         elif sysrq_test:
             # check /var/log/message info according to different key
-            if "KEY_H" in options:
-                get_status = session.cmd_status("cat /var/log/messages|"
-                                                "grep SysRq.*HELP")
-            elif "KEY_M" in options:
-                get_status = session.cmd_status("cat /var/log/messages|"
-                                                "grep 'SysRq.*Show Memory'")
-            elif "KEY_T" in options:
-                get_status = session.cmd_status("cat /var/log/messages|"
-                                                "grep 'SysRq.*Show State'")
+
+            # Since there's no guarantee when messages will be written
+            # we'll do a check and wait loop for up to 60 seconds
+            timeout = 60
+            while timeout >= 0:
+                if "KEY_H" in options:
+                    get_status = session.cmd_status("cat /var/log/messages|"
+                                                    "grep 'SysRq.*HELP'")
+                elif "KEY_M" in options:
+                    get_status = session.cmd_status("cat /var/log/messages|"
+                                                    "grep 'SysRq.*Show Memory'")
+                elif "KEY_T" in options:
+                    get_status = session.cmd_status("cat /var/log/messages|"
+                                                    "grep 'SysRq.*Show State'")
+
+                if get_status == 0:
+                    timeout = -1
+                else:
+                    session.cmd("echo \"virsh sendkey waiting\" >> /var/log/messages")
+                    time.sleep(1)
+                    timeout = timeout -1
+
             if get_status != 0:
                 raise error.TestFail("SysRq does not take effect in guest, "
                                      "options is %s" % options)
             else:
                 logging.info("Succeed to send SysRq command")
+        else:
+            raise error.TestFail("Test cfg file invalid: either sysrq_params "
+                                 "or create_file_name must be defined")
 
     finally:
-        session.cmd("rm -rf %s" % create_file)
+        if create_file is not None:
+            session.cmd("rm -rf %s" % create_file)
         session.close()
