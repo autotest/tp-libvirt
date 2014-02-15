@@ -3,9 +3,8 @@ import re
 import time
 import logging
 from autotest.client.shared import error
-from virttest import utils_test
+from virttest import virsh, utils_test
 from virttest.libvirt_xml import vm_xml
-from provider import virsh
 
 
 def run(test, params, env):

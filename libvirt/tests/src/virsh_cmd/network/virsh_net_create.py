@@ -1,9 +1,6 @@
 import logging
 from autotest.client.shared import error
-from virttest import libvirt_vm
-from virttest import libvirt_xml
-from virttest import xml_utils
-from provider import virsh
+from virttest import libvirt_vm, libvirt_xml, virsh, xml_utils
 
 
 def do_low_level_test(virsh_dargs, test_xml, options_ref, extra):

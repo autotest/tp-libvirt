@@ -1,10 +1,8 @@
 import logging
 import re
 from autotest.client.shared import error
-from virttest import libvirt_vm
-from virttest import utils_net
+from virttest import libvirt_vm, virsh, utils_net
 from virttest.libvirt_xml import vm_xml
-from provider import virsh
 
 
 def set_options(iface_type=None, iface_source=None,

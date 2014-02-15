@@ -1,10 +1,9 @@
 import os
+import time
+from virttest import remote
 
 from autotest.client.shared import error
-from virttest import aexpect
-from virttest import remote
-from virttest import utils_libvirtd
-from provider import virsh
+from virttest import virsh, aexpect, utils_libvirtd
 
 
 def run(test, params, env):

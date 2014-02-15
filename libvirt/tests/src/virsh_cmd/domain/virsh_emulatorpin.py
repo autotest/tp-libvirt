@@ -3,9 +3,8 @@ import logging
 
 from virttest.libvirt_xml import vm_xml
 from autotest.client.shared import error
-from virttest import utils_libvirtd
+from virttest import utils_libvirtd, virsh
 from virttest.utils_test.libvirt import cpus_parser
-from provider import virsh
 
 try:
     from virttest.staging import utils_cgroup

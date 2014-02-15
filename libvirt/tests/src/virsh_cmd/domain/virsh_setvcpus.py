@@ -3,10 +3,8 @@ import os
 import logging
 import commands
 from autotest.client.shared import error
-from virttest import remote
-from virttest import libvirt_xml
+from virttest import remote, virsh, libvirt_xml
 from xml.dom.minidom import parse
-from provider import virsh
 
 
 def run(test, params, env):

@@ -1,10 +1,7 @@
 import os
 import logging
 from autotest.client.shared import error
-from virttest import xml_utils
-from virttest import libvirt_storage
-from virttest import libvirt_xml
-from provider import virsh
+from virttest import virsh, xml_utils, libvirt_storage, libvirt_xml
 
 
 def pool_check(pool_name, pool_ins):

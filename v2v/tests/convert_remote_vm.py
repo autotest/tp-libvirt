@@ -3,13 +3,8 @@ import logging
 import re
 from autotest.client import lv_utils
 from autotest.client.shared import ssh_key, error
-from virttest import utils_v2v
-from virttest import libvirt_storage
-from virttest import libvirt_vm
-from virttest import virt_vm
-from virttest import remote
-from virttest import data_dir
-from provider import virsh
+from virttest import utils_v2v, libvirt_storage, libvirt_vm, virsh
+from virttest import virt_vm, remote, data_dir
 
 
 def create_dir_pool(spool, pool_name, target_path):

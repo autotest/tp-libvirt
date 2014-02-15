@@ -6,10 +6,7 @@ import subprocess
 
 from autotest.client.shared import error
 from autotest.client import utils
-from virttest import utils_test
-from virttest import utils_misc
-from virttest import data_dir
-from provider import virsh
+from virttest import virsh, utils_test, utils_misc, data_dir
 
 
 def func_in_thread(vm, timeout):

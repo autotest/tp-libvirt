@@ -1,6 +1,6 @@
 import os
 from autotest.client.shared import error, utils
-from provider import virsh
+from virttest import virsh
 
 
 def run(test, params, env):

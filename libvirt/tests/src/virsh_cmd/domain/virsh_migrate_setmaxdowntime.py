@@ -2,7 +2,7 @@ import logging
 import threading
 import time
 from autotest.client.shared import error
-from provider import virsh
+from virttest import virsh
 
 
 # To get result in thread, using global parameters

@@ -1,9 +1,7 @@
 import logging
-from autotest.client.shared import utils
-from autotest.client.shared import error
+from autotest.client.shared import utils, error
+from virttest import virsh, virt_vm
 from virttest.libvirt_xml import vm_xml
-from virttest import virt_vm
-from provider import virsh
 
 
 def run(test, params, env):

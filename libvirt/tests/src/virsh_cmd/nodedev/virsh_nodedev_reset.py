@@ -2,7 +2,7 @@ import os
 import re
 import logging
 import tempfile
-from provider import virsh
+from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
 from virttest.libvirt_xml.vm_xml import VMXML

@@ -2,9 +2,7 @@ import re
 import logging
 from virttest.utils_test.libvirt import cpus_parser
 from autotest.client.shared import error, utils
-from virttest import libvirt_xml
-from virttest import utils_libvirtd
-from provider import virsh
+from virttest import libvirt_xml, virsh, utils_libvirtd
 from virttest.libvirt_xml.xcepts import LibvirtXMLAccessorError
 try:
     from virttest.staging import utils_cgroup

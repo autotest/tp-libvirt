@@ -2,8 +2,7 @@ import re
 import logging
 from autotest.client import utils
 from autotest.client.shared import error
-from virttest import utils_libvirtd
-from provider import virsh
+from virttest import virsh, utils_libvirtd
 
 try:
     from virttest.staging import utils_memory

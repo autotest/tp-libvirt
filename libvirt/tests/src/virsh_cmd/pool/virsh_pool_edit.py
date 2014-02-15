@@ -1,12 +1,8 @@
 import os
 import logging
 from autotest.client.shared import error
-from virttest import libvirt_storage
-from virttest import data_dir
-from virttest import remote
-from virttest import aexpect
+from virttest import virsh, libvirt_storage, data_dir, remote, aexpect
 from virttest.libvirt_xml import pool_xml
-from provider import virsh
 
 
 def edit_pool(pool, edit_cmd):

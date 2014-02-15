@@ -3,7 +3,7 @@ import os.path
 import logging
 import multiprocessing
 from autotest.client.shared import error
-from provider import virsh
+from virttest import virsh
 from virttest.staging import utils_cgroup
 
 

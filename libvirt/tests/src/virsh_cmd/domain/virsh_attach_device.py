@@ -3,18 +3,14 @@ Module to exercize virsh attach-device command with various devices/options
 """
 
 import os
+import os.path
 import logging
 from string import ascii_lowercase
 from autotest.client.shared import error
-from virttest import virt_vm
-from virttest import remote
-from virttest import aexpect
-from virttest import utils_misc
+from virttest import virt_vm, virsh, remote, aexpect, utils_misc
 from virttest.libvirt_xml.vm_xml import VMXML
 # The backports module will take care of using the builtins if available
 from virttest.staging.backports import itertools
-from provider import virsh
-
 
 # TODO: Move all these helper classes someplace else
 class TestParams(object):

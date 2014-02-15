@@ -2,9 +2,8 @@ import re
 import os
 import difflib
 from autotest.client.shared import error
-from virttest import libvirt_xml
+from virttest import virsh, libvirt_xml
 from xml.dom.minidom import parseString
-from provider import virsh
 
 
 def run(test, params, env):

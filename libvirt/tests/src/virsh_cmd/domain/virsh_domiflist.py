@@ -1,9 +1,8 @@
 import re
 import logging
 from autotest.client.shared import error
-from virttest import utils_net
+from virttest import virsh, utils_libvirtd, utils_net
 from virttest.libvirt_xml import vm_xml
-from provider import virsh
 
 driver_dict = {'virtio': 'virtio_net', '-': '8139cp', 'e1000': 'e1000',
                'rtl8139': '8139cp'}

@@ -3,9 +3,7 @@ import time
 import logging
 
 from autotest.client.shared import error
-from virttest import utils_test
-from virttest import utils_misc
-from provider import virsh
+from virttest import virsh, utils_test, utils_misc
 
 
 def func_in_thread(vm, timeout):

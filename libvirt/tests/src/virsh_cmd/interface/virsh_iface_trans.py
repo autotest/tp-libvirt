@@ -3,7 +3,7 @@ import re
 import logging
 import commands
 
-from provider import virsh
+from virttest import virsh
 from virttest import utils_libvirtd
 from autotest.client.shared import error
 

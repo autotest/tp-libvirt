@@ -2,12 +2,9 @@ import logging
 import os
 import time
 from autotest.client.shared import error
-from virttest import utils_libvirtd
-from virttest import qemu_storage
-from virttest import data_dir
+from virttest import utils_libvirtd, virsh, qemu_storage, data_dir
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utl
-from provider import virsh
 
 
 class JobTimeout(Exception):

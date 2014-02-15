@@ -1,8 +1,7 @@
 import os
 import logging
 from autotest.client.shared import error
-from virttest import  libvirt_xml
-from provider import virsh
+from virttest import virsh, libvirt_xml
 
 
 def reset_domain(vm, vm_state, needs_agent=False):

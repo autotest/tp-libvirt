@@ -4,10 +4,9 @@ import commands
 import time
 from autotest.client.shared import error
 from virttest.libvirt_xml import vm_xml
-from virttest import aexpect
+from virttest import virsh, aexpect
 from virttest.libvirt_xml.devices.emulator import Emulator
 from virttest.libvirt_xml.devices.console import Console
-from provider import virsh
 
 
 def run(test, params, env):

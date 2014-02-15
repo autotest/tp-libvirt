@@ -1,9 +1,7 @@
 import os
 import logging
 from autotest.client.shared import error
-from virttest import xml_utils
-from virttest import libvirt_xml
-from provider import virsh
+from virttest import virsh, xml_utils, libvirt_xml
 
 
 NWFILTER_ETC_DIR = "/etc/libvirt/nwfilter"

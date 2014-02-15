@@ -1,8 +1,7 @@
 import logging
 from autotest.client.shared import error
-from virttest import libvirt_xml
-from virttest.libvirt_xml import vm_xml
-from provider import virsh
+from virttest import virsh, libvirt_xml
+from virttest.libvirt_xml import vm_xml, xcepts
 
 
 def run_virsh_dompmsuspend(test, params, env):

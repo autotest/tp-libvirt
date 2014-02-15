@@ -4,7 +4,7 @@ import base64
 import logging
 from tempfile import mktemp
 
-from provider import virsh
+from virttest import virsh
 from autotest.client import utils
 from autotest.client.shared import error
 from virttest.libvirt_xml.secret_xml import SecretXML

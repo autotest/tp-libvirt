@@ -1,8 +1,7 @@
 import logging
 from autotest.client.shared import error
-from virttest import libvirt_vm
-from virttest.libvirt_xml import vm_xml
-from provider import virsh
+from virttest import libvirt_vm, virsh
+from virttest.libvirt_xml import vm_xml, xcepts
 
 
 def xml_console_config(vm_name, serial_type='pty',

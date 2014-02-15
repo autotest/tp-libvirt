@@ -2,9 +2,8 @@ import os
 import logging
 import tempfile
 from autotest.client.shared import error
-from virttest import data_dir
+from virttest import virsh, data_dir
 from virttest.libvirt_xml import vm_xml
-from provider import virsh
 
 def run(test, params, env):
     """

@@ -4,10 +4,8 @@ import re
 import time
 import codecs
 from autotest.client.shared import error
-from virttest import utils_test
-from virttest import utils_libvirtd
+from virttest import utils_test, virsh, utils_libvirtd
 from virttest.libvirt_xml import vm_xml
-from provider import virsh
 
 
 def run(test, params, env):

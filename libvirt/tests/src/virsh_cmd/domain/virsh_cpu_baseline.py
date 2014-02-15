@@ -1,7 +1,7 @@
 import re
 import os
 from autotest.client.shared import error
-from provider import virsh
+from virttest import virsh
 from xml.dom.minidom import parseString
 
 

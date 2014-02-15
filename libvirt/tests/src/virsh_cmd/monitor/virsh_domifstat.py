@@ -1,7 +1,6 @@
 from autotest.client.shared import error, utils
-from virttest import utils_libvirtd
+from virttest import virsh, utils_libvirtd
 from xml.dom.minidom import parseString
-from provider import virsh
 
 
 def run(test, params, env):

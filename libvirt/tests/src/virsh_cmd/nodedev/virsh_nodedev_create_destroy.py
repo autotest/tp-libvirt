@@ -3,7 +3,7 @@ import re
 import logging
 from tempfile import mktemp
 
-from provider import virsh
+from virttest import virsh
 from autotest.client.shared import error
 from virttest.libvirt_xml.nodedev_xml import NodedevXML
 

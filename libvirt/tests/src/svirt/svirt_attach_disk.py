@@ -2,12 +2,8 @@
 svirt guest_attach_disk test.
 """
 from autotest.client.shared import error
-from virttest import qemu_storage
-from virttest import data_dir
-from virttest import utils_selinux
-from virttest import virt_vm
+from virttest import qemu_storage, data_dir, utils_selinux, virt_vm, virsh
 from virttest.libvirt_xml.vm_xml import VMXML
-from provider import virsh
 
 
 def run(test, params, env):

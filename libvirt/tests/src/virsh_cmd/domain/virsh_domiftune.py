@@ -1,6 +1,6 @@
 import logging
 from autotest.client.shared import error
-from provider import virsh
+from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 
 

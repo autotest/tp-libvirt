@@ -1,9 +1,7 @@
 import time
 import logging
 from autotest.client.shared import error
-from virttest import aexpect
-from virttest import libvirt_xml
-from provider import virsh
+from virttest import virsh, libvirt_xml, aexpect
 
 
 def edit_filter_xml(filter_name, edit_cmd):
