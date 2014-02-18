@@ -24,7 +24,7 @@ def verify_selinux_label(params):
     sec_cxt_sorted = None
     # The 'dynamic' is default security option and the selinux
     # category set is different each time
-    options = params.get("lvsb_secure_options", "dynamic")
+    options = params.get("lvsb_security_options1", "dynamic")
     cmd_outputs = params['lvsb_result']
     logging.debug("The selinux context '%s' from command output", cmd_outputs)
 
