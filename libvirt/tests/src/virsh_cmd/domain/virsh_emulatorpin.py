@@ -227,7 +227,6 @@ def run(test, params, env):
             else:
                 set_emulatorpin_parameter(test_dicts)
 
-
         if status_error == "yes":
             if change_parameters == "no":
                 get_emulatorpin_parameter(test_dicts)

@@ -2,6 +2,7 @@ from autotest.client.shared import error
 from virttest import virsh, libvirt_vm
 from virttest.libvirt_xml import network_xml
 
+
 def run(test, params, env):
     """
     Test command: virsh net-info <network>

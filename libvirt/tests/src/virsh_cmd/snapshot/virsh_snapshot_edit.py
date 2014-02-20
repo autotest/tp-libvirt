@@ -72,12 +72,12 @@ def run(test, params, env):
         else:
             # Print just the differences rather than printing both
             # files and forcing the eyeball comparison between lines
-            elems = map(None, pre_xml.splitlines(),after_xml.splitlines())
+            elems = map(None, pre_xml.splitlines(), after_xml.splitlines())
             for pre_line, aft_line in elems:
                 if pre_line.lstrip().strip() != aft_line.lstrip().strip():
-                    if pre_line != None:
+                    if pre_line is not None:
                         logging.debug("diff before='%s'", pre_line.lstrip().strip())
-                    if aft_line != None:
+                    if aft_line is not None:
                         logging.debug("diff  after='%s'", aft_line.lstrip().strip())
             raise error.TestFail("Failed xml before/after comparison")
 

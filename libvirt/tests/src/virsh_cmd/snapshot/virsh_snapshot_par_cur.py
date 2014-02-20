@@ -158,5 +158,5 @@ def run(test, params, env):
         vmxml_backup.sync("--snapshots-metadata")
         try:
             os.remove(tmp_file)
-        except (OSError, NameError): #tmp_file defined inside conditional
+        except (OSError, NameError):  # tmp_file defined inside conditional
             pass
