@@ -106,8 +106,8 @@ def run(test, params, env):
 
         # Give domain the ISO image file
         return virsh.update_device(domainarg=vm_name,
-                            filearg=update_iso_xml, flagstr=cmd_options,
-                            debug=True)
+                                   filearg=update_iso_xml, flagstr=cmd_options,
+                                   debug=True)
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)

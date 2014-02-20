@@ -15,6 +15,7 @@ _selinux_label = {'LXC': 'system_u:system_r:svirt_lxc_net_t:s0',
                   'KVM': 'system_u:system_r:svirt_t:s0',
                   'QEMU': 'system_u:system_r:svirt_tcg_t:s0'}
 
+
 def verify_selinux_label(params):
     """
     Verify selinux context
@@ -63,21 +64,21 @@ def verify_selinux_label(params):
                 # users, but 'ps -eo label' always returns an ordered and
                 # deduplicate selinux category set.
                 category = ",".join(sorted(list(set(category.split(",")))))
-                selinux_label_category_sorted = ['%s' % user, '%s' % role, \
-                                                 '%s' % types, '%s' % level, \
+                selinux_label_category_sorted = ['%s' % user, '%s' % role,
+                                                 '%s' % types, '%s' % level,
                                                  '%s' % category]
                 sec_cxt_sorted = ":".join(selinux_label_category_sorted)
                 logging.debug("The selinux context with sorted and deduplicated"
                               " category: %s", sec_cxt_sorted)
 
-        if cmd_outputs == sec_cxt or \
-            sec_cxt_sorted and \
-            cmd_outputs == sec_cxt_sorted:
+        if (cmd_outputs == sec_cxt or sec_cxt_sorted and
+                cmd_outputs == sec_cxt_sorted):
             logging.info("The selinux label '%s' is expected",
-                          cmd_outputs)
+                         cmd_outputs)
             return True
         else:
             return False
+
 
 def run(test, params, env):
     """

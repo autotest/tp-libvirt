@@ -115,7 +115,7 @@ def run(test, params, env):
     if migrate_uri:
         if migrate_uri.count("EXAMPLE"):
             raise error.TestNAError("Set up the migrate_uri.")
-        extra = ("%s --migrateuri=%s" %(extra, migrate_uri))
+        extra = ("%s --migrateuri=%s" % (extra, migrate_uri))
 
     # To migrate you need to have a shared disk between hosts
     if shared_storage is None:
@@ -130,7 +130,7 @@ def run(test, params, env):
 
         devices = vm.get_blk_devices()
         for device in devices:
-            s_detach = virsh.detach_disk(vm_name, device,  "--config", debug=True)
+            s_detach = virsh.detach_disk(vm_name, device, "--config", debug=True)
             if not s_detach:
                 logging.error("Detach vda failed before test.")
 

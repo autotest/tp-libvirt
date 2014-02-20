@@ -45,9 +45,9 @@ def get_xmldata(vm_name, xml_file, options):
     """
     # Grab a dump of the guest - if we're using the --config,
     # then get an --inactive dump.
-    extra_opts=""
+    extra_opts = ""
     if "--config" in options:
-        extra_opts="--inactive"
+        extra_opts = "--inactive"
     vcpus_current = ""
     virsh.dumpxml(vm_name, extra=extra_opts, to_file=xml_file)
     dom = parse(xml_file)
@@ -90,7 +90,7 @@ def run(test, params, env):
     options = params.get("setvcpus_options")
     vm_ref = params.get("setvcpus_vm_ref", "name")
     count = params.get("setvcpus_count")
-    set_current = int(params.get("setvcpus_current","0"))
+    set_current = int(params.get("setvcpus_current", "0"))
     extra_param = params.get("setvcpus_extra_param")
     count_option = "%s %s" % (count, extra_param)
     status_error = params.get("status_error")
@@ -155,7 +155,7 @@ def run(test, params, env):
         logging.debug("Original vCPU count is 1, just checking if setvcpus "
                       "can still set current.")
 
-    domid = vm.get_id() # only valid for running
+    domid = vm.get_id()  # only valid for running
     domuuid = vm.get_uuid()
 
     if pre_vm_state == "paused":
@@ -165,12 +165,12 @@ def run(test, params, env):
 
     try:
         if vm_ref == "remote":
-            setvcpu_exit_status, status_error, \
-            setvcpu_exit_stderr = remote_test(remote_ip,
-                                              local_ip,
-                                              remote_pwd,
-                                              remote_prompt,
-                                              vm_name)
+            (setvcpu_exit_status, status_error,
+             setvcpu_exit_stderr) = remote_test(remote_ip,
+                                                local_ip,
+                                                remote_pwd,
+                                                remote_prompt,
+                                                vm_name)
         else:
             if vm_ref == "name":
                 dom_option = vm_name
@@ -258,7 +258,7 @@ def run(test, params, env):
                         raise error.TestFail("Failed to add current=%d, "
                                              "set=%d, count=%d mtype=%s" %
                                              (vcpus_current, vcpus_set,
-                                             test_set_max, mtype))
+                                              test_set_max, mtype))
                 elif orig_set >= 2 and set_current == 0:
                     # If we're removing a cpu we go from:
                     #    <vcpu ... >2</vcpu>
@@ -269,12 +269,12 @@ def run(test, params, env):
                         raise error.TestFail("Failed to remove current=%d, "
                                              "set=%d, count=%d mtype=%s" %
                                              (vcpus_current, vcpus_set,
-                                             test_set_max, mtype))
+                                              test_set_max, mtype))
                 # If we have a starting place of 1 vCPUs, then this is rather
                 # boring and innocuous case, but libvirt will succeed, so just
                 # handle it
                 elif orig_set == 1 and vcpus_current != 0 and vcpus_set != 1:
                     raise error.TestFail("Failed when orig_set is 1 current=%d, "
-                                             "set=%d, count=%d mtype=%s" %
-                                             (vcpus_current, vcpus_set,
-                                             test_set_max, mtype))
+                                         "set=%d, count=%d mtype=%s" %
+                                        (vcpus_current, vcpus_set,
+                                         test_set_max, mtype))

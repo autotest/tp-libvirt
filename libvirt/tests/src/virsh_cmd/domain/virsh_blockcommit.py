@@ -5,6 +5,7 @@ from autotest.client.shared import error
 from virttest import virsh, data_dir
 from virttest.libvirt_xml import vm_xml
 
+
 def run(test, params, env):
     """
     Test command: virsh blockcommit <domain> <path>
@@ -43,7 +44,7 @@ def run(test, params, env):
                 raise error.TestFail("Failed to make snapshots for disks!")
 
             # Create a file flag in VM after each snapshot
-            flag_file = tempfile.NamedTemporaryFile(prefix=("snapshot_test_"),dir="/tmp")
+            flag_file = tempfile.NamedTemporaryFile(prefix=("snapshot_test_"), dir="/tmp")
             file_path = flag_file.name
             flag_file.close()
 
@@ -51,7 +52,6 @@ def run(test, params, env):
             if status:
                 raise error.TestFail("Touch file in vm failed. %s" % output)
             snapshot_flag_files.append(file_path)
-
 
     # MAIN TEST CODE ###
     # Process cartesian parameters
@@ -113,7 +113,7 @@ def run(test, params, env):
         # Check status_error
         if status_error and status == 0:
             raise error.TestFail("Expect fail, but run successfully!")
-        elif not status_error and  status != 0:
+        elif not status_error and status != 0:
             raise error.TestFail("Run failed with right command")
 
         # If top layer is active, virsh should be in failure,

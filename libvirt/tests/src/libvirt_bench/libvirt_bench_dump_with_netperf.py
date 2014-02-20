@@ -16,7 +16,7 @@ def run(test, params, env):
     """
     vms = env.get_all_vms()
     netperf_control_file = params.get("netperf_controle_file",
-                                        "netperf.control")
+                                      "netperf.control")
     # Run netperf on guest.
     guest_netperf_bts = []
     params["test_control_file"] = netperf_control_file
@@ -39,9 +39,9 @@ def run(test, params, env):
             return (not session.cmd_status("ps -ef|grep netperf|grep -v grep"))
         if not utils_misc.wait_for(_is_netperf_running, timeout=120):
             raise error.TestNAError("Failed to run netperf in guest.\n"
-                        "Since we need to run a autotest of netperf "
-                        "in guest, so please make sure there are some "
-                        "necessary packages in guest, such as gcc, tar, bzip2")
+                                    "Since we need to run a autotest of netperf "
+                                    "in guest, so please make sure there are some "
+                                    "necessary packages in guest, such as gcc, tar, bzip2")
 
     logging.debug("Netperf is already running in VMs.")
 

@@ -13,6 +13,8 @@ from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.staging.backports import itertools
 
 # TODO: Move all these helper classes someplace else
+
+
 class TestParams(object):
 
     """

@@ -46,7 +46,7 @@ def run(test, params, env):
     filter_chain = params.get("filter_chain", "root")
     filter_priority = params.get("filter_priority", "")
     filter_uuid = params.get("filter_uuid",
-                      "5c6d49af-b071-6127-b4ec-6f8ed4b55335")
+                             "5c6d49af-b071-6127-b4ec-6f8ed4b55335")
     filterref = params.get("filterref")
     filterref_name = params.get("filterref_name")
     exist_filter = params.get("exist_filter", "no-mac-spoofing")
@@ -153,7 +153,7 @@ def run(test, params, env):
 
     # Run command
     cmd_result = virsh.nwfilter_define(filter_xml, options=options_ref,
-                                        ignore_status=True, debug=True)
+                                       ignore_status=True, debug=True)
     status = cmd_result.exit_status
 
     # Check result

@@ -426,7 +426,7 @@ def run(test, params, env):
                     logging.debug("snaps_list is %s", snaps_list)
 
                     check_snapslist(vm_name, options, option_dict, output,
-                                        snaps_before, snaps_list)
+                                    snaps_before, snaps_list)
 
     finally:
         # Environment clean
