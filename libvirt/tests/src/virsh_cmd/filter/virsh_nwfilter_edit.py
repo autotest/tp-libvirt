@@ -1,7 +1,6 @@
-import time
 import logging
 from autotest.client.shared import error
-from virttest import virsh, libvirt_xml, aexpect
+from virttest import virsh, libvirt_xml, aexpect, remote
 
 
 def edit_filter_xml(filter_name, edit_cmd):
@@ -20,8 +19,7 @@ def edit_filter_xml(filter_name, edit_cmd):
         session.send('\x1b')
         # Save and quit
         session.send('ZZ')
-        # use sleep(1) to make sure the modify has been completed.
-        time.sleep(1)
+        remote.handle_prompts(session, None, None, r"[\#\$]\s*$")
         session.close()
         logging.info("Succeed to do nwfilter edit")
     except (aexpect.ShellError, aexpect.ExpectError), details:
@@ -73,7 +71,7 @@ def run(test, params, env):
             if extra_option == "":
                 filter_name = filter_ref
             edit_result = virsh.nwfilter_edit(filter_name, extra_option,
-                                              ignore_statu=True, debug=True)
+                                              ignore_status=True, debug=True)
             if edit_result.exit_status == 0:
                 raise error.TestFail("nwfilter-edit should fail but succeed")
             else:
