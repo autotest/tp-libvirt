@@ -2,7 +2,7 @@ import logging
 import re
 import os
 import shutil
-from virttest import iscsi, virsh
+from virttest import iscsi, virsh, libvirt_storage
 from autotest.client import utils
 from autotest.client.shared import error
 
@@ -72,60 +72,34 @@ def run(test, params, env):
         cmd = "parted -s %s mkpart primary ext4 0 100" % disk
         utils.run(cmd)
 
-    def check_pool(pool_name):
+    def check_pool(sp, pool_name):
         """
         Check if pool_name exist in active pool list
         """
 
-        output = virsh.pool_list(option="", ignore_status=True)
-        if output.exit_status != 0:
-            raise error.TestFail("Virsh pool-list command failed:\n%s" %
-                                 output.stderr)
-        pool_list = re.findall(r"([\w-]+[\w]+)\s+(\w+)\s+(\w+)", str(output))
-        find_pool = False
-        for pool in pool_list:
-            if pool_name in pool[0]:
-                logging.debug("Find active pool %s", pool_name)
-                find_pool = True
-        return find_pool
-
-    def get_vol_list(pool_name):
-        """
-        Get a volume from the given pool
-        """
-
-        # Get the volume list stored in a variable
-        output = virsh.vol_list(pool_name, ignore_status=True)
-        if output.exit_status != 0:
-            raise error.TestFail("Virsh vol-list command failed:\n%s" %
-                                 output.stderr)
-        vol_list = re.findall(r"\n(.+\S+)\ +\S+", str(output.stdout))
-        return vol_list
-
-    def check_vol(vol_name, pool_name):
-        """
-        Check if vol_name exist in the given pool
-        """
-
-        return (vol_name in get_vol_list(pool_name))
+        if not sp.pool_exists(pool_name):
+            raise error.TestFail("Can't find pool %s" % pool_name)
+        if not sp.is_pool_active(pool_name):
+            raise error.TestFail("Pool %s is not active." % pool_name)
+        logging.debug("Find active pool %s", pool_name)
+        return True
 
     def cleanup_pool(pool_name, pool_type, pool_target):
         """
         Delete vols, destroy the created pool and restore the env
         """
+        sp = libvirt_storage.StoragePool(pool_name)
+        pv = libvirt_storage.PoolVolume(pool_name)
         if pool_type in ["dir", "netfs"]:
-            vols = get_vol_list(pool_name)
+            vols = pv.list_volumes(pool_name)
             for vol in vols:
-                result = virsh.vol_delete(vol, pool_name)
-                if result.exit_status:
-                    raise error.TestFail("Command virsh vol-delete failed:\n%s"
-                                         % result.stderr)
+                if not pv.delete_volume(vol):
+                    raise error.TestFail("Delete volume %s failed."
+                                         % vol)
             else:
                 logging.debug("Delete volume %s from pool %s", vol, pool_name)
-        if not virsh.pool_destroy(pool_name):
-            raise error.TestFail("Command virsh pool-destroy failed")
-        else:
-            logging.debug("Destroy pool %s", pool_name)
+        if not sp.delete_pool(pool_name):
+            raise error.TestFail("Delete pool %s failed" % pool_name)
         if pool_type == "netfs":
             shutil.move("/etc/exports.virt", "/etc/exports")
             utils.run("service nfs restart")
@@ -250,8 +224,7 @@ def run(test, params, env):
         if not re_v:
             raise error.TestFail("Create pool failed.")
         # Check the created pool
-        if not check_pool(pool_name):
-            raise error.TestFail("Can't find active pool: %s", pool_name)
+        check_pool(libvirt_storage.StoragePool(), pool_name):
 
     def pre_vol(vol_name, vol_format, vol_size, pool_name):
         """
