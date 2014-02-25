@@ -3,6 +3,7 @@ import re
 import os
 import shutil
 from virttest import iscsi, virsh, libvirt_storage
+from virttest.utils_test import libvirt as utlv
 from autotest.client import utils
 from autotest.client.shared import error
 
@@ -32,35 +33,6 @@ def run(test, params, env):
     source_host = params.get("source_host", "localhost")
     prealloc_option = params.get("prealloc_option")
     status_error = params.get("status_error", "no")
-
-    def login_iscsi(emulated_image, image_size):
-        """
-        Login the iscsi target, and return the device
-        """
-
-        utils.run("setenforce 0")
-        emulated_image_path = os.path.join(test.tmpdir, emulated_image)
-        emulated_target = "iqn.2001-01.com.autotest:%s.target" % emulated_image
-        iscsi_params = {"emulated_image": emulated_image_path,
-                        "target": emulated_target,
-                        "image_size": image_size}
-        _iscsi = iscsi.Iscsi(iscsi_params)
-        _iscsi.export_target()
-        _iscsi.login()
-        iscsi_device = _iscsi.get_device_name()
-        logging.debug("iscsi device: %s", iscsi_device)
-        utils.run("setenforce 1")
-        return iscsi_device
-
-    def set_nfs_server(share_cfg):
-        """
-        Start nfs server on host.
-        """
-
-        shutil.copyfile("/etc/exports", "/etc/exports.virt")
-        cmd = "echo '%s' > /etc/exports" % (share_cfg)
-        utils.run(cmd)
-        utils.run("service nfs restart")
 
     def mk_part(disk):
         """
@@ -101,9 +73,8 @@ def run(test, params, env):
         if not sp.delete_pool(pool_name):
             raise error.TestFail("Delete pool %s failed" % pool_name)
         if pool_type == "netfs":
-            shutil.move("/etc/exports.virt", "/etc/exports")
-            utils.run("service nfs restart")
             nfs_path = os.path.join(test.tmpdir, nfs_server_dir)
+            utlv.setup_or_cleanup_nfs(is_setup=False, mount_dir=nfs_path)
             if os.path.exists(nfs_path):
                 shutil.rmtree(nfs_path)
         if pool_type == "logical":
@@ -115,20 +86,6 @@ def run(test, params, env):
             pool_target = os.path.join(test.tmpdir, pool_target)
             if os.path.exists(pool_target):
                 shutil.rmtree(pool_target)
-
-    def cleanup_iscsi():
-        """
-        Logout all iscsi target and restart tgtd service
-        """
-        iscsi_session = iscsi.iscsi_get_sessions()
-        if iscsi_session:
-            utils.run("iscsiadm -m node -u")
-        utils.run("service tgtd restart")
-        for image in [src_emulated_image, dest_emulated_image]:
-            if image:
-                image = os.path.join(test.tmpdir, image)
-                if os.path.exists(image):
-                    utils.run("rm -f %s" % image)
 
     def pre_pool(pool_name, pool_type, pool_target, emulated_image):
         """
@@ -146,12 +103,14 @@ def run(test, params, env):
                 os.mkdir(pool_target)
 
         elif pool_type == "disk":
-            device_name = login_iscsi(emulated_image, "1G")
+            device_name = utlv.setup_or_cleanup_iscsi(is_setup=True,
+                                        emulated_image=emulated_image)
             mk_part(device_name)
             extra = " --source-dev %s" % device_name
 
         elif pool_type == "fs":
-            device_name = login_iscsi(emulated_image, "1G")
+            device_name = utlv.setup_or_cleanup_iscsi(is_setup=True,
+                                        emulated_image=emulated_image)
             cmd = "mkfs.ext4 -F %s" % device_name
             pool_target = os.path.join(test.tmpdir, pool_target)
             if not os.path.exists(pool_target):
@@ -160,7 +119,8 @@ def run(test, params, env):
             utils.run(cmd)
 
         elif pool_type == "logical":
-            logical_device = login_iscsi(emulated_image, "1G")
+            logical_device = utlv.setup_or_cleanup_iscsi(is_setup=True,
+                                        emulated_image=emulated_image)
             cmd_pv = "pvcreate %s" % logical_device
             vg_name = "vg_%s" % pool_type
             cmd_vg = "vgcreate %s %s" % (vg_name, logical_device)
@@ -175,11 +135,14 @@ def run(test, params, env):
             pool_target = os.path.join(test.tmpdir, pool_target)
             if not os.path.exists(pool_target):
                 os.mkdir(pool_target)
-            set_nfs_server("%s *(rw,async,no_root_squash)" % nfs_path)
+            utlv.setup_or_cleanup_nfs(is_setup=True, mount_dir=nfs_path,
+                                      export_options="rw,async,no_root_squash")
             extra = "--source-host %s --source-path %s" % (source_host, nfs_path)
 
         elif pool_type == "iscsi":
-            logical_device = login_iscsi(emulated_image, "100M")
+            logical_device = utlv.setup_or_cleanup_iscsi(is_setup=True,
+                                            emulated_image=emulated_image,
+                                                         image_size="100M")
             iscsi_session = iscsi.iscsi_get_sessions()
             iscsi_device = ()
             for iscsi_node in iscsi_session:
@@ -196,7 +159,9 @@ def run(test, params, env):
             scsi_xml_file = params.get("scsi_xml_file")
             if not os.path.exists(scsi_xml_file):
                 scsi_xml_file = os.path.join(test.tmpdir, scsi_xml_file)
-                logical_device = login_iscsi(emulated_image, "100M")
+                logical_device = utlv.setup_or_cleanup_iscsi(is_setup=True,
+                                             emulated_image=emulated_image,
+                                                         image_size="100M")
                 cmd = "iscsiadm -m session -P 3 |grep -B3 %s| \
                        grep Host|awk '{print $3}'" % logical_device.split('/')[2]
                 scsi_host = utils.system_output(cmd)
@@ -310,4 +275,4 @@ def run(test, params, env):
             cleanup_pool(dest_pool_name, dest_pool_type, dest_pool_target)
         if src_pool_type or dest_pool_type in ["disk", "logical", "fs", "iscsi",
                                                "scsi"]:
-            cleanup_iscsi()
+            utlv.setup_or_cleanup_iscsi(is_setup=False)
