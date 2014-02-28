@@ -6,6 +6,22 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.video import Video
 
 
+def video_device_setup(vm_name, video_type):
+    """
+    Setup domain with second video device
+
+    :param vm_name: vm name string
+    :param video_type: video type string
+    """
+    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name=vm_name)
+    new_video = Video('video')
+    new_video.model_type = video_type
+    vmxml.add_device(new_video)
+    logging.debug("The new domain xml is:\n%s" % vmxml.xmltreefile)
+    vmxml.undefine()
+    vmxml.define()
+
+
 def run(test, params, env):
     """
     Test command: virsh screenshot.
@@ -21,27 +37,31 @@ def run(test, params, env):
     vm_ref = params.get("vm_ref", "domname")
     vm_state = params.get("vm_state", "running")
     filename = params.get("filename", "")
+    screen_num = params.get("screen_number")
     options = params.get("options", "")
     video_type = params.get("video_model_type", "qxl")
+    # This is defined only for shipping RHEL environments.
+    multiple_screen = "yes" == params.get("multiple_screen", "no")
     status_error = params.get("status_error")
     vm_uuid = vm.get_uuid()
     vm_id = ""
+    if screen_num:
+        options += "--screen %s" % screen_num
     if filename:
         options += " --file %s" % filename
 
-    # A backup of original vm
-    vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     if vm.is_alive():
         vm.destroy()
 
-    # Config vm for second video device
-    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name=vm_name)
-    new_video = Video('video')
-    new_video.model_type = video_type
-    vmxml.add_device(new_video)
-    logging.debug("The new domain xml is:\n%s" % vmxml.xmltreefile)
-    vmxml.undefine()
-    vmxml.define()
+    # Enable multiple screen on RHEL will run tests with screen_num as 1,
+    # disable it will skip tests with screen_num as 1.
+    if multiple_screen:
+        # Backup of original vm and set second screen
+        vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        video_device_setup(vm_name, video_type)
+    else:
+        if screen_num == "1":
+            raise error.TestNAError("Multiple screen is not enabled")
 
     # Prepare vm state for test
     if vm_state != "shutoff":
@@ -87,8 +107,9 @@ def run(test, params, env):
     # Recover env
     if vm.is_alive():
         vm.destroy()
-    vmxml_backup.undefine()
-    vmxml_backup.define()
+    if multiple_screen:
+        vmxml_backup.undefine()
+        vmxml_backup.define()
     if os.path.exists(filename):
         os.remove(filename)
     if not filename:
