@@ -7,7 +7,7 @@ from autotest.client.shared import error
 
 
 def run(test, params, env):
-    """
+    r"""
     Test for virt-win-reg.
 
     (1).Get parameters from params.
@@ -21,7 +21,7 @@ def run(test, params, env):
 
         Example:
         * add:
-            Make sure there is no value named AddTest in 
+            Make sure there is no value named AddTest in
             [HKLM\SYSTEM\ControlSet001\Control\ComputerName\ComputerName]
             # cat reg_file.reg
             [HKLM\SYSTEM\ControlSet001\Control\ComputerName\ComputerName]
@@ -38,8 +38,10 @@ def run(test, params, env):
             "ComputerName" = "VIRTTEST_v2"
             # virt-win-reg Guestname/disk --merge reg_file.reg
         * query:
-            # virt-win-reg domname 'HKLM\SYSTEM\ControlSet001\Control\ComputerName\ComputerName' ComputerName
-            
+            # virt-win-reg domname
+              'HKLM\SYSTEM\ControlSet001\Control\ComputerName\ComputerName'
+              ComputerName
+
     (6).Verify the result.
     (7).Clean up.
     """
@@ -57,7 +59,7 @@ def run(test, params, env):
     remote_vm_name = params.get("virt_win_reg_remote_vm_name",
                                 "ENTER.YOUR.REMOTE")
     remote_guest_ip = params.get("virt_win_reg_remote_guest_ip",
-                                "ENTER.YOUR.REMOTE")
+                                 "ENTER.YOUR.REMOTE")
     remote_guest_username = params.get("virt_win_reg_remote_guest_username",
                                        "ENTER.YOUR.REMOTE")
     remote_guest_passwd = params.get("virt_win_reg_remote_guest_passwd",
