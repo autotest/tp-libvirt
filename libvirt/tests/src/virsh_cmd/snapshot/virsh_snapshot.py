@@ -1,5 +1,6 @@
 import logging
 import re
+from virttest import virt_vm
 from autotest.client.shared import error
 from virttest import virsh
 
@@ -162,7 +163,7 @@ def run(test, params, env):
             test_file(session, sni["to_delete"], 2)
         except error.CmdError:
             handle_error("Failed to revert snapshot", vm_name)
-        except error.TestFail, e:
+        except (error.TestFail, virt_vm.VMDeadError), e:
             handle_error(str(e), vm_name)
         logging.info("Snapshot %s successfully reverted", sni["Name"])
 
