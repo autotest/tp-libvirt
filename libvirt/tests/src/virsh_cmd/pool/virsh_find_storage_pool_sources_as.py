@@ -1,6 +1,6 @@
 import logging
 import os
-from virttest import virsh, utils_test
+from virttest import virsh, utils_test, utils_misc
 from autotest.client import utils, lv_utils
 from autotest.client.shared import error
 
@@ -37,13 +37,25 @@ def run(test, params, env):
             utils_test.libvirt.setup_or_cleanup_nfs(True)
             cleanup_nfs = True
         if source_type in ["iscsi", "logical"]:
+            # Do we have the necessary tools?
+            try:
+                utils_misc.find_command("tgtadm")
+                utils_misc.find_command("iscsiadm")
+            except ValueError:
+                raise error.TestNAError("Command 'tgtadm' and/or 'iscsiadm' "
+                                        "is missing. You must install it.")
             # Set up iscsi
-            iscsi_device = utils_test.libvirt.setup_or_cleanup_iscsi(True)
-            cleanup_iscsi = True
-            if source_type == "logical":
-                # Create VG by using iscsi device
-                lv_utils.vg_create(vg_name, iscsi_device)
-                cleanup_logical = True
+            try:
+                iscsi_device = utils_test.libvirt.setup_or_cleanup_iscsi(True)
+                cleanup_iscsi = True
+                if source_type == "logical":
+                    # Create VG by using iscsi device
+                    lv_utils.vg_create(vg_name, iscsi_device)
+                    cleanup_logical = True
+            except Exception, detail:
+                if cleanup_iscsi:
+                    utils_test.libvirt.setup_or_cleanup_iscsi(False)
+                raise error.TestFail("iscsi setup failed:\n%s" % detail)
 
     # Run virsh cmd
     options = "%s %s " % (source_host, source_port) + options
