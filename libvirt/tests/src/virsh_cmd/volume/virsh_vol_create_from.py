@@ -1,10 +1,7 @@
 import logging
-import re
 import os
-import shutil
-from virttest import iscsi, virsh, libvirt_storage
+from virttest import virsh, libvirt_storage
 from virttest.utils_test import libvirt as utlv
-from autotest.client import utils
 from autotest.client.shared import error
 
 
@@ -29,205 +26,44 @@ def run(test, params, env):
     dest_pool_target = params.get("dest_pool_target")
     dest_emulated_image = params.get("dest_emulated_image")
     dest_vol_format = params.get("dest_vol_format")
-    nfs_server_dir = params.get("nfs_server_dir", "nfs-server")
-    source_host = params.get("source_host", "localhost")
     prealloc_option = params.get("prealloc_option")
     status_error = params.get("status_error", "no")
 
-    def mk_part(disk):
-        """
-        Create a partition for disk
-        """
+    try:
+        # Create the src/dest pool
+        src_pool_name = "virt-%s-pool" % src_pool_type
+        dest_pool_name = "virt-%s-pool" % dest_pool_type
 
-        cmd = "parted -s %s mklabel msdos" % disk
-        utils.run(cmd)
-        cmd = "parted -s %s mkpart primary ext4 0 100" % disk
-        utils.run(cmd)
+        pvt = utlv.PoolVolumeTest(test, params)
+        pvt.pre_pool(src_pool_name, src_pool_type, src_pool_target,
+                     src_emulated_image)
 
-    def check_pool(sp, pool_name):
-        """
-        Check if pool_name exist in active pool list
-        """
+        if src_pool_type != dest_pool_type:
+            pvt.pre_pool(dest_pool_name, dest_pool_type, dest_pool_target,
+                             dest_emulated_image)
 
-        if not sp.pool_exists(pool_name):
-            raise error.TestFail("Can't find pool %s" % pool_name)
-        if not sp.is_pool_active(pool_name):
-            raise error.TestFail("Pool %s is not active." % pool_name)
-        logging.debug("Find active pool %s", pool_name)
-        return True
+        # Print current pools for debugging
+        logging.debug("Current pools:%s",
+                      libvirt_storage.StoragePool().list_pools())
 
-    def cleanup_pool(pool_name, pool_type, pool_target):
-        """
-        Delete vols, destroy the created pool and restore the env
-        """
-        sp = libvirt_storage.StoragePool(pool_name)
-        pv = libvirt_storage.PoolVolume(pool_name)
-        if pool_type in ["dir", "netfs"]:
-            vols = pv.list_volumes(pool_name)
-            for vol in vols:
-                if not pv.delete_volume(vol):
-                    raise error.TestFail("Delete volume %s failed."
-                                         % vol)
+        # Create the src vol
+        vol_size = "1048576"
+        if src_pool_type in ["dir", "logical", "netfs", "fs"]:
+            src_vol_name = "src_vol"
+            pvt.pre_vol(src_vol_name, src_vol_format, vol_size, src_pool_name)
+        else:
+            src_pv = libvirt_storage.PoolVolume(src_pool_name)
+            src_vols = src_pv.list_volumes().keys()
+            if src_vols:
+                src_vol_name = src_vols[0]
             else:
-                logging.debug("Delete volume %s from pool %s", vol, pool_name)
-        if not sp.delete_pool(pool_name):
-            raise error.TestFail("Delete pool %s failed" % pool_name)
-        if pool_type == "netfs":
-            nfs_path = os.path.join(test.tmpdir, nfs_server_dir)
-            utlv.setup_or_cleanup_nfs(is_setup=False, mount_dir=nfs_path)
-            if os.path.exists(nfs_path):
-                shutil.rmtree(nfs_path)
-        if pool_type == "logical":
-            cmd = "pvs |grep vg_logical|awk '{print $1}'"
-            pv = utils.system_output(cmd)
-            utils.run("vgremove -f vg_logical")
-            utils.run("pvremove %s" % pv)
-        if pool_type in ["dir", "fs", "netfs"]:
-            pool_target = os.path.join(test.tmpdir, pool_target)
-            if os.path.exists(pool_target):
-                shutil.rmtree(pool_target)
-
-    def pre_pool(pool_name, pool_type, pool_target, emulated_image):
-        """
-        Preapare the specific type pool
-        Note:
-        1. For scsi type pool, it only could be created from xml file
-        2. Other type pools can be created by pool_creat_as function
-        """
-
-        extra = ""
-        if pool_type == "dir":
-            logging.info(test.tmpdir)
-            pool_target = os.path.join(test.tmpdir, pool_target)
-            if not os.path.exists(pool_target):
-                os.mkdir(pool_target)
-
-        elif pool_type == "disk":
-            device_name = utlv.setup_or_cleanup_iscsi(is_setup=True,
-                                        emulated_image=emulated_image)
-            mk_part(device_name)
-            extra = " --source-dev %s" % device_name
-
-        elif pool_type == "fs":
-            device_name = utlv.setup_or_cleanup_iscsi(is_setup=True,
-                                        emulated_image=emulated_image)
-            cmd = "mkfs.ext4 -F %s" % device_name
-            pool_target = os.path.join(test.tmpdir, pool_target)
-            if not os.path.exists(pool_target):
-                os.mkdir(pool_target)
-            extra = " --source-dev %s" % device_name
-            utils.run(cmd)
-
-        elif pool_type == "logical":
-            logical_device = utlv.setup_or_cleanup_iscsi(is_setup=True,
-                                        emulated_image=emulated_image)
-            cmd_pv = "pvcreate %s" % logical_device
-            vg_name = "vg_%s" % pool_type
-            cmd_vg = "vgcreate %s %s" % (vg_name, logical_device)
-            extra = "--source-name %s" % vg_name
-            utils.run(cmd_pv)
-            utils.run(cmd_vg)
-
-        elif pool_type == "netfs":
-            nfs_path = os.path.join(test.tmpdir, nfs_server_dir)
-            if not os.path.exists(nfs_path):
-                os.mkdir(nfs_path)
-            pool_target = os.path.join(test.tmpdir, pool_target)
-            if not os.path.exists(pool_target):
-                os.mkdir(pool_target)
-            utlv.setup_or_cleanup_nfs(is_setup=True, mount_dir=nfs_path,
-                                      export_options="rw,async,no_root_squash")
-            extra = "--source-host %s --source-path %s" % (source_host, nfs_path)
-
-        elif pool_type == "iscsi":
-            logical_device = utlv.setup_or_cleanup_iscsi(is_setup=True,
-                                            emulated_image=emulated_image,
-                                                         image_size="100M")
-            iscsi_session = iscsi.iscsi_get_sessions()
-            iscsi_device = ()
-            for iscsi_node in iscsi_session:
-                if iscsi_node[1].count(emulated_image):
-                    iscsi_device = iscsi_node
-                    break
-            if iscsi_device == ():
-                raise error.TestFail("No iscsi device.")
-            if "::" in iscsi_device[0]:
-                iscsi_device = ('localhost', iscsi_device[1])
-            extra = " --source-host %s  --source-dev %s" % iscsi_device
-
-        elif pool_type == "scsi":
-            scsi_xml_file = params.get("scsi_xml_file")
-            if not os.path.exists(scsi_xml_file):
-                scsi_xml_file = os.path.join(test.tmpdir, scsi_xml_file)
-                logical_device = utlv.setup_or_cleanup_iscsi(is_setup=True,
-                                             emulated_image=emulated_image,
-                                                         image_size="100M")
-                cmd = "iscsiadm -m session -P 3 |grep -B3 %s| \
-                       grep Host|awk '{print $3}'" % logical_device.split('/')[2]
-                scsi_host = utils.system_output(cmd)
-                scsi_xml = """
-<pool type='scsi'>
-  <name>%s</name>
-   <source>
-    <adapter type='scsi_host' name='host%s'/>
-  </source>
-  <target>
-    <path>/dev/disk/by-path</path>
-  </target>
-</pool>
-""" % (pool_name, scsi_host)
-                logging.debug("Prepare the scsi pool xml: %s", scsi_xml)
-                xml_object = open(scsi_xml_file, 'w')
-                xml_object.write(scsi_xml)
-                xml_object.close()
-
-        # Create pool
-        if pool_type == "scsi":
-            re_v = virsh.pool_create(scsi_xml_file)
-        else:
-            re_v = virsh.pool_create_as(pool_name, pool_type, pool_target, extra)
-        if not re_v:
-            raise error.TestFail("Create pool failed.")
-        # Check the created pool
-        check_pool(libvirt_storage.StoragePool(), pool_name):
-
-    def pre_vol(vol_name, vol_format, vol_size, pool_name):
-        """
-        Preapare the specific type volume in pool
-        """
-
-        result = virsh.vol_create_as(vol_name, pool_name, vol_size,
-                                     vol_size, vol_format, ignore_status=True)
-        if result.exit_status != 0:
-            raise error.TestFail("Command virsh vol-create-as failed:\n%s" %
-                                 result.stderr)
-        if not check_vol(vol_name, pool_name):
-            raise error.TestFail("Can't find volume: %s", vol_name)
-
-    # Create the src/dest pool
-    src_pool_name = "virt-%s-pool" % src_pool_type
-    dest_pool_name = "virt-%s-pool" % dest_pool_type
-    pre_pool(src_pool_name, src_pool_type, src_pool_target, src_emulated_image)
-    if src_pool_type != dest_pool_type:
-        pre_pool(dest_pool_name, dest_pool_type, dest_pool_target, dest_emulated_image)
-
-    # Create the src vol
-    vol_size = "1048576"
-    if src_pool_type in ["dir", "logical", "netfs", "fs"]:
-        src_vol_name = "src_vol"
-        pre_vol(src_vol_name, src_vol_format, vol_size, src_pool_name)
-    else:
-        src_vols = get_vol_list(src_pool_name)
-        if src_vols:
-            src_vol_name = src_vols[0]
-        else:
-            raise error.TestFail("No volume in pool: %s", src_pool_name)
-    # Prepare vol xml file
-    dest_vol_name = "dest_vol"
-    if dest_pool_type == "disk":
-        dest_vol_format = ""
-        prealloc_option = ""
-    vol_xml = """
+                raise error.TestFail("No volume in pool: %s", src_pool_name)
+        # Prepare vol xml file
+        dest_vol_name = "dest_vol"
+        if dest_pool_type == "disk":
+            dest_vol_format = ""
+            prealloc_option = ""
+        vol_xml = """
 <volume>
   <name>%s</name>
   <capacity unit='bytes'>%s</capacity>
@@ -236,29 +72,31 @@ def run(test, params, env):
   </target>
 </volume>
 """ % (dest_vol_name, vol_size, dest_vol_format)
-    logging.debug("Prepare the volume xml: %s", vol_xml)
-    vol_file = os.path.join(test.tmpdir, "dest_vol.xml")
-    xml_object = open(vol_file, 'w')
-    xml_object.write(vol_xml)
-    xml_object.close()
+        logging.debug("Prepare the volume xml: %s", vol_xml)
+        vol_file = os.path.join(test.tmpdir, "dest_vol.xml")
+        xml_object = open(vol_file, 'w')
+        xml_object.write(vol_xml)
+        xml_object.close()
 
-    # iSCSI and SCSI type pool can't create vols via virsh
-    if dest_pool_type in ["iscsi", "scsi"]:
-        raise error.TestFail("Unsupport create vol for %s type pool",
-                             dest_pool_type)
-    # Metadata preallocation is not supported for block volumes
-    if dest_pool_type in ["disk", "logical"]:
-        prealloc_option = ""
-    # Run run_virsh_vol_create_from to create dest vol
-    cmd_result = virsh.vol_create_from(dest_pool_name, vol_file, src_vol_name,
-                                       src_pool_name, prealloc_option,
-                                       ignore_status=True, debug=True)
-    status = cmd_result.exit_status
-    try:
+        # iSCSI and SCSI type pool can't create vols via virsh
+        if dest_pool_type in ["iscsi", "scsi"]:
+            raise error.TestFail("Unsupport create vol for %s type pool",
+                                 dest_pool_type)
+        # Metadata preallocation is not supported for block volumes
+        if dest_pool_type in ["disk", "logical"]:
+            prealloc_option = ""
+        # Run run_virsh_vol_create_from to create dest vol
+        cmd_result = virsh.vol_create_from(dest_pool_name, vol_file,
+                                           src_vol_name, src_pool_name,
+                                           prealloc_option, ignore_status=True,
+                                           debug=True)
+        status = cmd_result.exit_status
+
         # Check result
         if status_error == "no":
             if status == 0:
-                if not check_vol(dest_vol_name, dest_pool_name):
+                dest_pv = libvirt_storage.PoolVolume(dest_pool_name)
+                if dest_vol_name not in dest_pv.list_volumes().keys():
                     raise error.TestFail("Can't find volume: % from pool: %s",
                                          dest_vol_name, dest_pool_name)
             else:
@@ -269,10 +107,12 @@ def run(test, params, env):
             else:
                 raise error.TestFail("Expect fail, but run successfully!")
     finally:
-        # Cleanup
-        cleanup_pool(src_pool_name, src_pool_type, src_pool_target)
+        # Cleanup: both src and dest should be removed
+        try:
+            pvt.cleanup_pool(src_pool_name, src_pool_type, src_pool_target,
+                             src_emulated_image)
+        except error.TestFail, detail:
+            logging.error(str(detail))
         if src_pool_type != dest_pool_type:
-            cleanup_pool(dest_pool_name, dest_pool_type, dest_pool_target)
-        if src_pool_type or dest_pool_type in ["disk", "logical", "fs", "iscsi",
-                                               "scsi"]:
-            utlv.setup_or_cleanup_iscsi(is_setup=False)
+            pvt.cleanup_pool(dest_pool_name, dest_pool_type, dest_pool_target,
+                             dest_emulated_image)
