@@ -5,6 +5,7 @@ import tempfile
 
 from autotest.client.shared import error
 from virttest import virsh, qemu_storage, data_dir
+from virttest.libvirt_xml import vm_xml
 
 
 def run(test, params, env):
@@ -27,6 +28,9 @@ def run(test, params, env):
     snapshot_current = ("yes" == params.get("snapshot_current", "no"))
     snapshot_revert_paused = ("yes" == params.get("snapshot_revert_paused",
                                                   "no"))
+
+    # Do xml backup for final recovery
+    vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     # Some variable for xmlfile of snapshot.
     snapshot_memory = params.get("snapshot_memory", "internal")
@@ -179,3 +183,4 @@ def run(test, params, env):
         for disk in snapshot_external_disk:
             if os.path.exists(disk):
                 os.remove(disk)
+        vmxml_backup.sync("--snapshots-metadata")
