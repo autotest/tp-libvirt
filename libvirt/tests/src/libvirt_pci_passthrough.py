@@ -42,7 +42,7 @@ def run(test, params, env):
     pci_address = None
     if device_type == "NIC":
         # Find the pci device for given network device.
-        result = virsh.nodedev_list("net")
+        result = virsh.nodedev_list(cap="net")
         nodedev_nets = result.stdout.strip().splitlines()
         device = None
         for nodedev in nodedev_nets:
@@ -65,7 +65,7 @@ def run(test, params, env):
         output = session.cmd_output("fdisk -l|grep \"Disk identifier:\"")
         fdisk_list_before = output.splitlines()
 
-        result = virsh.nodedev_list("storage")
+        result = virsh.nodedev_list(cap="storage")
         nodedev_storages = result.stdout.strip().splitlines()
         for nodedev in nodedev_storages:
             storage_xml = NodedevXML.new_from_dumpxml(nodedev)
