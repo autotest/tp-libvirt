@@ -14,7 +14,7 @@ def run(test, params, env):
     1. Prepare env to provide source storage if use localhost:
        1). For 'netfs' source type, setup nfs server
        2). For 'iscsi' source type, setup iscsi server
-       3). For 'logcial' type pool, setup iscsi storage to create vg
+       3). For 'logical' type pool, setup iscsi storage to create vg
        4). Prepare srcSpec xml file if not given
     2. Find the pool sources by running virsh cmd
     """
@@ -42,10 +42,17 @@ def run(test, params, env):
         if source_type in ["iscsi", "logical"]:
             # Set up iscsi
             iscsi_device = utils_test.libvirt.setup_or_cleanup_iscsi(True)
+            # If we got nothing, force failure
+            if not iscsi_device:
+                raise error.TestFail("Did not setup an iscsi device")
             cleanup_iscsi = True
             if source_type == "logical":
                 # Create vg by using iscsi device
-                lv_utils.vg_create(vg_name, iscsi_device)
+                try:
+                    lv_utils.vg_create(vg_name, iscsi_device)
+                except Exception, detail:
+                    utils_test.libvirt.setup_or_cleanup_iscsi(False)
+                    raise error.TestFail("vg_create failed: %s", detail)
                 cleanup_logical = True
 
     # Prepare srcSpec xml
