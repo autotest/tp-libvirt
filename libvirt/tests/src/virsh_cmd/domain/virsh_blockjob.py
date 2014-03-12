@@ -28,6 +28,7 @@ def finish_job(vm_name, target, timeout):
     if job_time >= timeout:
         raise error.TestFail("Blockjob timeout in %s sec.", timeout)
 
+
 def get_disk(vm_name):
     """
     Get a disk target dev of the VM.
@@ -35,11 +36,11 @@ def get_disk(vm_name):
     :param vm_name: Domain name
     :return: Disk target dev
     """
-    disks = vm_xml.VMXML.get_disk_blk(vm_name):
+    disks = vm_xml.VMXML.get_disk_blk(vm_name)
     dev = ""
     try:
         dev = disks[0]
-        logging.debug("Use '%s' of domain '%' to do testing.", disk, vm_name)
+        logging.debug("Use %s of domain %s to do testing.", dev, vm_name)
     except IndexError:
         raise error.TestFail("No disk in domain %s." % vm_name)
     return dev
@@ -79,7 +80,7 @@ def run(test, params, env):
     options = params.get("blockjob_options", "")
     bandwidth = params.get("blockjob_bandwidth", "")
     no_blockjob = "yes" == params.get("no_blockjob", "no")
-    invalid_disk = "yes" == params.get("invalid_disk", "no")
+    invalid_disk = params.get("invalid_disk")
     persistent_vm = "yes" == params.get("persistent_vm", "no")
     status_error = "yes" == params.get("status_error", "no")
 
@@ -111,6 +112,9 @@ def run(test, params, env):
 
     if len(bandwidth):
         options += "--bandwidth %s" % bandwidth
+
+    if invalid_disk:
+        target = invalid_disk
 
     # Run virsh blockjob command
     cmd_result = virsh.blockjob(vm_name, target, options,
