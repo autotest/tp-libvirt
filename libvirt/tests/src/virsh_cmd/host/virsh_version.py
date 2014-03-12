@@ -1,5 +1,7 @@
 from autotest.client.shared import error
-from virttest import libvirt_vm, virsh, utils_libvirtd
+from virttest import libvirt_vm
+from virttest import virsh
+from virttest import utils_libvirtd
 
 
 def run(test, params, env):
@@ -13,34 +15,29 @@ def run(test, params, env):
 
     connect_uri = libvirt_vm.normalize_connect_uri(params.get("connect_uri",
                                                               "default"))
+    libvirtd = params.get("libvirtd", "on")
+    option = params.get("virsh_version_options")
+    status_error = (params.get("status_error") == "yes")
 
     # Prepare libvirtd service
-    check_libvirtd = params.has_key("libvirtd")
-    if check_libvirtd:
-        libvirtd = params.get("libvirtd")
-        if libvirtd == "off":
-            utils_libvirtd.libvirtd_stop()
+    if libvirtd == "off":
+        utils_libvirtd.libvirtd_stop()
 
     # Run test case
-    option = params.get("virsh_version_options")
-    try:
-        output = virsh.version(option, uri=connect_uri,
-                               ignore_status=False, debug=True)
-        status = 0  # good
-    except error.CmdError:
-        status = 1  # bad
+    result = virsh.version(option, uri=connect_uri, debug=True)
 
     # Recover libvirtd service start
     if libvirtd == "off":
         utils_libvirtd.libvirtd_start()
 
     # Check status_error
-    status_error = params.get("status_error")
-    if status_error == "yes":
-        if status == 0:
+    if status_error:
+        if not result.exit_status:
             raise error.TestFail("Command 'virsh version %s' succeeded "
                                  "(incorrect command)" % option)
-    elif status_error == "no":
-        if status != 0:
+    else:
+        if result.exit_status:
             raise error.TestFail("Command 'virsh version %s' failed "
                                  "(correct command)" % option)
+        if option.count("daemon") and not result.stdout.count("daemon"):
+            raise error.TestFail("No daemon information outputed!")
