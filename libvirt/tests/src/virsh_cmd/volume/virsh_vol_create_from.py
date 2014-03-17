@@ -36,11 +36,13 @@ def run(test, params, env):
 
         pvt = utlv.PoolVolumeTest(test, params)
         pvt.pre_pool(src_pool_name, src_pool_type, src_pool_target,
-                     src_emulated_image)
+                     src_emulated_image, image_size="40M",
+                     pre_disk_vol=["1M"])
 
         if src_pool_type != dest_pool_type:
             pvt.pre_pool(dest_pool_name, dest_pool_type, dest_pool_target,
-                             dest_emulated_image)
+                         dest_emulated_image, image_size="50M",
+                         pre_disk_vol=["1M"])
 
         # Print current pools for debugging
         logging.debug("Current pools:%s",
@@ -96,7 +98,10 @@ def run(test, params, env):
         if status_error == "no":
             if status == 0:
                 dest_pv = libvirt_storage.PoolVolume(dest_pool_name)
-                if dest_vol_name not in dest_pv.list_volumes().keys():
+                dest_volumes = dest_pv.list_volumes().keys()
+                logging.debug("Current volumes in %s: %s",
+                              dest_pool_name, dest_volumes)
+                if dest_vol_name not in dest_volumes:
                     raise error.TestFail("Can't find volume: % from pool: %s",
                                          dest_vol_name, dest_pool_name)
             else:
