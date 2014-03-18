@@ -14,9 +14,8 @@ def run(test, params, env):
     (5) Call virsh freecell with libvirtd service stop
     """
 
-    connect_uri = libvirt_vm.normalize_connect_uri(params.get("connect_uri",
-                                                              "default"))
-    option = params.get("virsh_freecell_options")
+    args = params.get("virsh_freecell_args")
+    option = params.get("virsh_freecell_opts")
 
     # Prepare libvirtd service
     check_libvirtd = params.has_key("libvirtd")
@@ -26,8 +25,7 @@ def run(test, params, env):
             utils_libvirtd.libvirtd_stop()
 
     # Run test case
-    cmd_result = virsh.freecell(ignore_status=True, extra=option,
-                                uri=connect_uri, debug=True)
+    cmd_result = virsh.freecell(cellno=args, options=option)
     output = cmd_result.stdout.strip()
     status = cmd_result.exit_status
 
