@@ -13,6 +13,27 @@ def set_xml_clock(vms, params):
     """
     Config libvirt XML for clock.
     """
+    # Get a dict include operations to timer
+    timer_elems = []
+    if ("yes" == params.get("xml_timer", "no")) is True:
+        timers = params.get("timers_attr", "").split('|')
+        if len(timers):
+            for timer in timers:
+                timer_attrs = {}
+                attrs = timer.split(';')
+                for attr in attrs:
+                    pairs = attr.split('=')
+                    if len(pairs) != 2:
+                        logging.error("timer attribute pairs '%s' do not"
+                                      " match!SKIP...", pairs)
+                        continue
+                    key = pairs[0]
+                    value = pairs[1]
+                    timer_attrs[key] = value
+                timer_elems.append(timer_attrs)
+        else:
+            logging.warn("xml_timer set to 'yes' but no timers provided!")
+
     offset = params.get("clock_offset", "utc")
     adjustment = params.get("clock_adjustment")
     timezone = params.get("clock_timezone")
@@ -28,6 +49,12 @@ def set_xml_clock(vms, params):
             vmclockxml.timezone = timezone
         # Clear timers for re-creating
         vmclockxml.timers = []
+        newtimers = []
+        for element in timer_elems:
+            newtimer = vm_xml.VMClockXML.Timer()
+            newtimer.update(element)
+            newtimers.append(newtimer)
+        vmclockxml.timers = newtimers
         logging.debug("New vm config:\n%s", vmclockxml)
         vmclockxml.sync()
 
@@ -284,6 +311,61 @@ def test_all_timers(vms, params):
 
         # Useless, so shutdown for cleanup
         vm.destroy()
+
+    if len(fail_info):
+        raise error.TestFail(fail_info)
+
+
+def test_banned_timer(vms, params):
+    """
+    Test setting timer's present to no in vm's xml.
+    """
+    banned_timer = params.get("banned_timer")
+    for vm in vms:
+        if vm.is_dead():
+            vm.start()
+        vm.wait_for_login()
+        if banned_timer not in get_avail_clksrc(vm):
+            raise error.TestNAError("Not supported timer for vm %s" % vm.name)
+        vm.destroy()
+
+    set_xml_clock(vms, params)
+
+    try:
+        # Logging vm to set time
+        for vm in vms:
+            vm.start()
+            vm.wait_for_login()
+    except error.TestError:
+        # Cleanup for setting failure
+        for vm in vms:
+            vm.destroy()
+        recover_vm_xml(vms)
+
+    fail_info = []
+
+    # Set vms' clocksource(different vm may have different sources)
+    # (kvm-clock tsc hpet acpi_pm...)
+    for vm in vms:
+        # Get available clocksources
+        avail_srcs = get_avail_clksrc(vm)
+        if not avail_srcs:
+            fail_info.append("Get available clocksources of %s "
+                             "failed." % vm.name)
+            continue
+        logging.debug("Available clocksources of %s:%s", vm.name, avail_srcs)
+
+        if banned_timer in avail_srcs:
+            fail_info.append("Timer %s set present to no is still available "
+                             "in vm." % banned_timer)
+            continue
+
+        # Try to set banned timer
+        if set_current_clksrc(vm, banned_timer):
+            time.sleep(2)
+            if get_current_clksrc(vm) == banned_timer:
+                fail_info.append("Set clocksource %s in vm successfully,"
+                                 "but not expected." % banned_timer)
 
     if len(fail_info):
         raise error.TestFail(fail_info)
