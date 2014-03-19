@@ -125,7 +125,7 @@ def run(test, params, env):
                 else:
                     session.cmd("echo \"virsh sendkey waiting\" >> /var/log/messages")
                     time.sleep(1)
-                    timeout = timeout -1
+                    timeout = timeout - 1
 
             if get_status != 0:
                 raise error.TestFail("SysRq does not take effect in guest, "
