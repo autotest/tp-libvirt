@@ -156,7 +156,7 @@ def find_devices_by_cap(cap_type="scsi_host"):
     Find device by capability
     :params cap_type: capability type
     """
-    result = virsh.nodedev_list('--cap %s' % cap_type)
+    result = virsh.nodedev_list(cap=cap_type)
     if result.exit_status:
         raise error.TestFail(result.stderr)
 
