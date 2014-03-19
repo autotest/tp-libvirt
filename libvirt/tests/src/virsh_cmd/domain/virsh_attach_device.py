@@ -335,10 +335,6 @@ class AttachDeviceBase(TestDeviceBase):
                     cmdresult.stderr.count('attached successfully')):
                 return True
         else:
-            if (cmdresult.stderr.count("doesn't support option") or
-                    cmdresult.stdout.count("doesn't support option")):
-                # Just skip this test
-                raise error.TestNAError
             if (cmdresult.stderr.count("XML error") or
                     cmdresult.stdout.count("XML error")):
                 logging.error("Errant XML:")
@@ -346,7 +342,11 @@ class AttachDeviceBase(TestDeviceBase):
                 # All LibvirtXMLBase subclasses string-convert into raw XML
                 for line in str(xmldevice).splitlines():
                     logging.error("     %s", line)
-            return False
+            # See analyze_negative_results - expects return of true
+            if self.test_params.status_error:
+                return True
+            else:
+                return False
 
     # Overridden in classes below
     def init_device(self, index):
@@ -601,8 +601,8 @@ def analyze_negative_results(test_params, operational_results,
     """
     Analyze available results, return error message if fail
     """
-    if not all_false(operational_results):
-        return ("Negative testing operational test passed")
+    if not all_true(operational_results):
+        return ("Negative testing operational test failed")
     if test_params.start_vm and preboot_results:
         if not all_false(preboot_results):
             return ("Negative testing pre-boot functionality test passed")
