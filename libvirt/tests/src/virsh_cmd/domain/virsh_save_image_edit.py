@@ -7,6 +7,7 @@ from virttest import data_dir
 from virttest import remote
 from virttest import virsh
 
+
 def run(test, params, env):
     """
     Test command: virsh save-image-edit <file>
@@ -63,7 +64,6 @@ def run(test, params, env):
         domstate = virsh.domstate(vm_name, debug=True).stdout.strip()
         if restore_state != domstate:
             raise error.TestFail("The domain state is not expected")
-
 
     # MAIN TEST CODE ###
     # Process cartesian parameters
