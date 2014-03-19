@@ -135,7 +135,7 @@ def run(test, params, env):
             virsh.pool_destroy(pool_name)
 
         # restore the undefined default pool
-        if undefine_exist_pool: # and not pool_ins.pool_exists(exist_pool_name):
+        if undefine_exist_pool:  # and not pool_ins.pool_exists(exist_pool_name):
             virsh.pool_define(backup_xml)
             if start_pool:
                 pool_ins.start_pool(exist_pool_name)
