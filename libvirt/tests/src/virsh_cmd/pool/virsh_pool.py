@@ -46,6 +46,8 @@ def run(test, params, env):
     pool_name = params.get("pool_name", "temp_pool_1")
     pool_type = params.get("pool_type", "dir")
     pool_target = params.get("pool_target", "")
+    # The file for dumped pool xml
+    pool_xml = os.path.join(test.tmpdir, "pool.xml.tmp")
     if os.path.dirname(pool_target) is "":
         pool_target = os.path.join(test.tmpdir, pool_target)
     vol_name = params.get("vol_name", "temp_vol_1")
@@ -138,7 +140,8 @@ def run(test, params, env):
         if pool_info[check_point] == value:
             logging.debug("Pool '%s' is '%s'.", check_point, value)
         else:
-            raise error.TestFail("Pool '%s' isn't '%s'." % (check_point, value))
+            raise error.TestFail("Pool '%s' isn't '%s'." % (check_point,
+                                                            value))
 
     # Run Testcase
     try:
@@ -156,7 +159,6 @@ def run(test, params, env):
 
         # Step (3)
         # Pool dumpxml
-        pool_xml = os.path.join(test.tmpdir, "pool.xml.tmp")
         xml = virsh.pool_dumpxml(pool_name, to_file=pool_xml)
         logging.debug("Pool '%s' XML:\n%s", pool_name, xml)
 
