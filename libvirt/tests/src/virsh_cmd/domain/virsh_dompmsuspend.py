@@ -4,7 +4,7 @@ from virttest import virsh, libvirt_xml
 from virttest.libvirt_xml import vm_xml, xcepts
 
 
-def run_virsh_dompmsuspend(test, params, env):
+def run(test, params, env):
     """
     Test command: virsh dompmsuspend <domain> <target>
     The command suspends a running domain using guest OS's power management.
