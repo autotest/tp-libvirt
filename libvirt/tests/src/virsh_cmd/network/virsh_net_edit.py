@@ -6,6 +6,7 @@ from virttest import remote
 from autotest.client.shared import error
 from virttest import virsh
 
+
 def run(test, params, env):
     """
     Test command: virsh net-edit <network>
