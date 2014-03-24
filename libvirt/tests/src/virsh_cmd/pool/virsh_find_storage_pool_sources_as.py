@@ -47,6 +47,9 @@ def run(test, params, env):
             # Set up iscsi
             try:
                 iscsi_device = utils_test.libvirt.setup_or_cleanup_iscsi(True)
+                # If we got nothing, force failure
+                if not iscsi_device:
+                    raise error.TestFail("Did not setup an iscsi device")
                 cleanup_iscsi = True
                 if source_type == "logical":
                     # Create VG by using iscsi device
