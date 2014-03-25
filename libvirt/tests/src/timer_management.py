@@ -2,11 +2,13 @@
 Test module for timer management.
 """
 
+import os
 import logging
 import time
 from autotest.client import utils
 from autotest.client.shared import error
 from virttest.libvirt_xml import vm_xml, xcepts
+from virttest import utils_test, virsh, data_dir
 
 
 def set_xml_clock(vms, params):
@@ -191,6 +193,87 @@ def convert_tz_to_vector(tz_name="Europe/London"):
     return None
 
 
+def load_stress(vms, stress_type, params={}):
+    """
+    Load different stress in vm: unixbench, stress, running vms and so on
+    """
+    fail_info = []
+    # Special operations for test
+    if stress_type == "stress_in_vms":
+        for vm in vms:
+            try:
+                vstress = utils_test.VMStress(vm, "stress")
+                vstress.load_stress_tool()
+            except utils_test.StressError, detail:
+                fail_info.append("Launch stress in %s failed:%s" % (vm.name,
+                                                                    detail))
+    elif stress_type == "stress_on_host":
+        try:
+            hstress = utils_test.HostStress(params, "stress")
+            hstress.load_stress_tool()
+        except utils_test.StressError, detail:
+            fail_info.append("Launch stress on host failed:%s" % str(detail))
+    elif stress_type == "inject_nmi":
+        inject_times = int(params.get("inject_times", 10))
+        for vm in vms:
+            while inject_times > 0:
+                try:
+                    inject_times -= 1
+                    virsh.inject_nmi(vm.name, debug=True, ignore_status=False)
+                except error.CmdError, detail:
+                    fail_info.append("Inject operations failed:%s", detail)
+    elif stress_type == "dump":
+        dump_times = int(params.get("dump_times", 10))
+        for vm in vms:
+            while dump_times > 0:
+                dump_times -= 1
+                dump_path = os.path.join(data_dir.get_tmp_dir(), "dump.file")
+                try:
+                    virsh.dump(vm.name, dump_path, debug=True,
+                               ignore_status=False)
+                except (error.CmdError, OSError), detail:
+                    fail_info.append("Create dump file for %s failed."
+                                     % vm.name)
+                try:
+                    os.remove(dump_path)
+                except OSError:
+                    pass
+    elif stress_type == "suspend_resume":
+        paused_times = int(params.get("paused_times", 10))
+        for vm in vms:
+            while paused_times > 0:
+                paused_times -= 1
+                try:
+                    virsh.suspend(vm.name, debug=True, ignore_status=False)
+                    virsh.resume(vm.name, debug=True, ignore_status=False)
+                except error.CmdError, detail:
+                    fail_info.append("Suspend-Resume %s failed." % vm.name)
+    elif stress_type == "save_restore":
+        save_times = int(params.get("save_times", 10))
+        for vm in vms:
+            while save_times > 0:
+                save_times -= 1
+                save_path = os.path.join(data_dir.get_tmp_dir(), "save.file")
+                try:
+                    virsh.save(vm.name, save_path, debug=True,
+                               ignore_status=False)
+                    virsh.restore(save_path, debug=True,
+                                  ignore_status=False)
+                except error.CmdError:
+                    fail_info.append("Save-Restore %s failed." % vm.name)
+                try:
+                    os.remove(save_path)
+                except OSError:
+                    pass
+    return fail_info
+
+
+def unload_stress(stress_type, params):
+    """Cleanup stress on host"""
+    if stress_type == "stress_on_host":
+        utils_test.HostStress(params, "stress").unload_stress()
+
+
 def test_all_timers(vms, params):
     """
     Test all available timers in vm.
@@ -214,20 +297,19 @@ def test_all_timers(vms, params):
     # Config clock in VMXML
     set_xml_clock(vms, params)
 
-    try:
-        # Logging vm to set time
-        for vm in vms:
-            vm.start()
-            vm.wait_for_login()
-            set_vm_timezone(vm, params.get("vm_timezone"))
+    # Logging vm to set time
+    for vm in vms:
+        vm.start()
+        vm.wait_for_login()
+        set_vm_timezone(vm, params.get("vm_timezone"))
 
-        # Set host timezone
-        set_host_timezone(params.get("host_timezone"))
-    except error.TestError:
-        # Cleanup for setting failure
-        for vm in vms:
-            vm.destroy()
-        recover_vm_xml(vms)
+    # Set host timezone
+    set_host_timezone(params.get("host_timezone"))
+
+    # Load stress if necessary
+    stress_type = params.get("stress_type")
+    if stress_type is not None:
+        load_stress(vms, stress_type, params)
 
     # Get expected utc distance between host and vms
     # with different offset(seconds)
@@ -312,6 +394,9 @@ def test_all_timers(vms, params):
         # Useless, so shutdown for cleanup
         vm.destroy()
 
+    if stress_type is not None:
+        unload_stress(stress_type, params)
+
     if len(fail_info):
         raise error.TestFail(fail_info)
 
@@ -331,16 +416,10 @@ def test_banned_timer(vms, params):
 
     set_xml_clock(vms, params)
 
-    try:
-        # Logging vm to set time
-        for vm in vms:
-            vm.start()
-            vm.wait_for_login()
-    except error.TestError:
-        # Cleanup for setting failure
-        for vm in vms:
-            vm.destroy()
-        recover_vm_xml(vms)
+    # Logging vm to verify whether setting is work
+    for vm in vms:
+        vm.start()
+        vm.wait_for_login()
 
     fail_info = []
 
