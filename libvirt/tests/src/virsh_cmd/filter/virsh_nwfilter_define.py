@@ -53,6 +53,7 @@ def run(test, params, env):
     filter_xml = params.get("filter_create_xml_file")
     options_ref = params.get("options_ref", "")
     status_error = params.get("status_error", "no")
+    boundary_test_skip = "yes" == params.get("boundary_test_skip")
 
     # prepare rule and protocol attributes
     protocol = {}
@@ -92,102 +93,109 @@ def run(test, params, env):
                                      + " is not in supported list %s" %
                                      PROTOCOL_TYPES)
 
-    if filter_xml == "invalid-filter-xml":
-        tmp_xml = xml_utils.TempXMLFile()
-        tmp_xml.write('"<filter><<<BAD>>><\'XML</name\>'
-                      '!@#$%^&*)>(}>}{CORRUPTE|>!</filter>')
-        tmp_xml.flush()
-        filter_xml = tmp_xml.name
-        logging.info("Test invalid xml is: %s" % filter_xml)
-    elif filter_xml != " ":
-        # Use exist xml as template with new attributes
-        new_filter = libvirt_xml.NwfilterXML()
-        filterxml = new_filter.new_from_filter_dumpxml(exist_filter)
-        logging.debug("the exist xml is:\n%s" % filterxml.xmltreefile)
+    try:
+        if filter_xml == "invalid-filter-xml":
+            tmp_xml = xml_utils.TempXMLFile()
+            tmp_xml.write('"<filter><<<BAD>>><\'XML</name\>'
+                          '!@#$%^&*)>(}>}{CORRUPTE|>!</filter>')
+            tmp_xml.flush()
+            filter_xml = tmp_xml.name
+            logging.info("Test invalid xml is: %s" % filter_xml)
+        elif filter_xml:
+            # Use exist xml as template with new attributes
+            new_filter = libvirt_xml.NwfilterXML()
+            filterxml = new_filter.new_from_filter_dumpxml(exist_filter)
+            logging.debug("the exist xml is:\n%s" % filterxml.xmltreefile)
 
-        # Backup xml if only update exist filter
-        if exist_filter == filter_name:
-            backup_xml = filterxml.xmltreefile.backup_copy()
+            # Backup xml if only update exist filter
+            if exist_filter == filter_name:
+                backup_xml = filterxml.xmltreefile.backup_copy()
 
-        # Set filter attribute
-        filterxml.filter_name = filter_name
-        filterxml.filter_chain = filter_chain
-        filterxml.filter_priority = filter_priority
-        filterxml.uuid = filter_uuid
-        if filterref:
-            filterxml.filterref = filterref
-            filterxml.filterref_name = filterref_name
+            # Set filter attribute
+            filterxml.filter_name = filter_name
+            filterxml.filter_chain = filter_chain
+            filterxml.filter_priority = filter_priority
+            filterxml.uuid = filter_uuid
+            if filterref:
+                filterxml.filterref = filterref
+                filterxml.filterref_name = filterref_name
 
-        # Set rule attribute
-        index_total = filterxml.get_rule_index()
-        rule = filterxml.get_rule(0)
-        rulexml = rule.backup_rule()
-        for i in range(len(rule_dict.keys())):
-            rulexml.rule_action = rule_dict[i].get('rule_action')
-            rulexml.rule_direction = rule_dict[i].get('rule_direction')
-            rulexml.rule_priority = rule_dict[i].get('rule_priority')
-            rulexml.rule_statematch = rule_dict[i].get('rule_statematch')
-            for j in RULE_ATTR:
-                if j in rule_dict[i].keys():
-                    rule_dict[i].pop(j)
-
-            # set protocol attribute
-            if protocol[i] != 'None':
-                protocolxml = rulexml.get_protocol(protocol[i])
-                new_one = protocolxml.new_attr(**rule_dict[i])
-                protocolxml.attrs = new_one
-                rulexml.xmltreefile = protocolxml.xmltreefile
-            else:
-                rulexml.del_protocol()
-
-            if i <= len(index_total) - 1:
-                filterxml.set_rule(rulexml, i)
-            else:
-                filterxml.add_rule(rulexml)
-
-            # Reset rulexml
+            # Set rule attribute
+            index_total = filterxml.get_rule_index()
+            rule = filterxml.get_rule(0)
             rulexml = rule.backup_rule()
+            for i in range(len(rule_dict.keys())):
+                rulexml.rule_action = rule_dict[i].get('rule_action')
+                rulexml.rule_direction = rule_dict[i].get('rule_direction')
+                rulexml.rule_priority = rule_dict[i].get('rule_priority')
+                rulexml.rule_statematch = rule_dict[i].get('rule_statematch')
+                for j in RULE_ATTR:
+                    if j in rule_dict[i].keys():
+                        rule_dict[i].pop(j)
 
-        logging.info("The xml for define is:\n%s" % filterxml.xmltreefile)
-        filterxml.xmltreefile.write(filter_xml)
+                # set protocol attribute
+                if protocol[i] != 'None':
+                    protocolxml = rulexml.get_protocol(protocol[i])
+                    new_one = protocolxml.new_attr(**rule_dict[i])
+                    protocolxml.attrs = new_one
+                    rulexml.xmltreefile = protocolxml.xmltreefile
+                else:
+                    rulexml.del_protocol()
 
-    # Run command
-    cmd_result = virsh.nwfilter_define(filter_xml, options=options_ref,
-                                       ignore_status=True, debug=True)
-    status = cmd_result.exit_status
+                if i <= len(index_total) - 1:
+                    filterxml.set_rule(rulexml, i)
+                else:
+                    filterxml.add_rule(rulexml)
 
-    # Check result
-    chk_result = check_list(filter_uuid, filter_name)
-    xml_path = "%s/%s.xml" % (NWFILTER_ETC_DIR, filter_name)
-    if status_error == "yes":
-        if status == 0:
-            raise error.TestFail("Run successfully with wrong command.")
-    elif status_error == "no":
-        if status:
-            raise error.TestFail("Run failed with right command.")
-        if not chk_result:
-            raise error.TestFail("Can't find filter in nwfilter-list output")
-        if not os.path.exists(xml_path):
-            raise error.TestFail("Can't find filter xml under %s" %
-                                 NWFILTER_ETC_DIR)
-        logging.info("Dump the xml after define:")
-        virsh.nwfilter_dumpxml(filter_name,
-                               ignore_status=True,
-                               debug=True)
+                # Reset rulexml
+                rulexml = rule.backup_rule()
 
-    # Clean env
-    if exist_filter == filter_name:
-        logging.info("Restore exist filter: %s" % exist_filter)
-        backup_xml.write(filter_xml)
-        virsh.nwfilter_define(filter_xml,
-                              options="",
-                              ignore_status=True,
-                              debug=True)
-    else:
-        if chk_result:
-            virsh.nwfilter_undefine(filter_name,
-                                    options="",
-                                    ignore_status=True,
-                                    debug=True)
-    if os.path.exists(filter_xml):
-        os.remove(filter_xml)
+            logging.info("The xml for define is:\n%s" % filterxml.xmltreefile)
+            filterxml.xmltreefile.write(filter_xml)
+
+        # Run command
+        cmd_result = virsh.nwfilter_define(filter_xml, options=options_ref,
+                                           ignore_status=True, debug=True)
+        status = cmd_result.exit_status
+
+        # Check result
+        chk_result = check_list(filter_uuid, filter_name)
+        xml_path = "%s/%s.xml" % (NWFILTER_ETC_DIR, filter_name)
+        if status_error == "yes":
+            if status == 0:
+                if boundary_test_skip:
+                    raise error.TestNAError("Boundary check commit 4f20943 not"
+                                            + " in this libvirt build yet.")
+                else:
+                    raise error.TestFail("Run successfully with wrong command.")
+        elif status_error == "no":
+            if status:
+                raise error.TestFail("Run failed with right command.")
+            if not chk_result:
+                raise error.TestFail("Can't find filter in nwfilter-list" +
+                                     " output")
+            if not os.path.exists(xml_path):
+                raise error.TestFail("Can't find filter xml under %s" %
+                                     NWFILTER_ETC_DIR)
+            logging.info("Dump the xml after define:")
+            virsh.nwfilter_dumpxml(filter_name,
+                                   ignore_status=True,
+                                   debug=True)
+
+    finally:
+        # Clean env
+        if exist_filter == filter_name:
+            logging.info("Restore exist filter: %s" % exist_filter)
+            backup_xml.write(filter_xml)
+            virsh.nwfilter_define(filter_xml,
+                                  options="",
+                                  ignore_status=True,
+                                  debug=True)
+        else:
+            if chk_result:
+                virsh.nwfilter_undefine(filter_name,
+                                        options="",
+                                        ignore_status=True,
+                                        debug=True)
+        if os.path.exists(filter_xml):
+            os.remove(filter_xml)
