@@ -2,7 +2,8 @@ import re
 import logging
 import time
 from autotest.client.shared import error
-from virttest import virsh, utils_libvirtd
+from virttest import virsh
+from virttest import utils_libvirtd
 
 
 def run(test, params, env):
@@ -15,15 +16,20 @@ def run(test, params, env):
     4) Run test command and wait for current memory's stable.
     5) Recover environment.
     4) Check result.
-    TODO: support new libvirt with more options.
     """
 
     def vm_proc_meminfo(session):
+        """
+        Get guest totol memory
+        """
         proc_meminfo = session.cmd_output("cat /proc/meminfo")
         # verify format and units are expected
         return int(re.search(r'MemTotal:\s+(\d+)\s+kB', proc_meminfo).group(1))
 
     def make_domref(domarg, vm_ref, domid, vm_name, domuuid):
+        """
+        Create domain options of command
+        """
         # Specify domain as argument or parameter
         if domarg == "yes":
             dom_darg_key = "domainarg"
@@ -47,6 +53,9 @@ def run(test, params, env):
         return {dom_darg_key: dom_darg_value}
 
     def make_sizeref(sizearg, mem_ref, original_mem):
+        """
+        Create size options of command
+        """
         if sizearg == "yes":
             size_darg_key = "sizearg"
         else:
@@ -74,17 +83,26 @@ def run(test, params, env):
         return {size_darg_key: size_darg_value}
 
     def is_in_range(actual, expected, error_percent):
+        """
+        Check if value in reasonable range
+        """
         deviation = 100 - (100 * (float(actual) / float(expected)))
         logging.debug("Deviation: %0.2f%%" % float(deviation))
         return float(deviation) <= float(error_percent)
 
     def is_old_libvirt():
+        """
+        Check if libvirt is old version
+        """
         regex = r'\s+\[--size\]\s+'
         return bool(not virsh.has_command_help_match('setmem', regex))
 
     def print_debug_stats(original_inside_mem, original_outside_mem,
                           test_inside_mem, test_outside_mem,
                           expected_mem, delta_percentage):
+        """
+        Print debug message for test
+        """
         dbgmsg = ("Original inside mem  : %d KiB\n"
                   "Expected inside mem  : %d KiB\n"
                   "Actual inside mem    : %d KiB\n"
@@ -121,11 +139,11 @@ def run(test, params, env):
     libvirt = params.get("libvirt", "on")
     delta_percentage = float(params.get("setmem_delta_per", "10"))
     start_vm = params.get("start_vm", "yes")
-    vm_name = params.get("main_vm")
+    vm_name = params.get("main_vm", "virt-tests-vm1")
     paused_after_start_vm = "yes" == params.get("paused_after_start_vm", "no")
 
     # Gather environment parameters
-    vm = env.get_vm(params["main_vm"])
+    vm = env.get_vm(vm_name)
     if start_vm == "yes":
         if paused_after_start_vm:
             vm.resume()
@@ -135,7 +153,6 @@ def run(test, params, env):
         if paused_after_start_vm:
             vm.pause()
     else:
-        session = None
         # Retrieve known mem value, convert into kilobytes
         original_inside_mem = int(params.get("mem", "1024")) * 1024
     original_outside_mem = vm.get_used_mem()
@@ -187,15 +204,18 @@ def run(test, params, env):
 
     # Gather stats if not running error test
     if status_error == "no" and old_libvirt_fail == "no":
-        if vm.state() == "shut off":
-            vm.start()
-        # Make sure it's never paused
-        vm.resume()
-        session = vm.wait_for_login()
+        if start_vm == "yes":
+            if vm.state() == "shut off":
+                vm.start()
+            # Make sure it's never paused
+            vm.resume()
+            session = vm.wait_for_login()
 
-        # Actual results
-        test_inside_mem = vm_proc_meminfo(session)
-        session.close()
+            # Actual results
+            test_inside_mem = vm_proc_meminfo(session)
+            session.close()
+        else:
+            test_inside_mem = original_inside_mem
         test_outside_mem = vm.get_used_mem()
 
         # Expected results for both inside and outside
@@ -211,7 +231,8 @@ def run(test, params, env):
     if status is 0:  # Restore original memory
         restore_status = virsh.setmem(domainarg=vm_name,
                                       sizearg=original_outside_mem,
-                                      ignore_status=True).exit_status
+                                      ignore_status=True,
+                                      flagstr=flags).exit_status
         if restore_status is not 0:
             logging.warning("Failed to restore VM's original memory to %s KiB"
                             % original_outside_mem)
