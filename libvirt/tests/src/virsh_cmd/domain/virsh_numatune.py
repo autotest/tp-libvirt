@@ -153,7 +153,7 @@ def set_numa_parameter(params, cgstop):
                 logging.info("Control groups stopped, thus expected success")
     elif status_error == "no":
         if status:
-            if len(cpus_parser(nodeset)) > num_numa_nodes():
+            if (cpus_parser(nodeset)[-1] + 1) > num_numa_nodes():
                 raise error.TestNAError("Host does not support requested"
                                         " nodeset")
             else:
