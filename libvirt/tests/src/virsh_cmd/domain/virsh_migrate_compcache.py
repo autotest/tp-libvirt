@@ -42,7 +42,7 @@ def run(test, params, env):
     if start_vm and not vm.is_alive():
         vm.start()
     elif not start_vm and vm.is_alive():
-        vm.destroy(gracefully=False)
+        vm.destroy()
     if pause_vm and not vm.is_paused():
         vm.pause()
 
@@ -85,7 +85,7 @@ def run(test, params, env):
 
     # Shut down the VM to make sure the compcache setting cleared
     if vm.is_alive():
-        vm.destroy(gracefully=False)
+        vm.destroy()
 
     # Check test result
     if expect_succeed:
