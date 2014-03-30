@@ -2,7 +2,7 @@ import re
 import logging
 from virttest.utils_test.libvirt import cpus_parser
 from autotest.client.shared import error, utils
-from virttest import libvirt_xml, virsh, utils_libvirtd
+from virttest import libvirt_xml, virsh, utils_libvirtd, utils_misc
 from virttest.libvirt_xml.xcepts import LibvirtXMLAccessorError
 try:
     from virttest.staging import utils_cgroup
@@ -75,10 +75,11 @@ def check_numatune_xml(params):
     return True
 
 
-def get_numa_parameter(params):
+def get_numa_parameter(params, cgstop):
     """
     Get the numa parameters
     :params: the parameter dictionary
+    :cgstop: whether cg were stopped prior to get
     """
     vm_name = params.get("vms")
     options = params.get("options", None)
@@ -92,7 +93,13 @@ def get_numa_parameter(params):
         if status:
             logging.info("It's an expected error")
         else:
-            raise error.TestFail("Unexpected return code %d" % status)
+            # If we stopped control groups, then we expect a different
+            # result in this failure case; however, if there were no
+            # control groups to stop, then don't error needlessly
+            if cgstop:
+                raise error.TestFail("Unexpected return code %d" % status)
+            else:
+                logging.info("Control groups stopped, thus expected success")
     elif status_error == "no":
         if status:
             raise error.TestFail(result.stderr)
@@ -100,10 +107,11 @@ def get_numa_parameter(params):
             logging.info(result.stdout)
 
 
-def set_numa_parameter(params):
+def set_numa_parameter(params, cgstop):
     """
     Set the numa parameters
     :params: the parameter dictionary
+    :cgstop: whether cg were stopped prior to get
     """
     vm_name = params.get("vms")
     mode = params.get("numa_mode")
@@ -136,7 +144,13 @@ def set_numa_parameter(params):
         if status:
             logging.info("It's an expected error")
         else:
-            raise error.TestFail("Unexpected return code %d" % status)
+            # If we stopped control groups, then we expect a different
+            # result in this failure case; however, if there were no
+            # control groups to stop, then don't error needlessly
+            if cgstop:
+                raise error.TestFail("Unexpected return code %d" % status)
+            else:
+                logging.info("Control groups stopped, thus expected success")
     elif status_error == "no":
         if status:
             if len(cpus_parser(nodeset)) > num_numa_nodes():
@@ -174,11 +188,17 @@ def run(test, params, env):
            2.2.5) stop cgroup service
     """
 
+    try:
+        utils_misc.find_command("numactl")
+    except ValueError:
+        raise error.TestNAError("Command 'numactl' is missing. You must "
+                                "install it.")
+
     # Run test case
     vm_name = params.get("vms")
     vm = env.get_vm(vm_name)
     original_vm_xml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    cgconfig_service = utils_cgroup.CgconfigService()
+    cg = utils_cgroup.CgconfigService()
     status_error = params.get("status_error", "no")
     libvirtd = params.get("libvirtd", "on")
     cgconfig = params.get("cgconfig", "on")
@@ -191,35 +211,49 @@ def run(test, params, env):
 
     # positive and negative testing #########
 
+    cgstop = False
     try:
         if status_error == "no":
             if change_parameters == "no":
-                get_numa_parameter(params)
+                get_numa_parameter(params, cgstop)
             else:
-                set_numa_parameter(params)
+                set_numa_parameter(params, cgstop)
         if cgconfig == "off":
-            # Need to shutdown a running guest before stopping cgconfig service
-            # and will start the guest after restarting libvirtd service
-            if vm.is_alive():
-                vm.destroy()
-            if cgconfig_service.cgconfig_is_running():
-                cgconfig_service.cgconfig_stop()
-        # Refresh libvirtd service to get latest cgconfig service change
-        if libvirtd == "restart":
-            utils_libvirtd.libvirtd_restart()
+            # If running, then need to shutdown a running guest before
+            # stopping cgconfig service and will start the guest after
+            # restarting libvirtd service
+            if cg.cgconfig_is_running():
+                if vm.is_alive():
+                    vm.destroy()
+                cg.cgconfig_stop()
+                cgstop = True
+
+        # If we stopped cg, then refresh libvirtd service
+        # to get latest cgconfig service change; otherwise,
+        # if no cg change restart of libvirtd is pointless
+        if cgstop and libvirtd == "restart":
+            try:
+                utils_libvirtd.libvirtd_restart()
+            finally:
+                # Not running is not a good thing, but it does happen
+                # and it will affect other tests
+                if not utils_libvirtd.libvirtd_is_running():
+                    raise error.TestNAError("libvirt service is not running!")
+
         # Recover previous running guest
         if (cgconfig == "off" and libvirtd == "restart"
                 and not vm.is_alive() and start_vm == "yes"):
             vm.start()
         if status_error == "yes":
             if change_parameters == "no":
-                get_numa_parameter(params)
+                get_numa_parameter(params, cgstop)
             else:
-                set_numa_parameter(params)
+                set_numa_parameter(params, cgstop)
     finally:
-        # Recover cgconfig and libvirtd service
-        if not cgconfig_service.cgconfig_is_running():
-            cgconfig_service.cgconfig_start()
-            utils_libvirtd.libvirtd_restart()
         # Restore guest
         original_vm_xml.sync()
+
+        # If we stopped cg, then recover and refresh libvirtd to recognize
+        if cgstop:
+            cg.cgconfig_start()
+            utils_libvirtd.libvirtd_restart()
