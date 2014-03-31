@@ -112,6 +112,10 @@ def run(test, params, env):
     # Gather environment parameters
     vm = env.get_vm(vm_name)
 
+    # FIXME: KVM does not support --live currently.
+    if (flags.count('live') or (flags.count('current') and vm.is_alive())):
+        raise error.TestNAError("KVM does not support --live.")
+
     # Backup original XML
     original_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
@@ -151,6 +155,8 @@ def run(test, params, env):
         # Gather status if not running error test
         start_status = 0    # Check can guest be started after maxmem-modified.
         if not status_error:
+            if flags.count("config"):
+                vm.destroy()
             if vm.state() == "shut off":
                 try:
                     vm.start()
