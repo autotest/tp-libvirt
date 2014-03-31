@@ -3,8 +3,9 @@ import re
 import shutil
 import logging
 from autotest.client.shared import utils, error
-from virttest import utils_misc, virsh
+from virttest import utils_misc, virsh, libvirt_storage
 from virttest.libvirt_xml import vol_xml
+from virttest.utils_test import libvirt as utlv
 
 
 def run(test, params, env):
@@ -32,19 +33,16 @@ def run(test, params, env):
         if 'dir' in pool_type:
             if not os.path.isdir(pool_target):
                 os.makedirs(pool_target)
-            result = virsh.pool_define_as(pool_name, pool_type, pool_target)
+            result = utlv.define_pool(pool_name, pool_type, pool_target)
             if result.exit_status != 0:
                 raise error.TestFail("Command virsh pool-define-as"
                                      " failed:\n%s" % result.stderr.strip())
             else:
-                logging.debug(
-                    "%s type pool: %s defined successfully", pool_type, pool_name)
-            result = virsh.pool_start(pool_name, ignore_status=True)
-            if result.exit_status != 0:
-                raise error.TestFail("Command virsh pool-start failed:\n%s" %
-                                     result.stderr)
-            else:
-                logging.debug("Pool: %s successfully started", pool_name)
+                logging.debug("%s type pool: %s defined successfully",
+                              pool_type, pool_name)
+            sp = libvirt_storage.StoragePool()
+            if not sp.start_pool(pool_name):
+                raise error.TestFail("Start pool %s failed." % pool_name)
         else:
             raise error.TestNAError("pool type %s has not yet been"
                                     " supported in the test" % pool_type)
@@ -54,13 +52,8 @@ def run(test, params, env):
         """
         Destroys, undefines and delete the pool target
         """
-        result = virsh.pool_destroy(pool_name, ignore_status=True)
-        if not result:
-            raise error.TestFail("Command virsh pool-destroy failed")
-        result = virsh.pool_undefine(pool_name, ignore_status=True)
-        if result.exit_status != 0:
-            raise error.TestFail("Command virsh pool-undefine failed:\n%s" %
-                                 result.stderr.strip())
+        if not libvirt_storaget.StoragePool().delete_pool(pool_name):
+            raise error.TestFail("Delete pool %s failed." % pool_name)
         try:
             logging.debug(
                 "Deleting the pool target: %s directory", pool_target)
@@ -74,34 +67,24 @@ def run(test, params, env):
         Creates Volume
         """
 
-        result = virsh.vol_create_as(expected_vol['name'],
-                                     expected_vol['pool_name'],
-                                     expected_vol['capacity'],
-                                     expected_vol['allocation'],
-                                     expected_vol['format'],
-                                     ignore_status=True)
-        if result.exit_status != 0:
-            raise error.TestFail("Command virsh vol-create-as failed:\n%s" %
-                                 result.stderr.strip())
-        else:
-            logging.info("Volume: %s successfully created on pool: %s",
-                         expected_vol['name'], expected_vol['pool_name'])
-
-        return True
+        pv = libvirt_storage.PoolVolume(expected_vol['pool_name'])
+        return pv.create_volume(expected_vol['name'],
+                                expected_vol['capacity'],
+                                expected_vol['allocation'],
+                                expected_vol['format'])
 
     def delete_volume(expected_vol):
         """
         Deletes Volume
         """
-        result = virsh.vol_delete(expected_vol['name'],
-                                  expected_vol['pool_name'],
-                                  ignore_status=True)
-        if result.exit_status != 0:
-            raise error.TestFail("Command virsh vol-delete failed:\n%s" %
-                                 result.stderr.strip())
+        pool_name = expected_vol['pool_name']
+        vol_name = expected_vol['name']
+        pv = libvirt_storage.PoolVolume(pool_name)
+        if not pv.delete_volume(vol_name):
+            raise error.TestFail("Delete volume failed." % vol_name)
         else:
-            logging.debug("Volume: %s successfully created on pool: %s",
-                          expected_vol['name'], expected_vol['pool_name'])
+            logging.debug("Volume: %s successfully deleted on pool: %s",
+                          vol_name, pool_name)
 
     def get_vol_list(pool_name, vol_name):
         """
@@ -134,26 +117,8 @@ def run(test, params, env):
         """
         Parse the volume info
         """
-        output = virsh.vol_info(vol_name, pool_name)
-        reg1 = re.compile(r'Name:\s+(\S+)')
-        reg2 = re.compile(r'Type:\s+(\S+)')
-        reg3 = re.compile(r'Capacity:\s+(\S+.*)')
-        reg4 = re.compile(r'Allocation:\s+(\S+.*)')
-        vol_info = {}
-        for line in output.stdout.splitlines():
-            match1 = re.search(reg1, line)
-            match2 = re.search(reg2, line)
-            match3 = re.search(reg3, line)
-            match4 = re.search(reg4, line)
-            if match1 is not None:
-                vol_info['name'] = match1.group(1)
-            if match2 is not None:
-                vol_info['type'] = match2.group(1)
-            if match3 is not None:
-                vol_info['capacity'] = match3.group(1)
-            if match4 is not None:
-                vol_info['allocation'] = match4.group(1)
-        return vol_info
+        pv = libvirt_storage.PoolVolume(pool_name)
+        return pv.volume_info(vol_name)
 
     def get_image_info(image_name):
         """
