@@ -34,8 +34,8 @@ def run(test, params, env):
     libvirtd = params.get("libvirtd", "on")
     vm_ref = params.get("domstate_vm_ref")
     status_error = (params.get("status_error", "no") == "yes")
-    extra =  params.get("domstate_extra", "")
-    vm_action =  params.get("domstate_vm_action", "")
+    extra = params.get("domstate_extra", "")
+    vm_action = params.get("domstate_vm_action", "")
 
     domid = vm.get_id()
     domuuid = vm.get_uuid()
