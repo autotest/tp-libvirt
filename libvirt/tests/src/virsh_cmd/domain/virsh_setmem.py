@@ -20,7 +20,7 @@ def run(test, params, env):
 
     def vm_proc_meminfo(session):
         """
-        Get guest totol memory
+        Get guest total memory
         """
         proc_meminfo = session.cmd_output("cat /proc/meminfo")
         # verify format and units are expected
@@ -233,7 +233,7 @@ def run(test, params, env):
                                       sizearg=original_outside_mem,
                                       ignore_status=True,
                                       flagstr=flags).exit_status
-        if restore_status is not 0:
+        if restore_status != 0:
             logging.warning("Failed to restore VM's original memory to %s KiB"
                             % original_outside_mem)
     else:
