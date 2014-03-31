@@ -33,7 +33,7 @@ def run(test, params, env):
         """
         complete_uri = libvirt_vm.complete_uri(local_ip)
         command_on_remote = ("virsh -c %s list %s"
-                            % (complete_uri, options_ref))
+                             % (complete_uri, options_ref))
         session = remote.remote_login(
             "ssh", remote_ip, "22", "root", remote_passwd, "#")
         time.sleep(5)
