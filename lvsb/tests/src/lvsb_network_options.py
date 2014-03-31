@@ -19,7 +19,7 @@ def verify_network(params):
 
     cmd_outputs = params['lvsb_result']
     logging.debug("The network information from command output:\n%s",
-                   cmd_outputs)
+                  cmd_outputs)
 
     # Simply check network interface numbers for multi-network
     if cmd_outputs[0] == str(opts_count):
@@ -50,13 +50,13 @@ def verify_network(params):
                         net_opt2 = net_arg[1]
                     net_arg2 = net_args[2]
                     logging.debug("The network argument 2: '%s'",
-                                   net_arg2)
+                                  net_arg2)
                 logging.debug("The network argument 1: %s", net_arg1)
 
             # The command return value should be enough, don't need to
             # check dhcp with source and static network again.
             if net_opt1 == "dhcp" and net_opt2 == "source" or \
-                net_opt1 == "address" and not net_opt2:
+                    net_opt1 == "address" and not net_opt2:
                 return True
 
             # Check MAC address
@@ -83,6 +83,7 @@ def verify_network(params):
         return False
     else:
         return True
+
 
 def run(test, params, env):
     """
