@@ -3,6 +3,21 @@ from autotest.client.shared import error
 from virttest import libvirt_vm, remote, virsh, utils_libvirtd
 
 
+class ActionError(Exception):
+
+    """
+    Error in vm action.
+    """
+
+    def __init__(self, action):
+        Exception.__init__(self)
+        self.action = action
+
+    def __str__(self):
+        return str("Get wrong info when guest action"
+                   " is %s" % self.action)
+
+
 def run(test, params, env):
     """
     Test command: virsh domstate.
@@ -13,12 +28,14 @@ def run(test, params, env):
     4.Recover test environment.
     5.Confirm the test result.
     """
-    vm_name = params.get("main_vm")
+    vm_name = params.get("main_vm", "virt-tests-vm1")
     vm = env.get_vm(vm_name)
 
     libvirtd = params.get("libvirtd", "on")
     vm_ref = params.get("domstate_vm_ref")
-    status_error = params.get("status_error", "no")
+    status_error = (params.get("status_error", "no") == "yes")
+    extra =  params.get("domstate_extra", "")
+    vm_action =  params.get("domstate_vm_action", "")
 
     domid = vm.get_id()
     domuuid = vm.get_uuid()
@@ -30,9 +47,23 @@ def run(test, params, env):
     elif vm_ref.find("invalid") != -1:
         vm_ref = params.get(vm_ref)
     elif vm_ref == "name":
-        vm_ref = "%s %s" % (vm_name, params.get("domstate_extra"))
+        vm_ref = vm_name
     elif vm_ref == "uuid":
         vm_ref = domuuid
+
+    try:
+        if vm_action == "suspend":
+            virsh.suspend(vm_name, ignore_status=False)
+        elif vm_action == "resume":
+            virsh.suspend(vm_name, ignore_status=False)
+            virsh.resume(vm_name, ignore_status=False)
+        elif vm_action == "destroy":
+            virsh.destroy(vm_name, ignore_status=False)
+        elif vm_action == "start":
+            virsh.destroy(vm_name, ignore_status=False)
+            virsh.start(vm_name, ignore_status=False)
+    except error.CmdError:
+        raise error.TestError("Guest prepare action error!")
 
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()
@@ -56,21 +87,36 @@ def run(test, params, env):
         except error.CmdError:
             status = 1
     else:
-        result = virsh.domstate(vm_ref, ignore_status=True)
+        result = virsh.domstate(vm_ref, extra, ignore_status=True)
         status = result.exit_status
-        output = result.stdout
+        output = result.stdout.strip()
 
     # recover libvirtd service start
     if libvirtd == "off":
         utils_libvirtd.libvirtd_start()
 
     # check status_error
-    if status_error == "yes":
-        if status == 0:
+    if status_error:
+        if not status:
             raise error.TestFail("Run successfully with wrong command!")
-    elif status_error == "no":
-        if status != 0 or output == "":
+    else:
+        if status or not output:
             raise error.TestFail("Run failed with right command")
+        if extra.count("reason"):
+            if vm_action == "suspend":
+                # If not, will cost long time to destroy vm
+                virsh.destroy(vm_name)
+                if not output.count("user"):
+                    raise ActionError(vm_action)
+            elif vm_action == "resume":
+                if not output.count("unpaused"):
+                    raise ActionError(vm_action)
+            elif vm_action == "destroy":
+                if not output.count("destroyed"):
+                    raise ActionError(vm_action)
+            elif vm_action == "start":
+                if not output.count("booted"):
+                    raise ActionError(vm_action)
         if vm_ref == "remote":
             if not (re.search("running", output)
                     or re.search("blocked", output)
