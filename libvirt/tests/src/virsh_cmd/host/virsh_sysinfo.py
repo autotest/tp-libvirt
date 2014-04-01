@@ -12,7 +12,7 @@ def get_processor_version():
 
     :return: the host processor version list
     """
-    processer_version = []
+    processor_version = []
     cmd = "dmidecode -t processor | awk -F: '/Version/ {print $2}'"
     cmd_result = utils.run(cmd, ignore_status=True)
     status = cmd_result.exit_status
@@ -20,11 +20,11 @@ def get_processor_version():
     if not status:
         output_list = output.split('\n')
         for i in output_list:
-            processer_version.append(i.strip())
+            processor_version.append(i.strip())
     logging.debug("Processor version list from dmidecode output is: %s"
-                  % processer_version)
+                  % processor_version)
 
-    return processer_version
+    return processor_version
 
 
 def run(test, params, env):
@@ -63,7 +63,13 @@ def run(test, params, env):
                 processor_dict = sysinfo_xml.get_all_processors()
                 for i in range(len(processor_dict)):
                     if processor_dict[i].has_key('version'):
-                        processor_version.append(processor_dict[i]['version'])
+                        # For some processing libvirt will trim leading
+                        # spaces, while for others it trims trailing. This
+                        # code compares against dmidecode output that was
+                        # strip()'d - so just do the same here to avoid
+                        # spurrious failures
+                        val = processor_dict[i]['version'].strip()
+                        processor_version.append(val)
                 logging.debug("Processor version list from sysinfo output is: "
                               "%s" % processor_version)
 
