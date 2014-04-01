@@ -49,6 +49,7 @@ def find_first_kernel_symbol(filename, symbol_type):
             else:
                 return sub_lines[-1]
 
+
 def find_symbol_in_result(filename, symbol_name):
     """
     Find symbol in file, return the index of symbol.
@@ -78,7 +79,7 @@ def find_symbol_in_result(filename, symbol_name):
             else:
                 return result
     return -1
-    
+
 
 def mount_guestfs_with_sshfs(vms):
     """
@@ -131,7 +132,7 @@ def get_kernel_file(vm):
     vm.copy_files_from("/root/modules", guestmodules)
 
     return (guestkallsyms, guestmodules)
-    
+
 
 def run_dd_on_guest(vm):
     """
@@ -294,7 +295,7 @@ def run(test, params, env):
             result = utils.run(host_command, ignore_status=True)
             if result.exit_status:
                 raise error.TestFail(result)
-        
+
         if buildid_list:
             host_command = "%s buildid-list" % command
             result = utils.run(host_command, ignore_status=True)
@@ -313,4 +314,3 @@ def run(test, params, env):
             os.remove(host_result_file)
         if guest_result_file and os.path.exists(guest_result_file):
             os.remove(guest_result_file)
-
