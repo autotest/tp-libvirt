@@ -111,10 +111,12 @@ def get_devices_by_cap(cap):
         'scsi': ('/sys/class/scsi_device', 'scsi_', '.*'),
         'scsi_generic': ('/sys/class/scsi_generic', 'scsi_generic_', '.*'),
         'scsi_target': ('/sys/bus/scsi/devices', 'scsi_', r'target.*'),
-        'usb': ('/sys/bus/usb/devices', 'usb_', r'\d+-\d+:\d+\.\d+'),
+        'usb': ('/sys/bus/usb/devices', 'usb_',
+                # Match any string that does not have :X.X at the end
+                r'\S+:\d+\.\d+'),
         'usb_device': ('/sys/bus/usb/devices', 'usb_',
-                       # Match any string is not a 'X-X:X.X'
-                       r'^((?!\d+-\d+:\d+\.\d+).)*$'),
+                       # Match any string that does not have :X.X at the end
+                       r'^((?!\S+:\d+\.\d+).)*$'),
         }
     if cap in cap_map:
         devices = []
