@@ -52,7 +52,7 @@ def run(test, params, env):
         """
         Destroys, undefines and delete the pool target
         """
-        if not libvirt_storaget.StoragePool().delete_pool(pool_name):
+        if not libvirt_storage.StoragePool().delete_pool(pool_name):
             raise error.TestFail("Delete pool %s failed." % pool_name)
         try:
             logging.debug(
