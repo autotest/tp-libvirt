@@ -83,7 +83,7 @@ def run(test, params, env):
                 continue
             # Upstream libvirt commit id 'e8400564':
             # XMLToNative: Don't show -S
-            elif re.search ("-S", arg):
+            elif re.search("-S", arg):
                 continue
             retlist.append(arg)
 
