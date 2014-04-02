@@ -1,7 +1,11 @@
+import os
+
+from autotest.client import utils
 from autotest.client.shared import error
-from virttest import virsh, aexpect
+from virttest import virsh, utils_test, aexpect
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.nodedev_xml import NodedevXML
+from virttest.staging import service
 
 
 def run(test, params, env):
@@ -28,6 +32,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 
+    sriov = ('yes' == params.get("libvirt_pci_SRIOV", 'no'))
     device_type = params.get("libvirt_pci_device_type", "NIC")
 
     net_name = params.get("libvirt_pci_net_name", "eth0")
@@ -54,6 +59,52 @@ def run(test, params, env):
             raise error.TestError("There is no network device name of %s." %
                                   net_name)
         pci_dev = netxml.parent
+
+        if sriov:
+            # set the parameter max_vfs of igb module to 7. Then we can use
+            # the virtual function pci device for network device.
+
+            # command 'modprobe -r igb' to unload igb module
+            # command '&& modprobe igb max_vfs=7' to load it again
+            #          with max_vfs=7
+            # command '|| echo 'FAIL' > output_file' is a flag to mean
+            #          modprobe igb with max_vfs=7 failed.
+            # command '|| modprobe igb' is a handler of error occured
+            #          when we load igb again. If command 2 failed,
+            #          this command will be executed to recover network.
+            output_file = os.path.join(test.tmpdir, "output")
+            if os.path.exists(output_file):
+                os.remove(output_file)
+            mod_cmd = ("modprobe -r igb && modprobe igb max_vfs=7 ||"
+                       "echo 'FAIL' > %s && modprobe igb &" % output_file)
+            result = utils.run(mod_cmd, ignore_status=True)
+            if os.path.exists(output_file):
+                raise error.TestError("Failed to modprobe igb with max_vfs=7.")
+            # Get the virtual function pci device which was generated above.
+            pci_xml = NodedevXML.new_from_dumpxml(pci_dev)
+            virt_functions = pci_xml.cap.virt_functions
+            if not virt_functions:
+                raise error.TestError("Init virtual function failed.")
+            pci_address = virt_functions[0]
+            pci_dev = utils_test.libvirt.pci_label_from_address(pci_address,
+                                                                radix=16)
+
+            # Find the network name (ethX) is using this pci device.
+            network_service = service.Factory.create_service("network")
+            network_service.restart()
+            result = virsh.nodedev_list("net")
+            nodedev_nets = result.stdout.strip().splitlines()
+            device = None
+            for nodedev in nodedev_nets:
+                netxml = NodedevXML.new_from_dumpxml(nodedev)
+                if netxml.parent == pci_dev:
+                    device = nodedev
+                    break
+            if not device:
+                raise error.TestError("There is no network name is using "
+                                      "Virtual Function PCI device %s." %
+                                      pci_dev)
+
         pci_xml = NodedevXML.new_from_dumpxml(pci_dev)
         pci_address = pci_xml.cap.get_address_dict()
 
