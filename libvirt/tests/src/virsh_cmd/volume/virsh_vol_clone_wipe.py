@@ -55,7 +55,9 @@ def run(test, params, env):
                               emulated_image, emulated_image_size)
 
         # Create a new volume
-        libv_pvt.pre_vol(vol_name, vol_format, vol_capability, pool_name)
+        libv_pvt.pre_vol(vol_name=vol_name, vol_format=vol_format,
+                         capacity=vol_capability, allocation=None,
+                         pool_name=pool_name)
         libv_vol = libvirt_storage.PoolVolume(pool_name)
         vol_info = libv_vol.volume_info(vol_name)
         for key in vol_info:
