@@ -88,7 +88,10 @@ def run(test, params, env):
         logging.info("%s's uuid is: %s", vm_name, domuuid)
     elif list_ref == "--title":
         vm_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-        virsh.desc(vm_name, "--config --title", desc)
+        if options_ref == "inactive":
+            virsh.desc(vm_name, "--config --title", desc)
+        else:
+            virsh.desc(vm_name, "--live --title", desc)
         result_expected = desc
         logging.info("%s's title is: %s", vm_name, desc)
     else:
