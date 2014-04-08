@@ -3,8 +3,8 @@ import logging
 import string
 import hashlib
 from autotest.client.shared import utils, error
-from autotest.client import lv_utils
-from virttest import utils_test, virsh, libvirt_storage
+from virttest import virsh
+from virttest.utils_test import libvirt as utlv
 
 
 def digest(path, offset, length):
@@ -77,36 +77,21 @@ def run(test, params, env):
     operation = params.get("vol_download_upload_operation")
     create_vol = ("yes" == params.get("vol_download_upload_create_vol", "yes"))
 
-    cleanup_env = [False, False, False]
-
     try:
-        try:
-            _pool = libvirt_storage.StoragePool()
-            # Defind pool
-            logging.info("Create pool with type %s", pool_type)
-            result = utils_test.libvirt.define_pool(pool_name, pool_type,
-                                                    pool_target, cleanup_env)
-            if result.exit_status != 0:
-                raise error.TestFail("Fail to define pool:%s" % result.stderr)
-            _pool.build_pool(pool_name)
-            _pool.start_pool(pool_name)
+        pvt = utlv.PoolVolumeTest(test, params)
+        pvt.pre_pool(pool_name, pool_type, pool_target, "volumetest",
+                     pre_disk_vol=["50M"])
+        if create_vol:
+            pvt.pre_vol(vol_name, frmt, capacity, allocation, pool_name)
 
-            # some pool type can not create volume, e.g iscsi
-            if create_vol:
-                logging.info("Create volume with format %s", frmt)
-                _vol = libvirt_storage.PoolVolume(pool_name)
-                _vol.create_volume(vol_name, capacity, allocation, frmt)
+        vol_list = virsh.vol_list(pool_name).stdout.strip()
+        # iscsi volume name is different from others
+        if pool_type == "iscsi":
+            vol_name = vol_list.split('\n')[2].split()[0]
 
-            vol_list = virsh.vol_list(pool_name).stdout.strip()
-            # iscsi volume name is different from others
-            if pool_type == "iscsi":
-                vol_name = vol_list.split('\n')[2].split()[0]
-
-            vol_path = virsh.vol_path(vol_name, pool_name,
-                                      ignore_status=False).stdout.strip()
-            logging.debug("vol_path is %s", vol_path)
-        except Exception, detail:
-            raise error.TestFail("Fail to build pool-volume:%s" % detail)
+        vol_path = virsh.vol_path(vol_name, pool_name,
+                                  ignore_status=False).stdout.strip()
+        logging.debug("vol_path is %s", vol_path)
 
         # Add command options
         if pool_type is not None:
@@ -206,22 +191,6 @@ def run(test, params, env):
                                  operation)
 
     finally:
-        # Clean up for pool and volume issue
-        if pool_type != "iscsi":
-            if not _vol.delete_volume(vol_name):
-                logging.error("Can't delete vol: %s", vol_name)
-        if not _pool.delete_pool(pool_name):
-            logging.error("Can't delete pool: %s", pool_name)
-
-        # Clean up environment build for lvm, iscsi and nfs
-        if cleanup_env[2]:
-            cmd = "pvs |grep %s |awk '{print $1}'" % pool_name
-            pv_name = utils.system_output(cmd)
-            lv_utils.vg_remove(pool_name)
-            utils.run("pvremove %s" % pv_name)
-        logging.debug("do iscsi clean before")
-        if cleanup_env[1]:
-            logging.debug("do iscsi clean")
-            utils_test.libvirt.setup_or_cleanup_iscsi(False)
-        if cleanup_env[0]:
-            utils_test.libvirt.setup_or_cleanup_nfs(False)
+        utlv.PoolVolumeTest(test, params).cleanup_pool(pool_name, pool_type,
+                                                       pool_target,
+                                                       "volumetest")
