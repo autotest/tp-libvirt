@@ -21,7 +21,7 @@ def test_blockdev_flushbufs(vm, params):
         raise error.TestFail("Image could not be created for some reason.")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    status, output  = gf.create_fs()
+    status, output = gf.create_fs()
     if status is False:
         gf.close_session()
         raise error.TestFail(output)
@@ -81,5 +81,3 @@ def run(test, params, env):
             for fs_type in fs_types.split(" "):
                 params["fs_type"] = fs_type
                 testcase(vm, params)
-
-
