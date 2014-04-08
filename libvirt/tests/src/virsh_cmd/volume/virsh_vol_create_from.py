@@ -53,8 +53,8 @@ def run(test, params, env):
         if src_pool_type in ["dir", "logical", "netfs", "fs"]:
             src_vol_name = "src_vol"
             pvt.pre_vol(vol_name=src_vol_name, vol_format=src_vol_format,
-                         capacity=vol_size, allocation=None,
-                         pool_name=src_pool_name)
+                        capacity=vol_size, allocation=None,
+                        pool_name=src_pool_name)
         else:
             src_pv = libvirt_storage.PoolVolume(src_pool_name)
             src_vols = src_pv.list_volumes().keys()
