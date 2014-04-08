@@ -1,6 +1,7 @@
 import os
 from autotest.client.shared import error
-from virttest import virsh, utils_libvirtd
+from virttest import virsh
+from virttest import utils_libvirtd
 
 
 def run(test, params, env):
@@ -16,27 +17,20 @@ def run(test, params, env):
     5.Confirm the test result.
 
     """
-    vm_name = params.get("main_vm")
-    vm = env.get_vm(params["main_vm"])
-    vm.verify_alive()
-
-    domid = vm.get_id().strip()
-    domuuid = vm.get_uuid().strip()
-
     savefile = params.get("save_file", "save.file")
-    # If savefile is not an abs path, join it to test.tmpdir
-    if os.path.dirname(savefile) is "":
+    if savefile:
         savefile = os.path.join(test.tmpdir, savefile)
-    pre_vm_state = params.get("save_pre_vm_state", "null")
-    libvirtd = params.get("save_libvirtd")
+    libvirtd = params.get("libvirtd", "on")
     extra_param = params.get("save_extra_param")
     vm_ref = params.get("save_vm_ref")
+    progress = ("yes" == params.get("save_progress", "no"))
+    options = params.get("save_option", "")
+    status_error = ("yes" == params.get("save_status_error", "yes"))
+    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm = env.get_vm(vm_name)
 
-    # prepare the environment
-    if vm_ref == "name" and pre_vm_state == "paused":
-        virsh.suspend(vm_name)
-    elif vm_ref == "name" and pre_vm_state == "shut off":
-        virsh.destroy(vm_name)
+    domid = vm.get_id()
+    domuuid = vm.get_uuid()
 
     # set the option
     if vm_ref == "id":
@@ -45,32 +39,53 @@ def run(test, params, env):
         vm_ref = hex(int(domid))
     elif vm_ref == "uuid":
         vm_ref = domuuid
-    elif vm_ref == "save_invalid_id" or vm_ref == "save_invalid_uuid":
+    elif vm_ref.count("invalid"):
         vm_ref = params.get(vm_ref)
-    elif vm_ref.find("name") != -1 or vm_ref == "extra_param":
-        savefile = "%s %s" % (savefile, extra_param)
-        if vm_ref == "only_name":
-            savefile = " "
+    elif vm_ref.count("name"):
         vm_ref = vm_name
+    vm_ref += (" %s" % extra_param)
 
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()
-    status = virsh.save(vm_ref, savefile, ignore_status=True).exit_status
+
+    if progress:
+        options += " --verbose"
+    result = virsh.save(vm_ref, savefile, options, ignore_status=True)
+    status = result.exit_status
+    err_msg = result.stderr.strip()
 
     # recover libvirtd service start
     if libvirtd == "off":
         utils_libvirtd.libvirtd_start()
 
-    # cleanup
-    if os.path.exists(savefile):
+    if savefile:
         virsh.restore(savefile)
-        os.remove(savefile)
 
     # check status_error
-    status_error = params.get("save_status_error")
-    if status_error == "yes":
-        if status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
-    elif status_error == "no":
-        if status != 0:
-            raise error.TestFail("Run failed with right command")
+    try:
+        if status_error:
+            if not status:
+                raise error.TestFail("Run successfully with wrong command!")
+        else:
+            if status:
+                raise error.TestFail("Run failed with right command!")
+            if progress and not err_msg.count("Save:"):
+                raise error.TestFail("No progress information outputed!")
+            if options.count("running"):
+                if vm.is_dead() or vm.is_paused():
+                    raise error.TestFail("Guest state should be"
+                                         " running after restored"
+                                         " because of '--running' option")
+            elif options.count("paused"):
+                if not vm.is_paused():
+                    raise error.TestFail("Guest state should be"
+                                         " paused after restored"
+                                         " because of '--paused' option")
+            else:
+                if vm.is_dead():
+                    raise error.TestFail("Guest state should be"
+                                         " alive after restored"
+                                         " because of no option specified")
+    finally:
+        if vm.is_paused():
+            virsh.resume(vm_name)
