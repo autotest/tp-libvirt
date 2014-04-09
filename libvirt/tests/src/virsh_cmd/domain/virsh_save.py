@@ -65,27 +65,29 @@ def run(test, params, env):
     try:
         if status_error:
             if not status:
-                raise error.TestFail("Run successfully with wrong command!")
+                raise error.TestFail("virsh run succeeded with an "
+                                     "incorrect command")
         else:
             if status:
-                raise error.TestFail("Run failed with right command!")
+                raise error.TestFail("virsh run failed with a "
+                                     "correct command")
             if progress and not err_msg.count("Save:"):
                 raise error.TestFail("No progress information outputed!")
             if options.count("running"):
                 if vm.is_dead() or vm.is_paused():
                     raise error.TestFail("Guest state should be"
-                                         " running after restored"
-                                         " because of '--running' option")
+                                         " running after restore"
+                                         " due to the option --running")
             elif options.count("paused"):
                 if not vm.is_paused():
                     raise error.TestFail("Guest state should be"
-                                         " paused after restored"
-                                         " because of '--paused' option")
+                                         " paused after restore"
+                                         " due to the option --paused")
             else:
                 if vm.is_dead():
                     raise error.TestFail("Guest state should be"
-                                         " alive after restored"
-                                         " because of no option specified")
+                                         " alive after restore"
+                                         " since no option was specified")
     finally:
         if vm.is_paused():
             virsh.resume(vm_name)
