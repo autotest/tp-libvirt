@@ -54,6 +54,43 @@ def test_blockdev_flushbufs(vm, params):
     gf.close_session()
 
 
+def test_blockdev_set_get_ro_rw(vm, params):
+    """
+    Set block device to read-only or read-write
+
+    (1)blockdev-setro
+    (2)blockdev-getro
+    (3)blockdev-setrw
+    """
+
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+    gf_result = []
+    expect_result = ['false', 'true', 'false']
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    pv_name = params.get("pv_name")
+
+    gf_result.append(gf.blockdev_getro(pv_name).stdout.strip())
+    gf.blockdev_setro(pv_name)
+    gf_result.append(gf.blockdev_getro(pv_name).stdout.strip())
+    gf.blockdev_setrw(pv_name)
+    gf_result.append(gf.blockdev_getro(pv_name).stdout.strip())
+
+    try:
+        if gf_result != expect_result:
+            raise error.TestFail("Get the uncorrect status, test failed.")
+    finally:
+        gf.close_session()
+
+
 def run(test, params, env):
     """
     Test of built-in block_dev related commands in guestfish.
