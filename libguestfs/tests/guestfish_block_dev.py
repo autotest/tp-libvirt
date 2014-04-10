@@ -6,14 +6,11 @@ import shutil
 import os
 
 
-def test_blockdev_flushbufs(vm, params):
+def prepare_image(params):
     """
-    Test blockdev-flushbufs command
+    (1) Create a image
+    (2) Create file system on the image
     """
-
-    add_ref = params.get("gf_add_ref", "disk")
-    run_mode = params.get("gf_run_mode", "interactive")
-    readonly = params.get("gf_add_readonly", "no")
 
     params["image_path"] = utils_test.libguestfs.preprocess_image(params)
 
@@ -26,6 +23,15 @@ def test_blockdev_flushbufs(vm, params):
         gf.close_session()
         raise error.TestFail(output)
     gf.close_session()
+
+
+def test_blockdev_flushbufs(vm, params):
+    """
+    Test blockdev-flushbufs command
+    """
+
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -80,4 +86,5 @@ def run(test, params, env):
             params["partition_type"] = partition_type
             for fs_type in fs_types.split(" "):
                 params["fs_type"] = fs_type
+                prepare_image(params)
                 testcase(vm, params)
