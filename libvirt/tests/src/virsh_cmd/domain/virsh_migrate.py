@@ -36,7 +36,7 @@ def run(test, params, env):
                     vm.resume()
                 elif vm_state == "shut off":
                     vm.start()
-                vm.destroy()
+                vm.destroy(gracefully=False)
 
                 if vm.is_persistent():
                     vm.undefine()
@@ -118,9 +118,15 @@ def run(test, params, env):
         extra = ("%s --migrateuri=%s" % (extra, migrate_uri))
 
     # To migrate you need to have a shared disk between hosts
-    if shared_storage is None:
+    if shared_storage.count("EXAMPLE"):
         raise error.TestError("For migration you need to have a shared "
                               "storage.")
+
+    # Get expected cache state for test
+    disk_cache = params.get("virsh_migrate_disk_cache", "none")
+    unsafe_test = False
+    if options.count("unsafe") and disk_cache != "none":
+        unsafe_test = True
 
     exception = False
     try:
@@ -135,8 +141,8 @@ def run(test, params, env):
                 logging.error("Detach vda failed before test.")
 
         subdriver = utils_test.get_image_info(shared_storage)['format']
-        extra_attach = ("--config --driver qemu --subdriver %s --cache none"
-                        % subdriver)
+        extra_attach = ("--config --driver qemu --subdriver %s --cache %s"
+                        % (subdriver, disk_cache))
         s_attach = virsh.attach_disk(vm_name, shared_storage, "vda",
                                      extra_attach, debug=True)
         if s_attach.exit_status != 0:
@@ -196,7 +202,17 @@ def run(test, params, env):
         logging.debug("Doing migration test.")
         if vm_ref != vm_name:
             vm.name = vm_ref    # For vm name error testing.
+        if unsafe_test:
+            options = "--live"
         ret_migrate = do_migration(delay, vm, dest_uri, options, extra)
+
+        # Check unsafe result and may do migration again in right mode
+        check_unsafe_result = True
+        if ret_migrate is False and unsafe_test:
+            options = params.get("virsh_migrate_options")
+            ret_migrate = do_migration(delay, vm, dest_uri, options, extra)
+        elif ret_migrate and unsafe_test:
+            check_unsafe_result = False
         if vm_ref != vm_name:
             vm.name = vm_name
 
@@ -317,3 +333,5 @@ def run(test, params, env):
             raise error.TestFail("Wrong VM name %s on destination." % dname)
         if not check_dest_xml:
             raise error.TestFail("Wrong xml configuration on destination.")
+        if not check_unsafe_result:
+            raise error.TestFail("Migration finished in unsafe mode.")
