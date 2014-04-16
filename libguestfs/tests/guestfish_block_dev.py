@@ -11,7 +11,6 @@ def prepare_image(params):
     (1) Create a image
     (2) Create file system on the image
     """
-
     params["image_path"] = utils_test.libguestfs.preprocess_image(params)
 
     if not params.get("image_path"):
@@ -29,7 +28,6 @@ def test_blockdev_flushbufs(vm, params):
     """
     Test blockdev-flushbufs command
     """
-
     add_ref = params.get("gf_add_ref", "disk")
     readonly = params.get("gf_add_readonly", "no")
 
@@ -62,7 +60,6 @@ def test_blockdev_set_get_ro_rw(vm, params):
     (2)blockdev-getro
     (3)blockdev-setrw
     """
-
     add_ref = params.get("gf_add_ref", "disk")
     readonly = params.get("gf_add_readonly", "no")
     gf_result = []
@@ -89,6 +86,116 @@ def test_blockdev_set_get_ro_rw(vm, params):
             raise error.TestFail("Get the uncorrect status, test failed.")
     finally:
         gf.close_session()
+
+
+def test_blockdev_getsz(vm, params):
+    """
+    Test command blockdev_getsz
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    pv_name = params.get("pv_name")
+    gf_result = gf.blockdev_getsz(pv_name).stdout.strip()
+    gf.close_session()
+
+    get_size = (int(gf_result) * 512)
+    power = {'G': 1024 ** 3, "M": 1024 ** 2, "K": 1024}
+    image_size = params["image_size"]
+    image_size = int(image_size[:-1]) * power[image_size[-1]]
+    logging.debug("Image size is %d" % image_size)
+    logging.debug("Get size is %d" % get_size)
+
+    if image_size != get_size:
+        raise error.TestFail("Can not get the correct result.")
+
+
+def test_blockdev_getbsz(vm, params):
+    """
+    Test command blockdev_getbsz
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    pv_name = params.get("pv_name")
+    gf_result = gf.blockdev_getbsz(pv_name).stdout.strip()
+    gf.close_session()
+
+    logging.debug("Block size of %s is %d" % (pv_name, int(gf_result)))
+
+    if int(gf_result) != 4096:
+        raise error.TestFail("Block size should be 4096")
+
+
+def test_blockdev_getss(vm, params):
+    """
+    Test command blockdev_getbss
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    pv_name = params.get("pv_name")
+    gf_result = gf.blockdev_getss(pv_name).stdout.strip()
+    gf.close_session()
+
+    logging.debug("Size of %s is %d" % (pv_name, int(gf_result)))
+
+    if int(gf_result) < 512:
+        raise error.TestFail("Size of sectors is uncorrect")
+
+
+def test_blockdev_getsize64(vm, params):
+    """
+    Test command blockdev_getsize64
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    pv_name = params.get("pv_name")
+    gf_result = gf.blockdev_getsize64(pv_name).stdout.strip()
+    gf.close_session()
+
+    get_size = int(gf_result)
+    power = {'G': 1024 ** 3, "M": 1024 ** 2, "K": 1024}
+    image_size = params["image_size"]
+    image_size = int(image_size[:-1]) * power[image_size[-1]]
+    logging.debug("Image size is %d" % image_size)
+    logging.debug("Get size is %d" % get_size)
+
+    if image_size != get_size:
+        raise error.TestFail("Can not get the correct result.")
 
 
 def run(test, params, env):
