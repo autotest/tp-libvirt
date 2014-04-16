@@ -51,6 +51,8 @@ def run(test, params, env):
     vmxml_backup = libvirt_xml.vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     backup_name = vm_ref
+
+    vm = None
     if vm_ref is not "":
         vm = env.get_vm(vm_ref)
     vmxml = libvirt_xml.VMXML()
@@ -114,6 +116,9 @@ def run(test, params, env):
 
         elif pre_operation == "rename":
             libvirt_xml.VMXML.vm_rename(vm, backup_name)
+
+        if vm and vm.is_paused():
+            vm.resume()
 
         # Restore VM
         vmxml_backup.sync()
