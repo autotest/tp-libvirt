@@ -17,12 +17,12 @@ def run(test, params, env):
     """
 
     vm_name = params.get("main_vm")
-    vm = env.get_vm(params["main_vm"])
+    vm = env.get_vm(vm_name)
     session = vm.wait_for_login()
 
     os_type = params.get("os_type")
-    status_error = params.get("restore_status_error")
-    libvirtd = params.get("restore_libvirtd")
+    status_error = ("yes" == params.get("status_error"))
+    libvirtd = params.get("libvirtd", "on")
     extra_param = params.get("restore_extra_param")
     pre_status = params.get("restore_pre_status")
     vm_ref = params.get("restore_vm_ref")
@@ -56,7 +56,7 @@ def run(test, params, env):
             utils_libvirtd.libvirtd_stop()
         status = virsh.restore(vm_ref, extra_param, debug=True,
                                ignore_status=True).exit_status
-    if status_error == "no":
+    if not status_error:
         list_output = virsh.dom_list().stdout.strip()
 
     session.close()
@@ -64,15 +64,26 @@ def run(test, params, env):
     # recover libvirtd service start
     if libvirtd == "off":
         utils_libvirtd.libvirtd_start()
-    if vm.is_alive():
-        vm.destroy()
 
-    if status_error == "yes":
-        if status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
-    elif status_error == "no":
-        if status != 0:
-            raise error.TestFail("Run failed with right command")
+    try:
+        if status_error:
+            if not status:
+                raise error.TestFail("Run successfully with wrong command!")
         else:
+            if status:
+                raise error.TestFail("Run failed with right command")
             if not re.search(vm_name, list_output):
                 raise error.TestFail("Run failed with right command")
+            if extra_param.count("paused"):
+                if not vm.is_paused():
+                    raise error.TestFail("Guest state should be"
+                                         " paused after restore"
+                                         " due to the option --paused")
+            if extra_param.count("running"):
+                if vm.is_dead() or vm.is_paused():
+                    raise error.TestFail("Guest state should be"
+                                         " running after restore"
+                                         " due to the option --running")
+    finally:
+        if vm.is_paused():
+            virsh.resume(vm_name)
