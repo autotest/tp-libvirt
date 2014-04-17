@@ -84,9 +84,6 @@ def run(test, params, env):
                     return True
                 s_vd, o_vd = session.cmd_status_output(
                     "rpm -qa | grep redhat-release")
-                if s_vd != 0 and o_vd != "":
-                    session.close()
-                    return False
                 if o_vd.find("5Server") != -1:
                     s_mod, o_mod = session.cmd_status_output(
                         "modprobe acpiphp")
