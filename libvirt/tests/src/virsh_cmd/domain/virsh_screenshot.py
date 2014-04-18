@@ -4,6 +4,7 @@ from autotest.client.shared import error
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.video import Video
+from provider import libvirt_version
 
 
 def video_device_setup(vm_name, video_type):
@@ -50,6 +51,17 @@ def run(test, params, env):
     if filename:
         options += " --file %s" % filename
 
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
     if vm.is_alive():
         vm.destroy()
 
@@ -88,7 +100,8 @@ def run(test, params, env):
 
     # Run test command
     result = virsh.screenshot_test(vm_ref, options, ignore_status=True,
-                                   debug=True)
+                                   unprivileged_user=unprivileged_user,
+                                   uri=uri, debug=True)
     status = result.exit_status
     output = result.stdout.strip()
 
