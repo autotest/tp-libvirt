@@ -4,6 +4,7 @@ from virttest.tests import unattended_install
 import logging
 import shutil
 import os
+import re
 
 
 def prepare_image(params):
@@ -224,11 +225,9 @@ def run(test, params, env):
     fs_types = params.get("fs_types")
     image_formats = params.get("image_formats")
 
-    for image_format in image_formats.split(" "):
+    for image_format in re.findall("\w+", image_formats):
         params["image_format"] = image_format
-        for partition_type in partition_types.split(" "):
+        for partition_type in re.findall("\w+", partition_types):
             params["partition_type"] = partition_type
-            for fs_type in fs_types.split(" "):
-                params["fs_type"] = fs_type
-                prepare_image(params)
-                testcase(vm, params)
+            prepare_image(params)
+            testcase(vm, params)
