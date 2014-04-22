@@ -3,6 +3,7 @@ import commands
 from autotest.client.shared import error
 from virttest import utils_misc, virsh
 from virttest.libvirt_xml import vm_xml
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -31,6 +32,17 @@ def run(test, params, env):
         vm_ref = domuuid
     else:
         vm_ref = vm_name
+
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
 
     # change the disk cache to default
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -67,7 +79,9 @@ def run(test, params, env):
                 raise error.TestFail("Touch command failed!")
 
         # record the pid before reset for compare
-        output = virsh.reset(vm_ref, readonly=readonly)
+        output = virsh.reset(vm_ref, readonly=readonly,
+                             unprivileged_user=unprivileged_user,
+                             uri=uri, ignore_status=True, debug=True)
         if output.exit_status != 0:
             if status_error:
                 logging.info("Failed to reset guest as expected, Error:%s.",
