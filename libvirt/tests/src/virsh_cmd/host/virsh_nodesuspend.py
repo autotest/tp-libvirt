@@ -10,7 +10,13 @@ class TimeoutError(Exception):
     """
     Simple custom exception raised when host down time exceeds timeout.
     """
-    pass
+
+    def __init__(self, msg):
+        super(TimeoutError, self).__init__(self)
+        self.msg = msg
+
+    def __str__(self):
+        return ("TimeoutError: %s" % self.msg)
 
 
 def check_host_down_time(remote_ip, timeout=300):
@@ -27,24 +33,33 @@ def check_host_down_time(remote_ip, timeout=300):
     end_time = time.time() + timeout
 
     ping_cmd = 'ping -c 1 -W 1 ' + remote_ip
+    logging.debug('Wait for host shutting down.')
     while True:
         if time.time() > end_time:
-            logging.debug('Start Raise')
-            raise TimeoutError()
-        res = utils.run(ping_cmd, ignore_status=True)
+            raise TimeoutError(
+                'Downtime %s exceeds maximum allowed %s' %
+                (time.time() - start_time, timeout))
+        res = utils.run(ping_cmd, ignore_status=True, verbose=False)
         if res.exit_status:
+            logging.debug('Host %s is down.', remote_ip)
             break
         else:
+            logging.debug('Host %s is up.', remote_ip)
             time.sleep(1)
     logging.debug('Time elapsed before host down: %.2fs',
                   (time.time() - start_time))
 
+    logging.debug('Wait for host recover from sleep.')
     while True:
         if time.time() > end_time:
-            logging.debug('Start Raise')
-            raise TimeoutError()
-        res = utils.run(ping_cmd, ignore_status=True)
-        if not res.exit_status:
+            raise TimeoutError(
+                'Downtime %s exceeds maximum allowed %s' %
+                (time.time() - start_time, timeout))
+        res = utils.run(ping_cmd, ignore_status=True, verbose=False)
+        if res.exit_status:
+            logging.debug('Host %s is down.', remote_ip)
+        else:
+            logging.debug('Host %s is up.', remote_ip)
             break
 
     down_time = time.time() - start_time
@@ -108,15 +123,15 @@ def run(test, params, env):
             if not (suspend_time - lower_tolerance
                     < down_time
                     < suspend_time + upper_tolerance):
-                error.TestFail('Down time (%.2fs) not in range (%ds)'
-                               '+ (%ds) - (%ds).'
-                               % (down_time, suspend_time,
-                                  upper_tolerance, lower_tolerance))
-        except TimeoutError:
+                raise error.TestFail('Down time (%.2fs) not in range (%ds)'
+                                     '+ (%ds) - (%ds).'
+                                     % (down_time, suspend_time,
+                                        upper_tolerance, lower_tolerance))
+        except TimeoutError, e:
             # Mark test FAIL if down time exceeds expectation
-            logging.debug('Start Exception')
+            logging.debug(e)
             vrsh.close_session()
-            error.TestFail('Timeout when checking host down time.')
+            raise error.TestFail('Timeout when checking host down time.')
 
     # Check whether exit code match expectation.
     if (result.exit_status == 0) != (expect_succeed == 'yes'):
