@@ -4,6 +4,7 @@ from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -28,6 +29,19 @@ def run(test, params, env):
     pre_domian_status = params.get("reboot_pre_domian_status", "running")
     libvirtd = params.get("libvirtd", "on")
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+
+    # Libvirt acl test related params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
     try:
 
         # Add or remove qemu-agent from guest before test
@@ -64,6 +78,8 @@ def run(test, params, env):
 
         if vm_ref != "remote":
             status = virsh.shutdown(vm_ref, mode,
+                                    unprivileged_user=unprivileged_user,
+                                    uri=uri, debug=True,
                                     ignore_status=True).exit_status
         else:
             remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
