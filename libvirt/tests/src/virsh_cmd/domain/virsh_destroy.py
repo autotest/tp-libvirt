@@ -1,5 +1,6 @@
 from autotest.client.shared import error
 from virttest import libvirt_vm, remote, virsh, utils_libvirtd
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -29,6 +30,17 @@ def run(test, params, env):
         raise error.TestNAError(
             "Remote test parameters unchanged from default")
 
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
     if vm_ref == "id":
         vm_ref = domid
     elif vm_ref == "hex_id":
@@ -44,7 +56,9 @@ def run(test, params, env):
         utils_libvirtd.libvirtd_stop()
 
     if vm_ref != "remote":
-        status = virsh.destroy(vm_ref, ignore_status=True).exit_status
+        status = virsh.destroy(vm_ref, ignore_status=True,
+                               unprivileged_user=unprivileged_user,
+                               uri=uri, debug=True).exit_status
         output = ""
     else:
         status = 0
