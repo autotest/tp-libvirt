@@ -66,10 +66,10 @@ def check_emulatorpin(params):
     # with 'inactive' option to get guest XML changes.
     if options == "config" and vm and not vm.is_alive():
         emulatorpin_from_xml = \
-            vm_xml.VMXML().new_from_dumpxml(vm_name, "--inactive").emulatorpin
+            vm_xml.VMXML().new_from_dumpxml(vm_name, "--inactive").cputune.emulatorpin
     else:
         emulatorpin_from_xml = \
-            vm_xml.VMXML().new_from_dumpxml(vm_name).emulatorpin
+            vm_xml.VMXML().new_from_dumpxml(vm_name).cputune.emulatorpin
 
     # To get guest corresponding emulator/cpuset.cpus value
     # from cpuset controller of the cgroup.

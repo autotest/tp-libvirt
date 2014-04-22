@@ -2,6 +2,7 @@ import re
 import logging
 import os
 from autotest.client.shared import utils, error
+from virttest.libvirt_xml import vm_xml, xcepts
 from virttest import virsh
 
 try:
@@ -87,12 +88,6 @@ def run(test, params, env):
                 break
         return set_value
 
-    # Prepare vm test environment
-    vm_name = params.get("main_vm")
-    vm = env.get_vm(vm_name)
-    domid = vm.get_id()
-    domuuid = vm.get_uuid()
-
     # Prepare test options
     vm_ref = params.get("schedinfo_vm_ref", "domname")
     options_ref = params.get("schedinfo_options_ref", "")
@@ -101,10 +96,46 @@ def run(test, params, env):
     set_ref = params.get("schedinfo_set_ref", "")
     cgroup_ref = params.get("schedinfo_cgroup_ref", "cpu.shares")
     set_value = params.get("schedinfo_set_value", "")
+    set_method = params.get("schedinfo_set_method", "cmd")
     set_value_expected = params.get("schedinfo_set_value_expected", "")
     # The default scheduler on qemu/kvm is posix
     scheduler_value = "posix"
     status_error = params.get("status_error", "no")
+
+    # Prepare vm test environment
+    vm_name = params.get("main_vm")
+
+    if set_ref == "none":
+        options_ref = "--set"
+        set_ref = None
+    elif set_ref:
+        if set_method == 'cmd':
+            if set_value:
+                options_ref = "--set %s=%s" % (set_ref, set_value)
+            else:
+                options_ref = "--set %s" % set_ref
+        elif set_method == 'xml':
+            xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            try:
+                cputune = xml.cputune
+            except xcepts.LibvirtXMLNotFoundError:
+                cputune = vm_xml.VMCPUTune()
+            name_map = {
+                    'cpu_shares': 'shares',
+                    'vcpu_period': 'period',
+                    'vcpu_quota': 'quota',
+                    'emulator_period': 'emulator_period',
+                    'emulator_quota': 'emulator_quota',
+                    }
+            cputune[name_map[set_ref]] = int(set_value)
+            xml.cputune = cputune
+            xml.sync()
+
+    vm = env.get_vm(vm_name)
+    if vm.is_dead():
+        vm.start()
+    domid = vm.get_id()
+    domuuid = vm.get_uuid()
 
     if vm_ref == "domid":
         vm_ref = domid
@@ -117,15 +148,6 @@ def run(test, params, env):
             vm_ref = domid
         else:
             vm_ref = hex(int(domid))
-
-    if set_ref == "none":
-        options_ref = "--set"
-        set_ref = None
-    elif set_ref:
-        if set_value:
-            options_ref = "--set %s=%s" % (set_ref, set_value)
-        else:
-            options_ref = "--set %s" % set_ref
 
     options_ref += options_suffix
 
