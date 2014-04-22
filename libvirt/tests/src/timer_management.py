@@ -225,20 +225,9 @@ def load_stress(vms, stress_type, params={}):
     """
     fail_info = []
     # Special operations for test
-    if stress_type == "stress_in_vms":
-        for vm in vms:
-            try:
-                vstress = utils_test.VMStress(vm, "stress")
-                vstress.load_stress_tool()
-            except utils_test.StressError, detail:
-                fail_info.append("Launch stress in %s failed:%s" % (vm.name,
-                                                                    detail))
-    elif stress_type == "stress_on_host":
-        try:
-            hstress = utils_test.HostStress(params, "stress")
-            hstress.load_stress_tool()
-        except utils_test.StressError, detail:
-            fail_info.append("Launch stress on host failed:%s" % str(detail))
+    if stress_type in ["stress_in_vms", "stress_on_host"]:
+        logging.debug("Run stress %s", stress_type)
+        fail_info = utils_test.load_stress(stress_type, vms, params)
     elif stress_type == "inject_nmi":
         inject_times = int(params.get("inject_times", 10))
         for vm in vms:
