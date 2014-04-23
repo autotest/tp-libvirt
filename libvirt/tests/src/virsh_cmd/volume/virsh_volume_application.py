@@ -3,6 +3,7 @@ from autotest.client.shared import error
 from virttest import libvirt_storage
 from virttest import virsh
 from virttest.utils_test import libvirt as utlv
+from virttest.tests import unattended_install
 
 
 def create_volumes(new_pool, volume_count, volume_size):
@@ -40,7 +41,9 @@ def run(test, params, env):
     application =  params.get("application", "install")
     disk_target = params.get("disk_target", "vdb")
     test_message = params.get("test_message", "")
-    vm_name =  params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "virt-tests-vm1")
+    if application == "install":
+        vm_name = params.get("vm_name", "vm1")
 
     try:
         pvtest = utlv.PoolVolumeTest(test, params)
@@ -70,8 +73,20 @@ def run(test, params, env):
             if output != test_message:
                 raise error.TestFail("%s cannot be used normally!"
                                      % vm_attach_device)
-        else:
-            # TODO: vm install with created volume
-            pass
+        elif application == "install":
+            # Get a nonexist domain name
+            while virsh.domain_exists(vm_name):
+                vm_name += "_test"
+            params["image_name"] = volumes.values()[volume_count-1]
+            try:
+                unattended_install.run(test, params, env)
+            except error.CmdError, detail:
+                raise error.TestFail("Guest install failed:%s" % detail)
     finally:
-        pvtest.cleanup_pool(pool_name, pool_type, pool_target, emulated_img)
+        try:
+            if application == "install":
+                if virsh.domain_exists(vm_name):
+                    virsh.remove_domain(vm_name)
+        finally:
+            pvtest.cleanup_pool(pool_name, pool_type,
+                                pool_target, emulated_img)
