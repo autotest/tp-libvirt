@@ -367,6 +367,90 @@ def test_disk_format(vm, params):
     params["image_format"] = image_format
 
 
+def test_max_disks(vm, params):
+    """
+    Test command max-disks
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    max_disk = gf.max_disks().stdout.strip()
+    gf.close_session()
+
+    logging.debug("The maximum number of disks is %s" % max_disk)
+
+    if max_disk != '255':
+        raise error.TestFail("The maximum number of disks is uncorrect")
+
+
+def test_nr_devices(vm, params):
+    """
+    Test command nr-devices
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    device_num = gf.nr_devices().stdout.strip()
+    gf.close_session()
+
+    logging.debug("The number of device is %s" % device_num)
+
+    if device_num != '1':
+        raise error.TestFail("The number of device is uncorrect")
+
+
+def test_list_partitions(vm, params):
+    """
+    Test command list-partitions
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+
+    result = gf.list_partitions()
+    devices = result.stdout.strip()
+
+    if result.exit_status:
+        gf.close_session()
+        raise error.TestFail("Command list-partitions execute failed!")
+
+    gf.close_session()
+
+    if params["partition_type"] == "physical":
+        logging.debug("Find devices %s" % devices)
+        device_num = len(re.findall('\S+', devices))
+        if device_num != 1:
+            # add one disk with one partition as default
+            raise error.TestFail("The number of device is uncorrect")
+    elif params["partition_type"] == "lvm":
+        logging.debug("This does not return logical volumes. "
+                      "For that you will need to call 'lvs'")
+
+
 def run(test, params, env):
     """
     Test of built-in block_dev related commands in guestfish.
