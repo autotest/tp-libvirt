@@ -199,6 +199,75 @@ def test_blockdev_getsize64(vm, params):
         raise error.TestFail("Can not get the correct result.")
 
 
+def test_blockdev_rereadpt(vm, params):
+    """
+    Test command blockdev-rereadpt
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        # add three disks here
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    pv_name = params.get("pv_name")
+    gf.run()
+
+    try:
+        result = gf.blockdev_rereadpt(pv_name)
+        if result.exit_status:
+                raise error.TestFail("blockdev-rereadpt execute failed")
+    finally:
+        gf.close_session()
+
+
+def test_canonical_device_name(vm, params):
+    """
+    Test command canonical_device_name
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    pv_name = params.get("pv_name")
+
+    gf_result = gf.list_filesystems().stdout.strip()
+    partition_name = gf_result.split(":")[0]
+    gf_result = gf.is_lv(partition_name).stdout.strip()
+    if gf_result == "true":
+        gf_result = []
+        vg, lv = partition_name.split("/")[-2:]
+        irregularity = '/dev/mapper/' + vg + '-' + lv
+        gf_result.append(gf.canonical_device_name(irregularity).stdout.strip())
+        logging.debug("canonical device name is %s" % gf_result)
+    else:
+        part = partition_name.split("/")
+        gf_result = []
+        for i in ['h', 'v']:
+            part[-1] = i + part[-1][1:]
+            irregularity = "/".join(part)
+            s = gf.canonical_device_name(irregularity).stdout.strip()
+            gf_result.append(s)
+        logging.debug("canonical device name is %s" % gf_result)
+
+    gf.close_session()
+
+    for i in gf_result:
+        if partition_name != i:
+            raise error.TestFail("Can not get the correct result.")
+
+
 def run(test, params, env):
     """
     Test of built-in block_dev related commands in guestfish.
