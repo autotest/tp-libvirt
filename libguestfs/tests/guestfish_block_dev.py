@@ -1,6 +1,7 @@
 from autotest.client.shared import error, utils
 from virttest import utils_test, utils_misc, data_dir
 from virttest.tests import unattended_install
+from virttest import qemu_storage
 import logging
 import shutil
 import os
@@ -266,6 +267,104 @@ def test_canonical_device_name(vm, params):
     for i in gf_result:
         if partition_name != i:
             raise error.TestFail("Can not get the correct result.")
+
+
+def test_device_index(vm, params):
+    """
+    Test command device_index
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        # add three disks here
+        gf.add_drive_opts(image_path, readonly=readonly)
+        gf.add_drive_opts(image_path, readonly=readonly)
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+
+    result = {'/dev/sda': '0', '/dev/sdb': '1', '/dev/sdc': '2'}
+    try:
+        for k, v in result.items():
+            index = gf.device_index(k).stdout.strip()
+            if index != v:
+                raise error.TestFail("Can not get the correct result.")
+    finally:
+        gf.close_session()
+
+
+def test_list_devices(vm, params):
+    """
+    Test command list-devices
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        # add three disks here
+        gf.add_drive_opts(image_path, readonly=readonly)
+        gf.add_drive_opts(image_path, readonly=readonly)
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+
+    result = ['/dev/sda', '/dev/sdb', '/dev/sdc']
+    try:
+        devices = gf.list_devices().stdout.strip()
+        logging.debug("%s" % devices)
+    finally:
+        gf.close_session()
+
+    for i in result:
+        if i not in devices:
+                raise error.TestFail("Can not list device %s" % i)
+
+
+def test_disk_format(vm, params):
+    """
+    Test command disk-format
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+
+    image_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    image_name = params.get('image_name')
+    image_format = params["image_format"]
+    params['image_name'] = 'test'
+    support_format = ['raw', 'cow', 'qcow', 'qcow2', 'vdi', 'vmdk', 'vpc']
+
+    for i in support_format:
+        params['image_format'] = i
+        image = qemu_storage.QemuImg(params, image_dir, '')
+        image_path, _ = image.create(params)
+        result = gf.disk_format(image_path).stdout.strip()
+        os.remove(image_path)
+
+        if result != i:
+            gf.close_session()
+            raise error.TestFail("Format is %s, expected is %s" % (result, i))
+
+    gf.close_session()
+    params['image_name'] = image_name
+    params["image_format"] = image_format
 
 
 def run(test, params, env):
