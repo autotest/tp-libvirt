@@ -451,6 +451,88 @@ def test_list_partitions(vm, params):
                       "For that you will need to call 'lvs'")
 
 
+def test_disk_has_backing_file(vm, params):
+    """
+    Test disk-has-backing-file
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+
+    image_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    image_name = params.get('image_name')
+    image_format = params["image_format"]
+    image_path = params.get("image_path")
+
+    result = gf.disk_has_backing_file(image_path).stdout.strip()
+    if result != "false":
+        gf.close_session()
+        raise error.TestFail("The disk has no backing file")
+
+    params["image_format"] = "qcow2"
+    params['image_name'] = "backfile"
+    image = qemu_storage.QemuImg(params, image_dir, image_name)
+    image.base_tag = True
+    image.base_image_filename = image_path
+    image.base_format = None
+    image_path, _ = image.create(params)
+
+    result = gf.disk_has_backing_file(image_path).stdout.strip()
+    if result != "true":
+        gf.close_session()
+        raise error.TestFail("The disk has backing file")
+
+    params["image_format"] = image_format
+    params['image_name'] = image_name
+
+    gf.close_session()
+
+
+def test_disk_virtual_size(vm, params):
+    """
+    Test disk-virtual-size
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+
+    image_path = params.get("image_path")
+    disk_size = int(os.path.getsize(image_path))
+    result = int(gf.disk_virtual_size(image_path).stdout.strip())
+
+    power = {'G': 1024 ** 3, "M": 1024 ** 2, "K": 1024}
+    image_size = params["image_size"]
+    image_size = int(image_size[:-1]) * power[image_size[-1]]
+
+    if params["image_format"] == "raw":
+        if result != disk_size and result != image_size:
+            gf.close_session()
+            raise error.TestFail("disk-virtual-size can't get uncorrect size")
+    elif params["image_format"] == "qcow2":
+        # disk size of qcow format is not fixed
+        if result != image_size:
+            gf.close_session()
+            raise error.TestFail("disk-virtual-size can't get uncorrect size")
+
+    gf.close_session()
+
+
 def run(test, params, env):
     """
     Test of built-in block_dev related commands in guestfish.
