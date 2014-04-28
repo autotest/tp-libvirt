@@ -2,6 +2,7 @@ import logging
 from autotest.client.shared import error
 from virttest import virsh, libvirt_vm
 from virttest.libvirt_xml import network_xml
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -17,8 +18,20 @@ def run(test, params, env):
     extra = params.get("net_start_options_extra", "")  # extra cmd-line params.
 
     # make easy to maintain
-    virsh_dargs = {'uri': uri, 'debug': False, 'ignore_status': True}
+    virsh_dargs = {'uri': uri, 'debug': True, 'ignore_status': True}
     virsh_instance = virsh.VirshPersistent(**virsh_dargs)
+
+    # libvirt acl polkit related params
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
+    virsh_uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
 
     # Get all network instance
     origin_nets = network_xml.NetworkXML.new_all_networks_dict(virsh_instance)
@@ -46,6 +59,10 @@ def run(test, params, env):
         net_ref = default_netxml.name
     elif net_ref == "netuuid":
         net_ref = default_netxml.uuid
+
+    if params.get('setup_libvirt_polkit') == 'yes':
+        virsh_dargs = {'uri': virsh_uri, 'unprivileged_user': unprivileged_user,
+                       'debug': False, 'ignore_status': True}
 
     # Run test case
     result = virsh.net_start(net_ref, extra, **virsh_dargs)
