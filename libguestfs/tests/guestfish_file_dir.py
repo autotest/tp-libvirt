@@ -208,42 +208,23 @@ def test_file(vm, params):
     gf.run()
     mount_point = params.get("mount_point")
     gf.mount(mount_point, '/')
-    gf_result = gf.file("/file_ops/file_ascii")
-    if gf_result.stdout.find('ASCII text') == -1:
-        gf.close_session()
-        raise error.TestFail("file failed.")
-    gf_result = gf.file("/file_ops/file_ascii_long")
-    if gf_result.stdout.find('ASCII text, with very long lines') == -1:
-        gf.close_session()
-        raise error.TestFail("file failed.")
-    gf_result = gf.file("/file_ops/file_elf")
-    if gf_result.stdout.find('ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked (uses shared libs), for GNU/Linux 2.6.18, stripped') == -1:
-        gf.close_session()
-        raise error.TestFail("file failed.")
-    gf_result = gf.file("/file_ops/file_dev_block")
-    if gf_result.stdout.find('block device') == -1:
-        gf.close_session()
-        raise error.TestFail("file failed.")
-    gf_result = gf.file("/file_ops/file_dev_fifo")
-    if gf_result.stdout.find('FIFO') == -1:
-        gf.close_session()
-        raise error.TestFail("file failed.")
-    gf_result = gf.file("/file_ops/file_ascii_softlink")
-    if gf_result.stdout.find('symbolic link') == -1:
-        gf.close_session()
-        raise error.TestFail("file failed.")
-    gf_result = gf.file("/file_ops/file_ascii_softlink_link")
-    if gf_result.stdout.find('symbolic link') == -1:
-        gf.close_session()
-        raise error.TestFail("file failed.")
-    gf_result = gf.file("/file_ops/file_ascii_badlink")
-    if gf_result.stdout.find('symbolic link') == -1:
-        gf.close_session()
-        raise error.TestFail("file failed.")
-    gf_result = gf.file("/file_ops/file_dev_char")
-    if gf_result.stdout.find('character device') == -1:
-        gf.close_session()
-        raise error.TestFail("file failed.")
+    file_check = {"/file_ops/file_ascii": "ASCII text",
+     "/file_ops/file_ascii_long": "ASCII text, with very long lines",
+     "/file_ops/file_elf": 'ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked (uses shared libs), for GNU/Linux 2.6.18, stripped',
+     "/file_ops/file_dev_block": 'block device',
+     "/file_ops/file_dev_fifo": 'FIFO',
+     "/file_ops/file_ascii_softlink": 'symbolic link',
+     "/file_ops/file_ascii_softlink_link": 'symbolic link',
+     "/file_ops/file_ascii_badlink": 'symbolic link',
+     "/file_ops/file_dev_char": 'character device'
+    }
+
+    for k,v in file_check.items():
+        gf_result = gf.file(k).stdout.strip()
+        if not v in gf_result:
+            gf.close_session()
+            raise error.TestFail("file failed.")
+
     gf.close_session()
 
 
