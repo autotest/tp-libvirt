@@ -1,6 +1,7 @@
 import re
 from autotest.client.shared import error
 from virttest import virsh
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -21,6 +22,18 @@ def run(test, params, env):
     network_name = params.get("net_destroy_network", "default")
     network_status = params.get("net_destroy_status", "active")
     status_error = params.get("status_error", "no")
+
+    # libvirt acl polkit related params
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
 
     # Confirm the network exists.
     output_all = virsh.net_list("--all").stdout.strip()
@@ -46,7 +59,8 @@ def run(test, params, env):
     except error.CmdError:
         raise error.TestError("Prepare network status failed!")
 
-    status = virsh.net_destroy(net_ref, extra,
+    status = virsh.net_destroy(net_ref, extra, uri=uri, debug=True,
+                               unprivileged_user=unprivileged_user,
                                ignore_status=True).exit_status
 
     # Confirm the network has been destroied.
