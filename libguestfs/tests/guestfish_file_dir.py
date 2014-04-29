@@ -209,15 +209,16 @@ def test_file(vm, params):
     mount_point = params.get("mount_point")
     gf.mount(mount_point, '/')
     file_check = {"/file_ops/file_ascii": "ASCII text",
-     "/file_ops/file_ascii_long": "ASCII text, with very long lines",
-     "/file_ops/file_elf": 'ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked (uses shared libs), for GNU/Linux 2.6.18, stripped',
-     "/file_ops/file_dev_block": 'block device',
-     "/file_ops/file_dev_fifo": 'FIFO',
-     "/file_ops/file_ascii_softlink": 'symbolic link',
-     "/file_ops/file_ascii_softlink_link": 'symbolic link',
-     "/file_ops/file_ascii_badlink": 'symbolic link',
-     "/file_ops/file_dev_char": 'character device'
-    }
+                  "/file_ops/file_ascii_long": "ASCII text, with very long lines",
+                  "/file_ops/file_elf": "ELF 64-bit LSB executable, x86-64, \
+                  version 1 (SYSV), dynamically linked (uses shared libs), for GNU/Linux 2.6.18, stripped",
+                  "/file_ops/file_dev_block": 'block device',
+                  "/file_ops/file_dev_fifo": 'FIFO',
+                  "/file_ops/file_ascii_softlink": 'symbolic link',
+                  "/file_ops/file_ascii_softlink_link": 'symbolic link',
+                  "/file_ops/file_ascii_badlink": 'symbolic link',
+                  "/file_ops/file_dev_char": 'character device'
+                 }
 
     for k,v in file_check.items():
         gf_result = gf.file(k).stdout.strip()
