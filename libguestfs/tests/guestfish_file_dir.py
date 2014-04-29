@@ -19,7 +19,8 @@ def prepare_image(params):
 
     tarball_file = params.get("tarball_file")
     if tarball_file:
-        tarball_path = os.path.join(data_dir.get_data_dir(), "tarball", tarball_file)
+        tarball_path = os.path.join(data_dir.get_data_dir(), "tarball",
+                                    tarball_file)
     params["tarball_path"] = tarball_path
 
     gf = utils_test.libguestfs.GuestfishTools(params)
@@ -57,10 +58,10 @@ def test_chmod(vm, params):
         else:
             perm[i] = '1'
         i += 1
-    ori_perm = oct(int(''.join(perm),2))
+    ori_perm = oct(int(''.join(perm), 2))
     perm = "0700"
     gf.chmod(perm, "/file_ops/file_ascii")
-    mask = '0'+bin(int(perm,8))[2:]
+    mask = '0' + bin(int(perm, 8))[2:]
     new_perm = list('-rwxrwxrwx')
     i = 0
     while i < len(mask):
@@ -124,6 +125,7 @@ def test_chown(vm, params):
         gf.close_session()
         raise error.TestFail("chown failed.")
     gf.close_session()
+
 
 def test_lchown(vm, params):
     """
@@ -210,19 +212,17 @@ def test_file(vm, params):
     gf.mount(mount_point, '/')
     file_check = {"/file_ops/file_ascii": "ASCII text",
                   "/file_ops/file_ascii_long": "ASCII text, with very long lines",
-                  "/file_ops/file_elf": "ELF 64-bit LSB executable, x86-64, \
-                  version 1 (SYSV), dynamically linked (uses shared libs), for GNU/Linux 2.6.18, stripped",
+                  "/file_ops/file_elf": "ELF 64-bit LSB executable, x86-64",
                   "/file_ops/file_dev_block": 'block device',
                   "/file_ops/file_dev_fifo": 'FIFO',
                   "/file_ops/file_ascii_softlink": 'symbolic link',
                   "/file_ops/file_ascii_softlink_link": 'symbolic link',
                   "/file_ops/file_ascii_badlink": 'symbolic link',
-                  "/file_ops/file_dev_char": 'character device'
-                 }
+                  "/file_ops/file_dev_char": 'character device'}
 
-    for k,v in file_check.items():
+    for k, v in file_check.items():
         gf_result = gf.file(k).stdout.strip()
-        if not v in gf_result:
+        if v not in gf_result:
             gf.close_session()
             raise error.TestFail("file failed.")
 
