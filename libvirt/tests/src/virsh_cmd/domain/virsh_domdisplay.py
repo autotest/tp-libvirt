@@ -6,6 +6,7 @@ from autotest.client.shared import error
 from virttest import utils_misc, utils_libvirtd, virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.graphics import Graphics
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -114,9 +115,19 @@ def run(test, params, env):
         graphic_act = vmxml_act.devices.by_device_tag('graphics')[0]
         port = graphic_act.port
 
+        # Commit id '9976c4b9' only prints the port if non zero.  That change
+        # is in libvirt 1.1.3. In order to allow for backwards compatible
+        # comparisons - we'll need to check for that
+        printZeroPort = True
+        if libvirt_version.version_compare(1, 1, 3):
+            printZeroPort = False
+
         # Do judgement for result
         if graphic == "vnc":
-            expect = "vnc://%s:%s" % (expect_addr, str(int(port)-5900))
+            if printZeroPort:
+                expect = "vnc://%s:%s" % (expect_addr, str(int(port) - 5900))
+            else:
+                expect = "vnc://%s" % (expect_addr)
         elif graphic == "spice" and is_ssl:
             tlsport = graphic_act.tlsPort
             expect = "spice://%s:%s?tls-port=%s" % \
@@ -127,8 +138,11 @@ def run(test, params, env):
         if options != "" and passwd is not None:
             # have --include-passwd and have passwd in xml
             if graphic == "vnc":
-                expect = "vnc://:%s@%s:%s" % \
-                         (passwd, expect_addr, str(int(port)-5900))
+                if printZeroPort:
+                    expect = "vnc://:%s@%s:%s" % \
+                        (passwd, expect_addr, str(int(port) - 5900))
+                else:
+                    expect = "vnc://:%s@%s" % (passwd, expect_addr)
             elif graphic == "spice" and is_ssl:
                 expect = expect + "&password=" + passwd
             elif graphic == "spice":
