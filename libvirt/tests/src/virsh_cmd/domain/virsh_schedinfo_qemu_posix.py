@@ -121,12 +121,12 @@ def run(test, params, env):
             except xcepts.LibvirtXMLNotFoundError:
                 cputune = vm_xml.VMCPUTune()
             name_map = {
-                    'cpu_shares': 'shares',
-                    'vcpu_period': 'period',
-                    'vcpu_quota': 'quota',
-                    'emulator_period': 'emulator_period',
-                    'emulator_quota': 'emulator_quota',
-                    }
+                'cpu_shares': 'shares',
+                'vcpu_period': 'period',
+                'vcpu_quota': 'quota',
+                'emulator_period': 'emulator_period',
+                'emulator_quota': 'emulator_quota',
+            }
             cputune[name_map[set_ref]] = int(set_value)
             xml.cputune = cputune
             xml.sync()
