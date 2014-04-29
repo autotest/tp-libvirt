@@ -109,12 +109,12 @@ def run(test, params, env):
     # As per RH BZ 961443 avoid testing before behavior changes
     if 'config' in flag_list:
         # SKIP tests using --config if libvirt is 0.9.10 or earlier
-        if not libvirt_version.LibVersionCompare(0, 9, 10):
+        if not libvirt_version.version_compare(0, 9, 10):
             raise error.TestNAError("BZ 961443: --config behavior change "
                                     "in version 0.9.10")
     if 'persistent' in flag_list:
         # SKIP tests using --persistent if libvirt 1.0.5 or earlier
-        if not libvirt_version.LibVersionCompare(1, 0, 5):
+        if not libvirt_version.version_compare(1, 0, 5):
             raise error.TestNAError("BZ 961443: --persistent behavior change "
                                     "in version 1.0.5")
 
@@ -124,10 +124,9 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     start_vm = "yes" == params.get("start_vm", "no")
 
-    # Define target bus/dev (these could be params some day to
-    # test virtio/vdc for example)
-    target_bus = "ide"
-    target_dev = "hdc"
+    # Get the target bus/dev
+    target_bus = params.get("updatedevice_target_bus", "ide")
+    target_dev = params.get("updatedevice_target_dev", "hdc")
 
     # Prepare tmp directory and files.
     orig_iso = os.path.join(test.virtdir, "orig.iso")
