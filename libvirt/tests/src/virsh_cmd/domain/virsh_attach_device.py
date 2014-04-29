@@ -513,6 +513,19 @@ class VirtIODiskBasic(AttachDeviceBase):
         logging.info('Trying to read test data, %dth device %s, '
                      'at offset %d.', index, dev_name, offset)
         session = None
+
+        # Since we know we're going to fail, no sense waiting for the
+        # default timeout to expire or login()'s code to get_address
+        # (currently 300 seconds) or any other timeout code.  With the
+        # guest not alive, just return failure. Not doing so caused a
+        # a 96 minute pause per test with 16 devices all waiting for
+        # the timeouts to occur and probably a days worth of log messages
+        # waiting for something to happen that can't.
+        if not self.test_params.main_vm.is_alive():
+            logging.debug("VirtIODiskBasic functional test skipping login "
+                          "vm is not alive.")
+            return False
+
         try:
             session = self.test_params.main_vm.login()
             # aexpect combines stdout + stderr, throw away stderr
