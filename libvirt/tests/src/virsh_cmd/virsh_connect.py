@@ -59,7 +59,7 @@ def run(test, params, env):
                     line_list[index] = conf_line
                     flag = True
                     break
-            if not flag is True:
+            if not flag:
                 line_list.append(conf_line)
 
         libvirtdconf_file.close()
