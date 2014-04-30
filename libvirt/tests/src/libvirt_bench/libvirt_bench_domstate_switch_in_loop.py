@@ -38,7 +38,7 @@ def run(test, params, env):
             if state_list is None:
                 continue
             actual_state = virsh.domstate(vm_name).stdout.strip()
-            if not (actual_state in state_list):
+            if actual_state not in state_list:
                 raise error.TestFail("Command %s succeed, but the state is %s,"
                                      "but not %s." %
                                      (virsh_func.__name__, actual_state,

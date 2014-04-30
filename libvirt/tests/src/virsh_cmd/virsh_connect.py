@@ -59,7 +59,7 @@ def run(test, params, env):
                     line_list[index] = conf_line
                     flag = True
                     break
-            if not flag is True:
+            if not flag:
                 line_list.append(conf_line)
 
         libvirtdconf_file.close()
@@ -107,17 +107,17 @@ def run(test, params, env):
 
     # check the config
     if (connect_arg == "transport" and
-       transport_type == "remote" and
-       local_ip.count("ENTER")):
+            transport_type == "remote" and
+            local_ip.count("ENTER")):
         raise error.TestNAError("Parameter local_ip is not configured"
                                 "in remote test.")
     if (connect_arg == "transport" and
-       transport_type == "remote" and
-       local_pwd.count("ENTER")):
+            transport_type == "remote" and
+            local_pwd.count("ENTER")):
         raise error.TestNAError("Parameter local_pwd is not configured"
                                 "in remote test.")
     if (connect_arg.count("lxc") and
-       (not os.path.exists("/usr/libexec/libvirt_lxc"))):
+            (not os.path.exists("/usr/libexec/libvirt_lxc"))):
         raise error.TestNAError("Connect test of lxc:/// is not suggested on "
                                 "the host with no lxc driver.")
     if connect_arg.count("xen") and (not os.path.exists("/var/run/xend")):

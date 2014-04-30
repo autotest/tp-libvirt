@@ -26,7 +26,7 @@ def run(test, params, env):
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()
 
-     # run test case
+    # run test case
     if vm_ref == "id":
         vm_ref = domid
     elif vm_ref == "hex_id":

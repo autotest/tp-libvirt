@@ -34,13 +34,13 @@ def check_xml(vm_name, target, dest_path, blk_options):
     re2 = 0
     # set expect result
     if blk_options.count("--finish"):
-    # no <mirror> element and can't find dest_path in vm xml
+        # no <mirror> element and can't find dest_path in vm xml
         expect_re = 0
     elif blk_options.count("--pivot"):
-    # no <mirror> element, but can find dest_path in vm xml
+        # no <mirror> element, but can find dest_path in vm xml
         expect_re = 1
     else:
-    # find <mirror> element and dest_path in vm xml
+        # find <mirror> element and dest_path in vm xml
         expect_re = 2
 
     blk_list = vm_xml.VMXML.get_disk_blk(vm_name)

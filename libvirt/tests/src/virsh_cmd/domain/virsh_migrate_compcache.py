@@ -71,7 +71,7 @@ def run(test, params, env):
         # add 50MB to ensure size exceeds guest memory.
         size = str(vm.get_max_mem() * 1024 + 50000000)
     elif size_option == 'huge':
-        size = str(2**64 - 1)
+        size = str(2 ** 64 - 1)
     else:
         size = size_option
 

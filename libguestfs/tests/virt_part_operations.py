@@ -119,7 +119,7 @@ def test_formatted_part(vm, params):
     try:
         file_path = os.path.join(mountpoint, path)
         mounts = session.cmd_status("mount %s %s" % (device_part_in_vm,
-                                    mountpoint), timeout=10)
+                                                     mountpoint), timeout=10)
         if mounts:
             logging.error("Mount device in vm failed.")
         md51 = session.cmd_output("md5sum %s" % file_path)

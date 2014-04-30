@@ -67,10 +67,10 @@ def run(test, params, env):
     remote_guest_port = params.get("virt_win_reg_remote_guest_port",
                                    "10022")
     if remote_yes and ((remote_uri.count("ENTER") or
-                       remote_vm_name.count("ENTER") or
-                       remote_guest_ip.count("ENTER") or
-                       remote_guest_username.count("ENTER") or
-                       remote_guest_passwd.count("ENTER"))):
+                        remote_vm_name.count("ENTER") or
+                        remote_guest_ip.count("ENTER") or
+                        remote_guest_username.count("ENTER") or
+                        remote_guest_passwd.count("ENTER"))):
         raise error.TestNAError("Remote Test is skipped.")
 
     # Get parameters about reg value.

@@ -33,7 +33,7 @@ def run(test, params, env):
     remote_pwd = params.get("remote_pwd", "password")
     agent = ("yes" == params.get("reboot_agent", "no"))
     mode = params.get("reboot_mode", "")
-    pre_domian_status =  params.get("reboot_pre_domian_status", "running")
+    pre_domian_status = params.get("reboot_pre_domian_status", "running")
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     try:
         # Add or remove qemu-agent from guest before test
@@ -109,7 +109,7 @@ def run(test, params, env):
             if status or (not re.search(vm_name, output)):
                 if status == -2:
                     raise error.TestNAError(
-                       "Reboot command doesn't work on older libvirt versions")
+                        "Reboot command doesn't work on older libvirt versions")
                 raise error.TestFail("Run failed with right command")
     finally:
         xml_backup.sync()

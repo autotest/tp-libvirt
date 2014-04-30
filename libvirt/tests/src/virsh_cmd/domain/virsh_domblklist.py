@@ -71,7 +71,7 @@ def run(test, params, env):
 
             output_list = output.split('\n')
             for i in range(2, len(output_list)):
-                output_disk_info[i-2] = output_list[i].split()
+                output_disk_info[i - 2] = output_list[i].split()
             logging.debug("The disk info dict from command output is: %s"
                           % output_disk_info)
 

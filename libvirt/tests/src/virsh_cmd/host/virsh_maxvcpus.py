@@ -29,13 +29,13 @@ def run(test, params, env):
 
     # check the config
     if (connect_arg == "transport" and
-       transport_type == "remote" and
-       local_ip.count("ENTER")):
+            transport_type == "remote" and
+            local_ip.count("ENTER")):
         raise error.TestNAError("Parameter local_ip is not configured"
                                 "in remote test.")
     if (connect_arg == "transport" and
-       transport_type == "remote" and
-       local_pwd.count("ENTER")):
+            transport_type == "remote" and
+            local_pwd.count("ENTER")):
         raise error.TestNAError("Parameter local_pwd is not configured"
                                 "in remote test.")
 

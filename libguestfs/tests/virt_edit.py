@@ -110,6 +110,6 @@ def run(test, params, env):
             raise error.TestFail("Command executed failed.")
     else:
         if (expr != "" and
-           (not login_to_check_foo_line(vm, file_ref, foo_line))):
+                (not login_to_check_foo_line(vm, file_ref, foo_line))):
             raise error.TestFail("Virt-edit to add %s in %s failed."
                                  "Test failed." % (foo_line, file_ref))
