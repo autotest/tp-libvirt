@@ -1,5 +1,9 @@
 from autotest.client.shared import error
-from virttest import remote, libvirt_vm, virsh, utils_libvirtd
+from virttest import remote
+from virttest import libvirt_vm
+from virttest import virsh
+from virttest import utils_libvirtd
+from virttest.libvirt_xml import vm_xml
 
 
 def run(test, params, env):
@@ -17,58 +21,80 @@ def run(test, params, env):
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
-
-    domid = vm.get_id()
-    domuuid = vm.get_uuid()
-
     vm_ref = params.get("shutdown_vm_ref")
+    status_error = ("yes" == params.get("status_error"))
+    agent = ("yes" == params.get("shutdown_agent", "no"))
+    mode = params.get("shutdown_mode", "")
+    pre_domian_status =  params.get("reboot_pre_domian_status", "running")
     libvirtd = params.get("libvirtd", "on")
+    xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    try:
 
-    # run test case
-    if vm_ref == "id":
-        vm_ref = domid
-    elif vm_ref == "hex_id":
-        vm_ref = hex(int(domid))
-    elif vm_ref.find("invalid") != -1:
-        vm_ref = params.get(vm_ref)
-    elif vm_ref == "name":
-        vm_ref = "%s %s" % (vm_name, params.get("shutdown_extra"))
-    elif vm_ref == "uuid":
-        vm_ref = domuuid
+        # Add or remove qemu-agent from guest before test
+        if agent:
+            vm_xml.VMXML.set_agent_channel(vm_name)
+        else:
+            vm_xml.VMXML.remove_agent_channel(vm_name)
+        virsh.start(vm_name)
+        guest_session = vm.wait_for_login()
+        if agent:
+            guest_session.cmd("service qemu-guest-agent start")
+            stat_ps = guest_session.cmd_status("ps aux |grep [q]emu-ga")
+            guest_session.close()
+            if stat_ps:
+                raise error.TestError("Fail to start qemu-guest-agent!")
+        if pre_domian_status == "shutoff":
+            virsh.destroy(vm_name)
+        domid = vm.get_id()
+        domuuid = vm.get_uuid()
+        # run test case
+        if vm_ref == "id":
+            vm_ref = domid
+        elif vm_ref == "hex_id":
+            vm_ref = hex(int(domid))
+        elif vm_ref.find("invalid") != -1:
+            vm_ref = params.get(vm_ref)
+        elif vm_ref == "name":
+            vm_ref = "%s %s" % (vm_name, params.get("shutdown_extra"))
+        elif vm_ref == "uuid":
+            vm_ref = domuuid
 
-    if libvirtd == "off":
-        utils_libvirtd.libvirtd_stop()
+        if libvirtd == "off":
+            utils_libvirtd.libvirtd_stop()
 
-    if vm_ref != "remote":
-        status = virsh.shutdown(vm_ref, ignore_status=True).exit_status
-    else:
-        remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
-        remote_pwd = params.get("remote_pwd", None)
-        local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
-        if remote_ip.count("EXAMPLE.COM") or local_ip.count("EXAMPLE.COM"):
-            raise error.TestNAError(
-                "Remote test parameters unchanged from default")
-        status = 0
-        try:
-            remote_uri = libvirt_vm.complete_uri(local_ip)
-            session = remote.remote_login("ssh", remote_ip, "22", "root",
-                                          remote_pwd, "#")
-            session.cmd_output('LANG=C')
-            command = "virsh -c %s shutdown %s" % (remote_uri, vm_name)
-            status = session.cmd_status(command, internal_timeout=5)
-            session.close()
-        except error.CmdError:
-            status = 1
+        if vm_ref != "remote":
+            status = virsh.shutdown(vm_ref, mode,
+                                    ignore_status=True).exit_status
+        else:
+            remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
+            remote_pwd = params.get("remote_pwd", None)
+            local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
+            if remote_ip.count("EXAMPLE.COM") or local_ip.count("EXAMPLE.COM"):
+                raise error.TestNAError(
+                    "Remote test parameters unchanged from default")
+            status = 0
+            try:
+                remote_uri = libvirt_vm.complete_uri(local_ip)
+                session = remote.remote_login("ssh", remote_ip, "22", "root",
+                                              remote_pwd, "#")
+                session.cmd_output('LANG=C')
+                command = ("virsh -c %s shutdown %s %s"
+                          % (remote_uri, vm_name, mode))
+                status = session.cmd_status(command, internal_timeout=5)
+                session.close()
+            except error.CmdError:
+                status = 1
 
-    # recover libvirtd service start
-    if libvirtd == "off":
-        utils_libvirtd.libvirtd_start()
+        # recover libvirtd service start
+        if libvirtd == "off":
+            utils_libvirtd.libvirtd_start()
 
-    # check status_error
-    status_error = params.get("status_error")
-    if status_error == "yes":
-        if status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
-    elif status_error == "no":
-        if status != 0:
-            raise error.TestFail("Run failed with right command")
+        # check status_error
+        if status_error:
+            if not status:
+                raise error.TestFail("Run successfully with wrong command!")
+        else:
+            if status:
+                raise error.TestFail("Run failed with right command")
+    finally:
+        xml_backup.sync()
