@@ -59,7 +59,7 @@ def run(test, params, env):
         """
 
         total = int(round(actual_per['user'] + actual_per['system'] +
-                    actual_per['idle'] + actual_per['iowait']))
+                          actual_per['idle'] + actual_per['iowait']))
 
         if not total == 100:
             raise error.TestFail("Commands 'virsh nodecpustats' not succeeded"

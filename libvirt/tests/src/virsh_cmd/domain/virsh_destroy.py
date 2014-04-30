@@ -25,7 +25,7 @@ def run(test, params, env):
     remote_pwd = params.get("remote_pwd", None)
     local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
     if vm_ref == "remote" and (remote_ip.count("EXAMPLE.COM")
-                 or local_ip.count("EXAMPLE.COM")):
+                               or local_ip.count("EXAMPLE.COM")):
         raise error.TestNAError(
             "Remote test parameters unchanged from default")
 

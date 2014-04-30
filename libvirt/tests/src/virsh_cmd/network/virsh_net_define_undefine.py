@@ -139,7 +139,7 @@ def run(test, params, env):
         for netxml in backup.values():
             # If network is transient
             if ((not backup_state[netxml.name]['persistent'])
-               and backup_state[netxml.name]['active']):
+                    and backup_state[netxml.name]['active']):
                 netxml.create()
                 continue
             # autostart = True requires persistent = True first!

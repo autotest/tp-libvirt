@@ -46,7 +46,7 @@ def do_nodedev_dumpxml(dev_name, dev_opt=""):
         if not value_xml == value_sys:
             raise error.TestError("key: %s in xml is %s,"
                                   "but in sysfs is %s." %
-                                 (key, value_xml, value_sys))
+                                  (key, value_xml, value_sys))
         else:
             continue
 

@@ -514,10 +514,10 @@ def test_shrink_volume(vm, params):
     mountpoint = params.get("gf_mountpoint", "/mnt")
     file_path = "%s/test_shrink_volume.img" % mountpoint
     try:
-        dd_size1 = int(volumesize)/2
+        dd_size1 = int(volumesize) / 2
         logging.debug(session.cmd_output("ls /dev/"))
         status, output = session.cmd_status_output("mount %s %s" % (lv_device,
-                                                   mountpoint), timeout=10)
+                                                                    mountpoint), timeout=10)
         if status:
             raise utils_test.libguestfs.VTMountError("", output)
         else:
@@ -541,7 +541,7 @@ def test_shrink_volume(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    size2 = int(volumesize)/2 - 5
+    size2 = int(volumesize) / 2 - 5
     lvresize_result = gf.lvresize(lv_device, size2)
     logging.debug(lvresize_result)
     if lvresize_result.exit_status:
@@ -667,9 +667,9 @@ def test_expand_volume(vm, params):
     mountpoint = params.get("gf_mountpoint", "/mnt")
     file_path = "%s/test_expand_volume.img" % mountpoint
     try:
-        dd_size1 = int(volumesize)/2
+        dd_size1 = int(volumesize) / 2
         status, output = session.cmd_status_output("mount %s %s" % (lv_device,
-                                                   mountpoint), timeout=20)
+                                                                    mountpoint), timeout=20)
         if status:
             raise utils_test.libguestfs.VTMountError("", output)
         else:

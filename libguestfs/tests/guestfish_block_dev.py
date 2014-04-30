@@ -221,7 +221,7 @@ def test_blockdev_rereadpt(vm, params):
     try:
         result = gf.blockdev_rereadpt(pv_name)
         if result.exit_status:
-                raise error.TestFail("blockdev-rereadpt execute failed")
+            raise error.TestFail("blockdev-rereadpt execute failed")
     finally:
         gf.close_session()
 
@@ -326,7 +326,7 @@ def test_list_devices(vm, params):
 
     for i in result:
         if i not in devices:
-                raise error.TestFail("Can not list device %s" % i)
+            raise error.TestFail("Can not list device %s" % i)
 
 
 def test_disk_format(vm, params):

@@ -276,5 +276,5 @@ def run(test, params, env):
                 elif orig_set == 1 and vcpus_current != 0 and vcpus_set != 1:
                     raise error.TestFail("Failed when orig_set is 1 current=%d, "
                                          "set=%d, count=%d mtype=%s" %
-                                        (vcpus_current, vcpus_set,
-                                         test_set_max, mtype))
+                                         (vcpus_current, vcpus_set,
+                                          test_set_max, mtype))

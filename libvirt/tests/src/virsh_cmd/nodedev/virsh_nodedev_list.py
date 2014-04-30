@@ -117,7 +117,7 @@ def get_devices_by_cap(cap):
         'usb_device': ('/sys/bus/usb/devices', 'usb_',
                        # Match any string that does not have :X.X at the end
                        r'^((?!\S+:\d+\.\d+).)*$'),
-        }
+    }
     if cap in cap_map:
         devices = []
         path, header, pattern = cap_map[cap]

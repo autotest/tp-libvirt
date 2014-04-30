@@ -37,8 +37,8 @@ def run(test, params, env):
 
     def _ttcp_good():
         status, output = session.cmd_status_output("%s %s" %
-                                                  (ttcp_client_command,
-                                                   utils_net.get_host_ip_address(params)))
+                                                   (ttcp_client_command,
+                                                    utils_net.get_host_ip_address(params)))
         logging.debug(output)
         if status:
             return False

@@ -82,7 +82,7 @@ def run(test, params, env):
             else:
                 raise error.TestFail("Failed to change current snapshot to %s,"
                                      "current is %s" %
-                                    (snap_cur_opt.split()[1], current_snap))
+                                     (snap_cur_opt.split()[1], current_snap))
 
     def parent_snapshot_check(snap_parent):
         """

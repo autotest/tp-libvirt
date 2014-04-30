@@ -25,7 +25,7 @@ def run(test, params, env):
     status_error = ("yes" == params.get("status_error"))
     agent = ("yes" == params.get("shutdown_agent", "no"))
     mode = params.get("shutdown_mode", "")
-    pre_domian_status =  params.get("reboot_pre_domian_status", "running")
+    pre_domian_status = params.get("reboot_pre_domian_status", "running")
     libvirtd = params.get("libvirtd", "on")
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     try:
@@ -79,7 +79,7 @@ def run(test, params, env):
                                               remote_pwd, "#")
                 session.cmd_output('LANG=C')
                 command = ("virsh -c %s shutdown %s %s"
-                          % (remote_uri, vm_name, mode))
+                           % (remote_uri, vm_name, mode))
                 status = session.cmd_status(command, internal_timeout=5)
                 session.close()
             except error.CmdError:

@@ -92,7 +92,7 @@ def run(test, params, env):
     load_vms = []
     for vm_name in load_vm_names:
         load_vms.append(libvirt_vm.VM(vm_name, params, test.bindir,
-                        env.get("address_cache")))
+                                      env.get("address_cache")))
     params['load_vms'] = load_vms
 
     cpu = int(params.get("smp", 1))
