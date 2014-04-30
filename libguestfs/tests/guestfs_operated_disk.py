@@ -37,10 +37,9 @@ def test_cloned_vm(vm, params):
     vt = utils_test.libguestfs.VirtTools(vm, params)
     clones, cloneo = vt.clone_vm_filesystem(new_vm_name)
     if clones is False:
-       # Clean up:remove newvm and its storage
+        # Clean up:remove newvm and its storage
         utils_test.libguestfs.cleanup_vm(new_vm_name, vt.outdisk)
         raise error.TestFail(cloneo)
-    new_vm = vt.newvm
 
     params['libvirt_domain'] = new_vm_name
     params['gf_inspector'] = True
