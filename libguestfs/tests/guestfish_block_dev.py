@@ -691,6 +691,79 @@ def test_scrub_freespace(vm, params):
     params['image_size'] = image_size
 
 
+def test_md_test(vm, params):
+    """
+    Test command scrub-device
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    image_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    image_name = params.get("image_name")
+    image_format = params["image_format"]
+    image_size = params["image_size"]
+
+    params['image_size'] = "1G"
+    for name in ['md1', 'md2', 'md3']:
+        params['image_name'] = name
+        image = qemu_storage.QemuImg(params, image_dir, '')
+        image_path, _ = image.create(params)
+        gf.add_drive_opts(image_path, readonly=readonly)
+
+    gf.run()
+
+    md = gf.list_md_devices().stdout.strip()
+    if md:
+        # close the existed md device
+        gf.md_stop(md)
+
+    device = "'/dev/sda /dev/sdb /dev/sdc'"
+    gf.md_create("md11", device, missingbitmap="0x4",
+                 chunk=8192, level="raid6")
+    md = gf.list_md_devices().stdout.strip()
+    logging.debug(md)
+    if not md:
+        gf.close_session()
+        raise error.TestFail("Can not find the md device")
+
+    detail = gf.md_detail(md).stdout.strip()
+    logging.debug(detail)
+    if "level: raid6" not in detail or "devname: md11" not in detail:
+        gf.close_session()
+        raise error.TestFail("MD detail info is not correct")
+
+    gf.md_stop(md)
+
+    gf.md_create("md21", device, nrdevices=2, spare=1,
+                 chunk=8192, level="raid4")
+    md = gf.list_md_devices().stdout.strip()
+    logging.debug(md)
+    if not md:
+        gf.close_session()
+        raise error.TestFail("Can not find the md device")
+    stat = gf.md_stat(md).stdout.strip()
+    logging.debug(stat)
+    for i in re.findall("\w+", device):
+        if i not in stat:
+            gf.close_session()
+            raise error.TestFail("MD stat is not correct")
+    if "mdstat_flags: S" not in stat:
+            gf.close_session()
+            raise error.TestFail("There should be a S flag for spare disk")
+
+    gf.close_session()
+
+    params["image_name"] = image_name
+    params["image_size"] = image_size
+
+
 def run(test, params, env):
     """
     Test of built-in block_dev related commands in guestfish.
