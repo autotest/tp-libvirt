@@ -3,6 +3,7 @@ import logging
 from autotest.client.shared import error
 from virttest import virsh
 from virttest.libvirt_xml import nodedev_xml
+from provider import libvirt_version
 
 
 def driver_readlink(device_name):
@@ -18,7 +19,7 @@ def driver_readlink(device_name):
     return driver
 
 
-def do_nodedev_detach_reattach(device_name, options=""):
+def do_nodedev_detach_reattach(device_name, params, options=""):
     """
     do the detach and reattach.
 
@@ -27,9 +28,18 @@ def do_nodedev_detach_reattach(device_name, options=""):
     (3).do reattach.
     (4).check the result of reattach
     """
+    # libvirt acl polkit related params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
     # do the detach
     logging.debug('Node device name is %s.', device_name)
-    CmdResult = virsh.nodedev_detach(device_name, options)
+    CmdResult = virsh.nodedev_detach(device_name, options,
+                                     unprivileged_user=unprivileged_user,
+                                     uri=uri)
     # check the exit_status.
     if CmdResult.exit_status:
         raise error.TestFail("Failed to detach %s.\n"
@@ -76,9 +86,15 @@ def run(test, params, env):
     # check variables.
     if device_name.count('ENTER'):
         raise error.TestNAError('Param device_name is not configured.')
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
     # do nodedev_detach_reattach
     try:
-        do_nodedev_detach_reattach(device_name, device_opt)
+        do_nodedev_detach_reattach(device_name, params, device_opt)
     except error.TestFail, e:
         # Do nodedev detach and reattach failed.
         if status_error:
