@@ -54,8 +54,19 @@ def run(test, params, env):
     pool_ins_state = virsh.pool_state_dict()
     logging.debug("Backed up pool(s): %s", pool_ins_state)
 
+    created_pool_path = False
     if "--file" in option:
-        pool_path = os.path.join(data_dir.get_data_dir(), 'images')
+        # As of commit id 'c5f6c685' in virt-install (v1.0.0), virt-install
+        # will attempt to create a storage pool for ease of management of
+        # volumes. Thus if the test was started with --install or by chance
+        # an 'images' pool exists using get_data_dir(), then the attempt
+        # to define/create this pool will fail since two pools cannot use
+        # the same path.  Therefore, rather than use the data dir for our
+        # test, let's just use 'tmp' dir and create an images pool there.
+        pool_path = os.path.join(data_dir.get_tmp_dir(), 'images')
+        if not os.path.exists(pool_path):
+            os.mkdir(pool_path)
+            created_pool_path = True
         dir_xml = """
 <pool type='dir'>
   <name>%s</name>
@@ -142,3 +153,6 @@ def run(test, params, env):
             # Recover autostart
             if pool_ins_state[exist_pool_name]['autostart']:
                 virsh.pool_autostart(exist_pool_name, ignore_status=False)
+        # If we created the pool_path, then remove it
+        if created_pool_path:
+            os.rmdir(pool_path)
