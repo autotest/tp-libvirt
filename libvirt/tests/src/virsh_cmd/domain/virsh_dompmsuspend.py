@@ -6,6 +6,7 @@ from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 from virttest.utils_test import libvirt
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -42,6 +43,19 @@ def run(test, params, env):
     pm_enabled = params.get("pm_enabled", "not_set")
     test_managedsave = "yes" == params.get("test_managedsave", "no")
     test_save_restore = "yes" == params.get("test_save_restore", "no")
+    pmsuspend_error = 'yes' == params.get("pmsuspend_error", 'no')
+
+    # Libvirt acl test related params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
 
     # A backup of original vm
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -52,6 +66,12 @@ def run(test, params, env):
     # An empty list mean test should succeed.
     fail_pat = []
     virsh_dargs = {'debug': True, 'ignore_status': True}
+    if params.get('setup_libvirt_polkit') == 'yes':
+        virsh_dargs_copy = virsh_dargs.copy()
+        virsh_dargs_copy['uri'] = uri
+        virsh_dargs_copy['unprivileged_user'] = unprivileged_user
+        if pmsuspend_error:
+            fail_pat.append('access denied')
 
     # Setup possible failure patterns
     if pm_enabled == 'not_set':
@@ -117,7 +137,9 @@ def run(test, params, env):
                 vm.destroy()
 
             # Run test case
-            result = virsh.dompmsuspend(vm_name, suspend_target, debug=True)
+            result = virsh.dompmsuspend(vm_name, suspend_target, debug=True,
+                                        uri=uri,
+                                        unprivileged_user=unprivileged_user)
             if result.exit_status == 0:
                 if fail_pat:
                     raise error.TestFail("Expected failed with %s, but run succeed"
@@ -140,7 +162,10 @@ def run(test, params, env):
                 libvirt.check_exit_status(ret)
                 if not vm.is_paused():
                     raise error.TestFail("Vm status is not paused before pm wakeup")
-                ret = virsh.dompmwakeup(vm_name, **virsh_dargs)
+                if params.get('setup_libvirt_polkit') == 'yes':
+                    ret = virsh.dompmwakeup(vm_name, **virsh_dargs_copy)
+                else:
+                    ret = virsh.dompmwakeup(vm_name, **virsh_dargs)
                 libvirt.check_exit_status(ret)
                 if not vm.is_paused():
                     raise error.TestFail("Vm status is not paused after pm wakeup")
