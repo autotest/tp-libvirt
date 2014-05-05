@@ -80,6 +80,10 @@ def run(test, params, env):
     if vm.is_dead():
         vm.start()
 
+    # Abnormal parameters
+    migrate_again = "yes" == params.get("migrate_again", "no")
+    abnormal_type = params.get("abnormal_type")
+
     try:
         rdm = utils_test.RemoteDiskManager(params)
         vgname = params.get("sm_vg_name", "SMTEST")
@@ -99,8 +103,6 @@ def run(test, params, env):
             # Login on remote host
             remote_device = rdm.iscsi_login_setup(local_host, target2)
             if not rdm.create_vg(vgname, remote_device):
-                import time
-                time.sleep(120)
                 raise error.TestError("Create VG %s on %s failed."
                                       % (vgname, remote_host))
 
@@ -110,13 +112,47 @@ def run(test, params, env):
         all_disks[file_path] = file_size
         logging.debug("All disks need to be migrated:%s", all_disks)
 
-        for disk,size in all_disks.items():
-            if disk == file_path:
-                rdm.create_image("file", disk, size, None, None)
+        if abnormal_type == "occupied_disk":
+            occupied_path = rdm.occupy_space(disk_type, file_size,
+                                             file_path, vgname, timeout=600)
+        if not abnormal_type == "not_exist_file":
+            for disk, size in all_disks.items():
+                if disk == file_path:
+                    rdm.create_image("file", disk, size, None, None)
+                else:
+                    rdm.create_image(disk_type, disk, size, vgname,
+                                     os.path.basename(disk))
+
+        fail_flag = False
+        try:
+            logging.debug("Start migration...")
+            copied_migration(vms, params)
+            if migrate_again:
+                fail_flag = True
+                raise error.TestFail("Migration succeed, but not expected!")
             else:
-                rdm.create_image(disk_type, disk, size, vgname,
-                                 os.path.basename(disk))
-        copied_migration(vms, params)
+                return
+        except error.TestFail:
+            if not migrate_again:
+                raise
+
+            if abnormal_type == "occupied_disk":
+                rdm.remove_path(disk_type, occupied_path)
+            elif abnormal_type == "not_exist_file":
+                for disk, size in all_disks.items():
+                    if disk == file_path:
+                        rdm.create_image("file", disk, size, None, None)
+                    else:
+                        rdm.create_image(disk_type, disk, size, vgname,
+                                         os.path.basename(disk))
+            elif abnormal_type == "migration_interupted":
+                params["thread_timeout"] = 120
+            # Raise after cleanup
+            if fail_flag:
+                raise
+
+            # Migrate it again to confirm failed reason
+            copied_migration(vms, params)
     finally:
         # Recover created vm
         if vm.is_alive():
