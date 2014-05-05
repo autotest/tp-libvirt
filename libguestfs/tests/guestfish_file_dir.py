@@ -195,7 +195,7 @@ def test_du(vm, params):
 
 def test_file(vm, params):
     """
-    Test du command
+    Test file command
     """
     add_ref = params.get("gf_add_ref", "disk")
     readonly = params.get("gf_add_readonly", "no")
@@ -225,6 +225,309 @@ def test_file(vm, params):
         if v not in gf_result:
             gf.close_session()
             raise error.TestFail("file failed.")
+
+    gf.close_session()
+
+
+def test_file_architecture(vm, params):
+    """
+    Test file-architecture command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+    file_architecture_check = {"/file_ops/file_x64": "x86_64",
+                               "/file_ops/file_i386": "i386",
+                               "/file_ops/file_ia64": "ia64",
+                               "/file_ops/file_ppc": 'ppc',
+                               "/file_ops/file_ppc64": 'ppc64',
+                               "/file_ops/file_sparc": 'sparc'}
+
+    for k, v in file_architecture_check.items():
+        gf_result = gf.file_architecture(k).stdout.strip()
+        if v.upper() not in gf_result.upper():
+            gf.close_session()
+            raise error.TestFail("file-architecture failed.")
+
+    gf.close_session()
+
+
+def test_filesize(vm, params):
+    """
+    Test filesize command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+    filesize_check = {"/file_ops/file_ascii": "653",
+                      "/file_ops/file_ascii_long": "5400593",
+                      "/file_ops/file_elf": "927256",
+                      "/file_ops/file_dev_block": '0',
+                      "/file_ops/file_dev_fifo": '0',
+                      "/file_ops/file_ascii_softlink": '653',
+                      "/file_ops/file_ascii_softlink_link": '653',
+                      "/file_ops/file_dev_char": '0'}
+
+    for k, v in filesize_check.items():
+        gf_result = gf.filesize(k).stdout.strip()
+        if v not in gf_result:
+            gf.close_session()
+            raise error.TestFail("filesize failed.")
+
+    gf.close_session()
+
+
+def test_stat(vm, params):
+    """
+    Test stat command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+    stat_check = {"/file_ops/file_ascii": "653",
+                  "/file_ops/file_ascii_long": "5400593",
+                  "/file_ops/file_elf": "927256",
+                  "/file_ops/file_dev_block": '0',
+                  "/file_ops/file_dev_fifo": '0',
+                  "/file_ops/file_ascii_softlink": '653',
+                  "/file_ops/file_ascii_softlink_link": '653',
+                  "/file_ops/file_dev_char": '0'}
+
+    for k, v in stat_check.items():
+        gf_result = gf.stat(k).stdout.strip()
+        if v not in gf_result:
+            gf.close_session()
+            raise error.TestFail("stat failed.")
+
+    gf.close_session()
+
+
+def test_lstat(vm, params):
+    """
+    Test lstat command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+    lstat_check = {"/file_ops/file_ascii": "653",
+                   "/file_ops/file_ascii_long": "5400593",
+                   "/file_ops/file_elf": "927256",
+                   "/file_ops/file_dev_block": '0',
+                   "/file_ops/file_dev_fifo": '0',
+                   "/file_ops/file_ascii_softlink": '10',
+                   "/file_ops/file_ascii_softlink_link": '19',
+                   "/file_ops/file_dev_char": '0'}
+
+    for k, v in lstat_check.items():
+        gf_result = gf.lstat(k).stdout.strip()
+        if v not in gf_result:
+            gf.close_session()
+            raise error.TestFail("lstat failed.")
+
+    gf.close_session()
+
+
+def test_lstatlist(vm, params):
+    """
+    Test lstatlist command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+    lstat_check = {"/file_ops/file_ascii": "653",
+                   "/file_ops/file_ascii_long": "5400593",
+                   "/file_ops/file_elf": "927256",
+                   "/file_ops/file_dev_block": '0',
+                   "/file_ops/file_dev_fifo": '0',
+                   "/file_ops/file_ascii_softlink": '10',
+                   "/file_ops/file_ascii_softlink_link": '19',
+                   "/file_ops/file_dev_char": '0'}
+
+    gf_result = gf.lstatlist("/file_ops", "\"file_ascii file_ascii_long file_elf file_dev_block file_dev_fifo file_ascii_softlink file_ascii_softlink_link file_dev_char\"").stdout.strip()
+    for k, v in lstat_check.items():
+        if v not in gf_result:
+            gf.close_session()
+            raise error.TestFail("lstatlist failed.")
+
+    gf.close_session()
+
+
+def test_touch(vm, params):
+    """
+    Test touch command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+    touch_check = {"/file_ops/file_ascii": "0",
+                   "/file_ops/file_ascii_long": "0",
+                   "/file_ops/file_elf": "0",
+                   "/file_ops/file_dev_block": '1',
+                   "/file_ops/file_dev_fifo": '1',
+                   "/file_ops/file_ascii_softlink": '1',
+                   "/file_ops/file_ascii_softlink_link": '1',
+                   "/file_ops/file_dev_char": '1'}
+
+    for k, v in touch_check.items():
+        gf_result = gf.touch(k).exit_status
+        if int(v) != gf_result:
+            gf.close_session()
+            raise error.TestFail("touch failed.")
+
+    gf.close_session()
+
+
+def test_umask(vm, params):
+    """
+    Test umask command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+    gf_result = gf.umask("022")
+    gf_result = gf.get_umask()
+    if gf_result.stdout.strip() != "022":
+        gf.close_session()
+        raise error.TestFail("umask failed.")
+    gf_result = gf.touch("/file_ops/umask0022")
+    gf_result = gf.ll("/file_ops/umask0022")
+    if gf_result.stdout.split()[0] != "-rw-r--r--":
+        gf.close_session()
+        raise error.TestFail("umask failed.")
+    gf_result = gf.rm("/file_ops/umask0022")
+
+    gf_result = gf.umask("0")
+    gf_result = gf.get_umask()
+    if gf_result.stdout.strip() != "0":
+        gf.close_session()
+        raise error.TestFail("umask failed.")
+    gf_result = gf.touch("/file_ops/umask0000")
+    gf_result = gf.ll("/file_ops/umask0000")
+    if gf_result.stdout.split()[0] != "-rw-rw-rw-":
+        gf.close_session()
+        raise error.TestFail("umask failed.")
+    gf_result = gf.rm("/file_ops/umask0000")
+
+    gf_result = gf.umask("066")
+    gf_result = gf.get_umask()
+    if gf_result.stdout.strip() != "066":
+        gf.close_session()
+        raise error.TestFail("umask failed.")
+    gf_result = gf.touch("/file_ops/umask0066")
+    gf_result = gf.ll("/file_ops/umask0066")
+    if gf_result.stdout.split()[0] != "-rw-------":
+        gf.close_session()
+        raise error.TestFail("umask failed.")
+    gf_result = gf.rm("/file_ops/umask0066")
+
+# regress bug 627832
+    gf_result = gf.umask("022")
+    gf_result = gf.get_umask()
+    if gf_result.stdout.strip() != "022":
+        gf.close_session()
+        raise error.TestFail("umask failed.")
+    gf_result = gf.umask("-1")
+    if gf_result.exit_status != 1:
+        gf.close_session()
+        raise error.TestFail("umask failed.")
+    gf_result = gf.get_umask()
+    if gf_result.stdout.strip() != "022":
+        gf.close_session()
+        raise error.TestFail("umask failed.")
+    gf_result = gf.umask("01000")
+    if gf_result.exit_status != 1:
+        gf.close_session()
+        raise error.TestFail("umask failed.")
+    gf_result = gf.get_umask()
+    if gf_result.stdout.strip() != "022":
+        gf.close_session()
+        raise error.TestFail("umask failed.")
+    gf_result = gf.touch("/testfoo")
+    gf_result = gf.chmod("-1", "/testfoo")
+    if gf_result.exit_status != 1:
+        gf.close_session()
+        raise error.TestFail("umask failed.")
+    gf_result = gf.mkdir_mode("/testdoo", "-1")
+    if gf_result.exit_status != 1:
+        gf.close_session()
+        raise error.TestFail("umask failed.")
+    gf_result = gf.mknod("-1", "8", "1", "/testnoo")
+    if gf_result.exit_status != 1:
+        gf.close_session()
+        raise error.TestFail("umask failed.")
+    gf_result = gf.rm_rf("/testfoo")
+    gf_result = gf.rm_rf("/testdoo")
+    gf_result = gf.rm_rf("/testnoo")
 
     gf.close_session()
 
