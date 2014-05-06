@@ -4,7 +4,9 @@ import commands
 from autotest.client.shared import error
 from virttest import virsh, data_dir, utils_misc
 
+
 OVER_SIZE = (1 << 64)
+
 
 def run(test, params, env):
     """
@@ -37,15 +39,15 @@ def run(test, params, env):
                                            initial_disk_size)
     status, output = commands.getstatusoutput(cmd)
     if status:
-        raise error.TestError("Creating image file %s failed: %s" % \
-                                (image_path, output))
+        raise error.TestError("Creating image file %s failed: %s"
+                              % (image_path, output))
 
     # Hotplug the image as disk device
     result = virsh.attach_disk(vm_name, source=image_path, target="vdd",
                                extra=" --subdriver %s" % image_format)
     if result.exit_status:
-        raise error.TestError("Failed to attach disk %s to VM: %s." %
-                                (image_path, result.stderr))
+        raise error.TestError("Failed to attach disk %s to VM: %s."
+                              % (image_path, result.stderr))
 
     if resize_value == "over_size":
         # Use byte unit for over_size test
@@ -74,7 +76,7 @@ def run(test, params, env):
         elif resize_value[-1] == "g":
             expected_size = 1024*1024*1024
         else:
-            raise  error.TestError("Unknown infomation of unit")
+            raise error.TestError("Unknown infomation of unit")
 
         image_info = utils_misc.get_image_info(image_path)
         actual_size = int(image_info['vsize'])
