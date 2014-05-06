@@ -5,6 +5,7 @@ from autotest.client.shared import error
 from virttest.utils_test import libvirt
 from virttest import libvirt_storage
 from virttest import virsh
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -38,6 +39,18 @@ def run(test, params, env):
         alg = ""
     clone_status_error = "yes" == params.get("clone_status_error", "no")
     wipe_status_error = "yes" == params.get("wipe_status_error", "no")
+
+    # libvirt acl polkit related params
+    uri = params.get("virsh_uri")
+    unpri_user = params.get('unprivileged_user')
+    if unpri_user:
+        if unpri_user.count('EXAMPLE'):
+            unpri_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
 
     libv_pvt = libvirt.PoolVolumeTest(test, params)
     try:
@@ -84,7 +97,8 @@ def run(test, params, env):
                 if alg:
                     logging.debug("Wiping volume by '%s' algorithm", alg)
                 wipe_result = virsh.vol_wipe(new_vol_name, pool_name, alg,
-                                             debug=True)
+                                             unprivileged_user=unpri_user,
+                                             uri=uri, debug=True)
                 if not wipe_status_error:
                     if wipe_result.exit_status != 0:
                         raise error.TestFail("Wipe volume fail:\n%s" %
