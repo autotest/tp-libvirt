@@ -764,6 +764,148 @@ def test_md_test(vm, params):
     params["image_size"] = image_size
 
 
+def test_part_add(vm, params):
+    """
+    Test command part-add
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    image_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    image_name = params.get("image_name")
+    image_size = params["image_size"]
+
+    params['image_size'] = "1G"
+    params['image_name'] = "disk"
+    image = qemu_storage.QemuImg(params, image_dir, '')
+    image_path, _ = image.create(params)
+    gf.add_drive_opts(image_path, readonly=readonly)
+
+    gf.run()
+
+    # operate to the second disk
+    partname = '/dev/sdb'
+    gf.part_init(partname, 'msdos')
+    gf.part_add(partname, 'p', 2, 100000)
+    gf.part_add(partname, 'p', 100001, 200000)
+    gf.part_add(partname, 'e', 200001, 300000)
+    gf.part_add(partname, 'l', 240000, 280000)
+    result = gf.part_list(partname).stdout.strip()
+
+    partnum = result.count("part_num")
+    if partnum != 4:
+        gf.close_session()
+        raise error.TestFail("partnum is %s, expect is 4" % partnum)
+
+    params["image_name"] = image_name
+    params["image_size"] = image_size
+
+
+def test_part_del(vm, params):
+    """
+    Test command part-del
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    image_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    image_name = params.get("image_name")
+    image_size = params["image_size"]
+
+    params['image_size'] = "1G"
+    params['image_name'] = "disk"
+    image = qemu_storage.QemuImg(params, image_dir, '')
+    image_path, _ = image.create(params)
+    gf.add_drive_opts(image_path, readonly=readonly)
+
+    gf.run()
+
+    # operate to the second disk
+    partname = '/dev/sdb'
+    gf.part_init(partname, 'msdos')
+    gf.part_add(partname, 'p', 2, 100000)
+    gf.part_add(partname, 'p', 100001, 200000)
+    result = gf.part_list(partname).stdout.strip()
+
+    partnum = result.count("part_num")
+    if partnum != 2:
+        gf.close_session()
+        raise error.TestFail("partnum is %s, expect is 2" % partnum)
+
+    gf.part_del(partname, 2)
+    result = gf.part_list(partname).stdout.strip()
+
+    partnum = result.count("part_num")
+    if partnum != 1:
+        gf.close_session()
+        raise error.TestFail("partnum is %s, expect is 1" % partnum)
+
+    params["image_name"] = image_name
+    params["image_size"] = image_size
+    gf.close_session()
+
+
+def test_part_init(vm, params):
+    """
+    Test command part-init
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    image_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    image_name = params.get("image_name")
+    image_size = params["image_size"]
+
+    params['image_size'] = "1G"
+    params['image_name'] = "disk"
+    image = qemu_storage.QemuImg(params, image_dir, '')
+    image_path, _ = image.create(params)
+    gf.add_drive_opts(image_path, readonly=readonly)
+
+    gf.run()
+
+    # operate to the second disk
+    partname = '/dev/sdb'
+    for i in ['mbr', 'msdos', 'gpt', 'efi']:
+        gf.part_init(partname, i)
+        gf.part_add(partname, 'p', 100, 100000)
+        gf.part_add(partname, 'p', 100001, 200000)
+        result = gf.part_list(partname).stdout.strip()
+
+        partnum = result.count("part_num")
+        if partnum != 2:
+            gf.close_session()
+            raise error.TestFail("partnum is %s, expect is 2" % partnum)
+
+    params["image_name"] = image_name
+    params["image_size"] = image_size
+    gf.close_session()
+
+
 def run(test, params, env):
     """
     Test of built-in block_dev related commands in guestfish.
