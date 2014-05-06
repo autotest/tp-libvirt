@@ -84,9 +84,6 @@ def run(test, params, env):
                     return True
                 s_vd, o_vd = session.cmd_status_output(
                     "rpm -qa | grep redhat-release")
-                if s_vd != 0 and o_vd != "":
-                    session.close()
-                    return False
                 if o_vd.find("5Server") != -1:
                     s_mod, o_mod = session.cmd_status_output(
                         "modprobe acpiphp")
@@ -280,9 +277,15 @@ def run(test, params, env):
                 if not check_vm_after_cmd:
                     raise error.TestFail("Cannot see device in VM after"
                                          " attach.")
-                if check_count_after_shutdown:
-                    raise error.TestFail("See non-config attached device "
-                                         "in xml file after VM shutdown.")
+                if at_options.count("persistent"):
+                    if not check_count_after_shutdown:
+                        raise error.TestFail("Cannot see device attached "
+                                             "with persistent after "
+                                             "VM shutdown.")
+                else:
+                    if check_count_after_shutdown:
+                        raise error.TestFail("See non-config attached device "
+                                             "in xml file after VM shutdown.")
         elif test_cmd == "detach-disk":
             if dt_options.count("config"):
                 if check_count_after_shutdown:
@@ -293,8 +296,15 @@ def run(test, params, env):
                     raise error.TestFail("See device in xml file after detach.")
                 if check_vm_after_cmd:
                     raise error.TestFail("See device in VM after detach.")
-                if not check_count_after_shutdown:
-                    raise error.TestFail("Cannot see non-config detached "
-                                         "device in xml file after VM shutdown.")
+
+                if dt_options.count("persistent"):
+                    if check_count_after_shutdown:
+                        raise error.TestFail("See device deattached "
+                                             "with persistent after "
+                                             "VM shutdown.")
+                else:
+                    if not check_count_after_shutdown:
+                        raise error.TestFail("See non-config detached "
+                                             "device in xml file after VM shutdown.")
         else:
             raise error.TestError("Unknown command %s." % test_cmd)
