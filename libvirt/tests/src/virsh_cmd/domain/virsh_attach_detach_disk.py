@@ -1,7 +1,7 @@
 import os
 import logging
-from autotest.client.shared import error
-from virttest import aexpect, virt_vm, virsh, remote
+from autotest.client.shared import error, utils
+from virttest import aexpect, virt_vm, virsh, remote, qemu_storage
 from virttest.libvirt_xml import vm_xml
 
 
@@ -115,11 +115,15 @@ def run(test, params, env):
     bus_type = params.get("at_dt_disk_bus_type", "virtio")
     source_path = "yes" == params.get("at_dt_disk_device_source_path", "yes")
     test_twice = "yes" == params.get("at_dt_disk_test_twice", "no")
+    test_type = "yes" == params.get("at_dt_disk_check_type", "no")
+    test_audit = "yes" == params.get("at_dt_disk_check_audit", "no")
+    test_block_dev = "yes" == params.get("at_dt_disk_iscsi_device", "no")
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     if vm.is_alive():
         vm.destroy(gracefully=False)
+
     # Back up xml file.
     vm_xml_file = os.path.join(test.tmpdir, "vm.xml")
     if source_path:
@@ -129,7 +133,12 @@ def run(test, params, env):
     virsh.dumpxml(vm_name, extra="--inactive", to_file=vm_xml_file)
 
     # Create virtual device file.
-    create_device_file(device_source)
+    if test_block_dev:
+        iscsi_dev = qemu_storage.Iscsidev(params, test.virtdir, "iscsi")
+        device_source = iscsi_dev.setup()
+        logging.debug("iscsi dev name: %s" % device_source)
+    else:
+        create_device_file(device_source)
 
     if vm.is_alive():
         vm.destroy(gracefully=False)
@@ -218,6 +227,14 @@ def run(test, params, env):
     if pre_vm_state == "paused":
         vm.resume()
 
+    # Check audit log after detach
+    check_detach_audit = True
+    if test_audit:
+        cmd = 'grep "%s" /var/log/audit/audit.log  | grep "detach" | tail -n1 | grep "res=success"' % device_source
+        if 0 != utils.run(cmd).exit_status:
+            logging.error("Audit check failed")
+            check_detach_audit = False
+
     # Check disk count after command.
     check_count_after_cmd = True
     disk_count_after_cmd = vm_xml.VMXML.get_disk_count(vm_name)
@@ -235,6 +252,14 @@ def run(test, params, env):
     # Check in VM after command.
     check_vm_after_cmd = True
     check_vm_after_cmd = check_vm_partition(vm, device, os_type, device_target)
+
+    # Check disk type after attach.
+    check_disk_type = True
+    if test_type:
+        if test_block_dev:
+            check_disk_type = vm_xml.VMXML.check_disk_type(vm_name, device_source, "block")
+        else:
+            check_disk_type = vm_xml.VMXML.check_disk_type(vm_name, device_source, "file")
 
     # Destroy VM.
     vm.destroy(gracefully=False)
@@ -254,7 +279,9 @@ def run(test, params, env):
         vm.destroy(gracefully=False)
     virsh.undefine(vm_name)
     virsh.define(vm_xml_file)
-    if os.path.exists(device_source):
+    if test_block_dev:
+        iscsi_dev.cleanup()
+    elif os.path.exists(device_source):
         os.remove(device_source)
 
     # Check results.
@@ -277,6 +304,10 @@ def run(test, params, env):
                 if not check_vm_after_cmd:
                     raise error.TestFail("Cannot see device in VM after"
                                          " attach.")
+                if not check_disk_type:
+                    raise error.TestFail("Check disk type failed after"
+                                         " attach.")
+
                 if at_options.count("persistent"):
                     if not check_count_after_shutdown:
                         raise error.TestFail("Cannot see device attached "
@@ -296,6 +327,8 @@ def run(test, params, env):
                     raise error.TestFail("See device in xml file after detach.")
                 if check_vm_after_cmd:
                     raise error.TestFail("See device in VM after detach.")
+                if not check_detach_audit:
+                    raise error.TestFail("Audit hotunplug failure after detach")
 
                 if dt_options.count("persistent"):
                     if check_count_after_shutdown:
@@ -306,5 +339,6 @@ def run(test, params, env):
                     if not check_count_after_shutdown:
                         raise error.TestFail("See non-config detached "
                                              "device in xml file after VM shutdown.")
+
         else:
             raise error.TestError("Unknown command %s." % test_cmd)
