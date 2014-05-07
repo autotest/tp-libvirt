@@ -5,6 +5,7 @@ import hashlib
 from autotest.client.shared import utils, error
 from virttest import virsh
 from virttest.utils_test import libvirt as utlv
+from provider import libvirt_version
 
 
 def digest(path, offset, length):
@@ -77,6 +78,18 @@ def run(test, params, env):
     operation = params.get("vol_download_upload_operation")
     create_vol = ("yes" == params.get("vol_download_upload_create_vol", "yes"))
 
+    # libvirt acl polkit related params
+    uri = params.get("virsh_uri")
+    unpri_user = params.get('unprivileged_user')
+    if unpri_user:
+        if unpri_user.count('EXAMPLE'):
+            unpri_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
     try:
         pvt = utlv.PoolVolumeTest(test, params)
         pvt.pre_pool(pool_name, pool_type, pool_target, "volumetest",
@@ -143,8 +156,13 @@ def run(test, params, env):
             logging.debug("ori digest read from %s is %s", file_path,
                           ori_digest)
 
+            if params.get('setup_libvirt_polkit') == 'yes':
+                utils.run("chmod 666 %s" % file_path)
+
             # Do volume upload
-            result = virsh.vol_upload(vol_name, file_path, options)
+            result = virsh.vol_upload(vol_name, file_path, options,
+                                      unprivileged_user=unpri_user,
+                                      uri=uri, debug=True)
             if result.exit_status == 0:
                 # Get digest after operation
                 (aft_pre_digest, aft_post_digest) = get_pre_post_digest()
@@ -171,8 +189,13 @@ def run(test, params, env):
             logging.debug("original digest read from %s is %s", vol_path,
                           ori_digest)
 
+            if params.get('setup_libvirt_polkit') == 'yes':
+                utils.run("chmod 666 %s" % file_path)
+
             # Do volume download
-            result = virsh.vol_download(vol_name, file_path, options)
+            result = virsh.vol_download(vol_name, file_path, options,
+                                        unprivileged_user=unpri_user,
+                                        uri=uri, debug=True)
             if result.exit_status == 0:
                 # Get digest after operation
                 aft_digest = digest(file_path, 0, 0)
