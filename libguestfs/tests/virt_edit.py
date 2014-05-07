@@ -1,6 +1,6 @@
 import logging
 import re
-from autotest.client.shared import utils, error
+from autotest.client.shared import utils, error, ssh_key
 from virttest import libvirt_vm, utils_libvirtd
 import virttest.utils_libguestfs as lgf
 
@@ -19,6 +19,7 @@ def login_to_check_foo_line(vm, file_ref, foo_line):
         session = vm.wait_for_login()
         cat_file = session.cmd_output("cat %s" % file_ref)
         logging.info("\n%s", cat_file)
+        session.cmd("rm -f %s" % backup)
         session.cmd("cp -f %s %s" % (file_ref, backup))
         session.cmd("sed -e \'s/%s$//g\' %s > %s" %
                     (foo_line, backup, file_ref))
@@ -27,11 +28,24 @@ def login_to_check_foo_line(vm, file_ref, foo_line):
     except Exception, detail:
         raise error.TestError("Cleanup failed:\n%s" % detail)
 
-    vm.destroy(gracefully=True)
+    vm.destroy()
     if not re.search(foo_line, cat_file):
         logging.info("Can not find %s in %s.", foo_line, file_ref)
         return False
     return True
+
+
+def cleanup_file_in_vm(vm, file_path):
+    """Remove backup file in vm"""
+    if not vm.is_alive():
+        vm.start()
+    try:
+        session = vm.wait_for_login()
+        session.cmd("rm -f %s" % file_path)
+        session.close()
+    except Exception, detail:
+        raise error.TestError("Cleanup failed:\n%s" % detail)
+    vm.destroy()
 
 
 def run(test, params, env):
@@ -47,8 +61,19 @@ def run(test, params, env):
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
-    uri = libvirt_vm.normalize_connect_uri(params.get("connect_uri",
-                                                      "default"))
+    remote_host = params.get("virt_edit_remote_host", "HOST.EXAMPLE")
+    remote_user = params.get("virt_edit_remote_user", "root")
+    remote_passwd = params.get("virt_edit_remote_passwd", "PASSWD.EXAMPLE")
+    connect_uri = params.get("virt_edit_connect_uri")
+    if connect_uri is not None:
+        uri = "qemu+ssh://%s@%s/system" % (remote_user, remote_host)
+        if uri.count("EXAMPLE"):
+            raise error.TestNAError("Please config host and passwd first.")
+        # Config ssh autologin for it
+        ssh_key.setup_ssh_key(remote_host, remote_user, remote_passwd, port=22)
+    else:
+        uri = libvirt_vm.normalize_connect_uri(params.get("connect_uri",
+                                                          "default"))
     start_vm = params.get("start_vm", "no")
     vm_ref = params.get("virt_edit_vm_ref", vm_name)
     file_ref = params.get("virt_edit_file_ref", "/etc/hosts")
@@ -57,6 +82,8 @@ def run(test, params, env):
     options = params.get("virt_edit_options")
     options_suffix = params.get("virt_edit_options_suffix")
     status_error = params.get("status_error", "no")
+    backup_extension = params.get("virt_edit_backup_extension")
+    test_format = params.get("virt_edit_format")
 
     # virt-edit should not be used when vm is running.
     # (for normal test)
@@ -65,6 +92,10 @@ def run(test, params, env):
 
     dom_disk_dict = vm.get_disk_devices()  # TODO
     dom_uuid = vm.get_uuid()
+    # Disk format: raw or qcow2
+    disk_format = None
+    # If object is a disk file path
+    is_disk = False
 
     if vm_ref == "domdisk":
         if len(dom_disk_dict) != 1:
@@ -73,6 +104,18 @@ def run(test, params, env):
         disk_detail = dom_disk_dict.values()[0]
         vm_ref = disk_detail['source']
         logging.info("disk to be edit:%s", vm_ref)
+        if test_format:
+            # Get format:raw or qcow2
+            info = utils.run("qemu-img info %s" % vm_ref).stdout
+            for line in info.splitlines():
+                comps = line.split(':')
+                if comps[0].count("format"):
+                    disk_format = comps[-1].strip()
+                    break
+            if disk_format is None:
+                raise error.TestError("Cannot get disk format:%s" % info)
+            options = "--format=%s" % disk_format
+        is_disk = True
     elif vm_ref == "domname":
         vm_ref = vm_name
     elif vm_ref == "domuuid":
@@ -80,6 +123,7 @@ def run(test, params, env):
     elif vm_ref == "createdimg":
         vm_ref = created_img
         utils.run("dd if=/dev/zero of=%s bs=256M count=1" % created_img)
+        is_disk = True
 
     # Decide whether pass a exprt for virt-edit command.
     if foo_line != "":
@@ -87,15 +131,19 @@ def run(test, params, env):
     else:
         expr = ""
 
+    if backup_extension is not None:
+        if options is None:
+            options = ""
+        options += " -b %s" % backup_extension
+
     # Stop libvirtd if test need.
     libvirtd = params.get("libvirtd", "on")
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()
 
     # Run test
-    virsh_dargs = {'ignore_status': True, 'debug': True, 'uri': uri}
-    result = lgf.virt_edit_cmd(vm_ref, file_ref, options,
-                               options_suffix, expr, **virsh_dargs)
+    result = lgf.virt_edit_cmd(vm_ref, file_ref, is_disk, options,
+                               options_suffix, expr, uri, debug=True)
     status = result.exit_status
 
     # Recover libvirtd.
@@ -103,6 +151,11 @@ def run(test, params, env):
         utils_libvirtd.libvirtd_start()
 
     utils.run("rm -f %s" % created_img)
+
+    # Remove backup file in vm if it exists
+    if backup_extension is not None:
+        backup_file = file_ref + backup_extension
+        cleanup_file_in_vm(vm, backup_file)
 
     status_error = (status_error == "yes")
     if status != 0:
