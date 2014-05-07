@@ -8,7 +8,7 @@ import time
 from autotest.client import utils
 from autotest.client.shared import error
 from virttest.libvirt_xml import vm_xml, xcepts
-from virttest import utils_test, virsh, data_dir
+from virttest import utils_test, virsh, data_dir, virt_vm
 
 
 def set_xml_clock(vms, params):
@@ -300,7 +300,7 @@ def test_all_timers(vms, params):
     vm_tz_vector = convert_tz_to_vector(vm_tz)
     set_tz_vector = convert_tz_to_vector(clock_tz)
     if ((host_tz_vector is None) or (vm_tz_vector is None)
-       or (set_tz_vector is None)):
+            or (set_tz_vector is None)):
         raise error.TestError("Not supported timezone to convert.")
     delta = int(params.get("allowd_delta", "300"))
 
@@ -431,12 +431,26 @@ def test_banned_timer(vms, params):
 
     set_xml_clock(vms, params)
 
+    start_error = "yes" == params.get("timer_start_error", "no")
+    fail_info = []
     # Logging vm to verify whether setting is work
     for vm in vms:
-        vm.start()
-        vm.wait_for_login()
+        try:
+            vm.start()
+            vm.wait_for_login()
+            if start_error:
+                fail_info.append("Start succeed, but not expected.")
+        except virt_vm.VMStartError, detail:
+            if start_error:
+                logging.debug("Expected failure: %s", detail)
+            else:
+                raise error.TestFail(detail)
 
-    fail_info = []
+    if start_error:
+        if len(fail_info):
+            raise error.TestFail(fail_info)
+        else:
+            return
 
     # Set vms' clocksource(different vm may have different sources)
     # (kvm-clock tsc hpet acpi_pm...)
@@ -476,7 +490,7 @@ def test_windows_timer(vms, params):
     vm_tz_vector = convert_tz_to_vector(vm_tz)
     set_tz_vector = convert_tz_to_vector(clock_tz)
     if ((host_tz_vector is None) or (vm_tz_vector is None)
-       or (set_tz_vector is None)):
+            or (set_tz_vector is None)):
         raise error.TestError("Not supported timezone to convert.")
     delta = int(params.get("allowd_delta", "300"))
 
