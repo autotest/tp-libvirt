@@ -3,6 +3,7 @@ import logging
 from autotest.client.shared import error, utils
 from virttest import aexpect, virt_vm, virsh, remote, qemu_storage
 from virttest.libvirt_xml import vm_xml
+from virttest.staging.service import Factory
 
 
 def run(test, params, env):
@@ -123,7 +124,6 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     if vm.is_alive():
         vm.destroy(gracefully=False)
-
     # Back up xml file.
     vm_xml_file = os.path.join(test.tmpdir, "vm.xml")
     if source_path:
@@ -142,6 +142,13 @@ def run(test, params, env):
 
     if vm.is_alive():
         vm.destroy(gracefully=False)
+
+    # if we are testing audit, we need to start audit servcie first.
+    if test_audit:
+        auditd_service = Factory.create_service("auditd")
+        if not auditd_service.status():
+            auditd_service.start()
+        logging.info("Auditd service status: %s" % auditd_service.status())
 
     # If we are testing cdrom device, we need to detach hdc in VM first.
     if device == "cdrom":
@@ -228,12 +235,18 @@ def run(test, params, env):
         vm.resume()
 
     # Check audit log after detach
-    check_detach_audit = True
+    check_audit_after_cmd = True
     if test_audit:
-        cmd = 'grep "%s" /var/log/audit/audit.log  | grep "detach" | tail -n1 | grep "res=success"' % device_source
-        if 0 != utils.run(cmd).exit_status:
-            logging.error("Audit check failed")
-            check_detach_audit = False
+        if test_cmd == "attach-disk":
+            cmd = 'grep "%s" /var/log/audit/audit.log  | grep "attach" | tail -n1 | grep "res=success"' % device_source
+            if 0 != utils.run(cmd).exit_status:
+                logging.error("Audit check failed")
+                check_audit_after_cmd = False
+        elif test_cmd == "detach-disk":
+            cmd = 'grep "%s" /var/log/audit/audit.log  | grep "detach" | tail -n1 | grep "res=success"' % device_source
+            if 0 != utils.run(cmd).exit_status:
+                logging.error("Audit check failed")
+                check_audit_after_cmd = False
 
     # Check disk count after command.
     check_count_after_cmd = True
@@ -307,6 +320,8 @@ def run(test, params, env):
                 if not check_disk_type:
                     raise error.TestFail("Check disk type failed after"
                                          " attach.")
+                if not check_audit_after_cmd:
+                    raise error.TestFail("Audit hotplug failure after attach")
 
                 if at_options.count("persistent"):
                     if not check_count_after_shutdown:
@@ -327,7 +342,7 @@ def run(test, params, env):
                     raise error.TestFail("See device in xml file after detach.")
                 if check_vm_after_cmd:
                     raise error.TestFail("See device in VM after detach.")
-                if not check_detach_audit:
+                if not check_audit_after_cmd:
                     raise error.TestFail("Audit hotunplug failure after detach")
 
                 if dt_options.count("persistent"):
