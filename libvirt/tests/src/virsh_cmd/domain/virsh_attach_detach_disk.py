@@ -234,19 +234,14 @@ def run(test, params, env):
     if pre_vm_state == "paused":
         vm.resume()
 
-    # Check audit log after detach
+    # Check audit log
     check_audit_after_cmd = True
     if test_audit:
-        if test_cmd == "attach-disk":
-            cmd = 'grep "%s" /var/log/audit/audit.log  | grep "attach" | tail -n1 | grep "res=success"' % device_source
-            if 0 != utils.run(cmd).exit_status:
-                logging.error("Audit check failed")
-                check_audit_after_cmd = False
-        elif test_cmd == "detach-disk":
-            cmd = 'grep "%s" /var/log/audit/audit.log  | grep "detach" | tail -n1 | grep "res=success"' % device_source
-            if 0 != utils.run(cmd).exit_status:
-                logging.error("Audit check failed")
-                check_audit_after_cmd = False
+        grep_audit = 'grep "%s" /var/log/audit/audit.log' % test_cmd.split("-")[0]
+        cmd = grep_audit + ' | ' + 'grep "%s" | tail -n1 | grep "res=success"' % device_source
+        if 0 != utils.run(cmd).exit_status:
+            logging.error("Audit check failed")
+            check_audit_after_cmd = False
 
     # Check disk count after command.
     check_count_after_cmd = True
