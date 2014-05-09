@@ -906,6 +906,66 @@ def test_part_init(vm, params):
     gf.close_session()
 
 
+def test_part_set_get_bootable(vm, params):
+    """
+    Test command part-set-bootable, part-get-bootable
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    pv_name = params.get("pv_name")
+
+    result = {'1': 'true', 'true': 'true', '0': 'false', 'false': 'false'}
+    partnum = '1'
+    if params['partition_types'] == "physical":
+        for k, v in result.items():
+            gf.part_set_bootable(pv_name, partnum, k)
+            ret = gf.part_get_bootable(pv_name, 1).stdout.strip()
+            if ret != v:
+                gf.close_session()
+                raise error.TestFail("Get the uncorrect status")
+
+    gf.close_session()
+
+
+def test_part_set_get_mbr_id(vm, params):
+    """
+    Test command part-set-mbr-id, part-get-mbr-id
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    pv_name = params.get("pv_name")
+
+    if params['partition_types'] == "physical":
+        result = {'0xB': '0xb', '0x7': '0x7', '100': '0x64'}
+        for i in ['1', '2', '3', '4']:
+            for k, v in result.items():
+                gf.part_set_mbr_id(pv_name, i, k)
+                ret = gf.part_get_mbr_id(pv_name, i).stdout.strip()
+                if ret != v:
+                    gf.close_session()
+                    raise error.TestFail("Get the uncorrect mbr id")
+
+    gf.close_session()
+
+
 def run(test, params, env):
     """
     Test of built-in block_dev related commands in guestfish.
