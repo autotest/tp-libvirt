@@ -118,8 +118,11 @@ def run(test, params, env):
         # Commit id '9976c4b9' only prints the port if non zero.  That change
         # is in libvirt 1.1.3. In order to allow for backwards compatible
         # comparisons - we'll need to check for that
+        # Ouch commit id '31b140eb' has reverted the change - it will first
+        # appear in 1.2.5, so between 1.1.3 and 1.2.4 we have this "bug"
         printZeroPort = True
-        if libvirt_version.version_compare(1, 1, 3):
+        if int(port) == 5900 and libvirt_version.version_compare(1, 1, 3) and \
+                not libvirt_version.version_compare(1, 2, 4):
             printZeroPort = False
 
         # Do judgement for result
