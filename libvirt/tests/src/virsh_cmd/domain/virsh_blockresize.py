@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 import commands
 from autotest.client.shared import error
@@ -23,7 +24,7 @@ def run(test, params, env):
     # Process cartesian parameters
     vm_name = params.get("main_vm", "virt-tests-vm1")
     image_format = params.get("disk_image_format", "qcow2")
-    initial_disk_size = params.get("initial_disk_size", "1M")
+    initial_disk_size = params.get("initial_disk_size", "500K")
     status_error = "yes" == params.get("status_error", "yes")
     resize_value = params.get("resize_value")
     virsh_dargs = {'debug': True}
@@ -68,27 +69,67 @@ def run(test, params, env):
             return
         else:
             if status != 0 or err != "":
-                raise error.TestFail("Run failed with right "
-                                     "virsh blockresize command")
+                # bz 1002813 will result in an error on this
+                err_str = "unable to execute QEMU command 'block_resize': Could not resize: Invalid argument"
+                if resize_value[-2] in "kb" and re.search(err_str, err):
+                    raise error.TestNAError("BZ 1002813 not yet applied")
+                else:
+                    raise error.TestFail("Run failed with right "
+                                         "virsh blockresize command")
 
-        if resize_value[-1] in "bkm":
-            expected_size = 1024*1024
+        # Although kb should not be used, libvirt/virsh will accept it and
+        # consider it as a 1000 bytes, which caused issues for qed & qcow2
+        # since they expect a value evenly divisible by 512 (hence bz 1002813).
+        if "kb" in resize_value:
+            value = int(resize_value[:-2])
+            if image_format in ["qed", "qcow2"]:
+                # qcow2 and qed want a VIR_ROUND_UP value based on 512 byte
+                # sectors - hence this less than visually appealing formula
+                expected_size = (((value * 1000) + 512 - 1) / 512) * 512
+            else:
+                # Raw images...
+                # Ugh - there's some rather ugly looking math when kb
+                # (or mb, gb, tb, etc.) are used as the scale for the
+                # value to create an image. The blockresize for the
+                # running VM uses a qemu json call which differs from
+                # qemu-img would do - resulting in (to say the least)
+                # awkward sizes. We'll just have to make sure we don't
+                # exceed the expected size
+                expected_size = value * 1000
+        elif "kib" in resize_value:
+            value = int(resize_value[:-3])
+            expected_size = value * 1024
+        elif resize_value[-1] in "b":
+            expected_size = int(resize_value[:-1])
+        elif resize_value[-1] in "k":
+            value = int(resize_value[:-1])
+            expected_size = value * 1024
+        elif resize_value[-1] == "m":
+            value = int(resize_value[:-1])
+            expected_size = value * 1024 * 1024
         elif resize_value[-1] == "g":
-            expected_size = 1024*1024*1024
+            value = int(resize_value[:-1])
+            expected_size = value * 1024 * 1024 * 1024
         else:
-            raise error.TestError("Unknown infomation of unit")
+            raise error.TestError("Unknown scale value")
 
         image_info = utils_misc.get_image_info(image_path)
         actual_size = int(image_info['vsize'])
 
-        logging.info("The expected block size is %s bytes,"
+        logging.info("The expected block size is %s bytes, "
                      "the actual block size is %s bytes",
                      expected_size, actual_size)
 
-        if int(actual_size) != int(expected_size):
-            raise error.TestFail("New blocksize set by blockresize is "
-                                 "different from actual size from "
-                                 "'qemu-img info'")
+        # See comment above regarding Raw images
+        if image_format == "raw" and resize_value[-2] in "kb":
+            if int(actual_size) > int(expected_size):
+                raise error.TestFail("New raw blocksize set by blockresize is "
+                                     "larger than the expected value")
+        else:
+            if int(actual_size) != int(expected_size):
+                raise error.TestFail("New blocksize set by blockresize is "
+                                     "different from actual size from "
+                                     "'qemu-img info'")
     finally:
         virsh.detach_disk(vm_name, target="vdd")
 
