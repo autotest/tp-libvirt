@@ -533,6 +533,439 @@ def test_disk_virtual_size(vm, params):
     gf.close_session()
 
 
+def test_scrub_device(vm, params):
+    """
+    Test command scrub-device
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    # create other disk has small size
+    image_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    image_name = params.get("image_name")
+    image_format = params["image_format"]
+    image_size = params["image_size"]
+    params['image_name'] = "scrub_test"
+    params['image_size'] = "1G"
+    image = qemu_storage.QemuImg(params, image_dir, '')
+    image_path, _ = image.create(params)
+
+    gf.add_drive_opts(image_path, readonly=readonly)
+    gf.run()
+
+    pv_name = "/dev/sdb"
+    part_name = "/dev/sdb1"
+
+    gf.part_disk(pv_name, 'msdos')
+    gf.mkfs('ext4', part_name)
+
+    device_info = gf.file(pv_name).stdout.strip()
+    logging.debug(device_info)
+    part_info = gf.file(part_name).stdout.strip()
+    logging.debug(part_info)
+
+    if len(device_info) < 20 and len(part_info) < 20:
+        gf.close_session()
+        raise error.TestFail("Info is not correct")
+
+    # scrub partition, device info should be kept
+    gf.scrub_device(part_name)
+
+    device_info_new = gf.file(pv_name).stdout.strip()
+    logging.debug(device_info_new)
+    if device_info_new != device_info:
+        gf.close_session()
+        raise error.TestFail("Device info should be kept")
+
+    part_info_new = gf.file(part_name).stdout.strip()
+    logging.debug(part_info_new)
+    if part_info_new != "data":
+        gf.close_session()
+        raise error.TestFail("Scrub partition failed")
+
+    # scrub the whole device
+    gf.scrub_device(pv_name)
+
+    device_info_new = gf.file(pv_name).stdout.strip()
+    logging.debug(device_info_new)
+    if device_info_new != 'data':
+        gf.close_session()
+        raise error.TestFail("Scrub device failed")
+
+    gf.close_session()
+    params['image_name'] = image_name
+    params['image_size'] = image_size
+
+
+def test_scrub_file(vm, params):
+    """
+    Test command scrub-file
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    gf.do_mount("/")
+
+    file_path = "/test.log"
+    content = "hello world"
+    gf.write(file_path, content).stdout.strip()
+    ret = gf.cat(file_path).stdout.strip()
+    if ret != content:
+        gf.close_session()
+        raise error.TestFail("File content is not correct")
+
+    gf.scrub_file(file_path)
+    ret = gf.exists(file_path).stdout.strip()
+    if ret != "false":
+        gf.close_session()
+        raise error.TestFail("scrub file failed")
+
+    gf.close_session()
+
+
+def test_scrub_freespace(vm, params):
+    """
+    Test command scrub-device
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    # create other disk has small size
+    image_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    image_name = params.get("image_name")
+    image_format = params["image_format"]
+    image_size = params["image_size"]
+    params['image_name'] = "scrub_test"
+    params['image_size'] = "1G"
+    image = qemu_storage.QemuImg(params, image_dir, '')
+    image_path, _ = image.create(params)
+
+    gf.add_drive_opts(image_path, readonly=readonly)
+    gf.run()
+
+    pv_name = "/dev/sdb"
+    part_name = "/dev/sdb1"
+
+    gf.part_disk(pv_name, 'msdos')
+    gf.mkfs('ext4', part_name)
+    gf.mount(part_name, '/')
+
+    dir_path = '/scrub'
+
+    result = gf.scrub_freespace(dir_path)
+    if result.exit_status:
+        gf.close_session()
+        raise error.TestFail("scrub_freespace failed.")
+
+    result = gf.exists(dir_path).stdout.strip()
+    if result != "false":
+        gf.close_session()
+        raise error.TestFail("folder still exist, scrub_freespace failed.")
+
+    gf.close_session()
+    params['image_name'] = image_name
+    params['image_size'] = image_size
+
+
+def test_md_test(vm, params):
+    """
+    Test command scrub-device
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    image_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    image_name = params.get("image_name")
+    image_format = params["image_format"]
+    image_size = params["image_size"]
+
+    params['image_size'] = "1G"
+    for name in ['md1', 'md2', 'md3']:
+        params['image_name'] = name
+        image = qemu_storage.QemuImg(params, image_dir, '')
+        image_path, _ = image.create(params)
+        gf.add_drive_opts(image_path, readonly=readonly)
+
+    gf.run()
+
+    md = gf.list_md_devices().stdout.strip()
+    if md:
+        # close the existed md device
+        gf.md_stop(md)
+
+    device = "'/dev/sda /dev/sdb /dev/sdc'"
+    gf.md_create("md11", device, missingbitmap="0x4",
+                 chunk=8192, level="raid6")
+    md = gf.list_md_devices().stdout.strip()
+    logging.debug(md)
+    if not md:
+        gf.close_session()
+        raise error.TestFail("Can not find the md device")
+
+    detail = gf.md_detail(md).stdout.strip()
+    logging.debug(detail)
+    if "level: raid6" not in detail or "devname: md11" not in detail:
+        gf.close_session()
+        raise error.TestFail("MD detail info is not correct")
+
+    gf.md_stop(md)
+
+    gf.md_create("md21", device, nrdevices=2, spare=1,
+                 chunk=8192, level="raid4")
+    md = gf.list_md_devices().stdout.strip()
+    logging.debug(md)
+    if not md:
+        gf.close_session()
+        raise error.TestFail("Can not find the md device")
+    stat = gf.md_stat(md).stdout.strip()
+    logging.debug(stat)
+    for i in re.findall("\w+", device):
+        if i not in stat:
+            gf.close_session()
+            raise error.TestFail("MD stat is not correct")
+    if "mdstat_flags: S" not in stat:
+            gf.close_session()
+            raise error.TestFail("There should be a S flag for spare disk")
+
+    gf.close_session()
+
+    params["image_name"] = image_name
+    params["image_size"] = image_size
+
+
+def test_part_add(vm, params):
+    """
+    Test command part-add
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    image_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    image_name = params.get("image_name")
+    image_size = params["image_size"]
+
+    params['image_size'] = "1G"
+    params['image_name'] = "disk"
+    image = qemu_storage.QemuImg(params, image_dir, '')
+    image_path, _ = image.create(params)
+    gf.add_drive_opts(image_path, readonly=readonly)
+
+    gf.run()
+
+    # operate to the second disk
+    partname = '/dev/sdb'
+    gf.part_init(partname, 'msdos')
+    gf.part_add(partname, 'p', 2, 100000)
+    gf.part_add(partname, 'p', 100001, 200000)
+    gf.part_add(partname, 'e', 200001, 300000)
+    gf.part_add(partname, 'l', 240000, 280000)
+    result = gf.part_list(partname).stdout.strip()
+
+    partnum = result.count("part_num")
+    if partnum != 4:
+        gf.close_session()
+        raise error.TestFail("partnum is %s, expect is 4" % partnum)
+
+    params["image_name"] = image_name
+    params["image_size"] = image_size
+
+
+def test_part_del(vm, params):
+    """
+    Test command part-del
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    image_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    image_name = params.get("image_name")
+    image_size = params["image_size"]
+
+    params['image_size'] = "1G"
+    params['image_name'] = "disk"
+    image = qemu_storage.QemuImg(params, image_dir, '')
+    image_path, _ = image.create(params)
+    gf.add_drive_opts(image_path, readonly=readonly)
+
+    gf.run()
+
+    # operate to the second disk
+    partname = '/dev/sdb'
+    gf.part_init(partname, 'msdos')
+    gf.part_add(partname, 'p', 2, 100000)
+    gf.part_add(partname, 'p', 100001, 200000)
+    result = gf.part_list(partname).stdout.strip()
+
+    partnum = result.count("part_num")
+    if partnum != 2:
+        gf.close_session()
+        raise error.TestFail("partnum is %s, expect is 2" % partnum)
+
+    gf.part_del(partname, 2)
+    result = gf.part_list(partname).stdout.strip()
+
+    partnum = result.count("part_num")
+    if partnum != 1:
+        gf.close_session()
+        raise error.TestFail("partnum is %s, expect is 1" % partnum)
+
+    params["image_name"] = image_name
+    params["image_size"] = image_size
+    gf.close_session()
+
+
+def test_part_init(vm, params):
+    """
+    Test command part-init
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    image_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    image_name = params.get("image_name")
+    image_size = params["image_size"]
+
+    params['image_size'] = "1G"
+    params['image_name'] = "disk"
+    image = qemu_storage.QemuImg(params, image_dir, '')
+    image_path, _ = image.create(params)
+    gf.add_drive_opts(image_path, readonly=readonly)
+
+    gf.run()
+
+    # operate to the second disk
+    partname = '/dev/sdb'
+    for i in ['mbr', 'msdos', 'gpt', 'efi']:
+        gf.part_init(partname, i)
+        gf.part_add(partname, 'p', 100, 100000)
+        gf.part_add(partname, 'p', 100001, 200000)
+        result = gf.part_list(partname).stdout.strip()
+
+        partnum = result.count("part_num")
+        if partnum != 2:
+            gf.close_session()
+            raise error.TestFail("partnum is %s, expect is 2" % partnum)
+
+    params["image_name"] = image_name
+    params["image_size"] = image_size
+    gf.close_session()
+
+
+def test_part_set_get_bootable(vm, params):
+    """
+    Test command part-set-bootable, part-get-bootable
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    pv_name = params.get("pv_name")
+
+    result = {'1': 'true', 'true': 'true', '0': 'false', 'false': 'false'}
+    partnum = '1'
+    if params['partition_types'] == "physical":
+        for k, v in result.items():
+            gf.part_set_bootable(pv_name, partnum, k)
+            ret = gf.part_get_bootable(pv_name, 1).stdout.strip()
+            if ret != v:
+                gf.close_session()
+                raise error.TestFail("Get the uncorrect status")
+
+    gf.close_session()
+
+
+def test_part_set_get_mbr_id(vm, params):
+    """
+    Test command part-set-mbr-id, part-get-mbr-id
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    pv_name = params.get("pv_name")
+
+    if params['partition_types'] == "physical":
+        result = {'0xB': '0xb', '0x7': '0x7', '100': '0x64'}
+        for i in ['1', '2', '3', '4']:
+            for k, v in result.items():
+                gf.part_set_mbr_id(pv_name, i, k)
+                ret = gf.part_get_mbr_id(pv_name, i).stdout.strip()
+                if ret != v:
+                    gf.close_session()
+                    raise error.TestFail("Get the uncorrect mbr id")
+
+    gf.close_session()
+
+
 def run(test, params, env):
     """
     Test of built-in block_dev related commands in guestfish.
