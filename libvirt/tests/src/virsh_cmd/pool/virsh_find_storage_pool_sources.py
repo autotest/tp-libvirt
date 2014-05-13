@@ -56,14 +56,16 @@ def run(test, params, env):
                 cleanup_logical = True
 
     # Prepare srcSpec xml
-    if not srcSpec or srcSpec == "INVALID.XML":
-        srcSpec = xml_utils.TempXMLFile()
+    if srcSpec:
         if srcSpec == "INVALID.XML":
             src_xml = "<invalid><host name='#@!'/><?source>"
         else:
-            src_xml = "<source><host name='%s'/></source>" % source_host
-        srcSpec.write(src_xml)
-        srcSpec.flush()
+            src_xml = srcSpec
+    else:
+        src_xml = "<source><host name='%s'/></source>" % source_host
+    srcSpec = xml_utils.TempXMLFile()
+    srcSpec.write(src_xml)
+    srcSpec.flush()
     logging.debug("srcSpec file content:\n%s", file(srcSpec.name).read())
 
     if ro_flag:
