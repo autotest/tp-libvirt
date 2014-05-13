@@ -1,9 +1,13 @@
 import os
 import tempfile
 import commands
+import logging
+from autotest.client import utils
 from autotest.client.shared import error
 from virttest import virsh, data_dir
 from virttest.libvirt_xml.secret_xml import SecretXML
+from provider import libvirt_version
+
 
 SECRET_DIR = "/etc/libvirt/secrets/"
 SECRET_BASE64 = "c2VjcmV0X3Rlc3QK"
@@ -19,7 +23,6 @@ def run(test, params, env):
 
     # MAIN TEST CODE ###
     # Process cartesian parameters
-    status_error = ("yes" == params.get("status_error", "no"))
     secret_ref = params.get("secret_ref")
     ephemeral = params.get("ephemeral_value", "no")
     private = params.get("private_value", "no")
@@ -36,6 +39,28 @@ def run(test, params, env):
     elif secret_ref == "secret_invalid_uuid":
         uuid = params.get(secret_ref)
 
+    # libvirt acl related params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    define_acl = "yes" == params.get("define_acl", "no")
+    undefine_acl = "yes" == params.get("undefine_acl", "no")
+    get_value_acl = "yes" == params.get("get_value_acl", "no")
+    define_error = "yes" == params.get("define_error", "no")
+    undefine_error = "yes" == params.get("undefine_error", "no")
+    get_value_error = "yes" == params.get("get_value_error", "no")
+
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
+    acl_dargs = {'uri': uri, 'unprivileged_user': unprivileged_user,
+                 'debug': True}
+
     # Get a full path of tmpfile, the tmpfile need not exist
     tmp_dir = data_dir.get_tmp_dir()
     volume_path = os.path.join(tmp_dir, "secret_volume")
@@ -45,22 +70,36 @@ def run(test, params, env):
     secret_xml_obj.volume = volume_path
     secret_xml_obj.usage = "volume"
 
+    secret_obj_xmlfile = os.path.join(SECRET_DIR, uuid + ".xml")
+
+    def check_exit_status(result, expect_error=False):
+        """
+        Check the exit status of virsh commands.
+
+        :param result: Virsh command result object
+        :param expect_error: Boolean value, expect command success or fail
+        """
+        if expect_error:
+            if result.exit_status == 0:
+                raise error.TestFail("Expect fail, but run successfully.")
+            else:
+                logging.debug("Command failed as expected.")
+        else:
+            if result.exit_status != 0:
+                raise error.TestFail(result.stderr)
+
     # Run the test
     try:
-        cmd_result = virsh.secret_define(secret_xml_obj.xml, debug=True)
-        secret_define_status = cmd_result.exit_status
-
-        # Check status_error
-        if status_error and secret_define_status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
-        elif not status_error and secret_define_status != 0:
-            raise error.TestFail("Run failed with right command")
-
-        if secret_define_status != 0:
+        if define_acl:
+            utils.run("chmod 666 %s" % secret_xml_obj.xml)
+            cmd_result = virsh.secret_define(secret_xml_obj.xml, **acl_dargs)
+        else:
+            cmd_result = virsh.secret_define(secret_xml_obj.xml, debug=True)
+        check_exit_status(cmd_result, define_error)
+        if cmd_result.exit_status:
             return
 
         # Check ephemeral attribute
-        secret_obj_xmlfile = os.path.join(SECRET_DIR, uuid + ".xml")
         exist = os.path.exists(secret_obj_xmlfile)
         if (ephemeral == "yes" and exist) or \
            (ephemeral == "no" and not exist):
@@ -68,11 +107,18 @@ def run(test, params, env):
 
         # Check private attrbute
         virsh.secret_set_value(uuid, SECRET_BASE64, debug=True)
-        cmd_result = virsh.secret_get_value(uuid, debug=True)
+        if get_value_acl:
+            cmd_result = virsh.secret_get_value(uuid, **acl_dargs)
+        else:
+            cmd_result = virsh.secret_get_value(uuid, debug=True)
+        check_exit_status(cmd_result, get_value_error)
         status = cmd_result.exit_status
-        if (private == "yes" and status == 0) or \
-           (private == "no" and status != 0):
-            raise error.TestFail("The private attribute worked not expected")
+        err_msg = "The private attribute worked not expected"
+        if private == "yes" and not status:
+            raise error.TestFail(err_msg)
+        if private == "no" and status:
+            if not get_value_error:
+                raise error.TestFail(err_msg)
 
         if modify_volume:
             volume_path = os.path.join(tmp_dir, "secret_volume_modify")
@@ -90,9 +136,15 @@ def run(test, params, env):
                 raise error.TestFail("Expect fail on redefine after remove "
                                      "uuid, but success indeed")
 
+        if undefine_acl:
+            cmd_result = virsh.secret_undefine(uuid, **acl_dargs)
+        else:
+            cmd_result = virsh.secret_undefine(uuid, debug=True)
+            check_exit_status(cmd_result, undefine_error)
     finally:
         # cleanup
-        if secret_define_status == 0:
-            cmd_result = virsh.secret_undefine(uuid, debug=True)
-            if cmd_result.exit_status != 0:
-                raise error.TestFail("Failed to undefine secret object")
+        virsh.secret_undefine(uuid, ignore_status=True)
+        if os.path.exists(volume_path):
+            os.unlink(volume_path)
+        if os.path.exists(secret_obj_xmlfile):
+            os.unlink(secret_obj_xmlfile)
