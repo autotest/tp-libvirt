@@ -17,7 +17,7 @@ def remote_test(remote_ip, local_ip, remote_pwd, remote_prompt, vm_name):
                                       "root", remote_pwd, remote_prompt)
         session.cmd_output('LANG=C')
         command = "virsh -c %s setvcpus %s 1 --live" % (remote_uri, vm_name)
-        if virsh.has_command_help_match(command, "--live") is None:
+        if virsh.has_command_help_match("setvcpus", "--live") is None:
             status_error = "yes"
         status, output = session.cmd_status_output(command, internal_timeout=5)
         session.close()
