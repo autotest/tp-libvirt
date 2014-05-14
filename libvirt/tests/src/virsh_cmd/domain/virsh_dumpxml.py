@@ -37,10 +37,14 @@ def run(test, params, env):
     options_ref = params.get("dumpxml_options_ref", "")
     options_suffix = params.get("dumpxml_options_suffix", "")
     vm_state = params.get("dumpxml_vm_state", "running")
+    security_pwd = params.get("dumpxml_security_pwd", "123456")
     status_error = params.get("status_error", "no")
     backup_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     if options_ref.count("update-cpu"):
         VMXML.set_cpu_mode(vm_name)
+    elif options_ref.count("security-info"):
+        new_xml = backup_xml.copy()
+        VMXML.add_security_info(new_xml, security_pwd)
     domuuid = vm.get_uuid()
     domid = vm.get_id()
 
@@ -99,6 +103,9 @@ def run(test, params, env):
                                              "with --inactive option!")
                 elif options_ref.count("update-cpu"):
                     if not output.count("vendor"):
+                        raise error.TestFail("No more cpu info outputed!")
+                elif options_ref.count("security-info"):
+                    if not output.count("passwd='%s'" % security_pwd):
                         raise error.TestFail("No more cpu info outputed!")
                 else:
                     if (vm_state == "shutoff"
