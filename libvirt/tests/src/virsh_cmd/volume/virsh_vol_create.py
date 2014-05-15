@@ -3,6 +3,7 @@ import logging
 from virttest import virsh, libvirt_storage, libvirt_xml
 from virttest.utils_test import libvirt as utlv
 from autotest.client.shared import error
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -53,6 +54,11 @@ def run(test, params, env):
         raise error.TestNAError("pool type %s not in supported type list: %s" %
                                 (src_pool_type, pool_type))
 
+    if not libvirt_version.version_compare(1, 0, 0):
+        if "--prealloc-metadata" in extra_option:
+            raise error.TestNAError("metadata preallocation not supported in"
+                                    + " current libvirt version.")
+
     try:
         # Create the src pool
         src_pool_name = "virt-%s-pool" % src_pool_type
@@ -96,13 +102,17 @@ def run(test, params, env):
             else:
                 # Skip the format not supported by qemu-img error
                 if vol_format:
-                    fmt_err = "qemu-img: Unknown file format '%s'" % vol_format
-                    fmt_err1 = "qemu-img: Formatting or formatting option " +\
-                               "not supported for file format '%s'" % vol_format
-                    if fmt_err in cmd_result.stderr or \
-                       fmt_err1 in cmd_result.stderr:
-                        raise error.TestNAError("Volume format %s is not " %
-                                                vol_format + "supported.")
+                    fmt_err = "Unknown file format '%s'" % vol_format
+                    fmt_err1 = "Formatting or formatting option not "
+                    fmt_err1 += "supported for file format '%s'" % vol_format
+                    fmt_err2 = "Driver '%s' does not support " % vol_format
+                    fmt_err2 += "image creation"
+                    if "qemu-img" in cmd_result.stderr:
+                        er = cmd_result.stderr
+                        if fmt_err in er or fmt_err1 in er or fmt_err2 in er:
+                            err_msg = "Volume format '%s' is not" % vol_format
+                            err_msg += " supported by qemu-img."
+                            raise error.TestNAError(err_msg)
                     else:
                         raise error.TestFail("Run failed with right command.")
                 else:
