@@ -805,6 +805,8 @@ def test_part_add(vm, params):
         gf.close_session()
         raise error.TestFail("partnum is %s, expect is 4" % partnum)
 
+    gf.close_session()
+
     params["image_name"] = image_name
     params["image_size"] = image_size
 
@@ -962,6 +964,107 @@ def test_part_set_get_mbr_id(vm, params):
                 if ret != v:
                     gf.close_session()
                     raise error.TestFail("Get the uncorrect mbr id")
+
+    gf.close_session()
+
+
+def test_part_disk(vm, params):
+    """
+    Test command part-disk
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    pv_name = params.get("pv_name")
+    gf.run()
+
+    for ptype in ['msdos', 'gpt']:
+        gf.part_disk(pv_name, ptype)
+        result = gf.part_list(pv_name).stdout.strip()
+        num = re.findall(r'part_num: (\d)', result)
+
+        if int(num[0]) != 1:
+            gf.close_session()
+            raise error.TestFail("partnum is %s, expect is 1" % num)
+
+        result = gf.part_get_parttype(pv_name).stdout.strip()
+
+        if result != ptype:
+            gf.close_session()
+            raise error.TestFail("partition type is %s, expect is %s" %
+                                 (result, ptype))
+
+    gf.close_session()
+
+
+def test_part_to_dev(vm, params):
+    """
+    Test command part-to-dev
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    pv_name = params.get("pv_name")
+    gf.run()
+
+    for ptype in ['mbr', 'msdos', 'gpt', 'efi']:
+        gf.part_disk(pv_name, ptype)
+        partname = gf.list_partitions().stdout.strip()
+        devname = gf.part_to_dev(partname).stdout.strip()
+
+        if devname != pv_name:
+            gf.close_session()
+            raise error.TestFail("device name is %s, expect is %s" %
+                                 (devname, pv_name))
+
+    gf.close_session()
+
+
+def test_part_to_partnum(vm, params):
+    """
+    Test command part-to-partnum
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    pv_name = params.get("pv_name")
+    gf.run()
+
+    if params["partition_type"] == "physical":
+        for ptype in ['mbr', 'msdos', 'gpt', 'efi']:
+            gf.part_disk(pv_name, ptype)
+            partname = gf.list_partitions().stdout.strip()
+            num = partname[-1]
+            devnum = gf.part_to_partnum(partname).stdout.strip()
+
+            if devnum != num:
+                gf.close_session()
+                raise error.TestFail("device num is %s, expect is %s" %
+                                     (devnum, num))
 
     gf.close_session()
 
