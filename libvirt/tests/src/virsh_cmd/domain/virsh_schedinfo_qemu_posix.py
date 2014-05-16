@@ -149,7 +149,7 @@ def run(test, params, env):
         else:
             vm_ref = hex(int(domid))
 
-    options_ref += options_suffix
+    options_ref += " %s " % options_suffix
 
     # Run command
     result = virsh.schedinfo(vm_ref, options_ref,
@@ -159,6 +159,11 @@ def run(test, params, env):
     # VM must be running to get cgroup parameters.
     if not vm.is_alive():
         vm.start()
+
+    if options_ref.count("config"):
+        vm.destroy()
+        vm.start()
+
     set_value_of_cgroup = get_parameter_in_cgroup(vm, cgroup_type=schedinfo_param,
                                                   parameter=cgroup_ref)
     vm.destroy()
@@ -182,8 +187,12 @@ def run(test, params, env):
                 if set_value_of_output is None:
                     raise error.TestFail("Get parameter %s failed." % set_ref)
                 if not (set_value_expected == set_value_of_output):
-                    raise error.TestFail("Run successful but value "
-                                         "in output is not expected.")
+                    if (options_ref.count("config")):
+                        raise error.TestFail("Known bug: value in output "
+                                             "is not expected with --config.")
+                    else:
+                        raise error.TestFail("Run successful but value "
+                                             "in output is not expected.")
                 if not (set_value_expected == set_value_of_cgroup):
                     raise error.TestFail("Run successful but value "
                                          "in cgroup is not expected.")
