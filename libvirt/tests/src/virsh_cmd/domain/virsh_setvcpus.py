@@ -6,12 +6,14 @@ from virttest import remote, virsh, libvirt_xml, libvirt_vm
 from xml.dom.minidom import parse
 
 
-def remote_test(remote_ip, local_ip, remote_pwd, remote_prompt, vm_name):
+def remote_test(remote_ip, local_ip, remote_pwd, remote_prompt,
+                vm_name, status_error_test):
     """
     Test remote case
     """
     err = ""
     try:
+        status_error = status_error_test
         remote_uri = libvirt_vm.complete_uri(local_ip)
         session = remote.remote_login("ssh", remote_ip, "22",
                                       "root", remote_pwd, remote_prompt)
@@ -25,7 +27,6 @@ def remote_test(remote_ip, local_ip, remote_pwd, remote_prompt, vm_name):
             err = output
     except error.CmdError:
         status = 1
-        status_error = "yes"
         err = "remote test failed"
     return status, status_error, err
 
@@ -170,7 +171,8 @@ def run(test, params, env):
                                                 local_ip,
                                                 remote_pwd,
                                                 remote_prompt,
-                                                vm_name)
+                                                vm_name,
+                                                status_error)
         else:
             if vm_ref == "name":
                 dom_option = vm_name
