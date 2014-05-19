@@ -46,7 +46,7 @@ def run(test, params, env):
             if target_device == "hdc":
                 mount_cmd = "mount /dev/sr0 /media"
             else:
-                if not os.path.exists("/dev/fd0"):
+                if session.cmd_status("ls /dev/fd0"):
                     session.cmd("mknod /dev/fd0 b 2 0")
                 mount_cmd = "mount /dev/fd0 /media"
             session.cmd(mount_cmd)
@@ -59,7 +59,7 @@ def run(test, params, env):
                 if session.cmd_status("mount /dev/sr0 /media -o loop") == 32:
                     logging.info("Eject succeeded")
             else:
-                if not os.path.exists("/dev/fd0"):
+                if session.cmd_status("ls /dev/fd0"):
                     session.cmd("mknod /dev/fd0 b 2 0")
                 if session.cmd_status("mount /dev/fd0 /media -o loop") == 32:
                     logging.info("Eject succeeded")
