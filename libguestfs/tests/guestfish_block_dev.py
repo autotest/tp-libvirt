@@ -1190,6 +1190,62 @@ def test_sfdisk_N(vm, params):
     gf.close_session()
 
 
+def test_sfdisk_disk_geometry(vm, params):
+    """
+    Test command sfdisk-disk-geometry
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    pv_name = params.get("pv_name")
+    gf.run()
+
+    gf.part_init(pv_name, 'msdos')
+    result = gf.sfdisk_disk_geometry(pv_name).stdout.strip()
+
+    if not result:
+            gf.close_session()
+            raise error.TestFail("result should not be empty")
+
+    gf.close_session()
+
+
+def test_sfdisk_kernel_geometry(vm, params):
+    """
+    Test command sfdisk-kernel-geometry
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    pv_name = params.get("pv_name")
+    gf.run()
+
+    gf.part_init(pv_name, 'msdos')
+    result = gf.sfdisk_kernel_geometry(pv_name).stdout.strip()
+
+    if not result:
+            gf.close_session()
+            raise error.TestFail("result should not be empty")
+
+    gf.close_session()
+
+
 def run(test, params, env):
     """
     Test of built-in block_dev related commands in guestfish.
