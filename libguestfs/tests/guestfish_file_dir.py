@@ -553,7 +553,7 @@ def test_cat(vm, params):
     gf_result = gf.cat('/file_ops/file_ascii').stdout.strip()
     logging.debug(gf_result)
     run_result = utils.run("tar xOf %s file_ops/file_ascii" % params.get("tarball_path"),
-                             ignore_status=True).stdout.strip()
+                           ignore_status=True).stdout.strip()
     logging.debug(run_result)
     if gf_result != run_result:
         gf.close_session()
@@ -580,17 +580,17 @@ def test_checksum(vm, params):
     mount_point = params.get("mount_point")
     gf.mount(mount_point, '/')
     checksum_map = {"crc": "cksum",
-                   "md5": "md5sum",
-                   "sha1": "sha1sum",
-                   "sha224": 'sha224sum',
-                   "sha256": 'sha256sum',
-                   "sha384": 'sha384sum',
-                   "sha512": 'sha512sum'}
+                    "md5": "md5sum",
+                    "sha1": "sha1sum",
+                    "sha224": 'sha224sum',
+                    "sha256": 'sha256sum',
+                    "sha384": 'sha384sum',
+                    "sha512": 'sha512sum'}
 
     for k, v in checksum_map.items():
         gf_result = gf.checksum(k, '/file_ops/file_ascii').stdout.strip()
         run_result = utils.run("tar xOf %s file_ops/file_ascii | %s" % (params.get("tarball_path"), v),
-                                 ignore_status=True).stdout.split()[0]
+                               ignore_status=True).stdout.split()[0]
         if gf_result != run_result:
             gf.close_session()
             raise error.TestFail("checksum failed.")
@@ -598,7 +598,7 @@ def test_checksum(vm, params):
     for k, v in checksum_map.items():
         gf_result = gf.checksum(k, '/file_ops/file_elf').stdout.strip()
         run_result = utils.run("tar xOf %s file_ops/file_elf | %s" % (params.get("tarball_path"), v),
-                                 ignore_status=True).stdout.split()[0]
+                               ignore_status=True).stdout.split()[0]
         if gf_result != run_result:
             gf.close_session()
             raise error.TestFail("checksum failed.")
@@ -628,18 +628,18 @@ def test_checksum_device(vm, params):
         gf.add_domain(vm_name, readonly=readonly)
     gf.run()
     checksum_map = {"crc": "cksum",
-                   "md5": "md5sum",
-                   "sha1": "sha1sum",
-                   "sha224": 'sha224sum',
-                   "sha256": 'sha256sum',
-                   "sha384": 'sha384sum',
-                   "sha512": 'sha512sum'}
+                    "md5": "md5sum",
+                    "sha1": "sha1sum",
+                    "sha224": 'sha224sum',
+                    "sha256": 'sha256sum',
+                    "sha384": 'sha384sum',
+                    "sha512": 'sha512sum'}
 
     for k, v in checksum_map.items():
         gf_result = gf.checksum_device(k, '/dev/sda').stdout.strip()
         logging.debug(gf_result.split('\n')[-1])
         run_result = utils.run("%s %s" % (v, params.get("image_path")),
-                                 ignore_status=True).stdout.split()[0]
+                               ignore_status=True).stdout.split()[0]
         logging.debug(run_result)
         if gf_result.split('\n')[-1] != run_result and params.get("image_format") == 'raw':
             gf.close_session()
@@ -672,12 +672,12 @@ def test_checksums_out(vm, params):
     mount_point = params.get("mount_point")
     gf.mount(mount_point, '/')
     checksum_map = {"crc": "cksum",
-                   "md5": "md5sum",
-                   "sha1": "sha1sum",
-                   "sha224": 'sha224sum',
-                   "sha256": 'sha256sum',
-                   "sha384": 'sha384sum',
-                   "sha512": 'sha512sum'}
+                    "md5": "md5sum",
+                    "sha1": "sha1sum",
+                    "sha224": 'sha224sum',
+                    "sha256": 'sha256sum',
+                    "sha384": 'sha384sum',
+                    "sha512": 'sha512sum'}
 
     gf.rm_rf('/test/')
     gf.mkdir('/test')
@@ -695,7 +695,7 @@ def test_checksums_out(vm, params):
             run_result[5] = os.path.basename(run_result[5])
             guest_res = dict(zip(run_result[2::3], run_result[0::3]))
             run_result = utils.run("%s /tmp/file_elf /tmp/file_ascii" % v,
-                                     ignore_status=True).stdout.split()
+                                   ignore_status=True).stdout.split()
             run_result[2] = os.path.basename(run_result[2])
             run_result[5] = os.path.basename(run_result[5])
             host_res = dict(zip(run_result[2::3], run_result[0::3]))
@@ -704,11 +704,11 @@ def test_checksums_out(vm, params):
             run_result[3] = os.path.basename(run_result[3])
             guest_res = dict(zip(run_result[1::2], run_result[0::2]))
             run_result = utils.run("%s /tmp/file_elf /tmp/file_ascii" % v,
-                                     ignore_status=True).stdout.split()
+                                   ignore_status=True).stdout.split()
             run_result[1] = os.path.basename(run_result[1])
             run_result[3] = os.path.basename(run_result[3])
             host_res = dict(zip(run_result[1::2], run_result[0::2]))
-        if cmp (guest_res, host_res) != 0:
+        if cmp(guest_res, host_res) != 0:
             gf.close_session()
             raise error.TestFail("checksum failed.")
 
