@@ -2,13 +2,12 @@ import re
 import logging
 from autotest.client.shared import error
 from virttest import virsh
+from virttest.libvirt_xml.vm_xml import VMXML
 
 
 def run(test, params, env):
     """
     Test command: virsh dumpxml.
-    This version contains a common option(--inactive) only.
-    TODO: to support some options like --security-info, --update-cpu
 
     1) Prepare parameters.
     2) Set options of virsh dumpxml.
@@ -38,7 +37,14 @@ def run(test, params, env):
     options_ref = params.get("dumpxml_options_ref", "")
     options_suffix = params.get("dumpxml_options_suffix", "")
     vm_state = params.get("dumpxml_vm_state", "running")
+    security_pwd = params.get("dumpxml_security_pwd", "123456")
     status_error = params.get("status_error", "no")
+    backup_xml = VMXML.new_from_inactive_dumpxml(vm_name)
+    if options_ref.count("update-cpu"):
+        VMXML.set_cpu_mode(vm_name)
+    elif options_ref.count("security-info"):
+        new_xml = backup_xml.copy()
+        VMXML.add_security_info(new_xml, security_pwd)
     domuuid = vm.get_uuid()
     domid = vm.get_id()
 
@@ -64,38 +70,47 @@ def run(test, params, env):
     # Run command
     logging.info("Command:virsh dumpxml %s", vm_ref)
     try:
-        cmd_result = virsh.dumpxml(vm_ref, extra=options_ref)
-        output = cmd_result.stdout.strip()
-        if cmd_result.exit_status:
-            raise error.TestFail("dumpxml %s failed.\n"
-                                 "Detail: %s.\n" % (vm_ref, cmd_result))
-        status = 0
-    except error.TestFail, detail:
-        status = 1
-        output = detail
-    logging.debug("virsh dumpxml result:\n%s", output)
+        try:
+            cmd_result = virsh.dumpxml(vm_ref, extra=options_ref)
+            output = cmd_result.stdout.strip()
+            if cmd_result.exit_status:
+                raise error.TestFail("dumpxml %s failed.\n"
+                                     "Detail: %s.\n" % (vm_ref, cmd_result))
+            status = 0
+        except error.TestFail, detail:
+            status = 1
+            output = detail
+        logging.debug("virsh dumpxml result:\n%s", output)
 
-    # Recover vm state
-    if vm_state == "paused":
-        vm.resume()
+        # Recover vm state
+        if vm_state == "paused":
+            vm.resume()
 
-    # Check result
-    if status_error == "yes":
-        if status == 0:
-            raise error.TestFail("Run successfully with wrong command.")
-    elif status_error == "no":
-        if status:
-            raise error.TestFail("Run failed with right command.")
-        else:
-            # validate dumpxml file
-            # Since validate LibvirtXML functions are been working by cevich,
-            # reserving it here. :)
-            if options_ref == "--inactive":
-                if is_dumpxml_of_running_vm(output, domid):
-                    raise error.TestFail("Got dumpxml for active vm "
-                                         "with --inactive option!")
+        # Check result
+        if status_error == "yes":
+            if status == 0:
+                raise error.TestFail("Run successfully with wrong command.")
+        elif status_error == "no":
+            if status:
+                raise error.TestFail("Run failed with right command.")
             else:
-                if (vm_state == "shutoff"
-                        and is_dumpxml_of_running_vm(output, domid)):
-                    raise error.TestFail("Got dumpxml for active vm "
-                                         "when vm is shutoff.")
+                # validate dumpxml file
+                # Since validate LibvirtXML functions are been working by
+                # cevich, reserving it here. :)
+                if options_ref.count("inactive"):
+                    if is_dumpxml_of_running_vm(output, domid):
+                        raise error.TestFail("Got dumpxml for active vm "
+                                             "with --inactive option!")
+                elif options_ref.count("update-cpu"):
+                    if not output.count("vendor"):
+                        raise error.TestFail("No more cpu info outputed!")
+                elif options_ref.count("security-info"):
+                    if not output.count("passwd='%s'" % security_pwd):
+                        raise error.TestFail("No more cpu info outputed!")
+                else:
+                    if (vm_state == "shutoff"
+                            and is_dumpxml_of_running_vm(output, domid)):
+                        raise error.TestFail("Got dumpxml for active vm "
+                                             "when vm is shutoff.")
+    finally:
+        backup_xml.sync()
