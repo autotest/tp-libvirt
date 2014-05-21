@@ -26,9 +26,11 @@ def run(test, params, env):
     (6) Dumpxml for the interface
     (7) Get interface MAC address by interface name
     (8) Get interface name by interface MAC address
-    (9) Delete interface if not use the exist interface for testing
-        9.1 Destroy the interface
-        9.2 Undefine the interface
+    (9) Bridge interface to a bridge
+    (10) Unbridge the bridge
+    (11) Delete interface if not use the exist interface for testing
+        11.1 Destroy the interface
+        11.2 Undefine the interface
 
     Caveat, this test may affect the host network, so using the loopback(lo)
     device by default. You can specify the interface which you want, but be
@@ -37,12 +39,15 @@ def run(test, params, env):
 
     iface_name = params.get("iface_name")
     iface_xml = params.get("iface_xml")
-    ping_ip = params.get("ping_ip", "localhost")
+    bridge_name = params.get("bridge_name")
     use_exist_iface = "yes" == params.get("use_exist_iface", "no")
     status_error = "yes" == params.get("status_error", "no")
     iface_script = NETWORK_SCRIPT + iface_name
     iface_script_bk = os.path.join(test.tmpdir, "iface-%s.bk" % iface_name)
     net_iface = utils_net.Interface(name=iface_name)
+    net_bridge = utils_net.Bridge()
+    if bridge_name in net_bridge.list_br():
+        raise error.TestNAError("Bridge '%s' already exists!" % bridge_name)
     iface_is_up = True
     list_option = "--all"
     if use_exist_iface:
@@ -110,6 +115,7 @@ def run(test, params, env):
         # Start interface
         result = virsh.iface_start(iface_name, debug=True)
         libvirt.check_exit_status(result, status_error)
+        ping_ip = net_iface.get_ip()
         if not status_error:
             if not libvirt.check_iface(iface_name, "ping", ping_ip):
                 raise error.TestFail("Ping %s fail." % ping_ip)
@@ -119,7 +125,7 @@ def run(test, params, env):
         list_option = ""
         if not status_error:
             if not libvirt.check_iface(iface_name, "exists", list_option):
-                raise error.TestFail("Fail to find %s in active interface list."
+                raise error.TestFail("Fail to find %s in active interface list"
                                      % iface_name)
 
         # Step 6
@@ -132,7 +138,8 @@ def run(test, params, env):
         result = virsh.iface_mac(iface_name, debug=True)
         libvirt.check_exit_status(result, status_error)
         if not status_error:
-            if not libvirt.check_iface(iface_name, "mac", result.stdout.strip()):
+            if not libvirt.check_iface(iface_name, "mac",
+                                       result.stdout.strip()):
                 raise error.TestFail("Mac address check fail")
 
         # Step 8
@@ -142,13 +149,31 @@ def run(test, params, env):
         libvirt.check_exit_status(result, status_error)
 
         # Step 9
+        # Bridge interface to a bridge
+        result = virsh.iface_bridge(iface_name, bridge_name,
+                                    "--no-stp --delay 0")
+        libvirt.check_exit_status(result, status_error)
+
+        # Check if interface has been bridged to bridge
+        bridge_ifaces = net_bridge.get_structure()[bridge_name]
+        if iface_name not in bridge_ifaces:
+            if not status_error:
+                raise error.TestFail("Fail to find %s bridged to %s."
+                                     % (iface_name, bridge_name))
+
+        # Step 10
+        # Unbridge interface, this step will start interface
+        result = virsh.iface_unbridge(bridge_name)
+        libvirt.check_exit_status(result, status_error)
+
+        # Step 11
         if not use_exist_iface:
-            # Step 9.1
+            # Step 11.1
             # Destroy interface
             result = virsh.iface_destroy(iface_name, debug=True)
             libvirt.check_exit_status(result, status_error)
 
-            # Step 9.2
+            # Step 11.2
             # Undefine interface
             result = virsh.iface_undefine(iface_name, debug=True)
             libvirt.check_exit_status(result, status_error)
@@ -157,15 +182,20 @@ def run(test, params, env):
                 if libvirt.check_iface(iface_name, "exists", list_option):
                     raise error.TestFail("%s is still present." % iface_name)
     finally:
+        if bridge_name in net_bridge.list_br():
+            virsh.iface_unbridge(bridge_name)
         if use_exist_iface:
             if os.path.exists(iface_xml):
                 os.remove(iface_xml)
             if not os.path.exists(iface_script):
                 utils.run("mv %s %s" % (iface_script_bk, iface_script))
-            if iface_is_up:
+            if iface_is_up and\
+               not libvirt.check_iface(iface_name, "exists", ""):
                 # Need reload script
                 utils.run("ifup %s" % iface_name)
-            else:
+            elif not iface_is_up and not libvirt.check_iface(iface_name,
+                                                             "exists",
+                                                             "--inactive"):
                 net_iface.down()
         else:
             if libvirt.check_iface(iface_name, "exists", "--all"):
