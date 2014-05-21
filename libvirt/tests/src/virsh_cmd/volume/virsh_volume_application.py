@@ -36,9 +36,9 @@ def run(test, params, env):
     pool_target = params.get("pool_target")
     emulated_img = params.get("emulated_img", "emulated_img")
     volume_count = int(params.get("volume_count", 1))
-    volume_size = params.get("volume_size", "4G")
+    volume_size = params.get("volume_size", "1G")
     emulated_size = "%sG" % (volume_count * int(volume_size[:-1]) + 1)
-    application =  params.get("application", "install")
+    application = params.get("application", "install")
     disk_target = params.get("disk_target", "vdb")
     test_message = params.get("test_message", "")
     vm_name = params.get("main_vm", "virt-tests-vm1")
@@ -78,6 +78,7 @@ def run(test, params, env):
             while virsh.domain_exists(vm_name):
                 vm_name += "_test"
             params["image_name"] = volumes.values()[volume_count-1]
+            params["image_format"] = "raw"
             try:
                 unattended_install.run(test, params, env)
             except error.CmdError, detail:
