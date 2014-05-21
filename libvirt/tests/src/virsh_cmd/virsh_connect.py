@@ -123,12 +123,9 @@ def run(test, params, env):
     if connect_arg.count("xen") and (not os.path.exists("/var/run/xend")):
         raise error.TestNAError("Connect test of xen:/// is not suggested on "
                                 "the host with no xen driver.")
-    if connect_arg.count("qemu"):
-        try:
-            os_dep.command("qemu-kvm")
-        except ValueError:
-            raise error.TestNAError("Connect test of qemu:/// is not suggested"
-                                    "on the host with no qemu driver.")
+    if connect_arg.count("qemu") and (not os.path.exists("/dev/kvm")):
+        raise error.TestNAError("Connect test of qemu:/// is not suggested"
+                                "on the host with no qemu driver.")
 
     if connect_arg == "transport":
         canonical_uri_type = virsh.driver()
