@@ -37,11 +37,25 @@ def run(test, params, env):
 
     iface_name = params.get("iface_name")
     iface_xml = params.get("iface_xml")
+    iface_type = params.get("iface_type", "ethernet")
     ping_ip = params.get("ping_ip", "localhost")
     use_exist_iface = "yes" == params.get("use_exist_iface", "no")
     status_error = "yes" == params.get("status_error", "no")
+    net_restart = "yes" == params.get("iface_net_restart", "no")
     iface_script = NETWORK_SCRIPT + iface_name
     iface_script_bk = os.path.join(test.tmpdir, "iface-%s.bk" % iface_name)
+    net_bridge = utils_net.Bridge()
+    if use_exist_iface:
+        if iface_type == "bridge":
+            if iface_name not in net_bridge.list_br():
+                raise error.TestError("Bridge '%s' not exists" % iface_name)
+            ifaces = net_bridge.get_structure()[iface_name]
+            if len(ifaces) < 1:
+                # In this situation, dhcp maybe cannot get ip address
+                # Unless you use static, we'd better skip such case
+                raise error.TestNAError("Bridge '%s' has no interface"
+                                        " bridged, perhaps cannot get"
+                                        " ipaddress" % iface_name)
     net_iface = utils_net.Interface(name=iface_name)
     iface_is_up = True
     list_option = "--all"
@@ -99,27 +113,36 @@ def run(test, params, env):
         result = virsh.iface_define(iface_xml, debug=True)
         libvirt.check_exit_status(result, status_error)
 
-        # Step 3
-        # List inactive interfaces
-        list_option = "--inactive"
-        if not status_error:
-            if not libvirt.check_iface(iface_name, "exists", list_option):
-                raise error.TestFail("Fail to find %s." % iface_name)
+        if net_restart:
+            network = service.Factory.create_service("network")
+            network.restart()
 
-        # Step 4
-        # Start interface
-        result = virsh.iface_start(iface_name, debug=True)
-        libvirt.check_exit_status(result, status_error)
-        if not status_error:
-            if not libvirt.check_iface(iface_name, "ping", ping_ip):
-                raise error.TestFail("Ping %s fail." % ping_ip)
+        # After network restart, interface will be started
+        if not net_restart:
+            # Step 3
+            # List inactive interfaces
+            list_option = "--inactive"
+            if not status_error:
+                if not libvirt.check_iface(iface_name, "exists", list_option):
+                    raise error.TestFail("Fail to find %s." % iface_name)
+
+            # Step 4
+            # Start interface
+            result = virsh.iface_start(iface_name, debug=True)
+            libvirt.check_exit_status(result, status_error)
+            if not status_error:
+                iface_ip = net_iface.get_ip()
+                ping_ip = ping_ip if not iface_ip else iface_ip
+                if not ping_ip and\
+                   not libvirt.check_iface(iface_name, "ping", ping_ip):
+                    raise error.TestFail("Ping %s fail." % ping_ip)
 
         # Step 5
         # List active interfaces
         list_option = ""
         if not status_error:
             if not libvirt.check_iface(iface_name, "exists", list_option):
-                raise error.TestFail("Fail to find %s in active interface list."
+                raise error.TestFail("Fail to find %s in active interface list"
                                      % iface_name)
 
         # Step 6
@@ -137,9 +160,11 @@ def run(test, params, env):
 
         # Step 8
         # Get interface name by MAC address
-        iface_mac = net_iface.get_mac()
-        result = virsh.iface_name(iface_mac, debug=True)
-        libvirt.check_exit_status(result, status_error)
+        # Bridge's Mac equal to bridged interface's mac
+        if iface_type != "bridge":
+            iface_mac = net_iface.get_mac()
+            result = virsh.iface_name(iface_mac, debug=True)
+            libvirt.check_exit_status(result, status_error)
 
         # Step 9
         if not use_exist_iface:
@@ -162,10 +187,12 @@ def run(test, params, env):
                 os.remove(iface_xml)
             if not os.path.exists(iface_script):
                 utils.run("mv %s %s" % (iface_script_bk, iface_script))
-            if iface_is_up:
+            if iface_is_up and\
+               not libvirt.check_iface(iface_name, "exists", ""):
                 # Need reload script
                 utils.run("ifup %s" % iface_name)
-            else:
+            elif not iface_is_up and libvirt.check_iface(iface_name,
+                                                         "exists", ""):
                 net_iface.down()
         else:
             if libvirt.check_iface(iface_name, "exists", "--all"):
