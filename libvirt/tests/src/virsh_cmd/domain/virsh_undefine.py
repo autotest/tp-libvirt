@@ -6,7 +6,9 @@ from virttest import virsh
 from virttest import remote
 from virttest import utils_libvirtd
 from virttest import aexpect
+from virttest import libvirt_storage
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt as utlv
 
 
 def run(test, params, env):
@@ -33,6 +35,17 @@ def run(test, params, env):
     remote_user = params.get("remote_user", "user")
     remote_pwd = params.get("remote_pwd", "password")
     remote_prompt = params.get("remote_prompt", "#")
+    pool_type = params.get("pool_type")
+    pool_name = params.get("pool_name", "test")
+    pool_target = params.get("pool_target")
+    volume_size = params.get("volume_size", "1G")
+    vol_name = params.get("vol_name", "test_vol")
+    emulated_img = params.get("emulated_img", "emulated_img")
+    emulated_size = "%sG" % (int(volume_size[:-1]) + 1)
+    disk_target = params.get("disk_target", "vdb")
+    wipe_data = "yes" == params.get("wipe_data", "no")
+    if wipe_data:
+        option += " --wipe-storage"
 
     vm_name = params.get("main_vm", "virt-tests-vm1")
     vm = env.get_vm(vm_name)
@@ -74,19 +87,33 @@ def run(test, params, env):
         if len(snp_list):
             raise error.TestNAError("This domain has snapshot(s), "
                                     "cannot be undefined!")
+    volume = None
+    pvtest = None
+    if option.count("remove-all-storage"):
+        pvtest = utlv.PoolVolumeTest(test, params)
+        pvtest.pre_pool(pool_name, pool_type, pool_target, emulated_img,
+                        emulated_size)
+        new_pool = libvirt_storage.PoolVolume(pool_name)
+        if not new_pool.create_volume(vol_name, volume_size):
+            raise error.TestFail("Create volume %s failed." % vol_name)
+        volumes = new_pool.list_volumes()
+        volume = volumes[vol_name]
+        virsh.attach_disk(vm_name, volume, disk_target, "--config")
 
     # Turn libvirtd into certain state.
     if libvirtd_state == "off":
         utils_libvirtd.libvirtd_stop()
 
     # Test virsh undefine command.
+    output = ""
     if vm_ref != "remote":
         vm_ref = "%s %s" % (vm_ref, extra)
         cmdresult = virsh.undefine(vm_ref, option,
                                    ignore_status=True, debug=True)
         status = cmdresult.exit_status
+        output = cmdresult.stdout.strip()
         if status:
-            logging.debug("Error status, command output: %s", cmdresult.stdout)
+            logging.debug("Error status, command output: %s", cmdresult.stderr)
         if undefine_twice:
             status2 = virsh.undefine(vm_ref,
                                      ignore_status=True).exit_status
@@ -131,9 +158,18 @@ def run(test, params, env):
     if os.path.exists(save_file):
         save_exist = True
 
+    # Check if save file exists if use --managed-save
+    volume_exist = False
+    if volume and os.path.exists(volume):
+        volume_exist = True
+
     # Recover main VM.
     backup_xml.sync()
 
+    # Clean up pool
+    if pvtest:
+        pvtest.cleanup_pool(pool_name, pool_type,
+                            pool_target, emulated_img)
     # Recover VM snapshots.
     if option.count("snapshot"):
         logging.debug("Recover snapshots for domain!")
@@ -156,3 +192,9 @@ def run(test, params, env):
             raise error.TestFail("Xml file still exists after undefine.")
         if option.count("managedsave") and save_exist:
             raise error.TestFail("Save file still exists after undefine.")
+        if option.count("remove-all-storage") and volume_exist:
+            raise error.TestFail("Volume file '%s' still exists after"
+                                 " undefine." % volume)
+        if wipe_data and option.count("remove-all-storage"):
+            if not output.count("Wiping volume '%s'" % disk_target):
+                raise error.TestFail("Command didn't wipe volume storage!")
