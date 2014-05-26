@@ -1,12 +1,13 @@
 import time
 import logging
 from virttest import virsh
-from virttest.remote import LoginTimeoutError
+from virttest.remote import LoginTimeoutError, LoginProcessTerminatedError
 from autotest.client.shared import error
 from autotest.client import utils
 
 
 class TimeoutError(Exception):
+
     """
     Simple custom exception raised when host down time exceeds timeout.
     """
@@ -102,7 +103,7 @@ def run(test, params, env):
         'uri': remote_uri}
     try:
         vrsh = virsh.VirshPersistent(**virsh_dargs)
-    except LoginTimeoutError:
+    except (LoginTimeoutError, LoginProcessTerminatedError):
         raise error.TestNAError('Cannot login to remote host, Skipping')
 
     # Run test
