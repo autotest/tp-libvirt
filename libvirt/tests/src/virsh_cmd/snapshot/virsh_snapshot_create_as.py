@@ -365,24 +365,39 @@ def run(test, params, env):
             virt_xml_obj = libvirt_xml.VMXML(virsh_instance=virsh)
             virt_xml_obj.set_agent_channel(vm_name)
             vm.start()
-            if start_ga == "yes":
-                session = vm.wait_for_login()
+            session = vm.wait_for_login()
 
-                # Check if qemu-ga already started automatically
-                cmd = "rpm -q qemu-guest-agent || yum install -y qemu-guest-agent"
-                stat_install = session.cmd_status(cmd, 300)
-                if stat_install != 0:
-                    raise error.TestFail("Fail to install qemu-guest-agent, make"
-                                         "sure that you have usable repo in guest")
+            # Check if qemu-ga already started automatically
+            cmd = "rpm -q qemu-guest-agent || yum install -y qemu-guest-agent"
+            stat_install = session.cmd_status(cmd, 300)
+            if stat_install != 0:
+                raise error.TestNAError("Fail to install qemu-guest-agent, "
+                                        "make sure that you have usable repo "
+                                        "in guest")
 
-                # Check if qemu-ga already started
-                stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
-                if stat_ps != 0:
+            # Check if qemu-ga already started
+            stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
+            if stat_ps != 0:
+                if start_ga == "yes":
                     session.cmd("qemu-ga -d")
                     # Check if the qemu-ga really started
                     stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
                     if stat_ps != 0:
-                        raise error.TestFail("Fail to run qemu-ga in guest")
+                        raise error.TestNAError("Fail to run qemu-ga in guest")
+            else:
+                if start_ga == "no":
+                    # The qemu-ga could be running and should be killed
+                    session.cmd("kill -9 `pidof qemu-ga`")
+                    # Check if the qemu-ga get killed
+                    stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
+                    if not stat_ps:
+                        # As managed by systemd and set as autostart, qemu-ga
+                        # could be restarted, so use systemctl to stop it.
+                        session.cmd("systemctl stop qemu-guest-agent")
+                        stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
+                        if not stat_ps:
+                            raise error.TestNAError("Fail to stop agent in "
+                                                    "guest")
 
             if domain_state == "paused":
                 virsh.suspend(vm_name)
