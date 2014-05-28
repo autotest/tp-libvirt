@@ -119,8 +119,5 @@ def run(test, params, env):
     if pre_vm_state == "suspend":
         vm.resume()
     if process:
-        if process.poll():
-            try:
-                process.kill()
-            except OSError:
-                pass
+        if process.poll() is None:
+            process.kill()
