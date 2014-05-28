@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+import re
 from autotest.client.shared import error
 from virttest import utils_libvirtd, virsh, qemu_storage, data_dir
 from virttest.libvirt_xml import vm_xml
@@ -100,7 +101,7 @@ def run(test, params, env):
     2. Negative testing
         2.1 Copy a disk to a non-exist directory.
         2.2 Copy a disk with invalid options.
-        2.3 Do blcok copy for a persistent domain.
+        2.3 Do block copy for a persistent domain.
     """
 
     vm_name = params.get("main_vm")
@@ -114,11 +115,19 @@ def run(test, params, env):
     else:
         raise error.TestFail("Can't find %s in domain %s." % (target, vm_name))
     dest_path = params.get("dest_path", "")
+    dest_format = params.get("dest_format", "")
+    # Ugh... this piece of chicanery brought to you by the QemuImg which
+    # will "add" the 'dest_format' extension during the check_format code.
+    # So if we create the file with the extension and then remove it when
+    # doing the check_format later, then we avoid erroneous failures.
+    dest_extension = ""
+    if dest_format != "":
+        dest_extension = ".%s" % dest_format
     if not dest_path:
         tmp_file = time.strftime("%Y-%m-%d-%H.%M.%S.img")
+        tmp_file += dest_extension
         dest_path = os.path.join(data_dir.get_tmp_dir(), tmp_file)
     options = params.get("blockcopy_options", "")
-    dest_format = params.get("dest_format", "")
     bandwidth = params.get("blockcopy_bandwidth", "")
     default_timeout = params.get("default_timeout", "300")
     reuse_external = "yes" == params.get("reuse_external", "no")
@@ -151,15 +160,19 @@ def run(test, params, env):
     if len(bandwidth):
         options += "--bandwidth %s" % bandwidth
 
-    def check_format(dest_path, expect):
+    def check_format(dest_path, dest_extension, expect):
         """
         Check the image format
 
         :param dest_path: Path of the copy to create
         :param expect: Expect image format
         """
-        params['image_filename'] = dest_path
-        image = qemu_storage.QemuImg(params, "/", "image_filename")
+        # And now because the QemuImg will add the extension for us
+        # we have to remove it here.
+        path_noext = dest_path.strip(dest_extension)
+        params['image_name'] = path_noext
+        params['image_format'] = expect
+        image = qemu_storage.QemuImg(params, "/", path_noext)
         if image.get_format() == expect:
             logging.debug("%s format is %s.", dest_path, expect)
         else:
@@ -196,14 +209,23 @@ def run(test, params, env):
                     if options.count("--pivot") + options.count("--finish") == 0:
                         finish_job(vm_name, target, default_timeout)
                     if options.count("--raw"):
-                        check_format(dest_path, "raw")
+                        check_format(dest_path, dest_extension, dest_format)
                 else:
                     raise error.TestFail(cmd_result.stderr)
             else:
                 if status:
                     logging.debug("Expect error: %s", cmd_result.stderr)
                 else:
-                    raise error.TestFail("Expect fail, but run successfully.")
+                    # Commit id '4c297728' changed how virsh exits when
+                    # unexpectedly failing due to timeout from a fail (1)
+                    # to a success(0), so we need to look for a different
+                    # marker to indicate the copy aborted
+                    if options.count("--timeout") and \
+                            options.count("--wait") and \
+                            re.search("Copy aborted", cmd_result.stdout):
+                        logging.debug("Found success a timed out block copy")
+                    else:
+                        raise error.TestFail("Expect fail, but run successfully.")
         except JobTimeout, excpt:
             if not status_error:
                 raise error.TestFail("Run command failed: %s" % excpt)
