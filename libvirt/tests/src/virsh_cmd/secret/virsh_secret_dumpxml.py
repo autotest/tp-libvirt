@@ -6,6 +6,7 @@ import tempfile
 from autotest.client.shared import error
 from virttest import virsh, data_dir
 
+
 def run(test, params, env):
     """
     Test command: secret-dumpxml <secret>
@@ -19,7 +20,7 @@ def run(test, params, env):
     secret_ref = params.get("secret_ref")
 
     if secret_ref == "secret_valid_uuid":
-       # Generate valid uuid
+        # Generate valid uuid
         cmd = "uuidgen"
         status, uuid = commands.getstatusoutput(cmd)
         if status:
