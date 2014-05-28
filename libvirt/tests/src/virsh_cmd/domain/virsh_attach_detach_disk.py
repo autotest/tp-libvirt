@@ -134,7 +134,10 @@ def run(test, params, env):
 
     # Create virtual device file.
     if test_block_dev:
-        iscsi_dev = qemu_storage.Iscsidev(params, test.virtdir, "iscsi")
+        try:
+            iscsi_dev = qemu_storage.Iscsidev(params, test.virtdir, "iscsi")
+        except ValueError, detail:
+            raise error.TestNAError("Cannot create iscsi device: %s" % detail)
         device_source = iscsi_dev.setup()
         logging.debug("iscsi dev name: %s" % device_source)
     else:
