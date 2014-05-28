@@ -217,7 +217,7 @@ def run(test, params, env):
 
     # Get secret UUID from secret list
     if not no_specified_uuid:
-        output = virsh.secret_list().stdout.strip()
+        output = virsh.secret_list(ignore_status=False).stdout.strip()
         sec_list = re.findall(r"\n(.+\S+)\ +\S+\ +(.+\S+)", output)
         logging.debug("Secret list is %s", sec_list)
         if usage_volume and sec_list:
