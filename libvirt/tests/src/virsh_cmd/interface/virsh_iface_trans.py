@@ -16,13 +16,20 @@ def netcf_trans_control(command="status"):
             change-begin, etc, Note that is the netcf-libs is required
     :returns: return command result
     """
-    cmd = "locate netcf-transaction"
-    status, output = commands.getstatusoutput(cmd)
+    try:
+        # For OS using systemd, this command usually located in /usr/libexec/.
+        cmd = utils_misc.find_command("netcf-transaction.sh")
+    except ValueError:
+        # This is the default location for sysV init.
+        old_path = "/etc/rc.d/init.d/netcf-transaction"
+        if os.path.isfile(old_path):
+            cmd = old_path
+        else:
+            raise error.TestNAError("Cannot find netcf-transaction! "
+                                    "Make sure you have netcf-libs installed!")
+    logging.debug(cmd)
 
-    if status:
-        raise error.TestFail("Failed to run '%s'" % cmd)
-
-    return commands.getoutput(output + " " + command)
+    return commands.getoutput(cmd + " " + command)
 
 
 def write_iface_cfg(iface_cfg):
@@ -205,46 +212,47 @@ def run(test, params, env):
 
     # positive and negative testing #########
 
-    if status_error == "no":
-        # Do begin-commit testing
-        if transaction == "begin_commit":
-            iface_trans_begin(params)
-            write_iface_cfg(iface_cfg)
-            # Break begin-commit operation
-            if libvirtd == "restart":
-                utils_libvirtd.service_libvirtd_control("restart")
-            try:
+    try:
+        if status_error == "no":
+            # Do begin-commit testing
+            if transaction == "begin_commit":
+                iface_trans_begin(params)
+                write_iface_cfg(iface_cfg)
+                # Break begin-commit operation
+                if libvirtd == "restart":
+                    utils_libvirtd.service_libvirtd_control("restart")
+                try:
+                    iface_trans_commit(params)
+                except error.TestError:
+                    cleanup(iface_cfg, exist_trans)
+
+                # Only cleanup temporary network configuration file
+                cleanup(iface_cfg)
+
+            # Do begin-rollback testing
+            elif transaction == "begin_rollback":
+                iface_trans_begin(params)
+                write_iface_cfg(iface_cfg)
+                # Break begin-rollback operation
+                if libvirtd == "restart":
+                    utils_libvirtd.service_libvirtd_control("restart")
+                try:
+                    iface_trans_rollback(params)
+                except error.TestError:
+                    cleanup(iface_cfg, exist_trans)
+            else:
+                raise error.TestFail("The 'transaction' must be 'begin_commit' or"
+                                     " 'begin_rollback': %s" % status_error)
+
+        if status_error == "yes":
+            # No pending transaction
+            if exist_trans != "yes":
                 iface_trans_commit(params)
-            except error.TestError:
-                cleanup(iface_cfg, exist_trans)
-
-            # Only cleanup temporary network configuration file
-            cleanup(iface_cfg)
-
-        # Do begin-rollback testing
-        elif transaction == "begin_rollback":
-            iface_trans_begin(params)
-            write_iface_cfg(iface_cfg)
-            # Break begin-rollback operation
-            if libvirtd == "restart":
-                utils_libvirtd.service_libvirtd_control("restart")
-            try:
                 iface_trans_rollback(params)
-            except error.TestError:
-                cleanup(iface_cfg, exist_trans)
-        else:
-            raise error.TestFail("The 'transaction' must be 'begin_commit' or"
-                                 " 'begin_rollback': %s" % status_error)
-
-    if status_error == "yes":
-        # No pending transaction
-        if exist_trans != "yes":
-            iface_trans_commit(params)
-            iface_trans_rollback(params)
-        # There is already an open transaction
-        else:
-            netcf_trans_control('change-begin')
-            iface_trans_begin(params)
-
-    # Cleanup network transaction and temporary configuration file
-    cleanup(iface_cfg, exist_trans)
+            # There is already an open transaction
+            else:
+                netcf_trans_control('change-begin')
+                iface_trans_begin(params)
+    finally:
+        # Cleanup network transaction and temporary configuration file
+        cleanup(iface_cfg, exist_trans)
