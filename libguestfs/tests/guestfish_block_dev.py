@@ -1132,21 +1132,21 @@ def test_sfdiskM(vm, params):
     pv_name = params.get("pv_name")
     gf.run()
 
-    # "start,end,type"
+    if params["partition_type"] == "physical":
+        # "start,end,type"
+        partition = ["1,20,83", "22,30,83", "55,20,83", "76,20,5", "251,50,83"]
+        lines = '"' + " ".join(partition) + '"'
 
-    partition = ["1,20,83", "22,30,83", "55,20,83", "76,20,5", "251,50,83"]
-    lines = '"' + " ".join(partition) + '"'
+        gf.sfdiskM(pv_name, lines)
+        result = gf.sfdisk_l(pv_name).stdout.strip()
+        logging.debug(result)
 
-    gf.sfdiskM(pv_name, lines)
-    result = gf.sfdisk_l(pv_name).stdout.strip()
-    logging.debug(result)
+        l = re.findall("/dev/sda[0-9]", result)
+        if len(l) != 4:
+            gf.close_session()
+            raise error.TestFail("result is not match expect")
 
-    l = re.findall("/dev/sda[0-9]", result)
-    if len(l) != 4:
         gf.close_session()
-        raise error.TestFail("result is not match expect")
-
-    gf.close_session()
 
 
 def test_sfdisk_N(vm, params):
@@ -1167,27 +1167,28 @@ def test_sfdisk_N(vm, params):
     pv_name = params.get("pv_name")
     gf.run()
 
-    # "start,end,type"
-    lines = ["1,100,83", "102,60,83", "200,50,83", "251,200,5"]
+    if params["partition_type"] == "physical":
+        # "start,end,type"
+        lines = ["1,100,83", "102,60,83", "200,50,83", "251,200,5"]
 
-    for i, v in enumerate(lines):
-        gf.sfdisk_N(pv_name, i+1, 0, 0, 0, v)
+        for i, v in enumerate(lines):
+            gf.sfdisk_N(pv_name, i+1, 0, 0, 0, v)
 
-    ret = gf.sfdisk_l(pv_name).stdout.strip()
+        ret = gf.sfdisk_l(pv_name).stdout.strip()
 
-    result = []
-    for i in ret.split('\n'):
-        if re.search("/dev/sda\d", i):
-            l = re.findall("\S+", i)
-            result.append("%s,%s,%s" % (l[1], l[3], l[5]))
+        result = []
+        for i in ret.split('\n'):
+            if re.search("/dev/sda\d", i):
+                l = re.findall("\S+", i)
+                result.append("%s,%s,%s" % (l[1], l[3], l[5]))
 
-    logging.debug(lines)
-    logging.debug(result)
-    if result != lines:
+        logging.debug(lines)
+        logging.debug(result)
+        if result != lines:
             gf.close_session()
             raise error.TestFail("result is not match expect")
 
-    gf.close_session()
+        gf.close_session()
 
 
 def test_sfdisk_disk_geometry(vm, params):
