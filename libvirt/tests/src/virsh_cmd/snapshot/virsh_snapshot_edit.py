@@ -81,8 +81,10 @@ def run(test, params, env):
                         logging.debug("diff  after='%s'", aft_line.lstrip().strip())
             raise error.TestFail("Failed xml before/after comparison")
 
+    snapshot_oldlist = None
     try:
         # Create disk snapshot before all to make the origin image clean
+        logging.debug("Create snap-temp --disk-only")
         ret = virsh.snapshot_create_as(vm_name, "snap-temp --disk-only")
         if ret.exit_status != 0:
             raise error.TestFail("Fail to create temp snap, Error: %s",
@@ -90,6 +92,7 @@ def run(test, params, env):
 
         # Create snapshots
         for opt in [snap_create_opt1, snap_create_opt2]:
+            logging.debug("...use option %s", opt)
             result = virsh.snapshot_create_as(vm_name, opt)
             if result.exit_status:
                 raise error.TestFail("Failed to create snapshot. Error:%s."
@@ -169,5 +172,6 @@ def run(test, params, env):
                                      "but set is %s" % (snap_cur, check_name))
 
     finally:
-        utils_test.libvirt.clean_up_snapshots(vm_name, snapshot_oldlist)
+        if snapshot_oldlist is not None:
+            utils_test.libvirt.clean_up_snapshots(vm_name, snapshot_oldlist)
         vmxml_backup.sync("--snapshots-metadata")
