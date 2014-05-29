@@ -57,6 +57,8 @@ def compose_disk_options(test, params, opt_names):
     :params: test & params: system parameters
     :params: opt_names: params get from cfg of {disk,mem}spec options
     """
+    if "snapshot=no" in opt_names:
+        return opt_names
     if opt_names.find("file=") >= 0:
         opt_disk = opt_names.split("file=")
         opt_list = opt_disk[1].split(",")
