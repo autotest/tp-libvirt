@@ -17,14 +17,19 @@ def create_xml_file(xml_file, params):
     """
     iface_type = params.get("iface_type")
     iface_name = params.get("iface_name")
+    iface_eth = params.get("iface_eth")
     iface_pro = params.get("iface_pro")
     iface_ip = params.get("ping_ip")
     iface_stp = params.get("iface_stp")
+    iface_tag = params.get("iface_tag")
+    if iface_type == "vlan":
+        iface_name = iface_eth + "." + iface_tag
+    xml_info = """
+<interface type='%s' name='%s'>""" % (iface_type, iface_name)
+
     if iface_type == "bridge":
-        # bridge head part
-        xml_info = """
-<interface type='bridge' name='%s'>
-  <start mode='none'/>""" % iface_name
+        xml_info += """
+  <start mode='none'/>"""
 
         # bridge protocol part
         if iface_pro == "dhcp":
@@ -55,11 +60,39 @@ def create_xml_file(xml_file, params):
 </interface>"""
 
     elif iface_type == "ethernet":
-        xml_info = """
-<interface type='ethernet' name='%s'>
+        xml_info += """
   <start mode='none'/>
-</interface>""" % iface_name
+</interface>"""
 
+    elif iface_type == "vlan":
+        xml_info += """
+  <start mode='none'/>
+   <protocol family='ipv4'>
+     <ip address='%s'/>
+   </protocol>
+   <vlan tag='%s'>
+     <interface name='%s'/>
+   </vlan>
+</interface>""" % (iface_ip, iface_tag, iface_eth)
+
+    elif iface_type == "bond":
+        xml_info += """
+  <start mode='none'/>"""
+        if iface_ip:
+            xml_info += """
+   <protocol family='ipv4'>
+     <ip address='%s'/>
+   </protocol>
+   <bond>
+     <interface type='ethernet' name='%s'>
+     </interface>
+   </bond>
+</interface>""" % (iface_ip, iface_eth)
+        else:
+            xml_info += """
+   <bond>
+   </bond>
+</interface>"""
     iface_file = open(xml_file, 'w')
     iface_file.write(xml_info)
     iface_file.close()
@@ -93,6 +126,11 @@ def run(test, params, env):
     iface_xml = params.get("iface_xml")
     iface_type = params.get("iface_type", "ethernet")
     iface_pro = params.get("iface_pro", "")
+    iface_eth = params.get("iface_eth", "")
+    iface_tag = params.get("iface_tag", "0")
+    if iface_type == "vlan":
+        iface_name = iface_eth + "." + iface_tag
+    iface_eth_using = "yes" == params.get("iface_eth_using", "no")
     ping_ip = params.get("ping_ip", "localhost")
     use_exist_iface = "yes" == params.get("use_exist_iface", "no")
     status_error = "yes" == params.get("status_error", "no")
@@ -170,14 +208,19 @@ def run(test, params, env):
         # Step 2
         # Define interface
         result = virsh.iface_define(iface_xml, debug=True)
-        libvirt.check_exit_status(result, status_error)
+        if iface_type == "bond" and not ping_ip:
+            libvirt.check_exit_status(result, True)
+            return
+        else:
+            libvirt.check_exit_status(result, status_error)
 
         if net_restart:
             network = service.Factory.create_service("network")
             network.restart()
 
         # After network restart, (ethernet)interface will be started
-        if not net_restart or (not use_exist_iface and iface_type == "bridge"):
+        if not net_restart or\
+           (not use_exist_iface and iface_type in ("bridge", "vlan", "bond")):
             # Step 3
             # List inactive interfaces
             list_option = "--inactive"
@@ -188,7 +231,8 @@ def run(test, params, env):
             # Step 4
             # Start interface
             result = virsh.iface_start(iface_name, debug=True)
-            if iface_pro == "dhcp":
+            if iface_pro == "dhcp" or\
+               (iface_type == "vlan" and not iface_eth_using):
                 libvirt.check_exit_status(result, True)
             elif iface_type == "bridge":
                 libvirt.check_exit_status(result, status_error)
@@ -201,7 +245,9 @@ def run(test, params, env):
 
         # Step 5
         # List active interfaces
-        if use_exist_iface or (iface_pro != "dhcp" and iface_type == "bridge"):
+        if use_exist_iface or\
+           (iface_pro != "dhcp" and iface_type == "bridge") or\
+           (iface_eth_using and iface_type == "vlan"):
             list_option = ""
             if not status_error:
                 if not libvirt.check_iface(iface_name, "exists", list_option):
@@ -225,7 +271,7 @@ def run(test, params, env):
         # Step 8
         # Get interface name by MAC address
         # Bridge's Mac equal to bridged interface's mac
-        if iface_type != "bridge" and result.stdout.strip():
+        if iface_type not in ("bridge", "vlan") and result.stdout.strip():
             iface_mac = net_iface.get_mac()
             result = virsh.iface_name(iface_mac, debug=True)
             libvirt.check_exit_status(result, status_error)
