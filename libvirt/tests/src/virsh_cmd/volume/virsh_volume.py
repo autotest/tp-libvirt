@@ -30,10 +30,14 @@ def run(test, params, env):
         """
         To define a pool
         """
+        # Clean up flags: [nfs, iscsi, lvm]
+        cleanup_env = [False, False, False]
+
         if 'dir' in pool_type:
             if not os.path.isdir(pool_target):
                 os.makedirs(pool_target)
-            result = utlv.define_pool(pool_name, pool_type, pool_target)
+            result = utlv.define_pool(pool_name, pool_type,
+                                      pool_target, cleanup_env)
             if result.exit_status != 0:
                 raise error.TestFail("Command virsh pool-define-as"
                                      " failed:\n%s" % result.stderr.strip())
@@ -298,11 +302,11 @@ def run(test, params, env):
                               "volume type", expected['name'])
 
         # Check type against virsh vol-info
-        if expected['type'] != actual_info['type']:
+        if expected['type'] != actual_info['Type']:
             logging.error("Volume type mismatch for volume: %s\n"
                           "Expected Type: %s\n Type from vol-info: %s",
                           expected['name'], expected['type'],
-                          actual_info['type'])
+                          actual_info['Type'])
             error_count += 1
         else:
             logging.debug("Type of volume: %s from virsh vol-info successfully"
@@ -310,11 +314,11 @@ def run(test, params, env):
                           expected['name'])
 
         # Check name against virsh vol-info
-        if expected['name'] != actual_info['name']:
+        if expected['name'] != actual_info['Name']:
             logging.error("Volume name mismatch for volume: %s\n"
                           "Expected name: %s\n Name from vol-info: %s",
                           expected['name'],
-                          expected['name'], actual_info['name'])
+                          expected['name'], actual_info['Name'])
             error_count += 1
         else:
             logging.debug("Name of volume: %s from virsh vol-info successfully"
@@ -359,7 +363,7 @@ def run(test, params, env):
         norm_cap = {}
         capacity = {}
         capacity['list'] = actual_list['capacity']
-        capacity['info'] = actual_info['capacity']
+        capacity['info'] = actual_info['Capacity']
         capacity['xml'] = volume_xml['capacity']
         capacity['qemu_img'] = img_info['capacity']
         norm_cap = norm_capacity(capacity)
