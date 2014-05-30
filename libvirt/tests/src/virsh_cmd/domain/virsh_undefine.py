@@ -67,114 +67,118 @@ def run(test, params, env):
     elif vm_ref.find("invalid") != -1:
         vm_ref = params.get(vm_ref)
 
-    save_file = "/var/lib/libvirt/qemu/save/%s.save" % vm_name
-    if option.count("managedsave") and vm.is_alive():
-        virsh.managedsave(vm_name)
-
-    snp_list = virsh.snapshot_list(vm_name)
-    if option.count("snapshot"):
-        snp_file_list = []
-        if not len(snp_list):
-            virsh.snapshot_create(vm_name)
-            logging.debug("Create a snapshot for test!")
-        else:
-            # Backup snapshots for domain
-            for snp_item in snp_list:
-                tmp_file = os.path.join(test.tmpdir, snp_item+".xml")
-                virsh.snapshot_dumpxml(vm_name, snp_item, to_file=tmp_file)
-                snp_file_list.append(tmp_file)
-    else:
-        if len(snp_list):
-            raise error.TestNAError("This domain has snapshot(s), "
-                                    "cannot be undefined!")
     volume = None
     pvtest = None
-    if option.count("remove-all-storage"):
-        pvtest = utlv.PoolVolumeTest(test, params)
-        pvtest.pre_pool(pool_name, pool_type, pool_target, emulated_img,
-                        emulated_size)
-        new_pool = libvirt_storage.PoolVolume(pool_name)
-        if not new_pool.create_volume(vol_name, volume_size):
-            raise error.TestFail("Create volume %s failed." % vol_name)
-        volumes = new_pool.list_volumes()
-        volume = volumes[vol_name]
-        virsh.attach_disk(vm_name, volume, disk_target, "--config")
+    try:
+        save_file = "/var/lib/libvirt/qemu/save/%s.save" % vm_name
+        if option.count("managedsave") and vm.is_alive():
+            virsh.managedsave(vm_name)
 
-    # Turn libvirtd into certain state.
-    if libvirtd_state == "off":
-        utils_libvirtd.libvirtd_stop()
+        snp_list = virsh.snapshot_list(vm_name)
+        if option.count("snapshot"):
+            snp_file_list = []
+            if not len(snp_list):
+                virsh.snapshot_create(vm_name)
+                logging.debug("Create a snapshot for test!")
+            else:
+                # Backup snapshots for domain
+                for snp_item in snp_list:
+                    tmp_file = os.path.join(test.tmpdir, snp_item+".xml")
+                    virsh.snapshot_dumpxml(vm_name, snp_item, to_file=tmp_file)
+                    snp_file_list.append(tmp_file)
+        else:
+            if len(snp_list):
+                raise error.TestNAError("This domain has snapshot(s), "
+                                        "cannot be undefined!")
+        if option.count("remove-all-storage"):
+            pvtest = utlv.PoolVolumeTest(test, params)
+            pvtest.pre_pool(pool_name, pool_type, pool_target, emulated_img,
+                            emulated_size)
+            new_pool = libvirt_storage.PoolVolume(pool_name)
+            if not new_pool.create_volume(vol_name, volume_size):
+                raise error.TestFail("Create volume %s failed." % vol_name)
+            volumes = new_pool.list_volumes()
+            volume = volumes[vol_name]
+            virsh.attach_disk(vm_name, volume, disk_target, "--config")
 
-    # Test virsh undefine command.
-    output = ""
-    if vm_ref != "remote":
-        vm_ref = "%s %s" % (vm_ref, extra)
-        cmdresult = virsh.undefine(vm_ref, option,
-                                   ignore_status=True, debug=True)
-        status = cmdresult.exit_status
-        output = cmdresult.stdout.strip()
-        if status:
-            logging.debug("Error status, command output: %s", cmdresult.stderr)
-        if undefine_twice:
-            status2 = virsh.undefine(vm_ref,
-                                     ignore_status=True).exit_status
-    else:
-        if remote_ip.count("EXAMPLE.COM") or local_ip.count("EXAMPLE.COM"):
-            raise error.TestNAError("remote_ip and/or local_ip parameters not"
-                                    " changed from default values")
-        try:
-            uri = libvirt_vm.complete_uri(local_ip)
-            session = remote.remote_login("ssh", remote_ip, "22", remote_user,
-                                          remote_pwd, remote_prompt)
-            cmd_undefine = "virsh -c %s undefine %s" % (uri, vm_name)
-            status, output = session.cmd_status_output(cmd_undefine)
-            logging.info("Undefine output: %s", output)
-        except (error.CmdError, remote.LoginError, aexpect.ShellError), detail:
-            logging.error("Detail: %s", detail)
-            status = 1
+        # Turn libvirtd into certain state.
+        if libvirtd_state == "off":
+            utils_libvirtd.libvirtd_stop()
 
-    # Recover libvirtd state.
-    if libvirtd_state == "off":
-        utils_libvirtd.libvirtd_start()
+        # Test virsh undefine command.
+        output = ""
+        if vm_ref != "remote":
+            vm_ref = "%s %s" % (vm_ref, extra)
+            cmdresult = virsh.undefine(vm_ref, option,
+                                       ignore_status=True, debug=True)
+            status = cmdresult.exit_status
+            output = cmdresult.stdout.strip()
+            if status:
+                logging.debug("Error status, command output: %s",
+                              cmdresult.stderr.strip())
+            if undefine_twice:
+                status2 = virsh.undefine(vm_ref,
+                                         ignore_status=True).exit_status
+        else:
+            if remote_ip.count("EXAMPLE.COM") or local_ip.count("EXAMPLE.COM"):
+                raise error.TestNAError("remote_ip and/or local_ip parameters"
+                                        " not changed from default values")
+            try:
+                uri = libvirt_vm.complete_uri(local_ip)
+                session = remote.remote_login("ssh", remote_ip, "22",
+                                              remote_user, remote_pwd,
+                                              remote_prompt)
+                cmd_undefine = "virsh -c %s undefine %s" % (uri, vm_name)
+                status, output = session.cmd_status_output(cmd_undefine)
+                logging.info("Undefine output: %s", output)
+            except (error.CmdError, remote.LoginError, aexpect.ShellError), de:
+                logging.error("Detail: %s", de)
+                status = 1
 
-    # Shutdown VM.
-    if virsh.domain_exists(vm.name):
-        try:
-            if vm.is_alive():
-                vm.destroy(gracefully=False)
-        except error.CmdError, detail:
-            logging.error("Detail: %s", detail)
+        # Recover libvirtd state.
+        if libvirtd_state == "off":
+            utils_libvirtd.libvirtd_start()
 
-    # Check if VM exists.
-    vm_exist = virsh.domain_exists(vm_name)
+        # Shutdown VM.
+        if virsh.domain_exists(vm.name):
+            try:
+                if vm.is_alive():
+                    vm.destroy(gracefully=False)
+            except error.CmdError, detail:
+                logging.error("Detail: %s", detail)
 
-    # Check if xml file exists.
-    xml_exist = False
-    if (os.path.exists("/etc/libvirt/qemu/%s.xml" % vm_name) or
-            os.path.exists("/etc/xen/%s" % vm_name)):
-        xml_exist = True
+        # Check if VM exists.
+        vm_exist = virsh.domain_exists(vm_name)
 
-    # Check if save file exists if use --managed-save
-    save_exist = False
-    if os.path.exists(save_file):
-        save_exist = True
+        # Check if xml file exists.
+        xml_exist = False
+        if os.path.exists("/etc/libvirt/qemu/%s.xml" % vm_name) or\
+           os.path.exists("/etc/xen/%s" % vm_name):
+            xml_exist = True
 
-    # Check if save file exists if use --managed-save
-    volume_exist = False
-    if volume and os.path.exists(volume):
-        volume_exist = True
+        # Check if save file exists if use --managed-save
+        save_exist = False
+        if os.path.exists(save_file):
+            save_exist = True
 
-    # Recover main VM.
-    backup_xml.sync()
+        # Check if save file exists if use --managed-save
+        volume_exist = False
+        if volume and os.path.exists(volume):
+            volume_exist = True
 
-    # Clean up pool
-    if pvtest:
-        pvtest.cleanup_pool(pool_name, pool_type,
-                            pool_target, emulated_img)
-    # Recover VM snapshots.
-    if option.count("snapshot"):
-        logging.debug("Recover snapshots for domain!")
-        for file_item in snp_file_list:
-            virsh.snapshot_create(vm_name, file_item)
+    finally:
+        # Recover main VM.
+        backup_xml.sync()
+
+        # Clean up pool
+        if pvtest:
+            pvtest.cleanup_pool(pool_name, pool_type,
+                                pool_target, emulated_img)
+        # Recover VM snapshots.
+        if option.count("snapshot"):
+            logging.debug("Recover snapshots for domain!")
+            for file_item in snp_file_list:
+                virsh.snapshot_create(vm_name, file_item)
 
     # Check results.
     if status_error:
