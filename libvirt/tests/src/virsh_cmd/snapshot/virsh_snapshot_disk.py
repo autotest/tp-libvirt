@@ -23,6 +23,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "virt-tests-vm1")
     vm = env.get_vm(vm_name)
     image_format = params.get("snapshot_image_format", "qcow2")
+    snapshot_del_test = "yes" == params.get("snapshot_del_test", "no")
     status_error = ("yes" == params.get("status_error", "no"))
     snapshot_from_xml = ("yes" == params.get("snapshot_from_xml", "no"))
     snapshot_current = ("yes" == params.get("snapshot_current", "no"))
@@ -45,8 +46,9 @@ def run(test, params, env):
     image = qemu_storage.QemuImg(params, tmp_dir, "snapshot_test")
     img_path, _ = image.create(params)
     # Do the attach action.
+    extra = "--persistent --subdriver %s" % image_format
     result = virsh.attach_disk(vm_name, source=img_path, target="vdf",
-                               extra="--persistent --subdriver %s" % image_format)
+                               extra=extra)
     if result.exit_status:
         raise error.TestNAError("Failed to attach disk %s to VM."
                                 "Detail: %s." % (img_path, result.stderr))
@@ -54,6 +56,7 @@ def run(test, params, env):
     # Init snapshot_name
     snapshot_name = None
     snapshot_external_disk = []
+    del_status = None
     try:
         # Create snapshot.
         if snapshot_from_xml:
@@ -76,8 +79,8 @@ def run(test, params, env):
                 lines.append("<disk name='%s' snapshot='%s'>\n" %
                              (disk['source'], snapshot_disk))
                 if snapshot_disk == "external":
-                    disk_external = os.path.join(tmp_dir,
-                                                 "%s.snap" % os.path.basename(disk['source']))
+                    snap_path = "%s.snap" % os.path.basename(disk['source'])
+                    disk_external = os.path.join(tmp_dir, snap_path)
                     snapshot_external_disk.append(disk_external)
                     lines.append("<source file='%s'/>\n" % disk_external)
                 lines.append("</disk>\n")
@@ -89,7 +92,7 @@ def run(test, params, env):
             snapshot_xml_file.writelines(lines)
             snapshot_xml_file.close()
             snapshot_result = virsh.snapshot_create(
-                vm_name, ("--xmlfile %s" % snapshot_xml_path))
+                vm_name, ("--xmlfile %s" % snapshot_xml_path), debug=True)
             if snapshot_result.exit_status:
                 if status_error:
                     return
@@ -124,8 +127,9 @@ def run(test, params, env):
                                          snapshot_result.stderr.strip())
 
         if status_error:
-            raise error.TestFail("Success to create snapshot in negative case\n"
-                                 "Detail: %s" % snapshot_result)
+            if not snapshot_del_test:
+                raise error.TestFail("Success to create snapshot in negative"
+                                     " case\nDetail: %s" % snapshot_result)
 
         # Touch a file in VM.
         if vm.is_dead():
@@ -164,7 +168,8 @@ def run(test, params, env):
                 vm.resume()
             else:
                 raise error.TestFail("Revert command successed, but VM is not "
-                                     "paused after reverting with --paused option.")
+                                     "paused after reverting with --paused"
+                                     "  option.")
         # login vm.
         session = vm.wait_for_login()
         # Check the result of revert.
@@ -175,10 +180,27 @@ def run(test, params, env):
         # Close the session.
         session.close()
 
+        # Test delete snapshot without "--metadata", delete external disk
+        # snapshot will fail for now.
+        # Only do this when snapshot creat succeed which filtered in cfg file.
+        if snapshot_del_test:
+            if snapshot_name:
+                del_result = virsh.snapshot_delete(vm_name, snapshot_name,
+                                                   debug=True,
+                                                   ignore_status=True)
+                del_status = del_result.exit_status
+                if del_status:
+                    if not status_error:
+                        raise error.TestFail("Failed to delete snapshot.")
+                else:
+                    if status_error:
+                        err_msg = "Snapshot delete succeed but expect fail."
+                        raise error.TestFail(err_msg)
+
     finally:
         virsh.detach_disk(vm_name, target="vdf", extra="--persistent")
         image.remove()
-        if snapshot_name:
+        if del_status and snapshot_name:
             virsh.snapshot_delete(vm_name, snapshot_name, "--metadata")
         for disk in snapshot_external_disk:
             if os.path.exists(disk):
