@@ -26,10 +26,22 @@ def run(test, params, env):
     eth_config_file = params.get("eth_config_file")
     persistent_net_file = params.get("persistent_net_file")
 
+    param_keys = ["remote_ip", "vm1_ip", "vm2_ip", "eth_card_no",
+                  "eth_config_file", "persistent_net_file"]
+    param_values = [remote_ip, vm1_ip, vm2_ip, eth_card_no,
+                    eth_config_file, persistent_net_file]
+    for key, value in zip(param_keys, param_values):
+        if value.count("ENTER.YOUR"):
+            raise error.TestNAError("Parameter '%s'(%s) is not configured."
+                                    % (key, value))
+
     vm1 = env.get_vm(vm_names[0])
     vm2 = None
     if len(vm_names) > 1:
         vm2 = env.get_vm(vm_names[1])
+
+    if eth_card_no not in utils_net.get_net_if():
+        raise error.TestNAError("Device %s do not exists." % eth_card_no)
     try:
         iface_cls = utils_net.Interface(eth_card_no)
         origin_status = iface_cls.is_up()
