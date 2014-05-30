@@ -120,7 +120,7 @@ def run(test, params, env):
                                              % cmd_result)
 
             if opt.count("paused"):
-                if not (vm.state()=="paused"):
+                if not (vm.state() == "paused"):
                     raise error.TestFail("VM is not paused when started with "
                                          "--paused.")
             elif opt.count("autodestroy"):
