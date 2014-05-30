@@ -56,8 +56,8 @@ def run(test, params, env):
                 device = nodedev
                 break
         if not device:
-            raise error.TestError("There is no network device name of %s." %
-                                  net_name)
+            raise error.TestNAError("There is no network device name of %s." %
+                                    net_name)
         pci_dev = netxml.parent
 
         if sriov:
@@ -101,9 +101,9 @@ def run(test, params, env):
                     device = nodedev
                     break
             if not device:
-                raise error.TestError("There is no network name is using "
-                                      "Virtual Function PCI device %s." %
-                                      pci_dev)
+                raise error.TestNAError("There is no network name is using "
+                                        "Virtual Function PCI device %s." %
+                                        pci_dev)
 
         pci_xml = NodedevXML.new_from_dumpxml(pci_dev)
         pci_address = pci_xml.cap.get_address_dict()
@@ -118,14 +118,25 @@ def run(test, params, env):
 
         result = virsh.nodedev_list(cap="storage")
         nodedev_storages = result.stdout.strip().splitlines()
+        device = None
         for nodedev in nodedev_storages:
             storage_xml = NodedevXML.new_from_dumpxml(nodedev)
             if storage_xml.cap.block == storage_dev_name:
+                device = nodedev
                 break
-        if not nodedev:
-            raise error.TestError("There is no block device name of %s." %
-                                  storage_dev_name)
+        if not device:
+            raise error.TestNAError("There is no block device name of %s." %
+                                    storage_dev_name)
         pci_xml = NodedevXML.new_from_dumpxml(storage_xml.parent)
+
+        # In some cases, the parent of target storage device might not be
+        # a PCI device, but is of type 'scsi' for example.
+        # SKIP these tests with a proper message.
+        if pci_xml.cap_type != 'pci':
+            raise error.TestNAError("The parent node device of the storage "
+                                    "device need to be a PCI device. "
+                                    "But parent of %s is a %s device." %
+                                    (storage_dev_name, pci_xml.cap_type))
         pci_address = pci_xml.cap.get_address_dict()
 
     vmxml.add_hostdev(pci_address)
