@@ -93,6 +93,9 @@ def run(test, params, env):
             vm_xml.devices = devices
             vm_xml.sync()
         elif config_type == "portgroup":
+            if nettype != 'network':
+                raise error.TestNAError("Portgroup is only applicable with "
+                                        "virtual network")
             # Add a portgroup into default network
             portgroup_name = "test_portgroup"
             portgroup = PortgroupXML()
