@@ -1,4 +1,5 @@
 import os
+import shutil
 import logging
 from autotest.client.shared import error, utils
 from virttest import aexpect, virt_vm, virsh, remote, qemu_storage
@@ -271,6 +272,32 @@ def run(test, params, env):
             check_disk_type = vm_xml.VMXML.check_disk_type(vm_name, device_source, "block")
         else:
             check_disk_type = vm_xml.VMXML.check_disk_type(vm_name, device_source, "file")
+
+    # Eject cdrom test
+    eject_cdrom = "yes" == params.get("eject_cdrom", "no")
+    if eject_cdrom:
+        eject_xml = os.path.join(test.tmpdir, "eject.xml")
+        # Create a cdrom xml file without source to eject cdrom by attach-device cmd
+        disk_class = vm_xml.VMXML.get_device_class('disk')
+        disk = disk_class(type_name='file')
+        disk.device = "cdrom"
+        disk.driver = dict(name='qemu')
+        disk.target = dict(bus=bus_type, dev=device_target)
+        disk.xmltreefile.write()
+        shutil.copyfile(disk.xml, eject_xml)
+        logging.debug("Eject CDROM by attach XML: %s", open(eject_xml).read())
+        try:
+            # Run command tiwce to make sure cdrom tray open first #BZ892289
+            # Tray open
+            virsh.attach_device(domainarg=vm_name, filearg=eject_xml,
+                                debug=True, ignore_status=True)
+            # Eject cdrom
+            virsh.attach_device(domainarg=vm_name, filearg=eject_xml,
+                                debug=True, ignore_status=True)
+            if not vm_xml.VMXML.check_disk_exist(vm_name, device_source):
+                logging.debug("Ejcet CDROM successfully")
+        except:
+            raise error.TestFail("Eject CDROM failed")
 
     # Destroy VM.
     vm.destroy(gracefully=False)
