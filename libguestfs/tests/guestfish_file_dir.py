@@ -19,7 +19,7 @@ def prepare_image(params):
 
     tarball_file = params.get("tarball_file")
     if tarball_file:
-        tarball_path = os.path.join(data_dir.get_data_dir(), "tarball",
+        tarball_path = os.path.join(data_dir.get_deps_dir(), "tarball",
                                     tarball_file)
     params["tarball_path"] = tarball_path
 
