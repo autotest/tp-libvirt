@@ -1069,6 +1069,184 @@ def test_part_to_partnum(vm, params):
     gf.close_session()
 
 
+def test_sfdisk(vm, params):
+    """
+    Test command sfdisk
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    pv_name = params.get("pv_name")
+    gf.run()
+
+    # "start,end,type"
+    partition = ["1,100,83", "102,60,83", "200,50,83",
+                 "251,200,5", "251,50,83"]
+    lines = '"' + " ".join(partition) + '"'
+
+    expect = ["1,100,83", "102,60,83", "200,50,83",
+              "251,200,5", "251+,50-,83"]
+
+    gf.part_init(pv_name, 'msdos')
+    gf.sfdisk(pv_name, 0, 0, 0, lines)
+    ret = gf.sfdisk_l(pv_name).stdout.strip()
+
+    result = []
+    for i in ret.split('\n'):
+        if re.search("/dev/sda\d", i):
+            l = re.findall("\S+", i)
+            result.append("%s,%s,%s" % (l[1], l[3], l[5]))
+
+    if result != expect:
+        gf.close_session()
+        logging.debug("Got result:\n %s", result)
+        logging.debug("Expect result:\n %s", expect)
+        raise error.TestFail("result is not match expect")
+
+    gf.close_session()
+
+
+def test_sfdiskM(vm, params):
+    """
+    Test command sfdiskM
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    pv_name = params.get("pv_name")
+    gf.run()
+
+    if params["partition_type"] == "physical":
+        # "start,end,type"
+        partition = ["1,20,83", "22,30,83", "55,20,83", "76,20,5", "251,50,83"]
+        lines = '"' + " ".join(partition) + '"'
+
+        gf.sfdiskM(pv_name, lines)
+        result = gf.sfdisk_l(pv_name).stdout.strip()
+        logging.debug(result)
+
+        l = re.findall("/dev/sda[0-9]", result)
+        if len(l) != 4:
+            gf.close_session()
+            raise error.TestFail("result is not match expect")
+
+        gf.close_session()
+
+
+def test_sfdisk_N(vm, params):
+    """
+    Test command sfdisk-N
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    pv_name = params.get("pv_name")
+    gf.run()
+
+    if params["partition_type"] == "physical":
+        # "start,end,type"
+        lines = ["1,100,83", "102,60,83", "200,50,83", "251,200,5"]
+
+        for i, v in enumerate(lines):
+            gf.sfdisk_N(pv_name, i+1, 0, 0, 0, v)
+
+        ret = gf.sfdisk_l(pv_name).stdout.strip()
+
+        result = []
+        for i in ret.split('\n'):
+            if re.search("/dev/sda\d", i):
+                l = re.findall("\S+", i)
+                result.append("%s,%s,%s" % (l[1], l[3], l[5]))
+
+        logging.debug(lines)
+        logging.debug(result)
+        if result != lines:
+            gf.close_session()
+            raise error.TestFail("result is not match expect")
+
+        gf.close_session()
+
+
+def test_sfdisk_disk_geometry(vm, params):
+    """
+    Test command sfdisk-disk-geometry
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    pv_name = params.get("pv_name")
+    gf.run()
+
+    gf.part_init(pv_name, 'msdos')
+    result = gf.sfdisk_disk_geometry(pv_name).stdout.strip()
+
+    if not result:
+            gf.close_session()
+            raise error.TestFail("result should not be empty")
+
+    gf.close_session()
+
+
+def test_sfdisk_kernel_geometry(vm, params):
+    """
+    Test command sfdisk-kernel-geometry
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    pv_name = params.get("pv_name")
+    gf.run()
+
+    gf.part_init(pv_name, 'msdos')
+    result = gf.sfdisk_kernel_geometry(pv_name).stdout.strip()
+
+    if not result:
+            gf.close_session()
+            raise error.TestFail("result should not be empty")
+
+    gf.close_session()
+
+
 def run(test, params, env):
     """
     Test of built-in block_dev related commands in guestfish.
