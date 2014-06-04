@@ -1,6 +1,7 @@
 import logging
 from autotest.client.shared import error
 from virttest import virsh, libvirt_xml
+from provider import libvirt_version
 
 
 def check_list(filter_ref):
@@ -37,6 +38,17 @@ def run(test, params, env):
     options_ref = params.get("undefine_options_ref", "")
     status_error = params.get("status_error", "no")
 
+    # libvirt acl polkit related params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
     # Backup filter xml
     if filter_ref:
         new_filter = libvirt_xml.NwfilterXML()
@@ -46,6 +58,8 @@ def run(test, params, env):
 
     # Run command
     cmd_result = virsh.nwfilter_undefine(filter_ref, options=options_ref,
+                                         unprivileged_user=unprivileged_user,
+                                         uri=uri,
                                          ignore_status=True, debug=True)
     status = cmd_result.exit_status
 

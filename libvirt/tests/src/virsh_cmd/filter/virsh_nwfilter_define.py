@@ -2,6 +2,7 @@ import os
 import logging
 from autotest.client.shared import error
 from virttest import virsh, xml_utils, libvirt_xml
+from provider import libvirt_version
 
 
 NWFILTER_ETC_DIR = "/etc/libvirt/nwfilter"
@@ -54,6 +55,18 @@ def run(test, params, env):
     options_ref = params.get("options_ref", "")
     status_error = params.get("status_error", "no")
     boundary_test_skip = "yes" == params.get("boundary_test_skip")
+
+    # libvirt acl polkit related params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
 
     # prepare rule and protocol attributes
     protocol = {}
@@ -155,6 +168,8 @@ def run(test, params, env):
 
         # Run command
         cmd_result = virsh.nwfilter_define(filter_xml, options=options_ref,
+                                           unprivileged_user=unprivileged_user,
+                                           uri=uri,
                                            ignore_status=True, debug=True)
         status = cmd_result.exit_status
 

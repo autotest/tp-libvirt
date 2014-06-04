@@ -2,6 +2,7 @@ import os
 from autotest.client.shared import error
 from virttest import virsh
 from virttest import utils_libvirtd
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -28,6 +29,16 @@ def run(test, params, env):
     status_error = ("yes" == params.get("save_status_error", "yes"))
     vm_name = params.get("main_vm", "virt-tests-vm1")
     vm = env.get_vm(vm_name)
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
 
     domid = vm.get_id()
     domuuid = vm.get_uuid()
@@ -50,7 +61,9 @@ def run(test, params, env):
 
     if progress:
         options += " --verbose"
-    result = virsh.save(vm_ref, savefile, options, ignore_status=True)
+    result = virsh.save(vm_ref, savefile, options, ignore_status=True,
+                        unprivileged_user=unprivileged_user,
+                        uri=uri, debug=True)
     status = result.exit_status
     err_msg = result.stderr.strip()
 

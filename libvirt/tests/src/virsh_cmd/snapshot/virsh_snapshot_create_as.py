@@ -5,6 +5,7 @@ import logging
 from autotest.client.shared import error
 from virttest import virsh, utils_misc, xml_utils, libvirt_xml
 from virttest.libvirt_xml import vm_xml, xcepts
+from provider import libvirt_version
 
 
 def xml_recover(vmxml):
@@ -309,6 +310,17 @@ def run(test, params, env):
     memspec_opts = params.get("memspec_opts")
     diskspec_opts = params.get("diskspec_opts")
 
+    uri = params.get("virsh_uri")
+    unpriv_usr = params.get('unprivileged_user')
+    if unpriv_usr:
+        if unpriv_usr.count('EXAMPLE'):
+            unpriv_usr = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
     opt_names = locals()
     if memspec_opts is not None:
         mem_options = compose_disk_options(test, params, memspec_opts)
@@ -394,7 +406,9 @@ def run(test, params, env):
         # May create several snapshots, according to configuration
         for count in range(int(multi_num)):
             cmd_result = virsh.snapshot_create_as(vm_name, options,
-                                                  ignore_status=True, debug=True)
+                                                  unprivileged_user=unpriv_usr,
+                                                  uri=uri, ignore_status=True,
+                                                  debug=True)
             output = cmd_result.stdout.strip()
             status = cmd_result.exit_status
 

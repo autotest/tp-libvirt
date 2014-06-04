@@ -3,6 +3,7 @@ import logging
 from autotest.client.shared import error
 from virttest import aexpect, utils_test
 from virttest.libvirt_xml import vm_xml, xcepts
+from provider import libvirt_version
 
 
 def xml_console_config(vm_name, serial_type='pty',
@@ -79,6 +80,16 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     domuuid = vm.get_uuid()
     domid = ""
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
 
     # A backup of original vm
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -108,7 +119,11 @@ def run(test, params, env):
             vm_ref = hex(int(domid))
 
         # Run command
-        command = "virsh console %s" % vm_ref
+        if params.get('setup_libvirt_polkit') == 'yes':
+            cmd = "virsh -c %s console %s" % (uri, vm_ref)
+            command = "su - %s -c '%s'" % (unprivileged_user, cmd)
+        else:
+            command = "virsh console %s" % vm_ref
         console_session = aexpect.ShellSession(command)
 
         status = utils_test.libvirt.verify_virsh_console(

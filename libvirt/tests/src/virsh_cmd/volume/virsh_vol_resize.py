@@ -5,6 +5,7 @@ from virttest.utils_test import libvirt
 from virttest import libvirt_storage
 from virttest import utils_misc
 from virttest import virsh
+from provider import libvirt_version
 
 
 def get_expect_info(new_capacity, vol_path, resize_option=None):
@@ -157,6 +158,18 @@ def run(test, params, env):
     check_vol_size = "yes" == params.get("check_vol_size", "yes")
     status_error = "yes" == params.get("status_error", "no")
 
+    # libvirt acl polkit related params
+    uri = params.get("virsh_uri")
+    unpri_user = params.get('unprivileged_user')
+    if unpri_user:
+        if unpri_user.count('EXAMPLE'):
+            unpri_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
     libv_pvt = libvirt.PoolVolumeTest(test, params)
     try:
         libv_pool = libvirt_storage.StoragePool()
@@ -205,7 +218,9 @@ def run(test, params, env):
 
         # Run vol-resize
         result = virsh.vol_resize(vol_name, vol_new_capacity, pool_name,
-                                  resize_option, debug=True)
+                                  resize_option, uri=uri,
+                                  unprivileged_user=unpri_user,
+                                  debug=True)
         if not status_error:
             if result.exit_status != 0:
                 raise error.TestFail(result.stdout.strip())

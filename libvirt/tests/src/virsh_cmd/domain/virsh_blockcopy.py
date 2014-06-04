@@ -6,6 +6,7 @@ from autotest.client.shared import error
 from virttest import utils_libvirtd, virsh, qemu_storage, data_dir
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utl
+from provider import libvirt_version
 
 
 class JobTimeout(Exception):
@@ -160,6 +161,18 @@ def run(test, params, env):
     if len(bandwidth):
         options += "--bandwidth %s" % bandwidth
 
+    # Prepare acl options
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
     def check_format(dest_path, dest_extension, expect):
         """
         Check the image format
@@ -183,6 +196,8 @@ def run(test, params, env):
         if rerun_flag == 1:
             options1 = "--wait --raw --finish --verbose"
             cmd_result = virsh.blockcopy(vm_name, target, dest_path, options1,
+                                         unprivileged_user=unprivileged_user,
+                                         uri=uri,
                                          ignore_status=True, debug=True)
             status = cmd_result.exit_status
             if status != 0:
@@ -191,6 +206,8 @@ def run(test, params, env):
                 raise error.TestFail("Cannot find the created copy.")
 
         cmd_result = virsh.blockcopy(vm_name, target, dest_path, options,
+                                     unprivileged_user=unprivileged_user,
+                                     uri=uri,
                                      ignore_status=True, debug=True)
         status = cmd_result.exit_status
     except Exception, detail:

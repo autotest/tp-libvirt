@@ -1,6 +1,7 @@
 import os
 import logging
 from autotest.client.shared import error
+from autotest.client import utils
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import remote
@@ -9,6 +10,7 @@ from virttest import aexpect
 from virttest import libvirt_storage
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -52,6 +54,18 @@ def run(test, params, env):
     vm_id = vm.get_id()
     vm_uuid = vm.get_uuid()
 
+    # polkit acl related params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
     # Back up xml file.Xen host has no guest xml file to define a guset.
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
@@ -69,6 +83,8 @@ def run(test, params, env):
 
     volume = None
     pvtest = None
+    status3 = None
+
     try:
         save_file = "/var/lib/libvirt/qemu/save/%s.save" % vm_name
         if option.count("managedsave") and vm.is_alive():
@@ -110,6 +126,8 @@ def run(test, params, env):
         if vm_ref != "remote":
             vm_ref = "%s %s" % (vm_ref, extra)
             cmdresult = virsh.undefine(vm_ref, option,
+                                       unprivileged_user=unprivileged_user,
+                                       uri=uri,
                                        ignore_status=True, debug=True)
             status = cmdresult.exit_status
             output = cmdresult.stdout.strip()
@@ -166,6 +184,17 @@ def run(test, params, env):
         if volume and os.path.exists(volume):
             volume_exist = True
 
+        # Test define with acl control and recover domain.
+        if params.get('setup_libvirt_polkit') == 'yes':
+            if virsh.domain_exists(vm.name):
+                virsh.undefine(vm_ref, ignore_status=True)
+            cmd = "chmod 666 %s" % backup_xml.xml
+            utils.run(cmd, ignore_status=False)
+            s_define = virsh.define(backup_xml.xml,
+                                    unprivileged_user=unprivileged_user,
+                                    uri=uri, ignore_status=True, debug=True)
+            status3 = s_define.exit_status
+
     finally:
         # Recover main VM.
         backup_xml.sync()
@@ -184,6 +213,10 @@ def run(test, params, env):
     if status_error:
         if not status:
             raise error.TestFail("virsh undefine return unexpected result.")
+        if params.get('setup_libvirt_polkit') == 'yes':
+            if status3 == 0:
+                raise error.TestFail("virsh define with false acl permission" +
+                                     " should failed.")
     else:
         if status:
             raise error.TestFail("virsh undefine failed.")
@@ -202,3 +235,7 @@ def run(test, params, env):
         if wipe_data and option.count("remove-all-storage"):
             if not output.count("Wiping volume '%s'" % disk_target):
                 raise error.TestFail("Command didn't wipe volume storage!")
+        if params.get('setup_libvirt_polkit') == 'yes':
+            if status3:
+                raise error.TestFail("virsh define with right acl permission" +
+                                     " should succeeded")

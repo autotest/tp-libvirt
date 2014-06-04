@@ -5,6 +5,7 @@ import time
 import signal
 from autotest.client.shared import error, utils
 from virttest import virsh, utils_libvirtd
+from provider import libvirt_version
 
 
 def wait_pid_active(pid, timeout=5):
@@ -102,6 +103,16 @@ def run(test, params, env):
     status_error = params.get("status_error", "no") == "yes"
     timeout = int(params.get("timeout", "5"))
     qemu_conf = "/etc/libvirt/qemu.conf"
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
 
     def check_domstate(actual, options):
         """
@@ -193,6 +204,8 @@ def run(test, params, env):
 
     # Run virsh command
     cmd_result = virsh.dump(vm_name, dump_file, options,
+                            unprivileged_user=unprivileged_user,
+                            uri=uri,
                             ignore_status=True, debug=True)
     status = cmd_result.exit_status
 

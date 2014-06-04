@@ -3,6 +3,7 @@ import logging
 from virttest import virsh, libvirt_storage, libvirt_xml
 from virttest.utils_test import libvirt as utlv
 from autotest.client.shared import error
+from autotest.client import utils
 from provider import libvirt_version
 
 
@@ -59,6 +60,18 @@ def run(test, params, env):
             raise error.TestNAError("metadata preallocation not supported in"
                                     + " current libvirt version.")
 
+    # libvirt acl polkit related params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
     try:
         # Create the src pool
         src_pool_name = "virt-%s-pool" % src_pool_type
@@ -75,11 +88,14 @@ def run(test, params, env):
         volxml = libvirt_xml.VolXML()
         newvol = volxml.new_vol(**vol_arg)
         vol_xml = newvol['xml']
+        if params.get('setup_libvirt_polkit') == 'yes':
+            utils.run("chmod 666 %s" % vol_xml, ignore_status=True)
 
         # Run virsh_vol_create to create vol
         logging.debug("create volume from xml: %s" % newvol.xmltreefile)
         cmd_result = virsh.vol_create(src_pool_name, vol_xml, extra_option,
-                                      ignore_status=True, debug=True)
+                                      unprivileged_user=unprivileged_user,
+                                      uri=uri, ignore_status=True, debug=True)
         status = cmd_result.exit_status
         # Check result
         if not status_error:

@@ -5,6 +5,7 @@ from autotest.client import utils
 from autotest.client import lv_utils
 from autotest.client.shared import error
 from virttest import virsh
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -25,6 +26,16 @@ def run(test, params, env):
     vg_name = params.get("vg_name", "virttest_vg_0")
     ro_flag = "yes" == params.get("readonly_mode", "no")
     status_error = "yes" == params.get("status_error", "no")
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
 
     if not source_type:
         raise error.TestFail("Command requires <type> value")
@@ -68,6 +79,10 @@ def run(test, params, env):
     srcSpec.flush()
     logging.debug("srcSpec file content:\n%s", file(srcSpec.name).read())
 
+    if params.get('setup_libvirt_polkit') == 'yes':
+        cmd = "chmod 666 %s" % srcSpec.name
+        utils.system(cmd)
+
     if ro_flag:
         logging.debug("Readonly mode test")
 
@@ -78,6 +93,8 @@ def run(test, params, env):
             srcSpec.name,
             ignore_status=True,
             debug=True,
+            unprivileged_user=unprivileged_user,
+            uri=uri,
             readonly=ro_flag)
         output = cmd_result.stdout.strip()
         err = cmd_result.stderr.strip()

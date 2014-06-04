@@ -6,6 +6,7 @@ from tempfile import mktemp
 from virttest import virsh
 from autotest.client.shared import error
 from virttest.libvirt_xml.nodedev_xml import NodedevXML
+from provider import libvirt_version
 
 
 _FC_HOST_PATH = "/sys/class/fc_host"
@@ -75,6 +76,13 @@ def create_nodedev_from_xml(params):
     options = params.get("nodedev_options")
     status_error = params.get("status_error", "no")
 
+    # libvirt acl polkit related params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
     vhba_xml = """
 <device>
     <parent>%s</parent>
@@ -92,7 +100,9 @@ def create_nodedev_from_xml(params):
     xml_object.write(vhba_xml)
     xml_object.close()
 
-    result = virsh.nodedev_create(vhba_file, options)
+    result = virsh.nodedev_create(vhba_file, options, uri=uri,
+                                  debug=True,
+                                  unprivileged_user=unprivileged_user)
     status = result.exit_status
 
     # Remove temprorary file
@@ -129,7 +139,16 @@ def destroy_nodedev(params):
     options = params.get("nodedev_options")
     status_error = params.get("status_error", "no")
 
-    result = virsh.nodedev_destroy(dev_name, options)
+    # libvirt acl polkit related params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    result = virsh.nodedev_destroy(dev_name, options, uri=uri,
+                                   debug=True,
+                                   unprivileged_user=unprivileged_user)
     status = result.exit_status
 
     # Check status_error
@@ -229,6 +248,11 @@ def run(test, params, env):
     no_vport_ops = params.get("nodedev_no_vport_ops", "no")
     port_state = params.get("nodedev_port_state", "offline")
     create_device = params.get("nodedev_create_device", "no")
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
 
     # Find available HBAs
     scsi_hosts = find_devices_by_cap()

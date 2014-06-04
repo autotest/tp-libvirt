@@ -2,6 +2,7 @@ import logging
 import time
 from autotest.client.shared import error
 from virttest import virsh
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -25,6 +26,16 @@ def run(test, params, env):
     username = params.get("username")
     password = params.get("password")
     create_file = params.get("create_file_name")
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
 
     def send_line(send_str):
         """
@@ -34,7 +45,8 @@ def run(test, params, env):
             virsh.sendkey(vm_name, "KEY_%s" % send_ch.upper(),
                           ignore_status=False)
 
-        virsh.sendkey(vm_name, "KEY_ENTER", ignore_status=False)
+        virsh.sendkey(vm_name, "KEY_ENTER",
+                      ignore_status=False)
 
     vm = env.get_vm(vm_name)
     session = vm.wait_for_login()
@@ -81,7 +93,9 @@ def run(test, params, env):
         send_line(password)
         time.sleep(2)
 
-        output = virsh.sendkey(vm_name, options, readonly=readonly)
+        output = virsh.sendkey(vm_name, options, readonly=readonly,
+                               unprivileged_user=unprivileged_user,
+                               uri=uri)
         time.sleep(2)
         if output.exit_status != 0:
             if status_error:

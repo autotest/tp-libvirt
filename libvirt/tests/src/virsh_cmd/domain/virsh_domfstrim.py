@@ -5,6 +5,7 @@ from virttest import virsh, utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.controller import Controller
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -35,6 +36,16 @@ def run(test, params, env):
     mountpoint = params.get("domfstrim_mountpoint")
     options = params.get("domfstrim_options", "")
     is_fulltrim = ("yes" == params.get("is_fulltrim", "yes"))
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
 
     def recompose_xml(vm_name, scsi_disk):
         """
@@ -168,7 +179,9 @@ def run(test, params, env):
             Do empty fstrim check
             :return: True of False
             """
-            cmd_result = virsh.domfstrim(vm_name, minimum, mountpoint, options)
+            cmd_result = virsh.domfstrim(vm_name, minimum, mountpoint, options,
+                                         unprivileged_user=unprivileged_user,
+                                         uri=uri)
             if cmd_result.exit_status != 0:
                 if not status_error:
                     raise error.TestFail("Fail to do virsh domfstrim, error %s"

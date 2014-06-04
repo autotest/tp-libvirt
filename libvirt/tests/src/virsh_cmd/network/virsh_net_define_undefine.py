@@ -1,7 +1,8 @@
 import logging
-from autotest.client.shared import error
+from autotest.client.shared import utils, error
 from virttest import virsh, libvirt_vm, xml_utils
 from virttest.libvirt_xml import network_xml, xcepts
+from provider import libvirt_version
 
 
 def get_network_xml_instance(virsh_dargs, test_xml, net_name,
@@ -53,6 +54,18 @@ def run(test, params, env):
     virsh_dargs = {'uri': uri, 'debug': False, 'ignore_status': True}
     virsh_instance = virsh.VirshPersistent(**virsh_dargs)
 
+    # libvirt acl polkit related params
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
+    virsh_uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
     # Prepare environment and record current net_state_dict
     backup = network_xml.NetworkXML.new_all_networks_dict(virsh_instance)
     backup_state = virsh_instance.net_state_dict()
@@ -93,6 +106,12 @@ def run(test, params, env):
     define_extra = undefine_extra = extra_args
     if trans_ref != "define":
         define_extra = ""
+
+    if params.get('setup_libvirt_polkit') == 'yes':
+        virsh_dargs = {'uri': virsh_uri, 'unprivileged_user': unprivileged_user,
+                       'debug': False, 'ignore_status': True}
+        cmd = "chmod 666 %s" % testnet_xml.xml
+        utils.system(cmd)
 
     try:
         # Run test case
