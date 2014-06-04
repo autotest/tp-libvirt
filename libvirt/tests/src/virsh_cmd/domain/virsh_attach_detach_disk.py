@@ -3,6 +3,7 @@ import logging
 from autotest.client.shared import error, utils
 from virttest import aexpect, virt_vm, virsh, remote, qemu_storage
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
 
 
@@ -272,28 +273,50 @@ def run(test, params, env):
         else:
             check_disk_type = vm_xml.VMXML.check_disk_type(vm_name, device_source, "file")
 
-    # Destroy VM.
-    vm.destroy(gracefully=False)
+    save_file = os.path.join(test.tmpdir, "vm.save")
+    try:
+        # Eject cdrom test
+        eject_cdrom = "yes" == params.get("eject_cdrom", "no")
+        if eject_cdrom:
+            libvirt.eject_cdrom(vm_name)
+            if vm_xml.VMXML.check_disk_exist(vm_name, device_source):
+                raise error.TestFail("Find %s after do eject" % device_source)
 
-    # Check disk count after VM shutdown (with --config).
-    check_count_after_shutdown = True
-    disk_count_after_shutdown = vm_xml.VMXML.get_disk_count(vm_name)
-    if test_cmd == "attach-disk":
-        if disk_count_after_shutdown == disk_count_before_cmd:
-            check_count_after_shutdown = False
-    elif test_cmd == "detach-disk":
-        if disk_count_after_shutdown < disk_count_before_cmd:
-            check_count_after_shutdown = False
+        # Save and restore VM
+        save_vm = "yes" == params.get("save_vm", "no")
+        if save_vm:
+            result = virsh.save(vm_name, save_file)
+            libvirt.check_exit_status(result)
+            result = virsh.restore(save_file)
+            libvirt.check_exit_status(result)
+            if vm_xml.VMXML.check_disk_exist(vm_name, device_source):
+                raise error.TestFail("Find %s after do restore" % device_source)
 
-    # Recover VM.
-    if vm.is_alive():
+        # Destroy VM.
         vm.destroy(gracefully=False)
-    virsh.undefine(vm_name)
-    virsh.define(vm_xml_file)
-    if test_block_dev:
-        iscsi_dev.cleanup()
-    elif os.path.exists(device_source):
-        os.remove(device_source)
+
+        # Check disk count after VM shutdown (with --config).
+        check_count_after_shutdown = True
+        disk_count_after_shutdown = vm_xml.VMXML.get_disk_count(vm_name)
+        if test_cmd == "attach-disk":
+            if disk_count_after_shutdown == disk_count_before_cmd:
+                check_count_after_shutdown = False
+        elif test_cmd == "detach-disk":
+            if disk_count_after_shutdown < disk_count_before_cmd:
+                check_count_after_shutdown = False
+
+    finally:
+        # Recover VM.
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
+        virsh.undefine(vm_name)
+        virsh.define(vm_xml_file)
+        if os.path.exists(save_file):
+            os.remove(save_file)
+        if test_block_dev:
+            iscsi_dev.cleanup()
+        elif os.path.exists(device_source):
+            os.remove(device_source)
 
     # Check results.
     if status_error == 'yes':
