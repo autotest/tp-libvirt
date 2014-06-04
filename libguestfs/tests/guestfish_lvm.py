@@ -167,6 +167,203 @@ def test_lvm_canonical_lv_name(vm, params):
     gf.close_session()
 
 
+def test_lvremove(vm, params):
+    """
+    Test command lvremove
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate')
+
+    ret = gf.lvs().stdout.strip()
+    logging.debug(ret)
+    if ret:
+        gf.lvremove(ret)
+
+    ret = gf.lvs().stdout.strip()
+    if ret:
+        gf.close_session()
+        raise error.TestFail("LV can't be removed")
+
+    gf.close_session()
+
+
+def test_lvm_remove_all(vm, params):
+    """
+    Test command lvm-remove-all
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate')
+
+    pv = gf.pvs().stdout.strip()
+    vg = gf.vgs().stdout.strip()
+    lv = gf.lvs().stdout.strip()
+    logging.debug("pv: %s\n vg:%s\n lv:%s\n" % (pv, vg, lv))
+
+    if pv and vg and lv:
+        gf.lvm_remove_all()
+
+    pv = gf.pvs().stdout.strip()
+    vg = gf.vgs().stdout.strip()
+    lv = gf.lvs().stdout.strip()
+    logging.debug("pv: %s\n vg:%s\n lv:%s\n" % (pv, vg, lv))
+
+    if pv or vg or lv:
+        gf.close_session()
+        raise error.TestFail("lvm-remove-all failed")
+
+    gf.close_session()
+
+
+def test_lvrename(vm, params):
+    """
+    Test command lvrename
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate')
+
+    ret = gf.lvs().stdout.strip()
+    logging.debug(ret)
+    if ret:
+        new_lv_name = "newlv"
+        gf.lvrename(ret, new_lv_name)
+
+    ret = gf.lvs().stdout.strip()
+    if new_lv_name not in ret:
+        gf.close_session()
+        raise error.TestFail("LV can't be renamed")
+
+    gf.close_session()
+
+
+def test_lvresize(vm, params):
+    """
+    Test command lvresize
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate')
+
+    ret = gf.lvs_full().stdout.strip()
+    lv = gf.lvs().stdout.strip()
+    old_size = re.search("lv_size:\s+(\S+)", ret).groups()[0]
+
+    ret = gf.lvresize(lv, 200)
+    if ret.exit_status:
+        gf.close_session()
+        raise error.TestFail("lvresize execute failed")
+
+    ret = gf.lvs_full().stdout.strip()
+    new_size = re.search("lv_size:\s+(\S+)", ret).groups()[0]
+
+    logging.debug("old_size is %s, new_size is %s" % (old_size, new_size))
+
+    if new_size <= old_size:
+        gf.close_session()
+        raise error.TestFail("lvresize failed")
+
+    gf.close_session()
+
+
+def test_lvresize_free(vm, params):
+    """
+    Test command lvresize-free
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate', size=200)
+
+    lv = gf.lvs().stdout.strip()
+
+    ret = gf.lvs_full().stdout.strip()
+    old_size = re.search("lv_size:\s+(\S+)", ret).groups()[0]
+    ret = gf.vgs_full().stdout.strip()
+    max_size = re.search("vg_size:\s+(\S+)", ret).groups()[0]
+
+    ret = gf.lvresize_free(lv, 100)
+    if ret.exit_status:
+        gf.close_session()
+        raise error.TestFail("lvresize-free execute failed")
+
+    ret = gf.lvs_full().stdout.strip()
+    new_size = re.search("lv_size:\s+(\S+)", ret).groups()[0]
+
+    logging.debug("old_size is %s, new_size is %s" % (old_size, new_size))
+
+    if new_size != max_size:
+        gf.close_session()
+        raise error.TestFail("lv_size should be %s" % max_size)
+
+    gf.close_session()
+
+
 def run(test, params, env):
     """
     Test of built-in lvm related commands in guestfish.
