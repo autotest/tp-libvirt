@@ -25,6 +25,34 @@ def prepare_image(params):
     gf.close_session()
 
 
+def create_lvm(gf, mode, pv_name="/dev/sda", vg_name="VG", lv_name="LV", size=100):
+
+    if mode == 'pvcreate':
+        gf.part_init(pv_name, "msdos")
+        gf.pvcreate(pv_name)
+        ret = gf.pvs().stdout.strip()
+        if not ret:
+            gf.close_session()
+            raise error.TestFail("create PV failed")
+        return ret
+    elif mode == 'vgcreate':
+        gf.vgcreate(vg_name, pv_name)
+        ret = gf.vgs().stdout.strip()
+        if not ret:
+            gf.close_session()
+            raise error.TestFail("create VG failed")
+        return ret
+    elif mode == 'lvcreate':
+        gf.lvcreate(lv_name, vg_name, size)
+        ret = gf.lvs().stdout.strip()
+        if not ret:
+            gf.close_session()
+            raise error.TestFail("create LV failed")
+        return ret
+    else:
+        logging.info("mode should be 'pvcreate','vgcreate' or 'lvcreate'")
+
+
 def test_is_lv(vm, params):
     """
     Test command is-lv
@@ -41,18 +69,23 @@ def test_is_lv(vm, params):
         gf.add_domain(vm_name, readonly=readonly)
     gf.run()
 
-    if params["partition_type"] == "lvm":
-        name = gf.lvs().stdout.strip()
-        ret = gf.is_lv(name).stdout.strip()
-        if ret != "true":
-            gf.close_session()
-            raise error.TestFail("It should be a lvm device")
-    else:
-        name = gf.list_partitions().stdout.strip()
-        ret = gf.is_lv(name).stdout.strip()
-        if ret != "false":
-            gf.close_session()
-            raise error.TestFail("It should be a physical device")
+    # check physical device
+    name = gf.list_partitions().stdout.strip()
+    ret = gf.is_lv(name).stdout.strip()
+    if ret != "false":
+        gf.close_session()
+        raise error.TestFail("It should be a physical device")
+
+    # check lvm device
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate')
+
+    name = gf.lvs().stdout.strip()
+    ret = gf.is_lv(name).stdout.strip()
+    if ret != "true":
+        gf.close_session()
+        raise error.TestFail("It should be a lvm device")
 
     gf.close_session()
 
@@ -76,27 +109,25 @@ def test_lvcreate(vm, params):
 
     vg_name = "myvg"
     lv_name = "mylv"
-    size = 100
+
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate', vg_name=vg_name)
+    create_lvm(gf, 'lvcreate', vg_name=vg_name, lv_name=lv_name)
+
     part_name = "/dev/%s/%s" % (vg_name, lv_name)
 
-    if params["partition_type"] == "physical":
-        gf.part_init(pv_name, "msdos")
-        gf.pvcreate(pv_name)
-        gf.vgcreate(vg_name, pv_name)
-        gf.lvcreate(lv_name, vg_name, size)
+    result = gf.lvs().stdout.strip()
 
-        result = gf.lvs().stdout.strip()
+    if result != part_name:
+        gf.close_session()
+        raise error.TestFail("lv name is not match")
 
-        if result != part_name:
-            gf.close_session()
-            raise error.TestFail("lv name is not match")
+    result = gf.lvs_full().stdout.strip()
+    result = re.search("lv_name:\s+(\S+)", result).groups()[0]
 
-        result = gf.lvs_full().stdout.strip()
-        result = re.search("lv_name:\s+(\S+)", result).groups()[0]
-
-        if result != lv_name:
-            gf.close_session()
-            raise error.TestFail("lv name is not match")
+    if result != lv_name:
+        gf.close_session()
+        raise error.TestFail("lv name is not match")
 
     gf.close_session()
 
@@ -118,17 +149,20 @@ def test_lvm_canonical_lv_name(vm, params):
     gf.run()
     pv_name = params.get("pv_name")
 
-    if params["partition_type"] == "lvm":
-        real_name = gf.lvs().stdout.strip()
-        vg_name, lv_name = real_name.split("/")[-2:]
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate')
 
-        test_name = "/dev/mapper/%s-%s" % (vg_name, lv_name)
-        result = gf.lvm_canonical_lv_name(test_name).stdout.strip()
-        logging.debug(result)
+    real_name = gf.lvs().stdout.strip()
+    vg_name, lv_name = real_name.split("/")[-2:]
 
-        if result != real_name:
-            gf.close_session()
-            raise error.TestFail("Return name is uncorrect")
+    test_name = "/dev/mapper/%s-%s" % (vg_name, lv_name)
+    result = gf.lvm_canonical_lv_name(test_name).stdout.strip()
+    logging.debug(result)
+
+    if result != real_name:
+        gf.close_session()
+        raise error.TestFail("Return name is uncorrect")
 
     gf.close_session()
 
