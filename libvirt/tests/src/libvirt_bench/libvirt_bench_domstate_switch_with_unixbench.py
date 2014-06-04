@@ -80,7 +80,7 @@ def run(test, params, env):
     # Run unixbench on host.
     from autotest.client import common
     autotest_client_dir = os.path.dirname(common.__file__)
-    autotest_local_path = os.path.join(autotest_client_dir, "autotest")
+    autotest_local_path = os.path.join(autotest_client_dir, "autotest-local")
     unixbench_control_path = os.path.join(data_dir.get_root_dir(),
                                           "shared", "control",
                                           unixbench_control_file)

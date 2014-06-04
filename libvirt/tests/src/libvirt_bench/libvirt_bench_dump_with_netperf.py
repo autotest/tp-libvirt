@@ -36,7 +36,9 @@ def run(test, params, env):
         session = vm.wait_for_login()
 
         def _is_netperf_running():
-            return (not session.cmd_status("ps -ef|grep netperf|grep -v grep"))
+            return (not session.cmd_status(
+                    "cat /usr/local/autotest/results/default/debug/client.DEBUG|"
+                    "grep \"seconds remaining\""))
         if not utils_misc.wait_for(_is_netperf_running, timeout=120):
             raise error.TestNAError("Failed to run netperf in guest.\n"
                                     "Since we need to run a autotest of netperf "
