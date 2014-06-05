@@ -446,6 +446,179 @@ def test_lvuuid(vm, params):
     gf.close_session()
 
 
+def test_vgcreate(vm, params):
+    """
+    Test command vgcreate
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    pv_name = params.get("pv_name")
+
+    vg_name = "myvg"
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate', vg_name=vg_name)
+
+    result = gf.vgs().stdout.strip()
+
+    if result != vg_name:
+        gf.close_session()
+        raise error.TestFail("vg name is not match")
+
+    ret = gf.vgs_full().stdout.strip()
+    result = re.search("vg_name:\s+(\S+)", ret).groups()[0]
+
+    if result != vg_name:
+        gf.close_session()
+        raise error.TestFail("vg name is not match")
+
+    gf.close_session()
+
+
+def test_vgremove(vm, params):
+    """
+    Test command vgremove
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate')
+
+    ret = gf.vgs().stdout.strip()
+    logging.debug(ret)
+    if ret:
+        gf.vgremove(ret)
+
+    ret = gf.vgs().stdout.strip()
+    if ret:
+        gf.close_session()
+        raise error.TestFail("VG can't be removed")
+
+    gf.close_session()
+
+
+def test_vgrename(vm, params):
+    """
+    Test command vgrename
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate')
+
+    ret = gf.vgs().stdout.strip()
+    logging.debug(ret)
+    if ret:
+        new_vg_name = "newvg"
+        gf.vgrename(ret, new_vg_name)
+
+    ret = gf.vgs().stdout.strip()
+    if new_vg_name not in ret:
+        gf.close_session()
+        raise error.TestFail("VG can't be renamed")
+
+    gf.close_session()
+
+
+def test_vgscan(vm, params):
+    """
+    Test command vgscan
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate')
+
+    result = gf.vgscan()
+    if result.exit_status:
+        gf.close_session()
+        raise error.TestFail("vgscan execute failed")
+
+    gf.close_session()
+
+
+def test_vguuid(vm, params):
+    """
+    Test command vguuid
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate')
+
+    vg_name = gf.vgs().stdout.strip()
+    uuid = gf.vguuid(vg_name).stdout.strip()
+    uuid = re.sub("-", "", uuid)
+    logging.debug("uuid from vguuid is %s" % uuid)
+
+    ret = gf.vgs_full().stdout.strip()
+    result = re.search("vg_uuid:\s+(\S+)", ret).groups()[0]
+    logging.debug("uuid from lvs-full is %s" % result)
+
+    if uuid != result:
+        gf.close_session()
+        raise error.TestFail("vg uuid is not match")
+
+    gf.close_session()
+
+
 def run(test, params, env):
     """
     Test of built-in lvm related commands in guestfish.
