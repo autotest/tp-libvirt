@@ -1,5 +1,4 @@
 import os
-import shutil
 import logging
 from autotest.client.shared import error, utils
 from virttest import virsh, data_dir, virt_vm, utils_misc
@@ -33,7 +32,7 @@ def run(test, params, env):
         utils.run("mkisofs -o %s %s/new" % (new_iso, iso_dir))
 
     @error.context_aware
-    def check_media(session, target_file, action):
+    def check_media(session, target_file, action, rw_test=False):
         """
         Check guest cdrom/floppy files
 
@@ -50,7 +49,14 @@ def run(test, params, env):
                     session.cmd("mknod /dev/fd0 b 2 0")
                 mount_cmd = "mount /dev/fd0 /media"
             session.cmd(mount_cmd)
-            session.cmd("test -f /media/%s" % target_file)
+            if rw_test:
+                target_file = "/media/rw_test.txt"
+                session.cmd("touch %s" % target_file)
+                session.cmd("echo 'Hello World'> %s" % target_file)
+                output = session.get_command_output("cat %s" % target_file)
+                logging.debug("cat %s output: %s", target_file, output)
+            else:
+                session.cmd("test -f /media/%s" % target_file)
             session.cmd("umount /media")
 
         else:
@@ -185,6 +191,11 @@ def run(test, params, env):
         if source_path == "no":
             source = source_name
 
+    # For read&write floppy test, the iso media need a writeable fs
+    rw_floppy_test = "yes" == params.get("rw_floppy_test", "no")
+    if rw_floppy_test:
+        utils.run("mkfs.ext3 -F %s" % source)
+
     all_options = action + options + " " + source
     result = virsh.change_media(vm_ref, target_device,
                                 all_options, ignore_status=True, debug=True)
@@ -212,7 +223,7 @@ def run(test, params, env):
             if vm.is_dead():
                 vm.start()
             session = vm.wait_for_login()
-            check_media(session, check_file, action)
+            check_media(session, check_file, action, rw_floppy_test)
             session.close()
     finally:
         # Clean the iso dir  and clean the device
