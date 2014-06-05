@@ -19,7 +19,7 @@ def prepare_image(params):
 
     tarball_file = params.get("tarball_file")
     if tarball_file:
-        tarball_path = os.path.join(data_dir.get_data_dir(), "tarball",
+        tarball_path = os.path.join(data_dir.get_deps_dir(), "tarball",
                                     tarball_file)
     params["tarball_path"] = tarball_path
 
@@ -528,6 +528,232 @@ def test_umask(vm, params):
     gf_result = gf.rm_rf("/testfoo")
     gf_result = gf.rm_rf("/testdoo")
     gf_result = gf.rm_rf("/testnoo")
+
+    gf.close_session()
+
+
+def test_cat(vm, params):
+    """
+    Test cat command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+
+    gf_result = gf.cat('/file_ops/file_ascii').stdout.strip()
+    logging.debug(gf_result)
+    run_result = utils.run("tar xOf %s file_ops/file_ascii" % params.get("tarball_path"),
+                           ignore_status=True).stdout.strip()
+    logging.debug(run_result)
+    if gf_result != run_result:
+        gf.close_session()
+        raise error.TestFail("cat failed.")
+
+    gf.close_session()
+
+
+def test_checksum(vm, params):
+    """
+    Test checksum command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+    checksum_map = {"crc": "cksum",
+                    "md5": "md5sum",
+                    "sha1": "sha1sum",
+                    "sha224": 'sha224sum',
+                    "sha256": 'sha256sum',
+                    "sha384": 'sha384sum',
+                    "sha512": 'sha512sum'}
+
+    for k, v in checksum_map.items():
+        gf_result = gf.checksum(k, '/file_ops/file_ascii').stdout.strip()
+        run_result = utils.run("tar xOf %s file_ops/file_ascii | %s" % (params.get("tarball_path"), v),
+                               ignore_status=True).stdout.split()[0]
+        if gf_result != run_result:
+            gf.close_session()
+            raise error.TestFail("checksum failed.")
+
+    for k, v in checksum_map.items():
+        gf_result = gf.checksum(k, '/file_ops/file_elf').stdout.strip()
+        run_result = utils.run("tar xOf %s file_ops/file_elf | %s" % (params.get("tarball_path"), v),
+                               ignore_status=True).stdout.split()[0]
+        if gf_result != run_result:
+            gf.close_session()
+            raise error.TestFail("checksum failed.")
+
+    gf_result = gf.checksum('perfect', '/file_ops/file_elf')
+    logging.debug(gf_result.stdout.strip())
+    if gf_result.exit_status == 0:
+        gf.close_session()
+        raise error.TestFail("checksum failed.")
+
+    gf.close_session()
+
+
+def test_checksum_device(vm, params):
+    """
+    Test checksum-device command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    checksum_map = {"crc": "cksum",
+                    "md5": "md5sum",
+                    "sha1": "sha1sum",
+                    "sha224": 'sha224sum',
+                    "sha256": 'sha256sum',
+                    "sha384": 'sha384sum',
+                    "sha512": 'sha512sum'}
+
+    for k, v in checksum_map.items():
+        gf_result = gf.checksum_device(k, '/dev/sda').stdout.strip()
+        logging.debug(gf_result.split('\n')[-1])
+        run_result = utils.run("%s %s" % (v, params.get("image_path")),
+                               ignore_status=True).stdout.split()[0]
+        logging.debug(run_result)
+        if gf_result.split('\n')[-1] != run_result and params.get("image_format") == 'raw':
+            gf.close_session()
+            raise error.TestFail("checksum failed.")
+
+    gf_result = gf.checksum_device('perfect', '/dev/sda')
+    logging.debug(gf_result.stdout.strip())
+    if gf_result.exit_status == 0:
+        gf.close_session()
+        raise error.TestFail("checksum-device failed.")
+
+    gf.close_session()
+
+
+def test_checksums_out(vm, params):
+    """
+    Test checksums-out command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+    checksum_map = {"crc": "cksum",
+                    "md5": "md5sum",
+                    "sha1": "sha1sum",
+                    "sha224": 'sha224sum',
+                    "sha256": 'sha256sum',
+                    "sha384": 'sha384sum',
+                    "sha512": 'sha512sum'}
+
+    gf.rm_rf('/test/')
+    gf.mkdir('/test')
+    gf.cp_a('/file_ops/file_ascii', '/test')
+    gf.cp_a('/file_ops/file_ascii_softlink', '/test')
+    gf.mkdir('/test/subdir')
+    gf.cp_a('/file_ops/file_elf', '/test/subdir/')
+    gf.download('/test/subdir/file_elf', '/tmp/file_elf')
+    gf.download('/test/file_ascii', '/tmp/file_ascii')
+    for k, v in checksum_map.items():
+        gf_result = gf.checksums_out(k, '/test', '/tmp/sumsfile').stdout.strip()
+        run_result = utils.run("cat /tmp/sumsfile").stdout.split()
+        if k == 'crc':
+            run_result[2] = os.path.basename(run_result[2])
+            run_result[5] = os.path.basename(run_result[5])
+            guest_res = dict(zip(run_result[2::3], run_result[0::3]))
+            run_result = utils.run("%s /tmp/file_elf /tmp/file_ascii" % v,
+                                   ignore_status=True).stdout.split()
+            run_result[2] = os.path.basename(run_result[2])
+            run_result[5] = os.path.basename(run_result[5])
+            host_res = dict(zip(run_result[2::3], run_result[0::3]))
+        else:
+            run_result[1] = os.path.basename(run_result[1])
+            run_result[3] = os.path.basename(run_result[3])
+            guest_res = dict(zip(run_result[1::2], run_result[0::2]))
+            run_result = utils.run("%s /tmp/file_elf /tmp/file_ascii" % v,
+                                   ignore_status=True).stdout.split()
+            run_result[1] = os.path.basename(run_result[1])
+            run_result[3] = os.path.basename(run_result[3])
+            host_res = dict(zip(run_result[1::2], run_result[0::2]))
+        if cmp(guest_res, host_res) != 0:
+            gf.close_session()
+            raise error.TestFail("checksum failed.")
+
+    gf_result = gf.checksums_out('perfect', '/test', '/tmp/sumsfile')
+    logging.debug(gf_result.stdout.strip())
+    if gf_result.exit_status == 0:
+        gf.close_session()
+        raise error.TestFail("checksums-out failed.")
+    gf.rm_rf('/test')
+
+    gf.close_session()
+
+
+def test_equal(vm, params):
+    """
+    Test equal command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+
+    gf_result = gf.equal('/file_ops/file_ascii', '/file_ops/file_ascii_long').stdout.strip()
+    if gf_result != 'false':
+        gf.close_session()
+        raise error.TestFail("equal failed.")
+
+    gf_result = gf.equal('/file_ops/file_ascii', '/file_ops/file_elf').stdout.strip()
+    if gf_result != 'false':
+        gf.close_session()
+        raise error.TestFail("equal failed.")
+
+    gf_result = gf.equal('/file_ops/file_ascii', '/file_ops/file_ascii_softlink').stdout.strip()
+    if gf_result != 'true':
+        gf.close_session()
+        raise error.TestFail("equal failed.")
 
     gf.close_session()
 
