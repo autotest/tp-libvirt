@@ -364,6 +364,88 @@ def test_lvresize_free(vm, params):
     gf.close_session()
 
 
+def test_lvm_set_filter(vm, params):
+    """
+    Test command lvm-set-filter and lvm-clear-filter
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate')
+
+    lv_name = gf.lvs().stdout.strip()
+    if not lv_name:
+        gf.close_session()
+        raise error.TestFail("LV should be listed")
+
+    # set filter, lvm device should be hided
+    gf.lvm_set_filter(lv_name)
+    lv_name = gf.lvs().stdout.strip()
+    if lv_name:
+        gf.close_session()
+        raise error.TestFail("LV should not be listed")
+
+    # clear the filter, lvm device can be seen
+    gf.lvm_clear_filter()
+    lv_name = gf.lvs().stdout.strip()
+    if not lv_name:
+        gf.close_session()
+        raise error.TestFail("LV should be listed")
+
+    gf.close_session()
+
+
+def test_lvuuid(vm, params):
+    """
+    Test command lvuuid
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate')
+
+    lv_name = gf.lvs().stdout.strip()
+    uuid = gf.lvuuid(lv_name).stdout.strip()
+    uuid = re.sub("-", "", uuid)
+    logging.debug("uuid from lvuuid is %s" % uuid)
+
+    ret = gf.lvs_full().stdout.strip()
+    result = re.search("lv_uuid:\s+(\S+)", ret).groups()[0]
+    logging.debug("uuid from lvs-full is %s" % result)
+
+    if uuid != result:
+        gf.close_session()
+        raise error.TestFail("lv uuid is not match")
+
+    gf.close_session()
+
+
 def run(test, params, env):
     """
     Test of built-in lvm related commands in guestfish.
