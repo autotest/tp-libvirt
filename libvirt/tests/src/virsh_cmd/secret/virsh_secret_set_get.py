@@ -21,9 +21,8 @@ def check_secret(params):
     """
     secret_decoded_string = ""
 
-    uuid = params.get("secret_uuid")
+    uuid = params.get("secret_ref")
     secret_string = params.get("secret_base64_no_encoded")
-    change_parameters = params.get("change_parameters", "no")
 
     base64_file = os.path.join(_VIRT_SECRETS_PATH, "%s.base64" % uuid)
 
@@ -52,9 +51,6 @@ def create_secret_volume(params):
     ephemeral = params.get("secret_ephemeral", "no")
     usage_volume = params.get("secret_usage_volume")
     usage_type = params.get("secret_usage", "volume")
-
-    if not usage_volume:
-        raise error.TestFail("secret_usage_volume is required")
 
     sec_xml = """
 <secret ephemeral='%s' private='%s'>
@@ -88,8 +84,8 @@ def get_secret_value(params):
     """
     base64_file = ""
 
-    uuid = params.get("secret_uuid")
-    options = params.get("secret_options")
+    uuid = params.get("secret_ref")
+    options = params.get("get_secret_options")
     status_error = params.get("status_error", "no")
 
     result = virsh.secret_get_value(uuid, options)
@@ -105,6 +101,10 @@ def get_secret_value(params):
 
     if uuid:
         base64_file = os.path.join(_VIRT_SECRETS_PATH, "%s.base64" % uuid)
+
+    # Don't check result if we don't need to.
+    if params.get("check_get_status", "yes") == "no":
+        return
 
     # Check status_error
     if status_error == "yes":
@@ -133,8 +133,8 @@ def set_secret_value(params):
     Set the secet value
     :params: the parameter dictionary
     """
-    uuid = params.get("secret_uuid")
-    options = params.get("secret_options")
+    uuid = params.get("secret_ref")
+    options = params.get("set_secret_options")
     status_error = params.get("status_error", "no")
     secret_string = params.get("secret_base64_no_encoded")
 
@@ -144,6 +144,10 @@ def set_secret_value(params):
 
     result = virsh.secret_set_value(uuid, secret_string, options)
     status = result.exit_status
+
+    # Don't check result if we don't need to.
+    if params.get("check_set_status", "yes") == "no":
+        return
 
     # Check status_error
     if status_error == "yes":
@@ -171,13 +175,10 @@ def cleanup(params):
     """
     uuid = params.get("secret_uuid")
     usage_volume = params.get("secret_usage_volume")
-    cleanup_volume = params.get("cleanup_volume", "no")
-    undefine_secret = params.get("secret_undefine", "no")
 
-    if usage_volume and cleanup_volume == "yes":
-        os.unlink(usage_volume)
+    os.unlink(usage_volume)
 
-    if uuid and undefine_secret == "yes":
+    if uuid:
         result = virsh.secret_undefine(uuid)
         status = result.exit_status
         if status:
@@ -189,9 +190,8 @@ def run(test, params, env):
     Test set/get secret value for a volume
 
     1) Positive testing
-       1.1) define or undefine a private or public secret
+       1.1) set the private or public secret value
        1.2) get the public secret value
-       1.3) set the private or public secret value
     2) Negative testing
        2.1) get private secret
        2.2) get secret without setting secret value
@@ -201,58 +201,45 @@ def run(test, params, env):
 
     # Run test case
     uuid = ""
-    no_specified_uuid = False
 
-    usage_volume = params.get("secret_usage_volume")
-    define_secret = params.get("secret_define", "no")
-    change_parameters = params.get("secret_change_parameters", "no")
+    usage_volume = params.get("secret_usage_volume",
+                              "/var/lib/libvirt/images/foo-bar.secret")
+    set_secret = params.get("set_secret", "yes")
+    get_secret = params.get("get_secret", "yes")
 
     # If storage volume doesn't exist then create it
-    if usage_volume and not os.path.isfile(usage_volume):
+    if not os.path.isfile(usage_volume):
         utils.run("dd if=/dev/zero of=%s bs=1 count=1 seek=1M" % usage_volume)
 
     # Define secret based on storage volume
-    if usage_volume and define_secret == "yes":
-        create_secret_volume(params)
+    create_secret_volume(params)
 
     # Get secret UUID from secret list
-    if not no_specified_uuid:
-        output = virsh.secret_list(ignore_status=False).stdout.strip()
-        sec_list = re.findall(r"\n(.+\S+)\ +\S+\ +(.+\S+)", output)
-        logging.debug("Secret list is %s", sec_list)
-        if usage_volume and sec_list:
-            for sec in sec_list:
-                if usage_volume in sec[1]:
-                    uuid = sec[0].lstrip()
-                    no_specified_uuid = True
+    output = virsh.secret_list(ignore_status=False).stdout.strip()
+    sec_list = re.findall(r"\n(.+\S+)\ +\S+\ +(.+\S+)", output)
+    logging.debug("Secret list is %s", sec_list)
+    if sec_list:
+        for sec in sec_list:
+            if usage_volume in sec[1]:
+                uuid = sec[0].lstrip()
+        if uuid:
             logging.debug("Secret uuid is %s", uuid)
-
-    uuid = params.get("secret_uuid", uuid)
+            params['secret_uuid'] = uuid
+        else:
+            raise error.TestFail('Cannot find secret %s in:\n %s',
+                                 (usage_volume, output))
+    else:
+        raise error.TestFail('No secret found in:\n %s', output)
 
     # Update parameters dictionary with automatically generated UUID
-    if no_specified_uuid:
-        params['secret_uuid'] = uuid
-
-    # If only define secret then don't need to run the following cases
+    if not params.get('secret_ref'):
+        params['secret_ref'] = uuid
 
     # positive and negative testing #########
-
-    if define_secret == "no":
-        if change_parameters == "no":
-            try:
-                try:
-                    get_secret_value(params)
-                except error.TestFail, detail:
-                    raise error.TestFail("Failed to get secret value.\n"
-                                         "Detail: %s." % detail)
-            finally:
-                cleanup(params)
-        else:
-            try:
-                try:
-                    set_secret_value(params)
-                except error.TestFail, detail:
-                    raise error.TestFail("Failed to set secret value.\n"
-                                         "Detail: %s." % detail)
-            finally:
-                cleanup(params)
+    try:
+        if set_secret == "yes":
+            set_secret_value(params)
+        if get_secret == "yes":
+            get_secret_value(params)
+    finally:
+        cleanup(params)
