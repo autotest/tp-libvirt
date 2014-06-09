@@ -65,8 +65,9 @@ def run(test, params, env):
 
     orig_value = virsh.migrate_getspeed(vm_name).stdout.strip()
 
-    # Run test case
-    try:
+    def set_get_speed(vm_name, expected_value, status_error=False,
+                      options_extra="", **virsh_dargs):
+        """Set speed and check its result"""
         result = virsh.migrate_setspeed(vm_name, expected_value,
                                         options_extra, **virsh_dargs)
         status = result.exit_status
@@ -105,6 +106,11 @@ def run(test, params, env):
             raise error.TestFail("Bandwidth value from getspeed "
                                  "is different from expected value "
                                  "set by setspeed")
+
+    # Run test case
+    try:
+        set_get_speed(vm_name, expected_value, status_error,
+                      options_extra, **virsh_dargs)
     finally:
         #restore bandwidth to default
         virsh.migrate_setspeed(vm_name, orig_value)
