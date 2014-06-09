@@ -33,7 +33,10 @@ def run(test, params, env):
         if 'dir' in pool_type:
             if not os.path.isdir(pool_target):
                 os.makedirs(pool_target)
-            result = utlv.define_pool(pool_name, pool_type, pool_target)
+            # There is no need to cleanup anything for dir type
+            cleanup_env = [False, False, False]
+            result = utlv.define_pool(pool_name, pool_type, pool_target,
+                                      cleanup_env)
             if result.exit_status != 0:
                 raise error.TestFail("Command virsh pool-define-as"
                                      " failed:\n%s" % result.stderr.strip())
@@ -120,37 +123,6 @@ def run(test, params, env):
         pv = libvirt_storage.PoolVolume(pool_name)
         return pv.volume_info(vol_name)
 
-    def get_image_info(image_name):
-        """
-        Get the details of the volume(image) from qemu-img info
-        """
-        qemu_img = utils_misc.get_path(test.bindir,
-                                       params.get("qemu_img_binary"))
-        if not os.path.exists(qemu_img):
-            raise error.TestError("Binary of 'qemu-img' not found")
-
-        cmd = "%s info %s" % (qemu_img, image_name)
-        format_vol = utils.system_output(cmd)
-        reg1 = re.compile(r'image:\s+(\S+)')
-        reg2 = re.compile(r'file format:\s+(\S+)')
-        reg3 = re.compile(r'virtual size:\s+(\S+.*)')
-        reg4 = re.compile(r'disk size:\s+(\S+.*)')
-        image_info = {}
-        for line in format_vol.splitlines():
-            match1 = re.search(reg1, line)
-            match2 = re.search(reg2, line)
-            match3 = re.search(reg3, line)
-            match4 = re.search(reg4, line)
-            if match1 is not None:
-                image_info['name'] = match1.group(1)
-            if match2 is not None:
-                image_info['format'] = match2.group(1)
-            if match3 is not None:
-                image_info['capacity'] = match3.group(1)
-            if match4 is not None:
-                image_info['allocation'] = match4.group(1)
-        return image_info
-
     def norm_capacity(capacity):
         """
         Normalize the capacity values to bytes
@@ -190,14 +162,7 @@ def run(test, params, env):
             raise error.TestFail("Error in parsing capacity value "
                                  "in virsh vol-info")
 
-        reg_qemu = re.compile(r'\S+\s\((\d+)\s\S+\)')
-        match_qemu = re.search(reg_qemu, capacity['qemu_img'])
-        if match_qemu is not None:
-            norm_capacity['qemu_img'] = int(match_qemu.group(1))
-        else:
-            raise error.TestFail("Error in parsing capacity value "
-                                 "in qemu-img info")
-
+        norm_capacity['qemu_img'] = capacity['qemu_img']
         norm_capacity['xml'] = int(capacity['xml'])
 
         return norm_capacity
@@ -298,11 +263,11 @@ def run(test, params, env):
                               "volume type", expected['name'])
 
         # Check type against virsh vol-info
-        if expected['type'] != actual_info['type']:
+        if expected['type'] != actual_info['Type']:
             logging.error("Volume type mismatch for volume: %s\n"
                           "Expected Type: %s\n Type from vol-info: %s",
                           expected['name'], expected['type'],
-                          actual_info['type'])
+                          actual_info['Type'])
             error_count += 1
         else:
             logging.debug("Type of volume: %s from virsh vol-info successfully"
@@ -310,11 +275,11 @@ def run(test, params, env):
                           expected['name'])
 
         # Check name against virsh vol-info
-        if expected['name'] != actual_info['name']:
+        if expected['name'] != actual_info['Name']:
             logging.error("Volume name mismatch for volume: %s\n"
                           "Expected name: %s\n Name from vol-info: %s",
                           expected['name'],
-                          expected['name'], actual_info['name'])
+                          expected['name'], actual_info['Name'])
             error_count += 1
         else:
             logging.debug("Name of volume: %s from virsh vol-info successfully"
@@ -322,7 +287,7 @@ def run(test, params, env):
                           expected['name'])
 
         # Check format from against qemu-img info
-        img_info = get_image_info(expected['path'])
+        img_info = utils_misc.get_image_info(expected['path'])
         if expected['format'] != img_info['format']:
             logging.error("Volume format mismatch for volume: %s\n"
                           "Expected format: %s\n Format from qemu-img info: %s",
@@ -359,9 +324,9 @@ def run(test, params, env):
         norm_cap = {}
         capacity = {}
         capacity['list'] = actual_list['capacity']
-        capacity['info'] = actual_info['capacity']
+        capacity['info'] = actual_info['Capacity']
         capacity['xml'] = volume_xml['capacity']
-        capacity['qemu_img'] = img_info['capacity']
+        capacity['qemu_img'] = img_info['vsize']
         norm_cap = norm_capacity(capacity)
         if expected['capacity'] != norm_cap['list']:
             logging.error("Capacity mismatch for volume: %s against virsh"
