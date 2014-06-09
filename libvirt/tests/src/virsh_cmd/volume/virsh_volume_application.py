@@ -54,22 +54,29 @@ def run(test, params, env):
     try:
         pvtest = utlv.PoolVolumeTest(test, params)
         pvtest.pre_pool(pool_name, pool_type, pool_target, emulated_img,
-                        emulated_size)
+                        emulated_size, pre_disk_vol=[volume_size])
 
         logging.debug("Current pools:\n%s",
                       libvirt_storage.StoragePool().list_pools())
 
         new_pool = libvirt_storage.PoolVolume(pool_name)
-        volumes = create_volumes(new_pool, volume_count, volume_size)
+        if pool_type == "disk":
+            volumes = new_pool.list_volumes()
+            logging.debug("Current volumes:%s", volumes)
+        else:
+            volumes = create_volumes(new_pool, volume_count, volume_size)
         if application == "attach":
             vm = env.get_vm(vm_name)
             session = vm.wait_for_login()
-            # The attach-disk action based on running guest,
-            # so no need to recover the guest, it will be
-            # recovered automatically after shutdown/reboot
             virsh.attach_disk(vm_name, volumes.values()[volume_count-1],
                               disk_target)
             vm_attach_device = "/dev/%s" % disk_target
+            if session.cmd_status("which parted"):
+                # No parted command, check device only
+                if session.cmd_status("ls %s" % vm_attach_device):
+                    raise error.TestFail("Didn't find attached device:%s"
+                                         % vm_attach_device)
+                return
             # Test if attached disk can be used normally
             utlv.mk_part(vm_attach_device, session=session)
             session.cmd("mkfs.ext4 %s1" % vm_attach_device)
@@ -115,6 +122,8 @@ def run(test, params, env):
             if application == "install":
                 if virsh.domain_exists(vm_name):
                     virsh.remove_domain(vm_name)
+            elif application == "attach":
+                virsh.detach_disk(vm_name, disk_target)
         finally:
             pvtest.cleanup_pool(pool_name, pool_type,
                                 pool_target, emulated_img)
