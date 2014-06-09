@@ -35,10 +35,15 @@ def run(test, params, env):
     sriov = ('yes' == params.get("libvirt_pci_SRIOV", 'no'))
     device_type = params.get("libvirt_pci_device_type", "NIC")
 
-    net_name = params.get("libvirt_pci_net_name", "eth0")
+    pci_dev = None
+    if device_type == "NIC":
+        pci_dev = params.get("libvirt_pci_net_dev_label")
+    else:
+        pci_dev = params.get("libvirt_pci_storage_dev_label")
+
+    net_ip = params.get("libvirt_pci_net_ip", "")
     server_ip = params.get("libvirt_pci_server_ip")
 
-    storage_dev_name = params.get("libvirt_pci_storage_dev_name", "/dev/sdb")
     fdisk_list_before = None
 
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
@@ -46,19 +51,11 @@ def run(test, params, env):
 
     pci_address = None
     if device_type == "NIC":
-        # Find the pci device for given network device.
-        result = virsh.nodedev_list(cap="net")
-        nodedev_nets = result.stdout.strip().splitlines()
-        device = None
-        for nodedev in nodedev_nets:
-            netxml = NodedevXML.new_from_dumpxml(nodedev)
-            if netxml.cap.interface == net_name:
-                device = nodedev
-                break
-        if not device:
-            raise error.TestNAError("There is no network device name of %s." %
-                                    net_name)
-        pci_dev = netxml.parent
+        if not vm.is_alive():
+            vm.start()
+        session = vm.wait_for_login()
+        output = session.cmd_output("ifconfig -a|grep Ethernet")
+        nic_list_before = output.splitlines()
 
         if sriov:
             # set the parameter max_vfs of igb module to 7. Then we can use
@@ -116,27 +113,7 @@ def run(test, params, env):
         output = session.cmd_output("fdisk -l|grep \"Disk identifier:\"")
         fdisk_list_before = output.splitlines()
 
-        result = virsh.nodedev_list(cap="storage")
-        nodedev_storages = result.stdout.strip().splitlines()
-        device = None
-        for nodedev in nodedev_storages:
-            storage_xml = NodedevXML.new_from_dumpxml(nodedev)
-            if storage_xml.cap.block == storage_dev_name:
-                device = nodedev
-                break
-        if not device:
-            raise error.TestNAError("There is no block device name of %s." %
-                                    storage_dev_name)
-        pci_xml = NodedevXML.new_from_dumpxml(storage_xml.parent)
-
-        # In some cases, the parent of target storage device might not be
-        # a PCI device, but is of type 'scsi' for example.
-        # SKIP these tests with a proper message.
-        if pci_xml.cap_type != 'pci':
-            raise error.TestNAError("The parent node device of the storage "
-                                    "device need to be a PCI device. "
-                                    "But parent of %s is a %s device." %
-                                    (storage_dev_name, pci_xml.cap_type))
+        pci_xml = NodedevXML.new_from_dumpxml(pci_dev)
         pci_address = pci_xml.cap.get_address_dict()
 
     vmxml.add_hostdev(pci_address)
@@ -146,7 +123,13 @@ def run(test, params, env):
         vm.start()
         session = vm.wait_for_login()
         if device_type == "NIC":
+            output = session.cmd_output("ifconfig -a|grep Ethernet")
+            nic_list_after = output.splitlines()
+            if nic_list_after == nic_list_before:
+                raise error.TestFail("No Ethernet found for the pci device in guest.")
+            nic_name = (list(set(nic_list_after) - set(nic_list_before)))[0].split()[0]
             try:
+                session.cmd("ifconfig %s %s" % (nic_name, net_ip))
                 session.cmd("ping -c 4 %s" % server_ip)
             except aexpect.ShellError, detail:
                 raise error.TestFail("Succeed to set ip on guest, but failed "
