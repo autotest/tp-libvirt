@@ -619,6 +619,160 @@ def test_vguuid(vm, params):
     gf.close_session()
 
 
+def test_vg_activate(vm, params):
+    """
+    Test command vg-activate
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate')
+
+    vg_name = gf.vgs().stdout.strip()
+    result = gf.debug("ls", "/dev").stdout.strip()
+    if vg_name not in result:
+        gf.close_session()
+        raise error.TestFail("Can not find %s in /dev" % vg_name)
+
+    gf.vg_activate(0, vg_name)
+    result = gf.debug("ls", "/dev").stdout.strip()
+    if vg_name in result:
+        gf.close_session()
+        raise error.TestFail("Find %s in /dev, it shouldn't be" % vg_name)
+
+    gf.vg_activate(1, vg_name)
+    result = gf.debug("ls", "/dev").stdout.strip()
+    if vg_name not in result:
+        gf.close_session()
+        raise error.TestFail("Can not find %s in /dev" % vg_name)
+
+    gf.close_session()
+
+
+def test_vg_activate_all(vm, params):
+    """
+    Test command vg-activate-all
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate')
+
+    vg_name = gf.vgs().stdout.strip()
+    result = gf.debug("ls", "/dev").stdout.strip()
+    if vg_name not in result:
+        gf.close_session()
+        raise error.TestFail("Can not find %s in /dev" % vg_name)
+
+    gf.vg_activate_all(0)
+    result = gf.debug("ls", "/dev").stdout.strip()
+    if vg_name in result:
+        gf.close_session()
+        raise error.TestFail("Find %s in /dev, it shouldn't be" % vg_name)
+
+    gf.vg_activate_all(1)
+    result = gf.debug("ls", "/dev").stdout.strip()
+    if vg_name not in result:
+        gf.close_session()
+        raise error.TestFail("Can not find %s in /dev" % vg_name)
+
+    gf.close_session()
+
+
+def test_vglvuuids(vm, params):
+    """
+    Test command vglvuuids
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate')
+
+    lv_name = gf.lvs().stdout.strip()
+    uuid = gf.lvuuid(lv_name).stdout.strip()
+
+    result = gf.vglvuuids('VG').stdout.strip()
+
+    if uuid != result:
+        gf.close_session()
+        raise error.TestFail("lv uuid is not match")
+
+    gf.close_session()
+
+
+def test_vgpvuuids(vm, params):
+    """
+    Test command vgpvuuids
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    create_lvm(gf, 'vgcreate')
+    create_lvm(gf, 'lvcreate')
+
+    pv_name = gf.pvs().stdout.strip()
+    uuid = gf.pvuuid(pv_name).stdout.strip()
+
+    result = gf.vgpvuuids('VG').stdout.strip()
+
+    if uuid != result:
+        gf.close_session()
+        raise error.TestFail("pv uuid is not match")
+
+    gf.close_session()
+
+
 def run(test, params, env):
     """
     Test of built-in lvm related commands in guestfish.
