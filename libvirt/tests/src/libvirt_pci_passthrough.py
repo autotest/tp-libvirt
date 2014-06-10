@@ -44,6 +44,12 @@ def run(test, params, env):
     net_ip = params.get("libvirt_pci_net_ip", "")
     server_ip = params.get("libvirt_pci_server_ip")
 
+    # Check the parameters from configuration file.
+    if (pci_dev.count("ENTER") or net_ip.count("ENTER")
+            or server_ip.count("ENTER")):
+        raise error.TestNAError("Please edit the configuration file to set "
+                                "proper parameters for this test.")
+
     fdisk_list_before = None
 
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
@@ -126,7 +132,8 @@ def run(test, params, env):
             output = session.cmd_output("ifconfig -a|grep Ethernet")
             nic_list_after = output.splitlines()
             if nic_list_after == nic_list_before:
-                raise error.TestFail("No Ethernet found for the pci device in guest.")
+                raise error.TestFail(
+                    "No Ethernet found for the pci device in guest.")
             nic_name = (list(set(nic_list_after) - set(nic_list_before)))[0].split()[0]
             try:
                 session.cmd("ifconfig %s %s" % (nic_name, net_ip))
