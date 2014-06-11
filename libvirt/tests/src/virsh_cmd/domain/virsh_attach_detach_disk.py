@@ -1,7 +1,12 @@
 import os
 import logging
-from autotest.client.shared import error, utils
-from virttest import aexpect, virt_vm, virsh, remote, qemu_storage
+from autotest.client.shared import error
+from autotest.client.shared import utils
+from virttest import aexpect
+from virttest import virt_vm
+from virttest import virsh
+from virttest import remote
+from virttest import qemu_storage
 from virttest.libvirt_xml import vm_xml
 from virttest.staging.service import Factory
 
@@ -75,7 +80,7 @@ def run(test, params, env):
         try:
             if os_type == "linux":
                 session = vm.wait_for_login()
-                s_rpm, o_rpm = session.cmd_status_output(
+                s_rpm, _ = session.cmd_status_output(
                     "rpm --version")
                 # If status is different from 0, this
                 # guest OS doesn't support the rpm package
@@ -83,7 +88,7 @@ def run(test, params, env):
                 if s_rpm:
                     session.close()
                     return True
-                s_vd, o_vd = session.cmd_status_output(
+                _, o_vd = session.cmd_status_output(
                     "rpm -qa | grep redhat-release")
                 if o_vd.find("5Server") != -1:
                     s_mod, o_mod = session.cmd_status_output(
@@ -102,7 +107,7 @@ def run(test, params, env):
     at_options = params.get("at_dt_disk_at_options", "")
     dt_options = params.get("at_dt_disk_dt_options", "")
     pre_vm_state = params.get("at_dt_disk_pre_vm_state", "running")
-    status_error = params.get("status_error", 'no')
+    status_error = "yes" == params.get("status_error", 'no')
     no_attach = params.get("at_dt_disk_no_attach", 'no')
     os_type = params.get("os_type", "linux")
 
@@ -113,33 +118,41 @@ def run(test, params, env):
     device = params.get("at_dt_disk_device", "disk")
     device_source_name = params.get("at_dt_disk_device_source", "attach.img")
     device_target = params.get("at_dt_disk_device_target", "vdd")
-    bus_type = params.get("at_dt_disk_bus_type", "virtio")
     source_path = "yes" == params.get("at_dt_disk_device_source_path", "yes")
     test_twice = "yes" == params.get("at_dt_disk_test_twice", "no")
     test_type = "yes" == params.get("at_dt_disk_check_type", "no")
     test_audit = "yes" == params.get("at_dt_disk_check_audit", "no")
     test_block_dev = "yes" == params.get("at_dt_disk_iscsi_device", "no")
+    serial = params.get("at_dt_disk_serial", "")
+    address = params.get("at_dt_disk_address", "")
+    address2 = params.get("at_dt_disk_address2", "")
+    if serial:
+        at_options += (" --serial %s" % serial)
+    if address2:
+        at_options_twice = at_options + (" --address %s" % address2)
+    if address:
+        at_options += (" --address %s" % address)
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     if vm.is_alive():
         vm.destroy(gracefully=False)
     # Back up xml file.
-    vm_xml_file = os.path.join(test.tmpdir, "vm.xml")
+    backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     if source_path:
         device_source = os.path.join(test.virtdir, device_source_name)
     else:
         device_source = device_source_name
-    virsh.dumpxml(vm_name, extra="--inactive", to_file=vm_xml_file)
 
     # Create virtual device file.
     if test_block_dev:
         try:
             iscsi_dev = qemu_storage.Iscsidev(params, test.virtdir, "iscsi")
-        except ValueError, detail:
-            raise error.TestNAError("Cannot create iscsi device: %s" % detail)
-        device_source = iscsi_dev.setup()
-        logging.debug("iscsi dev name: %s" % device_source)
+            device_source = iscsi_dev.setup()
+            logging.debug("iscsi dev name: %s" % device_source)
+        except error.TestError:
+            # We should skip this case
+            raise error.TestNAError("Can not get iscsi device name in host")
     else:
         create_device_file(device_source)
 
@@ -172,7 +185,8 @@ def run(test, params, env):
             device_target2 = params.get("at_dt_disk_device_target2",
                                         device_target)
             create_device_file(device_source)
-            s_attach = virsh.attach_disk(vm_name, device_source, device_target2,
+            s_attach = virsh.attach_disk(vm_name, device_source,
+                                         device_target2,
                                          "--driver qemu --config").exit_status
             if s_attach != 0:
                 logging.error("Attaching device failed before testing "
@@ -226,8 +240,11 @@ def run(test, params, env):
         device_target2 = params.get("at_dt_disk_device_target2", device_target)
         create_device_file(device_source)
         if test_cmd == "attach-disk":
+            if address2:
+                at_options = at_options_twice
             status = virsh.attach_disk(vm_ref, device_source,
-                                       device_target2, at_options, debug=True).exit_status
+                                       device_target2, at_options,
+                                       debug=True).exit_status
         elif test_cmd == "detach-disk":
             status = virsh.detach_disk(vm_ref, device_target2, dt_options,
                                        debug=True).exit_status
@@ -240,9 +257,11 @@ def run(test, params, env):
     # Check audit log
     check_audit_after_cmd = True
     if test_audit:
-        grep_audit = 'grep "%s" /var/log/audit/audit.log' % test_cmd.split("-")[0]
-        cmd = grep_audit + ' | ' + 'grep "%s" | tail -n1 | grep "res=success"' % device_source
-        if 0 != utils.run(cmd).exit_status:
+        grep_audit = ('grep "%s" /var/log/audit/audit.log'
+                      % test_cmd.split("-")[0])
+        cmd = (grep_audit + ' | ' + 'grep "%s" | tail -n1 | grep "res=success"'
+               % device_source)
+        if utils.run(cmd).exit_status:
             logging.error("Audit check failed")
             check_audit_after_cmd = False
 
@@ -268,9 +287,33 @@ def run(test, params, env):
     check_disk_type = True
     if test_type:
         if test_block_dev:
-            check_disk_type = vm_xml.VMXML.check_disk_type(vm_name, device_source, "block")
+            check_disk_type = vm_xml.VMXML.check_disk_type(vm_name,
+                                                           device_source,
+                                                           "block")
         else:
-            check_disk_type = vm_xml.VMXML.check_disk_type(vm_name, device_source, "file")
+            check_disk_type = vm_xml.VMXML.check_disk_type(vm_name,
+                                                           device_source,
+                                                           "file")
+    # Check disk serial after attach.
+    check_disk_serial = True
+    if serial:
+        disk_serial = vm_xml.VMXML.get_disk_serial(vm_name, device_target)
+        if serial != disk_serial:
+            check_disk_serial = False
+
+    # Check disk address after attach.
+    check_disk_address = True
+    if address:
+        disk_address = vm_xml.VMXML.get_disk_address(vm_name, device_target)
+        if address != disk_address:
+            check_disk_address = False
+
+    # Check multifunction address after attach.
+    check_disk_address2 = True
+    if address2:
+        disk_address2 = vm_xml.VMXML.get_disk_address(vm_name, device_target2)
+        if address2 != disk_address2:
+            check_disk_address2 = False
 
     # Destroy VM.
     vm.destroy(gracefully=False)
@@ -288,26 +331,32 @@ def run(test, params, env):
     # Recover VM.
     if vm.is_alive():
         vm.destroy(gracefully=False)
-    virsh.undefine(vm_name)
-    virsh.define(vm_xml_file)
+    backup_xml.sync()
     if test_block_dev:
         iscsi_dev.cleanup()
     elif os.path.exists(device_source):
         os.remove(device_source)
 
     # Check results.
-    if status_error == 'yes':
-        if status == 0:
+    if status_error:
+        if not status:
             raise error.TestFail("virsh %s exit with unexpected value."
                                  % test_cmd)
     else:
-        if status != 0:
+        if status:
             raise error.TestFail("virsh %s failed." % test_cmd)
         if test_cmd == "attach-disk":
             if at_options.count("config"):
                 if not check_count_after_shutdown:
                     raise error.TestFail("Cannot see config attached device "
                                          "in xml file after VM shutdown.")
+                if not check_disk_serial:
+                    raise error.TestFail("Serial set failed after attach")
+                if not check_disk_address:
+                    raise error.TestFail("Address set failed after attach")
+                if not check_disk_address2:
+                    raise error.TestFail("Address(multifunction) set failed"
+                                         " after attach")
             else:
                 if not check_count_after_cmd:
                     raise error.TestFail("Cannot see device in xml file"
@@ -320,7 +369,6 @@ def run(test, params, env):
                                          " attach.")
                 if not check_audit_after_cmd:
                     raise error.TestFail("Audit hotplug failure after attach")
-
                 if at_options.count("persistent"):
                     if not check_count_after_shutdown:
                         raise error.TestFail("Cannot see device attached "
@@ -337,11 +385,13 @@ def run(test, params, env):
                                          "xml file after VM shutdown.")
             else:
                 if check_count_after_cmd:
-                    raise error.TestFail("See device in xml file after detach.")
+                    raise error.TestFail("See device in xml file "
+                                         "after detach.")
                 if check_vm_after_cmd:
                     raise error.TestFail("See device in VM after detach.")
                 if not check_audit_after_cmd:
-                    raise error.TestFail("Audit hotunplug failure after detach")
+                    raise error.TestFail("Audit hotunplug failure "
+                                         "after detach")
 
                 if dt_options.count("persistent"):
                     if check_count_after_shutdown:
@@ -351,7 +401,8 @@ def run(test, params, env):
                 else:
                     if not check_count_after_shutdown:
                         raise error.TestFail("See non-config detached "
-                                             "device in xml file after VM shutdown.")
+                                             "device in xml file after "
+                                             "VM shutdown.")
 
         else:
             raise error.TestError("Unknown command %s." % test_cmd)
