@@ -54,9 +54,11 @@ def run(test, params, env):
             for option in options:
                 if option.strip() == "":
                     continue
-                if not virsh.has_command_help_match("net-dumpxml", option.strip()):
-                    status_error = "yes"
-                    break
+                if not virsh.has_command_help_match("net-dumpxml",
+                                                    option.strip()):
+                    raise error.TestNAError("The current libvirt version"
+                                            " doesn't support '%s' option"
+                                            % option.strip())
     finally:
         # Recover network
         if net_status == "inactive" and net_status_current == "active":
