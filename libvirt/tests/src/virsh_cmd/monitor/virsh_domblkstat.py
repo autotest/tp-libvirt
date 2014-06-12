@@ -1,5 +1,7 @@
 from autotest.client.shared import error
-from virttest import virsh, libvirt_xml, utils_libvirtd
+from virttest import virsh
+from virttest import libvirt_xml
+from virttest import utils_libvirtd
 
 
 def run(test, params, env):
@@ -44,8 +46,8 @@ def run(test, params, env):
     option_list = options.split(" ")
     for option in option_list:
         if virsh.has_command_help_match("domblkstat", option) is None:
-            status_error = "yes"
-            break
+            raise error.TestNAError("The current libvirt doesn't support"
+                                    " '%s' option" % option)
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()
 
