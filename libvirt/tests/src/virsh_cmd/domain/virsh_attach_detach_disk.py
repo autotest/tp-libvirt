@@ -23,19 +23,20 @@ def run(test, params, env):
     4.Confirm the test result.
     """
 
-    def create_device_file(device_source="/tmp/attach.img"):
+    def create_device_image(img_name, img_format):
         """
-        Create a device source file.
+        Create a device source image by qemu-img command.
 
-        :param device_source: Device source file.
+        :param name: Name of the image
+        :param format: Image format(raw, qcow2, etc.)
+        :param extra: Extra params for creating image
         """
-        try:
-            f = open(device_source, 'wb')
-            f.seek((512 * 1024 * 1024) - 1)
-            f.write(str(0))
-            f.close()
-        except IOError:
-            logging.error("Image file %s created failed." % device_source)
+        params['image_name'] = img_name
+        params['image_format'] = img_format
+        params['image_size'] = "10M"
+        image = qemu_storage.QemuImg(params, test.tmpdir, img_name)
+        image_path, _ = image.create(params)
+        return image_path
 
     def check_vm_partition(vm, device, os_type, target_name):
         """
@@ -118,8 +119,10 @@ def run(test, params, env):
     # Disk specific attributes.
     device = params.get("at_dt_disk_device", "disk")
     device_source_name = params.get("at_dt_disk_device_source", "attach.img")
+    device_source_format = params.get("at_dt_disk_device_source_format", "raw")
     device_target = params.get("at_dt_disk_device_target", "vdd")
     source_path = "yes" == params.get("at_dt_disk_device_source_path", "yes")
+    create_img = "yes" == params.get("at_dt_disk_create_image", "yes")
     test_twice = "yes" == params.get("at_dt_disk_test_twice", "no")
     test_type = "yes" == params.get("at_dt_disk_check_type", "no")
     test_audit = "yes" == params.get("at_dt_disk_check_audit", "no")
@@ -140,10 +143,6 @@ def run(test, params, env):
         vm.destroy(gracefully=False)
     # Back up xml file.
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    if source_path:
-        device_source = os.path.join(test.virtdir, device_source_name)
-    else:
-        device_source = device_source_name
 
     # Create virtual device file.
     if test_block_dev:
@@ -155,7 +154,11 @@ def run(test, params, env):
             # We should skip this case
             raise error.TestNAError("Can not get iscsi device name in host")
     else:
-        create_device_file(device_source)
+        if source_path and create_img:
+            device_source = create_device_image(device_source_name,
+                                                device_source_format)
+        else:
+            device_source = device_source_name
 
     if vm.is_alive():
         vm.destroy(gracefully=False)
@@ -185,9 +188,8 @@ def run(test, params, env):
         if test_twice:
             device_target2 = params.get("at_dt_disk_device_target2",
                                         device_target)
-            create_device_file(device_source)
-            s_attach = virsh.attach_disk(vm_name, device_source,
-                                         device_target2,
+            create_device_image(device_source_name, device_source_format)
+            s_attach = virsh.attach_disk(vm_name, device_source, device_target2,
                                          "--driver qemu --config").exit_status
             if s_attach != 0:
                 logging.error("Attaching device failed before testing "
@@ -239,7 +241,7 @@ def run(test, params, env):
                                    debug=True).exit_status
     if test_twice:
         device_target2 = params.get("at_dt_disk_device_target2", device_target)
-        create_device_file(device_source)
+        create_device_image(device_source_name, device_source_format)
         if test_cmd == "attach-disk":
             if address2:
                 at_options = at_options_twice
@@ -363,6 +365,8 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
         backup_xml.sync()
+        if os.path.exists(save_file):
+            os.remove(save_file)
         if test_block_dev:
             iscsi_dev.cleanup()
         elif os.path.exists(device_source):
