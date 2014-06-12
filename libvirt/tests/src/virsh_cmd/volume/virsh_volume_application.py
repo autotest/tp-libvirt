@@ -1,7 +1,9 @@
+import os
 import logging
 from autotest.client.shared import error
 from virttest import libvirt_storage
 from virttest import virsh
+from virttest import data_dir
 from virttest.utils_test import libvirt as utlv
 from virttest.tests import unattended_install
 
@@ -43,27 +45,38 @@ def run(test, params, env):
     test_message = params.get("test_message", "")
     vm_name = params.get("main_vm", "virt-tests-vm1")
     if application == "install":
-        vm_name = params.get("vm_name", "vm1")
+        cdrom_path = os.path.join(data_dir.get_data_dir(),
+                                  params.get("cdrom_cd1"))
+        if not os.path.exists(cdrom_path):
+            raise error.TestNAError("Can't find installation cdrom:%s"
+                                    % cdrom_path)
 
     try:
         pvtest = utlv.PoolVolumeTest(test, params)
         pvtest.pre_pool(pool_name, pool_type, pool_target, emulated_img,
-                        emulated_size)
+                        emulated_size, pre_disk_vol=[volume_size])
 
         logging.debug("Current pools:\n%s",
                       libvirt_storage.StoragePool().list_pools())
 
         new_pool = libvirt_storage.PoolVolume(pool_name)
-        volumes = create_volumes(new_pool, volume_count, volume_size)
+        if pool_type == "disk":
+            volumes = new_pool.list_volumes()
+            logging.debug("Current volumes:%s", volumes)
+        else:
+            volumes = create_volumes(new_pool, volume_count, volume_size)
         if application == "attach":
             vm = env.get_vm(vm_name)
             session = vm.wait_for_login()
-            # The attach-disk action based on running guest,
-            # so no need to recover the guest, it will be
-            # recovered automatically after shutdown/reboot
             virsh.attach_disk(vm_name, volumes.values()[volume_count-1],
                               disk_target)
             vm_attach_device = "/dev/%s" % disk_target
+            if session.cmd_status("which parted"):
+                # No parted command, check device only
+                if session.cmd_status("ls %s" % vm_attach_device):
+                    raise error.TestFail("Didn't find attached device:%s"
+                                         % vm_attach_device)
+                return
             # Test if attached disk can be used normally
             utlv.mk_part(vm_attach_device, session=session)
             session.cmd("mkfs.ext4 %s1" % vm_attach_device)
@@ -77,8 +90,29 @@ def run(test, params, env):
             # Get a nonexist domain name
             while virsh.domain_exists(vm_name):
                 vm_name += "_test"
+            # Prepare installation parameters
             params["image_name"] = volumes.values()[volume_count-1]
             params["image_format"] = "raw"
+            params['force_create_image'] = "yes"
+            params['remove_image'] = "yes"
+            params['shutdown_cleanly'] = "yes"
+            params['shutdown_cleanly_timeout'] = 120
+            params['guest_port_unattended_install'] = 12323
+            params['inactivity_watcher'] = "error"
+            params['inactivity_treshold'] = 1800
+            params['image_verify_bootable'] = "no"
+            params['unattended_delivery_method'] = "cdrom"
+            params['drive_index_unattended'] = 1
+            params['drive_index_cd1'] = 2
+            params['boot_once'] = "d"
+            params['medium'] = "cdrom"
+            params['wait_no_ack'] = "yes"
+            params['image_raw_device'] = "yes"
+            params['backup_image_before_testing'] = "no"
+            params['kernel_params'] = ("ks=cdrom nicdelay=60 "
+                                       "console=ttyS0,115200 console=tty0")
+            params['cdroms'] += " unattended"
+            params['redirs'] += " unattended_install"
             try:
                 unattended_install.run(test, params, env)
             except error.CmdError, detail:
@@ -88,6 +122,8 @@ def run(test, params, env):
             if application == "install":
                 if virsh.domain_exists(vm_name):
                     virsh.remove_domain(vm_name)
+            elif application == "attach":
+                virsh.detach_disk(vm_name, disk_target)
         finally:
             pvtest.cleanup_pool(pool_name, pool_type,
                                 pool_target, emulated_img)
