@@ -73,7 +73,7 @@ def run(test, params, env):
                 # --console and login vm in console by
                 # remote.handle_prompts().
                 cmd = "start %s --console" % vm_ref
-                virsh_session = virsh.VirshSession(auto_close=True)
+                virsh_session = virsh.VirshSession(virsh_exec=virsh.VIRSH_EXEC, auto_close=True)
                 virsh_session.sendline(cmd)
                 remote.handle_prompts(virsh_session, params.get("username", ""),
                                       params.get("password", ""), r"[\#\$]\s*$",
@@ -84,7 +84,7 @@ def run(test, params, env):
                 # command in a virsh session and start vm with
                 # --autodestroy. Then we closed the virsh session,
                 # and check the vm is destroyed or not.
-                virsh_session = virsh.VirshSession(auto_close=True)
+                virsh_session = virsh.VirshSession(virsh_exec=virsh.VIRSH_EXEC, auto_close=True)
                 cmd = "start %s --autodestroy" % vm_ref
                 status = virsh_session.cmd_status(cmd)
                 if status:
