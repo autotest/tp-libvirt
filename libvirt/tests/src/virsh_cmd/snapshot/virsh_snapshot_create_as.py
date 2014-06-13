@@ -309,12 +309,13 @@ def run(test, params, env):
     domain_state = params.get("domain_state")
     memspec_opts = params.get("memspec_opts")
     diskspec_opts = params.get("diskspec_opts")
+    create_autodestroy = 'yes' == params.get("create_autodestroy", "no")
 
     uri = params.get("virsh_uri")
-    unpriv_usr = params.get('unprivileged_user')
-    if unpriv_usr:
-        if unpriv_usr.count('EXAMPLE'):
-            unpriv_usr = 'testacl'
+    usr = params.get('unprivileged_user')
+    if usr:
+        if usr.count('EXAMPLE'):
+            usr = 'testacl'
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
@@ -405,10 +406,22 @@ def run(test, params, env):
         # Run virsh command
         # May create several snapshots, according to configuration
         for count in range(int(multi_num)):
-            cmd_result = virsh.snapshot_create_as(vm_name, options,
-                                                  unprivileged_user=unpriv_usr,
-                                                  uri=uri, ignore_status=True,
-                                                  debug=True)
+            if create_autodestroy:
+                # Run virsh command in interactive mode
+                vmxml_backup.undefine()
+                vp = virsh.VirshPersistent()
+                vp.create(vmxml_backup['xml'], '--autodestroy')
+                cmd_result = vp.snapshot_create_as(vm_name, options,
+                                                   ignore_status=True,
+                                                   debug=True)
+                vp.close_session()
+                vmxml_backup.define()
+            else:
+                cmd_result = virsh.snapshot_create_as(vm_name, options,
+                                                      unprivileged_user=usr,
+                                                      uri=uri,
+                                                      ignore_status=True,
+                                                      debug=True)
             output = cmd_result.stdout.strip()
             status = cmd_result.exit_status
 
