@@ -71,7 +71,10 @@ def is_attached(vmxml_devices, source_file, target_dev):
             continue
         if disk.target['dev'] != target_dev:
             continue
-        if disk.source.attrs['file'] != source_file:
+        if disk.xmltreefile.find('source') is not None:
+            if disk.source.attrs['file'] != source_file:
+                continue
+        else:
             continue
         # All three conditions met
         return True
