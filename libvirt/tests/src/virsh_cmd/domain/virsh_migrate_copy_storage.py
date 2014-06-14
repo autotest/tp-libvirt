@@ -53,6 +53,10 @@ def run(test, params, env):
     """
     vm = env.get_vm(params.get("main_vm"))
     disk_type = params.get("copy_storage_type", "file")
+    if disk_type == "file":
+        params['added_disk_type'] = "file"
+    else:
+        params['added_disk_type'] = "block"
     primary_target = vm.get_first_disk_devices()["target"]
     file_path, file_size = vm.get_device_size(primary_target)
     # Convert to Gib
@@ -70,9 +74,9 @@ def run(test, params, env):
     # Attach additional disks to vm if disk count big than 1
     disks_count = int(params.get("added_disks_count", 1)) - 1
     if disks_count:
+        new_vm_name = "%s_smtest" % vm.name
         if vm.is_alive():
             vm.destroy()
-        new_vm_name = "%s_smtest" % vm.name
         utlv.define_new_vm(vm.name, new_vm_name)
         vm = libvirt_vm.VM(new_vm_name, vm.params, vm.root_dir,
                            vm.address_cache)
@@ -157,8 +161,8 @@ def run(test, params, env):
         # Recover created vm
         if vm.is_alive():
             vm.destroy()
-            if disks_count:
-                vm.undefine()
+        if disks_count and vm.name == new_vm_name:
+            vm.undefine()
         for disk in added_disks_list:
             utlv.delete_local_disk(disk_type, disk)
             rdm.remove_path(disk_type, disk)
