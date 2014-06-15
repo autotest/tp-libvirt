@@ -1,7 +1,8 @@
 import logging
-from autotest.client.shared import error
-from virttest import virsh
+from autotest.client.shared import error, utils
+from virttest import virsh, libvirt_vm, utils_test
 from provider import libvirt_version
+from virttest.utils_test import libvirt as utlv
 
 UINT32_MAX = (1 << 32) - 1
 INT64_MAX = (1 << 63) - 1
@@ -107,10 +108,116 @@ def run(test, params, env):
                                  "is different from expected value "
                                  "set by setspeed")
 
+    def verify_migration_speed(test, params, env):
+        """
+        Check if migration speed is effective with twice migration.
+        """
+        vms = env.get_all_vms()
+        src_uri = params.get("migrate_src_uri", "qemu+ssh://EXAMPLE/system")
+        if src_uri.count('///') or src_uri.count('EXAMPLE'):
+            raise error.TestNAError("The src_uri '%s' is invalid", src_uri)
+
+        dest_uri = params.get("migrate_dest_uri", "qemu+ssh://EXAMPLE/system")
+        if dest_uri.count('///') or dest_uri.count('EXAMPLE'):
+            raise error.TestNAError("The dest_uri '%s' is invalid", dest_uri)
+
+        # Check migrated vms' state
+        for vm in vms:
+            if vm.is_dead():
+                vm.start()
+
+        load_vm_names = params.get("load_vms").split()
+        # vms for load
+        load_vms = []
+        for vm_name in load_vm_names:
+            load_vms.append(libvirt_vm.VM(vm_name, params, test.bindir,
+                                          env.get("address_cache")))
+
+        bandwidth = int(params.get("bandwidth", "4"))
+        stress_type = params.get("stress_type", "load_vms_booting")
+        migration_type = params.get("migration_type", "orderly")
+        thread_timeout = int(params.get("thread_timeout", "60"))
+        delta = float(params.get("allowed_delta", "0.1"))
+        # Migrate vms to remote host
+        mig_first = utlv.MigrationTest()
+        virsh_dargs = {"debug": True}
+        for vm in vms:
+            set_get_speed(vm.name, bandwidth, virsh_dargs=virsh_dargs)
+            vm.wait_for_login()
+        utils_test.load_stress(stress_type, vms, params)
+        mig_first.do_migration(vms, src_uri, dest_uri, migration_type,
+                               options="--live", thread_timeout=thread_timeout)
+        for vm in vms:
+            mig_first.cleanup_dest_vm(vm, None, dest_uri)
+            # Keep it clean for second migration
+            if vm.is_alive():
+                vm.destroy()
+
+        # Migrate vms again with new bandwidth
+        second_bandwidth = params.get("second_bandwidth", "times")
+        if second_bandwidth == "half":
+            second_bandwidth = bandwidth / 2
+            speed_times = 2
+        elif second_bandwidth == "times":
+            second_bandwidth = bandwidth * 2
+            speed_times = 0.5
+        elif second_bandwidth == "same":
+            second_bandwidth = bandwidth
+            speed_times = 1
+
+        # Migrate again
+        for vm in vms:
+            if vm.is_dead():
+                vm.start()
+            vm.wait_for_login()
+            set_get_speed(vm.name, second_bandwidth, virsh_dargs=virsh_dargs)
+        utils_test.load_stress(stress_type, vms, params)
+        mig_second = utlv.MigrationTest()
+        mig_second.do_migration(vms, src_uri, dest_uri, migration_type,
+                                options="--live", thread_timeout=thread_timeout)
+        for vm in vms:
+            mig_second.cleanup_dest_vm(vm, None, dest_uri)
+
+        fail_info = []
+        # Check whether migration failed
+        if len(fail_info):
+            raise error.TestFail(fail_info)
+
+        for vm in vms:
+            first_time = mig_first.mig_time[vm.name]
+            second_time = mig_second.mig_time[vm.name]
+            logging.debug("Migration time for %s:\n"
+                          "Time with Bandwidth '%s' first: %s\n"
+                          "Time with Bandwidth '%s' second: %s", vm.name,
+                          bandwidth, first_time, second_bandwidth, second_time)
+            shift = float(abs(first_time * speed_times - second_time)) / float(second_time)
+            logging.debug("Shift:%s", shift)
+            if delta < shift:
+                fail_info.append("Spent time for migrating %s is intolerable." % vm.name)
+
+        # Check again for speed result
+        if len(fail_info):
+            raise error.TestFail(fail_info)
+
     # Run test case
     try:
+        twice_migration = "yes" == params.get("twice_migration", "no")
         set_get_speed(vm_name, expected_value, status_error,
                       options_extra, **virsh_dargs)
+        if twice_migration:
+            verify_migration_speed(test, params, env)
+        else:
+            set_get_speed(vm_name, expected_value, status_error,
+                          options_extra, **virsh_dargs)
     finally:
         #restore bandwidth to default
         virsh.migrate_setspeed(vm_name, orig_value)
+        if twice_migration:
+            src_uri = params.get("migrate_src_uri",
+                                 "qemu+ssh://EXAMPLE/system")
+            dest_uri = params.get("migrate_dest_uri",
+                                  "qemu+ssh://EXAMPLE/system")
+            for vm in env.get_all_vms():
+                utlv.MigrationTest().cleanup_dest_vm(vm, src_uri, dest_uri)
+                if vm.is_alive():
+                    vm.destroy(gracefully=False)
