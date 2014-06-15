@@ -145,7 +145,7 @@ def run(test, params, env):
         do_stress_migration(vms, src_uri, dest_uri, stress_type,
                             migration_type, params, thread_timeout)
         # Check network of vms on destination
-        if start_migration_vms:
+        if start_migration_vms and migration_type != "cross":
             for vm in vms:
                 check_dest_vm_network(vm, vm_ipaddr[vm.name], remote_host,
                                       username, password, prompt)
