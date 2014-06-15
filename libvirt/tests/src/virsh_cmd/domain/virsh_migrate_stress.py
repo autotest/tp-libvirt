@@ -1,6 +1,8 @@
 import logging
 import time
-from autotest.client.shared import error, utils_memory
+from autotest.client.shared import utils_memory
+from autotest.client.shared import error
+from autotest.client.shared import ssh_key
 from virttest import libvirt_vm, virt_vm
 from virttest import utils_test, remote
 from virttest.utils_test import libvirt as utlv
@@ -137,7 +139,9 @@ def run(test, params, env):
                 vm.wait_for_login()
                 vm_ipaddr[vm.name] = vm.get_address()
                 # TODO: recover vm if start failed?
-        # TODO: set ssh-autologin automatically
+        # Config ssh autologin for remote host
+        ssh_key.setup_ssh_key(remote_host, username, password, port=22)
+
         do_stress_migration(vms, src_uri, dest_uri, stress_type,
                             migration_type, params, thread_timeout)
         # Check network of vms on destination
