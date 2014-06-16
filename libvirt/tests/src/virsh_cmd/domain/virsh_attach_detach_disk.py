@@ -2,6 +2,7 @@ import os
 import logging
 from autotest.client.shared import error
 from autotest.client.shared import utils
+from autotest.client import lv_utils
 from virttest import aexpect
 from virttest import virt_vm
 from virttest import virsh
@@ -127,6 +128,9 @@ def run(test, params, env):
     test_type = "yes" == params.get("at_dt_disk_check_type", "no")
     test_audit = "yes" == params.get("at_dt_disk_check_audit", "no")
     test_block_dev = "yes" == params.get("at_dt_disk_iscsi_device", "no")
+    test_logcial_dev = "yes" == params.get("at_dt_disk_logical_device", "no")
+    vg_name = params.get("at_dt_disk_vg", "vg_test_0")
+    lv_name = params.get("at_dt_disk_lv", "lv_test_0")
     serial = params.get("at_dt_disk_serial", "")
     address = params.get("at_dt_disk_address", "")
     address2 = params.get("at_dt_disk_address2", "")
@@ -153,6 +157,14 @@ def run(test, params, env):
         except error.TestError:
             # We should skip this case
             raise error.TestNAError("Can not get iscsi device name in host")
+        if test_logcial_dev:
+            try:
+                lv_utils.vg_create(vg_name, device_source)
+                lv_utils.lv_create(vg_name, lv_name, "10M")
+                logging.debug("New created volume: %s", lv_name)
+            except error.TestError:
+                raise error.TestNAError("Can not create lv by using %s" % device_source)
+            device_source = "/dev/" + vg_name + "/" + lv_name
     else:
         if source_path and create_img:
             device_source = create_device_image(device_source_name,
@@ -368,6 +380,9 @@ def run(test, params, env):
         if os.path.exists(save_file):
             os.remove(save_file)
         if test_block_dev:
+            if test_logcial_dev:
+                lv_utils.lv_remove(vg_name, lv_name)
+                lv_utils.vg_remove(vg_name)
             iscsi_dev.cleanup()
         elif os.path.exists(device_source):
             os.remove(device_source)
