@@ -40,6 +40,19 @@ def run(test, params, env):
     options_extra = params.get("options_extra", "")
     status_error = "yes" == params.get("status_error", "yes")
     virsh_dargs = {'debug': True}
+    # Checking uris for migration
+    twice_migration = "yes" == params.get("twice_migration", "no")
+    if twice_migration:
+        src_uri = params.get("migrate_src_uri",
+                             "qemu+ssh://EXAMPLE/system")
+        dest_uri = params.get("migrate_dest_uri",
+                              "qemu+ssh://EXAMPLE/system")
+        if src_uri.count('///') or src_uri.count('EXAMPLE'):
+            raise error.TestNAError("The src_uri '%s' is invalid"
+                                    % src_uri)
+        if dest_uri.count('///') or dest_uri.count('EXAMPLE'):
+            raise error.TestNAError("The dest_uri '%s' is invalid"
+                                    % dest_uri)
 
     bz1083483 = False
     if bandwidth == "zero":
@@ -114,12 +127,7 @@ def run(test, params, env):
         """
         vms = env.get_all_vms()
         src_uri = params.get("migrate_src_uri", "qemu+ssh://EXAMPLE/system")
-        if src_uri.count('///') or src_uri.count('EXAMPLE'):
-            raise error.TestNAError("The src_uri '%s' is invalid", src_uri)
-
         dest_uri = params.get("migrate_dest_uri", "qemu+ssh://EXAMPLE/system")
-        if dest_uri.count('///') or dest_uri.count('EXAMPLE'):
-            raise error.TestNAError("The dest_uri '%s' is invalid", dest_uri)
 
         # Check migrated vms' state
         for vm in vms:
@@ -201,7 +209,6 @@ def run(test, params, env):
 
     # Run test case
     try:
-        twice_migration = "yes" == params.get("twice_migration", "no")
         set_get_speed(vm_name, expected_value, status_error,
                       options_extra, **virsh_dargs)
         if twice_migration:
@@ -213,10 +220,6 @@ def run(test, params, env):
         #restore bandwidth to default
         virsh.migrate_setspeed(vm_name, orig_value)
         if twice_migration:
-            src_uri = params.get("migrate_src_uri",
-                                 "qemu+ssh://EXAMPLE/system")
-            dest_uri = params.get("migrate_dest_uri",
-                                  "qemu+ssh://EXAMPLE/system")
             for vm in env.get_all_vms():
                 utlv.MigrationTest().cleanup_dest_vm(vm, src_uri, dest_uri)
                 if vm.is_alive():
