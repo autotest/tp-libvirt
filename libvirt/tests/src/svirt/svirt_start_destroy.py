@@ -25,6 +25,7 @@ def run(test, params, env):
     sec_relabel = params.get("svirt_start_destroy_vm_sec_relabel", "yes")
     sec_dict = {'type': sec_type, 'model': sec_model, 'label': sec_label,
                 'relabel': sec_relabel}
+    poweroff_with_destroy = ("destroy" == params.get("svirt_start_destroy_vm_poweroff", "destroy"))
     # Get variables about VM and get a VM object and VMXML instance.
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -78,7 +79,11 @@ def run(test, params, env):
                                          "Detal: disk_context=%s, imagelabel=%s"
                                          % (disk_context, imagelabel))
             # Check the label of disk after VM being destroyed.
-            vm.destroy()
+            if poweroff_with_destroy:
+                vm.destroy()
+            else:
+                vm.wait_for_login()
+                vm.shutdown()
             img_label_after = utils_selinux.get_context_of_file(
                 filename=disks.values()[0]['source'])
             if (not img_label_after == img_label):
