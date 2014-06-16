@@ -2,10 +2,10 @@ import os
 import logging
 import re
 import tempfile
-
 from autotest.client.shared import error
 from virttest import virsh, qemu_storage, data_dir
 from virttest.libvirt_xml import vm_xml
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -48,7 +48,7 @@ def run(test, params, env):
     # Do the attach action.
     extra = "--persistent --subdriver %s" % image_format
     result = virsh.attach_disk(vm_name, source=img_path, target="vdf",
-                               extra=extra)
+                               extra=extra, debug=True)
     if result.exit_status:
         raise error.TestNAError("Failed to attach disk %s to VM."
                                 "Detail: %s." % (img_path, result.stderr))
@@ -91,14 +91,28 @@ def run(test, params, env):
             snapshot_xml_file = open(snapshot_xml_path, "w")
             snapshot_xml_file.writelines(lines)
             snapshot_xml_file.close()
+            logging.debug("The xml content for snapshot create is:")
+            with open(snapshot_xml_path, 'r') as fin:
+                logging.debug(fin.read())
             snapshot_result = virsh.snapshot_create(
                 vm_name, ("--xmlfile %s" % snapshot_xml_path), debug=True)
+            out_err = snapshot_result.stderr.strip()
             if snapshot_result.exit_status:
                 if status_error:
                     return
                 else:
+                    if libvirt_version.version_compare(1, 2, 5):
+                        # As commit d2e668e in 1.2.5, internal active snapshot
+                        # without memory state is rejected. Handle it as SKIP
+                        # for now. This could be supportted in future by bug:
+                        # https://bugzilla.redhat.com/show_bug.cgi?id=1103063
+                        if re.search("internal snapshot of a running VM" +
+                                     " must include the memory state",
+                                     out_err):
+                            raise error.TestNAError("Check Bug #1083345, %s" %
+                                                    out_err)
                     raise error.TestFail("Failed to create snapshot. Error:%s."
-                                         % snapshot_result.stderr.strip())
+                                         % out_err)
         else:
             options = ""
             snapshot_result = virsh.snapshot_create(vm_name, options)
@@ -120,6 +134,9 @@ def run(test, params, env):
                 snapshot_xml_file = open(snapshot_xml_path, "w")
                 snapshot_xml_file.writelines(lines)
                 snapshot_xml_file.close()
+                logging.debug("The xml content for snapshot create is:")
+                with open(snapshot_xml_path, 'r') as fin:
+                    logging.debug(fin.read())
                 options += "--redefine %s --current" % snapshot_xml_path
                 if snapshot_result.exit_status:
                     raise error.TestFail("Failed to create snapshot --current."
@@ -142,23 +159,40 @@ def run(test, params, env):
         tmp_file_path = tmp_file.name
         tmp_file.close()
 
-        status, output = session.cmd_status_output("touch %s" % tmp_file_path)
+        echo_cmd = "echo SNAPSHOT_DISK_TEST >> %s" % tmp_file_path
+        status, output = session.cmd_status_output(echo_cmd)
+        logging.debug("The echo output in domain is: '%s'", output)
         if status:
-            raise error.TestFail("Touch file in vm failed. %s" % output)
+            raise error.TestFail("'%s' run failed with '%s'" %
+                                 (tmp_file_path, output))
+        status, output = session.cmd_status_output("cat %s" % tmp_file_path)
+        logging.debug("File created with content: '%s'", output)
 
         session.close()
 
         # Destroy vm for snapshot revert.
-        virsh.destroy(vm_name)
+        if not libvirt_version.version_compare(1, 2, 3):
+            virsh.destroy(vm_name)
         # Revert snapshot.
         revert_options = ""
         if snapshot_revert_paused:
             revert_options += " --paused"
         revert_result = virsh.snapshot_revert(vm_name, snapshot_name,
-                                              revert_options)
+                                              revert_options,
+                                              debug=True)
         if revert_result.exit_status:
-            raise error.TestFail(
-                "Revert snapshot failed. %s" % revert_result.stderr.strip())
+            # As commit d410e6f for libvirt 1.2.3, attempts to revert external
+            # snapshots will FAIL with an error "revert to external snapshot
+            # not supported yet". Thus, let's check for that and handle as a
+            # SKIP for now. Check bug:
+            # https://bugzilla.redhat.com/show_bug.cgi?id=1071264
+            if libvirt_version.version_compare(1, 2, 3):
+                if re.search("revert to external snapshot not supported yet",
+                             revert_result.stderr):
+                    raise error.TestNAError(revert_result.stderr.strip())
+            else:
+                raise error.TestFail("Revert snapshot failed. %s" %
+                                     revert_result.stderr.strip())
 
         if vm.is_dead():
             raise error.TestFail("Revert snapshot failed.")
@@ -174,6 +208,7 @@ def run(test, params, env):
         session = vm.wait_for_login()
         # Check the result of revert.
         status, output = session.cmd_status_output("cat %s" % tmp_file_path)
+        logging.debug("After revert cat file output='%s'", output)
         if not status:
             raise error.TestFail("Tmp file exists, revert failed.")
 
