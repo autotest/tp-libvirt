@@ -755,8 +755,8 @@ def test_md_test(vm, params):
             gf.close_session()
             raise error.TestFail("MD stat is not correct")
     if "mdstat_flags: S" not in stat:
-            gf.close_session()
-            raise error.TestFail("There should be a S flag for spare disk")
+        gf.close_session()
+        raise error.TestFail("There should be a S flag for spare disk")
 
     gf.close_session()
 
@@ -1213,8 +1213,8 @@ def test_sfdisk_disk_geometry(vm, params):
     result = gf.sfdisk_disk_geometry(pv_name).stdout.strip()
 
     if not result:
-            gf.close_session()
-            raise error.TestFail("result should not be empty")
+        gf.close_session()
+        raise error.TestFail("result should not be empty")
 
     gf.close_session()
 
@@ -1241,8 +1241,8 @@ def test_sfdisk_kernel_geometry(vm, params):
     result = gf.sfdisk_kernel_geometry(pv_name).stdout.strip()
 
     if not result:
-            gf.close_session()
-            raise error.TestFail("result should not be empty")
+        gf.close_session()
+        raise error.TestFail("result should not be empty")
 
     gf.close_session()
 
