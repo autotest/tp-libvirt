@@ -45,7 +45,7 @@ def run(test, params, env):
         # Normalise to seconds from nano seconds and get for one cpu
         total = float(((actual_stats['system'] + actual_stats['user'] +
                         actual_stats['idle'] + actual_stats['iowait']) / (10 ** 9)) / (
-            cpu_count))
+                      cpu_count))
         uptime = float(utils.get_uptime())
         if not total <= uptime:
             raise error.TestFail("Commands 'virsh nodecpustats' not succeeded"
