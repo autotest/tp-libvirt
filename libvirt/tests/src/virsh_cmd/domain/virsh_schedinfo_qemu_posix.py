@@ -186,11 +186,15 @@ def run(test, params, env):
                                  set_value_of_cgroup, set_value_expected))
                 if set_value_of_output is None:
                     raise error.TestFail("Get parameter %s failed." % set_ref)
-                if not (set_value_expected == set_value_of_output):
-                    if (options_ref.count("config")):
-                        raise error.TestFail("Known bug: value in output "
-                                             "is not expected with --config.")
-                    else:
+                # Value in output of virsh schedinfo is not guaranteed 'correct'
+                # when we use --config.
+                # This is my attempt to fix it
+                # http://www.redhat.com/archives/libvir-list/2014-May/msg00466.html.
+                # But this patch did not go into upstream of libvirt.
+                # Libvirt just guarantee that the value is correct in next boot
+                # when we use --config. So skip checking of output in this case.
+                if (not (set_value_expected == set_value_of_output) and
+                        not (options_ref.count("config"))):
                         raise error.TestFail("Run successful but value "
                                              "in output is not expected.")
                 if not (set_value_expected == set_value_of_cgroup):
