@@ -12,8 +12,9 @@ def remote_test(remote_ip, local_ip, remote_pwd, remote_prompt,
     Test remote case
     """
     err = ""
+    status = 1
+    status_error = status_error_test
     try:
-        status_error = status_error_test
         remote_uri = libvirt_vm.complete_uri(local_ip)
         session = remote.remote_login("ssh", remote_ip, "22",
                                       "root", remote_pwd, remote_prompt)
