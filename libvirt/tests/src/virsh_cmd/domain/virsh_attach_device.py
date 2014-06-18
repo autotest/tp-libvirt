@@ -339,18 +339,17 @@ class AttachDeviceBase(TestDeviceBase):
         cmdresult = self.test_params.virsh.attach_device(**vadu_dargs)
         self.test_params.virsh['debug'] = False
         # Command success is not enough, must also confirm activity worked
+
+        # output XML no matter attach pass or not
+        logging.debug("Attached XML:")
+        for line in str(self.device_xmls[index]).splitlines():
+            logging.debug("%s", line)
+
         if (cmdresult.exit_status == 0):
             if (cmdresult.stdout.count('attached successfully') or
                     cmdresult.stderr.count('attached successfully')):
                 return True
         else:
-            if (cmdresult.stderr.count("XML error") or
-                    cmdresult.stdout.count("XML error")):
-                logging.error("Errant XML:")
-                xmldevice = self.device_xmls[index]
-                # All LibvirtXMLBase subclasses string-convert into raw XML
-                for line in str(xmldevice).splitlines():
-                    logging.error("     %s", line)
             # See analyze_negative_results - expects return of true
             if self.test_params.status_error:
                 return True
@@ -446,6 +445,7 @@ class VirtIODiskBasic(AttachDeviceBase):
     count = 0  # number of devices to make
     meg = 0  # size of device in megabytes (1024**2)
     devidx = 1  # devnode name index to start at (0 == vda, 1 == vdb, etc)
+    devtype = 'file'
 
     @staticmethod
     def devname_suffix(index):
@@ -489,7 +489,7 @@ class VirtIODiskBasic(AttachDeviceBase):
         """
         self.make_image_file(index)
         disk_class = self.test_params.vmxml.get_device_class('disk')
-        disk_device = disk_class(type_name='file',
+        disk_device = disk_class(type_name=self.devtype,
                                  virsh_instance=self.test_params.virsh)
         disk_device.driver = {'name': 'qemu', 'type': 'raw'}
         # No source elements by default
