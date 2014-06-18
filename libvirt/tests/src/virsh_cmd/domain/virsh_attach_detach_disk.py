@@ -8,6 +8,7 @@ from virttest import virt_vm
 from virttest import virsh
 from virttest import remote
 from virttest import qemu_storage
+from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
@@ -129,6 +130,7 @@ def run(test, params, env):
     test_audit = "yes" == params.get("at_dt_disk_check_audit", "no")
     test_block_dev = "yes" == params.get("at_dt_disk_iscsi_device", "no")
     test_logcial_dev = "yes" == params.get("at_dt_disk_logical_device", "no")
+    restart_libvirtd = "yes" == params.get("at_dt_disk_restart_libvirtd", "no")
     vg_name = params.get("at_dt_disk_vg", "vg_test_0")
     lv_name = params.get("at_dt_disk_lv", "lv_test_0")
     serial = params.get("at_dt_disk_serial", "")
@@ -251,6 +253,11 @@ def run(test, params, env):
     elif test_cmd == "detach-disk":
         status = virsh.detach_disk(vm_ref, device_target, dt_options,
                                    debug=True).exit_status
+
+    if restart_libvirtd:
+        libvirtd_serv = utils_libvirtd.Libvirtd()
+        libvirtd_serv.restart()
+
     if test_twice:
         device_target2 = params.get("at_dt_disk_device_target2", device_target)
         create_device_image(device_source_name, device_source_format)
