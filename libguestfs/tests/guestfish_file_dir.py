@@ -5,6 +5,8 @@ import logging
 import shutil
 import os
 import re
+import random
+import string
 
 
 def prepare_image(params):
@@ -754,6 +756,99 @@ def test_equal(vm, params):
     if gf_result != 'true':
         gf.close_session()
         raise error.TestFail("equal failed.")
+
+    gf.close_session()
+
+
+def test_fill(vm, params):
+    """
+    Test fill command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+
+    gf_result = gf.fill(45, 1000, '/newfile')
+    gf_result = gf.download('/newfile', '/tmp/newfile')
+    gf_result = gf.rm('/newfile')
+
+    run_result = utils.run("for((i=0;i<100;i++)); do echo -n '----------'; done > /tmp/tmp").stdout.split()
+    run_result = utils.run("cmp /tmp/newfile /tmp/tmp").stdout.strip()
+    if run_result != '':
+        gf.close_session()
+        raise error.TestFail("fill failed.")
+
+    gf_result = gf.fill('066', 10000000, '/newtest')
+    gf_result = gf.strings('/newtest').stdout.strip()
+    if not 'maybe the reply exceeds the maximum message size in the protocol?' in gf_result:
+        gf.close_session()
+        raise error.TestFail("fill failed.")
+
+    gf_result = gf.head('/newtest').stdout.strip()
+    if not 'maybe the reply exceeds the maximum message size in the protocol?' in gf_result:
+        gf.close_session()
+        raise error.TestFail("fill failed.")
+
+    gf_result = gf.head_n(100000, '/newtest').stdout.strip()
+    if not 'maybe the reply exceeds the maximum message size in the protocol?' in gf_result:
+        gf.close_session()
+        raise error.TestFail("fill failed.")
+
+    gf_result = gf.tail('/newtest').stdout.strip()
+    if not 'maybe the reply exceeds the maximum message size in the protocol?' in gf_result:
+        gf.close_session()
+        raise error.TestFail("fill failed.")
+
+    gf_result = gf.pread('/newtest', 10000000, 0).stdout.strip()
+    if not 'count is too large for the protocol' in gf_result:
+        gf.close_session()
+        raise error.TestFail("fill failed.")
+
+    gf.close_session()
+
+
+def test_fill_dir(vm, params):
+    """
+    Test fill-dir command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+
+    fill_num = random.randint(0, 99)
+    gf_result = gf.mkdir('/fill/')
+    gf_result = gf.fill_dir('/fill/', fill_num)
+    gf_result = gf.ls('/fill/').stdout.strip()
+
+    cmp_result = ''
+    for i in xrange(fill_num):
+        cmp_result += string.zfill(i,8)
+        cmp_result += '\n'
+    cmp_result = cmp_result[0:len(cmp_result)-1]
+
+    if gf_result != cmp_result:
+        gf.close_session()
+        raise error.TestFail("fill failed.")
 
     gf.close_session()
 
