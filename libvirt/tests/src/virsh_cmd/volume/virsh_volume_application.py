@@ -50,6 +50,8 @@ def run(test, params, env):
         if not os.path.exists(cdrom_path):
             raise error.TestNAError("Can't find installation cdrom:%s"
                                     % cdrom_path)
+        # Get a nonexist domain name
+        vm_name = "vol_install_test"
 
     try:
         pvtest = utlv.PoolVolumeTest(test, params)
@@ -87,7 +89,7 @@ def run(test, params, env):
                 raise error.TestFail("%s cannot be used normally!"
                                      % vm_attach_device)
         elif application == "install":
-            # Get a nonexist domain name
+            # Get a nonexist domain name anyway
             while virsh.domain_exists(vm_name):
                 vm_name += "_test"
             # Prepare installation parameters
