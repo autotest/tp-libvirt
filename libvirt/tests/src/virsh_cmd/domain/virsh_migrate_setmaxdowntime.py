@@ -75,7 +75,7 @@ def run(test, params, env):
     3) Cleanup environment(migrated vm on destination)
     4) Check result
     """
-    vm_ref = params.get("vm_ref", "name")
+    vm_ref = params.get("setmmdt_vm_ref", "domname")
     dest_uri = params.get(
         "virsh_migrate_dest_uri", "qemu+ssh://EXAMPLE/system")
     src_uri = params.get(
@@ -105,8 +105,8 @@ def run(test, params, env):
     if src_uri == dest_uri:
         raise error.TestNAError("You should not set dest uri same as local.")
 
-    setmmdt_dargs = {'debug': True, 'ignore_status': False, 'uri': src_uri}
-    migrate_dargs = {'debug': True, 'ignore_status': False}
+    setmmdt_dargs = {'debug': True, 'ignore_status': True, 'uri': src_uri}
+    migrate_dargs = {'debug': True, 'ignore_status': True}
 
     # Confirm how to reference a VM.
     if vm_ref == "domname":
