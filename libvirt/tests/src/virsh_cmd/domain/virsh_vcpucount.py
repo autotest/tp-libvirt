@@ -172,7 +172,7 @@ def run(test, params, env):
 
     # Prepare domain
     try:
-        reset_domain(vm, pre_vm_state, (options == "--guest"))
+        reset_domain(vm, pre_vm_state, ("--guest" in options))
     except Exception, details:
         reset_env(vm_name, xml_file)
         error.TestFail(details)
@@ -197,7 +197,7 @@ def run(test, params, env):
                 raise error.TestNAError("Option %s is not supported" % options)
 
         # Reset domain
-        reset_domain(vm, pre_vm_state)
+        reset_domain(vm, pre_vm_state, ("--guest" in options))
 
         # Check result
         if status_error == "yes":
