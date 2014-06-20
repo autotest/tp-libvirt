@@ -50,6 +50,8 @@ def run(test, params, env):
         if not os.path.exists(cdrom_path):
             raise error.TestNAError("Can't find installation cdrom:%s"
                                     % cdrom_path)
+        # Get a nonexist domain name
+        vm_name = "vol_install_test"
 
     try:
         pvtest = utlv.PoolVolumeTest(test, params)
@@ -68,7 +70,7 @@ def run(test, params, env):
         if application == "attach":
             vm = env.get_vm(vm_name)
             session = vm.wait_for_login()
-            virsh.attach_disk(vm_name, volumes.values()[volume_count-1],
+            virsh.attach_disk(vm_name, volumes.values()[volume_count - 1],
                               disk_target)
             vm_attach_device = "/dev/%s" % disk_target
             if session.cmd_status("which parted"):
@@ -87,11 +89,15 @@ def run(test, params, env):
                 raise error.TestFail("%s cannot be used normally!"
                                      % vm_attach_device)
         elif application == "install":
-            # Get a nonexist domain name
+            # Get a nonexist domain name anyway
             while virsh.domain_exists(vm_name):
                 vm_name += "_test"
             # Prepare installation parameters
-            params["image_name"] = volumes.values()[volume_count-1]
+            params["main_vm"] = vm_name
+            vm = env.create_vm("libvirt", None, vm_name, params,
+                               test.bindir)
+            env.register_vm(vm_name, vm)
+            params["image_name"] = volumes.values()[volume_count - 1]
             params["image_format"] = "raw"
             params['force_create_image'] = "yes"
             params['remove_image'] = "yes"
@@ -111,12 +117,14 @@ def run(test, params, env):
             params['backup_image_before_testing'] = "no"
             params['kernel_params'] = ("ks=cdrom nicdelay=60 "
                                        "console=ttyS0,115200 console=tty0")
-            params['cdroms'] += " unattended"
+            params['cdroms'] = "unattended cd1"
             params['redirs'] += " unattended_install"
             try:
                 unattended_install.run(test, params, env)
             except error.CmdError, detail:
                 raise error.TestFail("Guest install failed:%s" % detail)
+            finally:
+                env.unregister_vm(vm_name)
     finally:
         try:
             if application == "install":
