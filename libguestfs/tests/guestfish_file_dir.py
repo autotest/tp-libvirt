@@ -791,27 +791,27 @@ def test_fill(vm, params):
 
     gf_result = gf.fill('066', 10000000, '/newtest')
     gf_result = gf.strings('/newtest').stdout.strip()
-    if not 'maybe the reply exceeds the maximum message size in the protocol?' in gf_result:
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         raise error.TestFail("fill failed.")
 
     gf_result = gf.head('/newtest').stdout.strip()
-    if not 'maybe the reply exceeds the maximum message size in the protocol?' in gf_result:
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         raise error.TestFail("fill failed.")
 
     gf_result = gf.head_n(100000, '/newtest').stdout.strip()
-    if not 'maybe the reply exceeds the maximum message size in the protocol?' in gf_result:
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         raise error.TestFail("fill failed.")
 
     gf_result = gf.tail('/newtest').stdout.strip()
-    if not 'maybe the reply exceeds the maximum message size in the protocol?' in gf_result:
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         raise error.TestFail("fill failed.")
 
     gf_result = gf.pread('/newtest', 10000000, 0).stdout.strip()
-    if not 'count is too large for the protocol' in gf_result:
+    if 'count is too large for the protocol' not in gf_result:
         gf.close_session()
         raise error.TestFail("fill failed.")
 
@@ -843,7 +843,7 @@ def test_fill_dir(vm, params):
 
     cmp_result = ''
     for i in xrange(fill_num):
-        cmp_result += string.zfill(i,8)
+        cmp_result += string.zfill(i, 8)
         cmp_result += '\n'
     cmp_result = cmp_result[0:len(cmp_result)-1]
 
@@ -884,32 +884,32 @@ def test_fill_pattern(vm, params):
 
     gf_result = gf.fill_pattern('abcdef', 10000000, '/newtest')
     gf_result = gf.hexdump('/newtest').stdout.strip()
-    if not 'maybe the reply exceeds the maximum message size in the protocol?' in gf_result:
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         raise error.TestFail("fill-pattern failed.")
 
     gf_result = gf.strings('/newtest').stdout.strip()
-    if not 'maybe the reply exceeds the maximum message size in the protocol?' in gf_result:
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         raise error.TestFail("fill-pattern failed.")
 
     gf_result = gf.head('/newtest').stdout.strip()
-    if not 'maybe the reply exceeds the maximum message size in the protocol?' in gf_result:
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         raise error.TestFail("fill-pattern failed.")
 
     gf_result = gf.head_n(100000, '/newtest').stdout.strip()
-    if not 'maybe the reply exceeds the maximum message size in the protocol?' in gf_result:
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         raise error.TestFail("fill-pattern failed.")
 
     gf_result = gf.tail('/newtest').stdout.strip()
-    if not 'maybe the reply exceeds the maximum message size in the protocol?' in gf_result:
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         raise error.TestFail("fill-pattern failed.")
 
     gf_result = gf.pread('/newtest', 10000000, 0).stdout.strip()
-    if not 'count is too large for the protocol' in gf_result:
+    if 'count is too large for the protocol' not in gf_result:
         gf.close_session()
         raise error.TestFail("fill-pattern failed.")
 
