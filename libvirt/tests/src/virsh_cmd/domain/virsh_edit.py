@@ -4,6 +4,7 @@ from virttest import remote
 
 from autotest.client.shared import error
 from virttest import virsh, aexpect, utils_libvirtd
+from virttest.libvirt_xml import vm_xml
 
 
 def run(test, params, env):
@@ -24,9 +25,12 @@ def run(test, params, env):
     domuuid = vm.get_uuid()
     vcpucount_result = virsh.vcpucount(vm_name, options="--config --maximum")
     if vcpucount_result.exit_status:
-        raise error.TestError("Failed to get vcpucount. Detail:\n%s"
-                              % vcpucount_result)
-    original_vcpu = vcpucount_result.stdout.strip()
+        # Fail back to libvirt_xml way to test vcpucount.
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        original_vcpu = str(vmxml.vcpu)
+    else:
+        original_vcpu = vcpucount_result.stdout.strip()
+
     expected_vcpu = str(int(original_vcpu) + 1)
 
     libvirtd = params.get("libvirtd", "on")
@@ -43,7 +47,7 @@ def run(test, params, env):
         """
         session = aexpect.ShellSession("sudo -s")
         try:
-            session.sendline("virsh edit %s" % source)
+            session.sendline("virsh -c %s edit %s" % (vm.connect_uri, source))
             session.sendline(edit_cmd)
             session.send('\x1b')
             session.send('ZZ')
@@ -72,7 +76,8 @@ def run(test, params, env):
             virsh.destroy(guest_name)
         elif params.get("start_vm") == "yes":
             virsh.destroy(guest_name)
-        vcpus = vm.dominfo()["CPU(s)"]
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        vcpus = str(vmxml.vcpu)
         # Recover cpuinfo
         # Use name rather than source, since source could be domid
         status = modify_vcpu(guest_name, dic_mode["recover"])
