@@ -5,6 +5,9 @@ import logging
 import shutil
 import os
 import re
+import random
+import string
+import hashlib
 
 
 def prepare_image(params):
@@ -756,6 +759,308 @@ def test_equal(vm, params):
         raise error.TestFail("equal failed.")
 
     gf.close_session()
+
+
+def test_fill(vm, params):
+    """
+    Test fill command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+
+    gf_result = gf.fill(45, 1000, '/newfile')
+    gf_result = gf.download('/newfile', '/tmp/newfile')
+    gf_result = gf.rm('/newfile')
+
+    run_result = utils.run("for((i=0;i<100;i++)); do echo -n '----------'; done > /tmp/tmp").stdout.split()
+    run_result = utils.run("cmp /tmp/newfile /tmp/tmp").stdout.strip()
+    if run_result != '':
+        gf.close_session()
+        raise error.TestFail("fill failed.")
+
+    gf_result = gf.fill('066', 10000000, '/newtest')
+    gf_result = gf.strings('/newtest').stdout.strip()
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
+        gf.close_session()
+        raise error.TestFail("fill failed.")
+
+    gf_result = gf.head('/newtest').stdout.strip()
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
+        gf.close_session()
+        raise error.TestFail("fill failed.")
+
+    gf_result = gf.head_n(100000, '/newtest').stdout.strip()
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
+        gf.close_session()
+        raise error.TestFail("fill failed.")
+
+    gf_result = gf.tail('/newtest').stdout.strip()
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
+        gf.close_session()
+        raise error.TestFail("fill failed.")
+
+    gf_result = gf.pread('/newtest', 10000000, 0).stdout.strip()
+    if 'count is too large for the protocol' not in gf_result:
+        gf.close_session()
+        raise error.TestFail("fill failed.")
+
+    gf.close_session()
+
+
+def test_fill_dir(vm, params):
+    """
+    Test fill-dir command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+
+    fill_num = random.randint(0, 99)
+    gf_result = gf.mkdir('/fill/')
+    gf_result = gf.fill_dir('/fill/', fill_num)
+    gf_result = gf.ls('/fill/').stdout.strip()
+
+    cmp_result = ''
+    for i in xrange(fill_num):
+        cmp_result += string.zfill(i, 8)
+        cmp_result += '\n'
+    cmp_result = cmp_result[0:len(cmp_result)-1]
+
+    if gf_result != cmp_result:
+        gf.close_session()
+        raise error.TestFail("fill failed.")
+
+    gf.close_session()
+
+
+def test_fill_pattern(vm, params):
+    """
+    Test fill-pattern command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+
+    gf_result = gf.fill_pattern('abcdefgh', 1000, '/newfile')
+    gf_result = gf.download('/newfile', '/tmp/newfile')
+    gf_result = gf.rm('/newfile')
+
+    run_result = utils.run("for((i=0;i<125;i++)); do echo -n 'abcdefgh'; done > /tmp/tmp").stdout.split()
+    run_result = utils.run("cmp /tmp/newfile /tmp/tmp").stdout.strip()
+    if run_result != '':
+        gf.close_session()
+        raise error.TestFail("fill-pattern failed.")
+
+    gf_result = gf.fill_pattern('abcdef', 10000000, '/newtest')
+    gf_result = gf.hexdump('/newtest').stdout.strip()
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
+        gf.close_session()
+        raise error.TestFail("fill-pattern failed.")
+
+    gf_result = gf.strings('/newtest').stdout.strip()
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
+        gf.close_session()
+        raise error.TestFail("fill-pattern failed.")
+
+    gf_result = gf.head('/newtest').stdout.strip()
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
+        gf.close_session()
+        raise error.TestFail("fill-pattern failed.")
+
+    gf_result = gf.head_n(100000, '/newtest').stdout.strip()
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
+        gf.close_session()
+        raise error.TestFail("fill-pattern failed.")
+
+    gf_result = gf.tail('/newtest').stdout.strip()
+    if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
+        gf.close_session()
+        raise error.TestFail("fill-pattern failed.")
+
+    gf_result = gf.pread('/newtest', 10000000, 0).stdout.strip()
+    if 'count is too large for the protocol' not in gf_result:
+        gf.close_session()
+        raise error.TestFail("fill-pattern failed.")
+
+    gf.close_session()
+
+
+def test_head(vm, params):
+    """
+    Test head command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+
+    gf_result = gf.head('/file_ops/file_ascii').stdout.strip()
+    if len(gf_result) != 253:
+        gf.close_session()
+        raise error.TestFail("head failed.")
+    gf_result = gf.head_n(3, '/file_ops/file_ascii').stdout.strip()
+    if len(gf_result) != 73:
+        gf.close_session()
+        raise error.TestFail("head failed.")
+    gf_result = gf.head_n(1000, '/file_ops/file_ascii').stdout.strip()
+    if len(gf_result) != 652:
+        gf.close_session()
+        raise error.TestFail("head failed.")
+    gf_result = gf.head_n(0, '/file_ops/file_ascii').exit_status
+    if gf_result != 0:
+        gf.close_session()
+        raise error.TestFail("head failed.")
+    gf_result = gf.head_n('+5', '/file_ops/file_ascii').exit_status
+    if gf_result != 0:
+        gf.close_session()
+        raise error.TestFail("head failed.")
+    gf_result = gf.head_n('-5', '/file_ops/file_ascii').exit_status
+    if gf_result != 0:
+        gf.close_session()
+        raise error.TestFail("head failed.")
+
+    gf.close_session()
+
+
+def test_hexdump(vm, params):
+    """
+    Test hexdump command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+
+    gf_result = gf.hexdump('/file_ops/file_ascii').stdout.strip()
+    m = hashlib.md5()
+    m.update(gf_result)
+    logging.debug(m.hexdigest())
+    if m.hexdigest() != '3ca9739a70e246745ee6bb55e11f755b':
+        gf.close_session()
+        raise error.TestFail("hexdump failed.")
+    gf_result = gf.hexdump('/file_ops/file_tgz').stdout.strip()
+    m = hashlib.md5()
+    m.update(gf_result)
+    logging.debug(m.hexdigest())
+    if m.hexdigest() != 'ee00d7203bea3081453c4f41e29f92b4':
+        gf.close_session()
+        raise error.TestFail("hexdump failed.")
+
+    gf.close_session()
+
+
+def test_more(vm, params):
+    """
+    Test more command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+
+    gf_result = gf.more('/file_ops/file_ascii').stdout.strip()
+    if len(gf_result) != 652:
+        gf.close_session()
+        raise error.TestFail("more failed.")
+
+    gf.close_session()
+
+
+def test_pread(vm, params):
+    """
+    Test pread command
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+    gf.run()
+    mount_point = params.get("mount_point")
+    gf.mount(mount_point, '/')
+
+    # inner cmd will delete the last none empty line
+    gf_result = gf.pread('/file_ops/file_ascii', 11, 80).stdout
+    if len(gf_result) != 11:
+        gf.close_session()
+        raise error.TestFail("pread failed.")
+
+    gf_result = gf.pread('/file_ops/file_ascii', 1000, 0).stdout.strip()
+    if len(gf_result) != 652:
+        gf.close_session()
+        raise error.TestFail("pread failed.")
+
+    gf.close_session()
+
+
+def test_manually_(vm, params):
+    """
+    This API will be tested manually
+    """
+    pass
 
 
 def run(test, params, env):
