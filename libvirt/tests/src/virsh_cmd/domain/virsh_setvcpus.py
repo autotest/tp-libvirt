@@ -2,7 +2,10 @@ import re
 import os
 import logging
 from autotest.client.shared import error
-from virttest import remote, virsh, libvirt_xml, libvirt_vm
+from virttest import remote
+from virttest import virsh
+from virttest import libvirt_xml
+from virttest import libvirt_vm
 from xml.dom.minidom import parse
 
 
@@ -21,7 +24,8 @@ def remote_test(remote_ip, local_ip, remote_pwd, remote_prompt,
         session.cmd_output('LANG=C')
         command = "virsh -c %s setvcpus %s 1 --live" % (remote_uri, vm_name)
         if virsh.has_command_help_match("setvcpus", "--live") is None:
-            status_error = "yes"
+            raise error.TestNAError("The current libvirt doesn't support"
+                                    " '--live' option for setvcpus")
         status, output = session.cmd_status_output(command, internal_timeout=5)
         session.close()
         if status != 0:
@@ -193,8 +197,9 @@ def run(test, params, env):
             option_list = options.split(" ")
             for item in option_list:
                 if virsh.has_command_help_match(command, item) is None:
-                    status_error = "yes"
-                    break
+                    raise error.TestNAError("The current libvirt version"
+                                            " doesn't support '%s' option"
+                                            % item)
             status = virsh.setvcpus(dom_option, count_option, options,
                                     ignore_status=True, debug=True)
             setvcpu_exit_status = status.exit_status
