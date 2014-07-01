@@ -57,7 +57,44 @@ def check_xml(vm_name, target, dest_path, blk_options):
                 re1 = 1
             disk_mirror = disk_list[dev_index].find('mirror')
             if disk_mirror is not None:
-                disk_mirror_src = disk_mirror.get('file')
+                # Prior to 1.2.6 - <mirror> was a subelement of the <disk>
+                # with the disk_mirror_src file found as an attribute. As of
+                # 1.2.6 the output only XML changed to utilize a <source>
+                # sublement where <mirror> now has a "type" attribute and
+                # <source> format/output depends on the mirror type value.
+                # Although for a brief period of time between commit id
+                # '7c6fc394' and 'b50e1049', the file="/path/to/file"
+                # attribute was removed from the <mirror> element. This
+                # test failing here resulted in the file attribute being
+                # restored for a type="file" only <mirror> to avoid a possible
+                # regression for other users/parsers that expected the XML
+                # to have the "file" attribute in a <mirror> element.
+                if libvirt_version.version_compare(1, 2, 6):
+                    mirror_type = disk_mirror.get('type')
+                    disk_mirror_source = disk_mirror.find('source')
+                    #
+                    # Because we want to use the new and preferred syntax,
+                    # let's do so for any libvirt 1.2.6 and beyond...
+                    #
+                    # Mirror type (currently) can be file, block, or network.
+                    # For now the test only handles "file". In the future it
+                    # could be augmented to handle other types.
+                    #
+                    # For mirror_type == "file" means <source> uses file=
+                    # even though the "file" attribute does exist in the
+                    # <mirror> element.
+                    #
+                    # For mirror_type == "block" means <source> uses dev=
+                    #
+                    # When mirror_type == "network" is supported <source>
+                    # will be defined...
+                    #
+                    if mirror_type == "file" and disk_mirror_source is not None:
+                        disk_mirror_src = disk_mirror_source.get('file')
+                    else:
+                        disk_mirror_src = None
+                else:
+                    disk_mirror_src = disk_mirror.get('file')
                 if disk_mirror_src == dest_path:
                     logging.debug("Find %s in <mirror> element.", dest_path)
                     re2 = 2
