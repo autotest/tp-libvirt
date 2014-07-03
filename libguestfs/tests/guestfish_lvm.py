@@ -773,6 +773,152 @@ def test_vgpvuuids(vm, params):
     gf.close_session()
 
 
+def test_pvcreate(vm, params):
+    """
+    Test command pvcreate
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    pv_name = gf.pvs().stdout.strip()
+
+    result = gf.pvs_full().stdout.strip()
+    result = re.search("pv_name:\s+(\S+)", result).groups()[0]
+
+    if result != pv_name != "/dev/sda":
+        gf.close_session()
+        raise error.TestFail("pv name is not match")
+
+    gf.close_session()
+
+
+def test_pvremove(vm, params):
+    """
+    Test command pvremove
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    pv_name = gf.pvs().stdout.strip()
+
+    if pv_name != "/dev/sda":
+        gf.close_session()
+        raise error.TestFail("pv name is not match")
+
+    gf.pvremove('/dev/sda')
+    pv_name = gf.pvs().stdout.strip()
+
+    if pv_name:
+        gf.close_session()
+        raise error.TestFail("remove pv failed")
+
+    gf.close_session()
+
+
+def test_pvresize(vm, params):
+    """
+    Test command pvresize and pvresize-size
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+    result = gf.pvs_full().stdout.strip()
+    pv_size = re.search("pv_size:\s+(\S+)", result).groups()[0]
+
+    new_size = pv_size[:-1]
+    gf.pvresize_size("/dev/sda", new_size)
+
+    result = gf.pvs_full().stdout.strip()
+    get_size = re.search("pv_size:\s+(\S+)", result).groups()[0]
+
+    if get_size != new_size:
+        gf.close_session()
+        raise error.TestFail("Can not get correct size via pvresize-size")
+
+    gf.pvresize("/dev/sda")
+
+    result = gf.pvs_full().stdout.strip()
+    get_size = re.search("pv_size:\s+(\S+)", result).groups()[0]
+
+    if get_size != pv_size:
+        gf.close_session()
+        raise error.TestFail("Can not get correct size via pvresize-size")
+
+    gf.close_session()
+
+
+def test_pvuuid(vm, params):
+    """
+    Test command pvuuid
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    gf.run()
+
+    create_lvm(gf, 'pvcreate')
+
+    pv_name = gf.pvs().stdout.strip()
+    uuid = gf.pvuuid(pv_name).stdout.strip()
+    uuid = re.sub("-", "", uuid)
+    logging.debug("uuid from pvuuid is %s" % uuid)
+
+    ret = gf.pvs_full().stdout.strip()
+    result = re.search("pv_uuid:\s+(\S+)", ret).groups()[0]
+    logging.debug("uuid from pvs-full is %s" % result)
+
+    if uuid != result:
+        gf.close_session()
+        raise error.TestFail("pv uuid is not match")
+
+    gf.close_session()
+
+
 def run(test, params, env):
     """
     Test of built-in lvm related commands in guestfish.
