@@ -1,5 +1,6 @@
 import re
 from autotest.client.shared import error
+from virttest.utils_misc import kill_process_by_pattern
 from virttest import libvirt_vm, remote, virsh, utils_libvirtd
 
 
@@ -39,6 +40,7 @@ def run(test, params, env):
 
     domid = vm.get_id()
     domuuid = vm.get_uuid()
+    libvirtd_service = utils_libvirtd.Libvirtd()
 
     if vm_ref == "id":
         vm_ref = domid
@@ -62,11 +64,15 @@ def run(test, params, env):
         elif vm_action == "start":
             virsh.destroy(vm_name, ignore_status=False)
             virsh.start(vm_name, ignore_status=False)
+        elif vm_action == "kill":
+            libvirtd_service.stop()
+            kill_process_by_pattern(vm_name)
+            libvirtd_service.restart()
     except error.CmdError:
         raise error.TestError("Guest prepare action error!")
 
     if libvirtd == "off":
-        utils_libvirtd.libvirtd_stop()
+        libvirtd_service.stop()
 
     if vm_ref == "remote":
         remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
@@ -93,7 +99,7 @@ def run(test, params, env):
 
     # recover libvirtd service start
     if libvirtd == "off":
-        utils_libvirtd.libvirtd_start()
+        libvirtd_service.start()
 
     # check status_error
     if status_error:
@@ -116,6 +122,9 @@ def run(test, params, env):
                     raise ActionError(vm_action)
             elif vm_action == "start":
                 if not output.count("booted"):
+                    raise ActionError(vm_action)
+            elif vm_action == "kill":
+                if not output.count("crashed"):
                     raise ActionError(vm_action)
         if vm_ref == "remote":
             if not (re.search("running", output)
