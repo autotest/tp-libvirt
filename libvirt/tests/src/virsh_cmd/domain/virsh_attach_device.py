@@ -639,9 +639,10 @@ def analyze_negative_results(test_params, operational_results,
     """
     Analyze available results, return error message if fail
     """
-    if not all_true(operational_results):
-        return ("Negative testing operational test failed")
-    if test_params.start_vm and preboot_results:
+    if operational_results:
+        if not all_true(operational_results):
+            return ("Negative testing operational test failed")
+    if preboot_results and test_params.start_vm:
         if not all_false(preboot_results):
             return ("Negative testing pre-boot functionality test passed")
     if pstboot_results:
@@ -655,9 +656,10 @@ def analyze_positive_results(test_params, operational_results,
     """
     Analyze available results, return error message if fail
     """
-    if not all_true(operational_results):
-        return ("Positive operational test failed")
-    if test_params.start_vm and preboot_results:
+    if operational_results:
+        if not all_true(operational_results):
+            return ("Positive operational test failed")
+    if preboot_results and test_params.start_vm:
         if not all_true(preboot_results):
             if not test_params.preboot_function_error:
                 return ("Positive pre-boot functionality test failed")
@@ -668,8 +670,8 @@ def analyze_positive_results(test_params, operational_results,
                 return ("Positive post-boot functionality test failed")
 
 
-def analyze_results(test_params, operational_results,
-                    preboot_results, pstboot_results):
+def analyze_results(test_params, operational_results=None,
+                    preboot_results=None, pstboot_results=None):
     """
     Analyze available results, raise error message if fail
     """
@@ -720,6 +722,10 @@ def run(test, params, env):
     pstboot_results = []
     try:
         operational_action(test_params, test_devices, operational_results)
+        # Fail early if attach-device return value is not expected
+        analyze_results(test_params=test_params,
+                        operational_results=operational_results)
+
         #  Can't do functional testing with a cold VM, only test hot-attach
         preboot_action(test_params, test_devices, preboot_results)
 
@@ -737,8 +743,9 @@ def run(test, params, env):
             test_device.booted = True
         test_params.main_vm.wait_for_login().close()
         postboot_action(test_params, test_devices, pstboot_results)
-        analyze_results(test_params, operational_results,
-                        preboot_results, pstboot_results)
+        analyze_results(test_params=test_params,
+                        preboot_results=preboot_results,
+                        pstboot_results=pstboot_results)
     finally:
         logging.info("Restoring VM from backup, then checking results")
         test_params.main_vm.destroy(gracefully=False,
