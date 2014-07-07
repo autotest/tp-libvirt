@@ -189,6 +189,7 @@ def run(test, params, env):
             logging.debug("original digest read from %s is %s", vol_path,
                           ori_digest)
 
+            utils.run("touch %s" % file_path)
             if params.get('setup_libvirt_polkit') == 'yes':
                 utils.run("chmod 666 %s" % file_path)
 
@@ -214,6 +215,6 @@ def run(test, params, env):
                                  operation)
 
     finally:
-        utlv.PoolVolumeTest(test, params).cleanup_pool(pool_name, pool_type,
-                                                       pool_target,
-                                                       "volumetest")
+        pvt.cleanup_pool(pool_name, pool_type, pool_target, "volumetest")
+        if os.path.isfile(file_path):
+            os.remove(file_path)

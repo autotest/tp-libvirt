@@ -57,7 +57,8 @@ def run(test, params, env):
     vol_path = os.path.join(pool_target, vol_name)
     # Clean up flags:
     # cleanup_env[0] for nfs, cleanup_env[1] for iscsi, cleanup_env[2] for lvm
-    cleanup_env = [False, False, False]
+    # cleanup_env[3] for selinux backup status.
+    cleanup_env = [False, False, False, ""]
 
     def check_exit_status(result, expect_error=False):
         """
@@ -304,4 +305,5 @@ def run(test, params, env):
         if cleanup_env[1]:
             utils_test.libvirt.setup_or_cleanup_iscsi(False)
         if cleanup_env[0]:
-            utils_test.libvirt.setup_or_cleanup_nfs(False)
+            utils_test.libvirt.setup_or_cleanup_nfs(
+                False, restore_selinux=cleanup_env[3])

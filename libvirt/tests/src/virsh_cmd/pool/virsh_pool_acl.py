@@ -59,7 +59,8 @@ def run(test, params, env):
     vol_list_error = "yes" == params.get("vol_list_error", "no")
     # Clean up flags:
     # cleanup_env[0] for nfs, cleanup_env[1] for iscsi, cleanup_env[2] for lvm
-    cleanup_env = [False, False, False]
+    # cleanup_env[3] for selinux backup status.
+    cleanup_env = [False, False, False, ""]
     # libvirt acl related params
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
@@ -272,4 +273,5 @@ def run(test, params, env):
         if cleanup_env[1]:
             utils_test.libvirt.setup_or_cleanup_iscsi(False)
         if cleanup_env[0]:
-            utils_test.libvirt.setup_or_cleanup_nfs(False)
+            utils_test.libvirt.setup_or_cleanup_nfs(
+                False, restore_selinux=cleanup_env[3])
