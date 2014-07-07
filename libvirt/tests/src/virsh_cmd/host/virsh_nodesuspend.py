@@ -1,6 +1,7 @@
 import time
 import logging
 from virttest import virsh
+from virttest import libvirt_vm
 from virttest.remote import LoginTimeoutError, LoginProcessTerminatedError
 from autotest.client.shared import error
 from autotest.client import utils
@@ -80,9 +81,10 @@ def run(test, params, env):
     the remote_xxx parameters in configuration file to corresponding value.
     """
     # Retrive parameters
-    remote_ip = params.get('remote_ip', 'ENTER.YOUR.REMOTE.EXAMPLE.COM')
-    remote_user = params.get('remote_user', 'root')
-    remote_pwd = params.get('remote_pwd')
+    remote_ip = params.get('nodesuspend_remote_ip',
+                           'ENTER.YOUR.REMOTE.EXAMPLE.COM')
+    remote_user = params.get('nodesuspend_remote_user', 'root')
+    remote_pwd = params.get('nodesuspend_remote_pwd', 'EXAMPLE.PWD')
     suspend_target = params.get('suspend_target', 'mem')
     suspend_time = int(params.get('suspend_time', '60'))
     upper_tolerance = int(params.get('upper_tolerance', '8'))
@@ -91,12 +93,13 @@ def run(test, params, env):
 
     # Check if remote_ip is set
     if 'EXAMPLE' in remote_ip:
-        msg = ('Configuration parameter `remote_ip` need to be changed to the '
-               'ip of host to be tested')
+        msg = ('Configuration parameter `nodesuspend_remote_ip` need to be '
+               'changed to the ip of host to be tested')
         raise error.TestNAError(msg)
 
     # Create remote virsh session
-    remote_uri = 'qemu+ssh://' + remote_ip + '/system'
+    remote_uri = libvirt_vm.get_uri_with_transport(
+        transport="ssh", dest_ip=remote_ip)
     virsh_dargs = {
         'remote_user': remote_user,
         'remote_pwd': remote_pwd,
