@@ -24,7 +24,7 @@ def run(test, params, env):
         """
         proc_meminfo = session.cmd_output("cat /proc/meminfo")
         # verify format and units are expected
-        return int(re.search(r'MemTotal:\s+(\d+)\s+kB', proc_meminfo).group(1))
+        return int(re.search(r'MemTotal:\s+(\d+)\s+[kK]B', proc_meminfo).group(1))
 
     def make_domref(domarg, vm_ref, domid, vm_name, domuuid):
         """
