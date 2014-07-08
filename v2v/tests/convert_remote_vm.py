@@ -74,7 +74,8 @@ def run(test, params, env):
     Convert a remote vm to local libvirt(KVM).
     """
     # VM info
-    vm_name = params.get("v2v_vm")
+    xen_vm_name = params.get("v2v_xen_vm")
+    vmware_vm_name = params.get("v2v_vmware_vm")
 
     # Remote host parameters
     xen_ip = params.get("remote_xen_ip", "XEN.EXAMPLE")
@@ -99,7 +100,8 @@ def run(test, params, env):
     # V2V parameters
     input = params.get("input_method")
     files = params.get("config_files")
-    network = params.get("network", "default")
+    network = params.get("network")
+    bridge = params.get("bridge")
 
     # Result check about
     ignore_virtio = "yes" == params.get("ignore_virtio", "no")
@@ -110,6 +112,7 @@ def run(test, params, env):
     if remote_hypervisor == "esx":
         remote_ip = vmware_ip
         remote_pwd = vmware_pwd
+        vm_name = vmware_vm_name
         if remote_ip.count("EXAMPLE") or remote_pwd.count("EXAMPLE"):
             raise error.TestNAError("Please provide host or password for "
                                     "vmware test.")
@@ -117,6 +120,7 @@ def run(test, params, env):
     else:
         remote_ip = xen_ip
         remote_pwd = xen_pwd
+        vm_name = xen_vm_name
         if remote_ip.count("EXAMPLE") or remote_pwd.count("EXAMPLE"):
             raise error.TestNAError("Please provide host or password for "
                                     "xen test.")
@@ -161,8 +165,8 @@ def run(test, params, env):
         v2v_params = {"hostname": remote_ip, "username": username,
                       "password": remote_pwd, "hypervisor": remote_hypervisor,
                       "storage": pool_name, "network": network,
-                      "target": "libvirt", "vms": vm_name, "netrc": esx_netrc,
-                      "input": input, "files": files}
+                      "bridge": bridge, "target": "libvirt", "vms": vm_name,
+                      "netrc": esx_netrc, "input": input, "files": files}
         try:
             result = utils_v2v.v2v_cmd(v2v_params)
             logging.debug(result)
@@ -173,6 +177,7 @@ def run(test, params, env):
         error_info = []
         # Check v2v vm on local host
         # Update parameters for local hypervisor and vm
+        logging.debug("XML info:\n%s", virsh.dumpxml(vm_name))
         params['vms'] = vm_name
         params['target'] = "libvirt"
         vm_check = utils_v2v.LinuxVMCheck(test, params, env)
