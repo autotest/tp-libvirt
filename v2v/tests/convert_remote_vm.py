@@ -77,9 +77,12 @@ def run(test, params, env):
     vm_name = params.get("v2v_vm")
 
     # Remote host parameters
-    remote_hostname = params.get("remote_hostname")
+    xen_ip = params.get("remote_xen_ip", "XEN.EXAMPLE")
+    vmware_ip = params.get("remote_vmware_ip", "VMWARE.EXAMPLE")
     username = params.get("username", "root")
-    password = params.get("password")
+    xen_pwd = params.get("remote_xen_pwd", "PWD.EXAMPLE")
+    vmware_pwd = params.get("remote_vmware_pwd", "PWD.EXAMPLE")
+    # To decide which type test it is
     remote_hypervisor = params.get("remote_hypervisor")
 
     # Local pool parameters
@@ -102,22 +105,32 @@ def run(test, params, env):
     ignore_virtio = "yes" == params.get("ignore_virtio", "no")
 
     # Create autologin to remote host
-    esx_netrc = params.get("esx_netrc") % (remote_hostname, username, password)
+    esx_netrc = params.get("esx_netrc") % (vmware_ip, username, vmware_pwd)
     params['netrc'] = esx_netrc
     if remote_hypervisor == "esx":
+        remote_ip = vmware_ip
+        remote_pwd = vmware_pwd
+        if remote_ip.count("EXAMPLE") or remote_pwd.count("EXAMPLE"):
+            raise error.TestNAError("Please provide host or password for "
+                                    "vmware test.")
         utils_v2v.build_esx_no_verify(params)
     else:
-        ssh_key.setup_ssh_key(remote_hostname, user=username, port=22,
-                              password=password)
+        remote_ip = xen_ip
+        remote_pwd = xen_pwd
+        if remote_ip.count("EXAMPLE") or remote_pwd.count("EXAMPLE"):
+            raise error.TestNAError("Please provide host or password for "
+                                    "xen test.")
+        ssh_key.setup_ssh_key(xen_ip, user=username, port=22,
+                              password=xen_pwd)
 
     # Create remote uri for remote host
     # Remote virt-v2v uri's instance
     ruri = utils_v2v.Uri(remote_hypervisor)
-    remote_uri = ruri.get_uri(remote_hostname)
+    remote_uri = ruri.get_uri(remote_ip)
 
     # Check remote vms
-    rvirsh_dargs = {'uri': remote_uri, 'remote_ip': remote_hostname,
-                    'remote_user': username, 'remote_pwd': password}
+    rvirsh_dargs = {'uri': remote_uri, 'remote_ip': remote_ip,
+                    'remote_user': username, 'remote_pwd': remote_pwd}
     rvirsh = virsh.VirshPersistent(**rvirsh_dargs)
     if not rvirsh.domain_exists(vm_name):
         rvirsh.close_session()
@@ -145,8 +158,8 @@ def run(test, params, env):
         logging.debug(lsp.pool_info(pool_name))
 
         # Maintain a single params for v2v to avoid duplicate parameters
-        v2v_params = {"hostname": remote_hostname, "username": username,
-                      "password": password, "hypervisor": remote_hypervisor,
+        v2v_params = {"hostname": remote_ip, "username": username,
+                      "password": remote_pwd, "hypervisor": remote_hypervisor,
                       "storage": pool_name, "network": network,
                       "target": "libvirt", "vms": vm_name, "netrc": esx_netrc,
                       "input": input, "files": files}
