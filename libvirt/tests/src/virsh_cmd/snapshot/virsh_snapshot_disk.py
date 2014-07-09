@@ -41,6 +41,7 @@ def run(test, params, env):
     vol_name = params.get("vol_name")
     vol_format = params.get("vol_format")
     lazy_refcounts = "yes" == params.get("lazy_refcounts")
+    options = params.get("snapshot_options", "")
 
     # Set volume xml attribute dictionary, extract all params start with 'vol_'
     # which are for setting volume xml, except 'lazy_refcounts'.
@@ -62,7 +63,6 @@ def run(test, params, env):
 
     # Do xml backup for final recovery
     vmxml_backup = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-
     # Some variable for xmlfile of snapshot.
     snapshot_memory = params.get("snapshot_memory", "internal")
     snapshot_disk = params.get("snapshot_disk", "internal")
@@ -185,13 +185,18 @@ def run(test, params, env):
             logging.debug("The xml content for snapshot create is:")
             with open(snapshot_xml_path, 'r') as fin:
                 logging.debug(fin.read())
+
+            options += " --xmlfile %s " % snapshot_xml_path
             snapshot_result = virsh.snapshot_create(
-                vm_name, ("--xmlfile %s" % snapshot_xml_path), debug=True)
+                vm_name, options, debug=True)
             out_err = snapshot_result.stderr.strip()
             if snapshot_result.exit_status:
                 if status_error:
                     return
                 else:
+                    if re.search("live disk snapshot not supported with this QEMU binary", out_err):
+                        raise error.TestNAError(out_err)
+
                     if libvirt_version.version_compare(1, 2, 5):
                         # As commit d2e668e in 1.2.5, internal active snapshot
                         # without memory state is rejected. Handle it as SKIP
@@ -205,7 +210,6 @@ def run(test, params, env):
                     raise error.TestFail("Failed to create snapshot. Error:%s."
                                          % out_err)
         else:
-            options = ""
             snapshot_result = virsh.snapshot_create(vm_name, options)
             if snapshot_result.exit_status:
                 if status_error:
