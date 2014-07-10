@@ -69,7 +69,7 @@ def run(test, params, env):
             shutil.copyfile(qemu_conf, tmp_file)
             prepare_ssl_env()
             Graphics.del_graphic(vm_name)
-            Graphics.add_ssl_spice_graphic(vm_name, passwd)
+            Graphics.add_graphic(vm_name, passwd, "spice", True)
         else:
             # Only change graphic type and passwd
             Graphics.change_graphic_type_passwd(vm_name, graphic, passwd)
