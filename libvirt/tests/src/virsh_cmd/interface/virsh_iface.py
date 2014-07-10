@@ -7,8 +7,92 @@ from virttest.staging import service
 from virttest import utils_net
 from virttest import utils_misc
 from virttest import virsh
+from virttest import remote
+from virttest.libvirt_xml import vm_xml
 
 NETWORK_SCRIPT = "/etc/sysconfig/network-scripts/ifcfg-"
+
+
+def create_xml_file(xml_file, params):
+    """
+    Create a xml file contained interface definition
+    """
+    iface_type = params.get("iface_type")
+    iface_name = params.get("iface_name")
+    iface_eth = params.get("iface_eth")
+    iface_pro = params.get("iface_pro")
+    iface_ip = params.get("ping_ip")
+    iface_stp = params.get("iface_stp")
+    iface_tag = params.get("iface_tag")
+    if iface_type == "vlan":
+        iface_name = iface_eth + "." + iface_tag
+    xml_info = """
+<interface type='%s' name='%s'>""" % (iface_type, iface_name)
+
+    if iface_type in ["bridge", "ethernet"]:
+        xml_info += """
+  <start mode='onboot'/>"""
+
+        # bridge protocol part
+        if iface_pro == "dhcp":
+            xml_info += """
+   <protocol family='ipv4'>
+     <%s/>
+   </protocol>""" % iface_pro
+        elif iface_pro == "static":
+            xml_info += """
+   <protocol family='ipv4'>
+     <ip address='%s' prefix='24'/>
+   </protocol>""" % iface_ip
+
+        # bridge stp part
+        if not iface_stp:
+            xml_info += """
+   <bridge>"""
+        elif iface_stp == "yes":
+            xml_info += """
+   <bridge stp="on" delay="0">"""
+        elif iface_stp == "no":
+            xml_info += """
+   <bridge stp="off" delay="0">"""
+
+        # bridge tail part
+        xml_info += """
+   </bridge>
+</interface>"""
+
+    elif iface_type == "vlan":
+        xml_info += """
+  <start mode='none'/>
+   <protocol family='ipv4'>
+     <ip address='%s'/>
+   </protocol>
+   <vlan tag='%s'>
+     <interface name='%s'/>
+   </vlan>
+</interface>""" % (iface_ip, iface_tag, iface_eth)
+
+    elif iface_type == "bond":
+        xml_info += """
+  <start mode='none'/>"""
+        if iface_ip:
+            xml_info += """
+   <protocol family='ipv4'>
+     <ip address='%s'/>
+   </protocol>
+   <bond>
+     <interface type='ethernet' name='%s'>
+     </interface>
+   </bond>
+</interface>""" % (iface_ip, iface_eth)
+        else:
+            xml_info += """
+   <bond>
+   </bond>
+</interface>"""
+    iface_file = open(xml_file, 'w')
+    iface_file.write(xml_info)
+    iface_file.close()
 
 
 def run(test, params, env):
@@ -37,11 +121,39 @@ def run(test, params, env):
 
     iface_name = params.get("iface_name")
     iface_xml = params.get("iface_xml")
+    iface_type = params.get("iface_type", "ethernet")
+    iface_pro = params.get("iface_pro", "")
+    iface_eth = params.get("iface_eth", "")
+    iface_tag = params.get("iface_tag", "0")
+    if iface_type == "vlan":
+        iface_name = iface_eth + "." + iface_tag
+    iface_eth_using = "yes" == params.get("iface_eth_using", "no")
     ping_ip = params.get("ping_ip", "localhost")
     use_exist_iface = "yes" == params.get("use_exist_iface", "no")
     status_error = "yes" == params.get("status_error", "no")
+    net_restart = "yes" == params.get("iface_net_restart", "no")
+    if ping_ip.count("ENTER"):
+        raise error.TestNAError("Please input a valid ip address")
+    if iface_name.count("ENTER"):
+        raise error.TestNAError("Please input a existing bridge/ethernet name")
+    vm_name = params.get("main_vm")
+    vm = env.get_vm(vm_name)
+    if vm:
+        xml_bak = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     iface_script = NETWORK_SCRIPT + iface_name
     iface_script_bk = os.path.join(test.tmpdir, "iface-%s.bk" % iface_name)
+    net_bridge = utils_net.Bridge()
+    if use_exist_iface:
+        if iface_type == "bridge":
+            if iface_name not in net_bridge.list_br():
+                raise error.TestError("Bridge '%s' not exists" % iface_name)
+            ifaces = net_bridge.get_structure()[iface_name]
+            if len(ifaces) < 1:
+                # In this situation, dhcp maybe cannot get ip address
+                # Unless you use static, we'd better skip such case
+                raise error.TestNAError("Bridge '%s' has no interface"
+                                        " bridged, perhaps cannot get"
+                                        " ipaddress" % iface_name)
     net_iface = utils_net.Interface(name=iface_name)
     iface_is_up = True
     list_option = "--all"
@@ -57,6 +169,8 @@ def run(test, params, env):
             raise error.TestError("Interface '%s' already exists" % iface_name)
         if not iface_xml:
             raise error.TestError("XML file is needed.")
+        iface_xml = os.path.join(test.tmpdir, iface_xml)
+        create_xml_file(iface_xml, params)
 
     # Stop NetworkManager as which may conflict with virsh iface commands
     try:
@@ -97,30 +211,71 @@ def run(test, params, env):
         # Step 2
         # Define interface
         result = virsh.iface_define(iface_xml, debug=True)
-        libvirt.check_exit_status(result, status_error)
+        if iface_type == "bond" and not ping_ip:
+            libvirt.check_exit_status(result, True)
+            return
+        else:
+            libvirt.check_exit_status(result, status_error)
 
-        # Step 3
-        # List inactive interfaces
-        list_option = "--inactive"
-        if not status_error:
-            if not libvirt.check_iface(iface_name, "exists", list_option):
-                raise error.TestFail("Fail to find %s." % iface_name)
+        if net_restart:
+            network = service.Factory.create_service("network")
+            network.restart()
 
-        # Step 4
-        # Start interface
-        result = virsh.iface_start(iface_name, debug=True)
-        libvirt.check_exit_status(result, status_error)
-        if not status_error:
-            if not libvirt.check_iface(iface_name, "ping", ping_ip):
-                raise error.TestFail("Ping %s fail." % ping_ip)
+        # After network restart, (ethernet)interface will be started
+        if (not net_restart and iface_type in ("bridge", "ethernet")) or\
+           (not use_exist_iface and iface_type in ("vlan", "bond")):
+            # Step 3
+            # List inactive interfaces
+            list_option = "--inactive"
+            if not status_error:
+                if not libvirt.check_iface(iface_name, "exists", list_option):
+                    raise error.TestFail("Fail to find %s." % iface_name)
+
+            # Step 4
+            # Start interface
+            result = virsh.iface_start(iface_name, debug=True)
+            if not net_restart and not use_exist_iface and\
+               (iface_type == "ethernet" and iface_pro in ["", "dhcp"] or
+                    iface_type == "bridge" and iface_pro == "dhcp"):
+                libvirt.check_exit_status(result, True)
+            else:
+                libvirt.check_exit_status(result, status_error)
+            if not status_error:
+                iface_ip = net_iface.get_ip()
+                ping_ip = ping_ip if not iface_ip else iface_ip
+                if ping_ip:
+                    if not libvirt.check_iface(iface_name, "ping", ping_ip):
+                        raise error.TestFail("Ping %s fail." % ping_ip)
 
         # Step 5
         # List active interfaces
-        list_option = ""
-        if not status_error:
-            if not libvirt.check_iface(iface_name, "exists", list_option):
-                raise error.TestFail("Fail to find %s in active interface list."
-                                     % iface_name)
+        if use_exist_iface or\
+           (iface_pro != "dhcp" and iface_type == "bridge") or\
+           (iface_eth_using and iface_type == "vlan"):
+            list_option = ""
+            if not status_error:
+                if not libvirt.check_iface(iface_name, "exists", list_option):
+                    raise error.TestFail("Fail to find %s in active "
+                                         "interface list" % iface_name)
+            if vm:
+                iface_mac_list = vm_xml.VMXML.get_iface_dev(vm_name)
+                # Before test, detach all interfaces in guest
+                for mac in iface_mac_list:
+                    iface_info = vm_xml.VMXML.get_iface_by_mac(vm_name, mac)
+                    type = iface_info.get('type')
+                    virsh.detach_interface(vm_name,
+                                           "--type %s --mac %s"
+                                           " --config" % (type, mac))
+                virsh.attach_interface(vm_name,
+                                       "--type %s --source %s"
+                                       " --config" % (iface_type, iface_name))
+                vm.start()
+                try:
+                    # Test if guest can be login
+                    vm.wait_for_login()
+                except remote.LoginError:
+                    raise error.TestFail("Cannot login guest with %s" %
+                                         iface_name)
 
         # Step 6
         # Dumpxml for interface
@@ -131,22 +286,30 @@ def run(test, params, env):
         # Get interface MAC address by name
         result = virsh.iface_mac(iface_name, debug=True)
         libvirt.check_exit_status(result, status_error)
-        if not status_error:
-            if not libvirt.check_iface(iface_name, "mac", result.stdout.strip()):
+        if not status_error and result.stdout.strip():
+            if not libvirt.check_iface(iface_name, "mac",
+                                       result.stdout.strip()):
                 raise error.TestFail("Mac address check fail")
 
         # Step 8
         # Get interface name by MAC address
-        iface_mac = net_iface.get_mac()
-        result = virsh.iface_name(iface_mac, debug=True)
-        libvirt.check_exit_status(result, status_error)
+        # Bridge's Mac equal to bridged interface's mac
+        if iface_type not in ("bridge", "vlan") and result.stdout.strip():
+            iface_mac = net_iface.get_mac()
+            result = virsh.iface_name(iface_mac, debug=True)
+            libvirt.check_exit_status(result, status_error)
 
         # Step 9
         if not use_exist_iface:
             # Step 9.1
             # Destroy interface
             result = virsh.iface_destroy(iface_name, debug=True)
-            libvirt.check_exit_status(result, status_error)
+            if not net_restart and\
+               iface_type == "ethernet" and iface_pro in ["", "dhcp"] or\
+               iface_type == "bridge" and iface_pro == "dhcp":
+                libvirt.check_exit_status(result, True)
+            else:
+                libvirt.check_exit_status(result, status_error)
 
             # Step 9.2
             # Undefine interface
@@ -157,21 +320,32 @@ def run(test, params, env):
                 if libvirt.check_iface(iface_name, "exists", list_option):
                     raise error.TestFail("%s is still present." % iface_name)
     finally:
+        if os.path.exists(iface_xml):
+            os.remove(iface_xml)
+        if os.path.exists(iface_script):
+            os.remove(iface_script)
+
         if use_exist_iface:
-            if os.path.exists(iface_xml):
-                os.remove(iface_xml)
             if not os.path.exists(iface_script):
                 utils.run("mv %s %s" % (iface_script_bk, iface_script))
-            if iface_is_up:
+            if iface_is_up and\
+               not libvirt.check_iface(iface_name, "exists", ""):
                 # Need reload script
                 utils.run("ifup %s" % iface_name)
-            else:
+            elif not iface_is_up and libvirt.check_iface(iface_name,
+                                                         "exists", ""):
                 net_iface.down()
+            if vm:
+                xml_bak.sync()
         else:
             if libvirt.check_iface(iface_name, "exists", "--all"):
                 # Remove the interface
-                if os.path.exists(iface_script):
-                    os.remove(iface_script)
-                utils_net.bring_down_ifname(iface_name)
+                try:
+                    utils_net.bring_down_ifname(iface_name)
+                except utils_net.TAPBringDownError:
+                    pass
+            if iface_type == "bridge":
+                if iface_name in net_bridge.list_br():
+                    net_bridge.del_bridge(iface_name)
         if NM_is_running:
             NM_service.start()
