@@ -49,6 +49,7 @@ def run(test, params, env):
         cmd_result = virsh.qemu_monitor_command(vm_ref, cmd, options,
                                                 ignore_status=True,
                                                 debug=True)
+        output = cmd_result.stdout.strip()
         status = cmd_result.exit_status
 
         # Check result
@@ -56,7 +57,11 @@ def run(test, params, env):
             raise error.TestFail("Libvirtd is not running after run command.")
         if status_error:
             if not status:
-                raise error.TestFail("Expect fail, but run successfully.")
+                # Return status is 0 with unknown command
+                if "unknown command:" in output:
+                    logging.debug("Command failed: %s" % output)
+                else:
+                    raise error.TestFail("Expect fail, but run successfully.")
             else:
                 logging.debug("Command failed as expected.")
         else:
