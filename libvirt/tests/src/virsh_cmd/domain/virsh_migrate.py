@@ -6,6 +6,8 @@ import codecs
 from autotest.client.shared import error
 from virttest import utils_test, virsh, utils_libvirtd
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
+from virttest import data_dir
 
 
 def run(test, params, env):
@@ -148,8 +150,35 @@ def run(test, params, env):
         if s_attach.exit_status != 0:
             logging.error("Attach vda failed before test.")
 
+        # Attach and eject cdrom before migrate domain
+        eject_cdrom = "yes" == params.get("eject_cdrom", "no")
+        cdrom_media = os.path.join(data_dir.get_tmp_dir(), "cdrom.iso")
+        if eject_cdrom:
+            libvirt.create_local_disk("file", cdrom_media)
+            option = "--type cdrom --sourcetype file --driver qemu --config"
+            result = virsh.attach_disk(vm_name, cdrom_media, 'hdc', option,
+                                       debug=True)
+            if result.exit_status != 0:
+                raise error.TestError("Attach CDROM failed")
+
         vm.start()
         vm.wait_for_login()
+
+        if eject_cdrom:
+            eject_params = {'type_name': "file", 'device_type': "cdrom",
+                            'target_dev': "hdc", 'target_bus': "ide"}
+            eject_xml = libvirt.create_disk_xml(eject_params)
+            logging.debug("Eject CDROM by XML: %s", open(eject_xml).read())
+            # Run command tiwce to make sure cdrom tray open first #BZ892289
+            # Open tray
+            virsh.attach_device(domainarg=vm_name, filearg=eject_xml, debug=True)
+            # Eject cdrom
+            result = virsh.attach_device(domainarg=vm_name, filearg=eject_xml,
+                                         debug=True)
+            if result.exit_status != 0:
+                raise error.TestFail("Eject CDROM failed")
+            if os.path.exists(cdrom_media):
+                os.remove(cdrom_media)
 
         # Confirm VM can be accessed through network.
         time.sleep(delay)
