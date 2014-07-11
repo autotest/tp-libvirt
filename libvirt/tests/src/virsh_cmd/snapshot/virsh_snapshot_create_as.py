@@ -312,6 +312,7 @@ def run(test, params, env):
     memspec_opts = params.get("memspec_opts")
     diskspec_opts = params.get("diskspec_opts")
     create_autodestroy = 'yes' == params.get("create_autodestroy", "no")
+    unix_channel = "yes" == params.get("unix_channel", "yes")
 
     uri = params.get("virsh_uri")
     usr = params.get('unprivileged_user')
@@ -374,7 +375,7 @@ def run(test, params, env):
 
     try:
         # Start qemu-ga on guest if have --quiesce
-        if options.find("quiesce") >= 0:
+        if unix_channel and options.find("quiesce") >= 0:
             if vm.is_alive():
                 vm.destroy()
             virt_xml_obj = libvirt_xml.VMXML(virsh_instance=virsh)
@@ -455,8 +456,8 @@ def run(test, params, env):
                             raise error.TestFail("Run failed but file %s exist"
                                                  % option_dict['memspec'])
                         else:
-                            logging.info("Run failed as expected and memspec file"
-                                         " already beed removed")
+                            logging.info("Run failed as expected and memspec"
+                                         " file already been removed")
                     else:
                         logging.info("Run failed as expected")
 
@@ -474,7 +475,7 @@ def run(test, params, env):
 
     finally:
         # Environment clean
-        if options.find("quiesce") >= 0 and start_ga == "yes":
+        if unix_channel and options.find("quiesce") >= 0 and start_ga == "yes":
             session.cmd("rpm -e qemu-guest-agent")
 
         # recover domain xml
