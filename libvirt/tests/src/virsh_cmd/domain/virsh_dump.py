@@ -3,8 +3,12 @@ import logging
 import commands
 import time
 import signal
-from autotest.client.shared import error, utils
-from virttest import virsh, utils_libvirtd
+from autotest.client.shared import error
+from autotest.client.shared import utils
+from autotest.client.shared.error import CmdError
+from virttest import virsh
+from virttest import utils_libvirtd
+from virttest.libvirt_xml import vm_xml
 from provider import libvirt_version
 
 
@@ -181,8 +185,9 @@ def run(test, params, env):
         if os.system(conf_cmd):
             logging.error("Config dump_image_format to %s fail",
                           dump_image_format)
-        utils_libvirtd.libvirtd_restart()
-        if not utils_libvirtd.libvirtd_is_running():
+        libvirtd_service = utils_libvirtd.Libvirtd()
+        libvirtd_service.restart()
+        if not libvirtd_service.is_running:
             raise error.TestNAError("libvirt service is not running!")
 
     # Deal with bypass-cache option
@@ -202,14 +207,41 @@ def run(test, params, env):
             while True:
                 time.sleep(1)
 
-    # Run virsh command
-    cmd_result = virsh.dump(vm_name, dump_file, options,
-                            unprivileged_user=unprivileged_user,
-                            uri=uri,
-                            ignore_status=True, debug=True)
-    status = cmd_result.exit_status
+    # Back up xml file
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    backup_xml = vmxml.copy()
 
+    dump_guest_core = params.get("dump_guest_core", "")
+    if dump_guest_core not in ["", "on", "off"]:
+        raise error.TestError("invalid dumpCore value: %s" % dump_guest_core)
     try:
+        # Set dumpCore in guest xml
+        if dump_guest_core:
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
+            vmxml.dumpcore = dump_guest_core
+            vmxml.sync()
+            vm.start()
+            # check qemu-kvm cmdline
+            vm_pid = vm.get_pid()
+            cmd = "cat /proc/%d/cmdline|xargs -0 echo" % vm_pid
+            cmd += "|grep dump-guest-core=%s" % dump_guest_core
+            result = utils.run(cmd, ignore_status=True)
+            logging.debug("cmdline: %s" % result.stdout)
+            if result.exit_status:
+                error.TestFail("Not find dump-guest-core=%s in qemu cmdline"
+                               % dump_guest_core)
+            else:
+                logging.info("Find dump-guest-core=%s in qemum cmdline",
+                             dump_guest_core)
+
+        # Run virsh command
+        cmd_result = virsh.dump(vm_name, dump_file, options,
+                                unprivileged_user=unprivileged_user,
+                                uri=uri,
+                                ignore_status=True, debug=True)
+        status = cmd_result.exit_status
+
         logging.info("Start check result")
         if not check_domstate(vm.state(), options):
             raise error.TestFail("Domain status check fail.")
@@ -234,3 +266,6 @@ def run(test, params, env):
             clean_qemu_conf = "sed -i '$d' %s " % qemu_conf
             if os.system(clean_qemu_conf):
                 raise error.TestFail("Fail to recover %s", qemu_conf)
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
+        backup_xml.sync()
