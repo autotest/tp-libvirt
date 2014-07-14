@@ -74,7 +74,14 @@ def run(test, params, env):
         else:
             pre_xml = re.subn(r"<name>\S+</name>", name_sec + '\n  ' +
                               desc_sec, pre_xml, 1)[0]
-        if pre_xml.strip() == after_xml.strip():
+        # change to list and remove the description element in list
+        pre_xml_list = pre_xml.strip().splitlines()
+        after_xml_list = after_xml.strip().splitlines()
+        if not snap_desc:
+            for i in pre_xml_list:
+                if desc_sec in i:
+                    pre_xml_list.remove(i)
+        if pre_xml_list == after_xml_list:
             logging.info("Succeed to check the xml for description and name")
         else:
             # Print just the differences rather than printing both
@@ -156,13 +163,15 @@ def run(test, params, env):
         after_xml = virsh.snapshot_dumpxml(vm_name, check_name).stdout
         match_str = "<description>" + snap_desc + "</description>"
         if not re.search(match_str, after_xml.strip("\n")):
-            logging.debug("Failed to edit snapshot edit_opts=%s, match=%s",
-                          edit_opts, match_str)
-            # Only print first 15 lines - they are most relevant
-            for i in range(15):
-                logging.debug("before xml=%s", pre_xml.split()[i].lstrip())
-                logging.debug(" after xml=%s", after_xml.split()[i].lstrip())
-            raise error.TestFail("Failed to edit snapshot description")
+            if snap_desc:
+                logging.debug("Failed to edit snapshot edit_opts=%s, match=%s",
+                              edit_opts, match_str)
+                # Only print first 15 lines - they are most relevant
+                for i in range(15):
+                    logging.debug("before xml=%s", pre_xml.split()[i].lstrip())
+                    logging.debug(" after xml=%s",
+                                  after_xml.split()[i].lstrip())
+                raise error.TestFail("Failed to edit snapshot description")
 
         # Check edit options --clone
         if snap_opt == "--clone":
