@@ -71,6 +71,12 @@ def run(test, params, env):
     needs_agent = "yes" == params.get("needs_agent", "yes")
     start_vm = "yes" == params.get("start_vm")
     status_error = "yes" == params.get("status_error", "no")
+    if not status_error and options:
+        option = options.split()[0]
+        test_cmd = "qemu-agent-command"
+        if virsh.has_command_help_match(test_cmd, option) is None:
+            raise error.TestNAError("The current libvirt doesn't support"
+                                    " %s option for %s" % (option, test_cmd))
     domuuid = vm.get_uuid()
     domid = ""
     xml_file = os.path.join(test.tmpdir, "vm.xml")
