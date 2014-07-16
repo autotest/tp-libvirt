@@ -133,6 +133,16 @@ def run(test, params, env):
                 elif "KEY_T" in options:
                     get_status = session.cmd_status("cat /var/log/messages|"
                                                     "grep 'SysRq.*Show State'")
+                elif "KEY_B" in options:
+                    client_session = vm.wait_for_login()
+                    result = virsh.domstate(vm_name, '--reason', ignore_status=True)
+                    output = result.stdout.strip()
+                    logging.debug("The guest state: %s", output)
+                    if not output.count("booted"):
+                        get_status = 1
+                    else:
+                        get_status = 0
+                    client_session.close()
 
                 if get_status == 0:
                     timeout = -1
