@@ -82,16 +82,27 @@ def run(test, params, env):
         vm.start()
         session = vm.wait_for_login()
         eth_name = utils_net.get_linux_ifname(session, new_nic.mac_address)
-        eth_config_detail = "DEVICE=%s\nHWADDR=%s\nONBOOT=yes\n"\
-                            "BOOTPROTO=static\nIPADDR=%s"\
-                            % (eth_name, new_nic.mac_address, ip_addr)
-        add_cmd = "echo %s >> %s" % (eth_config_detail, eth_config_file)
-        session.cmd(add_cmd)
-        session.cmd("sync")
+        eth_config_detail_list = ['DEVICE=%s' % eth_name,
+                                  'HWADDR=%s' % new_nic.mac_address,
+                                  'ONBOOT=yes',
+                                  'BOOTPROTO=static',
+                                  'IPADDR=%s' % ip_addr]
+        remote_file = remote.RemoteFile(vm.get_address(), 'scp', 'root',
+                                        params.get('password'), 22,
+                                        eth_config_file)
+        remote_file.truncate()
+        remote_file.add(eth_config_detail_list)
+        try:
+            # Attached interface maybe already active
+            session.cmd("ifdown %s" % eth_name)
+        except aexpect.ShellCmdError:
+            pass
+
         try:
             session.cmd("ifup %s" % eth_name)
         except aexpect.ShellCmdError:
             pass
+        return session
 
     def guest_clean(vm, vmxml):
         """
@@ -190,31 +201,16 @@ def run(test, params, env):
             raise error.TestFail("%s ping %s success, but expected fail."
                                  % (vm1.name, remote_ip))
     # Test start
-
     try:
         try:
-            guest_config(vm1, vm1_ip)
-        except aexpect.ShellCmdError, fail:
+            session = guest_config(vm1, vm1_ip)
+        except (remote.LoginTimeoutError, aexpect.ShellCmdError), fail:
             raise error.TestFail(str(fail))
-        if vm1.is_dead():
-            vm1.start()
-        try:
-            session = vm1.wait_for_login()
-        except remote.LoginTimeoutError, detail:
-            raise error.TestFail(str(detail))
         if vm2:
             try:
                 guest_config(vm2, vm2_ip)
-            except aexpect.ShellCmdError, fail:
+            except (remote.LoginTimeoutError, aexpect.ShellCmdError), fail:
                 raise error.TestFail(str(fail))
-            if vm2.is_dead():
-                vm2.start()
-            try:
-                # Just make sure it has been completely started.
-                # No need to get a session
-                vm2.wait_for_login()
-            except remote.LoginTimeoutError, detail:
-                raise error.TestFail(str(detail))
 
         # Four mode test
         if iface_mode == "vepa":
