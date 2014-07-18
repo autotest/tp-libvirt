@@ -2,7 +2,9 @@ import logging
 import re
 from xml.dom.minidom import parseString
 from autotest.client.shared import utils, error
+from autotest.client import os_dep
 from virttest import libvirt_vm, virsh, utils_libvirtd, utils_misc
+from virttest.libvirt_xml import capability_xml
 
 
 def run(test, params, env):
@@ -14,68 +16,86 @@ def run(test, params, env):
     (3) Call virsh capabilities with libvirtd service stop
     """
     def compare_capabilities_xml(source):
-        dom = parseString(source)
-        host = dom.getElementsByTagName('host')[0]
-        # check that host has a non-empty UUID tag.
-        uuid = host.getElementsByTagName('uuid')[0]
-        host_uuid_output = uuid.firstChild.data
-        logging.info("Host uuid (capabilities_xml):%s", host_uuid_output)
-        if host_uuid_output == "":
+        cap_xml = capability_xml.CapabilityXML()
+        cap_xml.xml = source
+
+        # Check that host has a non-empty UUID tag.
+        xml_uuid = cap_xml.uuid
+        logging.debug("Host UUID (capabilities_xml): %s" % xml_uuid)
+        if xml_uuid == "":
             raise error.TestFail("The host uuid in capabilities_xml is none!")
 
-        # check the host arch.
-        arch = host.getElementsByTagName('arch')[0]
-        host_arch_output = arch.firstChild.data
-        logging.info("Host arch (capabilities_xml):%s", host_arch_output)
-        cmd_result = utils.run("arch", ignore_status=True)
-        if cmp(host_arch_output, cmd_result.stdout.strip()) != 0:
-            raise error.TestFail("The host arch in capabilities_xml is wrong!")
+        # Check the host arch.
+        xml_arch = cap_xml.arch
+        logging.debug("Host arch (capabilities_xml): %s", xml_arch)
+        exp_arch = utils.run("arch", ignore_status=True).stdout.strip()
+        if cmp(xml_arch, exp_arch) != 0:
+            raise error.TestFail("The host arch in capabilities_xml is expected"
+                                 " to be %s, but get %s" % (exp_arch, xml_arch))
 
-        # check the host cpus num.
-        cpus = dom.getElementsByTagName('cpus')
-        host_cpus = 0
-        for cpu in cpus:
-            host_cpus += int(cpu.getAttribute('num'))
-        logging.info("Host cpus num (capabilities_xml):%s", host_cpus)
-        cmd = "less /proc/cpuinfo | grep processor | wc -l"
-        cmd_result = utils.run(cmd, ignore_status=True)
-        if cmp(host_cpus, int(cmd_result.stdout.strip())) != 0:
-            raise error.TestFail("Host cpus num (capabilities_xml) is "
-                                 "wrong")
+        # Check the host cpu count.
+        xml_cpu_count = cap_xml.cpu_count
+        logging.debug("Host cpus count (capabilities_xml): %s", xml_cpu_count)
+        cmd = "grep processor /proc/cpuinfo | wc -l"
+        exp_cpu_count = int(utils.run(cmd, ignore_status=True).stdout.strip())
+        if xml_cpu_count != exp_cpu_count:
+            raise error.TestFail("Host cpus count is expected to be %s, but get "
+                                 "%s" % (exp_cpu_count, xml_cpu_count))
 
-        # check the arch of guest supported.
+        # Check the arch of guest supported.
+        xmltreefile = cap_xml.__dict_get__('xml')
+        xml_os_arch_machine_map = cap_xml.os_arch_machine_map
+        logging.debug(xml_os_arch_machine_map['hvm'])
         try:
             img = utils_misc.find_command("qemu-kvm")
         except ValueError:
             raise error.TestNAError("Cannot find qemu-kvm")
         cmd = img + " --cpu ? | grep qemu"
         cmd_result = utils.run(cmd, ignore_status=True)
-        guest_wordsize_array = dom.getElementsByTagName('wordsize')
-        length = len(guest_wordsize_array)
-        for i in range(length):
-            element = guest_wordsize_array[i]
-            guest_wordsize = element.firstChild.data
-            logging.info("Arch of guest supported (capabilities_xml):%s",
-                         guest_wordsize)
+        for guest in xmltreefile.findall('guest'):
+            guest_wordsize = guest.find('arch').find('wordsize').text
+            logging.debug("Arch of guest supported (capabilities_xml):%s",
+                          guest_wordsize)
             if not re.search(guest_wordsize, cmd_result.stdout.strip()):
                 raise error.TestFail("The capabilities_xml gives an extra arch "
                                      "of guest to support!")
 
-        # check the type of hyperviosr.
-        guest_domain_type = dom.getElementsByTagName('domain')[0]
-        guest_domain_type_output = guest_domain_type.getAttribute('type')
-        logging.info("Hypervisor (capabilities_xml):%s",
-                     guest_domain_type_output)
+        # Check the type of hypervisor.
+        first_guest = xmltreefile.findall('guest')[0]
+        first_domain = first_guest.find('arch').findall('domain')[0]
+        guest_domain_type = first_domain.get('type')
+        logging.debug("Hypervisor (capabilities_xml):%s", guest_domain_type)
         cmd_result = utils.run("virsh uri", ignore_status=True)
-        if not re.search(guest_domain_type_output, cmd_result.stdout.strip()):
+        if not re.search(guest_domain_type, cmd_result.stdout.strip()):
             raise error.TestFail("The capabilities_xml gives an different "
                                  "hypervisor")
+
+        # check power management support.
+        try:
+            pm_cmd = os_dep.command('pm-is-supported')
+            pm_cap_map = {'suspend': 'suspend_mem',
+                          'hibernate': 'suspend_disk',
+                          'suspend-hybrid': 'suspend_hybrid',
+                          }
+            exp_pms = []
+            for opt in pm_cap_map:
+                cmd = '%s --%s' % (pm_cmd, opt)
+                res = utils.run(cmd, ignore_status=True)
+                if res.exit_status == 0:
+                    exp_pms.append(pm_cap_map[opt])
+            pms = cap_xml.power_management_list
+            if set(exp_pms) != set(pms):
+                raise error.TestFail("Expected supported PMs are %s, got %s "
+                                     "instead." % (exp_pms, pms))
+        except ValueError:
+            logging.debug('Power management checking is skipped, since command '
+                          'pm-is-supported is not found.')
 
     connect_uri = libvirt_vm.normalize_connect_uri(params.get("connect_uri",
                                                               "default"))
 
     # Prepare libvirtd service
-    if params.has_key("libvirtd"):
+    if "libvirtd" in params:
         libvirtd = params.get("libvirtd")
         if libvirtd == "off":
             utils_libvirtd.libvirtd_stop()
