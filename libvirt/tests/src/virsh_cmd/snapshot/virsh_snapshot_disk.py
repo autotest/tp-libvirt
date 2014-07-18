@@ -83,6 +83,7 @@ def run(test, params, env):
     pvt = None
     # Get a tmp dir
     tmp_dir = data_dir.get_tmp_dir()
+    snap_cfg_path = "/var/lib/libvirt/qemu/snapshot/%s/" % vm_name
     try:
         if snapshot_with_pool:
             # Create dst pool for create attach vol img
@@ -314,13 +315,22 @@ def run(test, params, env):
                                                    debug=True,
                                                    ignore_status=True)
                 del_status = del_result.exit_status
+                snap_xml_path = snap_cfg_path + "%s.xml" % snapshot_name
                 if del_status:
                     if not status_error:
                         raise error.TestFail("Failed to delete snapshot.")
+                    else:
+                        if not os.path.exists(snap_xml_path):
+                            raise error.TestFail("Snapshot xml file %s missing"
+                                                 % snap_xml_path)
                 else:
                     if status_error:
                         err_msg = "Snapshot delete succeed but expect fail."
                         raise error.TestFail(err_msg)
+                    else:
+                        if os.path.exists(snap_xml_path):
+                            raise error.TestFail("Snapshot xml file %s still"
+                                                 % snap_xml_path + " exist")
 
     finally:
         virsh.detach_disk(vm_name, target="vdf", extra="--persistent")
