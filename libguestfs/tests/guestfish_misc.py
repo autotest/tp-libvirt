@@ -184,6 +184,188 @@ def test_download(vm, params):
         raise error.TestFail("Content or filesize is not match")
 
 
+def test_download_offset(vm, params):
+    """
+    Test command download-offset
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    gf.run()
+    gf.do_mount("/")
+
+    string = "Hello World"
+
+    gf.write("/src.txt", string)
+    src_size = gf.filesize("/src.txt").stdout.strip()
+
+    dest = "%s/dest.txt" % data_dir.get_tmp_dir()
+    gf.download_offset("/src.txt", "%s" % dest, 0, len(string))
+    gf.close_session()
+
+    content = commands.getoutput("cat %s" % dest)
+    commands.getstatus("rm %s" % dest)
+
+    if content != "Hello World":
+        raise error.TestFail("Content or filesize is not match")
+
+
+def test_upload(vm, params):
+    """
+    Test command upload
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    gf.run()
+    gf.do_mount("/")
+
+    filename = "%s/src.txt" % data_dir.get_tmp_dir()
+    fd = open(filename, "w+")
+    fd.write("Hello World")
+    fd.close()
+
+    gf.upload(filename, "/dest.txt")
+    content = gf.cat("/dest.txt").stdout.strip()
+    gf.close_session()
+    commands.getoutput("rm %s" % filename)
+
+    if content != "Hello World":
+        raise error.TestFail("Content is not correct")
+
+
+def test_upload_offset(vm, params):
+    """
+    Test command upload_offset
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    gf.run()
+    gf.do_mount("/")
+
+    filename = "%s/src.txt" % data_dir.get_tmp_dir()
+    string = "Hello World"
+    commands.getoutput("echo %s > %s" % (string, filename))
+
+    gf.upload_offset(filename, "/dest.txt", 0)
+    content = gf.cat("/dest.txt").stdout.strip()
+    gf.close_session()
+    commands.getoutput("rm %s" % filename)
+
+    if content != string:
+        raise error.TestFail("Content is not correct")
+
+
+def test_fallocate(vm, params):
+    """
+    Test command fallocate
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    gf.run()
+    gf.do_mount("/")
+
+    # preallocates a new file
+    gf.fallocate("/new", 100)
+    size = gf.filesize("/new").stdout.strip()
+
+    if int(size) != 100:
+        gf.close_session()
+        raise error.TestFail("File size is not correct")
+
+    # overwriteen a existed file
+    string = "Hello World"
+    gf.write("/exist", "Hello world")
+    gf.fallocate("/exist", 200)
+    size = gf.filesize("/exist").stdout.strip()
+    content = gf.cat("/exist").stdout.strip()
+    gf.close_session()
+
+    if content != "":
+        raise error.TestFail("Content is not empty")
+    if int(size) != 200:
+        raise error.TestFail("File size is not correct")
+
+
+def test_fallocate64(vm, params):
+    """
+    Test command fallocate64
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    gf.run()
+    gf.do_mount("/")
+
+    # preallocates a new file
+    gf.fallocate("/new", 100)
+    size = gf.filesize("/new").stdout.strip()
+
+    if int(size) != 100:
+        gf.close_session()
+        raise error.TestFail("File size is not correct")
+
+    # overwriteen a existed file
+    string = "Hello World"
+    gf.write("/exist", "Hello world")
+    gf.fallocate64("/exist", 200)
+    size = gf.filesize("/exist").stdout.strip()
+    content = gf.cat("/exist").stdout.strip()
+    gf.close_session()
+
+    if content != "":
+        raise error.TestFail("Content is not empty")
+    if int(size) != 200:
+        raise error.TestFail("File size is not correct")
+
+
 def run(test, params, env):
     """
     Test of built-in lvm related commands in guestfish.
