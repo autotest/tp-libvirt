@@ -39,8 +39,9 @@ def run(test, params, env):
     file_size = params.get("LNB_verify_file_size", "10")
 
     nic1_params = params.object_params('nic1')
-    nettype = params.get('nettype')
-    netdst = params.get('netdst')
+    # We assume this test is for a guest using default network.
+    nettype = 'network'
+    netdst = 'default'
 
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
