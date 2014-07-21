@@ -88,7 +88,7 @@ def run(test, params, env):
         reset_domain(vm, vm_state, needs_agent)
     except Exception, details:
         reset_env(vm_name, xml_file)
-        error.TestFail(details)
+        raise error.TestFail(details)
 
     if vm_state != "shut off":
         domid = vm.get_id()
