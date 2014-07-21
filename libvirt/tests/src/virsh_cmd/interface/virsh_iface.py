@@ -346,6 +346,9 @@ def run(test, params, env):
                     pass
             if iface_type == "bridge":
                 if iface_name in net_bridge.list_br():
-                    net_bridge.del_bridge(iface_name)
+                    try:
+                        net_bridge.del_bridge(iface_name)
+                    except IOError:
+                        pass
         if NM_is_running:
             NM_service.start()
