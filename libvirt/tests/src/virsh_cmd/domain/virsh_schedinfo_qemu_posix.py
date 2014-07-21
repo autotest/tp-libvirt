@@ -195,8 +195,8 @@ def run(test, params, env):
                 # when we use --config. So skip checking of output in this case.
                 if (not (set_value_expected == set_value_of_output) and
                         not (options_ref.count("config"))):
-                        raise error.TestFail("Run successful but value "
-                                             "in output is not expected.")
+                    raise error.TestFail("Run successful but value "
+                                         "in output is not expected.")
                 if not (set_value_expected == set_value_of_cgroup):
                     raise error.TestFail("Run successful but value "
                                          "in cgroup is not expected.")
