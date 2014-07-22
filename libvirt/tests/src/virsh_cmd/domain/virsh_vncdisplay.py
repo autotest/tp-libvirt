@@ -1,5 +1,9 @@
 from autotest.client.shared import error
-from virttest import libvirt_vm, virsh, remote, utils_libvirtd
+from virttest import libvirt_vm
+from virttest import virsh
+from virttest import remote
+from virttest import utils_libvirtd
+from virttest.libvirt_xml import vm_xml
 
 
 def run(test, params, env):
@@ -21,7 +25,15 @@ def run(test, params, env):
     vm_ref = params.get("vncdisplay_vm_ref")
     status_error = params.get("status_error", "no")
     extra = params.get("vncdisplay_extra", "")
+    xml_bak = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    is_alive = vm.is_alive()
+    vmxml = xml_bak.copy()
+    if not len(vmxml.get_graphics_devices("vnc")):
+        graphic = vmxml.get_device_class('graphics')()
+        graphic.add_graphic(vm_name, graphic="vnc")
 
+    if is_alive:
+        vm.start()
     domid = vm.get_id()
     domuuid = vm.get_uuid()
 
@@ -65,15 +77,18 @@ def run(test, params, env):
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()
 
-    if vm_ref == "remote":
-        status, output = remote_case(params, vm_name)
-    else:
-        result = virsh.vncdisplay(vm_ref, ignore_status=True)
-        status = result.exit_status
-        output = result.stdout.strip()
+    try:
+        if vm_ref == "remote":
+            status, output = remote_case(params, vm_name)
+        else:
+            result = virsh.vncdisplay(vm_ref, ignore_status=True)
+            status = result.exit_status
+            output = result.stdout.strip()
 
-    if libvirtd == "off":
-        utils_libvirtd.libvirtd_start()
+    finally:
+        if libvirtd == "off":
+            utils_libvirtd.libvirtd_start()
+        xml_bak.sync()
 
     # check status_error
     if status_error == "yes":

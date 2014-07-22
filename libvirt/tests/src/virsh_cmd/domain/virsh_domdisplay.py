@@ -64,13 +64,17 @@ def run(test, params, env):
                                    passwd)
 
     try:
+        graphic_count = len(vmxml_backup.get_graphics_devices())
         if is_ssl:
             # Do backup for qemu.conf in tmp_file
             shutil.copyfile(qemu_conf, tmp_file)
             prepare_ssl_env()
-            Graphics.del_graphic(vm_name)
-            Graphics.add_ssl_spice_graphic(vm_name, passwd)
+            if graphic_count:
+                Graphics.del_graphic(vm_name)
+            Graphics.add_graphic(vm_name, passwd, "spice", True)
         else:
+            if not graphic_count:
+                Graphics.add_graphic(vm_name, passwd, graphic)
             # Only change graphic type and passwd
             Graphics.change_graphic_type_passwd(vm_name, graphic, passwd)
 
