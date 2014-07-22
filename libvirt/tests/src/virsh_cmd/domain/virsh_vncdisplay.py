@@ -32,7 +32,7 @@ def run(test, params, env):
         graphic = vmxml.get_device_class('graphics')()
         graphic.add_graphic(vm_name, graphic="vnc")
 
-    if is_alive:
+    if is_alive and vm.is_dead():
         vm.start()
     domid = vm.get_id()
     domuuid = vm.get_uuid()
