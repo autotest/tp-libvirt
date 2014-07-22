@@ -175,7 +175,7 @@ def run(test, params, env):
         reset_domain(vm, pre_vm_state, ("--guest" in options))
     except Exception, details:
         reset_env(vm_name, xml_file)
-        error.TestFail(details)
+        raise error.TestFail(details)
 
     # Perform guest vcpu hotplug
     for i in range(len(set_option)):
