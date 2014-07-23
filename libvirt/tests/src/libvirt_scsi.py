@@ -23,7 +23,6 @@ def run(test, params, env):
     partition_type = ('yes' == params.get("libvirt_scsi_partition_type", "no"))
     partition = params.get("libvirt_scsi_partition",
                            "ENTER.YOUR.AVAILABLE.PARTITION")
-    controller = ('yes' == params.get("libvirt_scsi_controller", "yes"))
     vm_name = params.get("main_vm", "virt-tests-vm1")
     # Init a VM instance and a VMXML instance.
     vm = env.get_vm(vm_name)
@@ -37,17 +36,12 @@ def run(test, params, env):
         if device.type == "scsi":
             scsi_controllers.append(device)
 
-    if controller:
-        if not scsi_controllers:
-            scsi_controller = Controller("controller")
-            scsi_controller.type = "scsi"
-            scsi_controller.index = "0"
-            scsi_controller.model = "virtio-scsi"
-            vmxml.add_device(scsi_controller)
-    else:
-        if scsi_controllers:
-            for scsi_controller in scsi_controllers:
-                vmxml.del_device(scsi_controller)
+    if not scsi_controllers:
+        scsi_controller = Controller("controller")
+        scsi_controller.type = "scsi"
+        scsi_controller.index = "0"
+        scsi_controller.model = "virtio-scsi"
+        vmxml.add_device(scsi_controller)
 
     # Add disk with bus of scsi into vmxml.
     if img_type:
