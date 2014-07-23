@@ -3,7 +3,7 @@ svirt virt-clone test.
 """
 from autotest.client import utils
 from autotest.client.shared import error
-from virttest import utils_selinux, virt_vm, utils_misc, virsh
+from virttest import utils_selinux, virt_vm, utils_misc, virsh, libvirt_vm
 from virttest.libvirt_xml.vm_xml import VMXML
 
 
@@ -66,4 +66,4 @@ def run(test, params, env):
         backup_xml.sync()
         utils_selinux.set_status(backup_sestatus)
         if not virsh.domstate(clone_name).exit_status:
-            virsh.remove_domain(clone_name)
+            libvirt_vm.VM(clone_name, params, None, None).remove_with_storage()
