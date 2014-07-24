@@ -318,6 +318,7 @@ def run(test, params, env):
     create_autodestroy = 'yes' == params.get("create_autodestroy", "no")
     unix_channel = "yes" == params.get("unix_channel", "yes")
     dac_denial = "yes" == params.get("dac_denial", "no")
+    check_json_no_savevm = "yes" == params.get("check_json_no_savevm", "no")
 
     uri = params.get("virsh_uri")
     usr = params.get('unprivileged_user')
@@ -387,6 +388,8 @@ def run(test, params, env):
             utils.run("chmod 500 %s" % disk_path)
 
     qemu_conf = None
+    libvirtd_conf = None
+    libvirtd_log_path = None
     try:
         # Config "snapshot_image_format" option in qemu.conf
         if config_format:
@@ -394,6 +397,16 @@ def run(test, params, env):
             qemu_conf["snapshot_image_format"] = '"%s"' % snapshot_image_format
             logging.debug("the qemu config file content is:\n %s" % qemu_conf)
             qemu_conf.sync()
+
+        if check_json_no_savevm:
+            libvirtd_conf = utils_config.LibvirtdConfig()
+            libvirtd_conf["log_level"] = '1'
+            libvirtd_conf["log_filters"] = '"1:json 3:remote 4:event"'
+            libvirtd_log_path = os.path.join(test.tmpdir, "libvirtd.log")
+            libvirtd_conf["log_outputs"] = '"1:file:%s"' % libvirtd_log_path
+            logging.debug("the libvirtd config file content is:\n %s" %
+                          libvirtd_conf)
+            libvirtd_conf.sync()
 
         # Start qemu-ga on guest if have --quiesce
         if unix_channel and options.find("quiesce") >= 0:
@@ -510,6 +523,15 @@ def run(test, params, env):
                     check_snapslist(vm_name, options, option_dict, output,
                                     snaps_before, snaps_list)
 
+                    # For cover bug 872292
+                    if check_json_no_savevm:
+                        pattern = "The command savevm has not been found"
+                        with open(libvirtd_log_path) as f:
+                            for line in f:
+                                if pattern in line and "error" in line:
+                                    raise error.TestFail("'%s' was found: %s"
+                                                         % (pattern, line))
+
     finally:
         # Environment clean
         if unix_channel and options.find("quiesce") >= 0 and start_ga == "yes":
@@ -535,7 +557,14 @@ def run(test, params, env):
                 if os.path.exists(disk_path):
                     os.unlink(disk_path)
 
-        # restore qemu.conf config
+        # restore config
         if config_format and qemu_conf:
             qemu_conf.restore()
             qemu_conf.sync()
+
+        if libvirtd_conf:
+            libvirtd_conf.restore()
+            libvirtd_conf.sync()
+
+        if libvirtd_log_path and os.path.exists(libvirtd_log_path):
+            os.unlink(libvirtd_log_path)
