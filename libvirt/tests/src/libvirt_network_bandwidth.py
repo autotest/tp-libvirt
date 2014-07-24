@@ -3,7 +3,7 @@ import time
 
 from autotest.client.shared import error
 from autotest.client import utils
-from virttest import data_dir
+from virttest import data_dir, virsh
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.network_xml import NetworkXML, PortgroupXML
 
@@ -123,7 +123,7 @@ def run(test, params, env):
 
         # SCP to check the network bandwidth.
         if vm.is_alive():
-            vm.destroy()
+            virsh.destroy(vm_name)
         vm.start()
         vm.wait_for_login()
         time_before = time.time()
