@@ -5,109 +5,7 @@ from autotest.client import lv_utils
 from autotest.client.shared import ssh_key, error
 from virttest import utils_v2v, libvirt_storage, libvirt_vm
 from virttest import virt_vm, virsh, remote, data_dir
-
-
-def create_dir_pool(spool, pool_name, target_path):
-    """
-    Create a persistent dir pool.
-    """
-    # Check pool before creating
-    if spool.pool_exists(pool_name):
-        logging.debug("Pool '%s' exists on uri '%s'", pool_name,
-                      spool.connect_uri)
-        return False
-
-    if not spool.define_dir_pool(pool_name, target_path):
-        return False
-
-    if not spool.build_pool(pool_name):
-        return False
-
-    if not spool.start_pool(pool_name):
-        return False
-
-    if not spool.set_pool_autostart(pool_name):
-        return False
-    return True
-
-
-def create_partition_pool(spool, pool_name, block_device,
-                          target_path="/dev/v2v_test"):
-    """
-    Create a persistent partition pool.
-    """
-    # Check pool before creating
-    if spool.pool_exists(pool_name):
-        logging.debug("Pool '%s' exists on uri '%s'", pool_name,
-                      spool.connect_uri)
-        return False
-
-    if not spool.define_fs_pool(pool_name, block_device,
-                                target_path=target_path):
-        return False
-
-    if not spool.build_pool(pool_name):
-        return False
-
-    if not spool.start_pool(pool_name):
-        return False
-
-    if not spool.set_pool_autostart(pool_name):
-        return False
-    return True
-
-
-def create_disk_pool(spool, pool_name, block_device,
-                     target_path="/dev/"):
-    """
-    Create a persistent partition pool.
-    """
-    # Check pool before creating
-    if spool.pool_exists(pool_name):
-        logging.debug("Pool '%s' exists on uri '%s'", pool_name,
-                      spool.connect_uri)
-        return False
-
-    if not spool.define_fs_pool(pool_name, block_device,
-                                target_path=target_path):
-        return False
-
-    if not spool.build_pool(pool_name):
-        return False
-
-    if not spool.start_pool(pool_name):
-        return False
-
-    if not spool.set_pool_autostart(pool_name):
-        return False
-    return True
-
-
-def create_lvm_pool(spool, pool_name, block_device, vg_name="vg_v2v",
-                    target_path="/dev/vg_v2v"):
-    """
-    Create a persistent lvm pool.
-    """
-    # Check pool before creating
-    if spool.pool_exists(pool_name):
-        logging.debug("Pool '%s' exists on uri '%s'", pool_name,
-                      spool.connect_uri)
-        return False
-
-    if not spool.define_lvm_pool(pool_name, block_device, vg_name=vg_name,
-                                 target_path=target_path):
-        return False
-
-    vgroups = lv_utils.vg_list()
-    if vg_name not in vgroups.keys() and not spool.build_pool(pool_name):
-        return False
-
-    if not spool.start_pool(pool_name):
-        return False
-
-    if not spool.set_pool_autostart(pool_name):
-        return False
-    return True
+from virttest.utils_test import libvirt as utlv
 
 
 def get_remote_vm_disk(rvm):
@@ -179,34 +77,31 @@ def run(test, params, env):
     vm_name = params.get("v2v_vm")
 
     # Remote host parameters
-    remote_hostname = params.get("remote_hostname")
+    remote_hostname = params.get("remote_hostname", "XEN.EXAMPLE")
     username = params.get("remote_username", "root")
-    password = params.get("remote_passwd")
+    password = params.get("remote_passwd", "XEN.PASSWORD")
     remote_hypervisor = params.get("remote_hypervisor")
+
+    if remote_hostname.count("EXAMPLE") or password.count("EXAMPLE"):
+        raise error.TestNAError("Please provide XEN host first.")
 
     # Local pool parameters
     pool_type = params.get("pool_type", "dir")
-    block_device = params.get("block_device", "/dev/BLOCK/EXAMPLE")
-    if pool_type in ['disk', 'partition', 'lvm'] and \
-            re.search("EXAMPLE", block_device):
-        raise error.TestNAError("Please set correct block device.")
     pool_name = params.get("pool_name", "v2v_test")
     target_path = params.get("target_path", "pool_path")
-    vg_name = params.get("volume_group_name", "vg_v2v")
+    emulated_img = params.get("emulated_image_path", "v2v_emulated.img")
+    emulated_size = params.get("emulated_image_size", "10G")
     local_tmp_path = params.get("local_tmp_path", data_dir.get_tmp_dir())
+
     # If target_path is not an abs path, join it to data_dir.TMPDIR
     if os.path.dirname(target_path) is "":
         target_path = os.path.join(data_dir.get_tmp_dir(), target_path)
 
-    # dir pool need an exist path
-    if pool_type == "dir":
-        if not os.path.exists(target_path):
-            os.mkdir(target_path)
-
     # V2V parameters
     input = params.get("input_method")
     files = params.get("config_files")
-    network = params.get("network", "default")
+    network = params.get("network")
+    bridge = params.get("bridge")
 
     # Result check about
     ignore_virtio = "yes" == params.get("ignore_virtio", "no")
@@ -227,39 +122,27 @@ def run(test, params, env):
         raise error.TestFail("Couldn't find vm '%s' to be converted "
                              "on remote uri '%s'." % (vm_name, remote_uri))
 
-    # Copy remote vm's disk to local and create xml file for it
-    tmp_xml_file = copy_remote_vm(remote_vm, local_tmp_path, remote_hostname,
-                                  username, password)
+    # Prepare local libvirt storage pool
+    pvt = utlv.PoolVolumeTest(test, params)
 
     # Local storage pool's instance
     lsp = libvirt_storage.StoragePool()
     try:
         # Create storage pool for test
-        if pool_type == "dir":
-            if not create_dir_pool(lsp, pool_name, target_path):
-                raise error.TestFail("Prepare directory storage pool for "
-                                     "virt-v2v failed.")
-        elif pool_type == "partition":
-            if not create_partition_pool(lsp, pool_name, block_device,
-                                         target_path):
-                raise error.TestFail("Prepare partition storage pool for "
-                                     "virt-v2v failed.")
-        elif pool_type == "lvm":
-            if not create_lvm_pool(lsp, pool_name, block_device, vg_name,
-                                   target_path):
-                raise error.TestFail("Prepare lvm storage pool for "
-                                     "virt-v2v failed.")
-        elif pool_type == "disk":
-            if not create_disk_pool(lsp, pool_name, block_device, target_path):
-                raise error.TestFail("Prepare disk storage pool for "
-                                     "virt-v2v failed.")
+        pvt.pre_pool(pool_name, pool_type, target_path, emulated_img,
+                     emulated_size)
+        logging.debug(lsp.pool_info(pool_name))
+
+        # Copy remote vm's disk to local and create xml file for it
+        tmp_xml_file = copy_remote_vm(remote_vm, local_tmp_path,
+                                      remote_hostname, username, password)
 
         # Maintain a single params for v2v to avoid duplicate parameters
         v2v_params = {"hostname": remote_hostname, "username": username,
                       "password": password, "hypervisor": remote_hypervisor,
                       "storage": pool_name, "network": network,
-                      "target": "libvirtxml", "vms": tmp_xml_file,
-                      "input": input, "files": files}
+                      "bridge": bridge, "target": "libvirtxml",
+                      "vms": tmp_xml_file, "input": input, "files": files}
         try:
             result = utils_v2v.v2v_cmd(v2v_params)
             logging.debug(result)
@@ -291,4 +174,8 @@ def run(test, params, env):
             raise error.TestFail(error_info)
     finally:
         cleanup_vm(vm_name)
-        lsp.delete_pool(pool_name)
+        try:
+            # Create pool may be not in autostart, allowing to raise out
+            pvt.cleanup_pool(pool_name, pool_type, target_path, emulated_img)
+        except error.TestFail, detail:   # Make sure cleanup will be finished
+            logging.warn(detail)

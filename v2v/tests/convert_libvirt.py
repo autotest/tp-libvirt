@@ -4,7 +4,7 @@ from virttest import utils_v2v
 def get_args_dict(params):
     args_dict = {}
     keys_list = ['target', 'vms', 'hypervisor',
-                 'hostname', 'storage', 'network',
+                 'hostname', 'storage', 'bridge',
                  'netrc', 'username', 'password']
 
     for key in keys_list:
