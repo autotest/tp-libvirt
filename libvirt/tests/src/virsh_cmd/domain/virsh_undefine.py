@@ -90,22 +90,23 @@ def run(test, params, env):
         if option.count("managedsave") and vm.is_alive():
             virsh.managedsave(vm_name)
 
-        snp_list = virsh.snapshot_list(vm_name)
-        if option.count("snapshot"):
-            snp_file_list = []
-            if not len(snp_list):
-                virsh.snapshot_create(vm_name)
-                logging.debug("Create a snapshot for test!")
+        if not vm.is_lxc():
+            snp_list = virsh.snapshot_list(vm_name)
+            if option.count("snapshot"):
+                snp_file_list = []
+                if not len(snp_list):
+                    virsh.snapshot_create(vm_name)
+                    logging.debug("Create a snapshot for test!")
+                else:
+                    # Backup snapshots for domain
+                    for snp_item in snp_list:
+                        tmp_file = os.path.join(test.tmpdir, snp_item+".xml")
+                        virsh.snapshot_dumpxml(vm_name, snp_item, to_file=tmp_file)
+                        snp_file_list.append(tmp_file)
             else:
-                # Backup snapshots for domain
-                for snp_item in snp_list:
-                    tmp_file = os.path.join(test.tmpdir, snp_item+".xml")
-                    virsh.snapshot_dumpxml(vm_name, snp_item, to_file=tmp_file)
-                    snp_file_list.append(tmp_file)
-        else:
-            if len(snp_list):
-                raise error.TestNAError("This domain has snapshot(s), "
-                                        "cannot be undefined!")
+                if len(snp_list):
+                    raise error.TestNAError("This domain has snapshot(s), "
+                                            "cannot be undefined!")
         if option.count("remove-all-storage"):
             pvtest = utlv.PoolVolumeTest(test, params)
             pvtest.pre_pool(pool_name, pool_type, pool_target, emulated_img,
@@ -170,8 +171,11 @@ def run(test, params, env):
 
         # Check if xml file exists.
         xml_exist = False
-        if os.path.exists("/etc/libvirt/qemu/%s.xml" % vm_name) or\
-           os.path.exists("/etc/xen/%s" % vm_name):
+        if vm.is_qemu() and os.path.exists("/etc/libvirt/qemu/%s.xml" % vm_name):
+            xml_exist = True
+        if vm.is_lxc() and os.path.exists("/etc/libvirt/lxc/%s.xml" % vm_name):
+            xml_exist = True
+        if vm.is_xen() and os.path.exists("/etc/xen/%s" % vm_name):
             xml_exist = True
 
         # Check if save file exists if use --managed-save
@@ -204,7 +208,7 @@ def run(test, params, env):
             pvtest.cleanup_pool(pool_name, pool_type,
                                 pool_target, emulated_img)
         # Recover VM snapshots.
-        if option.count("snapshot"):
+        if option.count("snapshot") and (not vm.is_lxc()):
             logging.debug("Recover snapshots for domain!")
             for file_item in snp_file_list:
                 virsh.snapshot_create(vm_name, file_item)
