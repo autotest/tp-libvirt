@@ -3,6 +3,7 @@ import logging
 from autotest.client import utils
 from autotest.client.shared import error
 from virttest import aexpect, virt_vm, virsh, remote, qemu_storage
+from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.controller import Controller
@@ -19,51 +20,6 @@ def run(test, params, env):
     5.Recover test environment.
     6.Confirm the test result.
     """
-
-    def get_scsi_disk(scsi_option):
-        """
-        Get the scsi device created by scsi_debug kernel module
-
-        :param scsi_option. The scsi_debug kernel module options.
-        :return: scsi device if it is created successfully.
-        """
-        try:
-            # Load scsi_debug kernel module.
-            # Unload it first if it's already loaded.
-            if utils.module_is_loaded("scsi_debug"):
-                utils.unload_module("scsi_debug")
-            utils.load_module("scsi_debug dev_size_mb=1024 %s" % scsi_option)
-            # Get the scsi device name
-            scsi_disk = utils.run("lsscsi|grep scsi_debug|"
-                                  "awk '{print $6}'").stdout.strip()
-            logging.info("scsi disk: %s" % scsi_disk)
-            return scsi_disk
-        except Exception, e:
-            logging.error(repr(e))
-            return None
-
-    def create_disk_img(name, path, fmt):
-        """
-        Create disk image.
-
-        :param name. Image file name.
-        :param path. Image file path.
-        :param fmt. Image file format.
-        :return: QemuImg object and image file name
-        """
-        try:
-            params["image_name"] = name
-            params["image_format"] = fmt
-            params["image_size"] = "100M"
-            img_dev = qemu_storage.QemuImg(params, path, "")
-            disk_source, _ = img_dev.create(params)
-            logging.debug("disk source: %s", disk_source)
-            utils.run("mkfs.ext3 -F %s" % disk_source)
-            return img_dev, disk_source
-        except Exception, e:
-            logging.error(repr(e))
-            raise error.TestNAError("Test skipped because of creating"
-                                    " disk image failed")
 
     def set_vm_controller_xml(vmxml):
         """
@@ -87,8 +43,7 @@ def run(test, params, env):
 
         :param dev_type. Disk type.
         :param dev_name. Disk device name.
-        :param sgio. Disk sgio option.
-        :param share. Disk shareable option.
+        :param options. Disk options.
         :return: Disk xml object.
         """
         # Create disk xml
@@ -147,7 +102,7 @@ def run(test, params, env):
 
     disks = []
     if disk_format == "scsi":
-        disk_source = get_scsi_disk(scsi_options)
+        disk_source = libvirt.create_scsi_disk(scsi_options)
         if not disk_source:
             raise error.TestNAError("Get scsi disk failed.")
         disks.append({"format": "scsi", "source": disk_source})
@@ -170,9 +125,11 @@ def run(test, params, env):
         disks.append({"format": disk_format, "disk_dev": disk_dev,
                       "source": disk_source})
     elif disk_format in ["raw", "qcow2"]:
-        disk_dev, disk_source = create_disk_img("test", disk_source_path,
-                                                disk_format)
-        disks.append({"format": disk_format, "disk_dev": disk_dev,
+        disk_path = "%s/test.%s" % (disk_source_path, disk_format)
+        disk_source = libvirt.create_local_disk("file", disk_path, "1",
+                                                disk_format=disk_format)
+        libvirt.mkfs(disk_source, "ext3")
+        disks.append({"format": disk_format,
                       "source": disk_source})
 
     # Backup xml files, compose the new domain xml
@@ -244,7 +201,7 @@ def run(test, params, env):
                         # If we testing enospace error policy, only 1 vm used
                         if error_policy == "enospace":
                             cmd = ("mount /dev/%s /mnt && dd if=/dev/zero of=/mnt/test"
-                                   " bs=1M count=200 2>&1 | grep 'No space left'"
+                                   " bs=1M count=2000 2>&1 | grep 'No space left'"
                                    % disk_target)
                             s, o = session.cmd_status_output(cmd)
                             logging.debug("error_policy in vm0 exit %s; output: %s", s, o)
@@ -267,8 +224,9 @@ def run(test, params, env):
                             s, o = session.cmd_status_output(cmd)
                             logging.debug("error_policy in vm1 exit %s; output: %s", s, o)
                             session.close()
-                            cmd = ("dd if=/dev/zero of=/mnt/test bs=1M count=50 && dd if="
-                                   "/mnt/test of=/dev/null bs=1M; dmesg | grep 'I/O error'")
+                            cmd = ("dd if=/dev/zero of=/mnt/test bs=1M count=100 && dd if="
+                                   "/mnt/test of=/dev/null bs=1M")
+                            #; dmesg | grep 'I/O error'"
                             s, o = session0.cmd_status_output(cmd)
                             logging.debug("session in vm0 exit %s; output: %s", s, o)
                             if error_policy == "report":
@@ -328,14 +286,14 @@ def run(test, params, env):
             logging.info("Restoring vm...")
             virsh.undefine(vms_list[i]['name'])
             virsh.define(vms_list[i]['backup'])
+            os.remove(vms_list[i]['backup'])
 
         # Remove disks.
         for img in disks:
-            if img.has_key("disk_dev"):
-                if img["format"] in ["iscsi"]:
+            if img["format"] == "scsi":
+                libvirt.delete_scsi_disk()
+            elif img["format"] == "iscsi":
+                if img.has_key("disk_dev"):
                     img["disk_dev"].cleanup()
-                else:
-                    img["disk_dev"].remove()
-            else:
-                if img["format"] == "scsi":
-                    utils.unload_module("scsi_debug")
+            elif img.has_key("source"):
+                os.remove(img["source"])
