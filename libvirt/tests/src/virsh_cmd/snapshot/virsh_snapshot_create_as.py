@@ -5,7 +5,7 @@ import string
 import logging
 from autotest.client.shared import error
 from autotest.client import utils
-from virttest import virsh, utils_misc, xml_utils, libvirt_xml
+from virttest import virsh, utils_misc, xml_utils, libvirt_xml, utils_config
 from virttest.libvirt_xml import vm_xml, xcepts
 from provider import libvirt_version
 
@@ -312,6 +312,8 @@ def run(test, params, env):
     start_ga = params.get("start_ga", "yes")
     domain_state = params.get("domain_state")
     memspec_opts = params.get("memspec_opts")
+    config_format = "yes" == params.get("config_format", "no")
+    snapshot_image_format = params.get("snapshot_image_format")
     diskspec_opts = params.get("diskspec_opts")
     create_autodestroy = 'yes' == params.get("create_autodestroy", "no")
     unix_channel = "yes" == params.get("unix_channel", "yes")
@@ -384,7 +386,15 @@ def run(test, params, env):
         if dac_denial:
             utils.run("chmod 500 %s" % disk_path)
 
+    qemu_conf = None
     try:
+        # Config "snapshot_image_format" option in qemu.conf
+        if config_format:
+            qemu_conf = utils_config.LibvirtQemuConfig()
+            qemu_conf["snapshot_image_format"] = '"%s"' % snapshot_image_format
+            logging.debug("the qemu config file content is:\n %s" % qemu_conf)
+            qemu_conf.sync()
+
         # Start qemu-ga on guest if have --quiesce
         if unix_channel and options.find("quiesce") >= 0:
             if vm.is_alive():
@@ -524,3 +534,8 @@ def run(test, params, env):
                 disk_path = os.path.join(test.tmpdir, params.get(external_disk))
                 if os.path.exists(disk_path):
                     os.unlink(disk_path)
+
+        # restore qemu.conf config
+        if config_format and qemu_conf:
+            qemu_conf.restore()
+            qemu_conf.sync()
