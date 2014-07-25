@@ -28,7 +28,7 @@ def create_disk(vm_name, orig_iso, disk_type, target_dev, mode=""):
     try:
         virsh.attach_disk(vm_name, orig_iso, target_dev, options)
     except:
-        os.remote(orig_iso)
+        os.remove(orig_iso)
         raise error.TestFail("Failed to attach")
 
 
