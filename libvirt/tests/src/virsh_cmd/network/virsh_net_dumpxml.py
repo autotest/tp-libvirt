@@ -56,7 +56,8 @@ def run(test, params, env):
                 if option.strip() == "":
                     continue
                 if not virsh.has_command_help_match("net-dumpxml",
-                                                    option.strip()):
+                                                    option.strip()) and\
+                   status_error == "no":
                     raise error.TestNAError("The current libvirt version"
                                             " doesn't support '%s' option"
                                             % option.strip())
