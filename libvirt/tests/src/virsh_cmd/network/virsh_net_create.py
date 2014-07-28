@@ -153,10 +153,7 @@ def run(test, params, env):
 
         # Recover from backup
         for netxml in backup.values():
-            netxml.create()
-            # autostart = True requires persistent = True first!
-            for state in ['active', 'persistent', 'autostart']:
-                netxml[state] = backup_state[netxml.name][state]
+            netxml.sync(backup_state[netxml.name])
 
         # Close down persistent virsh session (including for all netxml copies)
         vrsh.close_session()
