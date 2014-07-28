@@ -242,6 +242,8 @@ def run(test, params, env):
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    if vm.is_alive():
+        vm.destroy()
 
     operation = params.get("gf_file_operation")
     testcase = globals()["test_%s" % operation]

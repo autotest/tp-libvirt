@@ -228,6 +228,8 @@ def run(test, params, env):
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    if vm.is_alive():
+        vm.destroy()
 
     operation = params.get("disk_operation")
     eval("test_%s(vm, params)" % operation)
