@@ -45,7 +45,7 @@ def run(test, params, env):
         virsh.start(vm_name)
         guest_session = vm.wait_for_login()
         if agent:
-            guest_session.cmd("service qemu-guest-agent start")
+            guest_session.cmd("qemu-ga -d")
             stat_ps = guest_session.cmd_status("ps aux |grep [q]emu-ga")
             guest_session.close()
             if stat_ps:
