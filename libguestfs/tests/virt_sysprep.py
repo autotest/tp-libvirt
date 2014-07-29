@@ -79,7 +79,7 @@ def run(test, params, env):
         """
         Modify domain's interface to make sure domain can be login.
         """
-        iface_type = first_nic.type
+        iface_type = first_nic.type_name
         iface_source = first_nic.source.get('bridge')
         mac_address = first_nic.mac_address
         try:
