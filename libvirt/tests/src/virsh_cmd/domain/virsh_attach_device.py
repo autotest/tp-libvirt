@@ -327,6 +327,15 @@ class AttachDeviceBase(TestDeviceBase):
         # Acts as a dict for it's own API params
         self.test_params.virsh['debug'] = True
         vadu_dargs.update(self.test_params.virsh)
+        options = vadu_dargs.get('flagstr')
+        if options:
+            opt_list = options.split()
+            for opt in opt_list:
+                if not virsh.has_command_help_match("attach-device", opt) and\
+                   not self.test_params.status_error:
+                    raise error.TestNAError("Current libvirt version doesn't "
+                                            "support '%s' for attach-device"
+                                            " command" % opt)
         cmdresult = self.test_params.virsh.attach_device(**vadu_dargs)
         self.test_params.virsh['debug'] = False
         # Command success is not enough, must also confirm activity worked
