@@ -111,6 +111,10 @@ def run(test, params, env):
             raise error.TestNAError("Direct migration is supported only for "
                                     "Xen in libvirt.")
 
+    if options.count("compressed") and not \
+            virsh.has_command_help_match("migrate", "--compressed"):
+        raise error.TestNAError("Do not support compressed option on this version.")
+
     # Add migrateuri if exists and check for default example
     if migrate_uri:
         if migrate_uri.count("EXAMPLE"):
