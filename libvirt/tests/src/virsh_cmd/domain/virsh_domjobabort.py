@@ -1,7 +1,11 @@
 import os
 import subprocess
+import logging
+import time
 from autotest.client.shared import error
+from autotest.client.shared import ssh_key
 from virttest import virsh
+from virttest.utils_test import libvirt as utlv
 
 
 def run(test, params, env):
@@ -33,8 +37,9 @@ def run(test, params, env):
 
     domid = vm.get_id()
     domuuid = vm.get_uuid()
+    original_speed = virsh.migrate_getspeed(vm_name).stdout.strip()
 
-    def get_subprocess(action, vm_name, file):
+    def get_subprocess(action, vm_name, file, remote_uri=None):
         """
         Execute background virsh command, return subprocess w/o waiting for exit()
 
@@ -44,7 +49,12 @@ def run(test, params, env):
         """
         if action == "managedsave":
             file = ""
+        elif action == "migrate":
+            # Slow down migration for domjobabort
+            virsh.migrate_setspeed(vm_name, "1")
+            file = remote_uri
         command = "virsh %s %s %s" % (action, vm_name, file)
+        logging.debug("Action: %s", command)
         p = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
         return p
@@ -55,6 +65,10 @@ def run(test, params, env):
     tmp_file = os.path.join(test.tmpdir, "domjobabort.tmp")
     tmp_pipe = os.path.join(test.tmpdir, "domjobabort.fifo")
     vm_ref = params.get("jobabort_vm_ref")
+    remote_uri = params.get("jobabort_remote_uri")
+    remote_host = params.get("migrate_dest_host")
+    remote_user = params.get("migrate_dest_user", "root")
+    remote_pwd = params.get("migrate_dest_pwd")
     saved_data = None
 
     if action == "managedsave":
@@ -62,6 +76,15 @@ def run(test, params, env):
 
     if action == "restore":
         virsh.save(vm_name, tmp_file, ignore_status=True)
+
+    if action == "migrate":
+        if remote_host.count("EXAMPLE"):
+            raise error.TestNAError("Remote host should be configured "
+                                    "for migrate.")
+        else:
+            # Config ssh autologin for remote host
+            ssh_key.setup_ssh_key(remote_host, remote_user,
+                                  remote_pwd, port=22)
 
     if vm_ref == "id":
         vm_ref = domid
@@ -83,21 +106,37 @@ def run(test, params, env):
             os.unlink(tmp_pipe)
         os.mkfifo(tmp_pipe)
 
-        process = get_subprocess(action, vm_name, tmp_pipe)
+        process = get_subprocess(action, vm_name, tmp_pipe, remote_uri)
 
         saved_data = None
         if action == "restore":
             saved_data = file(tmp_file, 'r').read(10 * 1024 * 1024)
             f = open(tmp_pipe, 'w')
             f.write(saved_data[:1024 * 1024])
+        elif action == "migrate":
+            f = None
         else:
             f = open(tmp_pipe, 'r')
             dummy = f.read(1024 * 1024)
 
-    ret = virsh.domjobabort(vm_ref, ignore_status=True)
+    # Give enough time for starting job
+    t = 0
+    while t < 5:
+        jobtype = vm.get_job_type()
+        if "None" == jobtype:
+            t += 1
+            time.sleep(1)
+            continue
+        elif jobtype is False:
+            logging.error("Get job type failed.")
+            break
+        else:
+            logging.debug("Job started: %s", jobtype)
+            break
+    ret = virsh.domjobabort(vm_ref, ignore_status=True, debug=True)
     status = ret.exit_status
 
-    if process:
+    if process and f:
         if saved_data:
             f.write(saved_data[1024 * 1024:])
         else:
@@ -118,6 +157,11 @@ def run(test, params, env):
                 process.kill()
             except OSError:
                 pass
+
+    if action == "migrate":
+        # Recover migration speed
+        virsh.migrate_setspeed(vm_name, original_speed)
+        utlv.MigrationTest().cleanup_dest_vm(vm, None, remote_uri)
 
     # check status_error
     if status_error == "yes":
