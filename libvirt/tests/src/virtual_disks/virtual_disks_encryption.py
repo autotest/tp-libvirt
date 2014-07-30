@@ -54,7 +54,6 @@ def run(test, params, env):
         v_xml = volxml.new_vol(**vol_params)
         v_xml.encryption = volxml.new_encryption(
             **{"format": p_format})
-        v_xml.xmltreefile.write("/tmp/test.xml")
         v_xml.xmltreefile.write()
         return virsh.vol_create(p_name, v_xml.xml)
 
