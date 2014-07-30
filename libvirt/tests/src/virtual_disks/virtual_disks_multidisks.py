@@ -152,8 +152,8 @@ def run(test, params, env):
         """
         logging.info("Checking VM disks type... ")
         for target in targets_name:
-            if None != libvirt.get_disk_attr(vm_name, target,
-                                             "driver", "type"):
+            if None != vm_xml.VMXML.get_disk_attr(vm_name, target,
+                                                  "driver", "type"):
                 return False
         return True
 
@@ -785,24 +785,24 @@ def run(test, params, env):
             else:
                 d_target = device_targets[0]
                 cmd += " | grep %s" % (device_source_names[0].replace(',', ',,'))
-            io = libvirt.get_disk_attr(vm_name, d_target, "driver", "io")
+            io = vm_xml.VMXML.get_disk_attr(vm_name, d_target, "driver", "io")
             if io:
                 cmd += " | grep aio=%s" % io
-            ioeventfd = libvirt.get_disk_attr(vm_name, d_target,
-                                              "driver", "ioeventfd")
+            ioeventfd = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
+                                                   "driver", "ioeventfd")
             if ioeventfd:
                 cmd += " | grep ioeventfd=%s" % ioeventfd
-            event_idx = libvirt.get_disk_attr(vm_name, d_target,
-                                              "driver", "event_idx")
+            event_idx = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
+                                                   "driver", "event_idx")
             if event_idx:
                 cmd += " | grep event_idx=%s" % event_idx
 
-            discard = libvirt.get_disk_attr(vm_name, d_target,
-                                            "driver", "discard")
+            discard = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
+                                                 "driver", "discard")
             if discard:
                 cmd += " | grep discard=%s" % discard
-            copy_on_read = libvirt.get_disk_attr(vm_name, d_target,
-                                                 "driver", "copy_on_read")
+            copy_on_read = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
+                                                      "driver", "copy_on_read")
             if copy_on_read:
                 cmd += " | grep copy-on-read=%s" % copy_on_read
 
@@ -848,7 +848,7 @@ def run(test, params, env):
                 if len(device_attach_error) > i:
                     if device_attach_error[i] == "yes":
                         continue
-                if device_bootorder[i] != libvirt.get_disk_attr(
+                if device_bootorder[i] != vm_xml.VMXML.get_disk_attr(
                         vm_name, device_targets[i], "boot", "order"):
                     raise error.TestFail("Check bootorder failed")
 
@@ -865,11 +865,11 @@ def run(test, params, env):
         # Check disk bus device option in qemu command line.
         if test_bus_device_option:
             cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
-            dev_bus = int(libvirt.get_disk_attr(vm_name, device_targets[0],
-                                                "address", "bus"), 16)
+            dev_bus = int(vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                     "address", "bus"), 16)
             if device_bus[0] == "virtio":
-                pci_slot = int(libvirt.get_disk_attr(vm_name, device_targets[0],
-                                                     "address", "slot"), 16)
+                pci_slot = int(vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                          "address", "slot"), 16)
                 if devices[0] == "lun":
                     device_option = "scsi=on"
                 else:
@@ -877,10 +877,10 @@ def run(test, params, env):
                 cmd += (" | grep virtio-blk-pci,%s,bus=pci.%x,addr=0x%x"
                         % (device_option, dev_bus, pci_slot))
             if device_bus[0] in ["ide", "sata", "scsi"]:
-                dev_unit = int(libvirt.get_disk_attr(vm_name, device_targets[0],
-                                                     "address", "unit"), 16)
-                dev_id = libvirt.get_disk_attr(vm_name, device_targets[0],
-                                               "alias", "name")
+                dev_unit = int(vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                          "address", "unit"), 16)
+                dev_id = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                    "alias", "name")
             if device_bus[0] == "ide":
                 if devices[0] == "cdrom":
                     device_option = "ide-cd"
@@ -901,10 +901,10 @@ def run(test, params, env):
                 cmd += (" | grep %s,bus=scsi%d.%d,.*drive=drive-%s,id=%s"
                         % (device_option, dev_bus, dev_unit, dev_id, dev_id))
             if device_bus[0] == "usb":
-                dev_port = libvirt.get_disk_attr(vm_name, device_targets[0],
-                                                 "address", "port")
-                dev_id = libvirt.get_disk_attr(vm_name, device_targets[0],
-                                               "alias", "name")
+                dev_port = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                      "address", "port")
+                dev_id = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                    "alias", "name")
                 if devices[0] == "disk":
                     cmd += (" | grep usb-storage,bus=usb%s.0,port=%s,"
                             "drive=drive-%s,id=%s"
