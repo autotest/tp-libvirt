@@ -1,6 +1,7 @@
 import logging
 import os
 from autotest.client.shared import error
+from virttest.utils_test import libvirt
 from virttest import aexpect, remote, virt_vm, virsh, libvirt_storage
 from virttest.libvirt_xml import vm_xml, vol_xml, pool_xml
 from virttest.libvirt_xml.devices.disk import Disk
@@ -68,10 +69,11 @@ def run(test, params, env):
             session = vm.wait_for_login()
             if target == "hda":
                 target = "sda"
-            cmd = ("echo 'n\np\n\n\n\nw\n' > /tmp/fdisk-cmd && "
-                   "fdisk /dev/%s < /tmp/fdisk-cmd && mkfs.ext3 /dev/%s1 && "
-                   "mkdir test && mount /dev/%s1 test && echo '123' > test/testfile"
-                   " && cat test/testfile" % (target, target, target))
+            libvirt.mk_part("/dev/%s" % target, session=session)
+            libvirt.mkfs("/dev/%s1" % target, "ext3", session=session)
+
+            cmd = ("mount /dev/%s1 /mnt && echo '123' > /mnt/testfile"
+                   " && cat /mnt/testfile && umount /mnt" % target)
             s, o = session.cmd_status_output(cmd)
             logging.info("Check disk operation in VM:\n%s", o)
             if s != 0:
