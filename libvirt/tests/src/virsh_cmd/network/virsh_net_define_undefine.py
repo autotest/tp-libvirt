@@ -156,18 +156,7 @@ def run(test, params, env):
 
         # Recover from backup
         for netxml in backup.values():
-            # If network is transient
-            if ((not backup_state[netxml.name]['persistent'])
-                    and backup_state[netxml.name]['active']):
-                netxml.create()
-                continue
-            # autostart = True requires persistent = True first!
-            for state in ['persistent', 'autostart', 'active']:
-                try:
-                    netxml[state] = backup_state[netxml.name][state]
-                except xcepts.LibvirtXMLError, detail:
-                    fail_flag = 1
-                    result_info.append(str(detail))
+            netxml.sync(backup_state[netxml.name])
 
         # Close down persistent virsh session (including for all netxml copies)
         if hasattr(virsh_instance, 'close_session'):
