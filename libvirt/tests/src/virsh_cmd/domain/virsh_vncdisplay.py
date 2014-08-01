@@ -28,7 +28,7 @@ def run(test, params, env):
     xml_bak = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     is_alive = vm.is_alive()
     vmxml = xml_bak.copy()
-    if not len(vmxml.get_graphics_devices("vnc")):
+    if not len(vmxml.get_graphics_devices("vnc")) and vm.is_qemu():
         graphic = vmxml.get_device_class('graphics')()
         graphic.add_graphic(vm_name, graphic="vnc")
 
