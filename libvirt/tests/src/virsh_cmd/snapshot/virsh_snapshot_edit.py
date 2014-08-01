@@ -37,6 +37,8 @@ def run(test, params, env):
 
         session = aexpect.ShellSession("sudo -s")
         try:
+            logging.debug("snapshot-edit options is: %s" % edit_opts)
+            logging.debug("edit cmd is: %s" % edit_cmd)
             session.sendline("virsh snapshot-edit %s %s"
                              % (dom_name, edit_opts))
             for i in edit_cmd:
@@ -65,9 +67,21 @@ def run(test, params, env):
 
         desc_sec = "<description>%s</description>" % snap_desc
         name_sec = "<name>%s</name>" % snap_newname
-        pre_xml = re.sub(r"<description>\S+</description>", desc_sec, pre_xml)
-        pre_xml = re.subn(r"<name>\S+</name>", name_sec, pre_xml, 1)[0]
-        if pre_xml.strip() == after_xml.strip():
+        if re.search(r"<description>\S+</description>", pre_xml):
+            pre_xml = re.sub(r"<description>\S+</description>",
+                             desc_sec, pre_xml)
+            pre_xml = re.subn(r"<name>\S+</name>", name_sec, pre_xml, 1)[0]
+        else:
+            pre_xml = re.subn(r"<name>\S+</name>", name_sec + '\n  ' +
+                              desc_sec, pre_xml, 1)[0]
+        # change to list and remove the description element in list
+        pre_xml_list = pre_xml.strip().splitlines()
+        after_xml_list = after_xml.strip().splitlines()
+        if not snap_desc:
+            for i in pre_xml_list:
+                if desc_sec in i:
+                    pre_xml_list.remove(i)
+        if pre_xml_list == after_xml_list:
             logging.info("Succeed to check the xml for description and name")
         else:
             # Print just the differences rather than printing both
@@ -76,9 +90,11 @@ def run(test, params, env):
             for pre_line, aft_line in elems:
                 if pre_line.lstrip().strip() != aft_line.lstrip().strip():
                     if pre_line is not None:
-                        logging.debug("diff before='%s'", pre_line.lstrip().strip())
+                        logging.debug("diff before='%s'",
+                                      pre_line.lstrip().strip())
                     if aft_line is not None:
-                        logging.debug("diff  after='%s'", aft_line.lstrip().strip())
+                        logging.debug("diff  after='%s'",
+                                      aft_line.lstrip().strip())
             raise error.TestFail("Failed xml before/after comparison")
 
     snapshot_oldlist = None
@@ -105,8 +121,8 @@ def run(test, params, env):
         if len(snap_name) > 0:
             pre_name = check_name = snap_name
         else:
-            cur_snap = virsh.snapshot_current(vm_name)
-            pre_name = check_name = cur_snap
+            cmd_result = virsh.snapshot_current(vm_name)
+            pre_name = check_name = cmd_result.stdout.strip()
 
         ret = virsh.snapshot_dumpxml(vm_name, pre_name)
         if ret.exit_status == 0:
@@ -116,7 +132,12 @@ def run(test, params, env):
                                  (pre_name, ret.stderr.strip()))
 
         edit_cmd = []
-        edit_cmd.append(":%s/<description>.*</<description>" + snap_desc + "<")
+        # Delete description element first then add it back with replacement
+        edit_cmd.append(":g/<description>.*</d")
+        replace_cmd = '%s<\/name>/%s<\/name>' % (pre_name, pre_name)
+        replace_cmd += '\\r<description>%s<\/description>' % snap_desc
+        replace_cmd = ":%s/" + replace_cmd + "/"
+        edit_cmd.append(replace_cmd)
         # if have --clone or --rename, need to change snapshot name in xml
         if len(snap_opt) > 0:
             edit_cmd.append(":2")
@@ -142,13 +163,15 @@ def run(test, params, env):
         after_xml = virsh.snapshot_dumpxml(vm_name, check_name).stdout
         match_str = "<description>" + snap_desc + "</description>"
         if not re.search(match_str, after_xml.strip("\n")):
-            logging.debug("Failed to edit snapshot edit_opts=%s, match=%s",
-                          edit_opts, match_str)
-            # Only print first 15 lines - they are most relevant
-            for i in range(15):
-                logging.debug("before xml=%s", pre_xml.split()[i].lstrip())
-                logging.debug(" after xml=%s", after_xml.split()[i].lstrip())
-            raise error.TestFail("Failed to edit snapshot description")
+            if snap_desc:
+                logging.debug("Failed to edit snapshot edit_opts=%s, match=%s",
+                              edit_opts, match_str)
+                # Only print first 15 lines - they are most relevant
+                for i in range(15):
+                    logging.debug("before xml=%s", pre_xml.split()[i].lstrip())
+                    logging.debug(" after xml=%s",
+                                  after_xml.split()[i].lstrip())
+                raise error.TestFail("Failed to edit snapshot description")
 
         # Check edit options --clone
         if snap_opt == "--clone":
@@ -164,7 +187,8 @@ def run(test, params, env):
 
         # Check if --current effect take effect
         if len(snap_cur) > 0 and len(snap_name) > 0:
-            snap_cur = virsh.snapshot_current(vm_name)
+            cmd_result = virsh.snapshot_current(vm_name)
+            snap_cur = cmd_result.stdout.strip()
             if snap_cur == check_name:
                 logging.info("Check current is same as set %s", check_name)
             else:
