@@ -31,14 +31,19 @@ def run(test, params, env):
     unbridge_status_error = "yes" == params.get("unbridge_status_error", "no")
     iface_script = NETWORK_SCRIPT + iface_name
     iface_script_bk = os.path.join(test.tmpdir, "iface-%s.bk" % iface_name)
-    if not libvirt.check_iface(iface_name, "exists", "--all"):
-        raise error.TestNAError("Interface '%s' not exists" % iface_name)
-    net_iface = utils_net.Interface(name=iface_name)
-    iface_is_up = net_iface.is_up()
+    check_iface = "yes" == params.get("check_iface", "yes")
+    if check_iface:
+        if not libvirt.check_iface(iface_name, "exists", "--all"):
+            raise error.TestNAError("Interface '%s' not exists" % iface_name)
+        net_iface = utils_net.Interface(name=iface_name)
+        iface_is_up = net_iface.is_up()
 
-    # Make sure the interface exists
-    if not libvirt.check_iface(iface_name, "exists", "--all"):
-        raise error.TestNAError("Interface '%s' not exists" % iface_name)
+        # Make sure the interface exists
+        if not libvirt.check_iface(iface_name, "exists", "--all"):
+            raise error.TestNAError("Interface '%s' not exists" % iface_name)
+
+        # Back up the interface script
+        utils.run("cp %s %s" % (iface_script, iface_script_bk))
 
     # Make sure the bridge name not exists
     net_bridge = utils_net.Bridge()
@@ -57,9 +62,6 @@ def run(test, params, env):
         NM_is_running = NM_service.status()
         if NM_is_running:
             NM_service.stop()
-
-    # Back up the interface script
-    utils.run("cp %s %s" % (iface_script, iface_script_bk))
 
     def unbridge_check():
         """
@@ -114,7 +116,7 @@ def run(test, params, env):
             if not unbridge_status_error:
                 unbridge_check()
     finally:
-        if create_bridge:
+        if create_bridge and check_iface:
             if libvirt.check_iface(bridge_name, "exists", "--all"):
                 virsh.iface_unbridge(bridge_name)
             if not os.path.exists(iface_script):
