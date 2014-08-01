@@ -21,6 +21,7 @@ def run(test, params, env):
     passwd = params.get("snapshot_current_passwd")
     snap_num = int(params.get("snapshot_num"))
     readonly = ("yes" == params.get("readonly", "no"))
+    without_snapshot = "yes" == params.get("without_snapshot", "no")
 
     snap_opt = []
     for i in range(1, snap_num + 1):
@@ -45,8 +46,9 @@ def run(test, params, env):
         """
         Do current snapshot test and xml check
         """
-
         output = virsh.snapshot_current(vm_name, snap_cur_opt,
+                                        ignore_status=True,
+                                        debug=True,
                                         readonly=readonly)
 
         # If run fail with cstatus_error = no, then error will raise in command
@@ -75,7 +77,11 @@ def run(test, params, env):
 
         # Check if --snapshotname may change current snapshot
         if "--snapshotname" in snap_cur_opt:
-            current_snap = virsh.snapshot_current(vm_name, readonly=readonly)
+            cmd_result = virsh.snapshot_current(vm_name,
+                                                ignore_status=True,
+                                                debug=True,
+                                                readonly=readonly)
+            current_snap = cmd_result.stdout.strip()
             if current_snap == snap_cur_opt.split()[1]:
                 logging.info("Success to check current snapshot changed to %s",
                              current_snap)
@@ -92,7 +98,8 @@ def run(test, params, env):
 
         # get snapshot name which is parent snapshot's child
         if "--current" in snap_parent_opt:
-            snap_name = virsh.snapshot_current(vm_name)
+            cmd_result = virsh.snapshot_current(vm_name)
+            snap_name = cmd_result.stdout.strip()
         else:
             snap_name = snap_parent_opt.split()[-1]
 
@@ -116,6 +123,7 @@ def run(test, params, env):
         """
 
         cmd_result = virsh.snapshot_parent(vm_name, snap_parent_opt,
+                                           debug=True,
                                            readonly=readonly)
 
         # check status
@@ -131,19 +139,20 @@ def run(test, params, env):
             parent_snapshot_check(cmd_result.stdout.strip())
 
     try:
-        # Create disk snapshot before all to make the origin image clean
-        ret = virsh.snapshot_create_as(vm_name, "snap-temp --disk-only")
-        if ret.exit_status != 0:
-            raise error.TestFail("Fail to create temp snap, Error: %s",
-                                 ret.stderr.strip())
+        if not without_snapshot:
+            # Create disk snapshot before all to make the origin image clean
+            ret = virsh.snapshot_create_as(vm_name, "snap-temp --disk-only")
+            if ret.exit_status != 0:
+                raise error.TestFail("Fail to create temp snap, Error: %s",
+                                     ret.stderr.strip())
 
-        # Create snapshots
-        for opt in snap_opt:
-            result = virsh.snapshot_create_as(vm_name, opt)
-            if result.exit_status:
-                raise error.TestFail("Failed to create snapshot. Error:%s."
-                                     % result.stderr.strip())
-            time.sleep(1)
+            # Create snapshots
+            for opt in snap_opt:
+                result = virsh.snapshot_create_as(vm_name, opt)
+                if result.exit_status:
+                    raise error.TestFail("Failed to create snapshot. Error:%s."
+                                         % result.stderr.strip())
+                time.sleep(1)
 
         # Do parent snapshot test
         if snap_parent_opt is not None:
@@ -154,8 +163,9 @@ def run(test, params, env):
             current_snapshot_test()
 
     finally:
-        utils_test.libvirt.clean_up_snapshots(vm_name)
-        vmxml_backup.sync("--snapshots-metadata")
+        if not without_snapshot:
+            utils_test.libvirt.clean_up_snapshots(vm_name)
+            vmxml_backup.sync("--snapshots-metadata")
         try:
             os.remove(tmp_file)
         except (OSError, NameError):  # tmp_file defined inside conditional
