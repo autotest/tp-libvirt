@@ -124,13 +124,8 @@ def run(test, params, env):
             logging.debug("iscsi dev name: %s", device_source)
 
             # Format the disk and make file system.
-            open("/tmp/fdisk-cmd", "w").write("n\np\n\n\n\nw\n")
-            output = utils.run("fdisk %s < /tmp/fdisk-cmd"
-                               % device_source).stdout.strip()
-            logging.debug("fdisk output: %s", output)
-            output = utils.run("mkfs.ext3 %s1"
-                               % device_source).stdout.strip()
-            logging.debug("mkfs output: %s", output)
+            libvirt.mk_part(device_source)
+            libvirt.mkfs("%s1" % device_source, "ext3")
             device_source += "1"
             disk.update({"format": disk_format, "disk_dev": disk_dev,
                          "source": device_source})
@@ -169,7 +164,7 @@ def run(test, params, env):
             for i in range(len(devices)):
                 if devices[i] == "cdrom":
                     s, o = session.cmd_status_output(
-                        "ls /dev/cdrom && mount /dev/cdrom /mnt &&"
+                        "ls /dev/sr0 && mount /dev/sr0 /mnt &&"
                         " ls /mnt && umount /mnt")
                     logging.info("cdrom devices in VM:\n%s", o)
                 elif devices[i] == "floppy":
@@ -312,7 +307,7 @@ def run(test, params, env):
         Get console output and check bootorder.
         """
         # Get console output.
-        vm.serial_console.read_until_output_matches(["Linux version"])
+        vm.serial_console.read_until_output_matches(["Booting from Hard Disk", "Linux version"])
         output = vm.serial_console.get_stripped_output()
         lines = re.findall(r"^Booting from (.+)...", output, re.M)
         logging.debug("lines: %s", lines)
@@ -882,6 +877,10 @@ def run(test, params, env):
                 dev_id = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
                                                     "alias", "name")
             if device_bus[0] == "ide":
+                check_cmd = "/usr/libexec/qemu-kvm -device ? 2>&1 |grep -E 'ide-cd|ide-hd'"
+                if utils.run(check_cmd, ignore_status=True).exit_status:
+                    raise error.TestNAError("ide-cd/ide-hd not supported by this qemu-kvm")
+
                 if devices[0] == "cdrom":
                     device_option = "ide-cd"
                 else:
