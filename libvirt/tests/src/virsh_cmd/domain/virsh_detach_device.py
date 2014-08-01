@@ -111,11 +111,13 @@ def run(test, params, env):
             disk_class = vm_xml.VMXML.get_device_class('disk')
             if test_block_dev:
                 disk = disk_class(type_name='block')
+                stype = 'dev'
             else:
                 disk = disk_class(type_name='file')
+                stype = 'file'
             disk.device = device_type
             disk.driver = dict(name='qemu', type='raw')
-            disk.source = disk.new_disk_source(attrs={'file': device_source})
+            disk.source = disk.new_disk_source(attrs={stype: device_source})
             disk.target = dict(bus=device_bus, dev=device_target)
             disk.xmltreefile.write()
             shutil.copyfile(disk.xml, device_xml_file)
