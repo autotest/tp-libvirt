@@ -110,9 +110,9 @@ def run(test, params, env):
     migration_type = params.get("migration_type")
     start_migration_vms = "yes" == params.get("start_migration_vms", "yes")
     thread_timeout = int(params.get("thread_timeout", 120))
-    remote_host = params.get("remote_ip")
-    username = params.get("remote_user", "root")
-    password = params.get("remote_pwd")
+    remote_host = params.get("migrate_dest_host")
+    username = params.get("migrate_dest_user", "root")
+    password = params.get("migrate_dest_pwd")
     prompt = params.get("shell_prompt", r"[\#\$]")
 
     # Set vm_bytes for start_cmd

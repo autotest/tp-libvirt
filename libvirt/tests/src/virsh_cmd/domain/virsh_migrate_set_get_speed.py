@@ -1,5 +1,6 @@
 import logging
 from autotest.client.shared import error, utils
+from autotest.client.shared import ssh_key
 from virttest import virsh, libvirt_vm, utils_test
 from provider import libvirt_version
 from virttest.utils_test import libvirt as utlv
@@ -128,6 +129,18 @@ def run(test, params, env):
         vms = env.get_all_vms()
         src_uri = params.get("migrate_src_uri", "qemu+ssh://EXAMPLE/system")
         dest_uri = params.get("migrate_dest_uri", "qemu+ssh://EXAMPLE/system")
+
+        if src_uri.count('///') or src_uri.count('EXAMPLE'):
+            raise error.TestNAError("The src_uri '%s' is invalid", src_uri)
+
+        if dest_uri.count('///') or dest_uri.count('EXAMPLE'):
+            raise error.TestNAError("The dest_uri '%s' is invalid", dest_uri)
+
+        remote_host = params.get("migrate_dest_host")
+        username = params.get("migrate_dest_user", "root")
+        password = params.get("migrate_dest_pwd")
+        # Config ssh autologin for remote host
+        ssh_key.setup_ssh_key(remote_host, username, password, port=22)
 
         # Check migrated vms' state
         for vm in vms:
