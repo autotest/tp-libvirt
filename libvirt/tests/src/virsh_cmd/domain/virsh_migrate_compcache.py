@@ -1,6 +1,11 @@
 import logging
+import subprocess
+import time
+from autotest.client.shared import error
+from autotest.client.shared import utils
+from autotest.client.shared import ssh_key
 from virttest import virsh, utils_misc
-from autotest.client.shared import error, utils
+from virttest.utils_test import libvirt as utlv
 
 
 def get_page_size():
@@ -83,6 +88,51 @@ def run(test, params, env):
     result = virsh.migrate_compcache(vm_ref, size=size)
     logging.debug(result)
 
+    remote_uri = params.get("jobabort_remote_uri")
+    remote_host = params.get("migrate_dest_host")
+    remote_user = params.get("migrate_dest_user", "root")
+    remote_pwd = params.get("migrate_dest_pwd")
+    check_job_compcache = False
+    if not remote_host.count("EXAMPLE") and size is not None and expect_succeed:
+        # Config ssh autologin for remote host
+        ssh_key.setup_ssh_key(remote_host, remote_user,
+                              remote_pwd, port=22)
+        if vm.is_dead():
+            vm.start()
+        if vm.is_paused():
+            vm.resume()
+        vm.wait_for_login()
+        # Do actual migration to verify compression cache of migrate jobs
+        command = "virsh migrate %s %s --compressed" % (vm_name, remote_uri)
+        p = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+
+        # Give enough time for starting job
+        t = 0
+        while t < 5:
+            jobtype = vm.get_job_type()
+            if "None" == jobtype:
+                t += 1
+                time.sleep(1)
+                continue
+            elif jobtype is False:
+                logging.error("Get job type failed.")
+                break
+            else:
+                logging.debug("Job started: %s", jobtype)
+                break
+
+        jobinfo = virsh.domjobinfo(vm_ref, debug=True, ignore_status=True).stdout
+        check_job_compcache = True
+        if p.poll():
+            try:
+                p.kill()
+            except OSError:
+                pass
+
+        # Cleanup in case of successful migration
+        utlv.MigrationTest().cleanup_dest_vm(vm, None, remote_uri)
+
     # Shut down the VM to make sure the compcache setting cleared
     if vm.is_alive():
         vm.destroy()
@@ -92,7 +142,26 @@ def run(test, params, env):
         if result.exit_status != 0:
             raise error.TestFail(
                 'Expected succeed, but failed with result:\n%s' % result)
-    elif expect_succeed:
+        if check_job_compcache:
+            for line in jobinfo.splitlines():
+                detail = line.split(":")
+                if detail[0].count("Compression cache"):
+                    value = detail[-1].split()[0].strip()
+                    value = int(float(value))
+                    unit = detail[-1].split()[-1].strip()
+                    if unit == "KiB":
+                        size = int(int(size) / 1024)
+                    elif unit == "MiB":
+                        size = int(int(size) / 1048576)
+                    elif unit == "GiB":
+                        size = int(int(size) / 1073741824)
+                    if value != size:
+                        raise error.TestFail("Compression cache is not match"
+                                             " with setted")
+                    else:
+                        return
+            raise error.TestFail("Get compression cahce in job failed.")
+    elif not expect_succeed:
         if result.exit_status == 0:
             raise error.TestFail(
                 'Expected fail, but succeed with result:\n%s' % result)
