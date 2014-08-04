@@ -114,13 +114,8 @@ def run(test, params, env):
         disk_source = disk_dev.setup()
         logging.debug("iscsi dev name: %s", disk_source)
         # Format the disk and make the file system.
-        open("/tmp/fdisk-cmd", "w").write("n\np\n\n\n\nw\n")
-        output = utils.run("fdisk %s < /tmp/fdisk-cmd"
-                           % disk_source).stdout.strip()
-        logging.debug("fdisk output: %s", output)
-        output = utils.run("mkfs.ext3 %s1"
-                           % disk_source).stdout.strip()
-        logging.debug("mkfs output: %s", output)
+        libvirt.mk_part(disk_source)
+        libvirt.mkfs("%s1" % disk_source, "ext3")
         disk_source += "1"
         disks.append({"format": disk_format, "disk_dev": disk_dev,
                       "source": disk_source})
