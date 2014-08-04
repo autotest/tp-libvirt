@@ -560,11 +560,9 @@ def run(test, params, env):
         # restore config
         if config_format and qemu_conf:
             qemu_conf.restore()
-            qemu_conf.sync()
 
         if libvirtd_conf:
             libvirtd_conf.restore()
-            libvirtd_conf.sync()
 
         if libvirtd_log_path and os.path.exists(libvirtd_log_path):
             os.unlink(libvirtd_log_path)
