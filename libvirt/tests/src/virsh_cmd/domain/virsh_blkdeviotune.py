@@ -151,6 +151,10 @@ def run(test, params, env):
     change_parameters = params.get("change_parameters", "no")
     original_vm_xml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
+    # Used for default device of blkdeviotune
+    device = params.get("blkdevio_device", "vmblk")
+    sys_image_target = vm.get_first_disk_devices()["target"]
+
     # Make sure vm is down if start not requested
     if start_vm == "no" and vm and vm.is_alive():
         vm.destroy()
@@ -161,6 +165,8 @@ def run(test, params, env):
 
     test_dict = dict(params)
     test_dict['vm'] = vm
+    if device == "vmblk":
+        test_dict['blkdevio_device'] = sys_image_target
 
     # Make sure libvirtd service is running
     if not utils_libvirtd.libvirtd_is_running():
