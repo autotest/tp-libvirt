@@ -109,15 +109,15 @@ def run(test, params, env):
 
     elif disk_format == "iscsi":
         # Create iscsi device if neened.
-        disk_dev = qemu_storage.Iscsidev(params, disk_source_path,
-                                         "iscsi")
-        disk_source = disk_dev.setup()
+        image_size = params.get("image_size", "2G")
+        disk_source = libvirt.setup_or_cleanup_iscsi(
+            is_setup=True, is_login=True, image_size=image_size)
         logging.debug("iscsi dev name: %s", disk_source)
         # Format the disk and make the file system.
         libvirt.mk_part(disk_source)
         libvirt.mkfs("%s1" % disk_source, "ext3")
         disk_source += "1"
-        disks.append({"format": disk_format, "disk_dev": disk_dev,
+        disks.append({"format": disk_format,
                       "source": disk_source})
     elif disk_format in ["raw", "qcow2"]:
         disk_path = "%s/test.%s" % (disk_source_path, disk_format)
@@ -288,7 +288,6 @@ def run(test, params, env):
             if img["format"] == "scsi":
                 libvirt.delete_scsi_disk()
             elif img["format"] == "iscsi":
-                if img.has_key("disk_dev"):
-                    img["disk_dev"].cleanup()
+                libvirt.setup_or_cleanup_iscsi(is_setup=False)
             elif img.has_key("source"):
                 os.remove(img["source"])
