@@ -95,16 +95,21 @@ def run(test, params, env):
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     if vm.is_alive():
         vm.destroy()
-    xml_console_config(vm_name)
+    if vm.is_qemu():
+        xml_console_config(vm_name)
 
     try:
         # Guarantee cleanup after config vm console failed.
-        vm_console_config(vm)
+        if vm.is_qemu():
+            vm_console_config(vm)
 
         # Prepare vm state for test
         if vm_state != "shutoff":
             vm.start(autoconsole=False)
-            vm.wait_for_login()
+            if vm.is_qemu():
+                # LXC cannot login here, because it will use virsh console
+                # to login, it will break the console action in next step
+                vm.wait_for_login()
             domid = vm.get_id()
         if vm_state == "paused":
             vm.pause()
@@ -138,7 +143,8 @@ def run(test, params, env):
         # Recover vm
         if vm.is_alive():
             vm.destroy()
-        xml_console_recover(vmxml_backup)
+        if vm.is_qemu():
+            xml_console_recover(vmxml_backup)
 
     # Check result
     if status_error:
