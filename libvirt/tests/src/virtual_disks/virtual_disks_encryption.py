@@ -19,6 +19,10 @@ def run(test, params, env):
     6.Confirm the test result.
     """
 
+    vm_name = params.get("main_vm")
+    vm = env.get_vm(vm_name)
+    virsh_dargs = {'debug': True, 'ignore_status': True}
+
     def create_pool(p_name, p_type, p_target):
         """
         Define and start a pool.
@@ -33,15 +37,13 @@ def run(test, params, env):
 
         if not os.path.exists(p_target):
             os.mkdir(p_target)
-        if not p_xml.pool_define():
-            logging.debug("%s defined failed", p_name)
-            raise error.TestNAError("Define pool %s failed."
-                                    % p_name)
-
-        sp = libvirt_storage.StoragePool()
-        if not sp.start_pool(p_name):
-            raise error.TestNAError("Start pool %s failed."
-                                    % p_name)
+        p_xml.xmltreefile.write()
+        ret = virsh.pool_define(p_xml.xml, **virsh_dargs)
+        libvirt.check_exit_status(ret)
+        ret = virsh.pool_build(p_name, **virsh_dargs)
+        libvirt.check_exit_status(ret)
+        ret = virsh.pool_start(p_name, **virsh_dargs)
+        libvirt.check_exit_status(ret)
 
     def create_vol(p_name, p_format, vol_params):
         """
@@ -56,7 +58,7 @@ def run(test, params, env):
         v_xml.encryption = volxml.new_encryption(
             **{"format": p_format})
         v_xml.xmltreefile.write()
-        return virsh.vol_create(p_name, v_xml.xml)
+        return virsh.vol_create(p_name, v_xml.xml, **virsh_dargs)
 
     def check_in_vm(vm, target):
         """
@@ -117,8 +119,7 @@ def run(test, params, env):
         vm.destroy(gracefully=False)
 
     # Back up xml file.
-    vm_xml_file = os.path.join(test.tmpdir, "vm.xml")
-    virsh.dumpxml(vm_name, extra="--inactive", to_file=vm_xml_file)
+    vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     try:
         # Prepare the disk.
@@ -131,8 +132,8 @@ def run(test, params, env):
                       "capacity_unit": volume_cap_unit}
         if 0 != create_vol(pool_name, volume_target_encypt,
                            vol_params).exit_status:
-            virsh.pool_destroy(pool_name)
-            virsh.pool_undefine(pool_name)
+            virsh.pool_destroy(pool_name, **virsh_dargs)
+            virsh.pool_undefine(pool_name, **virsh_dargs)
             raise error.TestNAError("Create volume %s failed." % volume_name)
 
         # Add disk xml.
@@ -148,6 +149,8 @@ def run(test, params, env):
             dev_attrs = "dev"
         disk_xml.source = disk_xml.new_disk_source(
             **{"attrs": {dev_attrs: volume_target_path}})
+        disk_xml.driver = {"name": "qemu", "type": volume_target_format,
+                           "cache": "none"}
         disk_xml.target = {"dev": device_target, "bus": device_bus}
 
         v_xml = vol_xml.VolXML.new_from_vol_dumpxml(volume_name, pool_name)
@@ -184,13 +187,12 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
         logging.info("Restoring vm...")
-        virsh.undefine(vm_name)
-        virsh.define(vm_xml_file)
+        vmxml_backup.sync()
 
         # Clean up pool, vol
         for i in sec_uuid:
-            virsh.secret_undefine(i)
-            virsh.vol_delete(volume_name, pool_name)
+            virsh.secret_undefine(i, **virsh_dargs)
+            virsh.vol_delete(volume_name, pool_name, **virsh_dargs)
         if virsh.pool_state_dict().has_key(pool_name):
-            virsh.pool_destroy(pool_name)
-            virsh.pool_undefine(pool_name)
+            virsh.pool_destroy(pool_name, **virsh_dargs)
+            virsh.pool_undefine(pool_name, **virsh_dargs)
