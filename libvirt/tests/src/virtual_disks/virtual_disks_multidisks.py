@@ -5,7 +5,6 @@ import shutil
 from autotest.client.shared import error
 from autotest.client import utils
 from virttest import aexpect, virt_vm, virsh, remote
-from virttest import qemu_storage
 from virttest import nfs
 from virttest import utils_libvirtd
 from virttest.utils_test import libvirt
@@ -118,16 +117,16 @@ def run(test, params, env):
 
         elif disk_format == "iscsi":
             # Create iscsi device if needed.
-            disk_dev = qemu_storage.Iscsidev(params, os.path.dirname(path),
-                                             "iscsi")
-            device_source = disk_dev.setup()
+            image_size = params.get("image_size", "2G")
+            device_source = libvirt.setup_or_cleanup_iscsi(
+                is_setup=True, is_login=True, image_size=image_size)
             logging.debug("iscsi dev name: %s", device_source)
 
             # Format the disk and make file system.
             libvirt.mk_part(device_source)
             libvirt.mkfs("%s1" % device_source, "ext3")
             device_source += "1"
-            disk.update({"format": disk_format, "disk_dev": disk_dev,
+            disk.update({"format": disk_format,
                          "source": device_source})
         elif disk_format in ["raw", "qcow2"]:
             disk_size = params.get("virt_disk_device_size", "1")
@@ -501,12 +500,12 @@ def run(test, params, env):
         logging.error(repr(e))
         for img in disks:
             if img.has_key("disk_dev"):
-                if img["format"] == "iscsi":
+                if img["format"] == "nfs":
                     img["disk_dev"].cleanup()
-                else:
-                    img["disk_dev"].remove()
             else:
-                if img["format"] not in ["dir", "scsi", "iscsi"]:
+                if img["format"] == "iscsi":
+                    libvirt.setup_or_cleanup_iscsi(is_setup=False)
+                if img["format"] not in ["dir", "scsi"]:
                     os.remove(img["source"])
         raise error.TestNAError("Creating disk failed")
 
@@ -661,6 +660,11 @@ def run(test, params, env):
             for ctrl in controllers:
                 if ctrl.type == "usb":
                     vmxml.del_device(ctrl)
+
+            inputs = vmxml.get_devices(device_type="input")
+            for input in inputs:
+                if input.type_name == "tablet":
+                    vmxml.del_device(input)
 
             # Add new usb controllers.
             usb_controller1 = Controller("controller")
@@ -999,14 +1003,15 @@ def run(test, params, env):
 
         for img in disks:
             if img.has_key("disk_dev"):
-                if img["format"] in ["iscsi", "nfs"]:
+                if img["format"] == "nfs":
                     img["disk_dev"].cleanup()
-                else:
-                    img["disk_dev"].remove()
+
                 del img["disk_dev"]
             else:
                 if img["format"] == "scsi":
                     libvirt.delete_scsi_disk()
-                elif img["format"] not in ["dir", "iscsi"]:
+                elif img["format"] == "iscsi":
+                    libvirt.setup_or_cleanup_iscsi(is_setup=False)
+                elif img["format"] not in ["dir"]:
                     if os.path.exists(img["source"]):
                         os.remove(img["source"])
