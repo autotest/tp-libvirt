@@ -5,7 +5,10 @@ import grp
 import logging
 from autotest.client import utils
 from autotest.client.shared import error
-from virttest import utils_selinux, virt_vm, utils_config
+from virttest import utils_selinux
+from virttest import virt_vm
+from virttest import utils_config
+from virttest import utils_libvirtd
 from virttest.libvirt_xml.vm_xml import VMXML
 
 
@@ -153,6 +156,7 @@ def run(test, params, env):
     qemu_sock_mod = False
     qemu_sock_path = '/var/lib/libvirt/qemu/'
     qemu_conf = utils_config.LibvirtQemuConfig()
+    libvirtd = utils_libvirtd.Libvirtd()
     try:
         # Check qemu_group_user
         if qemu_group_user:
@@ -208,7 +212,7 @@ def run(test, params, env):
             else:
                 qemu_conf['dynamic_ownership'] = 0
             logging.debug("the qemu.conf content is: %s" % qemu_conf)
-            qemu_conf.sync()
+            libvirtd.restart()
 
         # Start VM to check the qemu process and image.
         try:
@@ -326,6 +330,7 @@ def run(test, params, env):
             os.chmod(qemu_sock_path, st.st_mode ^ stat.S_IWGRP)
         if set_qemu_conf:
             qemu_conf.restore()
+            libvirtd.restart()
         if create_qemu_user:
             cmd = "userdel -r vdsm_fake"
             output = utils.run(cmd, ignore_status=True)
