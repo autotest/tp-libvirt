@@ -5,7 +5,12 @@ import string
 import logging
 from autotest.client.shared import error
 from autotest.client import utils
-from virttest import virsh, utils_misc, xml_utils, libvirt_xml, utils_config
+from virttest import virsh
+from virttest import utils_misc
+from virttest import xml_utils
+from virttest import libvirt_xml
+from virttest import utils_config
+from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml, xcepts
 from provider import libvirt_version
 
@@ -390,13 +395,14 @@ def run(test, params, env):
     qemu_conf = None
     libvirtd_conf = None
     libvirtd_log_path = None
+    libvirtd = utils_libvirtd.Libvirtd()
     try:
         # Config "snapshot_image_format" option in qemu.conf
         if config_format:
             qemu_conf = utils_config.LibvirtQemuConfig()
             qemu_conf["snapshot_image_format"] = '"%s"' % snapshot_image_format
             logging.debug("the qemu config file content is:\n %s" % qemu_conf)
-            qemu_conf.sync()
+            libvirtd.restart()
 
         if check_json_no_savevm:
             libvirtd_conf = utils_config.LibvirtdConfig()
@@ -406,7 +412,7 @@ def run(test, params, env):
             libvirtd_conf["log_outputs"] = '"1:file:%s"' % libvirtd_log_path
             logging.debug("the libvirtd config file content is:\n %s" %
                           libvirtd_conf)
-            libvirtd_conf.sync()
+            libvirtd.restart()
 
         # Start qemu-ga on guest if have --quiesce
         if unix_channel and options.find("quiesce") >= 0:
@@ -563,6 +569,9 @@ def run(test, params, env):
 
         if libvirtd_conf:
             libvirtd_conf.restore()
+
+        if libvirtd_conf or (config_format and qemu_conf):
+            libvirtd.restart()
 
         if libvirtd_log_path and os.path.exists(libvirtd_log_path):
             os.unlink(libvirtd_log_path)
