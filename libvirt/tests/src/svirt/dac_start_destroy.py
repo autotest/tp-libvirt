@@ -103,6 +103,7 @@ def run(test, params, env):
     sec_model = params.get("dac_start_destroy_vm_sec_model", "dac")
     sec_label = params.get("dac_start_destroy_vm_sec_label", None)
     sec_relabel = params.get("dac_start_destroy_vm_sec_relabel", "yes")
+    security_default_confined = params.get("security_default_confined", None)
     sec_dict = {'type': sec_type, 'model': sec_model, 'relabel': sec_relabel}
     if sec_label:
         sec_dict['label'] = sec_label
@@ -211,6 +212,8 @@ def run(test, params, env):
                 qemu_conf['dynamic_ownership'] = 1
             else:
                 qemu_conf['dynamic_ownership'] = 0
+            if security_default_confined:
+                qemu_conf['security_default_confined'] = security_default_confined
             logging.debug("the qemu.conf content is: %s" % qemu_conf)
             libvirtd.restart()
 
@@ -253,7 +256,7 @@ def run(test, params, env):
                                                      "=%s" % disk_context +
                                                      ", sec_label_trans=%s."
                                                      % sec_label_trans)
-            elif set_qemu_conf:
+            elif set_qemu_conf and not security_default_confined:
                 if vm_context != qemu_conf_label_trans:
                     raise error.TestFail("Label of VM processs is not expected"
                                          " after starting.\nDetail: vm_context="
