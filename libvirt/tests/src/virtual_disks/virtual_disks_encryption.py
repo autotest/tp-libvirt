@@ -179,11 +179,14 @@ def run(test, params, env):
 
             if not check_in_vm(vm, device_target):
                 raise error.TestFail("Check encryption disk in VM failed")
-        except virt_vm.VMStartError:
+        except virt_vm.VMStartError, e:
             if status_error:
+                logging.debug("VM failed to start as expected."
+                              "Error: %s" % str(e))
                 pass
             else:
-                raise error.TestFail("VM failed to start")
+                raise error.TestFail("VM failed to start."
+                                     "Error: %s" % str(e))
 
     finally:
         # Recover VM.
