@@ -70,6 +70,12 @@ def run(test, params, env):
         """
         try:
             session = vm.wait_for_login()
+            rpm_stat = session.cmd_status("rpm -q parted || "
+                                          "yum install -y parted", 300)
+            if rpm_stat != 0:
+                raise error.TestFail("Failed to query/install parted, make sure"
+                                     " that you have usable repo in guest")
+
             if target == "hda":
                 target = "sda"
             libvirt.mk_part("/dev/%s" % target, session=session)
