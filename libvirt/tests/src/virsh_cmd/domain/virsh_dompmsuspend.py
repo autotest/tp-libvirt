@@ -14,7 +14,7 @@ def run(test, params, env):
         # Check if qemu-ga already started automatically
         cmd = "rpm -q qemu-guest-agent || yum install -y qemu-guest-agent"
         stat_install, output = session.cmd_status_output(cmd, 300)
-        logging.error(output)
+        logging.debug(output)
         if stat_install != 0:
             raise error.TestError("Fail to install qemu-guest-agent, make"
                                   "sure that you have usable repo in guest")
@@ -84,11 +84,12 @@ def run(test, params, env):
         vm.start()
 
         # Create swap partition/file if nessesary.
+        need_mkswap = False
         if suspend_target in ['disk', 'hybrid']:
             need_mkswap = not vm.has_swap()
-            if need_mkswap:
-                logging.error("Creating swap partition.")
-                vm.create_swap_partition()
+        if need_mkswap:
+            logging.debug("Creating swap partition.")
+            vm.create_swap_partition()
 
         session = vm.wait_for_login()
         try:
@@ -119,9 +120,8 @@ def run(test, params, env):
             # Cleanup
             session.close()
 
-            if suspend_target in ['disk', 'hybrid']:
-                if need_mkswap:
-                    vm.cleanup_swap()
+            if need_mkswap:
+                vm.cleanup_swap()
 
         if result.exit_status == 0:
             if fail_pat:
