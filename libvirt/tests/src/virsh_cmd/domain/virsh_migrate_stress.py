@@ -1,10 +1,11 @@
+import os
 import logging
 import time
 from autotest.client.shared import utils_memory
 from autotest.client.shared import error
 from autotest.client.shared import ssh_key
 from virttest import libvirt_vm, virt_vm
-from virttest import utils_test, remote
+from virttest import utils_test, remote, data_dir
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml import vm_xml
 
@@ -56,11 +57,27 @@ def do_stress_migration(vms, srcuri, desturi, stress_type,
     :param vms: migrated vms.
     """
     fail_info = utils_test.load_stress(stress_type, vms, params)
+
+    migtest = utlv.MigrationTest()
+    options = None
+    if migration_type == "compressed":
+        options = "--live --compressed --timeout 60"
+        migration_type = "orderly"
+        shared_dir = os.path.dirname(data_dir.get_data_dir())
+        src_file = os.path.join(shared_dir, "scripts", "duplicate_pages.py")
+        dest_dir = "/tmp"
+        for vm in vms:
+            session = vm.wait_for_login()
+            vm.copy_files_to(src_file, dest_dir)
+            status = session.cmd_status("cd /tmp;python duplicate_pages.py")
+            if status:
+                fail_info.append("Set duplicated pages for vm failed.")
+
     if len(fail_info):
         logging.warning("Add stress for migration failed:%s", fail_info)
 
-    migtest = utlv.MigrationTest()
-    migtest.do_migration(vms, srcuri, desturi, migration_type, options=None,
+    logging.debug("Starting migration...")
+    migtest.do_migration(vms, srcuri, desturi, migration_type, options=options,
                          thread_timeout=thread_timeout)
 
     # vms will be shutdown, so no need to do this cleanup
