@@ -58,7 +58,8 @@ def run(test, params, env):
         v_xml.encryption = volxml.new_encryption(
             **{"format": p_format})
         v_xml.xmltreefile.write()
-        return virsh.vol_create(p_name, v_xml.xml, **virsh_dargs)
+        ret = virsh.vol_create(p_name, v_xml.xml, **virsh_dargs)
+        libvirt.check_exit_status(ret)
 
     def check_in_vm(vm, target):
         """
@@ -130,11 +131,7 @@ def run(test, params, env):
                       volume_target_format, "path": volume_target_path,
                       "label": volume_target_label,
                       "capacity_unit": volume_cap_unit}
-        if 0 != create_vol(pool_name, volume_target_encypt,
-                           vol_params).exit_status:
-            virsh.pool_destroy(pool_name, **virsh_dargs)
-            virsh.pool_undefine(pool_name, **virsh_dargs)
-            raise error.TestNAError("Create volume %s failed." % volume_name)
+        create_vol(pool_name, volume_target_encypt, vol_params)
 
         # Add disk xml.
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
