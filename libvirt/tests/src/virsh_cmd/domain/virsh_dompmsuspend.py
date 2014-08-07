@@ -1,7 +1,7 @@
 import logging
 from autotest.client.shared import error
 from virttest import virsh
-from virttest.libvirt_xml.vm_xml import VMXML, VMPM
+from virttest.libvirt_xml.vm_xml import VMXML, VMPMXML
 
 
 def run(test, params, env):
@@ -66,7 +66,7 @@ def run(test, params, env):
             if 'pm' in vm_xml:
                 del vm_xml.pm
         else:
-            pm_xml = VMPM()
+            pm_xml = VMPMXML()
             if suspend_target == 'mem':
                 pm_xml.mem_enabled = pm_enabled
             elif suspend_target == 'disk':
