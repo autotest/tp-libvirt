@@ -220,8 +220,7 @@ def run(test, params, env):
                             logging.debug("error_policy in vm1 exit %s; output: %s", s, o)
                             session.close()
                             cmd = ("dd if=/dev/zero of=/mnt/test bs=1M count=100 && dd if="
-                                   "/mnt/test of=/dev/null bs=1M")
-                            #; dmesg | grep 'I/O error'"
+                                   "/mnt/test of=/dev/null bs=1M;dmesg | grep 'I/O error'")
                             s, o = session0.cmd_status_output(cmd)
                             logging.debug("session in vm0 exit %s; output: %s", s, o)
                             if error_policy == "report":
