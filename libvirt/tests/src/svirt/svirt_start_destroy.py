@@ -108,11 +108,15 @@ def run(test, params, env):
             img_label_after = utils_selinux.get_context_of_file(
                 filename=disks.values()[0]['source'])
             if (not img_label_after == img_label):
-                raise error.TestFail("Bug: Label of disk is not restored in VM"
-                                     " shuting down.\n"
-                                     "Detail: img_label_after=%s, "
-                                     "img_label_before=%s.\n"
-                                     % (img_label_after, img_label))
+                # Bug 547546 - RFE: the security drivers must remember original
+                # permissions/labels and restore them after
+                # https://bugzilla.redhat.com/show_bug.cgi?id=547546
+                err_msg = "Label of disk is not restored in VM shuting down.\n"
+                err_msg += "Detail: img_label_after=%s, " % img_label_after
+                err_msg += "img_label_before=%s.\n" % img_label
+                err_msg += "More info in https://bugzilla.redhat.com/show_bug"
+                err_msg += ".cgi?id=547546"
+                raise error.TestFail(err_msg)
         except virt_vm.VMStartError, e:
             # Starting VM failed.
             # VM with seclabel can not access the image with the context.
