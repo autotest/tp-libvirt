@@ -600,7 +600,17 @@ def run(test, params, env):
             disk = xml_devices[disk_index]
             if bootorder != "":
                 disk.boot = bootorder
-                del vmxml.os_boot
+                osxml = vm_xml.VMOSXML()
+                osxml.type = vmxml.os.type
+                osxml.arch = vmxml.os.arch
+                osxml.machine = vmxml.os.machine
+                if test_boot_console:
+                    osxml.loader = "/usr/share/seabios/bios.bin"
+                    osxml.bios_useserial = "yes"
+                    osxml.bios_reboot_timeout = "-1"
+
+                del vmxml.os
+                vmxml.os = osxml
             driver_dict = {"name": disk.driver["name"],
                            "type": disk.driver["type"]}
             if bootdisk_driver != "":
@@ -628,10 +638,6 @@ def run(test, params, env):
 
             disk.target = {"dev": bootdisk_target, "bus": bootdisk_bus}
             device_source = disk.source.attrs["file"]
-
-            if test_boot_console:
-                vmxml.os_loader = "/usr/share/seabios/bios.bin"
-                vmxml.os_bios = {"useserial": "yes", "rebootTimeout": "-1"}
 
             del disk.address
             vmxml.devices = xml_devices
