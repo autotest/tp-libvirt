@@ -246,6 +246,10 @@ def run(test, params, env):
                 raise error.TestNAError("virsh setvcpu hotplug unsupported, "
                                         " mtype=%s" % mtype)
 
+            # Cannot set current vcpu count large than max vcpu count
+            if orig_set == 1 and count > orig_set:
+                raise error.TestNAError(setvcpu_exit_stderr)
+
             # Otherwise, it seems we have a real error
             raise error.TestFail("Run failed with right command mtype=%s stderr=%s" %
                                  (mtype, setvcpu_exit_stderr))
