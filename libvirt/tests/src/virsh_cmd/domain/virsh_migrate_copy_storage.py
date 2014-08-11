@@ -164,7 +164,6 @@ def run(test, params, env):
         if disks_count and vm.name == new_vm_name:
             vm.undefine()
         for disk in added_disks_list:
-            utlv.delete_local_disk(disk_type, disk)
             rdm.remove_path(disk_type, disk)
         rdm.remove_path("file", file_path)
         if disk_type == "lvm":
