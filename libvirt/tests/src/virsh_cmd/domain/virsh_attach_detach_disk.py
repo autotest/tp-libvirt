@@ -7,7 +7,6 @@ from virttest import aexpect
 from virttest import virt_vm
 from virttest import virsh
 from virttest import remote
-from virttest import qemu_storage
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -24,21 +23,6 @@ def run(test, params, env):
     3.Recover test environment.
     4.Confirm the test result.
     """
-
-    def create_device_image(img_name, img_format):
-        """
-        Create a device source image by qemu-img command.
-
-        :param name: Name of the image
-        :param format: Image format(raw, qcow2, etc.)
-        :param extra: Extra params for creating image
-        """
-        params['image_name'] = img_name
-        params['image_format'] = img_format
-        params['image_size'] = "10M"
-        image = qemu_storage.QemuImg(params, test.tmpdir, img_name)
-        image_path, _ = image.create(params)
-        return image_path
 
     def check_vm_partition(vm, device, os_type, target_name):
         """
@@ -151,26 +135,24 @@ def run(test, params, env):
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     # Create virtual device file.
+    device_source_path = os.path.join(test.tmpdir, device_source_name)
     if test_block_dev:
-        try:
-            iscsi_dev = qemu_storage.Iscsidev(params, test.virtdir, "iscsi")
-            device_source = iscsi_dev.setup()
-            logging.debug("iscsi dev name: %s" % device_source)
-        except error.TestError:
+        device_source = libvirt.setup_or_cleanup_iscsi(True)
+        if not device_source:
             # We should skip this case
             raise error.TestNAError("Can not get iscsi device name in host")
         if test_logcial_dev:
-            try:
-                lv_utils.vg_create(vg_name, device_source)
-                lv_utils.lv_create(vg_name, lv_name, "10M")
-                logging.debug("New created volume: %s", lv_name)
-            except error.TestError:
-                raise error.TestNAError("Can not create lv by using %s" % device_source)
-            device_source = "/dev/" + vg_name + "/" + lv_name
+            lv_utils.vg_create(vg_name, device_source)
+            device_source = libvirt.create_local_disk("lvm",
+                                                      size="10M",
+                                                      vgname=vg_name,
+                                                      lvname=lv_name)
+            logging.debug("New created volume: %s", lv_name)
     else:
         if source_path and create_img:
-            device_source = create_device_image(device_source_name,
-                                                device_source_format)
+            device_source = libvirt.create_local_disk(
+                "file", path=device_source_path,
+                size="1G", disk_format=device_source_format)
         else:
             device_source = device_source_name
 
@@ -202,7 +184,9 @@ def run(test, params, env):
         if test_twice:
             device_target2 = params.get("at_dt_disk_device_target2",
                                         device_target)
-            create_device_image(device_source_name, device_source_format)
+            device_source = libvirt.create_local_disk(
+                "file", path=device_source_path,
+                size="1", disk_format=device_source_format)
             s_attach = virsh.attach_disk(vm_name, device_source, device_target2,
                                          "--driver qemu --config").exit_status
             if s_attach != 0:
@@ -260,7 +244,9 @@ def run(test, params, env):
 
     if test_twice:
         device_target2 = params.get("at_dt_disk_device_target2", device_target)
-        create_device_image(device_source_name, device_source_format)
+        device_source = libvirt.create_local_disk(
+            "file", path=device_source_path,
+            size="1G", disk_format=device_source_format)
         if test_cmd == "attach-disk":
             if address2:
                 at_options = at_options_twice
@@ -388,11 +374,11 @@ def run(test, params, env):
             os.remove(save_file)
         if test_block_dev:
             if test_logcial_dev:
-                lv_utils.lv_remove(vg_name, lv_name)
+                libvirt.delete_local_disk("lvm", vgname=vg_name, lvname=lv_name)
                 lv_utils.vg_remove(vg_name)
-            iscsi_dev.cleanup()
-        elif os.path.exists(device_source):
-            os.remove(device_source)
+            libvirt.setup_or_cleanup_iscsi(False)
+        else:
+            libvirt.delete_local_disk("file", device_source)
 
     # Check results.
     if status_error:
