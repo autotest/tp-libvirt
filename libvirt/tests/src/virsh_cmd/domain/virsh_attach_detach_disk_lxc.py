@@ -59,6 +59,9 @@ def run(test, params, env):
             device_source = iscsi_dev.setup()
             logging.debug("iscsi dev name: %s" % device_source)
             test_block_dev = True
+        except ValueError, details:
+            raise error.TestNAError("Can find dependent binary in host: "
+                                    "%s" % details)
         except error.TestError:
             # We should skip this case
             raise error.TestNAError("Can not get iscsi device name in host")

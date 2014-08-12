@@ -164,10 +164,13 @@ def run(test, params, env):
             iscsi_dev = qemu_storage.Iscsidev(params, test.virtdir, "iscsi")
             device_source = iscsi_dev.setup()
             logging.debug("iscsi dev name: %s" % device_source)
-        except ValueError, detail:
+        except ValueError, details:
+            raise error.TestNAError("Can find dependent binary in host: "
+                                    "%s" % details)
+        except error.TestError, details:
             # We should skip this case
             raise error.TestNAError("Can not get iscsi device name in host: %s"
-                                    % detail)
+                                    % details)
     else:
         create_device_file(device_source)
 

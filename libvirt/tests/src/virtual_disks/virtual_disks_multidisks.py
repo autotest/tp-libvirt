@@ -118,10 +118,17 @@ def run(test, params, env):
 
         elif disk_format == "iscsi":
             # Create iscsi device if needed.
-            disk_dev = qemu_storage.Iscsidev(params, os.path.dirname(path),
-                                             "iscsi")
-            device_source = disk_dev.setup()
-            logging.debug("iscsi dev name: %s", device_source)
+            try:
+                disk_dev = qemu_storage.Iscsidev(params, os.path.dirname(path),
+                                                 "iscsi")
+                device_source = disk_dev.setup()
+                logging.debug("iscsi dev name: %s", device_source)
+            except ValueError, details:
+                raise error.TestNAError("Can find dependent binary in host: "
+                                        "%s" % details)
+            except error.TestError:
+                # We should skip this case
+                raise error.TestNAError("Can not get iscsi device name in host")
 
             # Format the disk and make file system.
             open("/tmp/fdisk-cmd", "w").write("n\np\n\n\n\nw\n")
