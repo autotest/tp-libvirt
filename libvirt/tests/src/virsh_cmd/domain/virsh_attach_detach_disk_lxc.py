@@ -3,7 +3,7 @@ from autotest.client.shared import error
 from autotest.client.shared import utils
 from virttest import virsh
 from virttest import utils_test
-from virttest import qemu_storage
+from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.staging.service import Factory
 
@@ -54,12 +54,9 @@ def run(test, params, env):
     # Create virtual device file if user doesn't prepare a partition.
     test_block_dev = False
     if device_source.count("ENTER"):
-        try:
-            iscsi_dev = qemu_storage.Iscsidev(params, test.virtdir, "iscsi")
-            device_source = iscsi_dev.setup()
-            logging.debug("iscsi dev name: %s" % device_source)
-            test_block_dev = True
-        except error.TestError:
+        device_source = libvirt.setup_or_cleanup_iscsi(True)
+        test_block_dev = True
+        if not device_source:
             # We should skip this case
             raise error.TestNAError("Can not get iscsi device name in host")
 
@@ -222,7 +219,7 @@ def run(test, params, env):
         vm.destroy(gracefully=False)
     backup_xml.sync()
     if test_block_dev:
-        iscsi_dev.cleanup()
+        libvirt.setup_or_cleanup_iscsi(False)
 
     # Check results.
     if status_error:
