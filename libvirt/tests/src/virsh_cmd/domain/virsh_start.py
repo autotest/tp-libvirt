@@ -131,7 +131,7 @@ def run(test, params, env):
                                          "closed.")
             elif opt.count("force-boot"):
                 session = vm.wait_for_login()
-                status = session.cmd_status("ps %s |grep 'sleep 1000'"
+                status = session.cmd_status("ps %s |grep '[s]leep 1000'"
                                             % sleep_pid)
                 if not status:
                     raise error.TestFail("VM was started with --force-boot,"
