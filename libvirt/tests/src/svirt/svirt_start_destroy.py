@@ -66,7 +66,7 @@ def run(test, params, env):
             libvirtd.restart()
 
         # Set the context of the VM.
-        vmxml.set_seclabel(sec_dict)
+        vmxml.set_seclabel([sec_dict])
         vmxml.sync()
         logging.debug("the domain xml is: %s" % vmxml.xmltreefile)
 
@@ -93,7 +93,7 @@ def run(test, params, env):
                                      % (disk_context, img_label))
             if sec_relabel == "yes" and not no_sec_model:
                 vmxml = VMXML.new_from_dumpxml(vm_name)
-                imagelabel = vmxml.get_seclabel()['imagelabel']
+                imagelabel = vmxml.get_seclabel()[0]['imagelabel']
                 if not disk_context == imagelabel:
                     raise error.TestFail("Label of disk is not relabeled by "
                                          "VM\nDetal: disk_context="
