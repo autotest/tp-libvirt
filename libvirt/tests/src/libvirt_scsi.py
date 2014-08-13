@@ -44,6 +44,17 @@ def run(test, params, env):
         vmxml.add_device(scsi_controller)
 
     # Add disk with bus of scsi into vmxml.
+    if partition_type:
+        if partition.count("ENTER.YOUR"):
+            raise error.TestNAError("Partition for partition test "
+                                    "is not configured.")
+        partition_disk = Disk(type_name="block")
+        partition_disk.device = "disk"
+        partition_disk.target = {'dev': "vdg",
+                                 'bus': "scsi"}
+        partition_disk.source = partition_disk.new_disk_source(
+            **{'attrs': {'dev': partition}})
+        vmxml.add_device(partition_disk)
     if img_type:
         # Init a QemuImg instance.
         img_name = "libvirt_scsi"
@@ -61,8 +72,12 @@ def run(test, params, env):
     if cdrom_type:
         # Init a CdromDisk instance.
         cdrom_path = os.path.join(data_dir.get_tmp_dir(), "libvirt_scsi")
-        cdrom = CdromDisk(cdrom_path, data_dir.get_tmp_dir())
-        cdrom.close()
+        try:
+            cdrom = CdromDisk(cdrom_path, data_dir.get_tmp_dir())
+            cdrom.close()
+        except error.CmdError, detail:
+            raise error.TestNAError("Failed to create cdrom disk: %s" % detail)
+
         cdrom_disk = Disk(type_name="file")
         cdrom_disk.device = "cdrom"
         cdrom_disk.target = {'dev': "vdf",
@@ -70,17 +85,6 @@ def run(test, params, env):
         cdrom_disk.source = cdrom_disk.new_disk_source(
             **{'attrs': {'file': cdrom_path}})
         vmxml.add_device(cdrom_disk)
-    if partition_type:
-        if partition.count("ENTER.YOUR"):
-            raise error.TestNAError("Partition for partition test"
-                                    "is not configured.")
-        partition_disk = Disk(type_name="block")
-        partition_disk.device = "disk"
-        partition_disk.target = {'dev': "vdg",
-                                 'bus': "scsi"}
-        partition_disk.source = partition_disk.new_disk_source(
-            **{'attrs': {'dev': partition}})
-        vmxml.add_device(partition_disk)
     # Check the result of scsi disk.
     try:
         # sync the vmxml with VM.
@@ -100,5 +104,11 @@ def run(test, params, env):
                 raise error.TestFail("Test failed in positive case."
                                      "error: %s" % e)
     finally:
+        if img_type:
+            if os.path.isfile(img_path):
+                os.remove(img_path)
+        if cdrom_type:
+            if os.path.isfile(cdrom_path):
+                os.remove(cdrom_path)
         # clean up.
         backup_xml.sync()
