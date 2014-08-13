@@ -48,7 +48,7 @@ def run(test, params, env):
     backup_sestatus = utils_selinux.get_status()
     utils_selinux.set_status(host_sestatus)
     # Set the context of the VM.
-    vmxml.set_seclabel(sec_dict)
+    vmxml.set_seclabel([sec_dict])
     vmxml.sync()
 
     clone_name = ("%s-clone" % vm.name)
