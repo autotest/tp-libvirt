@@ -1,3 +1,4 @@
+import os
 import logging
 from autotest.client.shared import error
 from virttest import utils_selinux
@@ -28,11 +29,25 @@ def run(test, params, env):
     no_sec_model = 'yes' == params.get("no_sec_model", 'no')
     sec_relabel = params.get("svirt_start_destroy_vm_sec_relabel", "yes")
     sec_dict = {'type': sec_type, 'relabel': sec_relabel}
+    sec_dict_list = []
     if not no_sec_model:
-        sec_dict['model'] = sec_model
-        if sec_type != "none":
-            sec_dict['label'] = sec_label
-    logging.debug("sec_dict is: %s" % sec_dict)
+        if "," in sec_model:
+            sec_models = sec_model.split(",")
+            for model in sec_models:
+                sec_dict['model'] = model
+                if sec_type != "none":
+                    sec_dict['label'] = sec_label
+                sec_dict_copy = sec_dict.copy()
+                sec_dict_list.append(sec_dict_copy)
+        else:
+            sec_dict['model'] = sec_model
+            if sec_type != "none":
+                sec_dict['label'] = sec_label
+            sec_dict_list.append(sec_dict)
+    else:
+        sec_dict_list.append(sec_dict)
+
+    logging.debug("sec_dict_list is: %s" % sec_dict_list)
     poweroff_with_destroy = ("destroy" == params.get(
                              "svirt_start_destroy_vm_poweroff", "destroy"))
     # Get variables about VM and get a VM object and VMXML instance.
@@ -46,12 +61,18 @@ def run(test, params, env):
     # Label the disks of VM with img_label.
     disks = vm.get_disk_devices()
     backup_labels_of_disks = {}
+    backup_ownership_of_disks = {}
     for disk in disks.values():
         disk_path = disk['source']
         backup_labels_of_disks[disk_path] = utils_selinux.get_context_of_file(
             filename=disk_path)
         utils_selinux.set_context_of_file(filename=disk_path,
                                           context=img_label)
+        f = os.open(disk_path, 0)
+        stat_re = os.fstat(f)
+        backup_ownership_of_disks[disk_path] = "%s:%s" % (stat_re.st_uid,
+                                                          stat_re.st_gid)
+        os.chown(disk_path, 107, 107)
     # Set selinux of host.
     backup_sestatus = utils_selinux.get_status()
     utils_selinux.set_status(host_sestatus)
@@ -66,7 +87,7 @@ def run(test, params, env):
             libvirtd.restart()
 
         # Set the context of the VM.
-        vmxml.set_seclabel([sec_dict])
+        vmxml.set_seclabel(sec_dict_list)
         vmxml.sync()
         logging.debug("the domain xml is: %s" % vmxml.xmltreefile)
 
@@ -127,6 +148,9 @@ def run(test, params, env):
         # clean up
         for path, label in backup_labels_of_disks.items():
             utils_selinux.set_context_of_file(filename=path, context=label)
+        for path, label in backup_ownership_of_disks.items():
+            label_list = label.split(":")
+            os.chown(path, int(label_list[0]), int(label_list[1]))
         backup_xml.sync()
         utils_selinux.set_status(backup_sestatus)
         if security_driver:
