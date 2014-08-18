@@ -1,6 +1,8 @@
+import logging
 from autotest.client.shared import error
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest.libvirt_xml import vm_xml
 
 
 def run(test, params, env):
@@ -50,12 +52,12 @@ def run(test, params, env):
 
     domid = vm.get_id()
     domuuid = vm.get_uuid()
-
     status_error = ("yes" == params.get("status_error", "no"))
-    vm_ref = params.get("managedsave_vm_ref")
+    vm_ref = params.get("managedsave_vm_ref", "name")
     libvirtd = params.get("libvirtd", "on")
     extra_param = params.get("managedsave_extra_param", "")
     progress = ("yes" == params.get("managedsave_progress", "no"))
+    cpu_mode = "yes" == params.get("managedsave_cpumode", "no")
     option = params.get("managedsave_option", "")
     if option:
         if not virsh.has_command_help_match('managedsave', option):
@@ -78,6 +80,41 @@ def run(test, params, env):
     # stop the libvirtd service
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()
+    # Backup xml file.
+    vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+
+    # change cpu mode
+    if cpu_mode:
+        try:
+            # stop vm before doing any change to xml
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            cpuxml = vm_xml.VMCPUXML()
+            del vmxml.cpu
+            cpuxml.mode = params.get("cpu_mode", "host-model")
+            cpuxml.match = params.get("cpu_match", "exact")
+            cpuxml.fallback = params.get("cpu_fallback", "forbid")
+            cpu_topology = {}
+            cpu_topology_sockets = params.get("cpu_topology_sockets")
+            if cpu_topology_sockets:
+                cpu_topology["sockets"] = cpu_topology_sockets
+            cpu_topology_cores = params.get("cpu_topology_cores")
+            if cpu_topology_cores:
+                cpu_topology["cores"] = cpu_topology_cores
+            cpu_topology_threads = params.get("cpu_topology_threads")
+            if cpu_topology_threads:
+                cpu_topology["threads"] = cpu_topology_threads
+            if cpu_topology:
+                cpuxml.topology = cpu_topology
+            vmxml.cpu = cpuxml
+            vmxml.sync()
+            # start vm
+            vm.start()
+        except Exception, e:
+            logging.error(str(e))
+            vmxml_backup.sync()
+            raise error.TestNAError("Build cpu mode xml failed")
 
     # Ignore exception with "ignore_status=True"
     if progress:
@@ -105,5 +142,6 @@ def run(test, params, env):
                     raise error.TestFail("Got invalid progress output")
             vm_recover_check(vm_name, option)
     finally:
+        vmxml_backup.sync()
         if vm.is_paused():
             virsh.resume(vm_name)
