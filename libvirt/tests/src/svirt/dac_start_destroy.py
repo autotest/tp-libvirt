@@ -193,7 +193,7 @@ def run(test, params, env):
 
             # Set the context of the VM.
             logging.debug("sec_dict is %s" % sec_dict)
-            vmxml.set_seclabel(sec_dict)
+            vmxml.set_seclabel([sec_dict])
             vmxml.sync()
             logging.debug("updated domain xml is: %s" % vmxml.xmltreefile)
 
