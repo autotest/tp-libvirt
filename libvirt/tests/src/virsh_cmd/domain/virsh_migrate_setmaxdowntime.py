@@ -2,6 +2,7 @@ import logging
 import threading
 import time
 from autotest.client.shared import error
+from autotest.client.shared import ssh_key
 from virttest import virsh
 
 
@@ -104,6 +105,12 @@ def run(test, params, env):
         raise error.TestNAError("Set your source uri first.")
     if src_uri == dest_uri:
         raise error.TestNAError("You should not set dest uri same as local.")
+
+    remote_host = params.get("migrate_dest_host")
+    username = params.get("migrate_dest_user", "root")
+    password = params.get("migrate_dest_pwd")
+    # Config ssh autologin for remote host
+    ssh_key.setup_ssh_key(remote_host, username, password, port=22)
 
     setmmdt_dargs = {'debug': True, 'ignore_status': True, 'uri': src_uri}
     migrate_dargs = {'debug': True, 'ignore_status': True}

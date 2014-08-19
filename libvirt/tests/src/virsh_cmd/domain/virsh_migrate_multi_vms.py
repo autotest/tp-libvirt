@@ -5,7 +5,9 @@ import commands
 import shutil
 import threading
 import time
-from autotest.client.shared import utils, error
+from autotest.client.shared import error
+from autotest.client.shared import utils
+from autotest.client.shared import ssh_key
 from virttest import libvirt_vm, virsh
 
 
@@ -212,6 +214,9 @@ def run(test, params, env):
         raise error.TestNAError("The srcuri '%s' is invalid", srcuri)
     if desturi.count('///') or desturi.count('EXAMPLE'):
         raise error.TestNAError("The desturi '%s' is invalid", desturi)
+
+    # Config ssh autologin for remote host
+    ssh_key.setup_ssh_key(remote_host, host_user, host_passwd, port=22)
 
     # Prepare MigrationHelper instance
     helpers = []

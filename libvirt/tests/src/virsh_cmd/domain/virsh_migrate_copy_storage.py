@@ -11,10 +11,10 @@ def copied_migration(vms, params):
     Migrate vms with storage copied.
     """
     dest_uri = params.get("migrate_dest_uri")
-    remote_host = params.get("remote_ip")
+    remote_host = params.get("migrate_dest_host")
     copy_option = params.get("copy_storage_option", "")
-    username = params.get("remote_user")
-    password = params.get("remote_pwd")
+    username = params.get("migrate_dest_user", "root")
+    password = params.get("migrate_dest_pwd")
     timeout = int(params.get("thread_timeout", 1200))
     options = "--live %s" % copy_option
 
@@ -62,10 +62,10 @@ def run(test, params, env):
     # Convert to Gib
     file_size = int(file_size) / 1073741824
 
-    remote_host = params.get("remote_ip", "REMOTE.EXAMPLE")
-    local_host = params.get("local_ip", "LOCAL.EXAMPLE")
-    remote_user = params.get("remote_user", "root")
-    remote_passwd = params.get("remote_pwd", "PASSWORD.EXAMPLE")
+    remote_host = params.get("migrate_dest_host", "REMOTE.EXAMPLE")
+    local_host = params.get("migrate_source_host", "LOCAL.EXAMPLE")
+    remote_user = params.get("migrate_dest_user", "root")
+    remote_passwd = params.get("migrate_dest_pwd")
     if remote_host.count("EXAMPLE") or local_host.count("EXAMPLE"):
         raise error.TestNAError("Config remote or local host first.")
     # Config ssh autologin for it
