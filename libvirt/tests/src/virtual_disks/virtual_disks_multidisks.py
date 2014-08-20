@@ -5,7 +5,6 @@ import shutil
 from autotest.client.shared import error
 from autotest.client import utils
 from virttest import aexpect, virt_vm, virsh, remote
-from virttest import qemu_storage
 from virttest import nfs
 from virttest import utils_libvirtd
 from virttest.utils_test import libvirt
@@ -118,21 +117,16 @@ def run(test, params, env):
 
         elif disk_format == "iscsi":
             # Create iscsi device if needed.
-            disk_dev = qemu_storage.Iscsidev(params, os.path.dirname(path),
-                                             "iscsi")
-            device_source = disk_dev.setup()
+            image_size = params.get("image_size", "2G")
+            device_source = libvirt.setup_or_cleanup_iscsi(
+                is_setup=True, is_login=True, image_size=image_size)
             logging.debug("iscsi dev name: %s", device_source)
 
             # Format the disk and make file system.
-            open("/tmp/fdisk-cmd", "w").write("n\np\n\n\n\nw\n")
-            output = utils.run("fdisk %s < /tmp/fdisk-cmd"
-                               % device_source).stdout.strip()
-            logging.debug("fdisk output: %s", output)
-            output = utils.run("mkfs.ext3 %s1"
-                               % device_source).stdout.strip()
-            logging.debug("mkfs output: %s", output)
+            libvirt.mk_part(device_source)
+            libvirt.mkfs("%s1" % device_source, "ext3")
             device_source += "1"
-            disk.update({"format": disk_format, "disk_dev": disk_dev,
+            disk.update({"format": disk_format,
                          "source": device_source})
         elif disk_format in ["raw", "qcow2"]:
             disk_size = params.get("virt_disk_device_size", "1")
@@ -152,8 +146,8 @@ def run(test, params, env):
         """
         logging.info("Checking VM disks type... ")
         for target in targets_name:
-            if None != libvirt.get_disk_attr(vm_name, target,
-                                             "driver", "type"):
+            if None != vm_xml.VMXML.get_disk_attr(vm_name, target,
+                                                  "driver", "type"):
                 return False
         return True
 
@@ -169,7 +163,7 @@ def run(test, params, env):
             for i in range(len(devices)):
                 if devices[i] == "cdrom":
                     s, o = session.cmd_status_output(
-                        "ls /dev/cdrom && mount /dev/cdrom /mnt &&"
+                        "ls /dev/sr0 && mount /dev/sr0 /mnt &&"
                         " ls /mnt && umount /mnt")
                     logging.info("cdrom devices in VM:\n%s", o)
                 elif devices[i] == "floppy":
@@ -312,7 +306,7 @@ def run(test, params, env):
         Get console output and check bootorder.
         """
         # Get console output.
-        vm.serial_console.read_until_output_matches(["Linux version"])
+        vm.serial_console.read_until_output_matches(["Booting from Hard Disk", "Linux version"])
         output = vm.serial_console.get_stripped_output()
         lines = re.findall(r"^Booting from (.+)...", output, re.M)
         logging.debug("lines: %s", lines)
@@ -506,12 +500,12 @@ def run(test, params, env):
         logging.error(repr(e))
         for img in disks:
             if img.has_key("disk_dev"):
-                if img["format"] == "iscsi":
+                if img["format"] == "nfs":
                     img["disk_dev"].cleanup()
-                else:
-                    img["disk_dev"].remove()
             else:
-                if img["format"] not in ["dir", "scsi", "iscsi"]:
+                if img["format"] == "iscsi":
+                    libvirt.setup_or_cleanup_iscsi(is_setup=False)
+                if img["format"] not in ["dir", "scsi"]:
                     os.remove(img["source"])
         raise error.TestNAError("Creating disk failed")
 
@@ -606,7 +600,17 @@ def run(test, params, env):
             disk = xml_devices[disk_index]
             if bootorder != "":
                 disk.boot = bootorder
-                del vmxml.os_boot
+                osxml = vm_xml.VMOSXML()
+                osxml.type = vmxml.os.type
+                osxml.arch = vmxml.os.arch
+                osxml.machine = vmxml.os.machine
+                if test_boot_console:
+                    osxml.loader = "/usr/share/seabios/bios.bin"
+                    osxml.bios_useserial = "yes"
+                    osxml.bios_reboot_timeout = "-1"
+
+                del vmxml.os
+                vmxml.os = osxml
             driver_dict = {"name": disk.driver["name"],
                            "type": disk.driver["type"]}
             if bootdisk_driver != "":
@@ -635,10 +639,6 @@ def run(test, params, env):
             disk.target = {"dev": bootdisk_target, "bus": bootdisk_bus}
             device_source = disk.source.attrs["file"]
 
-            if test_boot_console:
-                vmxml.os_loader = "/usr/share/seabios/bios.bin"
-                vmxml.os_bios = {"useserial": "yes", "rebootTimeout": "-1"}
-
             del disk.address
             vmxml.devices = xml_devices
             vmxml.define()
@@ -666,6 +666,11 @@ def run(test, params, env):
             for ctrl in controllers:
                 if ctrl.type == "usb":
                     vmxml.del_device(ctrl)
+
+            inputs = vmxml.get_devices(device_type="input")
+            for input in inputs:
+                if input.type_name == "tablet":
+                    vmxml.del_device(input)
 
             # Add new usb controllers.
             usb_controller1 = Controller("controller")
@@ -785,24 +790,24 @@ def run(test, params, env):
             else:
                 d_target = device_targets[0]
                 cmd += " | grep %s" % (device_source_names[0].replace(',', ',,'))
-            io = libvirt.get_disk_attr(vm_name, d_target, "driver", "io")
+            io = vm_xml.VMXML.get_disk_attr(vm_name, d_target, "driver", "io")
             if io:
                 cmd += " | grep aio=%s" % io
-            ioeventfd = libvirt.get_disk_attr(vm_name, d_target,
-                                              "driver", "ioeventfd")
+            ioeventfd = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
+                                                   "driver", "ioeventfd")
             if ioeventfd:
                 cmd += " | grep ioeventfd=%s" % ioeventfd
-            event_idx = libvirt.get_disk_attr(vm_name, d_target,
-                                              "driver", "event_idx")
+            event_idx = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
+                                                   "driver", "event_idx")
             if event_idx:
                 cmd += " | grep event_idx=%s" % event_idx
 
-            discard = libvirt.get_disk_attr(vm_name, d_target,
-                                            "driver", "discard")
+            discard = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
+                                                 "driver", "discard")
             if discard:
                 cmd += " | grep discard=%s" % discard
-            copy_on_read = libvirt.get_disk_attr(vm_name, d_target,
-                                                 "driver", "copy_on_read")
+            copy_on_read = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
+                                                      "driver", "copy_on_read")
             if copy_on_read:
                 cmd += " | grep copy-on-read=%s" % copy_on_read
 
@@ -848,7 +853,7 @@ def run(test, params, env):
                 if len(device_attach_error) > i:
                     if device_attach_error[i] == "yes":
                         continue
-                if device_bootorder[i] != libvirt.get_disk_attr(
+                if device_bootorder[i] != vm_xml.VMXML.get_disk_attr(
                         vm_name, device_targets[i], "boot", "order"):
                     raise error.TestFail("Check bootorder failed")
 
@@ -865,11 +870,11 @@ def run(test, params, env):
         # Check disk bus device option in qemu command line.
         if test_bus_device_option:
             cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
-            dev_bus = int(libvirt.get_disk_attr(vm_name, device_targets[0],
-                                                "address", "bus"), 16)
+            dev_bus = int(vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                     "address", "bus"), 16)
             if device_bus[0] == "virtio":
-                pci_slot = int(libvirt.get_disk_attr(vm_name, device_targets[0],
-                                                     "address", "slot"), 16)
+                pci_slot = int(vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                          "address", "slot"), 16)
                 if devices[0] == "lun":
                     device_option = "scsi=on"
                 else:
@@ -877,11 +882,15 @@ def run(test, params, env):
                 cmd += (" | grep virtio-blk-pci,%s,bus=pci.%x,addr=0x%x"
                         % (device_option, dev_bus, pci_slot))
             if device_bus[0] in ["ide", "sata", "scsi"]:
-                dev_unit = int(libvirt.get_disk_attr(vm_name, device_targets[0],
-                                                     "address", "unit"), 16)
-                dev_id = libvirt.get_disk_attr(vm_name, device_targets[0],
-                                               "alias", "name")
+                dev_unit = int(vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                          "address", "unit"), 16)
+                dev_id = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                    "alias", "name")
             if device_bus[0] == "ide":
+                check_cmd = "/usr/libexec/qemu-kvm -device ? 2>&1 |grep -E 'ide-cd|ide-hd'"
+                if utils.run(check_cmd, ignore_status=True).exit_status:
+                    raise error.TestNAError("ide-cd/ide-hd not supported by this qemu-kvm")
+
                 if devices[0] == "cdrom":
                     device_option = "ide-cd"
                 else:
@@ -901,10 +910,10 @@ def run(test, params, env):
                 cmd += (" | grep %s,bus=scsi%d.%d,.*drive=drive-%s,id=%s"
                         % (device_option, dev_bus, dev_unit, dev_id, dev_id))
             if device_bus[0] == "usb":
-                dev_port = libvirt.get_disk_attr(vm_name, device_targets[0],
-                                                 "address", "port")
-                dev_id = libvirt.get_disk_attr(vm_name, device_targets[0],
-                                               "alias", "name")
+                dev_port = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                      "address", "port")
+                dev_id = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                    "alias", "name")
                 if devices[0] == "disk":
                     cmd += (" | grep usb-storage,bus=usb%s.0,port=%s,"
                             "drive=drive-%s,id=%s"
@@ -1000,14 +1009,15 @@ def run(test, params, env):
 
         for img in disks:
             if img.has_key("disk_dev"):
-                if img["format"] in ["iscsi", "nfs"]:
+                if img["format"] == "nfs":
                     img["disk_dev"].cleanup()
-                else:
-                    img["disk_dev"].remove()
+
                 del img["disk_dev"]
             else:
                 if img["format"] == "scsi":
                     libvirt.delete_scsi_disk()
-                elif img["format"] not in ["dir", "iscsi"]:
+                elif img["format"] == "iscsi":
+                    libvirt.setup_or_cleanup_iscsi(is_setup=False)
+                elif img["format"] not in ["dir"]:
                     if os.path.exists(img["source"]):
                         os.remove(img["source"])
