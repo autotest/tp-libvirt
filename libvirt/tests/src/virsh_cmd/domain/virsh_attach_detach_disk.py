@@ -2,12 +2,14 @@ import os
 import logging
 from autotest.client.shared import error
 from autotest.client.shared import utils
+from autotest.client import lv_utils
 from virttest import aexpect
 from virttest import virt_vm
 from virttest import virsh
 from virttest import remote
-from virttest import qemu_storage
+from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
 
 
@@ -21,20 +23,6 @@ def run(test, params, env):
     3.Recover test environment.
     4.Confirm the test result.
     """
-
-    def create_device_file(device_source="/tmp/attach.img"):
-        """
-        Create a device source file.
-
-        :param device_source: Device source file.
-        """
-        try:
-            f = open(device_source, 'wb')
-            f.seek((512 * 1024 * 1024) - 1)
-            f.write(str(0))
-            f.close()
-        except IOError:
-            logging.error("Image file %s created failed." % device_source)
 
     def check_vm_partition(vm, device, os_type, target_name):
         """
@@ -117,12 +105,18 @@ def run(test, params, env):
     # Disk specific attributes.
     device = params.get("at_dt_disk_device", "disk")
     device_source_name = params.get("at_dt_disk_device_source", "attach.img")
+    device_source_format = params.get("at_dt_disk_device_source_format", "raw")
     device_target = params.get("at_dt_disk_device_target", "vdd")
     source_path = "yes" == params.get("at_dt_disk_device_source_path", "yes")
+    create_img = "yes" == params.get("at_dt_disk_create_image", "yes")
     test_twice = "yes" == params.get("at_dt_disk_test_twice", "no")
     test_type = "yes" == params.get("at_dt_disk_check_type", "no")
     test_audit = "yes" == params.get("at_dt_disk_check_audit", "no")
     test_block_dev = "yes" == params.get("at_dt_disk_iscsi_device", "no")
+    test_logcial_dev = "yes" == params.get("at_dt_disk_logical_device", "no")
+    restart_libvirtd = "yes" == params.get("at_dt_disk_restart_libvirtd", "no")
+    vg_name = params.get("at_dt_disk_vg", "vg_test_0")
+    lv_name = params.get("at_dt_disk_lv", "lv_test_0")
     serial = params.get("at_dt_disk_serial", "")
     address = params.get("at_dt_disk_address", "")
     address2 = params.get("at_dt_disk_address2", "")
@@ -139,22 +133,28 @@ def run(test, params, env):
         vm.destroy(gracefully=False)
     # Back up xml file.
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    if source_path:
-        device_source = os.path.join(test.virtdir, device_source_name)
-    else:
-        device_source = device_source_name
 
     # Create virtual device file.
+    device_source_path = os.path.join(test.tmpdir, device_source_name)
     if test_block_dev:
-        try:
-            iscsi_dev = qemu_storage.Iscsidev(params, test.virtdir, "iscsi")
-            device_source = iscsi_dev.setup()
-            logging.debug("iscsi dev name: %s" % device_source)
-        except error.TestError:
+        device_source = libvirt.setup_or_cleanup_iscsi(True)
+        if not device_source:
             # We should skip this case
             raise error.TestNAError("Can not get iscsi device name in host")
+        if test_logcial_dev:
+            lv_utils.vg_create(vg_name, device_source)
+            device_source = libvirt.create_local_disk("lvm",
+                                                      size="10M",
+                                                      vgname=vg_name,
+                                                      lvname=lv_name)
+            logging.debug("New created volume: %s", lv_name)
     else:
-        create_device_file(device_source)
+        if source_path and create_img:
+            device_source = libvirt.create_local_disk(
+                "file", path=device_source_path,
+                size="1G", disk_format=device_source_format)
+        else:
+            device_source = device_source_name
 
     if vm.is_alive():
         vm.destroy(gracefully=False)
@@ -184,9 +184,10 @@ def run(test, params, env):
         if test_twice:
             device_target2 = params.get("at_dt_disk_device_target2",
                                         device_target)
-            create_device_file(device_source)
-            s_attach = virsh.attach_disk(vm_name, device_source,
-                                         device_target2,
+            device_source = libvirt.create_local_disk(
+                "file", path=device_source_path,
+                size="1", disk_format=device_source_format)
+            s_attach = virsh.attach_disk(vm_name, device_source, device_target2,
                                          "--driver qemu --config").exit_status
             if s_attach != 0:
                 logging.error("Attaching device failed before testing "
@@ -236,9 +237,16 @@ def run(test, params, env):
     elif test_cmd == "detach-disk":
         status = virsh.detach_disk(vm_ref, device_target, dt_options,
                                    debug=True).exit_status
+
+    if restart_libvirtd:
+        libvirtd_serv = utils_libvirtd.Libvirtd()
+        libvirtd_serv.restart()
+
     if test_twice:
         device_target2 = params.get("at_dt_disk_device_target2", device_target)
-        create_device_file(device_source)
+        device_source = libvirt.create_local_disk(
+            "file", path=device_source_path,
+            size="1G", disk_format=device_source_format)
         if test_cmd == "attach-disk":
             if address2:
                 at_options = at_options_twice
@@ -315,27 +323,62 @@ def run(test, params, env):
         if address2 != disk_address2:
             check_disk_address2 = False
 
-    # Destroy VM.
-    vm.destroy(gracefully=False)
+    # Eject cdrom test
+    eject_cdrom = "yes" == params.get("at_dt_disk_eject_cdrom", "no")
+    save_vm = "yes" == params.get("at_dt_disk_save_vm", "no")
+    save_file = os.path.join(test.tmpdir, "vm.save")
+    try:
+        if eject_cdrom:
+            eject_params = {'type_name': "file", 'device_type': "cdrom",
+                            'target_dev': "hdc", 'target_bus': "ide"}
+            eject_xml = libvirt.create_disk_xml(eject_params)
+            logging.debug("Eject CDROM by XML: %s", open(eject_xml).read())
+            # Run command tiwce to make sure cdrom tray open first #BZ892289
+            # Open tray
+            virsh.attach_device(domainarg=vm_name, filearg=eject_xml, debug=True)
+            # Eject cdrom
+            result = virsh.attach_device(domainarg=vm_name, filearg=eject_xml,
+                                         debug=True)
+            if result.exit_status != 0:
+                raise error.TestFail("Eject CDROM failed")
+            if vm_xml.VMXML.check_disk_exist(vm_name, device_source):
+                raise error.TestFail("Find %s after do eject" % device_source)
+        # Save and restore VM
+        if save_vm:
+            result = virsh.save(vm_name, save_file, debug=True)
+            libvirt.check_exit_status(result)
+            result = virsh.restore(save_file, debug=True)
+            libvirt.check_exit_status(result)
+            if vm_xml.VMXML.check_disk_exist(vm_name, device_source):
+                raise error.TestFail("Find %s after do restore" % device_source)
 
-    # Check disk count after VM shutdown (with --config).
-    check_count_after_shutdown = True
-    disk_count_after_shutdown = vm_xml.VMXML.get_disk_count(vm_name)
-    if test_cmd == "attach-disk":
-        if disk_count_after_shutdown == disk_count_before_cmd:
-            check_count_after_shutdown = False
-    elif test_cmd == "detach-disk":
-        if disk_count_after_shutdown < disk_count_before_cmd:
-            check_count_after_shutdown = False
-
-    # Recover VM.
-    if vm.is_alive():
+        # Destroy VM.
         vm.destroy(gracefully=False)
-    backup_xml.sync()
-    if test_block_dev:
-        iscsi_dev.cleanup()
-    elif os.path.exists(device_source):
-        os.remove(device_source)
+
+        # Check disk count after VM shutdown (with --config).
+        check_count_after_shutdown = True
+        disk_count_after_shutdown = vm_xml.VMXML.get_disk_count(vm_name)
+        if test_cmd == "attach-disk":
+            if disk_count_after_shutdown == disk_count_before_cmd:
+                check_count_after_shutdown = False
+        elif test_cmd == "detach-disk":
+            if disk_count_after_shutdown < disk_count_before_cmd:
+                check_count_after_shutdown = False
+
+    finally:
+        # Recover VM.
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
+        backup_xml.sync()
+        if os.path.exists(save_file):
+            os.remove(save_file)
+        if test_block_dev:
+            if test_logcial_dev:
+                libvirt.delete_local_disk("lvm", vgname=vg_name, lvname=lv_name)
+                lv_utils.vg_remove(vg_name)
+            libvirt.setup_or_cleanup_iscsi(False)
+        else:
+            libvirt.delete_local_disk("file", device_source)
 
     # Check results.
     if status_error:
