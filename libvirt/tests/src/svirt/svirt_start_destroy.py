@@ -26,6 +26,7 @@ def run(test, params, env):
     sec_model = params.get("svirt_start_destroy_vm_sec_model", "selinux")
     sec_label = params.get("svirt_start_destroy_vm_sec_label", None)
     security_driver = params.get("security_driver", None)
+    security_default_confined = params.get("security_default_confined", None)
     no_sec_model = 'yes' == params.get("no_sec_model", 'no')
     sec_relabel = params.get("svirt_start_destroy_vm_sec_relabel", "yes")
     sec_dict = {'type': sec_type, 'relabel': sec_relabel}
@@ -83,6 +84,10 @@ def run(test, params, env):
         # Set qemu conf
         if security_driver:
             qemu_conf['security_driver'] = "'%s'" % security_driver
+            logging.debug("the qemu.conf content is: %s" % qemu_conf)
+            libvirtd.restart()
+        if security_default_confined:
+            qemu_conf['security_default_confined'] = security_default_confined
             logging.debug("the qemu.conf content is: %s" % qemu_conf)
             libvirtd.restart()
 
@@ -154,5 +159,8 @@ def run(test, params, env):
         backup_xml.sync()
         utils_selinux.set_status(backup_sestatus)
         if security_driver:
+            qemu_conf.restore()
+            libvirtd.restart()
+        if security_default_confined:
             qemu_conf.restore()
             libvirtd.restart()
