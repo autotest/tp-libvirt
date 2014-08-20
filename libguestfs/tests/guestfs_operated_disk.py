@@ -54,7 +54,7 @@ def test_cloned_vm(vm, params):
     # This step for this reason:
     # virt-clone will move ifcfg-xxx to a file with suffix ".bak"
     # So we need start vm then shutdown it to copy it back
-    new_vm = None
+    new_vm = vt.newvm
     try:
         try:
             new_vm.start()
@@ -228,6 +228,8 @@ def run(test, params, env):
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    if vm.is_alive():
+        vm.destroy()
 
     operation = params.get("disk_operation")
     eval("test_%s(vm, params)" % operation)

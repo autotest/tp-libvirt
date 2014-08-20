@@ -239,6 +239,9 @@ def run(test, params, env):
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    # guestfish cannot operate living vm
+    if vm.is_alive():
+        vm.destroy()
 
     operation = params.get("list_operation")
     eval("test_%s(vm, params)" % operation)

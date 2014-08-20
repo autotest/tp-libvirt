@@ -1,5 +1,6 @@
 import logging
 import re
+import os
 from autotest.client.shared import error
 from virttest import virt_vm, remote, utils_test
 
@@ -127,10 +128,13 @@ def test_inspect_get(vm, params):
                 fail_info.append("Mountpoint %s do not match." % mountpoint)
         logging.info("Get mountpoints successfully:%s", vm_mountpoints)
 
+    session = None
     try:
         vm.start()
         session = vm.wait_for_login()
     except (virt_vm.VMError, remote.LoginError), detail:
+        if session is not None:
+            session.close()
         vm.destroy()
         raise error.TestFail(str(detail))
 
@@ -145,12 +149,13 @@ def test_inspect_get(vm, params):
         if not re.search(hostname_output.strip(), vm_hostname):
             fail_info.append("hostname in vm do not match.")
         df_output = session.cmd_output("df")
+        session.close()
         logging.debug("VM mountpoints:%s", df_output)
         for mountpoint in vm_mountpoints:
             # libguestfs will convert all vdx|hdx|sdx to sdx
             if re.search("/dev/sd", mountpoint):
                 mountpoint = re.sub(r"/dev/sd", r"/dev/.d", mountpoint)
-            if not re.search(mountpoint, df_output):
+            if not re.search(os.path.basename(mountpoint), df_output):
                 fail_info.append("mountpoints %s in vm do not match."
                                  % mountpoint)
         vm.destroy()
@@ -169,6 +174,8 @@ def run_virt_inspect_operations(test, params, env):
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    if vm.is_alive():
+        vm.destroy()
 
     operation = params.get("vt_inspect_operation")
     testcase = globals()["test_%s" % operation]

@@ -2,6 +2,7 @@ import logging
 import re
 from autotest.client.shared import error
 from virttest import utils_libguestfs as lgf
+from virttest import utils_test
 
 
 def run(test, params, env):
@@ -54,6 +55,8 @@ def run(test, params, env):
     session = vm.wait_for_login()
     try:
         for part in partitions:
+            if utils_test.libguestfs.primary_disk_virtio(vm):
+                part = re.sub("/dev/sda", "/dev/vda", part)
             if session.cmd_status("ls %s" % part):
                 raise error.TestFail("Did not find partition %s listed with "
                                      "virt-list-partitions in vm." % part)
