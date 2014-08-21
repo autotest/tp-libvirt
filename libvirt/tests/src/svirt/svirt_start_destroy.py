@@ -85,14 +85,12 @@ def run(test, params, env):
         # Set qemu conf
         if security_driver:
             qemu_conf['security_driver'] = "'%s'" % security_driver
-            logging.debug("the qemu.conf content is: %s" % qemu_conf)
-            libvirtd.restart()
         if security_default_confined:
             qemu_conf['security_default_confined'] = security_default_confined
-            logging.debug("the qemu.conf content is: %s" % qemu_conf)
-            libvirtd.restart()
         if security_require_confined:
             qemu_conf['security_require_confined'] = security_require_confined
+        if (security_driver or security_default_confined or
+                security_require_confined):
             logging.debug("the qemu.conf content is: %s" % qemu_conf)
             libvirtd.restart()
 
