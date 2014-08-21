@@ -104,6 +104,7 @@ def run(test, params, env):
     sec_label = params.get("dac_start_destroy_vm_sec_label", None)
     sec_relabel = params.get("dac_start_destroy_vm_sec_relabel", "yes")
     security_default_confined = params.get("security_default_confined", None)
+    set_process_name = params.get("set_process_name", None)
     sec_dict = {'type': sec_type, 'model': sec_model, 'relabel': sec_relabel}
     if sec_label:
         sec_dict['label'] = sec_label
@@ -182,21 +183,6 @@ def run(test, params, env):
                 os.chmod(qemu_sock_path, st.st_mode | stat.S_IWGRP)
                 qemu_sock_mod = True
 
-        if set_sec_label:
-            # Transform seclabel to "uid:gid"
-            if sec_label:
-                sec_label = sec_label.replace("+", "")
-                if ":" in sec_label:
-                    user = sec_label.split(":")[0]
-                    group = sec_label.split(":")[1]
-                    sec_label_trans = format_user_group_str(user, group)
-
-            # Set the context of the VM.
-            logging.debug("sec_dict is %s" % sec_dict)
-            vmxml.set_seclabel([sec_dict])
-            vmxml.sync()
-            logging.debug("updated domain xml is: %s" % vmxml.xmltreefile)
-
         if set_qemu_conf:
             # Transform qemu user and group to "uid:gid"
             qemu_user = qemu_user.replace("+", "")
@@ -214,8 +200,25 @@ def run(test, params, env):
                 qemu_conf['dynamic_ownership'] = 0
             if security_default_confined:
                 qemu_conf['security_default_confined'] = security_default_confined
+            if set_process_name:
+                qemu_conf['set_process_name'] = set_process_name
             logging.debug("the qemu.conf content is: %s" % qemu_conf)
             libvirtd.restart()
+
+        if set_sec_label:
+            # Transform seclabel to "uid:gid"
+            if sec_label:
+                sec_label = sec_label.replace("+", "")
+                if ":" in sec_label:
+                    user = sec_label.split(":")[0]
+                    group = sec_label.split(":")[1]
+                    sec_label_trans = format_user_group_str(user, group)
+
+            # Set the context of the VM.
+            logging.debug("sec_dict is %s" % sec_dict)
+            vmxml.set_seclabel([sec_dict])
+            vmxml.sync()
+            logging.debug("updated domain xml is: %s" % vmxml.xmltreefile)
 
         # Start VM to check the qemu process and image.
         try:
@@ -269,6 +272,18 @@ def run(test, params, env):
                                              "sk_context=%s, " % disk_context +
                                              "qemu_conf_label_trans=%s." %
                                              qemu_conf_label_trans)
+
+            # check vm started with -name $vm_name,process=qemu:$vm_name
+            if set_process_name:
+                chk_str = "-name %s,process=qemu:%s" % (vm_name, vm_name)
+                cmd = "ps -p %s -o command=" % vm_pid
+                result = utils.run(cmd)
+                if chk_str in result.stdout:
+                    logging.debug("%s found in vm process command: %s" %
+                                  (chk_str, result.stdout))
+                else:
+                    raise error.TestFail("%s not in vm process command: %s" %
+                                         (chk_str, result.stdout))
 
             # Check the label of disk after VM being destroyed.
             vm.destroy()
