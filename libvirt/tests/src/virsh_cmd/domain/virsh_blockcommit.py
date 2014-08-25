@@ -35,16 +35,19 @@ def run(test, params, env):
                                              "%s.snap%s" % (diskname, count))
 
                 snapshot_external_disks.append(disk_external)
-                options += " %s,snapshot=external,file=%s" % (disk, disk_external)
+                options += " %s,snapshot=external,file=%s" % (disk,
+                                                              disk_external)
 
             cmd_result = virsh.snapshot_create_as(vm_name, options,
-                                                  ignore_status=True, debug=True)
+                                                  ignore_status=True,
+                                                  debug=True)
             status = cmd_result.exit_status
             if status != 0:
                 raise error.TestFail("Failed to make snapshots for disks!")
 
             # Create a file flag in VM after each snapshot
-            flag_file = tempfile.NamedTemporaryFile(prefix=("snapshot_test_"), dir="/tmp")
+            flag_file = tempfile.NamedTemporaryFile(prefix=("snapshot_test_"),
+                                                    dir="/tmp")
             file_path = flag_file.name
             flag_file.close()
 
@@ -63,6 +66,7 @@ def run(test, params, env):
     with_timeout = ("yes" == params.get("with_timeout_option", "no"))
     status_error = ("yes" == params.get("status_error", "no"))
     base_option = params.get("base_option", "none")
+    middle_base = "yes" == params.get("middle_base", "no")
     virsh_dargs = {'debug': True}
 
     # A backup of original vm
@@ -72,7 +76,8 @@ def run(test, params, env):
     # Abort the test if there are snapshots already
     exsiting_snaps = virsh.snapshot_list(vm_name)
     if len(exsiting_snaps) != 0:
-        raise error.TestFail("There are snapshots created for %s already" % vm_name)
+        raise error.TestFail("There are snapshots created for %s already" %
+                             vm_name)
 
     try:
         # Get a tmp_dir.
@@ -89,6 +94,8 @@ def run(test, params, env):
         top_image = None
         base_image = None
         blockcommit_options = "--wait --verbose"
+        basename = os.path.basename(first_disk['source'])
+        diskname = basename.split(".")[0]
 
         if with_timeout:
             blockcommit_options += " --timeout 1"
@@ -96,11 +103,14 @@ def run(test, params, env):
         if base_option == "shallow":
             blockcommit_options += " --shallow"
         elif base_option == "base":
-            blockcommit_options += " --base %s" % first_disk['source']
+            if middle_base:
+                base_image = os.path.join(tmp_dir, "%s.snap1" %
+                                          diskname)
+                blockcommit_options += " --base %s" % base_image
+            else:
+                blockcommit_options += " --base %s" % first_disk['source']
 
         if top_inactive:
-            basename = os.path.basename(first_disk['source'])
-            diskname = basename.split(".")[0]
             top_image = os.path.join(tmp_dir, "%s.snap2" %
                                      diskname)
             blockcommit_options += " --top %s" % top_image
