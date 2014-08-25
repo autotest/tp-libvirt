@@ -539,10 +539,6 @@ def run(test, params, env):
                                                          % (pattern, line))
 
     finally:
-        # Environment clean
-        if unix_channel and options.find("quiesce") >= 0 and start_ga == "yes":
-            session.cmd("rpm -e qemu-guest-agent")
-
         # recover domain xml
         xml_recover(vmxml_backup)
         path = "/var/lib/libvirt/qemu/snapshot/" + vm_name
