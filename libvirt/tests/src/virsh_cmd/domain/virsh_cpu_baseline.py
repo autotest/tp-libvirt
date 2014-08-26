@@ -1,8 +1,11 @@
 import re
 import os
+import logging
 from autotest.client.shared import error
 from virttest import virsh
 from xml.dom.minidom import parseString
+from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):
@@ -66,7 +69,7 @@ def run(test, params, env):
     cpu_ref = params.get("cpu_baseline_cpu_ref", "file")
     extra = params.get("cpu_baseline_extra", "")
     test_feature = params.get("cpu_baseline_test_feature", "acpi")
-    status_error = params.get("status_error", "no")
+    status_error = "yes" == params.get("status_error", "no")
     cpu_xmlfile = os.path.join(test.tmpdir, file_name)
 
     # Prepare a xml file.
@@ -83,14 +86,54 @@ def run(test, params, env):
     err = result.stderr.strip()
 
     # Check status_error
-    if status_error == "yes":
+    if status_error:
         if status == 0:
             raise error.TestFail("Run successfully with wrong command!")
         if err == "":
             raise error.TestFail("The wrong command has no error outputed!")
-    elif status_error == "no":
+    else:
         if status != 0:
             raise error.TestFail("Run failed with right command")
         check_xml(output, test_feature)
-    else:
-        raise error.TestError("The status_error must be 'yes' or 'no'!")
+
+    # Use the output to config VM
+    config_guest = "yes" == params.get("config_guest", "no")
+    if config_guest and status == 0:
+        vm_name = params.get("main_vm")
+        vm = env.get_vm(vm_name)
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        vmxml_backup = vmxml.copy()
+        try:
+            cpu_xml = vm_xml.VMCPUXML()
+            cpu_xml['xml'] = output
+            vmxml['cpu'] = cpu_xml
+            vmxml.sync()
+            cpu_model = cpu_xml['model']
+            cpu_feature_list = cpu_xml.get_feature_list()
+            result = virsh.start(vm_name, ignore_status=True, debug=True)
+            libvirt.check_exit_status(result)
+            vm_pid = vm.get_pid()
+            # Check qemu cmdline
+            with open("/proc/%d/cmdline" % vm_pid) as vm_cmdline_file:
+                vm_cmdline = vm_cmdline_file.read()
+            if cpu_model in vm_cmdline:
+                logging.debug("Find cpu model '%s' in VM cmdline", cpu_model)
+            else:
+                raise error.TestFail("Not find cpu model '%s' in VM cmdline" %
+                                     cpu_model)
+            for feature in cpu_feature_list:
+                feature_name = feature.get('name')
+                if feature_name in vm_cmdline:
+                    logging.debug("Find cpu feature '%s' in VM cmdline",
+                                  feature_name)
+                else:
+                    raise error.TestFail("Not find cpu feature '%s' in VM "
+                                         "cmdline" % feature_name)
+        finally:
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
+            vmxml_backup.sync()
+            if os.path.exists(cpu_xmlfile):
+                os.remove(cpu_xmlfile)
