@@ -400,7 +400,7 @@ def run(test, params, env):
         # Config "snapshot_image_format" option in qemu.conf
         if config_format:
             qemu_conf = utils_config.LibvirtQemuConfig()
-            qemu_conf["snapshot_image_format"] = '"%s"' % snapshot_image_format
+            qemu_conf.snapshot_image_format = snapshot_image_format
             logging.debug("the qemu config file content is:\n %s" % qemu_conf)
             libvirtd.restart()
 
