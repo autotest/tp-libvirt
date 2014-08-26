@@ -194,7 +194,15 @@ def run(test, params, env):
     change_parameters = params.get("change_parameters", "no")
 
     # Backup original vm
-    vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vmxml_backup = vmxml.copy()
+
+    emulatorpin_placement = params.get("emulatorpin_placement", "")
+    if emulatorpin_placement:
+        vm.destroy()
+        vmxml.placement = emulatorpin_placement
+        vmxml.sync()
+        vm.start()
 
     test_dicts = dict(params)
     test_dicts['vm'] = vm
