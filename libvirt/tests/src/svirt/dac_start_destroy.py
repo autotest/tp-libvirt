@@ -191,17 +191,17 @@ def run(test, params, env):
 
             # Set qemu.conf for user and group
             if qemu_user:
-                qemu_conf['user'] = '"%s"' % qemu_user
+                qemu_conf.user = qemu_user
             if qemu_group:
-                qemu_conf['group'] = '"%s"' % qemu_group
+                qemu_conf.group = qemu_group
             if dynamic_ownership:
-                qemu_conf['dynamic_ownership'] = 1
+                qemu_conf.dynamic_ownership = 1
             else:
-                qemu_conf['dynamic_ownership'] = 0
+                qemu_conf.dynamic_ownership = 0
             if security_default_confined:
-                qemu_conf['security_default_confined'] = security_default_confined
+                qemu_conf.security_default_confined = security_default_confined
             if set_process_name:
-                qemu_conf['set_process_name'] = set_process_name
+                qemu_conf.set_process_name = set_process_name
             logging.debug("the qemu.conf content is: %s" % qemu_conf)
             libvirtd.restart()
 
