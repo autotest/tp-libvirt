@@ -108,6 +108,16 @@ def run(test, params, env):
                     raise error.TestNAError("This domain has snapshot(s), "
                                             "cannot be undefined!")
         if option.count("remove-all-storage"):
+            for disk in vm_xml.VMXML.get_disk_source(vm_name):
+                try:
+                    disk_source = disk.find('source')
+                    disk_path = disk_source.get('file') or disk_source.get('dev')
+                except AttributeError:
+                    continue
+                if disk_path in utlv.get_all_vol_paths():
+                    raise error.TestNAError("This case will remove '%s',"
+                                            " it's dangerous that skip"
+                                            " this case" % disk_path)
             pvtest = utlv.PoolVolumeTest(test, params)
             pvtest.pre_pool(pool_name, pool_type, pool_target, emulated_img,
                             emulated_size)
