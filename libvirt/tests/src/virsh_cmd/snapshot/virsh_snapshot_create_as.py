@@ -1,9 +1,16 @@
 import re
 import os
 import commands
+import string
 import logging
 from autotest.client.shared import error
-from virttest import virsh, utils_misc, xml_utils, libvirt_xml
+from autotest.client import utils
+from virttest import virsh
+from virttest import utils_misc
+from virttest import xml_utils
+from virttest import libvirt_xml
+from virttest import utils_config
+from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml, xcepts
 from provider import libvirt_version
 
@@ -69,10 +76,10 @@ def compose_disk_options(test, params, opt_names):
             left_opt = ""
 
         if params.get("bad_disk") is not None or \
-           params.get("external_disk") is not None:
-            spec_disk = os.path.join(test.virtdir, params.get(opt_list[0]))
+           params.get("reuse_external") == "yes":
+            spec_disk = os.path.join(test.tmpdir, params.get(opt_list[0]))
         else:
-            spec_disk = os.path.join(test.virtdir, opt_list[0])
+            spec_disk = os.path.join(test.tmpdir, opt_list[0])
 
         return opt_disk[0] + "file=" + spec_disk + left_opt
 
@@ -306,12 +313,17 @@ def run(test, params, env):
     multi_num = params.get("multi_num", "1")
     diskspec_num = params.get("diskspec_num", "1")
     bad_disk = params.get("bad_disk")
-    external_disk = params.get("external_disk")
+    reuse_external = "yes" == params.get("reuse_external", "no")
     start_ga = params.get("start_ga", "yes")
     domain_state = params.get("domain_state")
     memspec_opts = params.get("memspec_opts")
+    config_format = "yes" == params.get("config_format", "no")
+    snapshot_image_format = params.get("snapshot_image_format")
     diskspec_opts = params.get("diskspec_opts")
     create_autodestroy = 'yes' == params.get("create_autodestroy", "no")
+    unix_channel = "yes" == params.get("unix_channel", "yes")
+    dac_denial = "yes" == params.get("dac_denial", "no")
+    check_json_no_savevm = "yes" == params.get("check_json_no_savevm", "no")
 
     uri = params.get("virsh_uri")
     usr = params.get('unprivileged_user')
@@ -330,7 +342,7 @@ def run(test, params, env):
         # if the parameters have the disk without "file=" then we only need to
         # add testdir for it.
         if mem_options is None:
-            mem_options = os.path.join(test.virtdir, memspec_opts)
+            mem_options = os.path.join(test.tmpdir, memspec_opts)
         options += " --memspec " + mem_options
 
     tag_diskspec = 0
@@ -364,17 +376,46 @@ def run(test, params, env):
 
     # Generate empty image for negative test
     if bad_disk is not None:
-        bad_disk = os.path.join(test.virtdir, bad_disk)
+        bad_disk = os.path.join(test.tmpdir, bad_disk)
         os.open(bad_disk, os.O_RDWR | os.O_CREAT)
 
     # Generate external disk
-    if external_disk is not None:
-        external_disk = os.path.join(test.virtdir, external_disk)
-        commands.getoutput("qemu-img create -f qcow2 %s 1G" % external_disk)
+    if reuse_external:
+        disk_path = ''
+        for i in range(dnum):
+            external_disk = "external_disk%s" % i
+            if params.get(external_disk):
+                disk_path = os.path.join(test.tmpdir,
+                                         params.get(external_disk))
+                utils.run("qemu-img create -f qcow2 %s 1G" % disk_path)
+        # Only chmod of the last external disk for negative case
+        if dac_denial:
+            utils.run("chmod 500 %s" % disk_path)
 
+    qemu_conf = None
+    libvirtd_conf = None
+    libvirtd_log_path = None
+    libvirtd = utils_libvirtd.Libvirtd()
     try:
+        # Config "snapshot_image_format" option in qemu.conf
+        if config_format:
+            qemu_conf = utils_config.LibvirtQemuConfig()
+            qemu_conf.snapshot_image_format = snapshot_image_format
+            logging.debug("the qemu config file content is:\n %s" % qemu_conf)
+            libvirtd.restart()
+
+        if check_json_no_savevm:
+            libvirtd_conf = utils_config.LibvirtdConfig()
+            libvirtd_conf["log_level"] = '1'
+            libvirtd_conf["log_filters"] = '"1:json 3:remote 4:event"'
+            libvirtd_log_path = os.path.join(test.tmpdir, "libvirtd.log")
+            libvirtd_conf["log_outputs"] = '"1:file:%s"' % libvirtd_log_path
+            logging.debug("the libvirtd config file content is:\n %s" %
+                          libvirtd_conf)
+            libvirtd.restart()
+
         # Start qemu-ga on guest if have --quiesce
-        if options.find("quiesce") >= 0:
+        if unix_channel and options.find("quiesce") >= 0:
             if vm.is_alive():
                 vm.destroy()
             virt_xml_obj = libvirt_xml.VMXML(virsh_instance=virsh)
@@ -420,6 +461,16 @@ def run(test, params, env):
         # Record the previous snapshot-list
         snaps_before = virsh.snapshot_list(vm_name)
 
+        # Attach disk before create snapshot if not print xml and multi disks
+        # specified in cfg
+        if dnum > 1 and "--print-xml" not in options:
+            for i in range(1, dnum):
+                disk_path = os.path.join(test.tmpdir, 'disk%s.qcow2' % i)
+                utils.run("qemu-img create -f qcow2 %s 200M" % disk_path)
+                virsh.attach_disk(vm_name, disk_path,
+                                  'vd%s' % list(string.lowercase)[i],
+                                  debug=True)
+
         # Run virsh command
         # May create several snapshots, according to configuration
         for count in range(int(multi_num)):
@@ -455,8 +506,14 @@ def run(test, params, env):
                             raise error.TestFail("Run failed but file %s exist"
                                                  % option_dict['memspec'])
                         else:
-                            logging.info("Run failed as expected and memspec file"
-                                         " already beed removed")
+                            logging.info("Run failed as expected and memspec"
+                                         " file already been removed")
+                    # Check domain xml is not updated if reuse external fail
+                    elif reuse_external and dac_denial:
+                        output = virsh.dumpxml(vm_name).stdout.strip()
+                        if "reuse_external" in output:
+                            raise error.TestFail("Domain xml should not be "
+                                                 "updated with snapshot image")
                     else:
                         logging.info("Run failed as expected")
 
@@ -472,11 +529,16 @@ def run(test, params, env):
                     check_snapslist(vm_name, options, option_dict, output,
                                     snaps_before, snaps_list)
 
-    finally:
-        # Environment clean
-        if options.find("quiesce") >= 0 and start_ga == "yes":
-            session.cmd("rpm -e qemu-guest-agent")
+                    # For cover bug 872292
+                    if check_json_no_savevm:
+                        pattern = "The command savevm has not been found"
+                        with open(libvirtd_log_path) as f:
+                            for line in f:
+                                if pattern in line and "error" in line:
+                                    raise error.TestFail("'%s' was found: %s"
+                                                         % (pattern, line))
 
+    finally:
         # recover domain xml
         xml_recover(vmxml_backup)
         path = "/var/lib/libvirt/qemu/snapshot/" + vm_name
@@ -486,3 +548,26 @@ def run(test, params, env):
         # rm bad disks
         if bad_disk is not None:
             os.remove(bad_disk)
+        # rm attach disks and reuse external disks
+        if dnum > 1 and "--print-xml" not in options:
+            for i in range(dnum):
+                disk_path = os.path.join(test.tmpdir, 'disk%s.qcow2' % i)
+                if os.path.exists(disk_path):
+                    os.unlink(disk_path)
+                external_disk = "external_disk%s" % i
+                disk_path = os.path.join(test.tmpdir, params.get(external_disk))
+                if os.path.exists(disk_path):
+                    os.unlink(disk_path)
+
+        # restore config
+        if config_format and qemu_conf:
+            qemu_conf.restore()
+
+        if libvirtd_conf:
+            libvirtd_conf.restore()
+
+        if libvirtd_conf or (config_format and qemu_conf):
+            libvirtd.restart()
+
+        if libvirtd_log_path and os.path.exists(libvirtd_log_path):
+            os.unlink(libvirtd_log_path)
