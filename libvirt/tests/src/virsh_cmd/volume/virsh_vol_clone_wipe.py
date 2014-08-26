@@ -5,6 +5,7 @@ from autotest.client.shared import error
 from virttest.utils_test import libvirt
 from virttest import libvirt_storage
 from virttest import virsh
+from virttest import utils_misc
 from provider import libvirt_version
 
 
@@ -31,12 +32,30 @@ def run(test, params, env):
     vol_capability = params.get("vol_capability")
     vol_format = params.get("vol_format")
     clone_option = params.get("clone_option", "")
-    wipe_algorithms = params.get("wipe_algorithms").split()
-    if wipe_algorithms:
-        # Choose an algorithms randomly
-        alg = random.choice(wipe_algorithms)
+    wipe_algorithms = params.get("wipe_algorithms")
+
+    if virsh.has_command_help_match("vol-wipe", "--prealloc-metadata") is None:
+        if "prealloc-metadata" in clone_option:
+            raise error.TestNAError("Option --prealloc-metadata "
+                                    "is not supported.")
+
+    # Using algorithms other than zero need scrub installed.
+    try:
+        utils_misc.find_command('scrub')
+    except ValueError:
+        logging.warning("Can't locate scrub binary, only 'zero' algorithm "
+                        "is used.")
+        valid_algorithms = ["zero"]
     else:
-        alg = ""
+        valid_algorithms = ["zero", "nnsa", "dod", "bsi", "gutmann",
+                            "schneier", "pfitzner7", "pfitzner33", "random"]
+
+    # Choose an algorithms randomly
+    if wipe_algorithms:
+        alg = random.choice(wipe_algorithms.split())
+    else:
+        alg = random.choice(valid_algorithms)
+
     clone_status_error = "yes" == params.get("clone_status_error", "no")
     wipe_status_error = "yes" == params.get("wipe_status_error", "no")
 
