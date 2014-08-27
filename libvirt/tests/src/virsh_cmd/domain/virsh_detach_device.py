@@ -6,7 +6,7 @@ from virttest import aexpect
 from virttest import virt_vm
 from virttest import virsh
 from virttest import remote
-from virttest import qemu_storage
+from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 
 
@@ -160,14 +160,10 @@ def run(test, params, env):
 
     # Create virtual device file.
     if test_block_dev:
-        try:
-            iscsi_dev = qemu_storage.Iscsidev(params, test.virtdir, "iscsi")
-            device_source = iscsi_dev.setup()
-            logging.debug("iscsi dev name: %s" % device_source)
-        except ValueError, detail:
+        device_source = libvirt.setup_or_cleanup_iscsi(True)
+        if not device_source:
             # We should skip this case
-            raise error.TestNAError("Can not get iscsi device name in host: %s"
-                                    % detail)
+            raise error.TestNAError("Can not get iscsi device name in host")
     else:
         create_device_file(device_source)
 
@@ -276,7 +272,7 @@ def run(test, params, env):
         vm.destroy(gracefully=False)
     backup_xml.sync()
     if test_block_dev:
-        iscsi_dev.cleanup()
+        libvirt.setup_or_cleanup_iscsi(False)
     elif os.path.exists(device_source):
         os.remove(device_source)
 
