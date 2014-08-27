@@ -53,7 +53,7 @@ def set_xml_clock(vms, params):
         vmclockxml.timers = []
         newtimers = []
         for element in timer_elems:
-            newtimer = vm_xml.VMClockXML.Timer()
+            newtimer = vm_xml.VMClockXML.TimerXML()
             newtimer.update(element)
             newtimers.append(newtimer)
         vmclockxml.timers = newtimers

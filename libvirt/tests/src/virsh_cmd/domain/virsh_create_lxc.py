@@ -39,9 +39,11 @@ def run(test, params, env):
         vmxml.max_mem = max_mem
         vmxml.current_mem = cur_mem
         vmxml.vcpu = vcpu
-        vmxml.os_type = os_type
-        vmxml.os_arch = os_arch
-        vmxml.os_init = os_init
+        osxml = vmxml.os
+        osxml.type = os_type
+        osxml.arch = os_arch
+        osxml.init = os_init
+        vmxml.os = osxml
         # Generate emulator
         emulator = Emulator()
         emulator.path = emulator_path

@@ -119,7 +119,7 @@ def run(test, params, env):
             try:
                 cputune = xml.cputune
             except xcepts.LibvirtXMLNotFoundError:
-                cputune = vm_xml.VMCPUTune()
+                cputune = vm_xml.VMCPUTuneXML()
             name_map = {
                 'cpu_shares': 'shares',
                 'vcpu_period': 'period',
