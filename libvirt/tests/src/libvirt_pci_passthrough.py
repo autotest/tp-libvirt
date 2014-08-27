@@ -45,10 +45,12 @@ def run(test, params, env):
     server_ip = params.get("libvirt_pci_server_ip")
 
     # Check the parameters from configuration file.
-    if (pci_dev.count("ENTER") or net_ip.count("ENTER")
-            or server_ip.count("ENTER")):
-        raise error.TestNAError("Please edit the configuration file to set "
-                                "proper parameters for this test.")
+    if (pci_dev.count("ENTER")):
+        raise error.TestNAError("Please enter your device name for test.")
+
+    if (device_type == "NIC" and (net_ip.count("ENTER")
+                                  or server_ip.count("ENTER"))):
+        raise error.TestNAError("Please enter the ips for NIC test.")
 
     fdisk_list_before = None
 
