@@ -78,7 +78,7 @@ def run(test, params, env):
 
             if target == "hda":
                 target = "sda"
-            libvirt.mk_part("/dev/%s" % target, session=session)
+            libvirt.mk_part("/dev/%s" % target, size="10M", session=session)
             libvirt.mkfs("/dev/%s1" % target, "ext3", session=session)
 
             cmd = ("mount /dev/%s1 /mnt && echo '123' > /mnt/testfile"
