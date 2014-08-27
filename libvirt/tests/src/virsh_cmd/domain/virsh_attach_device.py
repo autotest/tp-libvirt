@@ -11,6 +11,7 @@ from virttest import virt_vm, virsh, remote, aexpect, utils_misc
 from virttest.libvirt_xml.vm_xml import VMXML
 # The backports module will take care of using the builtins if available
 from virttest.staging.backports import itertools
+from provider import libvirt_version
 
 # TODO: Move all these helper classes someplace else
 
@@ -697,6 +698,13 @@ def run(test, params, env):
     5) Restore domain
     6) Handle results
     """
+
+    dev_obj = params.get("vadu_dev_objs")
+    # Skip chardev hotplug on rhel6 host as it is not supported
+    if "Serial" in dev_obj:
+        if not libvirt_version.version_compare(1, 1, 0):
+            raise error.TestNAError("You libvirt version not supported"
+                                    " attach/detach Serial devices")
 
     logging.info("Preparing initial VM state")
     # Prepare test environment and its parameters
