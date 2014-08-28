@@ -4,8 +4,9 @@ import logging
 from autotest.client.shared import error
 from virttest import remote
 from virttest import virsh
-from virttest import libvirt_xml
+from virttest.libvirt_xml import vm_xml
 from virttest import libvirt_vm
+from virttest.utils_test import libvirt
 from xml.dom.minidom import parse
 
 
@@ -105,6 +106,12 @@ def run(test, params, env):
     remote_pwd = params.get("remote_pwd", "")
     remote_prompt = params.get("remote_prompt", "#")
     tmpxml = os.path.join(test.tmpdir, 'tmp.xml')
+    set_topology = "yes" == params.get("set_topology", "no")
+    sockets = params.get("topology_sockets")
+    cores = params.get("topology_cores")
+    threads = params.get("topology_threads")
+    start_vm_after_set = "yes" == params.get("start_vm_after_set", "no")
+    start_vm_expect_fail = "yes" == params.get("start_vm_expect_fail", "no")
     test_set_max = 2
 
     # Early death
@@ -113,7 +120,8 @@ def run(test, params, env):
         raise error.TestNAError("remote/local ip parameters not set.")
 
     # Save original configuration
-    orig_config_xml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    orig_config_xml = vmxml.copy()
 
     # Get the number of cpus, current value if set, and machine type
     orig_set, orig_current, mtype = get_xmldata(vm_name, tmpxml, options)
@@ -147,15 +155,25 @@ def run(test, params, env):
     if set_current != 0 and orig_set >= 2:
         if vm.is_alive():
             vm.destroy()
-        vm_xml = libvirt_xml.VMXML()
         if set_current >= test_set_max:
             raise error.TestFail("Current(%d) >= test set max(%d)" %
                                  (set_current, test_set_max))
-        vm_xml.set_vm_vcpus(vm_name, test_set_max, set_current)
-        # Restart, unless that's not our test
-        if pre_vm_state != "shut off":
-            vm.start()
-            vm.wait_for_login()
+        vmxml.set_vm_vcpus(vm_name, test_set_max, set_current)
+
+    # Set cpu topology
+    if set_topology:
+        if vm.is_alive():
+            vm.destroy()
+        vmcpu_xml = vm_xml.VMCPUXML()
+        vmcpu_xml['topology'] = {'sockets': sockets, 'cores': cores,
+                                 'threads': threads}
+        vmxml['cpu'] = vmcpu_xml
+        vmxml.sync()
+
+    # Restart, unless that's not our test
+    if pre_vm_state != "shut off" and not vm.is_alive():
+        vm.start()
+        vm.wait_for_login()
 
     if orig_set == 1:
         logging.debug("Original vCPU count is 1, just checking if setvcpus "
@@ -204,6 +222,15 @@ def run(test, params, env):
                                     ignore_status=True, debug=True)
             setvcpu_exit_status = status.exit_status
             setvcpu_exit_stderr = status.stderr.strip()
+
+            # Start VM after set vcpu
+            if start_vm_after_set:
+                if vm.is_alive():
+                    logging.debug("VM already started")
+                else:
+                    result = virsh.start(vm_name, ignore_status=True,
+                                         debug=True)
+                    libvirt.check_exit_status(result, start_vm_expect_fail)
 
     finally:
         vcpus_set, vcpus_current, mtype = get_xmldata(vm_name, tmpxml, options)
