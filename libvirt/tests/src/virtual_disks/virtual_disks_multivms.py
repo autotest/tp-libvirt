@@ -100,71 +100,74 @@ def run(test, params, env):
     test_shareable = "yes" == params.get("virt_disk_test_shareable", "no")
     disk_source_path = test.virtdir
 
-    disks = []
-    if disk_format == "scsi":
-        disk_source = libvirt.create_scsi_disk(scsi_options)
-        if not disk_source:
-            raise error.TestNAError("Get scsi disk failed.")
-        disks.append({"format": "scsi", "source": disk_source})
-
-    elif disk_format == "iscsi":
-        # Create iscsi device if neened.
-        image_size = params.get("image_size", "2G")
-        disk_source = libvirt.setup_or_cleanup_iscsi(
-            is_setup=True, is_login=True, image_size=image_size)
-        logging.debug("iscsi dev name: %s", disk_source)
-        # Format the disk and make the file system.
-        libvirt.mk_part(disk_source)
-        libvirt.mkfs("%s1" % disk_source, "ext3")
-        disk_source += "1"
-        disks.append({"format": disk_format,
-                      "source": disk_source})
-    elif disk_format in ["raw", "qcow2"]:
-        disk_path = "%s/test.%s" % (disk_source_path, disk_format)
-        disk_source = libvirt.create_local_disk("file", disk_path, "1",
-                                                disk_format=disk_format)
-        libvirt.mkfs(disk_source, "ext3")
-        disks.append({"format": disk_format,
-                      "source": disk_source})
-
-    # Backup xml files, compose the new domain xml
-    vms_list = []
-    for i in range(len(vm_names)):
-        vm_xml_file = os.path.join(test.tmpdir,
-                                   vm_names[i] + "_backup_.xml")
-        virsh.dumpxml(vm_names[i], extra="--inactive",
-                      to_file=vm_xml_file)
-        vm = env.get_vm(vm_names[i])
-        # Destroy domain first.
-        if vm.is_alive():
-            vm.destroy(gracefully=False)
-
-        # Configure vm disk options and define vm
-        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_names[i])
-        if disk_bus == "scsi":
-            set_vm_controller_xml(vmxml)
-        disk_sgio = ""
-        if len(vms_sgio) > i:
-            disk_sgio = vms_sgio[i]
-        shareable = ""
-        if len(vms_share) > i:
-            shareable = vms_share[i]
-        disk_xml = get_vm_disk_xml(disk_type, disk_source,
-                                   sgio=disk_sgio, share=shareable,
-                                   target=disk_target, bus=disk_bus,
-                                   driver=disk_driver_options)
-        if not hotplug:
-            # If we are not testing hotplug,
-            # add disks to domain xml and sync.
-            vmxml.add_device(disk_xml)
-            vmxml.sync()
-        vms_list.append({"name": vm_names[i], "vm": vm,
-                         "backup": vm_xml_file,
-                         "status": "yes" == status_error[i],
-                         "disk": disk_xml})
-        logging.debug("vms_list %s" % vms_list)
+    # Backup vm xml files.
+    vms_backup = []
+    # We just use 2 VMs for testing.
+    for i in range(2):
+        vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[i])
+        vms_backup.append(vmxml_backup)
 
     try:
+        # Create disk images if needed.
+        disks = []
+        if disk_format == "scsi":
+            disk_source = libvirt.create_scsi_disk(scsi_options)
+            if not disk_source:
+                raise error.TestNAError("Get scsi disk failed.")
+            disks.append({"format": "scsi", "source": disk_source})
+
+        elif disk_format == "iscsi":
+            # Create iscsi device if neened.
+            image_size = params.get("image_size", "100M")
+            disk_source = libvirt.setup_or_cleanup_iscsi(
+                is_setup=True, is_login=True, image_size=image_size)
+            logging.debug("iscsi dev name: %s", disk_source)
+            # Format the disk and make the file system.
+            libvirt.mk_part(disk_source, size="10M")
+            libvirt.mkfs("%s1" % disk_source, "ext3")
+            disk_source += "1"
+            disks.append({"format": disk_format,
+                          "source": disk_source})
+        elif disk_format in ["raw", "qcow2"]:
+            disk_path = "%s/test.%s" % (disk_source_path, disk_format)
+            disk_source = libvirt.create_local_disk("file", disk_path, "1",
+                                                    disk_format=disk_format)
+            libvirt.mkfs(disk_source, "ext3")
+            disks.append({"format": disk_format,
+                          "source": disk_source})
+
+        # Compose the new domain xml
+        vms_list = []
+        for i in range(2):
+            vm = env.get_vm(vm_names[i])
+            # Destroy domain first.
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
+
+            # Configure vm disk options and define vm
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm_names[i])
+            if disk_bus == "scsi":
+                set_vm_controller_xml(vmxml)
+            disk_sgio = ""
+            if len(vms_sgio) > i:
+                disk_sgio = vms_sgio[i]
+            shareable = ""
+            if len(vms_share) > i:
+                shareable = vms_share[i]
+            disk_xml = get_vm_disk_xml(disk_type, disk_source,
+                                       sgio=disk_sgio, share=shareable,
+                                       target=disk_target, bus=disk_bus,
+                                       driver=disk_driver_options)
+            if not hotplug:
+                # If we are not testing hotplug,
+                # add disks to domain xml and sync.
+                vmxml.add_device(disk_xml)
+                vmxml.sync()
+            vms_list.append({"name": vm_names[i], "vm": vm,
+                             "status": "yes" == status_error[i],
+                             "disk": disk_xml})
+            logging.debug("vms_list %s" % vms_list)
+
         for i in range(len(vms_list)):
             try:
                 # Try to start the domain.
@@ -273,14 +276,14 @@ def run(test, params, env):
                     raise error.TestFail('VM Failed to start'
                                          ' for some reason!')
     finally:
-        # Recover VMs.
+        # Stop VMs.
         for i in range(len(vms_list)):
             if vms_list[i]['vm'].is_alive():
                 vms_list[i]['vm'].destroy(gracefully=False)
-            logging.info("Restoring vm...")
-            virsh.undefine(vms_list[i]['name'])
-            virsh.define(vms_list[i]['backup'])
-            os.remove(vms_list[i]['backup'])
+
+        # Recover VMs.
+        for vmxml_backup in vms_backup:
+            vmxml_backup.sync()
 
         # Remove disks.
         for img in disks:
