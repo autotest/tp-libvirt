@@ -34,7 +34,7 @@ def run(test, params, env):
             if not os.path.isdir(pool_target):
                 os.makedirs(pool_target)
             # There is no need to cleanup anything for dir type
-            cleanup_env = [False, False, False]
+            cleanup_env = [False, False, False, ""]
             result = utlv.define_pool(pool_name, pool_type, pool_target,
                                       cleanup_env)
             if result.exit_status != 0:

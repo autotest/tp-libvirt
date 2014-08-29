@@ -123,3 +123,5 @@ def run(test, params, env):
         if src_pool_type != dest_pool_type:
             pvt.cleanup_pool(dest_pool_name, dest_pool_type, dest_pool_target,
                              dest_emulated_image)
+        if os.path.isfile(vol_file):
+            os.remove(vol_file)

@@ -5,6 +5,7 @@ import os
 from autotest.client.shared import error
 from autotest.client import utils
 from virttest import virsh, data_dir, utils_test, utils_misc
+from virttest import utils_selinux
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.staging.service import Factory
@@ -37,6 +38,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     # backup /etc/exports
     shutil.copyfile(export_file, "%s.bak" % export_file)
+    selinux_bak = ""
 
     try:
         # Gerenate tmp dir
@@ -56,8 +58,10 @@ def run(test, params, env):
             if not os.path.exists(nfs_dir):
                 os.mkdir(nfs_dir)
             mount_opt = "rw,no_root_squash,async"
-            utils_test.libvirt.setup_or_cleanup_nfs(True, nfs_dir, False,
-                                                    mount_opt, img_dir)
+            res = utils_test.libvirt.setup_or_cleanup_nfs(
+                is_setup=True, mount_dir=nfs_dir, is_mount=False,
+                export_options=mount_opt, export_dir=img_dir)
+            selinux_bak = res["selinux_status_bak"]
             utils.run("mount -o soft,timeo=1,retrans=1,retry=0 localhost:%s "
                       "%s" % (img_dir, nfs_dir))
             img_path = os.path.join(nfs_dir, img_name)
@@ -163,15 +167,13 @@ def run(test, params, env):
                                      output.stderr)
     finally:
         logging.info("Do clean steps")
-        try:
-            if error_type == "unspecified error":
-                nfs_service.start()
-                vm.destroy()
-                if os.path.isfile("%s.bak" % export_file):
-                    shutil.move("%s.bak" % export_file, export_file)
-                utils.run("umount %s" % nfs_dir)
-            elif error_type == "no space":
-                vm.destroy()
-                _pool_vol.cleanup_pool(pool_name, "fs", pool_target, img_name)
-        finally:
-            utils.run("rm -rf %s" % tmp_dir)
+        if error_type == "unspecified error":
+            nfs_service.start()
+            vm.destroy()
+            if os.path.isfile("%s.bak" % export_file):
+                shutil.move("%s.bak" % export_file, export_file)
+            utils.run("umount %s" % nfs_dir)
+            utils_selinux.set_status(selinux_bak)
+        elif error_type == "no space":
+            vm.destroy()
+            _pool_vol.cleanup_pool(pool_name, "fs", pool_target, img_name)

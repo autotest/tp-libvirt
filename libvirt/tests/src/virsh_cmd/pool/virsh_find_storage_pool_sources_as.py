@@ -34,7 +34,8 @@ def run(test, params, env):
     if source_host == "localhost":
         if source_type == "netfs":
             # Set up nfs
-            utils_test.libvirt.setup_or_cleanup_nfs(True)
+            res = utils_test.libvirt.setup_or_cleanup_nfs(True)
+            selinux_bak = res["selinux_status_bak"]
             cleanup_nfs = True
         if source_type in ["iscsi", "logical"]:
             # Do we have the necessary tools?
@@ -91,4 +92,5 @@ def run(test, params, env):
         if cleanup_iscsi:
             utils_test.libvirt.setup_or_cleanup_iscsi(False)
         if cleanup_nfs:
-            utils_test.libvirt.setup_or_cleanup_nfs(False)
+            utils_test.libvirt.setup_or_cleanup_nfs(
+                False, restore_selinux=selinux_bak)
