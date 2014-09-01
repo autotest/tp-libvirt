@@ -97,7 +97,7 @@ def run(test, params, env):
                 if vols:
                     vol_name = vols[0]
                 else:
-                    raise error.TestNAError("No volume in pool: %s", pool_name)
+                    raise error.TestNAError("No volume in pool: %s" % pool_name)
             else:
                 vol_arg = {'name': vol_name, 'format': vol_format,
                            'capacity': 1073741824,
@@ -156,7 +156,7 @@ def run(test, params, env):
             # VM with set seclabel can access the image with the
             # set context.
             if status_error:
-                raise error.TestFail('Test successed in negative case.')
+                raise error.TestFail('Test succeeded in negative case.')
 
             if check_cap_rawio:
                 cap_list = ['CapPrm', 'CapEff', 'CapBnd']
