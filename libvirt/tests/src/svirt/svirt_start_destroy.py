@@ -105,7 +105,7 @@ def run(test, params, env):
             # Start VM successfully.
             # VM with seclabel can access the image with the context.
             if status_error:
-                raise error.TestFail("Test successed in negative case.")
+                raise error.TestFail("Test succeeded in negative case.")
             # Check the label of VM and image when VM is running.
             vm_context = utils_selinux.get_context_of_process(vm.get_pid())
             if (sec_type == "static") and (not vm_context == sec_label):

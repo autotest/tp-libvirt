@@ -62,7 +62,7 @@ def run(test, params, env):
             vm.restore_from_file(path=save_path)
             # Save and restore VM successfully.
             if status_error:
-                raise error.TestFail("Test successed in negative case.")
+                raise error.TestFail("Test succeeded in negative case.")
         except virt_vm.VMError, e:
             if not status_error:
                 error_msg = "Test failed in positive case.\n error: %s\n" % e
