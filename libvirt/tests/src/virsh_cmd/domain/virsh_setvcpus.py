@@ -96,8 +96,23 @@ def run(test, params, env):
     command = params.get("setvcpus_command", "setvcpus")
     options = params.get("setvcpus_options")
     vm_ref = params.get("setvcpus_vm_ref", "name")
-    count = params.get("setvcpus_count")
-    set_current = int(params.get("setvcpus_current", "0"))
+    count = params.get("setvcpus_count", "")
+    convert_err = "Can't convert {0} to integer type"
+    try:
+        count = int(count)
+    except ValueError:
+        # 'count' may not invalid number in negative tests
+        logging.debug(convert_err.format(count))
+    current_vcpu = int(params.get("setvcpus_current", "1"))
+    try:
+        current_vcpu = int(current_vcpu)
+    except ValueError:
+        raise error.TestError(convert_err.format(current_vcpu))
+    max_vcpu = int(params.get("setvcpus_max", "4"))
+    try:
+        max_vcpu = int(max_vcpu)
+    except ValueError:
+        raise error.TestError(convert_err.format(max_vcpu))
     extra_param = params.get("setvcpus_extra_param")
     count_option = "%s %s" % (count, extra_param)
     status_error = params.get("status_error")
@@ -112,7 +127,7 @@ def run(test, params, env):
     threads = params.get("topology_threads")
     start_vm_after_set = "yes" == params.get("start_vm_after_set", "no")
     start_vm_expect_fail = "yes" == params.get("start_vm_expect_fail", "no")
-    test_set_max = 2
+    remove_vm_feature = params.get("remove_vm_feature", "")
 
     # Early death
     if vm_ref == "remote" and (remote_ip.count("EXAMPLE.COM") or
@@ -123,13 +138,9 @@ def run(test, params, env):
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     orig_config_xml = vmxml.copy()
 
-    # Get the number of cpus, current value if set, and machine type
-    orig_set, orig_current, mtype = get_xmldata(vm_name, tmpxml, options)
-    logging.debug("orig_set=%d orig_current=%d mtype=%s",
-                  orig_set, orig_current, mtype)
-
-    # Normal processing of the test is to set the vcpu count to 2 and then
-    # adjust the 'current_vcpu' value to 1 effectively removing a vcpu.
+    # Normal processing of the test is to set the maximum vcpu count to 4,
+    # and set the current vcpu count to 1, then adjust the 'count' value to
+    # plug or unplug vcpus.
     #
     # This is generally fine when the guest is not running; however, the
     # hotswap functionality hasn't always worked very well and is under
@@ -145,49 +156,53 @@ def run(test, params, env):
     # the machine this could result in a newer qemu still using 1.4 or earlier
     # for the machine type.
     #
-    # If the set_current is set, then we are adding CPU's, thus we must
-    # set then 'current_vcpu' value to something lower than our count in
-    # order to test that if we start with a current=1 and a count=2 that we
-    # can set our current up to our count. If our orig_set count is 1, then
-    # don't add a vCPU to a VM that perhaps doesn't want one.  We still need
-    # to check if 'virsh setvcpus <domain> 1' would work, so continue on.
-    #
-    if set_current != 0 and orig_set >= 2:
-        if vm.is_alive():
-            vm.destroy()
-        if set_current >= test_set_max:
-            raise error.TestFail("Current(%d) >= test set max(%d)" %
-                                 (set_current, test_set_max))
-        vmxml.set_vm_vcpus(vm_name, test_set_max, set_current)
-
-    # Set cpu topology
-    if set_topology:
-        if vm.is_alive():
-            vm.destroy()
-        vmcpu_xml = vm_xml.VMCPUXML()
-        vmcpu_xml['topology'] = {'sockets': sockets, 'cores': cores,
-                                 'threads': threads}
-        vmxml['cpu'] = vmcpu_xml
-        vmxml.sync()
-
-    # Restart, unless that's not our test
-    if pre_vm_state != "shut off" and not vm.is_alive():
-        vm.start()
-        vm.wait_for_login()
-
-    if orig_set == 1:
-        logging.debug("Original vCPU count is 1, just checking if setvcpus "
-                      "can still set current.")
-
-    domid = vm.get_id()  # only valid for running
-    domuuid = vm.get_uuid()
-
-    if pre_vm_state == "paused":
-        vm.pause()
-    elif pre_vm_state == "shut off" and vm.is_alive():
-        vm.destroy()
 
     try:
+        if vm.is_alive():
+            vm.destroy()
+
+        # Set maximum vcpus, so we can run all kinds of normal tests without
+        # encounter requested vcpus greater than max allowable vcpus error
+        vmxml.set_vm_vcpus(vm_name, max_vcpu, current_vcpu)
+
+        # Get the number of cpus, current value if set, and machine type
+        orig_count, orig_current, mtype = get_xmldata(vm_name, tmpxml, options)
+        logging.debug("Before run setvcpus: cpu_count=%d, cpu_current=%d,"
+                      " mtype=%s", orig_count, orig_current, mtype)
+
+        # Set cpu topology
+        if set_topology:
+            vmcpu_xml = vm_xml.VMCPUXML()
+            vmcpu_xml['topology'] = {'sockets': sockets, 'cores': cores,
+                                     'threads': threads}
+            vmxml['cpu'] = vmcpu_xml
+            vmxml.sync()
+
+        # Remove vm features
+        if remove_vm_feature:
+            vmfeature_xml = vmxml['features']
+            vmfeature_xml.remove_feature(remove_vm_feature)
+            vmxml['features'] = vmfeature_xml
+            vmxml.sync()
+
+        # Restart, unless that's not our test
+        if not vm.is_alive():
+            vm.start()
+        vm.wait_for_login()
+
+        if orig_count == 1 and count == 1:
+            logging.debug("Original vCPU count is 1, just checking if setvcpus "
+                          "can still set current.")
+
+        domid = vm.get_id()  # only valid for running
+        domuuid = vm.get_uuid()
+
+        if pre_vm_state == "paused":
+            vm.pause()
+        elif pre_vm_state == "shut off" and vm.is_alive():
+            vm.destroy()
+
+        # Run test
         if vm_ref == "remote":
             (setvcpu_exit_status, status_error,
              setvcpu_exit_stderr) = remote_test(remote_ip,
@@ -233,16 +248,26 @@ def run(test, params, env):
                     libvirt.check_exit_status(result, start_vm_expect_fail)
 
     finally:
-        vcpus_set, vcpus_current, mtype = get_xmldata(vm_name, tmpxml, options)
+        new_count, new_current, mtype = get_xmldata(vm_name, tmpxml, options)
+        logging.debug("After run setvcpus: cpu_count=%d, cpu_current=%d,"
+                      " mtype=%s", new_count, new_current, mtype)
 
         # Cleanup
         if pre_vm_state == "paused":
             virsh.resume(vm_name, ignore_status=True)
         orig_config_xml.sync()
+        if os.path.exists(tmpxml):
+            os.remove(tmpxml)
 
     # check status_error
     if status_error == "yes":
         if setvcpu_exit_status == 0:
+            # RHEL7/Fedora has a bug(BZ#1000354) against qemu-kvm, so throw the
+            # bug info here
+            if remove_vm_feature:
+                logging.error(
+                    "You may encounter bug: "
+                    "https://bugzilla.redhat.com/show_bug.cgi?id=1000354")
             raise error.TestFail("Run successfully with wrong command!")
     else:
         if setvcpu_exit_status != 0:
@@ -273,47 +298,15 @@ def run(test, params, env):
                 raise error.TestNAError("virsh setvcpu hotplug unsupported, "
                                         " mtype=%s" % mtype)
 
-            # Cannot set current vcpu count large than max vcpu count
-            if orig_set == 1 and count > orig_set:
-                raise error.TestNAError(setvcpu_exit_stderr)
-
             # Otherwise, it seems we have a real error
-            raise error.TestFail("Run failed with right command mtype=%s stderr=%s" %
-                                 (mtype, setvcpu_exit_stderr))
+            raise error.TestFail("Run failed with right command mtype=%s"
+                                 " stderr=%s" % (mtype, setvcpu_exit_stderr))
         else:
             if "--maximum" in options:
-                if vcpus_set != int(count):
-                    raise error.TestFail("failed to set --maximum vcpus "
-                                         "to %s mtype=%s" %
-                                         (count, mtype))
+                if new_count != count:
+                    raise error.TestFail("Changing guest maximum vcpus failed"
+                                         " while virsh command return 0")
             else:
-                if orig_set >= 2 and set_current != 0:
-                    # If we're adding a cpu we go from:
-                    #    <vcpu ... current='1'...>2</vcpu>
-                    # to
-                    #    <vcpu ... >2</vcpu>
-                    # where vcpus_current will be 0 and vcpus_set will be 2
-                    if vcpus_current != 0 and vcpus_set != test_set_max:
-                        raise error.TestFail("Failed to add current=%d, "
-                                             "set=%d, count=%d mtype=%s" %
-                                             (vcpus_current, vcpus_set,
-                                              test_set_max, mtype))
-                elif orig_set >= 2 and set_current == 0:
-                    # If we're removing a cpu we go from:
-                    #    <vcpu ... >2</vcpu>
-                    # to
-                    #    <vcpu ... current='1'...>2</vcpu>
-                    # where vcpus_current will be 1 and vcpus_set will be 2
-                    if vcpus_current != 1 and vcpus_set != test_set_max:
-                        raise error.TestFail("Failed to remove current=%d, "
-                                             "set=%d, count=%d mtype=%s" %
-                                             (vcpus_current, vcpus_set,
-                                              test_set_max, mtype))
-                # If we have a starting place of 1 vCPUs, then this is rather
-                # boring and innocuous case, but libvirt will succeed, so just
-                # handle it
-                elif orig_set == 1 and vcpus_current != 0 and vcpus_set != 1:
-                    raise error.TestFail("Failed when orig_set is 1 current=%d, "
-                                         "set=%d, count=%d mtype=%s" %
-                                         (vcpus_current, vcpus_set,
-                                          test_set_max, mtype))
+                if new_current != count:
+                    raise error.TestFail("Changing guest current vcpus failed"
+                                         " while virsh command return 0")
