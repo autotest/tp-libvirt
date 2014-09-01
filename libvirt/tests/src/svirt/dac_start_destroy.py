@@ -210,8 +210,7 @@ def run(test, params, env):
             if sec_label:
                 sec_label = sec_label.replace("+", "")
                 if ":" in sec_label:
-                    user = sec_label.split(":")[0]
-                    group = sec_label.split(":")[1]
+                    user, group = sec_label.split(":")
                     sec_label_trans = format_user_group_str(user, group)
 
             # Set the context of the VM.
@@ -226,7 +225,7 @@ def run(test, params, env):
             # Start VM successfully.
             # VM with seclabel can access the image with the context.
             if status_error:
-                raise error.TestFail("Test successed in negative case.")
+                raise error.TestFail("Test succeeded in negative case.")
 
             # Get vm process label when VM is running.
             vm_pid = vm.get_pid()
@@ -319,8 +318,9 @@ def run(test, params, env):
             # Starting VM failed.
             # VM with seclabel can not access the image with the context.
             if not status_error:
-                err_msg = "Domain start fail not due to  DAC setting, check"
-                err_msg += "more in bug:856951"
+                err_msg = "Domain start fail not due to  DAC setting, check "
+                err_msg += "more in https://bugzilla.redhat.com/show_bug"
+                err_msg += ".cgi?id=856951"
                 if set_sec_label:
                     if sec_label:
                         if sec_relabel == "yes" and sec_label_trans == "0:0":
