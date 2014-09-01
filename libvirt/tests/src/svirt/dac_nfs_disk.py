@@ -171,7 +171,7 @@ def run(test, params, env):
                               " start: %s" % img_label_after)
 
             if status_error:
-                raise error.TestFail('Test successed in negative case.')
+                raise error.TestFail('Test succeeded in negative case.')
         except virt_vm.VMStartError, e:
             # Starting VM failed.
             if not status_error:
