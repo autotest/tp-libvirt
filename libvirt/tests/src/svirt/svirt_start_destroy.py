@@ -60,7 +60,7 @@ def run(test, params, env):
 
     # Get varialbles about image.
     img_label = params.get('svirt_start_destroy_disk_label')
-    # Label the disks of VM with img_label.
+    # Backup disk Labels.
     disks = vm.get_disk_devices()
     backup_labels_of_disks = {}
     backup_ownership_of_disks = {}
@@ -68,20 +68,26 @@ def run(test, params, env):
         disk_path = disk['source']
         backup_labels_of_disks[disk_path] = utils_selinux.get_context_of_file(
             filename=disk_path)
-        utils_selinux.set_context_of_file(filename=disk_path,
-                                          context=img_label)
         f = os.open(disk_path, 0)
         stat_re = os.fstat(f)
         backup_ownership_of_disks[disk_path] = "%s:%s" % (stat_re.st_uid,
                                                           stat_re.st_gid)
-        os.chown(disk_path, 107, 107)
-    # Set selinux of host.
+    # Backup selinux of host.
     backup_sestatus = utils_selinux.get_status()
-    utils_selinux.set_status(host_sestatus)
 
     qemu_conf = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
     try:
+        # Set disk label
+        for disk in disks.values():
+            disk_path = disk['source']
+            utils_selinux.set_context_of_file(filename=disk_path,
+                                              context=img_label)
+            os.chown(disk_path, 107, 107)
+
+        # Set selinux of host.
+        utils_selinux.set_status(host_sestatus)
+
         # Set qemu conf
         if security_driver:
             qemu_conf.set_string('security_driver', security_driver)
@@ -130,7 +136,7 @@ def run(test, params, env):
                                          % (disk_context, imagelabel))
             # Check the label of disk after VM being destroyed.
             if poweroff_with_destroy:
-                vm.destroy()
+                vm.destroy(gracefully=False)
             else:
                 vm.wait_for_login()
                 vm.shutdown()
