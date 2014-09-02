@@ -1,5 +1,6 @@
 import os
 import logging
+
 from autotest.client.shared import error
 from autotest.client import utils
 from virttest.utils_test import libvirt
@@ -22,6 +23,8 @@ def run(test, params, env):
     iface_name = params.get("iface_name")
     bridge_name = params.get("bridge_name")
     ping_ip = params.get("ping_ip", "")
+    ping_count = int(params.get("ping_count", "3"))
+    ping_timeout = int(params.get("ping_timeout", "5"))
     bridge_option = params.get("bridge_option")
     unbridge_option = params.get("unbridge_option")
     bridge_delay = "yes" == params.get("bridge_delay", "no")
@@ -91,7 +94,8 @@ def run(test, params, env):
                     br_ip = ""
                 # Do ping test only bridge has IP address and ping_ip not empty
                 if br_ip and ping_ip:
-                    if not libvirt.check_iface(bridge_name, "ping", ping_ip):
+                    if not libvirt.check_iface(bridge_name, "ping", ping_ip,
+                                               count=ping_count, timeout=ping_timeout):
                         raise error.TestFail("Fail to ping %s from %s."
                                              % (ping_ip, bridge_name))
                 else:
