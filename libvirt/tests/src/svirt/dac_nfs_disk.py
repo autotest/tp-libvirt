@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 from autotest.client.shared import error
 from autotest.client import utils
@@ -58,6 +59,7 @@ def run(test, params, env):
     emulated_image = params.get("emulated_image")
     vol_name = params.get("vol_name")
     vol_format = params.get("vol_format")
+    bk_file_name = params.get("bk_file_name")
     # Get pool vol variables
     img_tup = ("img_user", "img_group", "img_mode")
     img_val = []
@@ -90,6 +92,7 @@ def run(test, params, env):
     backup_sestatus = utils_selinux.get_status()
 
     pvt = None
+    snapshot_name = None
     qemu_conf = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
     try:
@@ -135,6 +138,12 @@ def run(test, params, env):
         # Create a image.
         server_img_path, result = image.create(params)
 
+        if params.get("image_name_backing_file"):
+            params['image_name'] = bk_file_name
+            params['has_backing_file'] = "yes"
+            image = qemu_storage.QemuImg(params, nfs_path, bk_file_name)
+            server_img_path, result = image.create(params)
+
         # Get vol img path
         vol_name = server_img_path.split('/')[-1]
         virsh.pool_refresh(pool_name, debug=True)
@@ -178,6 +187,21 @@ def run(test, params, env):
                 raise error.TestFail("Test failed in positive case."
                                      "error: %s" % e)
 
+        if params.get("image_name_backing_file"):
+            options = "--disk-only"
+            snapshot_result = virsh.snapshot_create(vm_name, options,
+                                                    debug=True)
+            if snapshot_result.exit_status:
+                if not status_error:
+                    raise error.TestFail("Failed to create snapshot. Error:%s."
+                                         % snapshot_result.stderr.strip())
+            snapshot_name = re.search(
+                "\d+", snapshot_result.stdout.strip()).group(0)
+
+        if snapshot_name:
+            virsh.snapshot_delete(vm_name, snapshot_name, "--metadata",
+                                  debug=True)
+
         try:
             virsh.detach_disk(vm_name, target="vdf", extra="--persistent",
                               debug=True)
@@ -187,7 +211,10 @@ def run(test, params, env):
     finally:
         # clean up
         vm.destroy()
-        backup_xml.sync()
+        if snapshot_name:
+            backup_xml.sync("--snapshots-metadata")
+        else:
+            backup_xml.sync()
         for path, label in backup_labels_of_disks.items():
             label_list = label.split(":")
             os.chown(path, int(label_list[0]), int(label_list[1]))
