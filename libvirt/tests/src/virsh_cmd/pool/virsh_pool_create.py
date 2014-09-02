@@ -2,6 +2,7 @@ import os
 import logging
 from autotest.client.shared import error
 from virttest import virsh, xml_utils, data_dir, libvirt_storage, libvirt_xml
+from virttest import utils_test
 
 
 def pool_check(pool_name, pool_ins):
@@ -38,6 +39,8 @@ def run(test, params, env):
         "pool_create_undefine_exist_pool", "no")
     readonly_mode = "yes" == params.get("pool_create_readonly_mode", "no")
     status_error = "yes" == params.get("status_error", "no")
+    source_name = params.get("pool_source_name", "gluster-vol1")
+    pool_type = params.get("pool_create_type", "")
     exist_active = False
 
     # Deal with each parameters
@@ -79,6 +82,12 @@ def run(test, params, env):
         xml_object = open(pool_xml, 'w')
         xml_object.write(dir_xml)
         xml_object.close()
+
+    if pool_type == "gluster":
+        pool_vol = utils_test.libvirt.PoolVolumeTest(test, params)
+        pool_vol.pre_pool(pool_name, pool_type, "", "",
+                          source_name=source_name, source_path="/")
+        exist_pool_name = pool_name
 
     # Delete the exist pool
     start_pool = False
@@ -146,7 +155,7 @@ def run(test, params, env):
             virsh.pool_destroy(pool_name)
 
         # restore the undefined default pool
-        if undefine_exist_pool:  # and not pool_ins.pool_exists(exist_pool_name):
+        if undefine_exist_pool and pool_type != "gluster":  # and not pool_ins.pool_exists(exist_pool_name):
             virsh.pool_define(backup_xml)
             if start_pool:
                 pool_ins.start_pool(exist_pool_name)
@@ -156,3 +165,7 @@ def run(test, params, env):
         # If we created the pool_path, then remove it
         if created_pool_path:
             os.rmdir(pool_path)
+
+        # Clear gluster environment
+        if pool_type == "gluster":
+            utils_test.libvirt.setup_or_cleanup_gluster(False, source_name)

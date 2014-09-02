@@ -3,7 +3,7 @@ import re
 import shutil
 import logging
 from autotest.client.shared import utils, error
-from virttest import utils_misc, virsh, libvirt_storage
+from virttest import utils_misc, virsh, libvirt_storage, utils_test
 from virttest.libvirt_xml import vol_xml
 from virttest.utils_test import libvirt as utlv
 
@@ -26,29 +26,25 @@ def run(test, params, env):
     TODO: Handle negative testcases
     """
 
-    def define_start_pool(pool_name, pool_type, pool_target):
+    cleanup_env = [False, False, False, "", False]
+
+    def define_start_pool(pool_name, pool_type, pool_target, **kwargs):
         """
         To define a pool
         """
-        if 'dir' in pool_type:
-            if not os.path.isdir(pool_target):
-                os.makedirs(pool_target)
-            # There is no need to cleanup anything for dir type
-            cleanup_env = [False, False, False, ""]
-            result = utlv.define_pool(pool_name, pool_type, pool_target,
-                                      cleanup_env)
-            if result.exit_status != 0:
-                raise error.TestFail("Command virsh pool-define-as"
-                                     " failed:\n%s" % result.stderr.strip())
-            else:
-                logging.debug("%s type pool: %s defined successfully",
-                              pool_type, pool_name)
-            sp = libvirt_storage.StoragePool()
-            if not sp.start_pool(pool_name):
-                raise error.TestFail("Start pool %s failed." % pool_name)
+        if not os.path.isdir(pool_target):
+            os.makedirs(pool_target)
+        result = utlv.define_pool(pool_name, pool_type, pool_target,
+                                  cleanup_env, **kwargs)
+        if result.exit_status != 0:
+            raise error.TestFail("Command virsh pool-define-as"
+                                 " failed:\n%s" % result.stderr.strip())
         else:
-            raise error.TestNAError("pool type %s has not yet been"
-                                    " supported in the test" % pool_type)
+            logging.debug("%s type pool: %s defined successfully",
+                          pool_type, pool_name)
+        sp = libvirt_storage.StoragePool()
+        if not sp.start_pool(pool_name):
+            raise error.TestFail("Start pool %s failed." % pool_name)
         return True
 
     def cleanup_pool(pool_name, pool_target):
@@ -212,6 +208,13 @@ def run(test, params, env):
         else:
             logging.debug("virsh vol-key for volume: %s successfully"
                           " checked against vol-dumpxml", expected['name'])
+
+        # Check against virsh vol-name
+        get_vol_name = virsh.vol_name(expected['path'])
+        if get_vol_name.stdout.strip() != expected['name']:
+            logging.error("Volume name mismatch\n"
+                          "Expected name: %s\n Output of vol-name: %s",
+                          expected['name'], get_vol_name)
 
         # Check against virsh vol-path
         vol_path = virsh.vol_path(expected['name'], expected['pool_name'])
@@ -383,9 +386,14 @@ def run(test, params, env):
     capacity = int(params.get("volume_size", "1048576"))
     allocation = int(params.get("volume_allocation", "1048576"))
     vol_format = params.get("volume_format")
+    source_name = params.get("gluster_source_name", "gluster-vol1")
+    source_path = params.get("gluster_source_path", "/")
     expected_vol = {}
     if pool_type == 'dir':
         vol_type = 'file'
+
+    if pool_type == 'gluster':
+        vol_type = 'network'
 
         logging.debug("Debug:\npool_name:%s\npool_type:%s\npool_target:%s\n"
                       "vol_name:%s\nvol_number:%s\ncapacity:%s\nallocation:%s\n"
@@ -395,7 +403,13 @@ def run(test, params, env):
     total_err_count = 0
     try:
         # Define and start pool
-        define_start_pool(pool_name, pool_type, pool_target)
+        define_start_pool(pool_name, pool_type, pool_target,
+                          gluster_source_name=source_name,
+                          gluster_source_path=source_path,
+                          gluster_file_name=vol_name,
+                          gluster_file_type=vol_format,
+                          gluster_file_size=capacity,
+                          gluster_vol_number=vol_number)
         for i in range(vol_number):
             volume_name = "%s_%d" % (vol_name, i)
             # Build expected results
@@ -406,10 +420,17 @@ def run(test, params, env):
             expected_vol['capacity'] = capacity
             expected_vol['allocation'] = allocation
             expected_vol['format'] = vol_format
-            expected_vol['path'] = pool_target + '/' + volume_name
+            if pool_type == 'gluster':
+                ip_addr = utlv.get_host_ipv4_addr()
+                expected_vol['path'] = "gluster://%s/%s/%s" % \
+                                       (ip_addr, source_name,
+                                        volume_name)
+            else:
+                expected_vol['path'] = pool_target + '/' + volume_name
             expected_vol['type'] = vol_type
             # Creates volume
-            create_volume(expected_vol)
+            if pool_type != "gluster":
+                create_volume(expected_vol)
             # Different Checks for volume
             total_err_count += check_vol(expected_vol)
             # Delete volume and check for results
@@ -420,3 +441,6 @@ def run(test, params, env):
                                  "Check for error logs")
     finally:
         cleanup_pool(pool_name, pool_target)
+        if cleanup_env[4]:
+            utils_test.libvirt.setup_or_cleanup_gluster(
+                False, source_name)
