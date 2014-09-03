@@ -120,12 +120,15 @@ def run(test, params, env):
     serial = params.get("at_dt_disk_serial", "")
     address = params.get("at_dt_disk_address", "")
     address2 = params.get("at_dt_disk_address2", "")
+    cache_options = params.get("cache_options", "")
     if serial:
         at_options += (" --serial %s" % serial)
     if address2:
         at_options_twice = at_options + (" --address %s" % address2)
     if address:
         at_options += (" --address %s" % address)
+    if cache_options:
+        at_options += (" --cache %s" % cache_options)
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -322,6 +325,17 @@ def run(test, params, env):
         disk_address2 = vm_xml.VMXML.get_disk_address(vm_name, device_target2)
         if address2 != disk_address2:
             check_disk_address2 = False
+
+    # Check disk cache option after attach.
+    check_cache_after_cmd = True
+    if cache_options:
+        disk_cache = vm_xml.VMXML.get_disk_attr(vm_name, device_target,
+                                                "driver", "cache")
+        if cache_options == "default":
+            if disk_cache is not None:
+                check_cache_after_cmd = False
+        elif disk_cache != cache_options:
+            check_cache_after_cmd = False
 
     # Eject cdrom test
     eject_cdrom = "yes" == params.get("at_dt_disk_eject_cdrom", "no")
