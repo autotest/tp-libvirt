@@ -144,14 +144,17 @@ def run(test, params, env):
     # don't add a vCPU to a VM that perhaps doesn't want one.  We still need
     # to check if 'virsh setvcpus <domain> 1' would work, so continue on.
     #
-    if set_current != 0 and orig_set >= 2:
+    if orig_set >= 2:
         if vm.is_alive():
             vm.destroy()
         vm_xml = libvirt_xml.VMXML()
-        if set_current >= test_set_max:
-            raise error.TestFail("Current(%d) >= test set max(%d)" %
-                                 (set_current, test_set_max))
-        vm_xml.set_vm_vcpus(vm_name, test_set_max, set_current)
+        if set_current != 0:
+            if set_current >= test_set_max:
+                raise error.TestFail("Current(%d) >= test set max(%d)" %
+                                     (set_current, test_set_max))
+            vm_xml.set_vm_vcpus(vm_name, test_set_max, set_current)
+        else:
+            vm_xml.set_vm_vcpus(vm_name, test_set_max)
         # Restart, unless that's not our test
         if pre_vm_state != "shut off":
             vm.start()
