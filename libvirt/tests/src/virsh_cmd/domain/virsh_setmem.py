@@ -152,10 +152,11 @@ def run(test, params, env):
         session.close()
         if paused_after_start_vm:
             vm.pause()
+        original_outside_mem = vm.get_used_mem()
     else:
         # Retrieve known mem value, convert into kilobytes
         original_inside_mem = int(params.get("mem", "1024")) * 1024
-    original_outside_mem = vm.get_used_mem()
+        original_outside_mem = original_inside_mem
     domid = vm.get_id()
     domuuid = vm.get_uuid()
     uri = vm.connect_uri
@@ -214,9 +215,10 @@ def run(test, params, env):
             # Actual results
             test_inside_mem = vm_proc_meminfo(session)
             session.close()
+            test_outside_mem = vm.get_used_mem()
         else:
             test_inside_mem = original_inside_mem
-        test_outside_mem = vm.get_used_mem()
+            test_outside_mem = original_outside_mem
 
         # Expected results for both inside and outside
         if sizearg == "yes":
