@@ -22,6 +22,7 @@ def run(test, params, env):
     status_error = ("yes" == params.get("status_error", "no"))
     options = params.get("sendkey_options", "")
     sysrq_test = ("yes" == params.get("sendkey_sysrq", "no"))
+    sleep_time = int(params.get("sendkey_sleeptime", 2))
     readonly = params.get("readonly", False)
     username = params.get("username")
     password = params.get("password")
@@ -96,7 +97,7 @@ def run(test, params, env):
         output = virsh.sendkey(vm_name, options, readonly=readonly,
                                unprivileged_user=unprivileged_user,
                                uri=uri)
-        time.sleep(2)
+        time.sleep(sleep_time)
         if output.exit_status != 0:
             if status_error:
                 logging.info("Failed to sendkey to guest as expected, Error:"
