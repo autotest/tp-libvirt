@@ -138,6 +138,11 @@ def run(test, params, env):
     no_attach = "yes" == params.get("dt_device_no_attach", 'no')
     os_type = params.get("os_type", "linux")
     device = params.get("dt_device_device", "disk")
+    test_cmd = "detach-device"
+    if not virsh.has_command_help_match(test_cmd, dt_options) and\
+       not status_error:
+        raise error.TestNAError("Current libvirt version doesn't support '%s'"
+                                " for %s" % (dt_options, test_cmd))
 
     # Disk specific attributes.
     device_source_name = params.get("dt_device_device_source", "attach.img")
