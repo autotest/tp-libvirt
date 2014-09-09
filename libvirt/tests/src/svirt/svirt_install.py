@@ -70,7 +70,7 @@ def run(test, params, env):
             return virsh.is_alive(vm_name)
         if (utils_misc.wait_for(_vm_alive, timeout=5)):
             if status_error:
-                raise error.TestFail('Test successed in negative case.')
+                raise error.TestFail('Test succeeded in negative case.')
         else:
             if not status_error:
                 raise error.TestFail("Test failed in positive case.")
