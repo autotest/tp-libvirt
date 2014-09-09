@@ -3,6 +3,7 @@ import logging
 from autotest.client.shared import error
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import capability_xml
 
 
 def run(test, params, env):
@@ -44,7 +45,7 @@ def run(test, params, env):
         vmcpu_xml.add_feature('vmx', 'forbid')
         # Unsupport feature 'ia64'
         vmcpu_xml.add_feature('ia64', 'optional')
-        vmcpu_xml.add_feature('acpi', 'require')
+        vmcpu_xml.add_feature('vme', 'require')
         vmxml['cpu'] = vmcpu_xml
         vmxml.sync()
 
@@ -62,26 +63,28 @@ def run(test, params, env):
            policy='disable'
         4. Other policy='disable|force|forbid|require' with keep the
            original values
-
-        According to above rules, if match is 'minimum', the require features
-        count should be more than 2, if match is not 'minimum', the require
-        features count should be 2
         """
         vmxml = vm_xml.VMXML()
         vmxml['xml'] = xml
         vmcpu_xml = vmxml['cpu']
         check_pass = True
         require_count = 0
+        expect_require_features = 0
         cpu_feature_list = vmcpu_xml.get_feature_list()
+        host_capa = capability_xml.CapabilityXML()
         for i in range(len(cpu_feature_list)):
             f_name = vmcpu_xml.get_feature_name(i)
             f_policy = vmcpu_xml.get_feature_policy(i)
             err_msg = "Policy of '%s' is not expected: %s" % (f_name, f_policy)
-            if f_name in ["xtpr", "acpi"]:
-                if f_policy != "require":
+            expect_policy = "disable"
+            if f_name in ["xtpr", "vme", "ia64"]:
+                # Check if feature is support on the host
+                if host_capa.check_feature_name(f_name):
+                    expect_policy = "require"
+                if f_policy != expect_policy:
                     logging.error(err_msg)
                     check_pass = False
-            if f_name in ["tm2", "ia64"]:
+            if f_name == "tm2":
                 if f_policy != "disable":
                     logging.error(err_msg)
                     check_pass = False
@@ -93,22 +96,24 @@ def run(test, params, env):
                 if f_policy != "forbid":
                     logging.error(err_msg)
                     check_pass = False
-            # Count the require features
+            # Count expect require features
+            if expect_policy == "require":
+                expect_require_features += 1
+            # Count actual require features
             if f_policy == "require":
                 require_count += 1
         # Check
         if cpu_match == "minimum":
             expect_match = "exact"
             # For different host, the support require features are different,
-            # so just set the expect_require features 3(greater than 2)
-            expect_require_features = 3
-            if require_count <= expect_require_features:
+            # so just check the actual require features greater than the
+            # expect number
+            if require_count < expect_require_features:
                 logging.error("Find %d require features, but expect >=%s",
                               require_count, expect_require_features)
                 check_pass = False
         else:
             expect_match = cpu_match
-            expect_require_features = 2
             if require_count != expect_require_features:
                 logging.error("Find %d require features, but expect %s",
                               require_count, expect_require_features)
