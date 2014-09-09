@@ -2,7 +2,7 @@ import re
 import logging
 from autotest.client.shared import error
 from virttest import virsh
-from virttest.libvirt_xml.vm_xml import VMXML
+from virttest.libvirt_xml import vm_xml
 
 
 def run(test, params, env):
@@ -29,6 +29,102 @@ def run(test, params, env):
             return True
         return False
 
+    def custom_cpu(vm_name, cpu_match):
+        """
+        Custom guest cpu match/model/features for --update-cpu option.
+        """
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        vmcpu_xml = vm_xml.VMCPUXML()
+        vmcpu_xml['match'] = cpu_match
+        vmcpu_xml['model'] = "Penryn"
+        vmcpu_xml['vendor'] = "Intel"
+        vmcpu_xml.add_feature('xtpr', 'optional')
+        vmcpu_xml.add_feature('tm2', 'disable')
+        vmcpu_xml.add_feature('est', 'force')
+        vmcpu_xml.add_feature('vmx', 'forbid')
+        # Unsupport feature 'ia64'
+        vmcpu_xml.add_feature('ia64', 'optional')
+        vmcpu_xml.add_feature('acpi', 'require')
+        vmxml['cpu'] = vmcpu_xml
+        vmxml.sync()
+
+    def check_cpu(xml, cpu_match):
+        """
+        Check the dumpxml result for --update-cpu option
+
+        Note, function custom_cpu() hard code these features and policy,
+        so after run virsh dumpxml --update-cpu:
+        1. For match='minimum', all host support features will added,
+           and match='exact'
+        2. policy='optional' features(support by host) will update to
+           policy='require'
+        3. policy='optional' features(unsupport by host) will update to
+           policy='disable'
+        4. Other policy='disable|force|forbid|require' with keep the
+           original values
+
+        According to above rules, if match is 'minimum', the require features
+        count should be more than 2, if match is not 'minimum', the require
+        features count should be 2
+        """
+        vmxml = vm_xml.VMXML()
+        vmxml['xml'] = xml
+        vmcpu_xml = vmxml['cpu']
+        check_pass = True
+        require_count = 0
+        cpu_feature_list = vmcpu_xml.get_feature_list()
+        for i in range(len(cpu_feature_list)):
+            f_name = vmcpu_xml.get_feature_name(i)
+            f_policy = vmcpu_xml.get_feature_policy(i)
+            err_msg = "Policy of '%s' is not expected: %s" % (f_name, f_policy)
+            if f_name in ["xtpr", "acpi"]:
+                if f_policy != "require":
+                    logging.error(err_msg)
+                    check_pass = False
+            if f_name in ["tm2", "ia64"]:
+                if f_policy != "disable":
+                    logging.error(err_msg)
+                    check_pass = False
+            if f_name == "est":
+                if f_policy != "force":
+                    logging.error(err_msg)
+                    check_pass = False
+            if f_name == "vmx":
+                if f_policy != "forbid":
+                    logging.error(err_msg)
+                    check_pass = False
+            # Count the require features
+            if f_policy == "require":
+                require_count += 1
+        # Check
+        if cpu_match == "minimum":
+            expect_match = "exact"
+            # For different host, the support require features are different,
+            # so just set the expect_require features 3(greater than 2)
+            expect_require_features = 3
+            if require_count <= expect_require_features:
+                logging.error("Find %d require features, but expect >=%s",
+                              require_count, expect_require_features)
+                check_pass = False
+        else:
+            expect_match = cpu_match
+            expect_require_features = 2
+            if require_count != expect_require_features:
+                logging.error("Find %d require features, but expect %s",
+                              require_count, expect_require_features)
+                check_pass = False
+        match = vmcpu_xml['match']
+        if match != expect_match:
+            logging.error("CPU match '%s' is not expected", match)
+            check_pass = False
+        if vmcpu_xml['model'] != 'Penryn':
+            logging.error("CPU model %s is not expected", vmcpu_xml['model'])
+            check_pass = False
+        if vmcpu_xml['vendor'] != "Intel":
+            logging.error("CPU vendor %s is not expected", vmcpu_xml['vendor'])
+            check_pass = False
+        return check_pass
+
     # Prepare parameters
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -39,12 +135,13 @@ def run(test, params, env):
     vm_state = params.get("dumpxml_vm_state", "running")
     security_pwd = params.get("dumpxml_security_pwd", "123456")
     status_error = params.get("status_error", "no")
-    backup_xml = VMXML.new_from_inactive_dumpxml(vm_name)
+    cpu_match = params.get("cpu_match", "minimum")
+    backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     if options_ref.count("update-cpu"):
-        VMXML.set_cpu_mode(vm_name)
+        custom_cpu(vm_name, cpu_match)
     elif options_ref.count("security-info"):
         new_xml = backup_xml.copy()
-        VMXML.add_security_info(new_xml, security_pwd)
+        vm_xml.VMXML.add_security_info(new_xml, security_pwd)
     domuuid = vm.get_uuid()
     domid = vm.get_id()
 
@@ -102,8 +199,8 @@ def run(test, params, env):
                         raise error.TestFail("Got dumpxml for active vm "
                                              "with --inactive option!")
                 elif options_ref.count("update-cpu"):
-                    if not output.count("vendor"):
-                        raise error.TestFail("No more cpu info outputed!")
+                    if not check_cpu(output, cpu_match):
+                        raise error.TestFail("update-cpu option check fail")
                 elif options_ref.count("security-info"):
                     if not output.count("passwd='%s'" % security_pwd):
                         raise error.TestFail("No more cpu info outputed!")
