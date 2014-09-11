@@ -4,6 +4,7 @@ import logging
 import commands
 from autotest.client.shared import error
 from virttest import virsh, data_dir, utils_misc
+from provider import libvirt_version
 
 
 OVER_SIZE = (1 << 64)
@@ -28,6 +29,13 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "yes")
     resize_value = params.get("resize_value")
     virsh_dargs = {'debug': True}
+
+    # Skip 'qed' cases for libvirt version greater than 1.1.0
+    if libvirt_version.version_compare(1, 1, 0):
+        if image_format == "qed":
+            raise error.TestNAError("QED support changed, check bug: "
+                                    "https://bugzilla.redhat.com/show_bug.cgi"
+                                    "?id=731570")
 
     # Create an image.
     tmp_dir = data_dir.get_tmp_dir()
@@ -94,7 +102,7 @@ def run(test, params, env):
                 # running VM uses a qemu json call which differs from
                 # qemu-img would do - resulting in (to say the least)
                 # awkward sizes. We'll just have to make sure we don't
-                # exceed the expected size
+                # deviates more than a sector.
                 expected_size = value * 1000
         elif "kib" in resize_value:
             value = int(resize_value[:-3])
@@ -122,9 +130,9 @@ def run(test, params, env):
 
         # See comment above regarding Raw images
         if image_format == "raw" and resize_value[-2] in "kb":
-            if int(actual_size) > int(expected_size):
-                raise error.TestFail("New raw blocksize set by blockresize is "
-                                     "larger than the expected value")
+            if abs(int(actual_size) - int(expected_size)) > 512:
+                raise error.TestFail("New raw blocksize set by blockresize do "
+                                     "not match the expected value")
         else:
             if int(actual_size) != int(expected_size):
                 raise error.TestFail("New blocksize set by blockresize is "
