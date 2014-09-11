@@ -11,6 +11,7 @@ from virttest import virt_vm, virsh, remote, aexpect, utils_misc
 from virttest.libvirt_xml.vm_xml import VMXML
 # The backports module will take care of using the builtins if available
 from virttest.staging.backports import itertools
+from provider import libvirt_version
 
 # TODO: Move all these helper classes someplace else
 
@@ -95,7 +96,7 @@ class TestParams(object):
         """
         Return Dictionary after parsing out prefix + class name postfix
 
-        e.g. vadu_dev_obj_meg_VirtIODisk = 100
+        e.g. vadu_dev_obj_meg_VirtualDisk = 100
              ^^^^^^^^^^^^^ ^  ^^^^^^^^^^    ^
         strip   prefix     |  classname     |
                            |                |
@@ -435,17 +436,18 @@ class SerialPipe(SerialFile):
         return super(SerialPipe, self).init_device(index)  # stub for now
 
 
-class VirtIODiskBasic(AttachDeviceBase):
+class VirtualDiskBasic(AttachDeviceBase):
 
     """
-    Simple File-backed virtio raw disk device
+    Simple File-backed virtio/usb/sata/scsi/ide raw disk device
     """
 
     identifier = None
     count = 0  # number of devices to make
     meg = 0  # size of device in megabytes (1024**2)
-    devidx = 1  # devnode name index to start at (0 == vda, 1 == vdb, etc)
+    devidx = 1  # devnode name index to start at (0 = vda/sda, 1 = vdb/sdb, etc)
     devtype = 'file'
+    targetbus = "virtio"
 
     @staticmethod
     def devname_suffix(index):
@@ -460,6 +462,21 @@ class VirtIODiskBasic(AttachDeviceBase):
                 for prod in itertools.product(ascii_lowercase, repeat=num):
                     yield ''.join(prod)
         return itertools.islice(multiletters(), index, index + 1).next()
+
+    def devname(self, index):
+        """
+        Return disk target name
+        """
+        if self.targetbus in ['usb', 'scsi', 'sata']:
+            devname_prefix = "sd"
+        elif self.targetbus == "virtio":
+            devname_prefix = "vd"
+        elif self.targetbus == "ide":
+            devname_prefix = "hd"
+        else:
+            raise error.TestNAError("Unsupport bus '%s' in this test" %
+                                    self.targetbus)
+        return devname_prefix + self.devname_suffix(self.devidx + index)
 
     def make_image_file_path(self, index):
         """Create backing file for test disk device"""
@@ -497,8 +514,8 @@ class VirtIODiskBasic(AttachDeviceBase):
                              {'file': self.make_image_file_path(index)}}
         source = disk_device.new_disk_source(**source_properties)
         disk_device.source = source  # Modified copy, not original
-        dev_name = 'vd' + self.devname_suffix(self.devidx + index)
-        disk_device.target = {'dev': dev_name, 'bus': 'virtio'}
+        dev_name = self.devname(index)
+        disk_device.target = {'dev': dev_name, 'bus': self.targetbus}
         # libvirt will automatically add <address> element
         return disk_device
 
@@ -513,14 +530,14 @@ class VirtIODiskBasic(AttachDeviceBase):
         """
         Return True/False (good/bad) result of a device functioning
         """
-        dev_name = '/dev/vd' + self.devname_suffix(self.devidx + index)
+        dev_name = '/dev/' + self.devname(index)
         # Host image path is static known value
         test_data = self.make_image_file_path(index)
         byte_size = self.meg * 1024 * 1024
         # Place test data at end of device to also confirm sizing
         offset = byte_size - len(test_data)
         logging.info('Trying to read test data, %dth device %s, '
-                     'at offset %d.', index, dev_name, offset)
+                     'at offset %d.', index + 1, dev_name, offset)
         session = None
 
         # Since we know we're going to fail, no sense waiting for the
@@ -531,7 +548,7 @@ class VirtIODiskBasic(AttachDeviceBase):
         # the timeouts to occur and probably a days worth of log messages
         # waiting for something to happen that can't.
         if not self.test_params.main_vm.is_alive():
-            logging.debug("VirtIODiskBasic functional test skipping login "
+            logging.debug("VirtualDiskBasic functional test skipping login "
                           "vm is not alive.")
             return False
 
@@ -547,7 +564,7 @@ class VirtIODiskBasic(AttachDeviceBase):
                 session.close()
             except AttributeError:
                 pass   # session == None
-            logging.debug("VirtIODiskBasic functional test raised an exception")
+            logging.debug("VirtualDiskBasic functional test raised an exception")
             return False
         else:
             gotit = bool(output.count(test_data))
@@ -623,9 +640,10 @@ def analyze_negative_results(test_params, operational_results,
     """
     Analyze available results, return error message if fail
     """
-    if not all_true(operational_results):
-        return ("Negative testing operational test failed")
-    if test_params.start_vm and preboot_results:
+    if operational_results:
+        if not all_true(operational_results):
+            return ("Negative testing operational test failed")
+    if preboot_results and test_params.start_vm:
         if not all_false(preboot_results):
             return ("Negative testing pre-boot functionality test passed")
     if pstboot_results:
@@ -639,9 +657,10 @@ def analyze_positive_results(test_params, operational_results,
     """
     Analyze available results, return error message if fail
     """
-    if not all_true(operational_results):
-        return ("Positive operational test failed")
-    if test_params.start_vm and preboot_results:
+    if operational_results:
+        if not all_true(operational_results):
+            return ("Positive operational test failed")
+    if preboot_results and test_params.start_vm:
         if not all_true(preboot_results):
             if not test_params.preboot_function_error:
                 return ("Positive pre-boot functionality test failed")
@@ -652,8 +671,8 @@ def analyze_positive_results(test_params, operational_results,
                 return ("Positive post-boot functionality test failed")
 
 
-def analyze_results(test_params, operational_results,
-                    preboot_results, pstboot_results):
+def analyze_results(test_params, operational_results=None,
+                    preboot_results=None, pstboot_results=None):
     """
     Analyze available results, raise error message if fail
     """
@@ -680,6 +699,13 @@ def run(test, params, env):
     6) Handle results
     """
 
+    dev_obj = params.get("vadu_dev_objs")
+    # Skip chardev hotplug on rhel6 host as it is not supported
+    if "Serial" in dev_obj:
+        if not libvirt_version.version_compare(1, 1, 0):
+            raise error.TestNAError("You libvirt version not supported"
+                                    " attach/detach Serial devices")
+
     logging.info("Preparing initial VM state")
     # Prepare test environment and its parameters
     test_params = TestParams(params, env, test)
@@ -704,6 +730,10 @@ def run(test, params, env):
     pstboot_results = []
     try:
         operational_action(test_params, test_devices, operational_results)
+        # Fail early if attach-device return value is not expected
+        analyze_results(test_params=test_params,
+                        operational_results=operational_results)
+
         #  Can't do functional testing with a cold VM, only test hot-attach
         preboot_action(test_params, test_devices, preboot_results)
 
@@ -721,8 +751,9 @@ def run(test, params, env):
             test_device.booted = True
         test_params.main_vm.wait_for_login().close()
         postboot_action(test_params, test_devices, pstboot_results)
-        analyze_results(test_params, operational_results,
-                        preboot_results, pstboot_results)
+        analyze_results(test_params=test_params,
+                        preboot_results=preboot_results,
+                        pstboot_results=pstboot_results)
     finally:
         logging.info("Restoring VM from backup, then checking results")
         test_params.main_vm.destroy(gracefully=False,
