@@ -167,23 +167,20 @@ def run(test, params, env):
                     for line in f:
                         val_list = line.split(":")
                         if val_list[0] in cap_list:
-                            cap_dict[val_list[0]] = val_list[1].strip()
+                            cap_dict[val_list[0]] = int(val_list[1].strip(), 16)
 
-                # use capsh to check cap_sys_rawio is set
+                # bit and with rawio capabilitiy value to check cap_sys_rawio
+                # is set
+                cap_rawio_val = 0x0000000000020000
                 for i in cap_list:
-                    cmd = "capsh --decode=%s" % cap_dict[i]
-                    result = utils.run(cmd)
-                    if result.exit_status:
-                        raise error.TestNAError("Failed to run capsh command")
+                    if not cap_rawio_val & cap_dict[i]:
+                        err_msg = "vm process with %s: 0x%x" % (i, cap_dict[i])
+                        err_msg += " lack cap_sys_rawio capabilities"
+                        raise error.TestFail(err_msg)
                     else:
-                        if "cap_sys_rawio" not in result.stdout:
-                            err_msg = "vm process with %s:%s" % (i, cap_dict[i])
-                            err_msg += " lack cap_sys_rawio capabilities"
-                            raise error.TestFail(err_msg)
-                        else:
-                            inf_msg = "vm process with %s:%s" % (i, cap_dict[i])
-                            inf_msg += " have cap_sys_rawio capabilities"
-                            logging.debug(inf_msg)
+                        inf_msg = "vm process with %s: 0x%x" % (i, cap_dict[i])
+                        inf_msg += " have cap_sys_rawio capabilities"
+                        logging.debug(inf_msg)
 
         except virt_vm.VMStartError, e:
             # Starting VM failed.
