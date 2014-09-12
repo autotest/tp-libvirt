@@ -4,6 +4,7 @@ import re
 import time
 import codecs
 from autotest.client.shared import error
+from autotest.client.shared import utils
 from virttest import utils_test, virsh, utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 
@@ -111,6 +112,10 @@ def run(test, params, env):
             raise error.TestNAError("Direct migration is supported only for "
                                     "Xen in libvirt.")
 
+    if options.count("compressed") and not \
+            virsh.has_command_help_match("migrate", "--compressed"):
+        raise error.TestNAError("Do not support compressed option on this version.")
+
     # Add migrateuri if exists and check for default example
     if migrate_uri:
         if migrate_uri.count("EXAMPLE"):
@@ -123,6 +128,7 @@ def run(test, params, env):
                               "storage.")
 
     # Get expected cache state for test
+    attach_scsi_disk = "yes" == params.get("attach_scsi_disk", "no")
     disk_cache = params.get("virsh_migrate_disk_cache", "none")
     unsafe_test = False
     if options.count("unsafe") and disk_cache != "none":
@@ -147,6 +153,16 @@ def run(test, params, env):
                                      extra_attach, debug=True)
         if s_attach.exit_status != 0:
             logging.error("Attach vda failed before test.")
+
+        # Attach a scsi device for special testcases
+        if attach_scsi_disk:
+            shared_dir = os.path.dirname(shared_storage)
+            scsi_disk = "%s/scsi_test.img" % shared_dir
+            utils.run("qemu-img create %s 100M" % scsi_disk)
+            s_attach = virsh.attach_disk(vm_name, scsi_disk, "sdb",
+                                         extra_attach, debug=True)
+            if s_attach.exit_status != 0:
+                logging.error("Attach another scsi disk failed.")
 
         vm.start()
         vm.wait_for_login()
@@ -311,6 +327,9 @@ def run(test, params, env):
     # Cleanup source.
     if os.path.exists(dest_xmlfile):
         os.remove(dest_xmlfile)
+
+    if attach_scsi_disk:
+        utils.run("rm -f %s" % scsi_disk, ignore_status=True)
 
     if exception:
         raise error.TestError(
