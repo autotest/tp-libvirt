@@ -59,8 +59,9 @@ def do_stress_migration(vms, srcuri, desturi, stress_type,
     if len(fail_info):
         logging.warning("Add stress for migration failed:%s", fail_info)
 
+    migrate_options = "--live --timeout %s" % params.get("virsh_migrate_timeout", 60)
     migtest = utlv.MigrationTest()
-    migtest.do_migration(vms, srcuri, desturi, migration_type, options=None,
+    migtest.do_migration(vms, srcuri, desturi, migration_type, options=migrate_options,
                          thread_timeout=thread_timeout)
 
     # vms will be shutdown, so no need to do this cleanup
