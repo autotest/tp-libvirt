@@ -161,6 +161,14 @@ def run(test, params, env):
                 logging.debug("Command failed as expected.")
         else:
             if status:
+                if cmd_result.stderr.count("not responding"):
+                    raise error.TestNAError(cmd_result.stderr.strip())
+                if cmd.count("guest-shutdown") and\
+                   cmd_result.stderr.count("Missing monitor reply object"):
+                    err_msg = "Please check bug: "
+                    err_msg += "https://bugzilla.redhat.com/show_bug.cgi?id="
+                    err_msg += "1050843 for more info"
+                    logging.error(err_msg)
                 if "--async" in options:
                     err_msg = "Please check bug: "
                     err_msg += "https://bugzilla.redhat.com/show_bug.cgi?id="
