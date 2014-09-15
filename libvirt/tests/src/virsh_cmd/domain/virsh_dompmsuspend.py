@@ -1,7 +1,8 @@
 import logging
 from autotest.client.shared import error
 from virttest import virsh
-from virttest.libvirt_xml.vm_xml import VMXML, VMPMXML
+from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):
@@ -36,10 +37,11 @@ def run(test, params, env):
     vm_state = params.get("vm_state", "running")
     suspend_target = params.get("pm_suspend_target", "mem")
     pm_enabled = params.get("pm_enabled", "not_set")
+    test_managedsave = "yes" == params.get("test_managedsave", "no")
 
     # A backup of original vm
-    vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
-    vm_xml_backup = vm_xml.copy()
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vmxml_backup = vmxml.copy()
 
     # Expected possible fail patterns.
     # Error output should match one of these patterns.
@@ -63,10 +65,10 @@ def run(test, params, env):
 
         # Set pm tag in domain's XML if needed.
         if pm_enabled == 'not_set':
-            if 'pm' in vm_xml:
-                del vm_xml.pm
+            if vmxml.pm:
+                del vmxml.pm
         else:
-            pm_xml = VMPMXML()
+            pm_xml = vm_xml.VMPMXML()
             if suspend_target == 'mem':
                 pm_xml.mem_enabled = pm_enabled
             elif suspend_target == 'disk':
@@ -77,11 +79,12 @@ def run(test, params, env):
                 else:
                     raise error.TestNAError("PM suspend type 'hybrid' is not "
                                             "supported yet.")
-            vm_xml.pm = pm_xml
-            vm_xml.sync()
+            vmxml.pm = pm_xml
+        vmxml.sync()
 
-        VMXML.set_agent_channel(vm_name)
+        vm_xml.VMXML.set_agent_channel(vm_name)
         vm.start()
+        session = vm.wait_for_login()
 
         # Create swap partition/file if nessesary.
         need_mkswap = False
@@ -91,9 +94,11 @@ def run(test, params, env):
             logging.debug("Creating swap partition.")
             vm.create_swap_partition()
 
-        session = vm.wait_for_login()
         try:
             check_vm_guestagent(session)
+            # Touch a file on guest to test managed save command.
+            if test_managedsave:
+                session.cmd_status("touch pmtest")
 
             # Set vm state
             if vm_state == "paused":
@@ -103,6 +108,26 @@ def run(test, params, env):
 
             # Run test case
             result = virsh.dompmsuspend(vm_name, suspend_target, debug=True)
+            if test_managedsave:
+                ret = virsh.managedsave(vm_name)
+                libvirt.check_exit_status(ret)
+                # Dompmwakeup should return false here
+                ret = virsh.dompmwakeup(vm_name)
+                libvirt.check_exit_status(ret, True)
+                ret = virsh.start(vm_name)
+                libvirt.check_exit_status(ret)
+                if not vm.is_paused():
+                    raise error.TestFail("Vm status is not paused before pm wakeup")
+                ret = virsh.dompmwakeup(vm_name)
+                libvirt.check_exit_status(ret)
+                if not vm.is_paused():
+                    raise error.TestFail("Vm status is not paused after pm wakeup")
+                ret = virsh.resume(vm_name)
+                libvirt.check_exit_status(ret)
+                sess = vm.wait_for_login()
+                if sess.cmd_status("ls pmtest && rm -f pmtest"):
+                    raise error.TestFail("Check managed save failed on guest")
+                sess.close()
         finally:
             # Restore VM state
             if vm_state == "paused":
@@ -136,5 +161,8 @@ def run(test, params, env):
                 raise error.TestFail("Expected failed with one of %s, but "
                                      "failed with:\n%s" % (fail_pat, result))
     finally:
+        # Destroy the vm.
+        if vm.is_alive():
+            vm.destroy()
         # Recover xml of vm.
-        vm_xml_backup.sync()
+        vmxml_backup.sync()
