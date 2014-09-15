@@ -162,7 +162,7 @@ def run(test, params, env):
             if dargs.get("sec_driver"):
                 seclabel_dict = {"type": "dynamic", "model": "selinux",
                                  "relabel": "yes"}
-                vmxml.set_seclabel(seclabel_dict)
+                vmxml.set_seclabel([seclabel_dict])
 
             vmxml.sync()
             vm.start()
