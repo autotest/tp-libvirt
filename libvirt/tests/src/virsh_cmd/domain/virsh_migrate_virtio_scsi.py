@@ -104,6 +104,7 @@ def run(test, params, env):
     vm = env.get_vm(params.get("main_vm"))
     source_type = params.get("disk_source_type", "file")
     device_type = params.get("disk_device_type", "disk")
+    disk_format = params.get("disk_format_type", "raw")
     if source_type == "file":
         params['added_disk_type'] = "file"
     else:
@@ -216,6 +217,7 @@ def run(test, params, env):
         params['target_bus'] = "scsi"
         params['device_type'] = device_type
         params['type_name'] = source_type
+        params['added_disk_format'] = disk_format
         if migrate_in_advance:
             params["attach_disk_config"] = "no"
             attach_disk_config = False
