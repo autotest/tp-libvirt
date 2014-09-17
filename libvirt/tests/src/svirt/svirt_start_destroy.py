@@ -25,6 +25,7 @@ def run(test, params, env):
     sec_type = params.get("svirt_start_destroy_vm_sec_type", "dynamic")
     sec_model = params.get("svirt_start_destroy_vm_sec_model", "selinux")
     sec_label = params.get("svirt_start_destroy_vm_sec_label", None)
+    sec_baselabel = params.get("svirt_start_destroy_vm_sec_baselabel", None)
     security_driver = params.get("security_driver", None)
     security_default_confined = params.get("security_default_confined", None)
     security_require_confined = params.get("security_require_confined", None)
@@ -32,20 +33,27 @@ def run(test, params, env):
     sec_relabel = params.get("svirt_start_destroy_vm_sec_relabel", "yes")
     sec_dict = {'type': sec_type, 'relabel': sec_relabel}
     sec_dict_list = []
+
+    def _set_sec_model(model):
+        """
+        Set sec_dict_list base on given sec model type
+        """
+        sec_dict_copy = sec_dict.copy()
+        sec_dict_copy['model'] = model
+        if sec_type != "none":
+            if sec_type == "dynamic" and sec_baselabel:
+                sec_dict_copy['baselabel'] = sec_baselabel
+            else:
+                sec_dict_copy['label'] = sec_label
+        sec_dict_list.append(sec_dict_copy)
+
     if not no_sec_model:
         if "," in sec_model:
             sec_models = sec_model.split(",")
             for model in sec_models:
-                sec_dict['model'] = model
-                if sec_type != "none":
-                    sec_dict['label'] = sec_label
-                sec_dict_copy = sec_dict.copy()
-                sec_dict_list.append(sec_dict_copy)
+                _set_sec_model(model)
         else:
-            sec_dict['model'] = sec_model
-            if sec_type != "none":
-                sec_dict['label'] = sec_label
-            sec_dict_list.append(sec_dict)
+            _set_sec_model(sec_model)
     else:
         sec_dict_list.append(sec_dict)
 
