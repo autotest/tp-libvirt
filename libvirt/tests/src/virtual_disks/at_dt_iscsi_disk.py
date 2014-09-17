@@ -32,7 +32,7 @@ def run(test, params, env):
 
     disk_device = params.get("disk_device", "disk")
     disk_type = params.get("disk_type", "network")
-    disk_src_protocal = params.get("disk_source_protocal", "iscsi")
+    disk_src_protocol = params.get("disk_source_protocol", "iscsi")
     disk_src_host = params.get("disk_source_host", "127.0.0.1")
     disk_src_port = params.get("disk_source_port", "3260")
     disk_src_pool = params.get("disk_source_pool")
@@ -50,6 +50,10 @@ def run(test, params, env):
     secret_private = params.get("secret_private", "yes")
     status_error = "yes" == params.get("status_error", "no")
 
+    if disk_src_protocol == 'iscsi':
+        if not libvirt_version.version_compare(1, 0, 4):
+            raise error.TestNAError("'iscsi' disk doesn't support in"
+                                    + " current libvirt version.")
     if disk_type == "volume":
         if not libvirt_version.version_compare(1, 0, 5):
             raise error.TestNAError("'volume' type disk doesn't support in"
@@ -64,7 +68,7 @@ def run(test, params, env):
             secret_xml = SecretXML(secret_ephemeral, secret_private)
             secret_xml.auth_type = "chap"
             secret_xml.auth_username = chap_user
-            secret_xml.usage = disk_src_protocal
+            secret_xml.usage = disk_src_protocol
             secret_xml.target = secret_usage_target
             logging.debug("Define secret by XML: %s", open(secret_xml.xml).read())
             # Define secret
@@ -96,10 +100,10 @@ def run(test, params, env):
         if disk_type == "volume":
             # Create an iscsi pool xml to create it
             pool_src_xml = pool_xml.SourceXML()
-            pool_src_xml.hostname = pool_src_host
+            pool_src_xml.host_name = pool_src_host
             pool_src_xml.device_path = iscsi_target
             poolxml = pool_xml.PoolXML(pool_type=pool_type)
-            poolxml.name = disk_src_host
+            poolxml.name = disk_src_pool
             poolxml.set_source(pool_src_xml)
             poolxml.target_path = "/dev/disk/by-path"
             # Create iscsi pool
@@ -122,7 +126,7 @@ def run(test, params, env):
                        'readonly': disk_readonly}
         disk_params_src = {}
         if disk_type == "network":
-            disk_params_src = {'source_protocol': disk_src_protocal,
+            disk_params_src = {'source_protocol': disk_src_protocol,
                                'source_name': iscsi_target + "/1",
                                'source_host_name': disk_src_host,
                                'source_host_port': disk_src_port}
@@ -135,7 +139,7 @@ def run(test, params, env):
         disk_params.update(disk_params_src)
         if chap_auth:
             disk_params_auth = {'auth_user': chap_user,
-                                'secret_type': disk_src_protocal,
+                                'secret_type': disk_src_protocol,
                                 'secret_usage': secret_xml.target}
             disk_params.update(disk_params_auth)
         disk_xml = libvirt.create_disk_xml(disk_params)
@@ -148,15 +152,16 @@ def run(test, params, env):
             if not vm.is_dead():
                 vm.destroy()
         attach_option = params.get("attach_option", "")
-        # Attach the iscsi network disk to domain
-        logging.debug("Attach disk by XML: %s", open(disk_xml).read())
+        disk_xml_f = open(disk_xml)
+        disk_xml_content = disk_xml_f.read()
+        disk_xml_f.close()
+        logging.debug("Attach disk by XML: %s", disk_xml_content)
         cmd_result = virsh.attach_device(domainarg=vm_name, filearg=disk_xml,
-                                         flagstrs=attach_option,
+                                         flagstr=attach_option,
                                          dargs=virsh_dargs)
         libvirt.check_exit_status(cmd_result, status_error)
 
         if vm.is_dead():
-            vm.start()
             cmd_result = virsh.start(vm_name, **virsh_dargs)
             libvirt.check_exit_status(cmd_result)
 
@@ -248,6 +253,9 @@ def run(test, params, env):
         find_attach_disk(False)
 
     finally:
+        if vm.is_alive():
+            vm.destroy()
+        vmxml_backup.sync("--snapshots-metadata")
         # Destroy pool and undefine secret, which may not exist
         try:
             if disk_type == "volume":
@@ -257,4 +265,3 @@ def run(test, params, env):
         except:
             pass
         libvirt.setup_or_cleanup_iscsi(is_setup=False)
-        vmxml_backup.sync("--snapshots-metadata")
