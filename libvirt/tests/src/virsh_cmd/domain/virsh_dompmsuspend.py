@@ -1,7 +1,10 @@
 import logging
+import os
 from autotest.client.shared import error
 from virttest import virsh
+from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import xcepts
 from virttest.utils_test import libvirt
 
 
@@ -21,11 +24,11 @@ def run(test, params, env):
                                   "sure that you have usable repo in guest")
 
         # Check if qemu-ga already started
-        stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
+        stat_ps = session.cmd_status("ps aux |grep [q]emu-ga | grep -v grep")
         if stat_ps != 0:
-            session.cmd("qemu-ga -d")
+            session.cmd("service qemu-ga start")
             # Check if the qemu-ga really started
-            stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
+            stat_ps = session.cmd_status("ps aux |grep [q]emu-ga | grep -v grep")
             if stat_ps != 0:
                 raise error.TestError("Fail to run qemu-ga in guest")
 
@@ -38,6 +41,7 @@ def run(test, params, env):
     suspend_target = params.get("pm_suspend_target", "mem")
     pm_enabled = params.get("pm_enabled", "not_set")
     test_managedsave = "yes" == params.get("test_managedsave", "no")
+    test_save_restore = "yes" == params.get("test_save_restore", "no")
 
     # A backup of original vm
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -47,6 +51,7 @@ def run(test, params, env):
     # Error output should match one of these patterns.
     # An empty list mean test should succeed.
     fail_pat = []
+    virsh_dargs = {'debug': True, 'ignore_status': True}
 
     # Setup possible failure patterns
     if pm_enabled == 'not_set':
@@ -65,8 +70,11 @@ def run(test, params, env):
 
         # Set pm tag in domain's XML if needed.
         if pm_enabled == 'not_set':
-            if vmxml.pm:
-                del vmxml.pm
+            try:
+                if vmxml.pm:
+                    del vmxml.pm
+            except xcepts.LibvirtXMLNotFoundError:
+                pass
         else:
             pm_xml = vm_xml.VMPMXML()
             if suspend_target == 'mem':
@@ -84,7 +92,6 @@ def run(test, params, env):
 
         vm_xml.VMXML.set_agent_channel(vm_name)
         vm.start()
-        session = vm.wait_for_login()
 
         # Create swap partition/file if nessesary.
         need_mkswap = False
@@ -95,6 +102,9 @@ def run(test, params, env):
             vm.create_swap_partition()
 
         try:
+            libvirtd = utils_libvirtd.Libvirtd()
+            savefile = os.path.join(test.tmpdir, "%s.save" % vm_name)
+            session = vm.wait_for_login()
             check_vm_guestagent(session)
             # Touch a file on guest to test managed save command.
             if test_managedsave:
@@ -108,27 +118,64 @@ def run(test, params, env):
 
             # Run test case
             result = virsh.dompmsuspend(vm_name, suspend_target, debug=True)
+            if result.exit_status == 0:
+                if fail_pat:
+                    raise error.TestFail("Expected failed with %s, but run succeed"
+                                         ":\n%s" % (fail_pat, result))
+            else:
+                if not fail_pat:
+                    raise error.TestFail("Expected success, but run failed:\n%s"
+                                         % result)
+                #if not any_pattern_match(fail_pat, result.stderr):
+                if not any(p in result.stderr for p in fail_pat):
+                    raise error.TestFail("Expected failed with one of %s, but "
+                                         "failed with:\n%s" % (fail_pat, result))
             if test_managedsave:
-                ret = virsh.managedsave(vm_name)
+                ret = virsh.managedsave(vm_name, **virsh_dargs)
                 libvirt.check_exit_status(ret)
                 # Dompmwakeup should return false here
-                ret = virsh.dompmwakeup(vm_name)
+                ret = virsh.dompmwakeup(vm_name, **virsh_dargs)
                 libvirt.check_exit_status(ret, True)
                 ret = virsh.start(vm_name)
                 libvirt.check_exit_status(ret)
                 if not vm.is_paused():
                     raise error.TestFail("Vm status is not paused before pm wakeup")
-                ret = virsh.dompmwakeup(vm_name)
+                ret = virsh.dompmwakeup(vm_name, **virsh_dargs)
                 libvirt.check_exit_status(ret)
                 if not vm.is_paused():
                     raise error.TestFail("Vm status is not paused after pm wakeup")
-                ret = virsh.resume(vm_name)
+                ret = virsh.resume(vm_name, **virsh_dargs)
                 libvirt.check_exit_status(ret)
                 sess = vm.wait_for_login()
                 if sess.cmd_status("ls pmtest && rm -f pmtest"):
                     raise error.TestFail("Check managed save failed on guest")
                 sess.close()
+            if test_save_restore:
+                # Run a series of operations to check libvirtd status.
+                ret = virsh.dompmwakeup(vm_name, **virsh_dargs)
+                libvirt.check_exit_status(ret)
+                ret = virsh.save(vm_name, savefile, **virsh_dargs)
+                libvirt.check_exit_status(ret)
+                ret = virsh.restore(savefile, **virsh_dargs)
+                libvirt.check_exit_status(ret)
+                # run pmsuspend again
+                ret = virsh.dompmsuspend(vm_name, suspend_target, **virsh_dargs)
+                libvirt.check_exit_status(ret)
+                # save and restore the guest again.
+                ret = virsh.save(vm_name, savefile, **virsh_dargs)
+                libvirt.check_exit_status(ret)
+                ret = virsh.restore(savefile, **virsh_dargs)
+                libvirt.check_exit_status(ret)
+                ret = virsh.destroy(vm_name, **virsh_dargs)
+                libvirt.check_exit_status(ret)
+                if not libvirtd.is_running():
+                    raise error.TestFail("libvirtd crashed")
+
         finally:
+            libvirtd.restart()
+            # Remove the tmp file
+            if os.path.exists(savefile):
+                os.remove(savefile)
             # Restore VM state
             if vm_state == "paused":
                 vm.resume()
@@ -148,18 +195,6 @@ def run(test, params, env):
             if need_mkswap:
                 vm.cleanup_swap()
 
-        if result.exit_status == 0:
-            if fail_pat:
-                raise error.TestFail("Expected failed with %s, but run succeed"
-                                     ":\n%s" % (fail_pat, result))
-        else:
-            if not fail_pat:
-                raise error.TestFail("Expected success, but run failed:\n%s"
-                                     % result)
-            #if not any_pattern_match(fail_pat, result.stderr):
-            if not any(p in result.stderr for p in fail_pat):
-                raise error.TestFail("Expected failed with one of %s, but "
-                                     "failed with:\n%s" % (fail_pat, result))
     finally:
         # Destroy the vm.
         if vm.is_alive():
