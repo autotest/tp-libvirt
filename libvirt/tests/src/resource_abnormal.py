@@ -11,6 +11,7 @@ from virttest import utils_selinux
 from virttest import qemu_storage
 from virttest import libvirt_vm
 from virttest import utils_misc
+from virttest.staging import service
 from virttest import virsh
 from virttest import remote
 from virttest import data_dir
@@ -231,7 +232,7 @@ class Virt_clone(object):
         """
         if self.kill_first:
             # Stop this threading
-            first_pid = self.cgroup.get_pids(self.cgroup_index)[1]
+            first_pid = self.cgroup.get_pids(self.cgroup_index)[-1]
             utils_misc.safe_kill(int(first_pid), signal.SIGKILL)
         else:
             self.td0.join(self.time_out)
@@ -246,15 +247,10 @@ class Virt_clone(object):
                 if result.exit_status:
                     raise error.TestFail("Cloned domain cannot be started!")
         elif abnormal_type == "disk_lack":
-            if self.selinux_enforcing:
-                utils_selinux.set_status("enforcing")
             if virsh.domain_exists(self.vm_new_name):
                 raise error.TestFail("Clone '%s' succeed but expect failed!"
                                      % self.vm_new_name)
         else:
-            if not abnormal_type:
-                if self.selinux_enforcing:
-                    utils_selinux.set_status("enforcing")
             if self.twice_execute and not self.kill_first:
                 if virsh.domain_exists(self.vm_new_name):
                     raise error.TestFail("Clone '%s' succeed but expect"
@@ -264,9 +260,9 @@ class Virt_clone(object):
                                          " failed!" % self.vm_new_name1)
 
             elif self.twice_execute and self.kill_first:
-                if not virsh.domain_exists(self.vm_new_name1):
+                if not virsh.domain_exists(self.vm_new_name):
                     raise error.TestFail("Clone '%s' failed!"
-                                         % self.vm_new_name1)
+                                         % self.vm_new_name)
 
     def recover(self, params):
         """
@@ -288,6 +284,7 @@ class Virt_clone(object):
             if params.has_key('memory_pid'):
                 pid = params.get('memory_pid')
                 utils_misc.safe_kill(pid, signal.SIGKILL)
+                utils.run("swapon -a")
             tmp_c_file = params.get("tmp_c_file", "/tmp/test.c")
             tmp_exe_file = params.get("tmp_exe_file", "/tmp/test")
             if os.path.exists(tmp_c_file):
@@ -295,13 +292,15 @@ class Virt_clone(object):
             if os.path.exists(tmp_exe_file):
                 os.remove(tmp_exe_file)
         elif abnormal_type in ["disk_lack", ""]:
+            if self.selinux_enforcing:
+                utils_selinux.set_status("enforcing")
             tmp_file = os.path.join(self.mount_dir, "tmp")
             if os.path.exists(tmp_file):
                 os.remove(tmp_file)
             # Sometimes one umount action is not enough
             utils_misc.wait_for(lambda: utils_misc.umount(self.partition,
                                                           self.mount_dir,
-                                                          self.fs_type), 10)
+                                                          self.fs_type), 120)
             if self.iscsi_dev:
                 self.iscsi_dev.cleanup()
             os.rmdir(self.mount_dir)
@@ -404,6 +403,7 @@ class Snapshot_create(object):
         if params.has_key('memory_pid'):
             pid = int(params.get('memory_pid'))
             utils_misc.safe_kill(pid, signal.SIGKILL)
+            utils.run("swapon -a")
         if params.has_key('cpu_pid'):
             pid = int(params.get('cpu_pid'))
             utils_misc.safe_kill(pid, signal.SIGKILL)
@@ -626,12 +626,6 @@ class Virt_install(object):
             if not virsh.domain_exists(self.vm_name):
                 raise error.TestFail("Domain '%s' installation failed!"
                                      % self.vm_name)
-            if self.vm.is_dead():
-                self.vm.start()
-            try:
-                self.vm.wait_for_login()
-            except remote.LoginTimeoutError, detail:
-                raise error.TestFail(str(detail))
 
     def recover(self, params=None):
         """
@@ -751,7 +745,7 @@ class Migration(object):
             self.session.cmd("umount %s -l" % self.remote_mnt)
         recover_hosts_cmd = "mv -f /etc/hosts.bak /etc/hosts"
         utils.run(recover_hosts_cmd)
-        self.session.cmd(recover_hosts_cmd)
+        self.session.cmd_status(recover_hosts_cmd)
         utils.run("mv -f /etc/exports.bak /etc/exports")
         self.session.close()
 
@@ -790,8 +784,16 @@ int main(void){
     c_file = open(tmp_c_file, 'w')
     c_file.write(c_str)
     c_file.close()
-    if utils.run("gcc %s -o %s" % (tmp_c_file, tmp_exe_file)).exit_status != 0:
-        raise error.TestFail("Compile C file failed!")
+    try:
+        utils_misc.find_command('gcc')
+    except ValueError:
+        raise error.TestNAError('gcc command is needed!')
+    result = utils.run("gcc %s -o %s" % (tmp_c_file, tmp_exe_file))
+    if result.exit_status:
+        raise error.TestError("Compile C file failed: %s"
+                              % result.stderr.strip())
+    # Set swap off before fill memory
+    utils.run("swapoff -a")
     utils.run("%s &" % tmp_exe_file)
     result = utils.run("ps -ef | grep %s | grep -v grep" % tmp_exe_file)
     pid = result.stdout.strip().split()[1]
@@ -854,11 +856,12 @@ def network_restart(params):
 
 def remove_machine_cgroup():
     """
-    Remove machine/machine.slice cgroup
+    Remove machine/machine.slice cgroup by restart cgconfig and libvirtd
     """
-    cgroup = utils_cgroup.Cgroup('cpuset', None)
-    cgroup.get_all_cgroups()
-    cgroup.cgdelete_all_cgroups()
+    cg_ser = utils_cgroup.CgconfigService()
+    cg_ser.cgconfig_restart()
+    libvirt_ser = service.Factory.create_specific_service("libvirtd")
+    libvirt_ser.restart()
 
 
 def run(test, params, env):
