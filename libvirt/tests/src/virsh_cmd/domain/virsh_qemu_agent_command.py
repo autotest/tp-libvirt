@@ -1,12 +1,16 @@
 import os
+import time
 import logging
-from autotest.client.shared import error, utils
+from autotest.client.shared import error
 from virttest import virsh
+from virttest import aexpect
+from virttest import remote
 from virttest import utils_libvirtd
 from virttest import libvirt_xml
 
 
-def reset_domain(vm, vm_state, needs_agent=False):
+def reset_domain(vm, vm_state, needs_agent=False, guest_cpu_busy=False,
+                 password=None):
     """
     Setup guest agent in domain.
 
@@ -40,8 +44,37 @@ def reset_domain(vm, vm_state, needs_agent=False):
                 stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
                 if stat_ps != 0:
                     raise error.TestFail("Fail to run qemu-ga in guest")
+        if guest_cpu_busy:
+            shell_file = "/tmp/test.sh"
+            cpu_detail_list = ['while true',
+                               'do',
+                               '    j==\${j:+1}',
+                               '    j==\${j:-1}',
+                               'done']
+            remote_file = remote.RemoteFile(vm.get_address(), 'scp', 'root',
+                                            password, 22,
+                                            shell_file)
+            remote_file.truncate()
+            remote_file.add(cpu_detail_list)
+            session.cmd('chmod 777 %s' % shell_file)
+            session.cmd('%s &' % shell_file)
     if vm_state == "paused":
         vm.pause()
+    elif vm_state == "halt":
+        try:
+            session.cmd("halt")
+        except (aexpect.ShellProcessTerminatedError, aexpect.ShellStatusError):
+            # The halt command always gets these errors, but execution is OK,
+            # skip these errors
+            pass
+    elif vm_state == "pm_suspend":
+        # Execute "pm-suspend-hybrid" command directly will get Timeout error,
+        # so here execute it in background, and wait for 3s manually
+        if session.cmd_status("which pm-suspend-hybrid"):
+            raise error.TestNAError("Cannot execute this test for domain"
+                                    " doesn't have pm-suspend-hybrid command!")
+        session.cmd("pm-suspend-hybrid &")
+        time.sleep(3)
 
 
 def reset_env(vm_name, xml_file):
@@ -71,6 +104,14 @@ def run(test, params, env):
     needs_agent = "yes" == params.get("needs_agent", "yes")
     start_vm = "yes" == params.get("start_vm")
     status_error = "yes" == params.get("status_error", "no")
+    if not status_error and options:
+        option = options.split()[0]
+        test_cmd = "qemu-agent-command"
+        if virsh.has_command_help_match(test_cmd, option) is None:
+            raise error.TestNAError("The current libvirt doesn't support"
+                                    " %s option for %s" % (option, test_cmd))
+    guest_cpu_busy = "yes" == params.get("guest_cpu_busy", "no")
+    password = params.get("password", None)
     domuuid = vm.get_uuid()
     domid = ""
     xml_file = os.path.join(test.tmpdir, "vm.xml")
@@ -79,10 +120,13 @@ def run(test, params, env):
 
     # Prepare domain
     try:
-        reset_domain(vm, vm_state, needs_agent)
+        reset_domain(vm, vm_state, needs_agent, guest_cpu_busy, password)
+    except error.TestNAError, details:
+        reset_env(vm_name, xml_file)
+        raise error.TestNAError(details)
     except Exception, details:
         reset_env(vm_name, xml_file)
-        error.TestFail(details)
+        raise error.TestFail(details)
 
     if vm_state != "shut off":
         domid = vm.get_id()
@@ -117,6 +161,14 @@ def run(test, params, env):
                 logging.debug("Command failed as expected.")
         else:
             if status:
+                if cmd_result.stderr.count("not responding"):
+                    raise error.TestNAError(cmd_result.stderr.strip())
+                if cmd.count("guest-shutdown") and\
+                   cmd_result.stderr.count("Missing monitor reply object"):
+                    err_msg = "Please check bug: "
+                    err_msg += "https://bugzilla.redhat.com/show_bug.cgi?id="
+                    err_msg += "1050843 for more info"
+                    logging.error(err_msg)
                 if "--async" in options:
                     err_msg = "Please check bug: "
                     err_msg += "https://bugzilla.redhat.com/show_bug.cgi?id="
