@@ -25,7 +25,7 @@ def run(test, params, env):
     managed_save_file = "/var/lib/libvirt/qemu/save/%s.save" % vm_name
 
     # define function
-    def vm_recover_check(guest_name, option, libvirtd):
+    def vm_recover_check(guest_name, option, libvirtd, check_shutdown=False):
         """
         Check if the vm can be recovered correctly.
 
@@ -54,6 +54,10 @@ def run(test, params, env):
         if vm.is_dead():
             raise error.TestFail("Guest should be active after"
                                  " restarting libvirtd")
+        # Check managed save file:
+        if os.path.exists(managed_save_file):
+            raise error.TestFail("Managed save image exist "
+                                 "after starting the domain")
         if option:
             if option.count("running"):
                 if vm.is_dead() or vm.is_paused():
@@ -71,6 +75,16 @@ def run(test, params, env):
                     raise error.TestFail("Guest state should be"
                                          " paused after started"
                                          " because of initia guest state")
+        if check_shutdown:
+            # Resume the domain.
+            if vm.is_paused():
+                vm.resume()
+            vm.wait_for_login()
+            # Shutdown and start the domain, it should be in runing state and can be login.
+            vm.shutdown()
+            vm.wait_for_shutdown()
+            vm.start()
+            vm.wait_for_login()
 
     def vm_undefine_check(vm_name):
         """
@@ -83,7 +97,6 @@ def run(test, params, env):
         #undefine domain with no options.
         if not virsh.undefine(vm_name, options=None,
                               ignore_status=True).exit_status:
-            xml_backup.define()
             raise error.TestFail("Guest shouldn't be undefined"
                                  "while domain managed save image exists")
         #undefine domain with managed-save option.
@@ -183,6 +196,9 @@ def run(test, params, env):
     security_driver = params.get("security_driver", "")
     remove_after_cmd = "yes" == params.get("remove_after_cmd", "no")
     option = params.get("managedsave_option", "")
+    check_shutdown = "yes" == params.get("shutdown_after_cmd", "no")
+    pre_vm_state = params.get("pre_vm_state", "")
+    move_saved_file = "yes" == params.get("move_saved_file", "no")
     if option:
         if not virsh.has_command_help_match('managedsave', option):
             # Older libvirt does not have this option
@@ -225,14 +241,30 @@ def run(test, params, env):
         if security_driver:
             build_vm_xml(vm_name, sec_driver=True)
 
+        # Turn VM into certain state.
+        if pre_vm_state == "transient":
+            logging.info("Creating %s..." % vm_name)
+            vmxml_for_test = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
+            vm.undefine()
+            if virsh.create(vmxml_for_test.xml, ignore_status=True).exit_status:
+                vmxml_backup.define()
+                raise error.TestNAError("Cann't create the domain")
+            vm.wait_for_login()
+
         # Ignore exception with "ignore_status=True"
         if progress:
             option += " --verbose"
         option += extra_param
+
         ret = virsh.managedsave(vm_ref, options=option, ignore_status=True)
         status = ret.exit_status
         # The progress information outputed in error message
         error_msg = ret.stderr.strip()
+        if move_saved_file:
+            cmd = "echo > %s" % managed_save_file
+            utils.run(cmd)
 
         # recover libvirtd service start
         if libvirtd_state == "off":
@@ -255,15 +287,17 @@ def run(test, params, env):
                 # check if autostart bypass cache take effect.
                 vm_autostart_bypass_check(vm_name)
             else:
-                vm_recover_check(vm_name, option, libvirtd)
+                vm_recover_check(vm_name, option, libvirtd, check_shutdown)
     finally:
         # Restore test environment.
-        if auto_start_bypass_cache:
-            virsh.autostart(vm_name, "--disable", ignore_status=True)
         if vm.is_paused():
             virsh.resume(vm_name)
-        if vm.is_dead():
+        elif vm.is_dead():
             vm.start()
+        vm.wait_for_login()
+        if auto_start_bypass_cache:
+            virsh.autostart(vm_name, "--disable", ignore_status=True)
+        vm.destroy()
         vmxml_backup.sync()
         config.restore()
         libvirtd.restart()
