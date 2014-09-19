@@ -11,6 +11,7 @@ from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -24,7 +25,7 @@ def run(test, params, env):
     4.Confirm the test result.
     """
 
-    def check_vm_partition(vm, device, os_type, target_name):
+    def check_vm_partition(vm, device, os_type, target_name, old_parts):
         """
         Check VM disk's partition.
 
@@ -37,20 +38,25 @@ def run(test, params, env):
         if vm.is_dead():
             vm.start()
         try:
+            attached = False
             if os_type == "linux":
                 session = vm.wait_for_login()
-                if device == "disk":
-                    s, o = session.cmd_status_output(
-                        "grep %s /proc/partitions" % target_name)
-                    logging.info("Virtio devices in VM:\n%s", o)
-                elif device == "cdrom":
-                    s, o = session.cmd_status_output(
-                        "ls /dev/cdrom")
-                    logging.info("CDROM in VM:\n%s", o)
+                new_parts = libvirt.get_parts_list(session)
+                added_parts = list(set(new_parts).difference(set(old_parts)))
+                logging.debug("Added parts: %s" % added_parts)
+                for i in range(len(added_parts)):
+                    if device == "disk":
+                        if target_name.startswith("vd"):
+                            if added_parts[i].startswith("vd"):
+                                attached = True
+                        elif target_name.startswith("hd"):
+                            if added_parts[i].startswith("sd"):
+                                attached = True
+                    elif device == "cdrom":
+                        if added_parts[i].startswith("sr"):
+                            attached = True
                 session.close()
-                if s != 0:
-                    return False
-            return True
+            return attached
         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
             logging.error(str(e))
             return False
@@ -120,17 +126,31 @@ def run(test, params, env):
     serial = params.get("at_dt_disk_serial", "")
     address = params.get("at_dt_disk_address", "")
     address2 = params.get("at_dt_disk_address2", "")
+    cache_options = params.get("cache_options", "")
     if serial:
         at_options += (" --serial %s" % serial)
     if address2:
         at_options_twice = at_options + (" --address %s" % address2)
     if address:
         at_options += (" --address %s" % address)
+    if cache_options:
+        if cache_options.count("directsync"):
+            if not libvirt_version.version_compare(1, 0, 0):
+                raise error.TestNAError("'directsync' cache option doesn't support in"
+                                        + " current libvirt version.")
+        at_options += (" --cache %s" % cache_options)
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
-    if vm.is_alive():
-        vm.destroy(gracefully=False)
+
+    # Start vm and get all partions in vm.
+    if vm.is_dead():
+        vm.start()
+    session = vm.wait_for_login()
+    old_parts = libvirt.get_parts_list(session)
+    session.close()
+    vm.destroy(gracefully=False)
+
     # Back up xml file.
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
@@ -155,9 +175,6 @@ def run(test, params, env):
                 size="1G", disk_format=device_source_format)
         else:
             device_source = device_source_name
-
-    if vm.is_alive():
-        vm.destroy(gracefully=False)
 
     # if we are testing audit, we need to start audit servcie first.
     if test_audit:
@@ -289,7 +306,8 @@ def run(test, params, env):
 
     # Check in VM after command.
     check_vm_after_cmd = True
-    check_vm_after_cmd = check_vm_partition(vm, device, os_type, device_target)
+    check_vm_after_cmd = check_vm_partition(vm, device, os_type,
+                                            device_target, old_parts)
 
     # Check disk type after attach.
     check_disk_type = True
@@ -322,6 +340,17 @@ def run(test, params, env):
         disk_address2 = vm_xml.VMXML.get_disk_address(vm_name, device_target2)
         if address2 != disk_address2:
             check_disk_address2 = False
+
+    # Check disk cache option after attach.
+    check_cache_after_cmd = True
+    if cache_options:
+        disk_cache = vm_xml.VMXML.get_disk_attr(vm_name, device_target,
+                                                "driver", "cache")
+        if cache_options == "default":
+            if disk_cache is not None:
+                check_cache_after_cmd = False
+        elif disk_cache != cache_options:
+            check_cache_after_cmd = False
 
     # Eject cdrom test
     eject_cdrom = "yes" == params.get("at_dt_disk_eject_cdrom", "no")
