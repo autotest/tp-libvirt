@@ -143,6 +143,23 @@ def run(test, params, env):
             raise error.TestFail("Guest state should be"
                                  " running after started")
 
+    def vm_managedsave_loop(vm_name, loop_range, libvirtd):
+        """
+        Run a loop of managedsave command and check its result.
+        """
+        if vm.is_dead():
+            virsh.start(vm_name)
+        for i in range(int(loop_range)):
+            logging.debug("Test loop: %s" % i)
+            virsh.managedsave(vm_name)
+            virsh.start(vm_name)
+        # Check libvirtd status.
+        if not libvirtd.is_running():
+            raise error.TestFail("libvirtd is stopped after cmd")
+        # Check vm status.
+        if vm.state() != "running":
+            raise error.TestFail("Guest isn't in running state")
+
     def build_vm_xml(vm_name, **dargs):
         """
         Build the new domain xml and define it.
@@ -199,6 +216,7 @@ def run(test, params, env):
     check_shutdown = "yes" == params.get("shutdown_after_cmd", "no")
     pre_vm_state = params.get("pre_vm_state", "")
     move_saved_file = "yes" == params.get("move_saved_file", "no")
+    test_loop_cmd = "yes" == params.get("test_loop_cmd", "no")
     if option:
         if not virsh.has_command_help_match('managedsave', option):
             # Older libvirt does not have this option
@@ -286,6 +304,9 @@ def run(test, params, env):
             elif auto_start_bypass_cache:
                 # check if autostart bypass cache take effect.
                 vm_autostart_bypass_check(vm_name)
+            elif test_loop_cmd:
+                loop_range = params.get("loop_range", "20")
+                vm_managedsave_loop(vm_name, loop_range, libvirtd)
             else:
                 vm_recover_check(vm_name, option, libvirtd, check_shutdown)
     finally:
