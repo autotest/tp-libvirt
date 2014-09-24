@@ -71,8 +71,7 @@ def run(test, params, env):
         """
         Setup autologin between remote host and its vm.
         """
-        #runner.run("rm -rf ~/.ssh/")
-        #runner.run("ssh-keygen -t rsa -q -N '' -f ~/.ssh/id_rsa")
+        runner.run("ssh-keygen -y -t rsa -q -N '' -f ~/.ssh/id_rsa")
         rsession = runner.session
         rsession.sendline("ssh-copy-id -i ~/.ssh/id_rsa.pub root@%s"
                           % vm_ip)
@@ -81,7 +80,7 @@ def run(test, params, env):
                             r"lost connection", r"]#"]
             try:
                 index, text = rsession.read_until_last_line_matches(
-                    matched_strs, timeout=10,
+                    matched_strs, timeout=20,
                     internal_timeout=0.5)
             except (aexpect.ExpectTimeoutError,
                     aexpect.ExpectProcessTerminatedError), e:
