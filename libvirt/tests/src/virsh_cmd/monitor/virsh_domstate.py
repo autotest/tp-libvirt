@@ -12,6 +12,7 @@ from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
 from virttest.aexpect import ShellTimeoutError
+from virttest.aexpect import ShellProcessTerminatedError
 
 QEMU_CONF = "/etc/libvirt/qemu.conf"
 QEMU_CONF_BK = "/etc/libvirt/qemu.conf.bk"
@@ -102,72 +103,73 @@ def run(test, params, env):
 
     dump_path = os.path.join(test.tmpdir, "dump/")
     dump_file = ""
-    if vm_action == "crash":
-        if vm.is_alive():
-            vm.destroy(gracefully=False)
-        # Set on_crash action
-        vmxml.on_crash = vm_oncrash_action
-        # Add <panic> device to domain
-        panic_dev = Panic()
-        panic_dev.addr_type = "isa"
-        panic_dev.addr_iobase = "0x505"
-        vmxml.add_device(panic_dev)
-        vmxml.sync()
-        # Config auto_dump_path in qemu.conf
-        cmd = "echo auto_dump_path = \\\"%s\\\" >> %s" % (dump_path, QEMU_CONF)
-        utils.run(cmd)
-        libvirtd_service.restart()
-        if vm_oncrash_action in ['coredump-destroy', 'coredump-restart']:
-            dump_file = dump_path + vm_name + "-*"
-        # Start VM and check the panic device
-        virsh.start(vm_name, ignore_status=False)
-        vmxml_new = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        # Skip this test if no panic device find
-        if not vmxml_new.xmltreefile.find('devices').findall('panic'):
-            raise error.TestNAError("No 'panic' device in the guest, maybe "
-                                    "your libvirt version doesn't support it")
     try:
-        if vm_action == "suspend":
-            virsh.suspend(vm_name, ignore_status=False)
-        elif vm_action == "resume":
-            virsh.suspend(vm_name, ignore_status=False)
-            virsh.resume(vm_name, ignore_status=False)
-        elif vm_action == "destroy":
-            virsh.destroy(vm_name, ignore_status=False)
-        elif vm_action == "start":
-            virsh.destroy(vm_name, ignore_status=False)
-            virsh.start(vm_name, ignore_status=False)
-        elif vm_action == "kill":
-            libvirtd_service.stop()
-            kill_process_by_pattern(vm_name)
+        if vm_action == "crash":
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
+            vmxml.on_crash = vm_oncrash_action
+            # Add <panic> device to domain
+            panic_dev = Panic()
+            panic_dev.addr_type = "isa"
+            panic_dev.addr_iobase = "0x505"
+            vmxml.add_device(panic_dev)
+            vmxml.sync()
+            # Config auto_dump_path in qemu.conf
+            cmd = "echo auto_dump_path = \\\"%s\\\" >> %s" % (dump_path,
+                                                              QEMU_CONF)
+            utils.run(cmd)
             libvirtd_service.restart()
-        elif vm_action == "crash":
-            session = vm.wait_for_login()
-            # Stop kdump in the guest
-            session.cmd("service kdump stop", ignore_all_errors=True)
-            # Enable sysRq
-            session.cmd("echo 1 > /proc/sys/kernel/sysrq")
-            # Send key ALT-SysRq-c to crash VM, and command will not return
-            # as vm crashed, so fail early for 'destroy' and 'preserve' action.
-            # For 'restart', 'coredump-restart' and 'coredump-destroy' actions,
-            # they all need more time to dump core file or restart OS, so using
-            # the default session command timeout(60s)
-            try:
-                if vm_oncrash_action in ['destroy', 'preserve']:
-                    timeout = 3
-                else:
-                    timeout = 60
-                session.cmd("echo c > /proc/sysrq-trigger", timeout=timeout)
-            except ShellTimeoutError:
-                pass
-            session.close()
-    except error.CmdError, e:
-        raise error.TestError("Guest prepare action error: %s" % e)
+            if vm_oncrash_action in ['coredump-destroy', 'coredump-restart']:
+                dump_file = dump_path + vm_name + "-*"
+            # Start VM and check the panic device
+            virsh.start(vm_name, ignore_status=False)
+            vmxml_new = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            # Skip this test if no panic device find
+            if not vmxml_new.xmltreefile.find('devices').findall('panic'):
+                raise error.TestNAError("No 'panic' device in the guest,"
+                                        " maybe your libvirt version doesn't"
+                                        " support it.")
+        try:
+            if vm_action == "suspend":
+                virsh.suspend(vm_name, ignore_status=False)
+            elif vm_action == "resume":
+                virsh.suspend(vm_name, ignore_status=False)
+                virsh.resume(vm_name, ignore_status=False)
+            elif vm_action == "destroy":
+                virsh.destroy(vm_name, ignore_status=False)
+            elif vm_action == "start":
+                virsh.destroy(vm_name, ignore_status=False)
+                virsh.start(vm_name, ignore_status=False)
+            elif vm_action == "kill":
+                libvirtd_service.stop()
+                kill_process_by_pattern(vm_name)
+                libvirtd_service.restart()
+            elif vm_action == "crash":
+                session = vm.wait_for_login()
+                session.cmd("service kdump stop", ignore_all_errors=True)
+                # Enable sysRq
+                session.cmd("echo 1 > /proc/sys/kernel/sysrq")
+                # Send key ALT-SysRq-c to crash VM, and command will not
+                # return as vm crashed, so fail early for 'destroy' and
+                # 'preserve' action. For 'restart', 'coredump-restart'
+                # and 'coredump-destroy' actions, they all need more time
+                # to dump core file or restart OS, so using the default
+                # session command timeout(60s)
+                try:
+                    if vm_oncrash_action in ['destroy', 'preserve']:
+                        timeout = 3
+                    else:
+                        timeout = 60
+                    session.cmd("echo c > /proc/sysrq-trigger", timeout=timeout)
+                except (ShellTimeoutError, ShellProcessTerminatedError):
+                    pass
+                session.close()
+        except error.CmdError, e:
+            raise error.TestError("Guest prepare action error: %s" % e)
 
-    if libvirtd == "off":
-        libvirtd_service.stop()
+        if libvirtd == "off":
+            libvirtd_service.stop()
 
-    try:
         if vm_ref == "remote":
             remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
             local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
@@ -218,7 +220,8 @@ def run(test, params, env):
                     if not output.count("crashed"):
                         raise ActionError(vm_action)
                 elif vm_action == "crash":
-                    if not check_crash_state(output, vm_oncrash_action, dump_file):
+                    if not check_crash_state(output, vm_oncrash_action,
+                                             dump_file):
                         raise ActionError(vm_action)
             if vm_ref == "remote":
                 if not (re.search("running", output)
@@ -230,8 +233,8 @@ def run(test, params, env):
         if libvirtd == "off":
             utils_libvirtd.libvirtd_start()
         # Recover VM
+        utils.run("mv -f %s %s" % (QEMU_CONF_BK, QEMU_CONF))
         vm.destroy(gracefully=False)
         backup_xml.sync()
-        utils.run("mv -f %s %s" % (QEMU_CONF_BK, QEMU_CONF))
         if os.path.exists(dump_path):
             shutil.rmtree(dump_path)

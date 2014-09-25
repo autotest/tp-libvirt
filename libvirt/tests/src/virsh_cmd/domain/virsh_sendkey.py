@@ -79,7 +79,7 @@ def run(test, params, env):
 
     try:
         # wait for tty1 started
-        tty1_stat = "ps aux|grep [/]sbin/.*tty.*tty1"
+        tty1_stat = "ps aux|grep tty[1]"
         timeout = 60
         while timeout >= 0 and \
                 session.get_command_status(tty1_stat) != 0:
