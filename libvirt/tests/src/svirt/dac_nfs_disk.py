@@ -55,7 +55,8 @@ def run(test, params, env):
     pool_name = params.get("pool_name")
     pool_type = params.get("pool_type")
     pool_target = params.get("pool_target")
-    export_options = params.get("export_options", "rw,async,no_root_squash")
+    export_options = params.get("export_options",
+                                "rw,async,no_root_squash,fsid=0")
     emulated_image = params.get("emulated_image")
     vol_name = params.get("vol_name")
     vol_format = params.get("vol_format")
@@ -211,6 +212,7 @@ def run(test, params, env):
     finally:
         # clean up
         vm.destroy()
+        qemu_conf.restore()
         if snapshot_name:
             backup_xml.sync("--snapshots-metadata")
         else:
@@ -225,3 +227,4 @@ def run(test, params, env):
             except error.TestFail, detail:
                 logging.error(str(detail))
         utils_selinux.set_status(backup_sestatus)
+        libvirtd.restart()
