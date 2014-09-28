@@ -1,10 +1,11 @@
+import os
 import re
 import logging
 from virttest import aexpect
 from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import utils_selinux
 from virttest.staging import service
-from autotest.client import os_dep
 from autotest.client.shared import error
 from autotest.client.shared import utils
 
@@ -132,7 +133,7 @@ class LibvirtdSession(aexpect.Tail):
             logging.debug('Stopping libvirtd service')
             self.libvirtd.stop()
         aexpect.Tail.__init__(
-            self, "libvirtd",
+            self, "LIBVIRT_DEBUG=1 /usr/sbin/libvirtd",
             output_func=self._output_handler,
             termination_func=self._termination_handler)
         self._wait_for_start()
@@ -158,14 +159,14 @@ def _set_iptables_firewalld(iptables_status, firewalld_status):
 
     # Check the availability of both packages.
     try:
-        os_dep.command('iptables')
+        utils_misc.find_command('iptables')
         iptables = service.Factory.create_service('iptables')
     except ValueError:
         msg = "Can't find service iptables."
         raise error.TestNAError(msg)
 
     try:
-        os_dep.command('firewalld')
+        utils_misc.find_command('firewalld')
         firewalld = service.Factory.create_service('firewalld')
     except ValueError:
         msg = "Can't find service firewalld."
@@ -229,12 +230,32 @@ def run(test, params, env):
 
     test_type = params.get('test_type')
 
+    old_iptables = None
+    old_firewalld = None
+    iptables = None
     try:
         # Setup firewall services according to test type.
         if test_type == 'with_firewalld':
             old_iptables, old_firewalld = _set_iptables_firewalld(False, True)
         elif test_type == 'with_iptables':
             old_iptables, old_firewalld = _set_iptables_firewalld(True, False)
+        elif test_type == 'stop_iptables':
+            # Use _set_iptables_firewalld(False, False) on rhel6 will got skip
+            # as firewalld not on rhel6, but the new case which came from bug
+            # 716612 is mainly a rhel6 problem and should be tested, so skip
+            # using the  _set_iptables_firewalld function and direct stop
+            # iptables.
+            try:
+                utils_misc.find_command('iptables')
+                iptables = service.Factory.create_service('iptables')
+            except ValueError:
+                msg = "Can't find service iptables."
+                raise error.TestNAError(msg)
+
+            utils.run('iptables-save > /tmp/iptables.save')
+            if not iptables.stop():
+                msg = "Can't stop service iptables"
+                raise error.TestError(msg)
 
         try:
             errors = []
@@ -244,15 +265,34 @@ def run(test, params, env):
                 error_params=(errors,),
             )
 
+            libvirt_pid = libvirtd_session.get_pid()
+            libvirt_context = utils_selinux.get_context_of_process(libvirt_pid)
+            logging.debug("The libvirtd pid context is: %s" % libvirt_context)
+
             # Check errors.
             if errors:
                 logging.debug("Found errors in libvirt log:")
                 for line in errors:
                     logging.debug(line)
-                raise error.TestFail("Found errors in libvirt log.")
+                if test_type == 'stop_iptables':
+                    for line in errors:
+                        # libvirtd process started without virt_t will failed
+                        # to set iptable rules which is expected here
+                        if ("/sbin/iptables" and
+                                "unexpected exit status 1" not in line):
+                            raise error.TestFail("Found errors other than"
+                                                 " iptables failure in"
+                                                 " libvirt log.")
+                else:
+                    raise error.TestFail("Found errors in libvirt log.")
         finally:
             libvirtd_session.close()
     finally:
         # Recover services status.
         if test_type in ('with_firewalld', 'with_iptables'):
             _set_iptables_firewalld(old_iptables, old_firewalld)
+        elif test_type == "stop_iptables" and iptables:
+            iptables.start()
+            utils.run('iptables-restore < /tmp/iptables.save')
+        if os.path.exists("/tmp/iptables.save"):
+            os.remove("/tmp/iptables.save")
