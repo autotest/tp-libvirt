@@ -94,6 +94,7 @@ def run(test, params, env):
 
     pvt = None
     snapshot_name = None
+    disk_snap_path = []
     qemu_conf = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
     try:
@@ -200,6 +201,9 @@ def run(test, params, env):
                 "\d+", snapshot_result.stdout.strip()).group(0)
 
         if snapshot_name:
+            disks_snap = vm.get_disk_devices()
+            for disk in disks_snap.values():
+                disk_snap_path.append(disk['source'])
             virsh.snapshot_delete(vm_name, snapshot_name, "--metadata",
                                   debug=True)
 
@@ -217,6 +221,8 @@ def run(test, params, env):
             backup_xml.sync("--snapshots-metadata")
         else:
             backup_xml.sync()
+        for i in disk_snap_path:
+            os.unlink(i)
         for path, label in backup_labels_of_disks.items():
             label_list = label.split(":")
             os.chown(path, int(label_list[0]), int(label_list[1]))
