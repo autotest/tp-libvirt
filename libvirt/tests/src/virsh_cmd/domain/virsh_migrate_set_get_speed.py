@@ -159,6 +159,9 @@ def run(test, params, env):
         migration_type = params.get("migration_type", "orderly")
         thread_timeout = int(params.get("thread_timeout", "60"))
         delta = float(params.get("allowed_delta", "0.1"))
+        virsh_migrate_timeout = int(params.get("virsh_migrate_timeout", "60"))
+        # virsh migrate options
+        virsh_migrate_options = "--live --timeout %s" % virsh_migrate_timeout
         # Migrate vms to remote host
         mig_first = utlv.MigrationTest()
         virsh_dargs = {"debug": True}
@@ -167,7 +170,7 @@ def run(test, params, env):
             vm.wait_for_login()
         utils_test.load_stress(stress_type, vms, params)
         mig_first.do_migration(vms, src_uri, dest_uri, migration_type,
-                               options="--live", thread_timeout=thread_timeout)
+                               options=virsh_migrate_options, thread_timeout=thread_timeout)
         for vm in vms:
             mig_first.cleanup_dest_vm(vm, None, dest_uri)
             # Keep it clean for second migration
@@ -195,7 +198,7 @@ def run(test, params, env):
         utils_test.load_stress(stress_type, vms, params)
         mig_second = utlv.MigrationTest()
         mig_second.do_migration(vms, src_uri, dest_uri, migration_type,
-                                options="--live", thread_timeout=thread_timeout)
+                                options=virsh_migrate_options, thread_timeout=thread_timeout)
         for vm in vms:
             mig_second.cleanup_dest_vm(vm, None, dest_uri)
 

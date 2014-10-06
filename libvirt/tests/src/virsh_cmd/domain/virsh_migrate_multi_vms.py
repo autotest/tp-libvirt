@@ -74,6 +74,7 @@ class MigrationHelper(object):
                                 env.get("address_cache"))
         self.virsh_instance = None
         self.migration_cmd = None
+        self.virsh_migrate_timeout = int(params.get("virsh_migrate_timeout", 60))
 
     def __str__(self):
         return "Migration VM %s, Command '%s'" % (self.vm_name,
@@ -89,13 +90,13 @@ class MigrationHelper(object):
         #rvirsh = virsh.VirshConnectBack(**rs_dargs)
         self.virsh_instance = virsh.VirshPersistent()
 
-    def set_migration_cmd(self, options, method, desturi, timeout=60):
+    def set_migration_cmd(self, options, method, desturi):
         """
         Set command for migration.
         """
         self.migration_cmd = make_migration_cmd(
             self.vm_name, method, desturi,
-            make_migration_options(options, timeout))
+            make_migration_options(options, self.virsh_migrate_timeout))
 
     def cleanup_vm(self, srcuri, desturi):
         """
