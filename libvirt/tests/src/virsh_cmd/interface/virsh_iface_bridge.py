@@ -1,5 +1,6 @@
 import os
 import logging
+
 from autotest.client.shared import error
 from autotest.client import utils
 from virttest.utils_test import libvirt
@@ -22,6 +23,8 @@ def run(test, params, env):
     iface_name = params.get("iface_name")
     bridge_name = params.get("bridge_name")
     ping_ip = params.get("ping_ip", "")
+    ping_count = int(params.get("ping_count", "3"))
+    ping_timeout = int(params.get("ping_timeout", "5"))
     bridge_option = params.get("bridge_option")
     unbridge_option = params.get("unbridge_option")
     bridge_delay = "yes" == params.get("bridge_delay", "no")
@@ -31,14 +34,19 @@ def run(test, params, env):
     unbridge_status_error = "yes" == params.get("unbridge_status_error", "no")
     iface_script = NETWORK_SCRIPT + iface_name
     iface_script_bk = os.path.join(test.tmpdir, "iface-%s.bk" % iface_name)
-    if not libvirt.check_iface(iface_name, "exists", "--all"):
-        raise error.TestNAError("Interface '%s' not exists" % iface_name)
-    net_iface = utils_net.Interface(name=iface_name)
-    iface_is_up = net_iface.is_up()
+    check_iface = "yes" == params.get("check_iface", "yes")
+    if check_iface:
+        if not libvirt.check_iface(iface_name, "exists", "--all"):
+            raise error.TestNAError("Interface '%s' not exists" % iface_name)
+        net_iface = utils_net.Interface(name=iface_name)
+        iface_is_up = net_iface.is_up()
 
-    # Make sure the interface exists
-    if not libvirt.check_iface(iface_name, "exists", "--all"):
-        raise error.TestNAError("Interface '%s' not exists" % iface_name)
+        # Make sure the interface exists
+        if not libvirt.check_iface(iface_name, "exists", "--all"):
+            raise error.TestNAError("Interface '%s' not exists" % iface_name)
+
+        # Back up the interface script
+        utils.run("cp %s %s" % (iface_script, iface_script_bk))
 
     # Make sure the bridge name not exists
     net_bridge = utils_net.Bridge()
@@ -57,9 +65,6 @@ def run(test, params, env):
         NM_is_running = NM_service.status()
         if NM_is_running:
             NM_service.stop()
-
-    # Back up the interface script
-    utils.run("cp %s %s" % (iface_script, iface_script_bk))
 
     def unbridge_check():
         """
@@ -89,7 +94,8 @@ def run(test, params, env):
                     br_ip = ""
                 # Do ping test only bridge has IP address and ping_ip not empty
                 if br_ip and ping_ip:
-                    if not libvirt.check_iface(bridge_name, "ping", ping_ip):
+                    if not libvirt.check_iface(bridge_name, "ping", ping_ip,
+                                               count=ping_count, timeout=ping_timeout):
                         raise error.TestFail("Fail to ping %s from %s."
                                              % (ping_ip, bridge_name))
                 else:
@@ -114,7 +120,7 @@ def run(test, params, env):
             if not unbridge_status_error:
                 unbridge_check()
     finally:
-        if create_bridge:
+        if create_bridge and check_iface:
             if libvirt.check_iface(bridge_name, "exists", "--all"):
                 virsh.iface_unbridge(bridge_name)
             if not os.path.exists(iface_script):
