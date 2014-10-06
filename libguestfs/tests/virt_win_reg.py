@@ -56,21 +56,7 @@ def run(test, params, env):
     # Get parameters for remote.
     remote_yes = (params.get("virt_win_reg_remote", "no") == "yes")
     remote_uri = params.get("virt_win_reg_remote_uri", "ENTER.YOUR.REMOTE")
-    remote_vm_name = params.get("virt_win_reg_remote_vm_name",
-                                "ENTER.YOUR.REMOTE")
-    remote_guest_ip = params.get("virt_win_reg_remote_guest_ip",
-                                 "ENTER.YOUR.REMOTE")
-    remote_guest_username = params.get("virt_win_reg_remote_guest_username",
-                                       "ENTER.YOUR.REMOTE")
-    remote_guest_passwd = params.get("virt_win_reg_remote_guest_passwd",
-                                     "ENTER.YOUR.REMOTE")
-    remote_guest_port = params.get("virt_win_reg_remote_guest_port",
-                                   "10022")
-    if remote_yes and ((remote_uri.count("ENTER") or
-                        remote_vm_name.count("ENTER") or
-                        remote_guest_ip.count("ENTER") or
-                        remote_guest_username.count("ENTER") or
-                        remote_guest_passwd.count("ENTER"))):
+    if remote_yes and remote_uri.count("ENTER"):
         raise error.TestNAError("Remote Test is skipped.")
 
     # Get parameters about reg value.
@@ -100,7 +86,7 @@ def run(test, params, env):
     command = virt_win_reg_exec
     if remote_yes:
         command += " -c %s" % remote_uri
-        command += " %s" % remote_vm_name
+        command += " %s" % vm_name
     else:
         command += " %s" % vm_ref
     command += " %s" % virt_win_reg_cmd
@@ -122,18 +108,8 @@ def run(test, params, env):
 
         command += " %s" % reg_file.name
 
-    if remote_yes:
-        # Make sure that remote_guest_ip is reachable to local host then
-        # we need to login remote guest here.
-        session = remote.wait_for_login("telnet", remote_guest_ip,
-                                        remote_guest_port,
-                                        remote_guest_username,
-                                        remote_guest_passwd,
-                                        r"^\w:\\\\.*>\s*$")
-        session.set_status_test_command("echo %errorlevel%")
-    else:
-        # login windows guest on local host.
-        session = vm.wait_for_login()
+    session = vm.wait_for_login()
+
     try:
         status, output = session.cmd_status_output(prepare_reg_cmd)
         if status:
@@ -148,8 +124,7 @@ def run(test, params, env):
 
         if not vm.is_alive():
             vm.start()
-            session = vm.wait_for_login(
-                timeout=100, username="Administrator", password="1q2w3eP")
+            session = vm.wait_for_login()
         status, output = session.cmd_status_output(verify_reg_cmd)
         if operation == "query":
             output_in_guest = output.split()[-1].strip()
