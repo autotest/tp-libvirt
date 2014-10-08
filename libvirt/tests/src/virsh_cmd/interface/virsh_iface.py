@@ -133,6 +133,7 @@ def run(test, params, env):
     use_exist_iface = "yes" == params.get("use_exist_iface", "no")
     status_error = "yes" == params.get("status_error", "no")
     net_restart = "yes" == params.get("iface_net_restart", "no")
+    list_dumpxml_acl = "yes" == params.get("list_dumpxml_acl", "no")
     if ping_ip.count("ENTER"):
         raise error.TestNAError("Please input a valid ip address")
     if iface_name.count("ENTER"):
@@ -150,9 +151,15 @@ def run(test, params, env):
                                     + " libvirt version.")
 
     virsh_dargs = {'debug': True}
+    list_dumpxml_dargs = {'debug': True}
     if params.get('setup_libvirt_polkit') == 'yes':
-        virsh_dargs['uri'] = uri
-        virsh_dargs['unprivileged_user'] = unprivileged_user
+        if not list_dumpxml_acl:
+            virsh_dargs['uri'] = uri
+            virsh_dargs['unprivileged_user'] = unprivileged_user
+        else:
+            list_dumpxml_dargs['uri'] = uri
+            list_dumpxml_dargs['unprivileged_user'] = unprivileged_user
+            list_dumpxml_dargs['ignore_status'] = False
 
     # acl api negative testing params
     write_save_status_error = "yes" == params.get("write_save_status_error",
@@ -217,8 +224,11 @@ def run(test, params, env):
             utils.run("cp %s %s" % (iface_script, iface_script_bk))
             # step 1.1
             # dumpxml for interface
+            if list_dumpxml_acl:
+                virsh.iface_list(**list_dumpxml_dargs)
             xml = virsh.iface_dumpxml(iface_name, "--inactive",
-                                      to_file=iface_xml, debug=True)
+                                      to_file=iface_xml,
+                                      **list_dumpxml_dargs)
             # Step 1.2
             # Destroy interface
             if iface_is_up:
@@ -326,7 +336,10 @@ def run(test, params, env):
 
         # Step 6
         # Dumpxml for interface
-        xml = virsh.iface_dumpxml(iface_name, "", to_file="", debug=True)
+        if list_dumpxml_acl:
+            virsh.iface_list(**list_dumpxml_dargs)
+        xml = virsh.iface_dumpxml(iface_name, "", to_file="",
+                                  **list_dumpxml_dargs)
         logging.debug("Interface '%s' XML:\n%s", iface_name, xml)
 
         # Step 7
