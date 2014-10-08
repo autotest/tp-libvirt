@@ -2,6 +2,7 @@ import re
 import os
 from autotest.client.shared import error
 from virttest import virsh
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -30,6 +31,18 @@ def run(test, params, env):
     if not virsh.net_state_dict()[net_name]['autostart']:
         autostart_status = "no"
 
+    # acl polkit params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
     # Create a transient network.
     try:
         if persistent == "no":
@@ -55,7 +68,11 @@ def run(test, params, env):
         except error.CmdError:
             raise error.TestFail("Inactive network test failed!")
 
-    result = virsh.net_list(option, extra, ignore_status=True)
+    virsh_dargs = {'ignore_status': True}
+    if params.get('setup_libvirt_polkit') == 'yes':
+        virsh_dargs['unprivileged_user'] = unprivileged_user
+        virsh_dargs['uri'] = uri
+    result = virsh.net_list(option, extra, **virsh_dargs)
     status = result.exit_status
     output = result.stdout.strip()
 
