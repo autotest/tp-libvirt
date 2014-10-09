@@ -4,6 +4,7 @@ import re
 from autotest.client.shared import error, utils
 from virttest import virsh
 from virttest import utils_misc
+from provider import libvirt_version
 
 
 def get_avail_caps(all_caps):
@@ -172,6 +173,23 @@ def run(test, params, env):
     caps = get_avail_caps(all_caps)
     check_failed = False
 
+    # acl polkit params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
+    virsh_dargs = {}
+    if params.get('setup_libvirt_polkit') == 'yes':
+        virsh_dargs['unprivileged_user'] = unprivileged_user
+        virsh_dargs['uri'] = uri
+
     tree = (tree_option == 'on')
     if cap_option == 'one':
         devices = {}
@@ -184,7 +202,7 @@ def run(test, params, env):
                 logging.debug('    ' + device)
 
         for cap in caps:
-            result = virsh.nodedev_list(tree=tree, cap=cap)
+            result = virsh.nodedev_list(tree=tree, cap=cap, **virsh_dargs)
             if result.exit_status != 0 and expect_succeed == 'yes':
                 break
             elif result.exit_status == 0 and expect_succeed == 'no':
@@ -201,7 +219,7 @@ def run(test, params, env):
                 cap = ','.join(['pci', 'usb', 'net', 'storage', 'scsi'] * 5000)
             else:
                 cap = cap_option
-        result = virsh.nodedev_list(tree=tree, cap=cap)
+        result = virsh.nodedev_list(tree=tree, cap=cap, **virsh_dargs)
 
     logging.debug(result)
     if expect_succeed == 'yes':
