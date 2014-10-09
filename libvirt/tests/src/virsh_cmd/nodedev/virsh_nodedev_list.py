@@ -70,10 +70,15 @@ def get_net_devices():
     devices = []
     if os.path.exists(net_path):
         for device in os.listdir(net_path):
+            if device == 'bonding_masters':
+                continue
             try:
                 dev_dir = os.path.join('/sys/class/net', device)
                 # Ignore bridge devices
                 if os.path.exists(os.path.join(dev_dir, 'bridge')):
+                    continue
+                # Ignore bonding devices
+                if os.path.exists(os.path.join(dev_dir, 'bonding')):
                     continue
                 address_file = os.path.join(dev_dir, 'address')
                 mac = ''
