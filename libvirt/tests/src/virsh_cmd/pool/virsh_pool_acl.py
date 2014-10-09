@@ -48,6 +48,7 @@ def run(test, params, env):
     delete_acl = "yes" == params.get("delete_acl", "no")
     refresh_acl = "yes" == params.get("refresh_acl", "no")
     vol_list_acl = "yes" == params.get("vol_list_acl", "no")
+    list_dumpxml_acl = "yes" == params.get("list_dumpxml_acl", "no")
     src_pool_error = "yes" == params.get("src_pool_error", "no")
     define_error = "yes" == params.get("define_error", "no")
     undefine_error = "yes" == params.get("undefine_error", "no")
@@ -101,7 +102,10 @@ def run(test, params, env):
         """
         found = False
         # Get the list stored in a variable
-        result = virsh.pool_list(option, ignore_status=True)
+        if list_dumpxml_acl:
+            result = virsh.pool_list(option, **acl_dargs)
+        else:
+            result = virsh.pool_list(option, ignore_status=True)
         check_exit_status(result, False)
         output = re.findall(r"(\S+)\ +(\S+)\ +(\S+)[\ +\n]",
                             str(result.stdout))
@@ -128,7 +132,10 @@ def run(test, params, env):
         option = "--inactive --type %s" % pool_type
         check_pool_list(pool_name, option)
 
-        xml = virsh.pool_dumpxml(pool_name, to_file=pool_xml)
+        if list_dumpxml_acl:
+            xml = virsh.pool_dumpxml(pool_name, to_file=pool_xml, **acl_dargs)
+        else:
+            xml = virsh.pool_dumpxml(pool_name, to_file=pool_xml)
         logging.debug("Pool '%s' XML:\n%s", pool_name, xml)
 
         # Step (1)
