@@ -125,10 +125,41 @@ def config_network(vm, interface, ip=None, mask="255.255.0.0"):
     # copy file to vm and restart interface
     remote.copy_files_to(vm_ip, "scp", "root", "123456", 22,
                          filepath, config_file)
-    session.cmd("ifdown %s" % interface)
-    session.cmd("ifup %s" % interface)
-    logging.debug(session.cmd_output("ifconfig -a"))
-    session.close()
+    try:
+        session.cmd("ifdown %s" % interface)
+    except:
+        pass    # The device may be not active, try to up it anyway
+    try:
+        session.cmd("ifup %s" % interface)
+    finally:
+        logging.debug(session.cmd_output("ifconfig -a"))
+        session.close()
+
+
+def format_disk(vm, device, partsize):
+    """
+    Create a partition on given disk and check it.
+    """
+    if not vm.is_alive():
+        vm.start()
+    session = vm.wait_for_login()
+    if session.cmd_status("ls %s" % device):
+        raise error.TestFail("Can not find '%s' in guest." % device)
+    else:
+        if session.cmd_status("which parted"):
+            logging.error("Did not find command 'parted' in guest, SKIP...")
+            return
+
+    try:
+        utlv.mk_part(device, size=partsize, session=session)
+        partition = "%s1" % device
+        utlv.mkfs(partition, "ext4", session=session)
+    except Exception, detail:
+        raise error.TestFail("Create&format partition for '%s' failed: %s"
+                             % (device, str(detail)))
+    finally:
+        logging.debug(session.cmd_output("parted -l"))
+        session.close()
 
 
 def cleanup_vm(vm_name=None):
@@ -151,7 +182,10 @@ def test_nic_group(vm, params):
     3.Start vm and check it.
     4.Check added interface in vm.
     """
-    pci_id = params.get("nic_pci_id")
+    pci_id = params.get("nic_pci_id", "ETH:PCI.EXAMPLE")
+    if pci_id.count("EXAMPLE"):
+        raise error.TestNAError("Invalid pci device id.")
+
     device_type = "Ethernet"
     nic_ip = params.get("nic_pci_ip")
     nic_mask = params.get("nic_pci_mask", "255.255.0.0")
@@ -159,7 +193,7 @@ def test_nic_group(vm, params):
     # Login vm to get interfaces before attaching pci device.
     if vm.is_dead():
         vm.start()
-    before_pci_nics = vm.get_pci_devices()
+    before_pci_nics = vm.get_pci_devices("Ethernet")
     before_interfaces = vm.get_interfaces()
     logging.debug("Ethernet PCI devices before:%s",
                   before_pci_nics)
@@ -179,11 +213,11 @@ def test_nic_group(vm, params):
         raise error.TestFail("New device does not work well: %s" % detail)
 
     # Get devices in vm again after attaching
-    after_pci_nics = vm.get_pci_devices()
+    after_pci_nics = vm.get_pci_devices("Ethernet")
     after_interfaces = vm.get_interfaces()
-    logging.debug("Ethernet PCI devices before:%s",
+    logging.debug("Ethernet PCI devices after:%s",
                   after_pci_nics)
-    logging.debug("Ethernet interfaces before:%s",
+    logging.debug("Ethernet interfaces after:%s",
                   after_interfaces)
     new_pci = "".join(list(set(before_pci_nics) ^ set(after_pci_nics)))
     new_interface = "".join(list(set(before_interfaces) ^ set(after_interfaces)))
@@ -194,7 +228,159 @@ def test_nic_group(vm, params):
         config_network(vm, new_interface, nic_ip, nic_mask)
         # Check interface
     finally:
+        if vm.is_alive():
+            vm.destroy()
         cleanup_devices(pci_id, device_type)
+
+
+def test_fibre_group(vm, params):
+    """
+    Try to attach device in iommu group to vm.
+
+    1.Get original available disks before attaching.
+    2.Attaching hostdev in iommu group to vm.
+    3.Start vm and check it.
+    4.Check added disk in vm.
+    """
+    pci_id = params.get("fibre_pci_id", "FIBRE:PCI.EXAMPLE")
+    device_type = "Fibre"
+    if pci_id.count("EXAMPLE"):
+        raise error.TestNAError("Invalid pci device id.")
+
+    # Login vm to get disks before attaching pci device.
+    if vm.is_dead():
+        vm.start()
+    before_pci_fibres = vm.get_pci_devices("Fibre")
+    before_disks = vm.get_disks()
+    logging.debug("Fibre PCI devices before:%s",
+                  before_pci_fibres)
+    logging.debug("Disks before:%s",
+                  before_disks)
+    vm.destroy()
+
+    xmlfile = utlv.create_hostdev_xml(pci_id)
+    prepare_devices(pci_id, device_type)
+    try:
+        virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
+                            flagstr="--config", debug=True,
+                            ignore_status=False)
+        vm.start()
+    except (error.CmdError, virt_vm.StartError), detail:
+        cleanup_devices(pci_id, device_type)
+        raise error.TestFail("New device does not work well: %s" % detail)
+
+    # Get devices in vm again after attaching
+    after_pci_fibres = vm.get_pci_devices("Fibre")
+    after_disks = vm.get_disks()
+    logging.debug("Fibre PCI devices after:%s",
+                  after_pci_fibres)
+    logging.debug("Disks after:%s",
+                  after_disks)
+    new_pci = "".join(list(set(before_pci_fibres) ^ set(after_pci_fibres)))
+    new_disk = "".join(list(set(before_disks) ^ set(after_disks)))
+    try:
+        if not new_pci or not new_disk:
+            raise error.TestFail("Cannot find attached host device in vm.")
+        # Config disk for new disk device
+        format_disk(vm, new_disk, "10M")
+        # Mount and use the partition to verify it
+    finally:
+        if vm.is_alive():
+            vm.destroy()
+        cleanup_devices(pci_id, device_type)
+
+
+def test_nic_fibre_group(vm, params):
+    """
+    Try to attach nic and fibre device at same time in iommu group to vm.
+
+    1.Get original available interfaces&disks before attaching.
+    2.Attaching hostdev in iommu group to vm.
+    3.Start vm and check it.
+    4.Check added interface&disk in vm.
+    """
+    nic_pci_id = params.get("nic_pci_id", "ETH:PCI.EXAMPLE")
+    fibre_pci_id = params.get("fibre_pci_id", "FIBRE:PCI.EXAMPLE")
+    if nic_pci_id.count("EXAMPLE"):
+        raise error.TestNAError("Invalid Ethernet pci device id.")
+    if fibre_pci_id.count("EXAMPLE"):
+        raise error.TestNAError("Invalid Fibre pci device id.")
+
+    nic_ip = params.get("nic_pci_ip")
+    nic_mask = params.get("nic_pci_mask", "255.255.0.0")
+
+    # Login vm to get interfaces before attaching pci device.
+    if vm.is_dead():
+        vm.start()
+    before_pci_nics = vm.get_pci_devices("Ethernet")
+    before_interfaces = vm.get_interfaces()
+    before_pci_fibres = vm.get_pci_devices("Fibre")
+    before_disks = vm.get_disks()
+    logging.debug("Ethernet PCI devices before:%s",
+                  before_pci_nics)
+    logging.debug("Ethernet interfaces before:%s",
+                  before_interfaces)
+    logging.debug("Fibre PCI devices before:%s",
+                  before_pci_fibres)
+    logging.debug("Disks before:%s",
+                  before_disks)
+    vm.destroy()
+
+    nicxmlfile = utlv.create_hostdev_xml(nic_pci_id)
+    fibrexmlfile = utlv.create_hostdev_xml(fibre_pci_id)
+    prepare_devices(nic_pci_id, "Ethernet")
+    prepare_devices(fibre_pci_id, "Fibre")
+    try:
+        virsh.attach_device(domain_opt=vm.name, file_opt=nicxmlfile,
+                            flagstr="--config", debug=True,
+                            ignore_status=False)
+        virsh.attach_device(domain_opt=vm.name, file_opt=fibrexmlfile,
+                            flagstr="--config", debug=True,
+                            ignore_status=False)
+        vm.start()
+    except (error.CmdError, virt_vm.StartError), detail:
+        cleanup_devices(nic_pci_id, "Ethernet")
+        cleanup_devices(fibre_pci_id, "Fibre")
+        raise error.TestFail("New device does not work well: %s" % detail)
+
+    # Get nic devices in vm again after attaching
+    after_pci_nics = vm.get_pci_devices("Ethernet")
+    after_interfaces = vm.get_interfaces()
+    logging.debug("Ethernet PCI devices after:%s",
+                  after_pci_nics)
+    logging.debug("Ethernet interfaces after:%s",
+                  after_interfaces)
+    # Get disk devices in vm again after attaching
+    after_pci_fibres = vm.get_pci_devices("Fibre")
+    after_disks = vm.get_disks()
+    logging.debug("Fibre PCI devices after:%s",
+                  after_pci_fibres)
+    logging.debug("Disks after:%s",
+                  after_disks)
+
+    new_pci_nic = "".join(list(set(before_pci_nics) ^ set(after_pci_nics)))
+    new_interface = "".join(list(set(before_interfaces) ^ set(after_interfaces)))
+    new_pci_fibre = "".join(list(set(before_pci_fibres) ^ set(after_pci_fibres)))
+    new_disk = "".join(list(set(before_disks) ^ set(after_disks)))
+
+    try:
+        if not new_pci_nic or not new_interface:
+            raise error.TestFail("Cannot find attached host device in vm.")
+        # Config network for new interface
+        config_network(vm, new_interface, nic_ip, nic_mask)
+        # Check interface
+
+        if not new_pci_fibre or not new_disk:
+            raise error.TestFail("Cannot find attached host device in vm.")
+        # Config disk for new disk device
+        format_disk(vm, new_disk, "10M")
+        # Mount and use the partition to verify it
+
+    finally:
+        if vm.is_alive():
+            vm.destroy()
+        cleanup_devices(nic_pci_id, "Ethernet")
+        cleanup_devices(fibre_pci_id, "Fibre")
 
 
 def run(test, params, env):
@@ -208,10 +394,7 @@ def run(test, params, env):
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
-
-    nic_pci_id = params.get("nic_pci_id", "ETH:PCI.EXAMPLE")
-    if nic_pci_id.count("EXAMPLE"):
-        raise error.TestNAError("Invalid pci device id.")
+    test_type = params.get("test_type")
 
     if vm.is_alive():
         vm.destroy()
@@ -222,7 +405,8 @@ def run(test, params, env):
     try:
         new_vm = libvirt_vm.VM(new_vm_name, vm.params, vm.root_dir,
                                vm.address_cache)
-        test_nic_group(new_vm, params)
+        testcase = globals()["test_%s" % test_type]
+        testcase(new_vm, params)
     finally:
         if new_vm.is_alive():
             new_vm.destroy()
