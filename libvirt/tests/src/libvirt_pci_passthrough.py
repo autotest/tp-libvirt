@@ -42,7 +42,7 @@ def run(test, params, env):
         pci_dev = params.get("libvirt_pci_storage_dev_label")
 
     net_ip = params.get("libvirt_pci_net_ip", "")
-    server_ip = params.get("libvirt_pci_server_ip")
+    server_ip = params.get("libvirt_pci_server_ip", "")
 
     # Check the parameters from configuration file.
     if (pci_dev.count("ENTER")):
