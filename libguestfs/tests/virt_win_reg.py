@@ -34,7 +34,7 @@ def run(test, params, env):
             # virt-win-reg Guestname/disk --merge reg_file.reg
         * modify:
             # cat reg_file.reg
-            [HKLM\SYSTEM\ControlSet001\Control\ComputerName\ComputerName
+            [HKLM\SYSTEM\ControlSet001\Control\ComputerName\ComputerName]
             "ComputerName" = "VIRTTEST_v2"
             # virt-win-reg Guestname/disk --merge reg_file.reg
         * query:
