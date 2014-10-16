@@ -226,21 +226,17 @@ def run(test, params, env):
             _, output = session.cmd_status_output(guest_command)
             host_session.close()
 
-            if host:
-                # perf information captured with --host is not about guest.
-                # No need to verify it with perf data from guest.
-                return
-            vm.copy_files_from(result_on_guest, guest_result_file)
-            host_first = find_first_kernel_symbol(host_result_file, "g")
-            index_in_guest = find_symbol_in_result(guest_result_file, host_first)
-            print index_in_guest
-            if index_in_guest < 0:
-                raise error.TestFail("Not find symbol %s in guest result." % host_first)
-            if index_in_guest > 5:
-                raise error.TestFail("Perf information for guest is not correct."
-                                     "The first symbol in host_result is %s, "
-                                     "but this symbol is in %s index in result "
-                                     "from guest.\n" % (host_first, index_in_guest))
+            if (host and guest):
+                vm.copy_files_from(result_on_guest, guest_result_file)
+                host_first = find_first_kernel_symbol(host_result_file, "g")
+                index_in_guest = find_symbol_in_result(guest_result_file, host_first)
+                if index_in_guest < 0:
+                    raise error.TestFail("Not find symbol %s in guest result." % host_first)
+                if index_in_guest > 5:
+                    raise error.TestFail("Perf information for guest is not correct."
+                                         "The first symbol in host_result is %s, "
+                                         "but this symbol is in %s index in result "
+                                         "from guest.\n" % (host_first, index_in_guest))
         if record:
             session = vm.wait_for_login()
             host_command = "%s record -a sleep 10 " % (command)
@@ -265,21 +261,17 @@ def run(test, params, env):
             if result.exit_status:
                 raise error.TestFail(result)
 
-            if host:
-                # perf information captured with --host is not about guest.
-                # No need to verify it with perf data from guest.
-                return
-            vm.copy_files_from(result_on_guest, guest_result_file)
-            host_first = find_first_kernel_symbol(host_result_file, "g")
-            index_in_guest = find_symbol_in_result(guest_result_file, host_first)
-            print index_in_guest
-            if index_in_guest < 0:
-                raise error.TestFail("Not find symbol %s in guest result." % host_first)
-            if index_in_guest > 5:
-                raise error.TestFail("Perf information for guest is not correct."
-                                     "The first symbol in host_result is %s, "
-                                     "but this symbol is in %s index in result "
-                                     "from guest.\n" % (host_first, index_in_guest))
+            if (host and guest):
+                vm.copy_files_from(result_on_guest, guest_result_file)
+                host_first = find_first_kernel_symbol(host_result_file, "g")
+                index_in_guest = find_symbol_in_result(guest_result_file, host_first)
+                if index_in_guest < 0:
+                    raise error.TestFail("Not find symbol %s in guest result." % host_first)
+                if index_in_guest > 5:
+                    raise error.TestFail("Perf information for guest is not correct."
+                                         "The first symbol in host_result is %s, "
+                                         "but this symbol is in %s index in result "
+                                         "from guest.\n" % (host_first, index_in_guest))
         if diff:
             session = vm.wait_for_login()
             host_command = "%s record -o %s -a sleep 10" % (command, output_of_record)
