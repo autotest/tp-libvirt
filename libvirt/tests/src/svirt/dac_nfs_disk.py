@@ -222,7 +222,8 @@ def run(test, params, env):
         else:
             backup_xml.sync()
         for i in disk_snap_path:
-            os.unlink(i)
+            if i and os.path.exists(i):
+                os.unlink(i)
         for path, label in backup_labels_of_disks.items():
             label_list = label.split(":")
             os.chown(path, int(label_list[0]), int(label_list[1]))
