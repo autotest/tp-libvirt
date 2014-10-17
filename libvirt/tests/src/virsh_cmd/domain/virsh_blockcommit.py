@@ -7,6 +7,42 @@ from virttest.libvirt_xml import vm_xml
 from provider import libvirt_version
 
 
+def reset_domain(vm, vm_state, needs_agent=False):
+    """
+    Setup guest agent in domain.
+
+    :param vm: the vm object
+    :param vm_state: the given vm state string "shut off" or "running"
+    """
+    if vm.is_alive():
+        vm.destroy()
+    vmxml = vm_xml.VMXML()
+    vmxml.new_from_dumpxml(vm.name)
+    if needs_agent:
+        logging.debug("Attempting to set guest agent channel")
+        vmxml.set_agent_channel(vm.name)
+    if not vm_state == "shut off":
+        vm.start()
+        session = vm.wait_for_login()
+        if needs_agent:
+            # Check if qemu-ga already started automatically
+            session = vm.wait_for_login()
+            cmd = "rpm -q qemu-guest-agent || yum install -y qemu-guest-agent"
+            stat_install = session.cmd_status(cmd, 300)
+            if stat_install != 0:
+                raise error.TestFail("Fail to install qemu-guest-agent, make "
+                                     "sure that you have usable repo in guest")
+
+            # Check if qemu-ga already started
+            stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
+            if stat_ps != 0:
+                session.cmd("qemu-ga -d")
+                # Check if the qemu-ga really started
+                stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
+                if stat_ps != 0:
+                    raise error.TestFail("Fail to run qemu-ga in guest")
+
+
 def check_chain_xml(disk_xml, chain_lst):
     """
     param disk_xml: disk xmltreefile
@@ -48,6 +84,8 @@ def run(test, params, env):
         for count in range(1, 4):
             options = "snapshot%s snap%s-desc " \
                       "--disk-only --atomic --no-metadata" % (count, count)
+            if needs_agent:
+                options += " --quiesce"
 
             for disk in disks:
                 disk_detail = disks[disk]
@@ -84,6 +122,8 @@ def run(test, params, env):
     # Process cartesian parameters
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    vm_state = params.get("vm_state", "running")
+    needs_agent = "yes" == params.get("needs_agent", "yes")
     top_inactive = ("yes" == params.get("top_inactive"))
     with_timeout = ("yes" == params.get("with_timeout_option", "no"))
     status_error = ("yes" == params.get("status_error", "no"))
@@ -106,7 +146,12 @@ def run(test, params, env):
     if len(exsiting_snaps) != 0:
         raise error.TestFail("There are snapshots created for %s already" %
                              vm_name)
-    # Get a vm session
+
+    # Set qemu-ga
+    if not vm_state == "shut off":
+        reset_domain(vm, vm_state, needs_agent)
+
+    # get a vm session before snapshot
     session = vm.wait_for_login()
 
     try:
@@ -184,6 +229,9 @@ def run(test, params, env):
             if pivot_opt:
                 blockcommit_options += " --pivot"
 
+        if vm_state == "shut off":
+            vm.shutdown()
+
         # Run test case
         result = virsh.blockcommit(vm_name, blk_target,
                                    blockcommit_options, **virsh_dargs)
@@ -194,6 +242,8 @@ def run(test, params, env):
             raise error.TestFail("Expect fail, but run successfully!")
         elif not status_error and status != 0:
             raise error.TestFail("Run failed with right command")
+        elif status_error and status != 0:
+            return
 
         while True:
             vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
@@ -292,10 +342,11 @@ def run(test, params, env):
                     break
 
         # Check flag files
-        for flag in snapshot_flag_files:
-            status, output = session.cmd_status_output("cat %s" % flag)
-            if status:
-                raise error.TestFail("blockcommit failed: %s" % output)
+        if not vm_state == "shut off":
+            for flag in snapshot_flag_files:
+                status, output = session.cmd_status_output("cat %s" % flag)
+                if status:
+                    raise error.TestFail("blockcommit failed: %s" % output)
 
     finally:
         for disk in snapshot_external_disks:
