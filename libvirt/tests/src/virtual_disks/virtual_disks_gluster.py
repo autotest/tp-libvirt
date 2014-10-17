@@ -121,8 +121,6 @@ def run(test, params, env):
             # Setup gluster.
             host_ip = libvirt.setup_or_cleanup_gluster(True, vol_name,
                                                        brick_path, pool_name)
-            utils.run("gluster volume set %s server.allow-insecure on"
-                      % vol_name)
             logging.debug("host ip: %s " % host_ip)
             dist_img = "gluster.%s" % disk_format
             image_info = utils_misc.get_image_info(image_source)
