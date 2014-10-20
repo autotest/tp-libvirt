@@ -55,7 +55,8 @@ def run(test, params, env):
     pool_name = params.get("pool_name")
     pool_type = params.get("pool_type")
     pool_target = params.get("pool_target")
-    export_options = params.get("export_options", "rw,async,no_root_squash")
+    export_options = params.get("export_options",
+                                "rw,async,no_root_squash,fsid=0")
     emulated_image = params.get("emulated_image")
     vol_name = params.get("vol_name")
     vol_format = params.get("vol_format")
@@ -93,6 +94,7 @@ def run(test, params, env):
 
     pvt = None
     snapshot_name = None
+    disk_snap_path = []
     qemu_conf = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
     try:
@@ -199,6 +201,9 @@ def run(test, params, env):
                 "\d+", snapshot_result.stdout.strip()).group(0)
 
         if snapshot_name:
+            disks_snap = vm.get_disk_devices()
+            for disk in disks_snap.values():
+                disk_snap_path.append(disk['source'])
             virsh.snapshot_delete(vm_name, snapshot_name, "--metadata",
                                   debug=True)
 
@@ -211,10 +216,14 @@ def run(test, params, env):
     finally:
         # clean up
         vm.destroy()
+        qemu_conf.restore()
         if snapshot_name:
             backup_xml.sync("--snapshots-metadata")
         else:
             backup_xml.sync()
+        for i in disk_snap_path:
+            if i and os.path.exists(i):
+                os.unlink(i)
         for path, label in backup_labels_of_disks.items():
             label_list = label.split(":")
             os.chown(path, int(label_list[0]), int(label_list[1]))
@@ -225,3 +234,4 @@ def run(test, params, env):
             except error.TestFail, detail:
                 logging.error(str(detail))
         utils_selinux.set_status(backup_sestatus)
+        libvirtd.restart()
