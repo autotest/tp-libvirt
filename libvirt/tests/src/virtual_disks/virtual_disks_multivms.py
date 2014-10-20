@@ -1,7 +1,7 @@
 import os
 import logging
-from autotest.client import utils
 from autotest.client.shared import error
+from virttest import utils_selinux
 from virttest import aexpect, virt_vm, virsh, remote, qemu_storage
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
@@ -48,7 +48,7 @@ def run(test, params, env):
         """
         # Create disk xml
         disk_xml = Disk(type_name=dev_type)
-        disk_xml.device = "disk"
+        disk_xml.device = options["disk_device"]
         if options.has_key("sgio") and options["sgio"] != "":
             disk_xml.sgio = options["sgio"]
             disk_xml.device = "lun"
@@ -78,6 +78,12 @@ def run(test, params, env):
             if options["share"] == "shareable":
                 disk_xml.share = True
 
+        if options.has_key("readonly"):
+            if options["readonly"] == "readonly":
+                disk_xml.readonly = True
+
+        logging.debug("The disk xml is: %s" % disk_xml.xmltreefile)
+
         return disk_xml
 
     vm_names = params.get("vms").split()
@@ -87,9 +93,11 @@ def run(test, params, env):
     # Disk specific attributes.
     vms_sgio = params.get("virt_disk_vms_sgio", "").split()
     vms_share = params.get("virt_disk_vms_share", "").split()
+    vms_readonly = params.get("virt_disk_vms_readonly", "").split()
     disk_bus = params.get("virt_disk_bus", "virtio")
     disk_target = params.get("virt_disk_target", "vdb")
     disk_type = params.get("virt_disk_type", "file")
+    disk_device = params.get("virt_disk_device", "disk")
     disk_format = params.get("virt_disk_format", "")
     scsi_options = params.get("scsi_options", "")
     disk_driver_options = params.get("disk_driver_options", "")
@@ -98,7 +106,11 @@ def run(test, params, env):
     test_error_policy = "yes" == params.get("virt_disk_test_error_policy",
                                             "no")
     test_shareable = "yes" == params.get("virt_disk_test_shareable", "no")
-    disk_source_path = test.virtdir
+    test_readonly = "yes" == params.get("virt_disk_test_readonly", "no")
+    disk_source_path = test.tmpdir
+    disk_path = ""
+    tmp_filename = "cdrom_te.tmp"
+    tmp_readonly_file = ""
 
     # Backup vm xml files.
     vms_backup = []
@@ -136,6 +148,14 @@ def run(test, params, env):
             disks.append({"format": disk_format,
                           "source": disk_source})
 
+        if disk_device == "cdrom":
+            tmp_readonly_file = "/root/%s" % tmp_filename
+            with open(tmp_readonly_file, 'w') as f:
+                f.write("teststring\n")
+            disk_path = "%s/test.iso" % disk_source_path
+            disk_source = libvirt.create_local_disk("iso", disk_path, "1")
+            disks.append({"source": disk_source})
+
         # Compose the new domain xml
         vms_list = []
         for i in range(2):
@@ -154,10 +174,15 @@ def run(test, params, env):
             shareable = ""
             if len(vms_share) > i:
                 shareable = vms_share[i]
+            readonly = ""
+            if len(vms_readonly) > i:
+                readonly = vms_readonly[i]
             disk_xml = get_vm_disk_xml(disk_type, disk_source,
                                        sgio=disk_sgio, share=shareable,
                                        target=disk_target, bus=disk_bus,
-                                       driver=disk_driver_options)
+                                       driver=disk_driver_options,
+                                       disk_device=disk_device,
+                                       readonly=readonly)
             if not hotplug:
                 # If we are not testing hotplug,
                 # add disks to domain xml and sync.
@@ -246,6 +271,15 @@ def run(test, params, env):
                                                      % error_policy)
 
                 if test_shareable:
+                    # Check shared file selinux label with type and MCS as
+                    # svirt_image_t:s0
+                    if disk_path:
+                        se_label = utils_selinux.get_context_of_file(disk_path)
+                        logging.debug("Context of shared img '%s' is '%s'" %
+                                      (disk_path, se_label))
+                        if "svirt_image_t:s0" not in se_label:
+                            raise error.TestFail("Context of shared img is not"
+                                                 " expected.")
                     if i == 1:
                         try:
                             test_str = "teststring"
@@ -270,6 +304,37 @@ def run(test, params, env):
                         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
                             logging.error(str(e))
                             raise error.TestFail("Test disk shareable: login failed")
+
+                if test_readonly:
+                    # Check shared file selinux label with type and MCS as
+                    # virt_content_t:s0
+                    if disk_path:
+                        se_label = utils_selinux.get_context_of_file(disk_path)
+                        logging.debug("Context of shared iso '%s' is '%s'" %
+                                      (disk_path, se_label))
+                        if "virt_content_t:s0" not in se_label:
+                            raise error.TestFail("Context of shared iso is not"
+                                                 " expected.")
+                    if i == 1:
+                        try:
+                            test_str = "teststring"
+                            # Try to read on vm0.
+                            session0 = vms_list[0]['vm'].wait_for_login(timeout=10)
+                            cmd = "mount -o ro /dev/cdrom /mnt && grep "
+                            cmd += "%s /mnt/%s" % (test_str, tmp_filename)
+                            s, o = session0.cmd_status_output(cmd)
+                            logging.debug("session in vm0 exit %s; output: %s", s, o)
+                            session0.close()
+                            if s:
+                                raise error.TestFail("Test file not found in VM0 cdrom")
+                            # Try to read on vm1.
+                            s, o = session.cmd_status_output(cmd)
+                            logging.debug("session in vm1 exit %s; output: %s", s, o)
+                            if s:
+                                raise error.TestFail("Test file not found in VM1 cdrom")
+                        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+                            logging.error(str(e))
+                            raise error.TestFail("Test disk shareable: login failed")
                 session.close()
             except virt_vm.VMStartError:
                 if vms_list[i]['status']:
@@ -287,9 +352,14 @@ def run(test, params, env):
 
         # Remove disks.
         for img in disks:
-            if img["format"] == "scsi":
-                libvirt.delete_scsi_disk()
-            elif img["format"] == "iscsi":
-                libvirt.setup_or_cleanup_iscsi(is_setup=False)
+            if img.has_key('format'):
+                if img["format"] == "scsi":
+                    libvirt.delete_scsi_disk()
+                elif img["format"] == "iscsi":
+                    libvirt.setup_or_cleanup_iscsi(is_setup=False)
             elif img.has_key("source"):
                 os.remove(img["source"])
+
+        if tmp_readonly_file:
+            if os.path.exists(tmp_readonly_file):
+                os.remove(tmp_readonly_file)
