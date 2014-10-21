@@ -2,22 +2,88 @@ import os
 import logging
 import tempfile
 from autotest.client.shared import error
+from autotest.client import utils
 from virttest import virsh, data_dir
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
+from virttest.libvirt_xml.devices.disk import Disk
 from provider import libvirt_version
 
 
-def reset_domain(vm, vm_state, needs_agent=False):
+def reset_domain(vm, vm_state, tmp_dir, **params):
     """
     Setup guest agent in domain.
 
     :param vm: the vm object
     :param vm_state: the given vm state string "shut off" or "running"
+    :param tmp_dir: string, dir path
+    :param params: dict, extra dict parameters
     """
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
+    logging.debug("original xml is: %s", vmxml.xmltreefile)
+    needs_agent = "yes" == params.get("needs_agent", "yes")
+    disk_device = params.get("disk_device", "disk")
+    disk_type = params.get("disk_type")
+    disk_target = params.get("disk_target", 'vda')
+    disk_target_bus = params.get("disk_target_bus", "virtio")
+    disk_src_protocol = params.get("disk_source_protocol")
+    disk_src_host = params.get("disk_source_host", "127.0.0.1")
+    disk_src_port = params.get("disk_source_port", "3260")
+    image_size = params.get("image_size", "10G")
+    first_disk = vm.get_first_disk_devices()
+    blk_source = first_disk['source']
+    disk_xml = vmxml.devices.by_device_tag('disk')[0]
+    disk_format = disk_xml.xmltreefile.find('driver').get('type')
+
     if vm.is_alive():
         vm.destroy()
-    vmxml = vm_xml.VMXML()
-    vmxml.new_from_dumpxml(vm.name)
+    if disk_type == 'network':
+        if disk_src_protocol == 'iscsi':
+            if not libvirt_version.version_compare(1, 0, 4):
+                raise error.TestNAError("'iscsi' disk doesn't support in"
+                                        + " current libvirt version.")
+
+            # Replace domain disk with iscsi network disk
+            # Setup iscsi target
+            emu_n = "emulated_iscsi"
+            iscsi_target = libvirt.setup_or_cleanup_iscsi(is_setup=True,
+                                                          is_login=False,
+                                                          image_size=image_size,
+                                                          emulated_image=emu_n)
+
+            # Create iscsi network disk XML
+            disk_params = {'device_type': disk_device,
+                           'type_name': disk_type,
+                           'target_dev': disk_target,
+                           'target_bus': disk_target_bus,
+                           'driver_cache': 'none'}
+            disk_params_src = {}
+            if disk_type == "network":
+                disk_params_src = {'source_protocol': disk_src_protocol,
+                                   'source_name': iscsi_target + "/1",
+                                   'source_host_name': disk_src_host,
+                                   'source_host_port': disk_src_port}
+
+        disks = vmxml.get_devices(device_type="disk")
+        for disk in disks:
+            vmxml.del_device(disk)
+
+        new_disk = Disk(type_name=disk_type)
+        new_disk.new_disk_source(attrs={'file': blk_source})
+        disk_params.update(disk_params_src)
+        disk_xml = libvirt.create_disk_xml(disk_params)
+        new_disk.xml = disk_xml
+        vmxml.add_device(new_disk)
+        logging.debug("The vm xml now is: %s" % vmxml.xmltreefile)
+
+        # Copy first disk to emulated path
+        emulated_path = os.path.join(tmp_dir, emu_n)
+        cmd = "qemu-img convert -f %s -O raw %s %s" % (disk_format,
+                                                       blk_source,
+                                                       emulated_path)
+        utils.run(cmd, ignore_status=False)
+        vmxml.undefine()
+        vmxml.define()
     if needs_agent:
         logging.debug("Attempting to set guest agent channel")
         vmxml.set_agent_channel(vm.name)
@@ -49,6 +115,7 @@ def check_chain_xml(disk_xml, chain_lst):
     param chain_lst: list, expected backing chain list
     return: True or False
     """
+    logging.debug("expected backing chain list is %s", chain_lst)
     src_file = disk_xml.find('source').get('file')
     if src_file != chain_lst[0]:
         logging.error("Current top img %s is not expected", src_file)
@@ -56,6 +123,8 @@ def check_chain_xml(disk_xml, chain_lst):
     for i in range(1, len(chain_lst)):
         backing_xml = disk_xml.find('backingStore')
         src_file = backing_xml.find('source').get('file')
+        if not src_file:
+            src_file = backing_xml.find('source').get('name')
         if src_file != chain_lst[i]:
             logging.error("backing store chain file %s is "
                           "not expected" % src_file)
@@ -132,6 +201,10 @@ def run(test, params, env):
     pivot_opt = "yes" == params.get("pivot_opt", "no")
     virsh_dargs = {'debug': True}
 
+    # Process domain disk device parameters
+    disk_type = params.get("disk_type")
+    disk_src_protocol = params.get("disk_source_protocol")
+
     if not top_inactive:
         if not libvirt_version.version_compare(1, 2, 4):
             raise error.TestNAError("live active block commit is not supported"
@@ -139,7 +212,6 @@ def run(test, params, env):
 
     # A backup of original vm
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    logging.debug("original xml is %s", vmxml_backup)
 
     # Abort the test if there are snapshots already
     exsiting_snaps = virsh.snapshot_list(vm_name)
@@ -147,25 +219,25 @@ def run(test, params, env):
         raise error.TestFail("There are snapshots created for %s already" %
                              vm_name)
 
-    # Set qemu-ga
-    if not vm_state == "shut off":
-        reset_domain(vm, vm_state, needs_agent)
-
-    # get a vm session before snapshot
-    session = vm.wait_for_login()
-
+    snapshot_external_disks = []
     try:
-        # Get a tmp_dir.
         tmp_dir = data_dir.get_tmp_dir()
+
+        # Set vm xml and state
+        if not vm_state == "shut off":
+            reset_domain(vm, vm_state, tmp_dir,
+                         **params)
 
         # The first disk is supposed to include OS
         # We will perform blockcommit operation for it.
         first_disk = vm.get_first_disk_devices()
         blk_source = first_disk['source']
         blk_target = first_disk['target']
-
-        snapshot_external_disks = []
         snapshot_flag_files = []
+
+        # get a vm session before snapshot
+        session = vm.wait_for_login()
+        # do snapshot
         make_disk_snapshot()
 
         # snapshot src file list
@@ -263,6 +335,8 @@ def run(test, params, env):
                         job_type = disk_mirror.get('job')
                         job_ready = disk_mirror.get('ready')
                         disk_src_file = disk_mirror.find('source').get('file')
+                        if not disk_src_file:
+                            disk_src_file = disk_mirror.find('source').get('name')
                         err_msg = "blockcommit base source "
                         err_msg += "%s not expected" % disk_src_file
                         if '--shallow' in blockcommit_options:
@@ -355,3 +429,6 @@ def run(test, params, env):
 
         # Recover xml of vm.
         vmxml_backup.sync()
+
+        if disk_type == 'network' and disk_src_protocol == 'iscsi':
+            libvirt.setup_or_cleanup_iscsi(is_setup=False)
