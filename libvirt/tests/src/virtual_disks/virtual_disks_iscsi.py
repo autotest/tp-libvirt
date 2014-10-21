@@ -63,7 +63,7 @@ def run(test, params, env):
                                        % (snapshot2, snapshot2))
         libvirt.check_exit_status(ret, True)
 
-    def check_in_vm(target):
+    def check_in_vm(target, old_parts):
         """
         Check mount/read/write disk in VM.
         :param vm. VM guest.
@@ -72,17 +72,35 @@ def run(test, params, env):
         """
         try:
             session = vm.wait_for_login()
-            if target == "hda":
-                target = "sda"
-            cmd = ("fdisk -l /dev/%s && mkfs.ext3 -F /dev/%s && "
-                   "mkdir test && mount /dev/%s test && echo"
+            new_parts = libvirt.get_parts_list(session)
+            added_parts = list(set(new_parts).difference(set(old_parts)))
+            logging.info("Added parts:%s", added_parts)
+            if len(added_parts) != 1:
+                logging.error("The number of new partitions is invalid in VM")
+                return False
+
+            added_part = None
+            if target.startswith("vd"):
+                if added_parts[0].startswith("vd"):
+                    added_part = added_parts[0]
+            elif target.startswith("hd"):
+                if added_parts[0].startswith("sd"):
+                    added_part = added_parts[0]
+
+            if not added_part:
+                logging.error("Cann't see added partition in VM")
+                return False
+
+            cmd = ("fdisk -l /dev/{0} && mkfs.ext3 -F /dev/{0} && "
+                   "mkdir test && mount /dev/{0} test && echo"
                    " teststring > test/testfile && umount test"
-                   % (target, target, target))
+                   .format(added_part))
             s, o = session.cmd_status_output(cmd)
             logging.info("Check disk operation in VM:\n%s", o)
             if s != 0:
                 return False
             return True
+
         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
             logging.error(str(e))
             return False
@@ -109,9 +127,13 @@ def run(test, params, env):
 
     secret_uuid = ""
 
-    # Destroy VM first.
-    if vm.is_alive():
-        vm.destroy(gracefully=False)
+    # Start vm and get all partions in vm.
+    if vm.is_dead():
+        vm.start()
+    session = vm.wait_for_login()
+    old_parts = libvirt.get_parts_list(session)
+    session.close()
+    vm.destroy(gracefully=False)
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -206,7 +228,7 @@ def run(test, params, env):
         else:
             # Check partitions in VM.
             if check_partitions:
-                if not check_in_vm(device_target):
+                if not check_in_vm(device_target, old_parts):
                     raise error.TestFail("Check disk partitions in VM failed")
             # Test domain save/restore/snapshot.
             if test_save_snapshot:
