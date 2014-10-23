@@ -1,8 +1,10 @@
 import logging
 import tempfile
+import re
 from autotest.client.shared import error
 from virttest import libvirt_vm, virsh, data_dir
-from virttest import remote, utils_misc, virt_vm
+from virttest import remote, utils_misc, virt_vm, aexpect
+from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
 
@@ -32,13 +34,14 @@ def remove_devices_driver(pci_id_list):
     return True
 
 
-def prepare_devices(pci_id, device_type):
+def prepare_devices(pci_id, device_type, only=False):
     """
     Check whether provided pci_id is available.
     According this pci_id, get a list of devices in same iommu group.
 
     :param pci_id: pci device's id
     :param device_type: Ethernet or Fibre
+    :param only: only the device provided will be binded.
     """
     available_type = ["Ethernet", "Fibre"]
     if device_type not in available_type:
@@ -56,6 +59,14 @@ def prepare_devices(pci_id, device_type):
     group_id = vfio_ctl.get_pci_iommu_group_id(pci_id, device_type)
     # According group id, get a group of devices system classified
     group_devices = vfio_ctl.get_iommu_group_devices(group_id)
+    if only:
+        # Make sure other devices is not vfio-pci driver
+        cleanup_devices(pci_id, device_type)
+        for device in group_devices:
+            if device.count(pci_id):
+                pci_id = device
+                break
+        group_devices = [pci_id]
 
     # Compare devices to decide whether going on
     if devices.sort() != group_devices.sort():
@@ -64,7 +75,6 @@ def prepare_devices(pci_id, device_type):
 
     # Start to bind device driver to vfio-pci
     # Unbind from igb/lpfc
-    remove_devices_driver(group_devices)
     if not add_devices_to_iommu_group(vfio_ctl, group_devices):
         raise error.TestError("Cannot add provided device to iommu group.")
 
@@ -84,6 +94,20 @@ def cleanup_devices(pci_id, device_type):
     remove_devices_driver(devices)
     for device in devices:
         utils_misc.bind_device_driver(device, driver_type)
+
+
+def get_windows_disks(vm):
+    """Get disks in windows"""
+    session = vm.wait_for_login()
+    output = session.cmd_output("wmic diskdrive").strip()
+    logging.debug(output)
+    session.close()
+    disks = []
+    for line in output.splitlines()[1:]:
+        diskID = re.search("PHYSICALDRIVE\d", line)
+        if diskID is not None:
+            disks.append(diskID.group(0))
+    return disks
 
 
 def config_network(vm, interface, ip=None, mask="255.255.0.0"):
@@ -151,8 +175,9 @@ def format_disk(vm, device, partsize):
             return
 
     try:
-        utlv.mk_part(device, size=partsize, session=session)
         partition = "%s1" % device
+        if session.cmd_status("ls %s" % partition):
+            utlv.mk_part(device, size=partsize, session=session)
         utlv.mkfs(partition, "ext4", session=session)
     except Exception, detail:
         raise error.TestFail("Create&format partition for '%s' failed: %s"
@@ -201,16 +226,29 @@ def test_nic_group(vm, params):
                   before_interfaces)
     vm.destroy()
 
-    xmlfile = utlv.create_hostdev_xml(pci_id)
+    boot_order = int(params.get("boot_order", 0))
+    xmlfile = utlv.create_hostdev_xml(pci_id, boot_order)
     prepare_devices(pci_id, device_type)
     try:
         virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
                             flagstr="--config", debug=True,
                             ignore_status=False)
+        logging.debug("VMXML with disk boot:\n%s", virsh.dumpxml(vm.name))
         vm.start()
-    except (error.CmdError, virt_vm.StartError), detail:
+    except (error.CmdError, virt_vm.VMStartError), detail:
         cleanup_devices(pci_id, device_type)
         raise error.TestFail("New device does not work well: %s" % detail)
+
+    # VM shouldn't login under boot order 1
+    if boot_order:
+        try:
+            vm.wait_for_login()
+            raise error.TestFail("Login vm successfully, but not expected.")
+        except aexpect.ShellSessionTimeout:
+            logging.debug("Expected failure.")
+        finally:
+            vm.destroy(gracefully=False)
+            cleanup_devices(pci_id, device_type)
 
     # Get devices in vm again after attaching
     after_pci_nics = vm.get_pci_devices("Ethernet")
@@ -258,16 +296,29 @@ def test_fibre_group(vm, params):
                   before_disks)
     vm.destroy()
 
-    xmlfile = utlv.create_hostdev_xml(pci_id)
+    boot_order = int(params.get("boot_order", 0))
+    xmlfile = utlv.create_hostdev_xml(pci_id, boot_order)
     prepare_devices(pci_id, device_type)
     try:
         virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
                             flagstr="--config", debug=True,
                             ignore_status=False)
+        logging.debug("VMXML with disk boot:\n%s", virsh.dumpxml(vm.name))
         vm.start()
-    except (error.CmdError, virt_vm.StartError), detail:
+    except (error.CmdError, virt_vm.VMStartError), detail:
         cleanup_devices(pci_id, device_type)
         raise error.TestFail("New device does not work well: %s" % detail)
+
+    # VM shouldn't login under boot order 1
+    if boot_order:
+        try:
+            vm.wait_for_login()
+            raise error.TestFail("Login vm successfully, but not expected.")
+        except aexpect.ShellSessionTimeout:
+            logging.debug("Expected failure.")
+        finally:
+            vm.destroy(gracefully=False)
+            cleanup_devices(pci_id, device_type)
 
     # Get devices in vm again after attaching
     after_pci_fibres = vm.get_pci_devices("Fibre")
@@ -284,6 +335,54 @@ def test_fibre_group(vm, params):
         # Config disk for new disk device
         format_disk(vm, new_disk, "10M")
         # Mount and use the partition to verify it
+    finally:
+        if vm.is_alive():
+            vm.destroy()
+        cleanup_devices(pci_id, device_type)
+
+
+def test_win_fibre_group(vm, params):
+    """
+    Try to attach device in iommu group to vm.
+
+    1.Get original available disks before attaching.
+    2.Attaching hostdev in iommu group to vm.
+    3.Start vm and check it.
+    4.Check added disk in vm.
+    """
+    pci_id = params.get("fibre_pci_id", "FIBRE:PCI.EXAMPLE")
+    device_type = "Fibre"
+    if pci_id.count("EXAMPLE"):
+        raise error.TestNAError("Invalid pci device id.")
+
+    # Login vm to get disks before attaching pci device.
+    if vm.is_dead():
+        vm.start()
+    before_disks = get_windows_disks(vm)
+    logging.debug("Disks before:%s",
+                  before_disks)
+    vm.destroy()
+
+    xmlfile = utlv.create_hostdev_xml(pci_id)
+    prepare_devices(pci_id, device_type)
+    try:
+        virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
+                            flagstr="--config", debug=True,
+                            ignore_status=False)
+        vm.start()
+    except (error.CmdError, virt_vm.VMStartError), detail:
+        cleanup_devices(pci_id, device_type)
+        raise error.TestFail("New device does not work well: %s" % detail)
+
+    # Get devices in vm again after attaching
+    after_disks = get_windows_disks(vm)
+    logging.debug("Disks after:%s",
+                  after_disks)
+    new_disk = "".join(list(set(before_disks) ^ set(after_disks)))
+    try:
+        if not new_disk:
+            raise error.TestFail("Cannot find attached host device in vm.")
+        # TODO: Support to configure windows partition
     finally:
         if vm.is_alive():
             vm.destroy()
@@ -338,7 +437,7 @@ def test_nic_fibre_group(vm, params):
                             flagstr="--config", debug=True,
                             ignore_status=False)
         vm.start()
-    except (error.CmdError, virt_vm.StartError), detail:
+    except (error.CmdError, virt_vm.VMStartError), detail:
         cleanup_devices(nic_pci_id, "Ethernet")
         cleanup_devices(fibre_pci_id, "Fibre")
         raise error.TestFail("New device does not work well: %s" % detail)
@@ -383,6 +482,82 @@ def test_nic_fibre_group(vm, params):
         cleanup_devices(fibre_pci_id, "Fibre")
 
 
+def test_nic_single(vm, params):
+    """
+    Try to attach device in iommu group to vm with adding only this
+    device to iommu group.
+
+    1.Get original available interfaces before attaching.
+    2.Attaching hostdev in iommu group to vm.
+    3.Start vm and check it.
+    4.Check added interface in vm.
+    """
+    pci_id = params.get("nic_pci_id", "ETH:PCI.EXAMPLE")
+    if pci_id.count("EXAMPLE"):
+        raise error.TestNAError("Invalid pci device id.")
+
+    device_type = "Ethernet"
+    nic_ip = params.get("nic_pci_ip")
+    nic_mask = params.get("nic_pci_mask", "255.255.0.0")
+
+    # Login vm to get interfaces before attaching pci device.
+    if vm.is_dead():
+        vm.start()
+    before_pci_nics = vm.get_pci_devices("Ethernet")
+    before_interfaces = vm.get_interfaces()
+    logging.debug("Ethernet PCI devices before:%s",
+                  before_pci_nics)
+    logging.debug("Ethernet interfaces before:%s",
+                  before_interfaces)
+    vm.destroy()
+
+    xmlfile = utlv.create_hostdev_xml(pci_id)
+
+    # Add only this device to corresponding iommu group
+    prepare_devices(pci_id, device_type, only=True)
+    try:
+        virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
+                            flagstr="--config", debug=True,
+                            ignore_status=False)
+        vm.start()
+        # Start successfully, but not expected.
+        vm.destroy(gracefully=False)
+        cleanup_devices(pci_id, device_type)
+        raise error.TestFail("Start vm succesfully after attaching single "
+                             "device to iommu group.Not expected.")
+    except (error.CmdError, virt_vm.VMStartError), detail:
+        logging.debug("Expected:New device does not work well: %s" % detail)
+
+    # Reattaching all devices in iommu group
+    prepare_devices(pci_id, device_type)
+    try:
+        vm.start()
+    except Exception, detail:
+        cleanup_devices(pci_id, device_type)
+        raise error.TestFail("Start vm failed after attaching all"
+                             "device to iommu group:%s" % detail)
+
+    # Get devices in vm again after attaching
+    after_pci_nics = vm.get_pci_devices("Ethernet")
+    after_interfaces = vm.get_interfaces()
+    logging.debug("Ethernet PCI devices after:%s",
+                  after_pci_nics)
+    logging.debug("Ethernet interfaces after:%s",
+                  after_interfaces)
+    new_pci = "".join(list(set(before_pci_nics) ^ set(after_pci_nics)))
+    new_interface = "".join(list(set(before_interfaces) ^ set(after_interfaces)))
+    try:
+        if not new_pci or not new_interface:
+            raise error.TestFail("Cannot find attached host device in vm.")
+        # Config network for new interface
+        config_network(vm, new_interface, nic_ip, nic_mask)
+        # Check interface
+    finally:
+        if vm.is_alive():
+            vm.destroy()
+        cleanup_devices(pci_id, device_type)
+
+
 def run(test, params, env):
     """
     Test VFIO function by attaching pci device into virtual machine.
@@ -405,6 +580,17 @@ def run(test, params, env):
     try:
         new_vm = libvirt_vm.VM(new_vm_name, vm.params, vm.root_dir,
                                vm.address_cache)
+
+        if "yes" == params.get("primary_boot", "no"):
+            params['boot_order'] = 1
+            vmxml = vm_xml.VMXML.new_from_dumpxml(new_vm.name)
+            osxml = vmxml.os
+            osxml.boots = []
+            vmxml.os = osxml
+            vmxml.sync()
+        else:
+            params['boot_order'] = 0
+
         testcase = globals()["test_%s" % test_type]
         testcase(new_vm, params)
     finally:
