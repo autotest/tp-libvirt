@@ -30,20 +30,35 @@ def reset_domain(vm, vm_state, tmp_dir, **params):
     disk_src_host = params.get("disk_source_host", "127.0.0.1")
     disk_src_port = params.get("disk_source_port", "3260")
     image_size = params.get("image_size", "10G")
+    disk_format = params.get("disk_format", "qcow2")
     first_disk = vm.get_first_disk_devices()
     blk_source = first_disk['source']
     disk_xml = vmxml.devices.by_device_tag('disk')[0]
-    disk_format = disk_xml.xmltreefile.find('driver').get('type')
+    src_disk_format = disk_xml.xmltreefile.find('driver').get('type')
+
+    # gluster only params
+    vol_name = params.get("vol_name")
+    pool_name = params.get("pool_name", "gluster-pool")
+    transport = params.get("transport", "")
+    brick_path = os.path.join(tmp_dir, pool_name)
 
     if vm.is_alive():
         vm.destroy()
     if disk_type == 'network':
+        # Prepare basic network disk XML params dict
+        disk_params = {'device_type': disk_device,
+                       'type_name': disk_type,
+                       'target_dev': disk_target,
+                       'target_bus': disk_target_bus,
+                       'driver_type': disk_format,
+                       'driver_cache': 'none'}
+
+        # Replace domain disk with iscsi or gluster network disk
         if disk_src_protocol == 'iscsi':
             if not libvirt_version.version_compare(1, 0, 4):
                 raise error.TestNAError("'iscsi' disk doesn't support in"
                                         + " current libvirt version.")
 
-            # Replace domain disk with iscsi network disk
             # Setup iscsi target
             emu_n = "emulated_iscsi"
             iscsi_target = libvirt.setup_or_cleanup_iscsi(is_setup=True,
@@ -51,37 +66,56 @@ def reset_domain(vm, vm_state, tmp_dir, **params):
                                                           image_size=image_size,
                                                           emulated_image=emu_n)
 
-            # Create iscsi network disk XML
-            disk_params = {'device_type': disk_device,
-                           'type_name': disk_type,
-                           'target_dev': disk_target,
-                           'target_bus': disk_target_bus,
-                           'driver_cache': 'none'}
-            disk_params_src = {}
-            if disk_type == "network":
-                disk_params_src = {'source_protocol': disk_src_protocol,
-                                   'source_name': iscsi_target + "/1",
-                                   'source_host_name': disk_src_host,
-                                   'source_host_port': disk_src_port}
+            # Copy first disk to emulated backing store path
+            emulated_path = os.path.join(tmp_dir, emu_n)
+            cmd = "qemu-img convert -f %s -O raw %s %s" % (src_disk_format,
+                                                           blk_source,
+                                                           emulated_path)
+            utils.run(cmd, ignore_status=False)
 
+            disk_params_src = {'source_protocol': disk_src_protocol,
+                               'source_name': iscsi_target + "/1",
+                               'source_host_name': disk_src_host,
+                               'source_host_port': disk_src_port}
+
+        elif disk_src_protocol == 'gluster':
+            # Setup gluster.
+            host_ip = libvirt.setup_or_cleanup_gluster(True, vol_name,
+                                                       brick_path, pool_name)
+            logging.debug("host ip: %s " % host_ip)
+            dist_img = "gluster.%s" % disk_format
+
+            # Convert first disk to gluster disk path
+            disk_cmd = ("qemu-img convert -f %s -O %s %s /mnt/%s" %
+                        (src_disk_format, disk_format, blk_source, dist_img))
+
+            # Mount the gluster disk and create the image.
+            utils.run("mount -t glusterfs %s:%s /mnt; %s; umount /mnt"
+                      % (host_ip, vol_name, disk_cmd))
+
+            disk_params_src = {'source_protocol': disk_src_protocol,
+                               'source_name': "%s/%s" % (vol_name, dist_img),
+                               'source_host_name': host_ip,
+                               'source_host_port': "24007"}
+            if transport:
+                disk_params_src.update({"transport": transport})
+        else:
+            raise error.TestNAError("Disk source protocol %s not supported in "
+                                    "current test" % disk_src_protocol)
+
+        # Delete disk elements
         disks = vmxml.get_devices(device_type="disk")
         for disk in disks:
             vmxml.del_device(disk)
-
+        # New disk xml
         new_disk = Disk(type_name=disk_type)
         new_disk.new_disk_source(attrs={'file': blk_source})
         disk_params.update(disk_params_src)
         disk_xml = libvirt.create_disk_xml(disk_params)
         new_disk.xml = disk_xml
+        # Add new disk xml and redefine vm
         vmxml.add_device(new_disk)
         logging.debug("The vm xml now is: %s" % vmxml.xmltreefile)
-
-        # Copy first disk to emulated path
-        emulated_path = os.path.join(tmp_dir, emu_n)
-        cmd = "qemu-img convert -f %s -O raw %s %s" % (disk_format,
-                                                       blk_source,
-                                                       emulated_path)
-        utils.run(cmd, ignore_status=False)
         vmxml.undefine()
         vmxml.define()
     if needs_agent:
@@ -204,6 +238,10 @@ def run(test, params, env):
     # Process domain disk device parameters
     disk_type = params.get("disk_type")
     disk_src_protocol = params.get("disk_source_protocol")
+    vol_name = params.get("vol_name")
+    tmp_dir = data_dir.get_tmp_dir()
+    pool_name = params.get("pool_name", "gluster-pool")
+    brick_path = os.path.join(tmp_dir, pool_name)
 
     if not top_inactive:
         if not libvirt_version.version_compare(1, 2, 4):
@@ -221,8 +259,6 @@ def run(test, params, env):
 
     snapshot_external_disks = []
     try:
-        tmp_dir = data_dir.get_tmp_dir()
-
         # Set vm xml and state
         if not vm_state == "shut off":
             reset_domain(vm, vm_state, tmp_dir,
@@ -430,5 +466,8 @@ def run(test, params, env):
         # Recover xml of vm.
         vmxml_backup.sync()
 
-        if disk_type == 'network' and disk_src_protocol == 'iscsi':
-            libvirt.setup_or_cleanup_iscsi(is_setup=False)
+        if disk_type == 'network':
+            if disk_src_protocol == 'iscsi':
+                libvirt.setup_or_cleanup_iscsi(is_setup=False)
+            elif disk_src_protocol == 'gluster':
+                libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
