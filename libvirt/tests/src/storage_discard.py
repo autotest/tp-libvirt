@@ -163,7 +163,7 @@ def do_fstrim(fstrim_type, vm, status_error=False):
     """
     if fstrim_type == "fstrim_cmd":
         session = vm.wait_for_login()
-        output = session.cmd_output("fstrim -v /mnt", timeout=120)
+        output = session.cmd_output("fstrim -v /mnt", timeout=240)
         session.close()
         logging.debug(output)
         if re.search("Operation not supported", output):
@@ -175,8 +175,10 @@ def do_fstrim(fstrim_type, vm, status_error=False):
                 raise error.TestFail("Not supported fstrim on supported "
                                      "envrionment.Bug?")
         try:
-            trimmed = int(re.search("\d+", output).group(0))
-            logging.debug("Trimmed size is:%s", trimmed / 1024 / 1024)
+            trimmed_bytes = re.search("\d+\sbytes",
+                                      output).group(0).split()[0]
+            trimmed = int(trimmed_bytes)
+            logging.debug("Trimmed size is:%s bytes", trimmed)
         except (AttributeError, IndexError), detail:
             raise error.TestFail("Do fstrim failed:%s" % detail)
         if trimmed == 0:
@@ -293,7 +295,7 @@ def run(test, params, env):
         if disk_type == "block":
             try:
                 lv_utils.vg_remove("vgthin")
-            except error.TestError:
-                pass
+            except error.TestError, detail:
+                logging.debug(str(detail))
             utils.run("pvremove -f %s" % discard_device, ignore_status=True)
             utlv.setup_or_cleanup_iscsi(is_setup=False)
