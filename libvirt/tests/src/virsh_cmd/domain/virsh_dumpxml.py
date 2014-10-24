@@ -4,6 +4,7 @@ from autotest.client.shared import error
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import capability_xml
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -150,6 +151,18 @@ def run(test, params, env):
     domuuid = vm.get_uuid()
     domid = vm.get_id()
 
+    # acl polkit params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
     # Prepare vm state for test
     if vm_state == "shutoff" and vm.is_alive():
         vm.destroy()  # Confirm vm is shutoff
@@ -173,7 +186,12 @@ def run(test, params, env):
     logging.info("Command:virsh dumpxml %s", vm_ref)
     try:
         try:
-            cmd_result = virsh.dumpxml(vm_ref, extra=options_ref)
+            if params.get('setup_libvirt_polkit') == 'yes':
+                cmd_result = virsh.dumpxml(vm_ref, extra=options_ref,
+                                           uri=uri,
+                                           unprivileged_user=unprivileged_user)
+            else:
+                cmd_result = virsh.dumpxml(vm_ref, extra=options_ref)
             output = cmd_result.stdout.strip()
             if cmd_result.exit_status:
                 raise error.TestFail("dumpxml %s failed.\n"
