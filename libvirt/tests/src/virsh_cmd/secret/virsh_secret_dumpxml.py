@@ -5,6 +5,7 @@ import logging
 import tempfile
 from autotest.client.shared import error
 from virttest import virsh, data_dir
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -18,6 +19,23 @@ def run(test, params, env):
     # Process cartesian parameters
     status_error = ("yes" == params.get("status_error", "no"))
     secret_ref = params.get("secret_ref")
+
+    # acl polkit params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
+    virsh_dargs = {'debug': True}
+    if params.get('setup_libvirt_polkit') == 'yes':
+        virsh_dargs['unprivileged_user'] = unprivileged_user
+        virsh_dargs['uri'] = uri
 
     if secret_ref == "secret_valid_uuid":
         # Generate valid uuid
@@ -52,7 +70,7 @@ def run(test, params, env):
     try:
         virsh.secret_define(xmlfile, debug=True)
 
-        cmd_result = virsh.secret_dumpxml(uuid, debug=True)
+        cmd_result = virsh.secret_dumpxml(uuid, **virsh_dargs)
         output = cmd_result.stdout.strip()
         if not status_error and cmd_result.exit_status:
             raise error.TestFail("Dumping the xml of secret object failed")

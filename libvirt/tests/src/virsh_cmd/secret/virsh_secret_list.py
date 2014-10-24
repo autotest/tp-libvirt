@@ -7,6 +7,7 @@ from autotest.client.shared import error
 from virttest import virsh
 from virttest import data_dir
 from virttest.libvirt_xml.secret_xml import SecretXML
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -20,6 +21,23 @@ def run(test, params, env):
     # Process cartesian parameters
     status_error = ("yes" == params.get("status_error", "no"))
     secret_list_option = params.get("secret_list_option", "")
+
+    # acl polkit params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
+    virsh_dargs = {'debug': True}
+    if params.get('setup_libvirt_polkit') == 'yes':
+        virsh_dargs['unprivileged_user'] = unprivileged_user
+        virsh_dargs['uri'] = uri
 
     num = 0
     uuid_list = []
@@ -45,7 +63,7 @@ def run(test, params, env):
             virsh.secret_define(secret_xml_obj.xml, debug=True)
 
     try:
-        cmd_result = virsh.secret_list(secret_list_option, debug=True)
+        cmd_result = virsh.secret_list(secret_list_option, **virsh_dargs)
         output = cmd_result.stdout.strip()
         exit_status = cmd_result.exit_status
         if not status_error and exit_status != 0:
