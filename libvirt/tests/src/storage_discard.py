@@ -100,9 +100,9 @@ def create_channel_xml(vm_name, agent_index=0):
     """
     channel_path = ("/var/lib/libvirt/qemu/channel/target/"
                     "%s.org.qemu.guest_agent.%s" % (vm_name, agent_index))
-    channel_source = {'source_mode': "bind", 'source_path': channel_path}
-    channel_target = {'target_type': "virtio",
-                      'target_name': "org.qemu.guest_agent.%s" % agent_index}
+    channel_source = {'mode': "bind", 'path': channel_path}
+    channel_target = {'type': "virtio",
+                      'name': "org.qemu.guest_agent.%s" % agent_index}
     channel_params = {'type_name': "unix", 'source': channel_source,
                       'target': channel_target}
     channelxml = channel.Channel.new_from_dict(channel_params)
