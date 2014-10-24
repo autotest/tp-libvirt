@@ -1,6 +1,7 @@
 import logging
 from autotest.client.shared import error
 from virttest import virsh, libvirt_xml
+from provider import libvirt_version
 
 
 def check_list(uuid, name):
@@ -33,9 +34,26 @@ def run(test, params, env):
     options_ref = params.get("dumpxml_options_ref", "")
     status_error = params.get("status_error", "no")
 
+    # acl polkit params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
+    virsh_dargs = {'ignore_status': True, 'debug': True}
+    if params.get('setup_libvirt_polkit') == 'yes':
+        virsh_dargs['unprivileged_user'] = unprivileged_user
+        virsh_dargs['uri'] = uri
+
     # Run command
     cmd_result = virsh.nwfilter_dumpxml(filter_name, options=options_ref,
-                                        ignore_status=True, debug=True)
+                                        **virsh_dargs)
     output = cmd_result.stdout.strip()
     status = cmd_result.exit_status
 
@@ -63,7 +81,7 @@ def run(test, params, env):
 
         # Run command second time with uuid
         cmd_result = virsh.nwfilter_dumpxml(uuid, options=options_ref,
-                                            ignore_status=True, debug=True)
+                                            **virsh_dargs)
         output1 = cmd_result.stdout.strip()
         status1 = cmd_result.exit_status
         if status_error == "yes":
