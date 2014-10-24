@@ -2,6 +2,7 @@ import os
 from autotest.client.shared import error
 from autotest.client.shared import utils
 from virttest import virsh
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -23,6 +24,18 @@ def run(test, params, env):
     extra = params.get("net_dumpxml_extra", "")
     network_xml = os.path.join(test.tmpdir, xml_flie)
 
+    # acl polkit params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
     # Run test case
     if net_ref == "uuid":
         net_ref = virsh.net_uuid(net_name).stdout.strip()
@@ -42,8 +55,12 @@ def run(test, params, env):
             if status_destroy != 0:
                 raise error.TestError("Network destroied failed!")
 
+        virsh_dargs = {'ignore_status': True}
+        if params.get('setup_libvirt_polkit') == 'yes':
+            virsh_dargs['unprivileged_user'] = unprivileged_user
+            virsh_dargs['uri'] = uri
         result = virsh.net_dumpxml(net_ref, extra, network_xml,
-                                   ignore_status=True)
+                                   **virsh_dargs)
         status = result.exit_status
         err = result.stderr.strip()
         xml_validate_cmd = "virt-xml-validate %s network" % network_xml
