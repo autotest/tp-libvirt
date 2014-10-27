@@ -22,6 +22,7 @@ def reset_domain(vm, vm_state, tmp_dir, **params):
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
     logging.debug("original xml is: %s", vmxml.xmltreefile)
     needs_agent = "yes" == params.get("needs_agent", "yes")
+    replace_vm_disk = "yes" == params.get("replace_vm_disk", "no")
     disk_device = params.get("disk_device", "disk")
     disk_type = params.get("disk_type")
     disk_target = params.get("disk_target", 'vda')
@@ -31,6 +32,8 @@ def reset_domain(vm, vm_state, tmp_dir, **params):
     disk_src_port = params.get("disk_source_port", "3260")
     image_size = params.get("image_size", "10G")
     disk_format = params.get("disk_format", "qcow2")
+    mnt_path_name = params.get("mnt_path_name", "nfs-mount")
+    exp_opt = params.get("export_options", "rw,no_root_squash,fsid=0")
     first_disk = vm.get_first_disk_devices()
     blk_source = first_disk['source']
     disk_xml = vmxml.devices.by_device_tag('disk')[0]
@@ -50,16 +53,20 @@ def reset_domain(vm, vm_state, tmp_dir, **params):
 
     if vm.is_alive():
         vm.destroy()
-    if disk_type in ('network', 'block'):
-        # Replace domain disk with iscsi or gluster network disk
+    if replace_vm_disk:
+        # Replace domain disk with iscsi, gluster, block or netfs disk
         if disk_src_protocol == 'iscsi':
             if disk_type == 'block':
                 is_login = True
-            else:
+            elif disk_type == 'network':
                 is_login = False
                 if not libvirt_version.version_compare(1, 0, 4):
                     raise error.TestNAError("'iscsi' disk doesn't support in"
                                             + " current libvirt version.")
+            else:
+                raise error.TestFail("Disk type '%s' not expected, only disk "
+                                     "type 'block' or 'network' work with "
+                                     "'iscsi'" % disk_type)
 
             # Setup iscsi target
             emu_n = "emulated_iscsi"
@@ -82,7 +89,6 @@ def reset_domain(vm, vm_state, tmp_dir, **params):
                                    'source_name': iscsi_target + "/1",
                                    'source_host_name': disk_src_host,
                                    'source_host_port': disk_src_port}
-
         elif disk_src_protocol == 'gluster':
             # Setup gluster.
             host_ip = libvirt.setup_or_cleanup_gluster(True, vol_name,
@@ -104,6 +110,24 @@ def reset_domain(vm, vm_state, tmp_dir, **params):
                                'source_host_port': "24007"}
             if transport:
                 disk_params_src.update({"transport": transport})
+        elif disk_src_protocol == 'netfs':
+            # Setup nfs
+            res = libvirt.setup_or_cleanup_nfs(True, mnt_path_name,
+                                               is_mount=True,
+                                               export_options=exp_opt)
+            exp_path = res["export_dir"]
+            mnt_path = res["mount_dir"]
+            params["selinux_status_bak"] = res["selinux_status_bak"]
+            dist_img = "nfs-img"
+
+            # Convert first disk to gluster disk path
+            disk_cmd = ("qemu-img convert -f %s -O %s %s %s/%s" %
+                        (src_disk_format, disk_format,
+                         blk_source, exp_path, dist_img))
+            utils.run(disk_cmd, ignore_status=False)
+
+            src_file_path = "%s/%s" % (mnt_path, dist_img)
+            disk_params_src = {'source_file': src_file_path}
         else:
             raise error.TestNAError("Disk source protocol %s not supported in "
                                     "current test" % disk_src_protocol)
@@ -480,15 +504,19 @@ def run(test, params, env):
                                                   debug=True)
             libvirt.check_exit_status(cmd_result, snap_in_mirror_err)
     finally:
+        if vm.is_alive():
+            vm.destroy()
+        # Recover xml of vm.
+        vmxml_backup.sync("--snapshots-metadata")
         for disk in snapshot_external_disks:
             if os.path.exists(disk):
                 os.remove(disk)
 
-        # Recover xml of vm.
-        vmxml_backup.sync()
-
-        if disk_type in ('network', 'block'):
-            if disk_src_protocol == 'iscsi':
-                libvirt.setup_or_cleanup_iscsi(is_setup=False)
-            elif disk_src_protocol == 'gluster':
-                libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
+        if disk_src_protocol == 'iscsi':
+            libvirt.setup_or_cleanup_iscsi(is_setup=False)
+        elif disk_src_protocol == 'gluster':
+            libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
+        elif disk_src_protocol == 'netfs':
+            restore_selinux = params.get('selinux_status_bak')
+            libvirt.setup_or_cleanup_nfs(is_setup=False,
+                                         restore_selinux=restore_selinux)
