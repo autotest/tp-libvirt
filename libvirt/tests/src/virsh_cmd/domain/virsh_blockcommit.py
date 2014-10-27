@@ -35,6 +35,12 @@ def reset_domain(vm, vm_state, tmp_dir, **params):
     blk_source = first_disk['source']
     disk_xml = vmxml.devices.by_device_tag('disk')[0]
     src_disk_format = disk_xml.xmltreefile.find('driver').get('type')
+    disk_params = {'device_type': disk_device,
+                   'type_name': disk_type,
+                   'target_dev': disk_target,
+                   'target_bus': disk_target_bus,
+                   'driver_type': disk_format,
+                   'driver_cache': 'none'}
 
     # gluster only params
     vol_name = params.get("vol_name")
@@ -44,25 +50,21 @@ def reset_domain(vm, vm_state, tmp_dir, **params):
 
     if vm.is_alive():
         vm.destroy()
-    if disk_type == 'network':
-        # Prepare basic network disk XML params dict
-        disk_params = {'device_type': disk_device,
-                       'type_name': disk_type,
-                       'target_dev': disk_target,
-                       'target_bus': disk_target_bus,
-                       'driver_type': disk_format,
-                       'driver_cache': 'none'}
-
+    if disk_type in ('network', 'block'):
         # Replace domain disk with iscsi or gluster network disk
         if disk_src_protocol == 'iscsi':
-            if not libvirt_version.version_compare(1, 0, 4):
-                raise error.TestNAError("'iscsi' disk doesn't support in"
-                                        + " current libvirt version.")
+            if disk_type == 'block':
+                is_login = True
+            else:
+                is_login = False
+                if not libvirt_version.version_compare(1, 0, 4):
+                    raise error.TestNAError("'iscsi' disk doesn't support in"
+                                            + " current libvirt version.")
 
             # Setup iscsi target
             emu_n = "emulated_iscsi"
             iscsi_target = libvirt.setup_or_cleanup_iscsi(is_setup=True,
-                                                          is_login=False,
+                                                          is_login=is_login,
                                                           image_size=image_size,
                                                           emulated_image=emu_n)
 
@@ -73,10 +75,13 @@ def reset_domain(vm, vm_state, tmp_dir, **params):
                                                            emulated_path)
             utils.run(cmd, ignore_status=False)
 
-            disk_params_src = {'source_protocol': disk_src_protocol,
-                               'source_name': iscsi_target + "/1",
-                               'source_host_name': disk_src_host,
-                               'source_host_port': disk_src_port}
+            if disk_type == 'block':
+                disk_params_src = {'source_file': iscsi_target}
+            else:
+                disk_params_src = {'source_protocol': disk_src_protocol,
+                                   'source_name': iscsi_target + "/1",
+                                   'source_host_name': disk_src_host,
+                                   'source_host_port': disk_src_port}
 
         elif disk_src_protocol == 'gluster':
             # Setup gluster.
@@ -156,9 +161,13 @@ def check_chain_xml(disk_xml, chain_lst):
         return False
     for i in range(1, len(chain_lst)):
         backing_xml = disk_xml.find('backingStore')
-        src_file = backing_xml.find('source').get('file')
-        if not src_file:
-            src_file = backing_xml.find('source').get('name')
+        src_element = backing_xml.find('source')
+        src_file = None
+        for elem in ('file', 'name', 'dev'):
+            elem_val = src_element.get(elem)
+            if elem_val:
+                src_file = elem_val
+                break
         if src_file != chain_lst[i]:
             logging.error("backing store chain file %s is "
                           "not expected" % src_file)
@@ -368,9 +377,13 @@ def run(test, params, env):
                     if disk_mirror is not None:
                         job_type = disk_mirror.get('job')
                         job_ready = disk_mirror.get('ready')
-                        disk_src_file = disk_mirror.find('source').get('file')
-                        if not disk_src_file:
-                            disk_src_file = disk_mirror.find('source').get('name')
+                        src_element = disk_mirror.find('source')
+                        disk_src_file = None
+                        for elem in ('file', 'name', 'dev'):
+                            elem_val = src_element.get(elem)
+                            if elem_val:
+                                disk_src_file = elem_val
+                                break
                         err_msg = "blockcommit base source "
                         err_msg += "%s not expected" % disk_src_file
                         if '--shallow' in blockcommit_options:
@@ -474,7 +487,7 @@ def run(test, params, env):
         # Recover xml of vm.
         vmxml_backup.sync()
 
-        if disk_type == 'network':
+        if disk_type in ('network', 'block'):
             if disk_src_protocol == 'iscsi':
                 libvirt.setup_or_cleanup_iscsi(is_setup=False)
             elif disk_src_protocol == 'gluster':
