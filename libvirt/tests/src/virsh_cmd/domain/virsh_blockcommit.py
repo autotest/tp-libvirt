@@ -233,6 +233,8 @@ def run(test, params, env):
     base_option = params.get("base_option", "none")
     middle_base = "yes" == params.get("middle_base", "no")
     pivot_opt = "yes" == params.get("pivot_opt", "no")
+    snap_in_mirror = "yes" == params.get("snap_in_mirror", "no")
+    snap_in_mirror_err = "yes" == params.get("snap_in_mirror_err", "no")
     virsh_dargs = {'debug': True}
 
     # Process domain disk device parameters
@@ -343,14 +345,10 @@ def run(test, params, env):
         # Run test case
         result = virsh.blockcommit(vm_name, blk_target,
                                    blockcommit_options, **virsh_dargs)
-        status = result.exit_status
 
         # Check status_error
-        if status_error and status == 0:
-            raise error.TestFail("Expect fail, but run successfully!")
-        elif not status_error and status != 0:
-            raise error.TestFail("Run failed with right command")
-        elif status_error and status != 0:
+        libvirt.check_exit_status(result, status_error)
+        if result.exit_status and status_error:
             return
 
         while True:
@@ -458,6 +456,16 @@ def run(test, params, env):
                 if status:
                     raise error.TestFail("blockcommit failed: %s" % output)
 
+        if not pivot_opt and snap_in_mirror:
+            # do snapshot during mirror phase
+            snap_path = "%s/%s.snap" % (tmp_dir, vm_name)
+            snap_opt = "--disk-only --atomic --no-metadata "
+            snap_opt += "vda,snapshot=external,file=%s" % snap_path
+            snapshot_external_disks.append(snap_path)
+            cmd_result = virsh.snapshot_create_as(vm_name, snap_opt,
+                                                  ignore_statues=True,
+                                                  debug=True)
+            libvirt.check_exit_status(cmd_result, snap_in_mirror_err)
     finally:
         for disk in snapshot_external_disks:
             if os.path.exists(disk):
