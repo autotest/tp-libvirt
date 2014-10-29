@@ -160,6 +160,52 @@ def config_network(vm, interface, ip=None, mask="255.255.0.0"):
         session.close()
 
 
+def execute_ttcp(vm, params):
+    """
+    Run ttcp between guest and host.
+
+    :param vm: guest vm
+    """
+    remote_ip = params.get("vfio_remote_ip", "REMOTE_IP.EXAMPLE")
+    remote_pwd = params.get("vfio_remote_passwd", "REMOTE_PWD.EXAMPLE")
+    if remote_ip.count("EXAMPLE"):
+        logging.debug("Please provider remote host for ttcp test.")
+        return
+
+    session1 = vm.wait_for_login()
+    if session1.cmd_status("which ttcp"):
+        session1.close()
+        logging.debug("Did not find ttcp command on guest.SKIP...")
+        return
+    # Check connection first
+    try:
+        session1.cmd("ping -c 4 %s" % remote_ip)
+    except error.CmdError:
+        raise error.TestFail("Couldn't connect to %s through %s"
+                             % (remote_ip, vm.name))
+
+    # Execute ttcp server on remote host
+    ttcp_server = "ttcp -s -r -v -D -p5015"
+    session1.sendline("ssh %s" % remote_ip)
+    remote.handle_prompts(session1, "root", remote_pwd, r"[\#\$]\s*$",
+                          timeout=30, debug=True)
+    logging.debug("Executing ttcp server:%s", ttcp_server)
+    session1.sendline(ttcp_server)
+    # Another session for client
+    session2 = vm.wait_for_login()
+    ttcp_client = ("ttcp -s -t -v -D -p5015 -b65536 -l65536 -n1000 -f K %s"
+                   % remote_ip)
+    try:
+        ttcp_s, ttcp_o = session2.cmd_status_output(ttcp_client)
+        logging.debug(ttcp_o)
+        if ttcp_s:
+            raise error.TestFail("Run ttcp between %s and %s failed."
+                                 % (vm.name, remote_ip))
+    finally:
+        session1.close()
+        session2.close()
+
+
 def format_disk(vm, device, partsize):
     """
     Create a partition on given disk and check it.
@@ -265,6 +311,7 @@ def test_nic_group(vm, params):
         # Config network for new interface
         config_network(vm, new_interface, nic_ip, nic_mask)
         # Check interface
+        execute_ttcp(vm, params)
     finally:
         if vm.is_alive():
             vm.destroy()
@@ -468,6 +515,7 @@ def test_nic_fibre_group(vm, params):
         # Config network for new interface
         config_network(vm, new_interface, nic_ip, nic_mask)
         # Check interface
+        execute_ttcp(vm, params)
 
         if not new_pci_fibre or not new_disk:
             raise error.TestFail("Cannot find attached host device in vm.")
@@ -552,6 +600,7 @@ def test_nic_single(vm, params):
         # Config network for new interface
         config_network(vm, new_interface, nic_ip, nic_mask)
         # Check interface
+        execute_ttcp(vm, params)
     finally:
         if vm.is_alive():
             vm.destroy()
