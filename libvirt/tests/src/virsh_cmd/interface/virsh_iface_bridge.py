@@ -36,14 +36,12 @@ def run(test, params, env):
     iface_script_bk = os.path.join(test.tmpdir, "iface-%s.bk" % iface_name)
     check_iface = "yes" == params.get("check_iface", "yes")
     if check_iface:
-        if not libvirt.check_iface(iface_name, "exists", "--all"):
-            raise error.TestNAError("Interface '%s' not exists" % iface_name)
-        net_iface = utils_net.Interface(name=iface_name)
-        iface_is_up = net_iface.is_up()
-
         # Make sure the interface exists
         if not libvirt.check_iface(iface_name, "exists", "--all"):
             raise error.TestNAError("Interface '%s' not exists" % iface_name)
+
+        net_iface = utils_net.Interface(name=iface_name)
+        iface_is_up = net_iface.is_up()
 
         # Back up the interface script
         utils.run("cp %s %s" % (iface_script, iface_script_bk))
