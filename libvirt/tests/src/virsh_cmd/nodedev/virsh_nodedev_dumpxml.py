@@ -3,9 +3,10 @@ from autotest.client import utils
 from autotest.client.shared import error
 from virttest import virsh
 from virttest.libvirt_xml import nodedev_xml
+from provider import libvirt_version
 
 
-def do_nodedev_dumpxml(dev_name, dev_opt=""):
+def do_nodedev_dumpxml(dev_name, dev_opt="", **dargs):
     """
     Do dumpxml and check the result.
 
@@ -13,10 +14,12 @@ def do_nodedev_dumpxml(dev_name, dev_opt=""):
     (2).compare info in xml with info in sysfs.
 
     :param dev_name: name of device.
+    :param dev_opt: command extra options
+    :param dargs: extra dict args
     :raise TestFail: if execute command failed
                      or check result failed.
     """
-    result = virsh.nodedev_dumpxml(dev_name, options=dev_opt)
+    result = virsh.nodedev_dumpxml(dev_name, options=dev_opt, **dargs)
     if result.exit_status:
         raise error.TestError("Dumpxml node device %s failed.\n"
                               "Detail:%s." % (dev_name, result.stderr))
@@ -67,9 +70,27 @@ def run(test, params, env):
     device_name = params.get('nodedev_device_name', None)
     device_opt = params.get('nodedev_device_opt', "")
 
+    # acl polkit params
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
+    virsh_dargs = {}
+    if params.get('setup_libvirt_polkit') == 'yes':
+        virsh_dargs['unprivileged_user'] = unprivileged_user
+        virsh_dargs['uri'] = uri
+
     # do nodedev dumpxml.
     try:
-        do_nodedev_dumpxml(dev_name=device_name, dev_opt=device_opt)
+        do_nodedev_dumpxml(dev_name=device_name, dev_opt=device_opt,
+                           **virsh_dargs)
         if status_error:
             raise error.TestFail('Nodedev dumpxml successed in negative test.')
         else:
