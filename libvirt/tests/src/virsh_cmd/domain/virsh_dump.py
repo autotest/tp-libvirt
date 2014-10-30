@@ -5,9 +5,9 @@ import time
 import signal
 from autotest.client.shared import error
 from autotest.client.shared import utils
-from autotest.client.shared.error import CmdError
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import utils_config
 from virttest.libvirt_xml import vm_xml
 from provider import libvirt_version
 
@@ -106,7 +106,7 @@ def run(test, params, env):
     paused_after_start_vm = params.get("paused_after_start_vm") == "yes"
     status_error = params.get("status_error", "no") == "yes"
     timeout = int(params.get("timeout", "5"))
-    qemu_conf = "/etc/libvirt/qemu.conf"
+    memory_dump_format = params.get("memory_dump_format", "")
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
@@ -157,9 +157,11 @@ def run(test, params, env):
         the file shoule be normal raw file, otherwise it shoud be compress to
         specified format, the supported compress format including: lzop, gzip,
         bzip2, and xz.
+        For memory-only dump, the default dump format is ELF, and it can also
+        specify format by --format option, the result could be 'elf' or 'data'.
         """
 
-        valid_format = ["lzop", "gzip", "bzip2", "xz"]
+        valid_format = ["lzop", "gzip", "bzip2", "xz", 'elf', 'data']
         if len(dump_image_format) == 0 or dump_image_format not in valid_format:
             logging.debug("No need check the dumped file format")
             return True
@@ -179,16 +181,11 @@ def run(test, params, env):
                 return True
 
     # Configure dump_image_format in /etc/libvirt/qemu.conf.
+    qemu_config = utils_config.LibvirtQemuConfig()
+    libvirtd = utils_libvirtd.Libvirtd()
     if len(dump_image_format):
-        conf_cmd = ("echo dump_image_format = \\\"%s\\\" >> %s" %
-                    (dump_image_format, qemu_conf))
-        if os.system(conf_cmd):
-            logging.error("Config dump_image_format to %s fail",
-                          dump_image_format)
-        libvirtd_service = utils_libvirtd.Libvirtd()
-        libvirtd_service.restart()
-        if not libvirtd_service.is_running:
-            raise error.TestNAError("libvirt service is not running!")
+        qemu_config.dump_image_format = dump_image_format
+        libvirtd.restart()
 
     # Deal with bypass-cache option
     child_pid = 0
@@ -206,6 +203,24 @@ def run(test, params, env):
             # Wait for parent process over
             while True:
                 time.sleep(1)
+
+    # Deal with memory-only dump format
+    if len(memory_dump_format):
+        # Make sure libvirt support this option
+        if virsh.has_command_help_match("dump", "--format") is None:
+            raise error.TestNAError("Current libvirt version doesn't support"
+                                    " --format option for dump command")
+        # Make sure QEMU support this format
+        query_cmd = '{"execute":"query-dump-guest-memory-capability"}'
+        qemu_capa = virsh.qemu_monitor_command(vm_name, query_cmd).stdout
+        if (memory_dump_format not in qemu_capa) and not status_error:
+            raise error.TestNAError("Unsupported dump format '%s' for"
+                                    " this QEMU binary" % memory_dump_format)
+        options += " --format %s" % memory_dump_format
+        if memory_dump_format == 'elf':
+            dump_image_format = 'elf'
+        if memory_dump_format in ['kdump-zlib', 'kdump-lzo', 'kdump-snappy']:
+            dump_image_format = 'data'
 
     # Back up xml file
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -262,10 +277,8 @@ def run(test, params, env):
             os.kill(child_pid, signal.SIGUSR1)
         if os.path.isfile(dump_file):
             os.remove(dump_file)
-        if len(dump_image_format):
-            clean_qemu_conf = "sed -i '$d' %s " % qemu_conf
-            if os.system(clean_qemu_conf):
-                raise error.TestFail("Fail to recover %s", qemu_conf)
         if vm.is_alive():
             vm.destroy(gracefully=False)
         backup_xml.sync()
+        qemu_config.restore()
+        libvirtd.restart()
