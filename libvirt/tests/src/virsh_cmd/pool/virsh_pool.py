@@ -46,6 +46,8 @@ def run(test, params, env):
     pool_name = params.get("pool_name", "temp_pool_1")
     pool_type = params.get("pool_type", "dir")
     pool_target = params.get("pool_target", "")
+    source_name = params.get("pool_source_name", "gluster-vol1")
+    source_path = params.get("pool_source_path", "/")
     # The file for dumped pool xml
     pool_xml = os.path.join(test.tmpdir, "pool.xml.tmp")
     if os.path.dirname(pool_target) is "":
@@ -56,9 +58,9 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     vol_path = os.path.join(pool_target, vol_name)
     # Clean up flags:
-    # cleanup_env[0] for nfs, cleanup_env[1] for iscsi, cleanup_env[2] for lvm
-    # cleanup_env[3] for selinux backup status.
-    cleanup_env = [False, False, False, ""]
+    # cleanup_env[0] for nfs, cleanup_env[1] for iscsi, cleanup_env[2] for lvm,
+    # cleanup_env[3] for selinux backup status, cleanup_env[4] for gluster
+    cleanup_env = [False, False, False, "", False]
 
     def check_exit_status(result, expect_error=False):
         """
@@ -150,7 +152,10 @@ def run(test, params, env):
         # Step (1)
         # Pool define
         result = utils_test.libvirt.define_pool(pool_name, pool_type,
-                                                pool_target, cleanup_env)
+                                                pool_target, cleanup_env,
+                                                gluster_vol_number=0,
+                                                gluster_source_name=source_name,
+                                                gluster_source_path=source_path)
         check_exit_status(result, status_error)
 
         # Step (2)
@@ -297,6 +302,8 @@ def run(test, params, env):
             os.remove(pool_xml)
         if not _pool.delete_pool(pool_name):
             logging.error("Can't delete pool: %s", pool_name)
+        if cleanup_env[4]:
+            utils_test.libvirt.setup_or_cleanup_gluster(False, source_name)
         if cleanup_env[2]:
             cmd = "pvs |grep %s |awk '{print $1}'" % vg_name
             pv_name = utils.system_output(cmd)
