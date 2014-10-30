@@ -2,7 +2,7 @@ import logging
 import os
 from autotest.client.shared import error
 from virttest.utils_test import libvirt
-from virttest import aexpect, remote, virt_vm, virsh, libvirt_storage
+from virttest import aexpect, remote, virt_vm, virsh
 from virttest.libvirt_xml import vm_xml, vol_xml, pool_xml
 from virttest.libvirt_xml.devices.disk import Disk
 
@@ -61,7 +61,7 @@ def run(test, params, env):
         ret = virsh.vol_create(p_name, v_xml.xml, **virsh_dargs)
         libvirt.check_exit_status(ret)
 
-    def check_in_vm(vm, target):
+    def check_in_vm(vm, target, old_parts):
         """
         Check mount/read/write disk in VM.
         :param vm. VM guest.
@@ -76,17 +76,34 @@ def run(test, params, env):
                 raise error.TestFail("Failed to query/install parted, make sure"
                                      " that you have usable repo in guest")
 
-            if target == "hda":
-                target = "sda"
-            libvirt.mk_part("/dev/%s" % target, size="10M", session=session)
-            libvirt.mkfs("/dev/%s1" % target, "ext3", session=session)
+            new_parts = libvirt.get_parts_list(session)
+            added_parts = list(set(new_parts).difference(set(old_parts)))
+            logging.info("Added parts:%s", added_parts)
+            if len(added_parts) != 1:
+                logging.error("The number of new partitions is invalid in VM")
+                return False
+
+            added_part = None
+            if target.startswith("vd"):
+                if added_parts[0].startswith("vd"):
+                    added_part = added_parts[0]
+            elif target.startswith("hd"):
+                if added_parts[0].startswith("sd"):
+                    added_part = added_parts[0]
+
+            if not added_part:
+                logging.error("Cann't see added partition in VM")
+                return False
+
+            libvirt.mk_part("/dev/%s" % added_part, size="10M", session=session)
+            libvirt.mkfs("/dev/%s1" % added_part, "ext3", session=session)
 
             cmd = ("mount /dev/%s1 /mnt && echo '123' > /mnt/testfile"
-                   " && cat /mnt/testfile && umount /mnt" % target)
+                   " && cat /mnt/testfile && umount /mnt" % added_part)
             s, o = session.cmd_status_output(cmd)
             logging.info("Check disk operation in VM:\n%s", o)
+            session.close()
             if s != 0:
-                session.close()
                 return False
             return True
         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
@@ -95,13 +112,9 @@ def run(test, params, env):
 
     # Disk specific attributes.
     device = params.get("virt_disk_device", "disk")
-    device_source_name = params.get("virt_disk_device_source")
     device_target = params.get("virt_disk_device_target", "vdd")
-    device_cache = params.get("virt_disk_device_cache", "")
-    device_format = params.get("virt_disk_device_format", "raw")
     device_type = params.get("virt_disk_device_type", "file")
     device_bus = params.get("virt_disk_device_bus", "virtio")
-    driver_options = params.get("driver_option", "").split(',')
 
     # Pool/Volume options.
     pool_name = params.get("pool_name")
@@ -121,9 +134,13 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 
-    # Destroy VM first.
-    if vm.is_alive():
-        vm.destroy(gracefully=False)
+    # Start vm and get all partions in vm.
+    if vm.is_dead():
+        vm.start()
+    session = vm.wait_for_login()
+    old_parts = libvirt.get_parts_list(session)
+    session.close()
+    vm.destroy(gracefully=False)
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -177,7 +194,7 @@ def run(test, params, env):
             if status_error:
                 raise error.TestFail("VM started unexpectedly.")
 
-            if not check_in_vm(vm, device_target):
+            if not check_in_vm(vm, device_target, old_parts):
                 raise error.TestFail("Check encryption disk in VM failed")
         except virt_vm.VMStartError, e:
             if status_error:
