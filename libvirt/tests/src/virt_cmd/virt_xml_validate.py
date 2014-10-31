@@ -11,7 +11,10 @@ def run(test, params, env):
     Test for virt-xml-validate
     """
     # Get the full path of virt-xml-validate command.
-    VIRT_XML_VALIDATE = os_dep.command("virt-xml-validate")
+    try:
+        VIRT_XML_VALIDATE = os_dep.command("virt-xml-validate")
+    except ValueError:
+        raise error.TestNAError("Not find virt-xml-validate command on host.")
 
     vm_name = params.get("main_vm", "virt-tests-vm1")
     vm = env.get_vm(vm_name)

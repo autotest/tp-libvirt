@@ -16,7 +16,10 @@ def run(test, params, env):
     (3). Check the dest guest.
     """
     # Get the full path of virt-clone command.
-    VIRT_CLONE = os_dep.command("virt-clone")
+    try:
+        VIRT_CLONE = os_dep.command("virt-clone")
+    except ValueError:
+        raise error.TestNAError("Not find virt-clone command on host.")
 
     vm_name = params.get("main_vm", "virt-tests-vm1")
     vm = env.get_vm(vm_name)
