@@ -176,6 +176,15 @@ def run(test, params, env):
             raise error.TestError("%s did not respond after %d sec."
                                   % (vm.name, delay))
 
+        # Prepare for --dname dest_exist_vm
+        if extra.count("dest_exist_vm"):
+            logging.debug("Preparing a new vm on destination for exist dname")
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+            vmxml.vm_name = extra.split()[1].strip()
+            del vmxml.uuid
+            # Define a new vm on destination for --dname
+            virsh.define(vmxml.xml, uri=dest_uri)
+
         # Prepare for --xml.
         logging.debug("Preparing new xml file for --xml option.")
         if options.count("xml") or extra.count("xml"):
