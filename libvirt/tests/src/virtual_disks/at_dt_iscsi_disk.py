@@ -183,12 +183,15 @@ def run(test, params, env):
                                                   **virsh_dargs)
             libvirt.check_exit_status(cmd_result)
 
-            cmd_result = virsh.snapshot_list(vm_name, **virsh_dargs)
-            libvirt.check_exit_status(cmd_result)
+            try:
+                virsh.snapshot_list(vm_name, **virsh_dargs)
+            except error.CmdError:
+                error.TestFail("Failed getting snapshots list for %s", vm_name)
 
-            cmd_result = virsh.snapshot_info(vm_name, snapshot_name1,
-                                             **virsh_dargs)
-            libvirt.check_exit_status(cmd_result)
+            try:
+                virsh.snapshot_info(vm_name, snapshot_name1, **virsh_dargs)
+            except error.CmdError:
+                error.TestFail("Failed getting snapshots info for %s", vm_name)
 
             cmd_result = virsh.snapshot_dumpxml(vm_name, snapshot_name1,
                                                 **virsh_dargs)
