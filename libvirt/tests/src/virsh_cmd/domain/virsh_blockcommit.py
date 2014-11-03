@@ -10,168 +10,6 @@ from virttest.libvirt_xml.devices.disk import Disk
 from provider import libvirt_version
 
 
-def reset_domain(vm, vm_state, tmp_dir, **params):
-    """
-    Setup guest agent in domain.
-
-    :param vm: the vm object
-    :param vm_state: the given vm state string "shut off" or "running"
-    :param tmp_dir: string, dir path
-    :param params: dict, extra dict parameters
-    """
-    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
-    logging.debug("original xml is: %s", vmxml.xmltreefile)
-    needs_agent = "yes" == params.get("needs_agent", "yes")
-    replace_vm_disk = "yes" == params.get("replace_vm_disk", "no")
-    disk_device = params.get("disk_device", "disk")
-    disk_type = params.get("disk_type")
-    disk_target = params.get("disk_target", 'vda')
-    disk_target_bus = params.get("disk_target_bus", "virtio")
-    disk_src_protocol = params.get("disk_source_protocol")
-    disk_src_host = params.get("disk_source_host", "127.0.0.1")
-    disk_src_port = params.get("disk_source_port", "3260")
-    image_size = params.get("image_size", "10G")
-    disk_format = params.get("disk_format", "qcow2")
-    mnt_path_name = params.get("mnt_path_name", "nfs-mount")
-    exp_opt = params.get("export_options", "rw,no_root_squash,fsid=0")
-    first_disk = vm.get_first_disk_devices()
-    blk_source = first_disk['source']
-    disk_xml = vmxml.devices.by_device_tag('disk')[0]
-    src_disk_format = disk_xml.xmltreefile.find('driver').get('type')
-    disk_params = {'device_type': disk_device,
-                   'type_name': disk_type,
-                   'target_dev': disk_target,
-                   'target_bus': disk_target_bus,
-                   'driver_type': disk_format,
-                   'driver_cache': 'none'}
-
-    # gluster only params
-    vol_name = params.get("vol_name")
-    pool_name = params.get("pool_name", "gluster-pool")
-    transport = params.get("transport", "")
-    brick_path = os.path.join(tmp_dir, pool_name)
-
-    if vm.is_alive():
-        vm.destroy()
-    if replace_vm_disk:
-        # Replace domain disk with iscsi, gluster, block or netfs disk
-        if disk_src_protocol == 'iscsi':
-            if disk_type == 'block':
-                is_login = True
-            elif disk_type == 'network':
-                is_login = False
-                if not libvirt_version.version_compare(1, 0, 4):
-                    raise error.TestNAError("'iscsi' disk doesn't support in"
-                                            + " current libvirt version.")
-            else:
-                raise error.TestFail("Disk type '%s' not expected, only disk "
-                                     "type 'block' or 'network' work with "
-                                     "'iscsi'" % disk_type)
-
-            # Setup iscsi target
-            emu_n = "emulated_iscsi"
-            iscsi_target = libvirt.setup_or_cleanup_iscsi(is_setup=True,
-                                                          is_login=is_login,
-                                                          image_size=image_size,
-                                                          emulated_image=emu_n)
-
-            # Copy first disk to emulated backing store path
-            emulated_path = os.path.join(tmp_dir, emu_n)
-            cmd = "qemu-img convert -f %s -O raw %s %s" % (src_disk_format,
-                                                           blk_source,
-                                                           emulated_path)
-            utils.run(cmd, ignore_status=False)
-
-            if disk_type == 'block':
-                disk_params_src = {'source_file': iscsi_target}
-            else:
-                disk_params_src = {'source_protocol': disk_src_protocol,
-                                   'source_name': iscsi_target + "/1",
-                                   'source_host_name': disk_src_host,
-                                   'source_host_port': disk_src_port}
-        elif disk_src_protocol == 'gluster':
-            # Setup gluster.
-            host_ip = libvirt.setup_or_cleanup_gluster(True, vol_name,
-                                                       brick_path, pool_name)
-            logging.debug("host ip: %s " % host_ip)
-            dist_img = "gluster.%s" % disk_format
-
-            # Convert first disk to gluster disk path
-            disk_cmd = ("qemu-img convert -f %s -O %s %s /mnt/%s" %
-                        (src_disk_format, disk_format, blk_source, dist_img))
-
-            # Mount the gluster disk and create the image.
-            utils.run("mount -t glusterfs %s:%s /mnt; %s; umount /mnt"
-                      % (host_ip, vol_name, disk_cmd))
-
-            disk_params_src = {'source_protocol': disk_src_protocol,
-                               'source_name': "%s/%s" % (vol_name, dist_img),
-                               'source_host_name': host_ip,
-                               'source_host_port': "24007"}
-            if transport:
-                disk_params_src.update({"transport": transport})
-        elif disk_src_protocol == 'netfs':
-            # Setup nfs
-            res = libvirt.setup_or_cleanup_nfs(True, mnt_path_name,
-                                               is_mount=True,
-                                               export_options=exp_opt)
-            exp_path = res["export_dir"]
-            mnt_path = res["mount_dir"]
-            params["selinux_status_bak"] = res["selinux_status_bak"]
-            dist_img = "nfs-img"
-
-            # Convert first disk to gluster disk path
-            disk_cmd = ("qemu-img convert -f %s -O %s %s %s/%s" %
-                        (src_disk_format, disk_format,
-                         blk_source, exp_path, dist_img))
-            utils.run(disk_cmd, ignore_status=False)
-
-            src_file_path = "%s/%s" % (mnt_path, dist_img)
-            disk_params_src = {'source_file': src_file_path}
-        else:
-            raise error.TestNAError("Disk source protocol %s not supported in "
-                                    "current test" % disk_src_protocol)
-
-        # Delete disk elements
-        disks = vmxml.get_devices(device_type="disk")
-        for disk in disks:
-            vmxml.del_device(disk)
-        # New disk xml
-        new_disk = Disk(type_name=disk_type)
-        new_disk.new_disk_source(attrs={'file': blk_source})
-        disk_params.update(disk_params_src)
-        disk_xml = libvirt.create_disk_xml(disk_params)
-        new_disk.xml = disk_xml
-        # Add new disk xml and redefine vm
-        vmxml.add_device(new_disk)
-        logging.debug("The vm xml now is: %s" % vmxml.xmltreefile)
-        vmxml.undefine()
-        vmxml.define()
-    if needs_agent:
-        logging.debug("Attempting to set guest agent channel")
-        vmxml.set_agent_channel(vm.name)
-    if not vm_state == "shut off":
-        vm.start()
-        session = vm.wait_for_login()
-        if needs_agent:
-            # Check if qemu-ga already started automatically
-            session = vm.wait_for_login()
-            cmd = "rpm -q qemu-guest-agent || yum install -y qemu-guest-agent"
-            stat_install = session.cmd_status(cmd, 300)
-            if stat_install != 0:
-                raise error.TestFail("Fail to install qemu-guest-agent, make "
-                                     "sure that you have usable repo in guest")
-
-            # Check if qemu-ga already started
-            stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
-            if stat_ps != 0:
-                session.cmd("qemu-ga -d")
-                # Check if the qemu-ga really started
-                stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
-                if stat_ps != 0:
-                    raise error.TestFail("Fail to run qemu-ga in guest")
-
-
 def check_chain_xml(disk_xml, chain_lst):
     """
     param disk_xml: disk xmltreefile
@@ -260,6 +98,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     vm_state = params.get("vm_state", "running")
     needs_agent = "yes" == params.get("needs_agent", "yes")
+    replace_vm_disk = "yes" == params.get("replace_vm_disk", "no")
     top_inactive = ("yes" == params.get("top_inactive"))
     with_timeout = ("yes" == params.get("with_timeout_option", "no"))
     status_error = ("yes" == params.get("status_error", "no"))
@@ -294,10 +133,17 @@ def run(test, params, env):
 
     snapshot_external_disks = []
     try:
-        # Set vm xml and state
-        if not vm_state == "shut off":
-            reset_domain(vm, vm_state, tmp_dir,
-                         **params)
+        if disk_src_protocol == 'iscsi' and disk_type == 'network':
+            if not libvirt_version.version_compare(1, 0, 4):
+                raise error.TestNAError("'iscsi' disk doesn't support in"
+                                        + " current libvirt version.")
+
+        # Set vm xml and guest agent
+        if replace_vm_disk:
+            libvirt.set_vm_disk(vm, params, tmp_dir)
+
+        if needs_agent:
+            libvirt.set_guest_agent(vm)
 
         # The first disk is supposed to include OS
         # We will perform blockcommit operation for it.
