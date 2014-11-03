@@ -72,8 +72,8 @@ def run(test, params, env):
         vm.verify_kernel_crash()
         return True
 
-    vm_name = params.get("main_vm")
-    vm = env.get_vm(params["main_vm"])
+    vm_name = params.get("migrate_main_vm")
+    vm = env.get_vm(vm_name)
     vm.verify_alive()
 
     # For safety reasons, we'd better back up  xmlfile.

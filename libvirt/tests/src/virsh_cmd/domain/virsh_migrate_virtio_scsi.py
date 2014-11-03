@@ -114,7 +114,7 @@ def run(test, params, env):
                 logging.debug("Logged in now...")
                 break
 
-    vm = env.get_vm(params.get("main_vm"))
+    vm = env.get_vm(params.get("migrate_main_vm"))
     source_type = params.get("disk_source_type", "file")
     device_type = params.get("disk_device_type", "disk")
     disk_format = params.get("disk_format_type", "raw")

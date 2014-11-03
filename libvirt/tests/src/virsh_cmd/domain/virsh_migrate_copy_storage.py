@@ -51,7 +51,7 @@ def run(test, params, env):
     """
     Test migration with option --copy-storage-all or --copy-storage-inc.
     """
-    vm = env.get_vm(params.get("main_vm"))
+    vm = env.get_vm(params.get("migrate_main_vm"))
     disk_type = params.get("copy_storage_type", "file")
     if disk_type == "file":
         params['added_disk_type'] = "file"
