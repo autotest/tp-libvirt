@@ -190,7 +190,7 @@ def run(test, params, env):
     """
     Test migration of multi vms.
     """
-    vm_names = params.get("vms").split()
+    vm_names = params.get("migrate_vms").split()
     if len(vm_names) < 2:
         raise error.TestNAError("No multi vms provided.")
 

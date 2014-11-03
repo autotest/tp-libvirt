@@ -130,6 +130,9 @@ def run(test, params, env):
         src_uri = params.get("migrate_src_uri", "qemu+ssh://EXAMPLE/system")
         dest_uri = params.get("migrate_dest_uri", "qemu+ssh://EXAMPLE/system")
 
+        if not len(vms):
+            raise error.TestNAError("Please provide migrate_vms for test.")
+
         if src_uri.count('///') or src_uri.count('EXAMPLE'):
             raise error.TestNAError("The src_uri '%s' is invalid", src_uri)
 

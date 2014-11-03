@@ -30,7 +30,7 @@ def run(test, params, env):
     1) Run migrate-compcache command and check return code.
     """
     vm_ref = params.get("vm_ref", "name")
-    vm_name = params.get('main_vm')
+    vm_name = params.get("migrate_main_vm")
     start_vm = 'yes' == params.get('start_vm', 'yes')
     pause_vm = 'yes' == params.get('pause_after_start_vm', 'no')
     expect_succeed = 'yes' == params.get('expect_succeed', 'yes')
