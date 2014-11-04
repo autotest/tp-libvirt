@@ -145,6 +145,9 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     target = params.get("target_disk", "")
+    replace_vm_disk = "yes" == params.get("replace_vm_disk", "no")
+    disk_src_protocol = params.get("disk_source_protocol")
+    mnt_path_name = params.get("mnt_path_name")
     # check the source disk
     if not target:
         raise error.TestFail("Require target disk to copy")
@@ -152,6 +155,21 @@ def run(test, params, env):
         logging.debug("Find %s in domain %s.", target, vm_name)
     else:
         raise error.TestFail("Can't find %s in domain %s." % (target, vm_name))
+    options = params.get("blockcopy_options", "")
+    bandwidth = params.get("blockcopy_bandwidth", "")
+    default_timeout = params.get("default_timeout", "300")
+    reuse_external = "yes" == params.get("reuse_external", "no")
+    persistent_vm = params.get("persistent_vm", "no")
+    status_error = "yes" == params.get("status_error", "no")
+    rerun_flag = 0
+
+    original_xml = vm.backup_xml()
+    # Domain disk replacement with desire type
+    tmp_dir = data_dir.get_tmp_dir()
+    if replace_vm_disk:
+        utl.set_vm_disk(vm, params, tmp_dir)
+
+    # Prepare dest path params
     dest_path = params.get("dest_path", "")
     dest_format = params.get("dest_format", "")
     # Ugh... this piece of chicanery brought to you by the QemuImg which
@@ -164,17 +182,11 @@ def run(test, params, env):
     if not dest_path:
         tmp_file = time.strftime("%Y-%m-%d-%H.%M.%S.img")
         tmp_file += dest_extension
-        dest_path = os.path.join(data_dir.get_tmp_dir(), tmp_file)
-    options = params.get("blockcopy_options", "")
-    bandwidth = params.get("blockcopy_bandwidth", "")
-    default_timeout = params.get("default_timeout", "300")
-    reuse_external = "yes" == params.get("reuse_external", "no")
-    persistent_vm = params.get("persistent_vm", "no")
-    status_error = "yes" == params.get("status_error", "no")
-    rerun_flag = 0
+        if disk_src_protocol == "netfs":
+            tmp_dir = "%s/%s" % (tmp_dir, mnt_path_name)
+        dest_path = os.path.join(tmp_dir, tmp_file)
 
     # Prepare transient/persistent vm
-    original_xml = vm.backup_xml()
     if persistent_vm == "no" and vm.is_persistent():
         vm.undefine()
     elif persistent_vm == "yes" and not vm.is_persistent():
@@ -287,5 +299,10 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy()
             virsh.define(original_xml)
+
+        if disk_src_protocol == 'netfs':
+            restore_selinux = params.get('selinux_status_bak')
+            utl.setup_or_cleanup_nfs(is_setup=False,
+                                     restore_selinux=restore_selinux)
         if os.path.exists(dest_path):
             os.remove(dest_path)
