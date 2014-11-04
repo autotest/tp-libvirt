@@ -9,6 +9,7 @@ from virttest import utils_misc
 from virttest import virsh
 from virttest import remote
 from virttest.libvirt_xml import vm_xml
+from provider import libvirt_version
 
 NETWORK_SCRIPT = "/etc/sysconfig/network-scripts/ifcfg-"
 
@@ -132,10 +133,41 @@ def run(test, params, env):
     use_exist_iface = "yes" == params.get("use_exist_iface", "no")
     status_error = "yes" == params.get("status_error", "no")
     net_restart = "yes" == params.get("iface_net_restart", "no")
+    list_dumpxml_acl = "yes" == params.get("list_dumpxml_acl", "no")
     if ping_ip.count("ENTER"):
         raise error.TestNAError("Please input a valid ip address")
     if iface_name.count("ENTER"):
         raise error.TestNAError("Please input a existing bridge/ethernet name")
+
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    + " libvirt version.")
+
+    virsh_dargs = {'debug': True}
+    list_dumpxml_dargs = {'debug': True}
+    if params.get('setup_libvirt_polkit') == 'yes':
+        if not list_dumpxml_acl:
+            virsh_dargs['uri'] = uri
+            virsh_dargs['unprivileged_user'] = unprivileged_user
+        else:
+            list_dumpxml_dargs['uri'] = uri
+            list_dumpxml_dargs['unprivileged_user'] = unprivileged_user
+            list_dumpxml_dargs['ignore_status'] = False
+
+    # acl api negative testing params
+    write_save_status_error = "yes" == params.get("write_save_status_error",
+                                                  "no")
+    start_status_error = "yes" == params.get("start_status_error", "no")
+    stop_status_error = "yes" == params.get("stop_status_error", "no")
+    delete_status_error = "yes" == params.get("delete_status_error", "no")
+
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     if vm:
@@ -192,26 +224,46 @@ def run(test, params, env):
             utils.run("cp %s %s" % (iface_script, iface_script_bk))
             # step 1.1
             # dumpxml for interface
+            if list_dumpxml_acl:
+                virsh.iface_list(**list_dumpxml_dargs)
             xml = virsh.iface_dumpxml(iface_name, "--inactive",
-                                      to_file=iface_xml, debug=True)
+                                      to_file=iface_xml,
+                                      **list_dumpxml_dargs)
             # Step 1.2
             # Destroy interface
             if iface_is_up:
-                result = virsh.iface_destroy(iface_name, debug=True)
-                libvirt.check_exit_status(result, status_error)
+                result = virsh.iface_destroy(iface_name, **virsh_dargs)
+                if (params.get('setup_libvirt_polkit') == 'yes' and
+                        stop_status_error):
+                    # acl_test negative test
+                    libvirt.check_exit_status(result, stop_status_error)
+                    virsh.iface_destroy(iface_name, debug=True)
+                else:
+                    libvirt.check_exit_status(result, status_error)
 
             # Step 1.3
             # Undefine interface
-            result = virsh.iface_undefine(iface_name, debug=True)
-            libvirt.check_exit_status(result, status_error)
+            result = virsh.iface_undefine(iface_name, **virsh_dargs)
+            if (params.get('setup_libvirt_polkit') == 'yes' and
+                    delete_status_error):
+                # acl_test negative test
+                libvirt.check_exit_status(result, delete_status_error)
+                virsh.iface_undefine(iface_name, debug=True)
+            else:
+                libvirt.check_exit_status(result, status_error)
             if not status_error:
                 if libvirt.check_iface(iface_name, "exists", list_option):
                     raise error.TestFail("%s is still present." % iface_name)
 
         # Step 2
         # Define interface
-        result = virsh.iface_define(iface_xml, debug=True)
-        if iface_type == "bond" and not ping_ip:
+        result = virsh.iface_define(iface_xml, **virsh_dargs)
+        if (params.get('setup_libvirt_polkit') == 'yes' and
+                write_save_status_error):
+            # acl_test negative test
+            libvirt.check_exit_status(result, write_save_status_error)
+            virsh.iface_define(iface_xml, debug=True)
+        elif iface_type == "bond" and not ping_ip:
             libvirt.check_exit_status(result, True)
             return
         else:
@@ -233,10 +285,15 @@ def run(test, params, env):
 
             # Step 4
             # Start interface
-            result = virsh.iface_start(iface_name, debug=True)
-            if not net_restart and not use_exist_iface and\
-               (iface_type == "ethernet" and iface_pro in ["", "dhcp"] or
-                    iface_type == "bridge" and iface_pro == "dhcp"):
+            result = virsh.iface_start(iface_name, **virsh_dargs)
+            if (params.get('setup_libvirt_polkit') == 'yes' and
+                    start_status_error):
+                # acl_test negative test
+                libvirt.check_exit_status(result, start_status_error)
+                virsh.iface_start(iface_name, debug=True)
+            elif (not net_restart and not use_exist_iface and
+                    (iface_type == "ethernet" and iface_pro in ["", "dhcp"] or
+                        iface_type == "bridge" and iface_pro == "dhcp")):
                 libvirt.check_exit_status(result, True)
             else:
                 libvirt.check_exit_status(result, status_error)
@@ -279,7 +336,10 @@ def run(test, params, env):
 
         # Step 6
         # Dumpxml for interface
-        xml = virsh.iface_dumpxml(iface_name, "", to_file="", debug=True)
+        if list_dumpxml_acl:
+            virsh.iface_list(**list_dumpxml_dargs)
+        xml = virsh.iface_dumpxml(iface_name, "", to_file="",
+                                  **list_dumpxml_dargs)
         logging.debug("Interface '%s' XML:\n%s", iface_name, xml)
 
         # Step 7
@@ -303,18 +363,29 @@ def run(test, params, env):
         if not use_exist_iface:
             # Step 9.1
             # Destroy interface
-            result = virsh.iface_destroy(iface_name, debug=True)
-            if not net_restart and\
-               iface_type == "ethernet" and iface_pro in ["", "dhcp"] or\
-               iface_type == "bridge" and iface_pro == "dhcp":
+            result = virsh.iface_destroy(iface_name, **virsh_dargs)
+            if (params.get('setup_libvirt_polkit') == 'yes' and
+                    stop_status_error):
+                # acl_test negative test
+                libvirt.check_exit_status(result, stop_status_error)
+                virsh.iface_destroy(iface_name, debug=True)
+            elif (not net_restart and iface_type == "ethernet"
+                    and iface_pro in ["", "dhcp"] or iface_type == "bridge"
+                    and iface_pro == "dhcp"):
                 libvirt.check_exit_status(result, True)
             else:
                 libvirt.check_exit_status(result, status_error)
 
             # Step 9.2
             # Undefine interface
-            result = virsh.iface_undefine(iface_name, debug=True)
-            libvirt.check_exit_status(result, status_error)
+            result = virsh.iface_undefine(iface_name, **virsh_dargs)
+            if (params.get('setup_libvirt_polkit') == 'yes' and
+                    delete_status_error):
+                # acl_test negative test
+                libvirt.check_exit_status(result, delete_status_error)
+                virsh.iface_undefine(iface_name, debug=True)
+            else:
+                libvirt.check_exit_status(result, status_error)
             list_option = "--all"
             if not status_error:
                 if libvirt.check_iface(iface_name, "exists", list_option):
