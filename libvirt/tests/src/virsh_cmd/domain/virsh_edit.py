@@ -1,9 +1,10 @@
-import os
-import time
+import logging
 from virttest import remote
-
 from autotest.client.shared import error
-from virttest import virsh, aexpect, utils_libvirtd
+from virttest import virsh
+from virttest import aexpect
+from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 
 
@@ -23,108 +24,146 @@ def run(test, params, env):
 
     domid = vm.get_id()
     domuuid = vm.get_uuid()
-    vcpucount_result = virsh.vcpucount(vm_name, options="--config --maximum")
-    if vcpucount_result.exit_status:
-        # Fail back to libvirt_xml way to test vcpucount.
-        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-        original_vcpu = str(vmxml.vcpu)
-    else:
-        original_vcpu = vcpucount_result.stdout.strip()
 
-    expected_vcpu = str(int(original_vcpu) + 1)
-
-    libvirtd = params.get("libvirtd", "on")
+    libvirtd_stat = params.get("libvirtd", "on")
     vm_ref = params.get("edit_vm_ref")
+    extra_option = params.get("edit_extra_param", "")
     status_error = params.get("status_error")
+    edit_element = params.get("edit_element", "vcpu")
 
-    def modify_vcpu(source, edit_cmd):
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    libvirtd = utils_libvirtd.Libvirtd()
+
+    def exec_edit(source, edit_cmd):
         """
-        Modify vm's cpu information.
+        Execute edit command.
 
         :param source : virsh edit's option.
-        :param dic_mode : a edit commad line .
-        :return: True if edit successed,False if edit failed.
+        :param edit_cmd: Edit command list to execute.
+        :return: True if edit successed, False if edit failed.
         """
         session = aexpect.ShellSession("sudo -s")
         try:
             session.sendline("virsh -c %s edit %s" % (vm.connect_uri, source))
-            session.sendline(edit_cmd)
+            for cmd in edit_cmd:
+                session.sendline(cmd)
             session.send('\x1b')
             session.send('ZZ')
-            remote.handle_prompts(session, None, None, r"[\#\$]\s*$")
+            remote.handle_prompts(session, None, None, r"[\#\$]\s*$", debug=True)
             session.close()
             return True
-        except:
+        except Exception, e:
+            session.close()
+            logging.error("Error occured: %s", e)
             return False
 
-    def edit_vcpu(source, guest_name):
+    def edit_vcpu(source):
         """
         Modify vm's cpu information by virsh edit command.
 
         :param source : virsh edit's option.
-        :param guest_name : vm's name.
         :return: True if edit successed,False if edit failed.
         """
+        vcpucount_result = virsh.vcpucount(vm_name,
+                                           options="--config --maximum")
+        if vcpucount_result.exit_status:
+            # Fail back to libvirt_xml way to test vcpucount.
+            original_vcpu = str(vmxml.vcpu)
+        else:
+            original_vcpu = vcpucount_result.stdout.strip()
+
+        expected_vcpu = str(int(original_vcpu) + 1)
         dic_mode = {
             "edit": r":%s /[0-9]*<\/vcpu>/" + expected_vcpu + r"<\/vcpu>",
             "recover": r":%s /[0-9]*<\/vcpu>/" + original_vcpu + r"<\/vcpu>"}
-        status = modify_vcpu(source, dic_mode["edit"])
+        status = exec_edit(source, [dic_mode["edit"]])
+        logging.info(status)
         if not status:
             return status
+        if libvirtd_stat == "off":
+            return False
         if params.get("paused_after_start_vm") == "yes":
-            virsh.resume(guest_name, ignore_status=True)
-            virsh.destroy(guest_name)
+            virsh.resume(vm_name, ignore_status=True)
+            virsh.destroy(vm_name)
         elif params.get("start_vm") == "yes":
-            virsh.destroy(guest_name)
-        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-        vcpus = str(vmxml.vcpu)
+            virsh.destroy(vm_name)
+        new_vcpus = str(vm_xml.VMXML.new_from_inactive_dumpxml(vm_name).vcpu)
         # Recover cpuinfo
         # Use name rather than source, since source could be domid
-        status = modify_vcpu(guest_name, dic_mode["recover"])
-        if status and vcpus != expected_vcpu:
+        status = exec_edit(vm_name, [dic_mode["recover"]])
+        if status and new_vcpus != expected_vcpu:
+            return False
+        return status
+
+    def edit_memory(source):
+        """
+        Modify vm's maximum and current memory(unit and value).
+
+        :param source: virsh edit's option.
+        :return: True if edit successed,False if edit failed.
+        """
+        mem_unit = params.get("mem_unit", "K")
+        mem_value = params.get("mem_value", "1048576")
+        mem_delta = params.get("mem_delta", 1000)
+        edit_cmd = []
+        del_cmd = r":g/currentMemory/d"
+        edit_cmd.append(del_cmd)
+        update_cmd = r":%s/<memory unit='KiB'>[0-9]*<\/memory>/<memory unit='"
+        update_cmd += mem_unit + "'>" + mem_value + r"<\/memory>"
+        edit_cmd.append(update_cmd)
+        try:
+            expected_mem = int(utils_misc.normalize_data_size(
+                mem_value + mem_unit, 'K').split('.')[0])
+        except ValueError:
+            logging.error("Fail to translate %s to KiB", mem_value + mem_unit)
+            return False
+        logging.debug("Expected max memory is %s", expected_mem)
+        status = exec_edit(source, edit_cmd)
+        try:
+            if status:
+                # Restart vm to check memory value
+                virsh.destroy(vm_name)
+                virsh.start(vm_name)
+                new_mem = vm.get_max_mem()
+                if new_mem - expected_mem > int(mem_delta):
+                    logging.error("New max memory %s is not excepted", new_mem)
+                    return False
+        except Exception, e:
+            logging.error("Error occured when check domain memory: %s", e)
             return False
         return status
 
     # run test case
-    xml_file = os.path.join(test.tmpdir, 'tmp.xml')
-    virsh.dumpxml(vm_name, extra="--inactive", to_file=xml_file)
+    if libvirtd_stat == "off":
+        libvirtd.stop()
 
-    if libvirtd == "off":
-        utils_libvirtd.libvirtd_stop()
+    if vm_ref == "id":
+        vm_ref = domid
+    elif vm_ref == "uuid":
+        vm_ref = domuuid
+    elif vm_ref == "name":
+        vm_ref = vm_name
+    if extra_option:
+        vm_ref += extra_option
 
     try:
-        if vm_ref == "id":
-            status = edit_vcpu(domid, vm_name)
-        elif vm_ref == "uuid":
-            status = edit_vcpu(domuuid, vm_name)
-        elif vm_ref == "name" and status_error == "no":
-            status = edit_vcpu(vm_name, vm_name)
+        if edit_element == "vcpu":
+            status = edit_vcpu(vm_ref)
+        elif edit_element == "memory":
+            status = edit_memory(vm_ref)
         else:
-            status = False
-            if vm_ref.find("invalid") != -1:
-                vm_ref = params.get(vm_ref)
-            elif vm_ref == "name":
-                vm_ref = "%s %s" % (vm_name, params.get("edit_extra_param"))
-            edit_status = virsh.edit(vm_ref).exit_status
-            if edit_status == 0:
-                status = True
-    except:
-        status = False
-
-    # recover libvirtd service start
-    if libvirtd == "off":
-        utils_libvirtd.libvirtd_start()
-
-    # Recover VM
-    if vm.is_alive():
+            raise error.TestNAError("No edit method for %s" % edit_element)
+        # check status_error
+        if status_error == "yes":
+            if status:
+                raise error.TestFail("Run successfully with wrong command!")
+        elif status_error == "no":
+            if not status:
+                raise error.TestFail("Run failed with right command")
+    finally:
+        # recover libvirtd service start
+        if libvirtd_stat == "off":
+            libvirtd.start()
+        # Recover VM
         vm.destroy()
-    virsh.undefine(vm_name)
-    virsh.define(xml_file)
-
-    # check status_error
-    if status_error == "yes":
-        if status:
-            raise error.TestFail("Run successfully with wrong command!")
-    elif status_error == "no":
-        if not status:
-            raise error.TestFail("Run failed with right command")
+        vmxml.sync()
