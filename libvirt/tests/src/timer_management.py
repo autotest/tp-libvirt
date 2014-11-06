@@ -102,7 +102,7 @@ def vm_clock_source(vm, target, value=''):
     return result
 
 
-def get_vm_time(vm, time_type=None, windows=False):
+def get_time(vm=None, time_type=None, windows=False):
     """
     Return epoch time. Windows will return timezone only.
 
@@ -110,31 +110,34 @@ def get_vm_time(vm, time_type=None, windows=False):
     :param windows: If the vm is a windows guest
     :return: Epoch time or timezone
     """
-    if time_type == "utc":
-        cmd = "date -u +%s"
-    elif windows is True:
-        time_type == "tz"
-        cmd = (r"echo %date:~0,4%/%date:~5,2%/%date:~8,2%/"
-               "%time:~0,2%/%time:~3,2%/%time:~6,2%")
+    if vm:
+        if time_type == "utc":
+            cmd = "date -u +%Y/%m/%d/%H/%M/%S"
+        elif windows is True:
+            time_type == "tz"
+            cmd = (r"echo %date:~0,4%/%date:~5,2%/%date:~8,2%/"
+                   "%time:~0,2%/%time:~3,2%/%time:~6,2%")
+        else:
+            cmd = "date +%Y/%m/%d/%H/%M/%S"
+        session = vm.wait_for_login()
+        ts, timestr = session.cmd_status_output(cmd)
+        session.close()
+        if ts:
+            logging.error("Get time in vm failed: %s", timestr)
+            return -1
+        # To avoid some unexpected space, strip it manually
+        timestr = timestr.replace(" ", "").strip()
+        struct_time = time.strptime(timestr, '%Y/%m/%d/%H/%M/%S')
     else:
-        cmd = "date +%Y/%m/%d/%H/%M/%S"
-    session = vm.wait_for_login()
-    ts, timestr = session.cmd_status_output(cmd)
-    session.close()
-    if ts:
-        logging.error("Get time in vm failed: %s", timestr)
+        if time_type == 'utc':
+            struct_time = time.gmtime()
+        else:
+            struct_time = time.localtime()
+    try:
+        return int(time.mktime(struct_time))
+    except TypeError, e:
+        logging.error("Translate time to seconds error: %s", e)
         return -1
-    # To avoid some unexpected space, strip it manually
-    if time_type == "utc":
-        return int(timestr)
-    else:
-        # Strip potential space in timestr(for windows)
-        elems = timestr.split('/')
-        timestr = "%s/%s/%s/%s/%s/%s" % (elems[0].strip(), elems[1].strip(),
-                                         elems[2].strip(), elems[3].strip(),
-                                         elems[4].strip(), elems[5].strip())
-        return int(time.mktime(time.strptime(timestr.strip(),
-                                             '%Y/%m/%d/%H/%M/%S')))
 
 
 def set_host_timezone(timezone="America/New_York"):
@@ -319,6 +322,9 @@ def test_timers_in_vm(vm, params):
     delta = int(params.get("allowd_delta", "300"))
     windows_test = "yes" == params.get("windows_test", "no")
 
+    # Set host timezone
+    set_host_timezone(host_tz)
+
     # Confirm vm is down for editing
     if vm.is_alive():
         vm.destroy()
@@ -330,9 +336,6 @@ def test_timers_in_vm(vm, params):
     vm.start()
     vm.wait_for_login()
     set_vm_timezone(vm, vm_tz, windows_test)
-
-    # Set host timezone
-    set_host_timezone(host_tz)
 
     # manipulate vm if necessary, linux guest only
     operation = params.get("operation")
@@ -355,22 +358,19 @@ def test_timers_in_vm(vm, params):
     elif offset == "variable":
         expect_utc_gap = int(params.get("clock_adjustment", 3600))
 
-    # TODO: It seems that actual timezone time in vm is only based on
-    # timezone on host. I need to confirm whether it is normal(or bug)
-    expect_tz_gap = vm_tz_span - host_tz_span
-
+    logging.debug("Expected UTC time gap between vm and host: %s",
+                  abs(expect_utc_gap))
+    expect_tz_gap = abs(vm_tz_span + host_tz_span)
+    logging.debug("Expected vm timezone time gap: %s", expect_tz_gap)
+    host_utc_time = get_time(time_type='utc')
+    logging.debug("UTC time on host: %s", host_utc_time)
     if windows_test:
         # Get windows vm's time(timezone)
-        vm_tz_time = get_vm_time(vm, "tz", windows=True)
+        vm_tz_time = get_time(vm, "tz", windows=True)
         logging.debug("TimeZone time in vm: %s", vm_tz_time)
-        # Get host's utc time
-        host_utc_time = int(time.time())
-        logging.debug("UTC time on host: %s", host_utc_time)
-
-        logging.debug("Expected vm timezone time gap: %s", abs(expect_tz_gap))
         # Gap between vm timezone time and host utc time
-        actual_tz_gap = vm_tz_time - host_utc_time
-        logging.debug("Actual vm timezone time gap: %s", abs(actual_tz_gap))
+        actual_tz_gap = abs(vm_tz_time - host_utc_time)
+        logging.debug("Actual vm timezone time gap: %s", actual_tz_gap)
         if abs(actual_tz_gap - expect_tz_gap) > delta:
             raise error.TestFail("Timezone time of %s is not expected" % vm.name)
     else:
@@ -393,30 +393,22 @@ def test_timers_in_vm(vm, params):
             if new_clock.strip() != clock.strip():
                 raise error.TestFail("New clock source is not expected")
 
-            # Get vm's utc time and timezone time
-            vm_utc_time = get_vm_time(vm, "utc")
+            vm_utc_time = get_time(vm, "utc")
             logging.debug("UTC time in vm: %s", vm_utc_time)
-            vm_tz_time = get_vm_time(vm, "tz")
+            vm_tz_time = get_time(vm, "tz")
             logging.debug("TimeZone time in vm: %s", vm_tz_time)
-            # Get host's utc time
-            host_utc_time = int(time.time())
-            logging.debug("UTC time on host: %s", host_utc_time)
 
-            logging.debug("Expected UTC time gap between vm and host: %s",
-                          abs(expect_utc_gap))
             # Gap between vm utc time and host utc time
-            actual_utc_gap = vm_utc_time - host_utc_time
+            actual_utc_gap = abs(vm_utc_time - host_utc_time)
             logging.debug("Actual UTC time gap between vm and host: %s",
-                          abs(actual_utc_gap))
+                          actual_utc_gap)
             if abs(actual_utc_gap - expect_utc_gap) > delta:
                 raise error.TestFail("UTC time between host and %s do not match"
                                      % vm.name)
             # Gap between timezone and utc time in vm
-            logging.debug("Expected time gap between timezone and UTC"
-                          " time in vm: %s", abs(expect_tz_gap))
-            actual_tz_gap = vm_tz_time - vm_utc_time
+            actual_tz_gap = abs(vm_tz_time - vm_utc_time)
             logging.debug("Actual time gap between timezone and UTC time in"
-                          " vm: %s", abs(actual_tz_gap))
+                          " vm: %s", actual_tz_gap)
             if abs(actual_tz_gap - expect_tz_gap) > delta:
                 raise error.TestFail("Timezone time of %s is not expected"
                                      % vm.name)
