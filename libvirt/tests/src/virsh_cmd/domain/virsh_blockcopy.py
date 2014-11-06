@@ -45,6 +45,9 @@ def check_xml(vm_name, target, dest_path, blk_options):
         # find <mirror> element and dest_path in vm xml
         expect_re = 2
 
+    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    logging.debug("Current vm xml is: %s" % vmxml.xmltreefile)
+
     blk_list = vm_xml.VMXML.get_disk_blk(vm_name)
     disk_list = vm_xml.VMXML.get_disk_source(vm_name)
     dev_index = 0
@@ -161,6 +164,9 @@ def run(test, params, env):
     reuse_external = "yes" == params.get("reuse_external", "no")
     persistent_vm = params.get("persistent_vm", "no")
     status_error = "yes" == params.get("status_error", "no")
+    active_error = "yes" == params.get("active_error", "no")
+    active_sanp = "yes" == params.get("active_sanp", "no")
+    active_save = "yes" == params.get("active_save", "no")
     rerun_flag = 0
 
     original_xml = vm.backup_xml()
@@ -265,6 +271,8 @@ def run(test, params, env):
     if not utils_libvirtd.libvirtd_is_running():
         raise error.TestFail("Libvirtd service is dead.")
     # Check_result
+    snap_path = ''
+    save_path = ''
     try:
         try:
             if not status_error:
@@ -276,6 +284,20 @@ def run(test, params, env):
                         finish_job(vm_name, target, default_timeout)
                     if options.count("--raw"):
                         check_format(dest_path, dest_extension, dest_format)
+                    if active_sanp:
+                        snap_path = "%s/%s.snap" % (tmp_dir, vm_name)
+                        snap_opt = "--disk-only --atomic --no-metadata "
+                        snap_opt += "vda,snapshot=external,file=%s" % snap_path
+                        ret = virsh.snapshot_create_as(vm_name, snap_opt,
+                                                       ignore_statues=True,
+                                                       debug=True)
+                        utl.check_exit_status(ret, active_error)
+                    if active_save:
+                        save_path = "%s/%s.save" % (tmp_dir, vm_name)
+                        ret = virsh.save(vm_name, save_path,
+                                         ignore_statues=True,
+                                         debug=True)
+                        utl.check_exit_status(ret, active_error)
                 else:
                     raise error.TestFail(cmd_result.stderr)
             else:
@@ -306,3 +328,7 @@ def run(test, params, env):
                                      restore_selinux=restore_selinux)
         if os.path.exists(dest_path):
             os.remove(dest_path)
+        if os.path.exists(snap_path):
+            os.remove(snap_path)
+        if os.path.exists(save_path):
+            os.remove(save_path)
