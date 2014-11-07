@@ -11,7 +11,7 @@ from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.devices import disk, channel
 from virttest import utils_test, virsh, data_dir, virt_vm
 from virttest.utils_test import libvirt as utlv
-from virttest import iscsi, qemu_storage
+from virttest import iscsi, qemu_storage, libvirt_vm
 
 
 def volumes_capacity(lv_name):
@@ -100,9 +100,9 @@ def create_channel_xml(vm_name, agent_index=0):
     """
     channel_path = ("/var/lib/libvirt/qemu/channel/target/"
                     "%s.org.qemu.guest_agent.%s" % (vm_name, agent_index))
-    channel_source = {'source_mode': "bind", 'source_path': channel_path}
-    channel_target = {'target_type': "virtio",
-                      'target_name': "org.qemu.guest_agent.%s" % agent_index}
+    channel_source = {'mode': "bind", 'path': channel_path}
+    channel_target = {'type': "virtio",
+                      'name': "org.qemu.guest_agent.%s" % agent_index}
     channel_params = {'type_name': "unix", 'source': channel_source,
                       'target': channel_target}
     channelxml = channel.Channel.new_from_dict(channel_params)
@@ -131,17 +131,19 @@ def occupy_disk(vm, device, size, frmt_type="ext4", mount_options=None):
     :param size: the count in Metabytes
     """
     session = vm.wait_for_login()
-    session.cmd("mkfs -F -t %s %s" % (frmt_type, device))
-    if mount_options is not None:
-        mount_cmd = "mount -o %s %s /mnt" % (mount_options, device)
-    else:
-        mount_cmd = "mount %s /mnt" % device
-    session.cmd(mount_cmd)
-    dd_cmd = "dd if=/dev/zero of=/mnt/test.img bs=1M count=%s" % size
-    session.cmd(dd_cmd, timeout=120)
-    # Delete image to create sparsing space
-    session.cmd("rm -f /mnt/test.img")
-    session.close()
+    try:
+        session.cmd("mkfs -F -t %s %s" % (frmt_type, device), timeout=120)
+        if mount_options is not None:
+            mount_cmd = "mount -o %s %s /mnt" % (mount_options, device)
+        else:
+            mount_cmd = "mount %s /mnt" % device
+        session.cmd(mount_cmd)
+        dd_cmd = "dd if=/dev/zero of=/mnt/test.img bs=1M count=%s" % size
+        session.cmd(dd_cmd, timeout=120)
+        # Delete image to create sparsing space
+        session.cmd("rm -f /mnt/test.img")
+    finally:
+        session.close()
 
 
 def sig_delta(size1, size2, tolerable_shift=0.8):
@@ -163,7 +165,7 @@ def do_fstrim(fstrim_type, vm, status_error=False):
     """
     if fstrim_type == "fstrim_cmd":
         session = vm.wait_for_login()
-        output = session.cmd_output("fstrim -v /mnt", timeout=120)
+        output = session.cmd_output("fstrim -v /mnt", timeout=240)
         session.close()
         logging.debug(output)
         if re.search("Operation not supported", output):
@@ -175,8 +177,10 @@ def do_fstrim(fstrim_type, vm, status_error=False):
                 raise error.TestFail("Not supported fstrim on supported "
                                      "envrionment.Bug?")
         try:
-            trimmed = int(re.search("\d+", output).group(0))
-            logging.debug("Trimmed size is:%s", trimmed / 1024 / 1024)
+            trimmed_bytes = re.search("\d+\sbytes",
+                                      output).group(0).split()[0]
+            trimmed = int(trimmed_bytes)
+            logging.debug("Trimmed size is:%s bytes", trimmed)
         except (AttributeError, IndexError), detail:
             raise error.TestFail("Do fstrim failed:%s" % detail)
         if trimmed == 0:
@@ -206,8 +210,15 @@ def run(test, params, env):
     bf_disks = get_vm_disks(vm)
     vm.destroy()
 
-    # Backup VM XML file
-    backupvmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    # Create a new vm for test, undefine it at last
+    new_vm_name = "%s_discardtest" % vm.name
+    if not utlv.define_new_vm(vm.name, new_vm_name):
+        raise error.TestError("Define new vm failed.")
+    try:
+        new_vm = libvirt_vm.VM(new_vm_name, vm.params, vm.root_dir,
+                               vm.address_cache)
+    except Exception, detail:
+        raise error.TestError("Create new vm failed:%s" % detail)
 
     disk_type = params.get("disk_type", "file")
     discard_device = params.get("discard_device", "/DEV/EXAMPLE")
@@ -233,19 +244,19 @@ def run(test, params, env):
         status_error = "yes" == params.get("status_error", "no")
         xmlfile = create_disk_xml(disk_type, device_path, discard_type,
                                   target_dev, target_bus)
-        virsh.attach_device(domain_opt=vm_name, file_opt=xmlfile,
+        virsh.attach_device(domain_opt=new_vm_name, file_opt=xmlfile,
                             flagstr="--persistent", ignore_status=False)
         if fstrim_type == "qemu-guest-agent":
-            channelfile = create_channel_xml(vm_name)
-            virsh.attach_device(domain_opt=vm_name, file_opt=channelfile,
+            channelfile = create_channel_xml(new_vm_name)
+            virsh.attach_device(domain_opt=new_vm_name, file_opt=channelfile,
                                 flagstr="--persistent", ignore_status=False)
-        logging.debug("New VMXML:\n%s", virsh.dumpxml(vm_name))
+        logging.debug("New VMXML:\n%s", virsh.dumpxml(new_vm_name))
 
         # Verify attached device in vm
-        if vm.is_dead():
-            vm.start()
-        vm.wait_for_login()
-        af_disks = get_vm_disks(vm)
+        if new_vm.is_dead():
+            new_vm.start()
+        new_vm.wait_for_login()
+        af_disks = get_vm_disks(new_vm)
         logging.debug("\nBefore:%s\nAfter:%s", bf_disks, af_disks)
         # Get new disk name in vm
         new_disk = "".join(list(set(bf_disks) ^ set(af_disks)))
@@ -263,11 +274,11 @@ def run(test, params, env):
         bf_cpy = get_disk_capacity(disk_type, imagefile=device_path,
                                    lvname="lvthin")
         logging.debug("Disk size before using:%s", bf_cpy)
-        occupy_disk(vm, new_disk, "500", frmt_type, mount_options)
+        occupy_disk(new_vm, new_disk, "500", frmt_type, mount_options)
         bf_fstrim_cpy = get_disk_capacity(disk_type, imagefile=device_path,
                                           lvname="lvthin")
         logging.debug("Disk size after used:%s", bf_fstrim_cpy)
-        do_fstrim(fstrim_type, vm, status_error)
+        do_fstrim(fstrim_type, new_vm, status_error)
         af_fstrim_cpy = get_disk_capacity(disk_type, imagefile=device_path,
                                           lvname="lvthin")
         logging.debug("\nBefore occupying disk:%s\n"
@@ -283,17 +294,13 @@ def run(test, params, env):
             if sig_delta(bf_cpy, bf_fstrim_cpy) and not status_error:
                 raise error.TestFail("Automatical 'fstrims' didn't work.")
     finally:
-        if vm.is_alive():
-            vm.destroy()
-        try:
-            backupvmxml.sync()
-        except xcepts.LibvirtXMLError:
-            # TODO: provide another way to clean it up
-            pass    # Do following steps anyway
+        if new_vm.is_alive():
+            new_vm.destroy()
+        new_vm.undefine()
         if disk_type == "block":
             try:
                 lv_utils.vg_remove("vgthin")
-            except error.TestError:
-                pass
+            except error.TestError, detail:
+                logging.debug(str(detail))
             utils.run("pvremove -f %s" % discard_device, ignore_status=True)
             utlv.setup_or_cleanup_iscsi(is_setup=False)
