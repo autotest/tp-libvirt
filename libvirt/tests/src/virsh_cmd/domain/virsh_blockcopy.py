@@ -3,7 +3,11 @@ import os
 import time
 import re
 from autotest.client.shared import error
-from virttest import utils_libvirtd, virsh, qemu_storage, data_dir
+from virttest import utils_libvirtd
+from virttest import virsh
+from virttest import qemu_storage
+from virttest import data_dir
+from virttest import aexpect
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utl
 from provider import libvirt_version
@@ -167,6 +171,7 @@ def run(test, params, env):
     active_error = "yes" == params.get("active_error", "no")
     active_sanp = "yes" == params.get("active_sanp", "no")
     active_save = "yes" == params.get("active_save", "no")
+    check_state_lock = "yes" == params.get("check_state_lock", "no")
     rerun_flag = 0
 
     original_xml = vm.backup_xml()
@@ -280,6 +285,25 @@ def run(test, params, env):
                     check_xml(vm_name, target, dest_path, options)
                     if options.count("--bandwidth"):
                         utl.check_blockjob(vm_name, target, "bandwidth", bandwidth)
+                        if check_state_lock:
+                            # Run blockjob pivot in subprocess as it will hang
+                            # for a while, run blockjob info again to check
+                            # job state
+                            command = "virsh blockjob %s %s --pivot" % (vm_name,
+                                                                        target)
+                            session = aexpect.ShellSession(command)
+                            ret = virsh.blockjob(vm_name, target, "--info")
+                            err_info = "cannot acquire state change lock"
+                            if err_info in ret.stderr:
+                                err_log = "Hit on bug: https://bugzilla.redhat"
+                                err_log += ".com/show_bug.cgi?id=1134294"
+                                logging.error(err_log)
+                                # restart libvirtd as the domain state will not
+                                # change if hit on the bug
+                                libvirtd_utl = utils_libvirtd.Libvirtd()
+                                libvirtd_utl.restart()
+                            utl.check_exit_status(ret, status_error)
+                            session.close()
                     if options.count("--pivot") + options.count("--finish") == 0:
                         finish_job(vm_name, target, default_timeout)
                     if options.count("--raw"):
@@ -299,6 +323,12 @@ def run(test, params, env):
                                          debug=True)
                         utl.check_exit_status(ret, active_error)
                 else:
+                    err_msg = "internal error: unable to execute QEMU command"
+                    err_msg += " 'block-job-complete'"
+                    err_log = "Hit on bug: https://bugzilla.redhat.com/show_"
+                    err_log += "bug.cgi?id=1134294"
+                    if err_msg in cmd_result.stderr:
+                        logging.error(err_log)
                     raise error.TestFail(cmd_result.stderr)
             else:
                 if status:
