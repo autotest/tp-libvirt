@@ -1,9 +1,13 @@
 import os
 import logging
 from autotest.client.shared import error
-from virttest import virsh, libvirt_storage, data_dir, remote, aexpect
+from virttest import virsh
+from virttest import libvirt_storage
+from virttest import data_dir
+from virttest import remote
+from virttest import aexpect
 from virttest.libvirt_xml import pool_xml
-from virttest import utils_test
+from virttest.utils_test import libvirt
 
 
 def edit_pool(pool, edit_cmd):
@@ -16,7 +20,9 @@ def edit_pool(pool, edit_cmd):
     session = aexpect.ShellSession("sudo -s")
     try:
         session.sendline("virsh pool-edit %s" % pool)
+        logging.info("edit_cmd: %s", edit_cmd)
         for cmd in edit_cmd:
+            logging.info("cmd: %s", cmd)
             session.sendline(cmd)
         session.send('\x1b')
         session.send('ZZ')
@@ -30,19 +36,37 @@ def edit_pool(pool, edit_cmd):
                              % (details, log))
 
 
-def check_target_path(pool_name, edit_path):
+def check_pool(pool_name, check_point, expect_value=""):
     """
-    Check if the pool target path equal to the given path.
+    Check the pool after edit it.
 
-    :param pool_name: name of the pool.
-    :param edit_path: target path for pool edit.
+    :param pool_name: Name of the pool.
+    :param check_point: Which part for checking.
+    :param expect_value: New value for update.
+    :return: True if check pass or false if check fail.
     """
-    target_path = pool_xml.PoolXML.new_from_dumpxml(pool_name).target_path
-    if target_path == edit_path:
-        logging.debug("New target path take effect.")
+    try:
+        new_poolxml = pool_xml.PoolXML.new_from_dumpxml(pool_name)
+        logging.debug("After edit pool:")
+        new_poolxml.debug_xml()
+        if check_point == "pool_target_path":
+            actual_value = new_poolxml.target_path
+        elif check_point == "pool_format_type":
+            actual_value = new_poolxml.source.format_type
+        elif check_point == "pool_redefine":
+            # No exception means pool_name exist
+            return True
+        else:
+            logging.error("Unsupport check point %s", check_point)
+            return False
+    except Exception, e:
+        logging.error("Error occured: %s", e)
+        return False
+    if expect_value == actual_value:
+        logging.debug("Edit pool check pass")
         return True
     else:
-        logging.debug("New target path does not take effect.")
+        logging.error("Edit pool check not pass")
         return False
 
 
@@ -51,120 +75,119 @@ def run(test, params, env):
     Test command: virsh pool-edit.
 
     Edit the XML configuration for a storage pool('dir' type as default).
-    1) Edit the target path(mkdir).
-    2) Delete uuid, edit name and target(define a new pool).
+    1) Edit pool by different methods.
+    2) Check the edit result and cleanup env.
     """
 
     pool_ref = params.get("pool_ref", "name")
     pool_name = params.get("pool_name", "default")
     pool_uuid = params.get("pool_uuid", "")
-    new_pool_name = params.get("new_pool_name", "new_edit_pool")
     pool_exist = "yes" == params.get("pool_exist", "yes")
     status_error = "yes" == params.get("status_error", "no")
-    pool = pool_name
     pool_type = params.get("pool_type", "dir")
+    pool_target = os.path.join(data_dir.get_tmp_dir(),
+                               params.get("pool_target", "pool_target"))
     source_name = params.get("pool_source_name", "gluster-vol1")
     source_path = params.get("pool_source_path", "/")
-    # A flag for delete pool if it defined automatically
-    del_pool_flag = False
+    emulated_image = params.get("emulated_image", "emulated_image_disk")
+    edit_target = params.get("edit_target", "target_path")
+    redefine_pool_flag = False
+    pool = pool_name
     if pool_ref == "uuid":
         pool = pool_uuid
-    if pool_exist and not status_error:
-        pool = pool_name
-        libvirt_pool = libvirt_storage.StoragePool()
-        if libvirt_pool.pool_exists(pool_name):
-            logging.debug("Find pool '%s' to edit.", pool_name)
+    poolxml = pool_xml.PoolXML()
+    libvirt_pool = libvirt_storage.StoragePool()
+    poolvolune_test = libvirt.PoolVolumeTest(test, params)
+    check_pool_name = pool_name
+    new_path = ""
+    try:
+        if pool_exist and not status_error:
+            if libvirt_pool.pool_exists(pool_name):
+                logging.debug("Find pool '%s' to edit.", pool_name)
+                redefine_pool_flag = True
+            else:
+                logging.debug("Define pool '%s' as it not exist", pool_name)
+                if pool_type == "gluster":
+                    poolvolune_test.pre_pool(pool_name, pool_type, pool_target,
+                                             emulated_image,
+                                             source_name=source_name,
+                                             source_path=source_path)
+                else:
+                    poolvolune_test.pre_pool(pool_name, pool_type, pool_target,
+                                             emulated_image)
             if not pool_uuid and pool_ref == "uuid":
                 pool = libvirt_pool.get_pool_uuid(pool_name)
-        else:
-            logging.debug("Pool '%s' not exist, will define it automatically.")
-            if pool_type == "gluster":
-                cleanup_env = [False, False, False, "", False]
-                result = utils_test.libvirt.define_pool(pool_name, pool_type,
-                                                        "/tmp", cleanup_env,
-                                                        gluster_vol_number=0,
-                                                        gluster_source_path=source_path,
-                                                        gluster_source_name=source_name)
-            else:
-                result = virsh.pool_define_as(pool_name, 'dir', '/tmp')
-            if result.exit_status:
-                raise error.TestFail("Fail to define pool '%s'" % pool_name)
-            else:
-                del_pool_flag = True
-        try:
-            ori_xml = pool_xml.PoolXML.backup_xml(pool_name)
-            ori_poolxml = pool_xml.PoolXML()
-            ori_poolxml.xml = ori_xml
+            poolxml.xml = pool_xml.PoolXML().new_from_dumpxml(pool_name).xml
             logging.debug("Before edit pool:")
-            # format 2 positive tests
-            edit_test1 = {}
-            edit_test2 = {}
-            # edit test 1: Edit target path
-            if pool_type != "gluster":
-                edit_path1 = os.path.join(data_dir.get_tmp_dir(), "edit_pool")
-                os.mkdir(edit_path1)
-                edit_test1['type'] = "edit"
-                edit_test1['edit_cmd'] = [":%s/<path>.*</<path>" +
-                                          edit_path1.replace('/', '\/') + "<"]
-            else:
-                edit_test1['type'] = ""
-                edit_test1['edit_cmd'] = ""
+            poolxml.debug_xml()
 
-            # edit test 2: Delete uuid, edit pool name and target path
-            edit_test2['type'] = "define"
-            edit_cmd = []
-            edit_cmd.append(":g/<uuid>/d")
-            if pool_type != "gluster":
-                edit_path2 = os.path.join(data_dir.get_tmp_dir(), "new_pool")
-                os.mkdir(edit_path2)
-                edit_cmd.append(":%s/<path>.*</<path>" +
-                                edit_path2.replace('/', '\/') + "<")
-            edit_cmd.append(":%s/<name>" + pool_name + "</<name>" +
-                            new_pool_name + "<")
-            edit_test2['edit_cmd'] = edit_cmd
-            # run test
-            for edit_test in [edit_test1, edit_test2]:
-                edit_pool(pool, edit_test['edit_cmd'])
-                if edit_test['type'] == "edit":
-                    if pool_type != "gluster":
-                        edit_path = edit_path1
-                    if libvirt_pool.is_pool_active(pool_name):
-                        libvirt_pool.destroy_pool(pool_name)
-                if edit_test['type'] == "define":
-                    pool = new_pool_name
-                    if pool_type != "gluster":
-                        edit_path = edit_path2
-                edit_xml = pool_xml.PoolXML.backup_xml(pool)
-                edit_poolxml = pool_xml.PoolXML()
-                edit_poolxml.xml = edit_xml
-                logging.debug("After %s pool:", edit_test['type'])
-                edit_poolxml.debug_xml()
-                if pool_type != "gluster":
-                    if check_target_path(pool, edit_path):
-                        logging.info("Check pool target path pass.")
-                    else:
-                        logging.debug("Check pool target path fail.")
-                if not libvirt_pool.start_pool(pool):
-                    raise error.TestFail("Fail to start pool after edit it.")
-        finally:
-            if libvirt_pool.pool_exists(new_pool_name):
-                libvirt_pool.delete_pool(new_pool_name)
-            libvirt_pool.delete_pool(pool_name)
-            if not del_pool_flag:
-                ori_poolxml.pool_define()
-            if pool_type != "gluster":
-                os.rmdir(edit_path1)
-                os.rmdir(edit_path2)
+            expect_value = ""
+            # Test: Edit target path
+            if edit_target == "pool_target_path":
+                edit_cmd = []
+                new_path = os.path.join(data_dir.get_tmp_dir(), "new_path")
+                os.mkdir(new_path)
+                edit_cmd.append(":%s/<path>.*</<path>"
+                                + new_path.replace('/', '\/') + "<")
+                pool_target = new_path
+                expect_value = new_path
+            # Test: Edit disk pool format type:
+            elif edit_target == "pool_format_type":
+                edit_cmd = []
+                new_format_type = params.get("pool_format", "dos")
+                edit_cmd.append(":%s/<format type=.*\/>/<format type='"
+                                + new_format_type + "'\/>/")
+                expect_value = new_format_type
+            # Test: Refine(Delete uuid, edit pool name and target path)
+            elif edit_target == "pool_redefine":
+                edit_cmd = []
+                new_pool_name = params.get("new_pool_name", "new_edit_pool")
+                edit_cmd.append(":g/<uuid>/d")
+                new_path = os.path.join(data_dir.get_tmp_dir(), "new_pool")
+                os.mkdir(new_path)
+                edit_cmd.append(":%s/<path>.*</<path>"
+                                + new_path.replace('/', '\/') + "<")
+                edit_cmd.append(":%s/<name>" + pool_name + "</<name>" +
+                                new_pool_name + "<")
+                pool_target = new_path
+                check_pool_name = new_pool_name
+
             else:
-                utils_test.libvirt.setup_or_cleanup_gluster(False, source_name)
-    elif not pool_exist and not status_error:
-        raise error.TestFail("Conflict condition: pool not exist and expect "
-                             "pool edit succeed.")
-    else:
-        # negative test
-        output = virsh.pool_edit(pool)
-        if output.exit_status:
-            logging.info("Fail to do pool edit as expect: %s",
-                         output.stderr.strip())
+                raise error.TestNAError("No edit method for %s" % edit_target)
+
+            # run test and check the result
+            logging.info("pool=%s", pool)
+            edit_pool(pool, edit_cmd)
+            if libvirt_pool.is_pool_active(pool_name):
+                libvirt_pool.destroy_pool(pool_name)
+            if not libvirt_pool.start_pool(check_pool_name):
+                raise error.TestFail("Fail to start pool after edit it.")
+            if not check_pool(check_pool_name, edit_target, expect_value):
+                raise error.TestFail("Edit pool fail")
+        elif not pool_exist and not status_error:
+            raise error.TestFail("Conflict condition: pool not exist and expect "
+                                 "pool edit succeed.")
         else:
-            raise error.TestFail("Expect fail but do pool edit succeed.")
+            # negative test
+            output = virsh.pool_edit(pool)
+            if output.exit_status:
+                logging.info("Fail to do pool edit as expect: %s",
+                             output.stderr.strip())
+            else:
+                redefine_pool_flag = True
+                raise error.TestFail("Expect fail but do pool edit succeed.")
+    finally:
+        for pool in [pool_name, check_pool_name]:
+            if libvirt_pool.pool_exists(pool):
+                poolvolune_test.cleanup_pool(check_pool_name, pool_type,
+                                             pool_target, emulated_image,
+                                             source_name)
+        if redefine_pool_flag:
+            try:
+                name_s = "ss"
+                # poolxml could be empty if error happened when define pool
+                poolxml.pool_define()
+            finally:
+                logging.error("Recover pool %s failed", pool_name)
+        if os.path.exists(new_path):
+            os.rmdir(new_path)
