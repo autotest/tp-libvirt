@@ -1,8 +1,9 @@
 import re
 import logging
 from autotest.client.shared import error
-from virttest import virsh, utils_libvirtd, utils_net
+from virttest import virsh, utils_net
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 
 driver_dict = {'virtio': 'virtio_net', '-': '8139cp', 'e1000': 'e1000',
                'rtl8139': '8139cp'}
@@ -101,30 +102,59 @@ def run(test, params, env):
         if error_count > 0:
             raise error.TestFail("The test failed, consult previous error logs")
 
+    def add_iface(vm):
+        """
+        Attach interface for the vm
+        """
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
+        iface_source = params.get("iface_source", "default")
+        iface_type = params.get("iface_type", "network")
+        iface_model = params.get("iface_model", "virtio")
+        iface_mac = utils_net.generate_mac_address_simple()
+        at_options = (" --type %s --source %s --model %s --mac %s --config "
+                      % (iface_type, iface_source, iface_model, iface_mac))
+        ret = virsh.attach_interface(vm.name, at_options, ignore_status=True)
+        libvirt.check_exit_status(ret)
+        vm.start()
+
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
-    vm.verify_alive()
     domid = vm.get_id()
     domuuid = vm.get_uuid()
+    attach_iface = "yes" == params.get("attach_iface", "no")
+    vm_backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
-    # Get the virsh domiflist
-    options = params.get("domiflist_domname_options", "id")
-    additional_options = params.get("domiflist_extra_options", "")
-    status_error = params.get("status_error", "no")
+    try:
+        # Attach interface for testing.
+        if attach_iface:
+            add_iface(vm)
 
-    if options == "id":
-        options = domid
-    elif options == "uuid":
-        options = domuuid
-    elif options == "name":
-        options = vm_name
+        vm.verify_alive()
+        # Get the virsh domiflist
+        options = params.get("domiflist_domname_options", "id")
+        additional_options = params.get("domiflist_extra_options", "")
+        status_error = params.get("status_error", "no")
 
-    result = virsh.domiflist(options, additional_options, ignore_status=True)
+        if options == "id":
+            options = domid
+        elif options == "uuid":
+            options = domuuid
+        elif options == "name":
+            options = vm_name
 
-    if status_error == "yes":
-        if result.exit_status == 0:
-            raise error.TestFail("Run passed for incorrect command \nCommand: "
-                                 "virsh domiflist %s\nOutput Status:%s\n"
-                                 % (options, result.exit_status))
-    else:
-        check_output(result.stdout, vm)
+        result = virsh.domiflist(options, additional_options, ignore_status=True)
+
+        if status_error == "yes":
+            if result.exit_status == 0:
+                raise error.TestFail("Run passed for incorrect command \nCommand: "
+                                     "virsh domiflist %s\nOutput Status:%s\n"
+                                     % (options, result.exit_status))
+        else:
+            check_output(result.stdout, vm)
+
+    finally:
+        # Destroy vm after test.
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
+        vm_backup_xml.sync()
