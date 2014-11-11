@@ -2,7 +2,7 @@ import logging
 import os
 import re
 from autotest.client.shared import error
-from virttest import libvirt_vm, virsh
+from virttest import libvirt_vm, virsh, utils_net
 from virttest.libvirt_xml import vm_xml
 
 
@@ -43,6 +43,56 @@ def run(test, params, env):
         return virsh.domif_getlink(vm, device, options,
                                    ignore_status=True, debug=True)
 
+    def guest_if_state(if_name, session):
+        """
+        Get the domain link state from the guest
+        """
+        # Get link state by ethtool
+        cmd = "ethtool %s" % if_name
+        cmd_status, output = session.cmd_status_output(cmd)
+        logging.info("====%s==%s===", cmd_status, output)
+        link_state = re.search("Link detected: ([a-zA-Z]+)",
+                               output).group(1)
+        return link_state == "yes"
+
+    def check_update_device(vm, if_name, session):
+        """
+        Change link state by upadte-device command, Check the results
+        """
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+
+        # Get interface xml object
+        iface = vmxml.get_devices(device_type="interface")[0]
+        if iface.address:
+            del iface.address
+
+        # Change link state to up
+        iface.link_state = "up"
+        iface.xmltreefile.write()
+        ret = virsh.update_device(vm.name, iface.xml,
+                                  ignore_status=True, debug=True)
+        if ret.exit_status:
+            logging.error("Failed to update device to up state")
+            return False
+        if not guest_if_state(if_name, session):
+            logging.error("Guest link should be up now")
+            return False
+
+        # Change link state to down
+        iface.link_state = "down"
+        iface.xmltreefile.write()
+        ret = virsh.update_device(vm.name, iface.xml,
+                                  ignore_status=True, debug=True)
+        if ret.exit_status:
+            logging.error("Failed to update device to down state")
+            return False
+        if guest_if_state(if_name, session):
+            logging.error("Guest link should be down now")
+            return False
+
+        # Passed all test
+        return True
+
     vm_name = params.get("main_vm", "virt-tests-vm1")
     vm = env.get_vm(vm_name)
     options = params.get("if_options", "--config")
@@ -50,10 +100,11 @@ def run(test, params, env):
     if_device = params.get("if_device", "net")
     if_name = params.get("if_name", "vnet0")
     if_operation = params.get("if_operation", "up")
-    if_name_re = params.get("if_ifname_re",
-                            r"\s*\d+:\s+([[a-zA-Z]+\d+):")
     status_error = params.get("status_error", "no")
     mac_address = vm.get_virsh_mac_address(0)
+    check_link_state = "yes" == params.get("check_link_state", "no")
+    check_link_by_update_device = "yes" == params.get(
+        "excute_update_device", "no")
     device = "vnet0"
 
     # Back up xml file.
@@ -105,14 +156,24 @@ def run(test, params, env):
         # Serial login the vm to check link status
         # Start vm check the link statue
         session = vm.wait_for_serial_login()
-        cmd = ("ip add |grep -i '%s' -B1|grep -i 'state %s' "
-               % (mac_address, if_operation))
-        cmd_status, output = session.cmd_status_output(cmd)
-        logging.info("====%s==%s===", cmd_status, output)
+        guest_if_name = utils_net.get_linux_ifname(session, mac_address)
+
+        # Check link state in guest
+        if check_link_state:
+            if (if_operation == "up" and
+                    not guest_if_state(guest_if_name, session)):
+                error_msg = "Link state should be up in guest"
+            if (if_operation == "down" and
+                    guest_if_state(guest_if_name, session)):
+                error_msg = "Link state should be down in guest"
+
+        # Test of setting link state by update_device command
+        if check_link_by_update_device:
+            if not check_update_device(vm, guest_if_name, session):
+                error_msg = "Check update_device failed"
+
         # Set the link up make host connect with vm
         domif_setlink(vm_name, device, "up", "")
-        # Bring up referenced guest nic
-        guest_if_name = re.search(if_name_re, output).group(1)
         # Ignore status of this one
         cmd_status = session.cmd_status('ifdown %s' % guest_if_name)
         cmd_status = session.cmd_status('ifup %s' % guest_if_name)
