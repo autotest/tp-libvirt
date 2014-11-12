@@ -41,10 +41,6 @@ def run(test, params, env):
             except LibvirtXMLNotFoundError:
                 raise error.TestNAError("No <cpu> element in domain XML")
 
-        if modify_target in ['feature_name', 'feature_policy', 'delete']:
-            if len(libvirtxml.get_feature_list()) == 0:
-                raise error.TestNAError("No cpu feature for testing")
-
         if mode == "modify":
             if modify_target == "mode":
                 libvirtxml['mode'] = modify_value
@@ -82,113 +78,121 @@ def run(test, params, env):
     check_vm_ps_value = params.get("check_vm_ps_value")
     tmp_file = os.path.join(test.tmpdir, file_name)
 
-    if target == "guest":
-        vm_name = params.get("main_vm")
-        vm = env.get_vm(vm_name)
-        if vm.is_alive():
-            vm.destroy()
-        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        vmxml_backup = vmxml.copy()
+    vm_name = params.get("main_vm")
+    vm = env.get_vm(vm_name)
+    if vm.is_alive():
+        vm.destroy()
+    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    vmxml_backup = vmxml.copy()
     host_cpu_xml = capability_xml.CapabilityXML()
 
-    # Prepare temp compare file.
-    cpu_compare_xml = get_cpu_xml(target, mode)
-    cpu_compare_xml_f = open(tmp_file, 'w+b')
-    if mode == "clear":
-        cpu_compare_xml_f.truncate(0)
-    else:
-        cpu_compare_xml.xmltreefile.write(cpu_compare_xml_f)
-    cpu_compare_xml_f.seek(0)
-    logging.debug("CPU description XML:\n%s", cpu_compare_xml_f.read())
+    try:
+        # Prepare VM cpu feature if necessary
+        if modify_target in ['feature_name', 'feature_policy', 'delete']:
+            if len(vmxml['cpu'].get_feature_list()) == 0:
+                # Add a host feature to VM for testing
+                vmxml_cpu = vmxml['cpu'].copy()
+                vmxml_cpu.add_feature(host_cpu_xml.get_feature_name('-1'))
+                vmxml['cpu'] = vmxml_cpu
+                vmxml.sync()
 
-    # Expected possible result msg patterns and exit status
-    msg_patterns = ""
-    if not mode:
-        if target == "host":
-            msg_patterns = "identical"
+        # Prepare temp compare file.
+        cpu_compare_xml = get_cpu_xml(target, mode)
+        cpu_compare_xml_f = open(tmp_file, 'w+b')
+        if mode == "clear":
+            cpu_compare_xml_f.truncate(0)
         else:
-            # As we don't know the <cpu> element in domain,
-            # so just check command exit status
-            pass
-    elif mode == "delete":
-        if cpu_match == "strict":
-            msg_patterns = "incompatible"
-        else:
-            msg_patterns = "superset"
-    elif mode == "modify":
-        if modify_target == "mode":
-            if modify_invalid:
-                msg_patterns = "Invalid mode"
-        elif modify_target == "model":
-            if modify_invalid:
-                msg_patterns = "Unknown CPU model"
-        elif modify_target == "vendor":
-            if modify_invalid:
-                msg_patterns = "incompatible"
-        elif modify_target == "feature_name":
-            if modify_value == "REPEAT":
-                msg_patterns = "more than once"
-            elif modify_value == "ia64":
-                msg_patterns = "incompatible"
-            elif modify_invalid:
-                    msg_patterns = "Unknown"
-        elif modify_target == "feature_policy":
-            if modify_value == "forbid":
+            cpu_compare_xml.xmltreefile.write(cpu_compare_xml_f)
+        cpu_compare_xml_f.seek(0)
+        logging.debug("CPU description XML:\n%s", cpu_compare_xml_f.read())
+
+        # Expected possible result msg patterns and exit status
+        msg_patterns = ""
+        if not mode:
+            if target == "host":
+                msg_patterns = "identical"
+            else:
+                # As we don't know the <cpu> element in domain,
+                # so just check command exit status
+                pass
+        elif mode == "delete":
+            if cpu_match == "strict":
                 msg_patterns = "incompatible"
             else:
-                msg_patterns = "identical"
+                msg_patterns = "superset"
+        elif mode == "modify":
+            if modify_target == "mode":
+                if modify_invalid:
+                    msg_patterns = "Invalid mode"
+            elif modify_target == "model":
+                if modify_invalid:
+                    msg_patterns = "Unknown CPU model"
+            elif modify_target == "vendor":
+                if modify_invalid:
+                    msg_patterns = "incompatible"
+            elif modify_target == "feature_name":
+                if modify_value == "REPEAT":
+                    msg_patterns = "more than once"
+                elif modify_value == "ia64":
+                    msg_patterns = "incompatible"
+                elif modify_invalid:
+                        msg_patterns = "Unknown"
+            elif modify_target == "feature_policy":
+                if modify_value == "forbid":
+                    msg_patterns = "incompatible"
+                else:
+                    msg_patterns = "identical"
+            else:
+                raise error.TestNAError("Unsupport modify target %s in this "
+                                        "test" % mode)
+        elif mode == "clear":
+            msg_patterns = "empty"
+        elif mode == "invalid_test":
+            msg_patterns = ""
         else:
-            raise error.TestNAError("Unsupport modify target %s in this "
+            raise error.TestNAError("Unsupport modify mode %s in this "
                                     "test" % mode)
-    elif mode == "clear":
-        msg_patterns = "empty"
-    elif mode == "invalid_test":
-        msg_patterns = ""
-    else:
-        raise error.TestNAError("Unsupport modify mode %s in this "
-                                "test" % mode)
-    status_error = params.get("status_error", "")
-    if status_error == "yes":
-        expected_status = 1
-    elif status_error == "no":
-        expected_status = 0
-    else:
-        # If exit status is not specified in cfg, using msg_patterns
-        # to get expect exit status
-        if msg_patterns in ['identical', 'superset']:
-            expected_status = 0
-        else:
+        status_error = params.get("status_error", "")
+        if status_error == "yes":
             expected_status = 1
-        # Default guest cpu compare should pass
-        if not mode and target == "guest":
+        elif status_error == "no":
             expected_status = 0
-
-    if ref == "file":
-        ref = tmp_file
-    ref = "%s %s" % (ref, extra)
-
-    # Perform virsh cpu-compare operation.
-    result = virsh.cpu_compare(ref, ignore_status=True, debug=True)
-
-    if os.path.exists(tmp_file):
-        os.remove(tmp_file)
-    # Check result
-    logging.debug("Expect command exit status: %s", expected_status)
-    if result.exit_status != expected_status:
-        raise error.TestFail("Exit status %s is not expected"
-                             % result.exit_status)
-    if msg_patterns:
-        logging.debug("Expect key word in comand output: %s", msg_patterns)
-        if result.stdout.strip():
-            output = result.stdout.strip()
         else:
-            output = result.stderr.strip()
-        if not output.count(msg_patterns):
-            raise error.TestFail("Not find expect key word in command output")
+            # If exit status is not specified in cfg, using msg_patterns
+            # to get expect exit status
+            if msg_patterns in ['identical', 'superset']:
+                expected_status = 0
+            else:
+                expected_status = 1
+            # Default guest cpu compare should pass
+            if not mode and target == "guest":
+                expected_status = 0
 
-    # Check VM for cpu 'mode' related cases
-    if check_vm_ps:
-        try:
+        if ref == "file":
+            ref = tmp_file
+        ref = "%s %s" % (ref, extra)
+
+        # Perform virsh cpu-compare operation.
+        result = virsh.cpu_compare(ref, ignore_status=True, debug=True)
+
+        if os.path.exists(tmp_file):
+            os.remove(tmp_file)
+        # Check result
+        logging.debug("Expect command exit status: %s", expected_status)
+        if result.exit_status != expected_status:
+            raise error.TestFail("Exit status %s is not expected"
+                                 % result.exit_status)
+        if msg_patterns:
+            logging.debug("Expect key word in comand output: %s", msg_patterns)
+            if result.stdout.strip():
+                output = result.stdout.strip()
+            else:
+                output = result.stderr.strip()
+            if not output.count(msg_patterns):
+                raise error.TestFail("Not find expect key word in command output")
+
+        # Check VM for cpu 'mode' related cases
+        if check_vm_ps:
             vmxml['cpu'] = cpu_compare_xml
             vmxml.sync()
             virsh.start(vm_name, ignore_status=True, debug=True)
@@ -197,21 +201,25 @@ def run(test, params, env):
                 raise error.TestError("Could not get VM pid")
             with open("/proc/%d/cmdline" % vm_pid) as vm_cmdline_file:
                 vm_cmdline = vm_cmdline_file.read()
-            vm_cpu_features = ""
+            vm_features_str = ""
             # cmdline file is always separated by NUL characters('\x00')
             for item in vm_cmdline.split('\x00-'):
                 if item.count('cpu'):
-                    vm_cpu_features = item
-            logging.debug("VM cpu device: %s", vm_cpu_features)
-            expected_features = []
+                    vm_features_str = item
+            logging.debug("VM cpu device: %s", vm_features_str)
+            vm_features = []
+            for f in vm_features_str.split(','):
+                if f.startswith('+'):
+                    vm_features.append(f[1:])
+            host_features = []
             if check_vm_ps_value == 'CAPABILITY':
                 for feature in host_cpu_xml.get_feature_list():
-                    expected_features.append(feature.get('name'))
+                    host_features.append(feature.get('name'))
             else:
-                expected_features.append(check_vm_ps_value)
-            for feature in expected_features:
-                if feature not in vm_cpu_features:
-                    raise error.TestFail("Not find %s in VM process line"
+                host_features.append(check_vm_ps_value)
+            for feature in vm_features:
+                if feature not in host_features:
+                    raise error.TestFail("Not find %s in host capability"
                                          % feature)
-        finally:
-            vmxml_backup.sync()
+    finally:
+        vmxml_backup.sync()
