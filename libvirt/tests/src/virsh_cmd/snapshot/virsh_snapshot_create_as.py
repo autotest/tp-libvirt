@@ -11,7 +11,10 @@ from virttest import xml_utils
 from virttest import libvirt_xml
 from virttest import utils_config
 from virttest import utils_libvirtd
+from virttest import data_dir
 from virttest.libvirt_xml import vm_xml, xcepts
+from virttest.libvirt_xml.devices import disk
+from virttest.utils_test import libvirt
 from provider import libvirt_version
 
 
@@ -237,6 +240,8 @@ def check_snapslist(vm_name, options, option_dict, output,
                 if sfile == disk_dict['file']:
                     logging.info("get disk%d source file same as "
                                  "set in diskspec", num)
+                    if os.path.exists(sfile):
+                        os.unlink(sfile)
                 else:
                     raise error.TestFail("Get wrong disk%d source "
                                          "file %s" % num, sfile)
@@ -324,6 +329,16 @@ def run(test, params, env):
     unix_channel = "yes" == params.get("unix_channel", "yes")
     dac_denial = "yes" == params.get("dac_denial", "no")
     check_json_no_savevm = "yes" == params.get("check_json_no_savevm", "no")
+    disk_snapshot_attr = params.get('disk_snapshot_attr', 'external')
+    set_snapshot_attr = "yes" == params.get("set_snapshot_attr", "no")
+
+    # gluster related params
+    replace_vm_disk = "yes" == params.get("replace_vm_disk", "no")
+    disk_src_protocol = params.get("disk_source_protocol")
+    vol_name = params.get("vol_name")
+    tmp_dir = data_dir.get_tmp_dir()
+    pool_name = params.get("pool_name", "gluster-pool")
+    brick_path = os.path.join(tmp_dir, pool_name)
 
     uri = params.get("virsh_uri")
     usr = params.get('unprivileged_user')
@@ -331,10 +346,24 @@ def run(test, params, env):
         if usr.count('EXAMPLE'):
             usr = 'testacl'
 
+    if disk_src_protocol == 'iscsi':
+        if not libvirt_version.version_compare(1, 0, 4):
+            raise error.TestNAError("'iscsi' disk doesn't support in"
+                                    + " current libvirt version.")
+
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
             raise error.TestNAError("API acl test not supported in current"
                                     + " libvirt version.")
+
+    if not libvirt_version.version_compare(1, 2, 7):
+        # As bug 1017289 closed as WONTFIX, the support only
+        # exist on 1.2.7 and higher
+        if disk_src_protocol == 'gluster':
+            raise error.TestNAError("Snapshot on glusterfs not support in "
+                                    "current version. Check more info with "
+                                    "https://bugzilla.redhat.com/buglist.cgi?"
+                                    "bug_id=1017289,1032370")
 
     opt_names = locals()
     if memspec_opts is not None:
@@ -414,49 +443,51 @@ def run(test, params, env):
                           libvirtd_conf)
             libvirtd.restart()
 
+        if replace_vm_disk:
+            libvirt.set_vm_disk(vm, params, tmp_dir)
+
+        if set_snapshot_attr:
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
+            vmxml_new = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            disk_xml = vmxml_backup.get_devices(device_type="disk")[0]
+            vmxml_new.del_device(disk_xml)
+            # set snapshot attribute in disk xml
+            disk_xml.snapshot = disk_snapshot_attr
+            new_disk = disk.Disk(type_name='file')
+            new_disk.xmltreefile = disk_xml.xmltreefile
+            vmxml_new.add_device(new_disk)
+            logging.debug("The vm xml now is: %s" % vmxml_new.xmltreefile)
+            vmxml_new.sync()
+            vm.start()
+
         # Start qemu-ga on guest if have --quiesce
         if unix_channel and options.find("quiesce") >= 0:
-            if vm.is_alive():
-                vm.destroy()
-            virt_xml_obj = libvirt_xml.VMXML(virsh_instance=virsh)
-            virt_xml_obj.set_agent_channel(vm_name)
-            vm.start()
+            libvirt.set_guest_agent(vm)
             session = vm.wait_for_login()
-
-            # Check if qemu-ga already started automatically
-            cmd = "rpm -q qemu-guest-agent || yum install -y qemu-guest-agent"
-            stat_install = session.cmd_status(cmd, 300)
-            if stat_install != 0:
-                raise error.TestNAError("Fail to install qemu-guest-agent, "
-                                        "make sure that you have usable repo "
-                                        "in guest")
-
-            # Check if qemu-ga already started
-            stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
-            if stat_ps != 0:
-                if start_ga == "yes":
-                    session.cmd("qemu-ga -d")
-                    # Check if the qemu-ga really started
-                    stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
-                    if stat_ps != 0:
-                        raise error.TestNAError("Fail to run qemu-ga in guest")
-            else:
-                if start_ga == "no":
-                    # The qemu-ga could be running and should be killed
-                    session.cmd("kill -9 `pidof qemu-ga`")
-                    # Check if the qemu-ga get killed
+            if start_ga == "no":
+                # The qemu-ga could be running and should be killed
+                session.cmd("kill -9 `pidof qemu-ga`")
+                # Check if the qemu-ga get killed
+                stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
+                if not stat_ps:
+                    # As managed by systemd and set as autostart, qemu-ga
+                    # could be restarted, so use systemctl to stop it.
+                    session.cmd("systemctl stop qemu-guest-agent")
                     stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
                     if not stat_ps:
-                        # As managed by systemd and set as autostart, qemu-ga
-                        # could be restarted, so use systemctl to stop it.
-                        session.cmd("systemctl stop qemu-guest-agent")
-                        stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
-                        if not stat_ps:
-                            raise error.TestNAError("Fail to stop agent in "
-                                                    "guest")
+                        raise error.TestNAError("Fail to stop agent in "
+                                                "guest")
 
             if domain_state == "paused":
                 virsh.suspend(vm_name)
+        else:
+            # Remove channel if exist
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
+            xml_inst = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            xml_inst.remove_agent_channel(vm_name)
+            vm.start()
 
         # Record the previous snapshot-list
         snaps_before = virsh.snapshot_list(vm_name)
@@ -539,11 +570,16 @@ def run(test, params, env):
                                                          % (pattern, line))
 
     finally:
+        if vm.is_alive():
+            vm.destroy()
         # recover domain xml
         xml_recover(vmxml_backup)
         path = "/var/lib/libvirt/qemu/snapshot/" + vm_name
         if os.path.isfile(path):
             raise error.TestFail("Still can find snapshot metadata")
+
+        if disk_src_protocol == 'gluster':
+            libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
 
         # rm bad disks
         if bad_disk is not None:
@@ -554,10 +590,12 @@ def run(test, params, env):
                 disk_path = os.path.join(test.tmpdir, 'disk%s.qcow2' % i)
                 if os.path.exists(disk_path):
                     os.unlink(disk_path)
-                external_disk = "external_disk%s" % i
-                disk_path = os.path.join(test.tmpdir, params.get(external_disk))
-                if os.path.exists(disk_path):
-                    os.unlink(disk_path)
+                if reuse_external:
+                    external_disk = "external_disk%s" % i
+                    disk_path = os.path.join(test.tmpdir,
+                                             params.get(external_disk))
+                    if os.path.exists(disk_path):
+                        os.unlink(disk_path)
 
         # restore config
         if config_format and qemu_conf:
