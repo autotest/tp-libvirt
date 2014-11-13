@@ -2,8 +2,42 @@ import os
 import logging
 import tempfile
 from autotest.client.shared import error
+from autotest.client import utils
 from virttest import virsh, data_dir
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
+from virttest.libvirt_xml.devices.disk import Disk
+from provider import libvirt_version
+
+
+def check_chain_xml(disk_xml, chain_lst):
+    """
+    param disk_xml: disk xmltreefile
+    param chain_lst: list, expected backing chain list
+    return: True or False
+    """
+    logging.debug("expected backing chain list is %s", chain_lst)
+    src_file = disk_xml.find('source').get('file')
+    if src_file != chain_lst[0]:
+        logging.error("Current top img %s is not expected", src_file)
+        return False
+    for i in range(1, len(chain_lst)):
+        backing_xml = disk_xml.find('backingStore')
+        src_element = backing_xml.find('source')
+        src_file = None
+        for elem in ('file', 'name', 'dev'):
+            elem_val = src_element.get(elem)
+            if elem_val:
+                src_file = elem_val
+                break
+        if src_file != chain_lst[i]:
+            logging.error("backing store chain file %s is "
+                          "not expected" % src_file)
+            return False
+        disk_xml = disk_xml.reroot('backingStore')
+        logging.debug("after reroot the xml is %s", disk_xml)
+
+    return True
 
 
 def run(test, params, env):
@@ -24,6 +58,8 @@ def run(test, params, env):
         for count in range(1, 4):
             options = "snapshot%s snap%s-desc " \
                       "--disk-only --atomic --no-metadata" % (count, count)
+            if needs_agent:
+                options += " --quiesce"
 
             for disk in disks:
                 disk_detail = disks[disk]
@@ -60,18 +96,34 @@ def run(test, params, env):
     # Process cartesian parameters
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
-    session = vm.wait_for_login()
-
+    vm_state = params.get("vm_state", "running")
+    needs_agent = "yes" == params.get("needs_agent", "yes")
+    replace_vm_disk = "yes" == params.get("replace_vm_disk", "no")
     top_inactive = ("yes" == params.get("top_inactive"))
     with_timeout = ("yes" == params.get("with_timeout_option", "no"))
     status_error = ("yes" == params.get("status_error", "no"))
     base_option = params.get("base_option", "none")
     middle_base = "yes" == params.get("middle_base", "no")
+    pivot_opt = "yes" == params.get("pivot_opt", "no")
+    snap_in_mirror = "yes" == params.get("snap_in_mirror", "no")
+    snap_in_mirror_err = "yes" == params.get("snap_in_mirror_err", "no")
     virsh_dargs = {'debug': True}
+
+    # Process domain disk device parameters
+    disk_type = params.get("disk_type")
+    disk_src_protocol = params.get("disk_source_protocol")
+    vol_name = params.get("vol_name")
+    tmp_dir = data_dir.get_tmp_dir()
+    pool_name = params.get("pool_name", "gluster-pool")
+    brick_path = os.path.join(tmp_dir, pool_name)
+
+    if not top_inactive:
+        if not libvirt_version.version_compare(1, 2, 4):
+            raise error.TestNAError("live active block commit is not supported"
+                                    + " in current libvirt version.")
 
     # A backup of original vm
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    logging.debug("original xml is %s", vmxml_backup)
 
     # Abort the test if there are snapshots already
     exsiting_snaps = virsh.snapshot_list(vm_name)
@@ -79,22 +131,71 @@ def run(test, params, env):
         raise error.TestFail("There are snapshots created for %s already" %
                              vm_name)
 
+    snapshot_external_disks = []
     try:
-        # Get a tmp_dir.
-        tmp_dir = data_dir.get_tmp_dir()
+        if disk_src_protocol == 'iscsi' and disk_type == 'network':
+            if not libvirt_version.version_compare(1, 0, 4):
+                raise error.TestNAError("'iscsi' disk doesn't support in"
+                                        + " current libvirt version.")
+
+        # Set vm xml and guest agent
+        if replace_vm_disk:
+            libvirt.set_vm_disk(vm, params, tmp_dir)
+
+        if needs_agent:
+            libvirt.set_guest_agent(vm)
 
         # The first disk is supposed to include OS
         # We will perform blockcommit operation for it.
         first_disk = vm.get_first_disk_devices()
-
-        snapshot_external_disks = []
+        blk_source = first_disk['source']
+        blk_target = first_disk['target']
         snapshot_flag_files = []
+
+        # get a vm session before snapshot
+        session = vm.wait_for_login()
+        # do snapshot
         make_disk_snapshot()
 
+        # snapshot src file list
+        snap_src_lst = [blk_source]
+        snap_src_lst += snapshot_external_disks
+        backing_chain = ''
+        for i in reversed(range(4)):
+            if i == 0:
+                backing_chain += "%s" % snap_src_lst[i]
+            else:
+                backing_chain += "%s -> " % snap_src_lst[i]
+
+        logging.debug("The backing chain is: %s" % backing_chain)
+
+        # check snapshot disk xml backingStore is expected
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        disks = vmxml.devices.by_device_tag('disk')
+        disk_xml = None
+        for disk in disks:
+            if disk.target['dev'] != blk_target:
+                continue
+            else:
+                disk_xml = disk.xmltreefile
+                logging.debug("the target disk xml after snapshot is %s",
+                              disk_xml)
+                break
+
+        if not disk_xml:
+            raise error.TestFail("Can't find disk xml with target %s" %
+                                 blk_target)
+        elif libvirt_version.version_compare(1, 2, 4):
+            # backingStore element introuduced in 1.2.4
+            chain_lst = snap_src_lst[::-1]
+            ret = check_chain_xml(disk_xml, chain_lst)
+            if not ret:
+                raise error.TestFail("Domain image backing chain check failed")
+
+        # set blockcommit_options
         top_image = None
-        base_image = None
         blockcommit_options = "--wait --verbose"
-        basename = os.path.basename(first_disk['source'])
+        basename = os.path.basename(blk_source)
         diskname = basename.split(".")[0]
 
         if with_timeout:
@@ -104,43 +205,164 @@ def run(test, params, env):
             blockcommit_options += " --shallow"
         elif base_option == "base":
             if middle_base:
-                base_image = os.path.join(tmp_dir, "%s.snap1" %
+                blk_source = os.path.join(tmp_dir, "%s.snap1" %
                                           diskname)
-                blockcommit_options += " --base %s" % base_image
-            else:
-                blockcommit_options += " --base %s" % first_disk['source']
+            blockcommit_options += " --base %s" % blk_source
 
         if top_inactive:
             top_image = os.path.join(tmp_dir, "%s.snap2" %
                                      diskname)
             blockcommit_options += " --top %s" % top_image
+        else:
+            blockcommit_options += " --active"
+            if pivot_opt:
+                blockcommit_options += " --pivot"
+
+        if vm_state == "shut off":
+            vm.shutdown()
 
         # Run test case
-        result = virsh.blockcommit(vm_name, first_disk['target'],
+        result = virsh.blockcommit(vm_name, blk_target,
                                    blockcommit_options, **virsh_dargs)
-        status = result.exit_status
 
         # Check status_error
-        if status_error and status == 0:
-            raise error.TestFail("Expect fail, but run successfully!")
-        elif not status_error and status != 0:
-            raise error.TestFail("Run failed with right command")
-
-        # If top layer is active, virsh should be in failure,
-        # return not necessary to check
-        if not top_inactive:
+        libvirt.check_exit_status(result, status_error)
+        if result.exit_status and status_error:
             return
 
-        # Check flag files
-        for flag in snapshot_flag_files:
-            status, output = session.cmd_status_output("cat %s" % flag)
-            if status:
-                raise error.TestFail("blockcommit failed: %s" % output)
+        while True:
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
 
+            disks = vmxml.devices.by_device_tag('disk')
+            for disk in disks:
+                if disk.target['dev'] != blk_target:
+                    continue
+                else:
+                    disk_xml = disk.xmltreefile
+                    break
+
+            if not top_inactive:
+                disk_mirror = disk_xml.find('mirror')
+                if '--pivot' not in blockcommit_options:
+                    if disk_mirror is not None:
+                        job_type = disk_mirror.get('job')
+                        job_ready = disk_mirror.get('ready')
+                        src_element = disk_mirror.find('source')
+                        disk_src_file = None
+                        for elem in ('file', 'name', 'dev'):
+                            elem_val = src_element.get(elem)
+                            if elem_val:
+                                disk_src_file = elem_val
+                                break
+                        err_msg = "blockcommit base source "
+                        err_msg += "%s not expected" % disk_src_file
+                        if '--shallow' in blockcommit_options:
+                            if disk_src_file != snap_src_lst[2]:
+                                raise error.TestFail(err_msg)
+                        else:
+                            if disk_src_file != blk_source:
+                                raise error.TestFail(err_msg)
+                        if libvirt_version.version_compare(1, 2, 7):
+                            # The job attribute mentions which API started the
+                            # operation since 1.2.7.
+                            if job_type != 'active-commit':
+                                raise error.TestFail("blockcommit job type '%s'"
+                                                     " not expected" % job_type)
+                            if job_ready != 'yes':
+                                # The attribute ready, if present, tracks
+                                # progress of the job: yes if the disk is known
+                                # to be ready to pivot, or, since 1.2.7, abort
+                                # or pivot if the job is in the process of
+                                # completing.
+                                continue
+                            else:
+                                logging.debug("after active block commit job "
+                                              "ready for pivot, the target disk"
+                                              " xml is %s", disk_xml)
+                                break
+                        else:
+                            break
+                else:
+                    if disk_mirror is None:
+                        logging.debug(disk_xml)
+                        if "--shallow" in blockcommit_options:
+                            chain_lst = snap_src_lst[::-1]
+                            chain_lst.pop(0)
+                            ret = check_chain_xml(disk_xml, chain_lst)
+                            if not ret:
+                                raise error.TestFail("Domain image backing "
+                                                     "chain check failed")
+                        elif "--base" in blockcommit_options:
+                            chain_lst = snap_src_lst[::-1]
+                            base_index = chain_lst.index(blk_source)
+                            chain_lst = chain_lst[base_index:]
+                            ret = check_chain_xml(disk_xml, chain_lst)
+                            if not ret:
+                                raise error.TestFail("Domain image backing "
+                                                     "chain check failed")
+                        break
+                    else:
+                        # wait pivot after commit is synced
+                        continue
+            else:
+                logging.debug("after inactive commit the disk xml is: %s"
+                              % disk_xml)
+                if libvirt_version.version_compare(1, 2, 4):
+                    if "--shallow" in blockcommit_options:
+                        chain_lst = snap_src_lst[::-1]
+                        chain_lst.remove(top_image)
+                        ret = check_chain_xml(disk_xml, chain_lst)
+                        if not ret:
+                            raise error.TestFail("Domain image backing chain "
+                                                 "check failed")
+                    elif "--base" in blockcommit_options:
+                        chain_lst = snap_src_lst[::-1]
+                        top_index = chain_lst.index(top_image)
+                        base_index = chain_lst.index(blk_source)
+                        val_tmp = []
+                        for i in range(top_index, base_index):
+                            val_tmp.append(chain_lst[i])
+                        for i in val_tmp:
+                            chain_lst.remove(i)
+                        ret = check_chain_xml(disk_xml, chain_lst)
+                        if not ret:
+                            raise error.TestFail("Domain image backing chain "
+                                                 "check failed")
+                    break
+                else:
+                    break
+
+        # Check flag files
+        if not vm_state == "shut off":
+            for flag in snapshot_flag_files:
+                status, output = session.cmd_status_output("cat %s" % flag)
+                if status:
+                    raise error.TestFail("blockcommit failed: %s" % output)
+
+        if not pivot_opt and snap_in_mirror:
+            # do snapshot during mirror phase
+            snap_path = "%s/%s.snap" % (tmp_dir, vm_name)
+            snap_opt = "--disk-only --atomic --no-metadata "
+            snap_opt += "vda,snapshot=external,file=%s" % snap_path
+            snapshot_external_disks.append(snap_path)
+            cmd_result = virsh.snapshot_create_as(vm_name, snap_opt,
+                                                  ignore_statues=True,
+                                                  debug=True)
+            libvirt.check_exit_status(cmd_result, snap_in_mirror_err)
     finally:
+        if vm.is_alive():
+            vm.destroy()
+        # Recover xml of vm.
+        vmxml_backup.sync("--snapshots-metadata")
         for disk in snapshot_external_disks:
             if os.path.exists(disk):
                 os.remove(disk)
 
-        # Recover xml of vm.
-        vmxml_backup.sync()
+        if disk_src_protocol == 'iscsi':
+            libvirt.setup_or_cleanup_iscsi(is_setup=False)
+        elif disk_src_protocol == 'gluster':
+            libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
+        elif disk_src_protocol == 'netfs':
+            restore_selinux = params.get('selinux_status_bak')
+            libvirt.setup_or_cleanup_nfs(is_setup=False,
+                                         restore_selinux=restore_selinux)
