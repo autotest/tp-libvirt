@@ -22,12 +22,12 @@ def config_feature_pv_eoi(vmxml, **kwargs):
     if not libvirt_version.version_compare(0, 10, 2):
         raise error.TestNAError("PV eoi is not supported in current"
                                 " libvirt version")
-    qemu_flag = ''
+    qemu_flags = []
     eoi_enable = kwargs.get('eoi_enable', 'on')
     if eoi_enable == 'on':
-        qemu_flag = '+kvm_pv_eoi'
+        qemu_flags.append('+kvm_pv_eoi')
     elif eoi_enable == 'off':
-        qemu_flag = '-kvm_pv_eoi'
+        qemu_flags.append('-kvm_pv_eoi')
     else:
         logging.error("Invaild value %s, eoi_enable must be 'on' or 'off'",
                       eoi_enable)
@@ -41,7 +41,39 @@ def config_feature_pv_eoi(vmxml, **kwargs):
         vmxml.sync()
     except Exception, detail:
         logging.error("Update VM XML fail: %s", detail)
-    return qemu_flag
+    return qemu_flags
+
+
+def config_feature_memory_backing(vmxml, **kwargs):
+    """
+    Config libvirt VM XML to influence how virtual memory pages are backed
+    by host pages.
+
+    :param vmxml: VMXML instance
+    :param kwargs: Function keywords
+    :return: Corresponding feature flag in qem cmdline
+    """
+    # Both 'nosharepages' and 'locked' are supported since 1.0.6
+    if not libvirt_version.version_compare(1, 0, 6):
+        raise error.TestNAError("Element is not supported in current"
+                                " libvirt version")
+    qemu_flags = []
+    no_sharepages = "yes" == kwargs.get("nosharepages", "no")
+    locked = "yes" == kwargs.get("locked", "no")
+    if no_sharepages:
+        # On RHEL6, the flag is 'redhat-disable-KSM'
+        # On RHEL7 & Fedora, the flag is 'mem-merge=off'
+        qemu_flags.append(['mem-merge=off', 'redhat-disable-KSM'])
+    if locked:
+        qemu_flags.append("mlock=on")
+    try:
+        vm_xml.VMXML.set_memoryBacking_tag(vmxml.vm_name,
+                                           hpgs=False,
+                                           nosp=no_sharepages,
+                                           locked=locked)
+    except Exception, detail:
+        logging.error("Update VM XML fail: %s", detail)
+    return qemu_flags
 
 
 def run(test, params, env):
@@ -57,12 +89,14 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     expect_fail = "yes" == params.get("expect_start_vm_fail", "no")
     test_feature = params.get("test_feature")
-    test_feature_attr = params.get("test_feature_attr", '')
-    test_feature_valu = params.get("test_feature_valu", '')
     # All test case Function start with 'test_feature' prefix
     testcase = globals()['config_feature_%s' % test_feature]
+    test_feature_attr = params.get("test_feature_attr", '').split(",")
+    test_feature_valu = params.get("test_feature_valu", '').split(",")
     # Paramters for test case
-    test_dargs = {test_feature_attr: test_feature_valu}
+    if len(test_feature_attr) != len(test_feature_valu):
+        raise error.TestError("Attribute number not match with value number")
+    test_dargs = dict(zip(test_feature_attr, test_feature_valu))
     if vm.is_alive():
         vm.destroy()
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -70,7 +104,7 @@ def run(test, params, env):
     virsh_dargs = {'debug': True, 'ignore_status': False}
     try:
         # Run test case
-        qemu_flag = testcase(vmxml, **test_dargs)
+        qemu_flags = testcase(vmxml, **test_dargs)
         result = virsh.start(vm_name, **virsh_dargs)
         libvirt.check_exit_status(result, expect_fail)
 
@@ -81,9 +115,26 @@ def run(test, params, env):
         cmdline_f.close()
         logging.debug("VM cmdline:\n%s",
                       cmdline_content.replace('\x00', ' '))
-        if qemu_flag in cmdline_content:
-            logging.info("Find '%s' in qemu cmdline", qemu_flag)
-        else:
-            raise error.TestFail("Not find '%s' in qemu cmdline", qemu_flag)
+        msg = "Find '%s' in qemu cmdline? %s"
+        found_flags = []
+        index = 0
+        for flag in qemu_flags:
+            # Here, flag could be a list, so uniform it to list for next
+            # step check. And, check can pass if any element in the list
+            # exist in cmdline
+            if not isinstance(flag, list):
+                flag = [flag]
+            found_f = []
+            for f in flag:
+                if f in cmdline_content:
+                    found_f.append(True)
+                    break
+                else:
+                    found_f.append(False)
+            found_flags.append(any(found_f))
+            logging.info(msg % (flag, found_flags[index]))
+            index += 1
+        if False in found_flags:
+            raise error.TestFail("Not find all flags")
     finally:
         vmxml_backup.sync()
