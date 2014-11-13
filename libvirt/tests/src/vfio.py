@@ -3,7 +3,7 @@ import tempfile
 import re
 from autotest.client.shared import error
 from virttest import libvirt_vm, virsh, data_dir
-from virttest import remote, utils_misc, virt_vm, aexpect
+from virttest import remote, utils_misc, virt_vm
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
@@ -110,7 +110,7 @@ def get_windows_disks(vm):
     return disks
 
 
-def config_network(vm, interface, ip=None, mask="255.255.0.0"):
+def config_network(vm, interface, ip=None, mask="255.255.0.0", gateway=None):
     """
     Config new added interface IP.
     If ip is None, use dhcp.
@@ -138,6 +138,8 @@ def config_network(vm, interface, ip=None, mask="255.255.0.0"):
         lines.append("BOOTPROTO=static\n")
         lines.append("IPADDR=%s\n" % ip)
         lines.append("NETMASK=%s\n" % mask)
+        if gateway is not None:
+            lines.append("GATEWAY=%s\n" % gateway)
     else:
         lines.append("BOOTPROTO=dhcp\n")
     lines.append("ONBOOT=no\n")
@@ -206,6 +208,17 @@ def execute_ttcp(vm, params):
         session2.close()
 
 
+def remove_os_boot(vm_name, boot_order):
+    """
+    Remove boot elements in os tag ofr order in devices.
+    """
+    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    osxml = vmxml.os
+    osxml.boots = []
+    vmxml.os = osxml
+    vmxml.sync()
+
+
 def format_disk(vm, device, partsize):
     """
     Create a partition on given disk and check it.
@@ -260,6 +273,7 @@ def test_nic_group(vm, params):
     device_type = "Ethernet"
     nic_ip = params.get("nic_pci_ip")
     nic_mask = params.get("nic_pci_mask", "255.255.0.0")
+    nic_gateway = params.get("nic_pci_gateway")
 
     # Login vm to get interfaces before attaching pci device.
     if vm.is_dead():
@@ -279,6 +293,8 @@ def test_nic_group(vm, params):
         virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
                             flagstr="--config", debug=True,
                             ignore_status=False)
+        if boot_order:
+            remove_os_boot(vm.name, boot_order)
         logging.debug("VMXML with disk boot:\n%s", virsh.dumpxml(vm.name))
         vm.start()
     except (error.CmdError, virt_vm.VMStartError), detail:
@@ -288,10 +304,12 @@ def test_nic_group(vm, params):
     # VM shouldn't login under boot order 1
     if boot_order:
         try:
-            vm.wait_for_login()
+            boot_timeout = int(params.get("boot_timeout", 60))
+            vm.wait_for_login(timeout=boot_timeout)
             raise error.TestFail("Login vm successfully, but not expected.")
-        except aexpect.ShellSessionTimeout:
+        except remote.LoginTimeoutError:
             logging.debug("Expected failure.")
+            return
         finally:
             vm.destroy(gracefully=False)
             cleanup_devices(pci_id, device_type)
@@ -309,7 +327,7 @@ def test_nic_group(vm, params):
         if not new_pci or not new_interface:
             raise error.TestFail("Cannot find attached host device in vm.")
         # Config network for new interface
-        config_network(vm, new_interface, nic_ip, nic_mask)
+        config_network(vm, new_interface, nic_ip, nic_mask, nic_gateway)
         # Check interface
         execute_ttcp(vm, params)
     finally:
@@ -350,6 +368,8 @@ def test_fibre_group(vm, params):
         virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
                             flagstr="--config", debug=True,
                             ignore_status=False)
+        if boot_order:
+            remove_os_boot(vm.name, boot_order)
         logging.debug("VMXML with disk boot:\n%s", virsh.dumpxml(vm.name))
         vm.start()
     except (error.CmdError, virt_vm.VMStartError), detail:
@@ -359,10 +379,12 @@ def test_fibre_group(vm, params):
     # VM shouldn't login under boot order 1
     if boot_order:
         try:
-            vm.wait_for_login()
+            boot_timeout = int(params.get("boot_timeout", 60))
+            vm.wait_for_login(timeout=boot_timeout)
             raise error.TestFail("Login vm successfully, but not expected.")
-        except aexpect.ShellSessionTimeout:
+        except remote.LoginTimeoutError:
             logging.debug("Expected failure.")
+            return
         finally:
             vm.destroy(gracefully=False)
             cleanup_devices(pci_id, device_type)
@@ -454,6 +476,7 @@ def test_nic_fibre_group(vm, params):
 
     nic_ip = params.get("nic_pci_ip")
     nic_mask = params.get("nic_pci_mask", "255.255.0.0")
+    nic_gateway = params.get("nic_pci_gateway")
 
     # Login vm to get interfaces before attaching pci device.
     if vm.is_dead():
@@ -472,14 +495,14 @@ def test_nic_fibre_group(vm, params):
                   before_disks)
     vm.destroy()
 
-    nicxmlfile = utlv.create_hostdev_xml(nic_pci_id)
-    fibrexmlfile = utlv.create_hostdev_xml(fibre_pci_id)
     prepare_devices(nic_pci_id, "Ethernet")
     prepare_devices(fibre_pci_id, "Fibre")
     try:
+        nicxmlfile = utlv.create_hostdev_xml(nic_pci_id)
         virsh.attach_device(domain_opt=vm.name, file_opt=nicxmlfile,
                             flagstr="--config", debug=True,
                             ignore_status=False)
+        fibrexmlfile = utlv.create_hostdev_xml(fibre_pci_id)
         virsh.attach_device(domain_opt=vm.name, file_opt=fibrexmlfile,
                             flagstr="--config", debug=True,
                             ignore_status=False)
@@ -513,7 +536,7 @@ def test_nic_fibre_group(vm, params):
         if not new_pci_nic or not new_interface:
             raise error.TestFail("Cannot find attached host device in vm.")
         # Config network for new interface
-        config_network(vm, new_interface, nic_ip, nic_mask)
+        config_network(vm, new_interface, nic_ip, nic_mask, nic_gateway)
         # Check interface
         execute_ttcp(vm, params)
 
@@ -547,6 +570,7 @@ def test_nic_single(vm, params):
     device_type = "Ethernet"
     nic_ip = params.get("nic_pci_ip")
     nic_mask = params.get("nic_pci_mask", "255.255.0.0")
+    nic_gateway = params.get("nic_pci_gateway")
 
     # Login vm to get interfaces before attaching pci device.
     if vm.is_dead():
@@ -598,7 +622,7 @@ def test_nic_single(vm, params):
         if not new_pci or not new_interface:
             raise error.TestFail("Cannot find attached host device in vm.")
         # Config network for new interface
-        config_network(vm, new_interface, nic_ip, nic_mask)
+        config_network(vm, new_interface, nic_ip, nic_mask, nic_gateway)
         # Check interface
         execute_ttcp(vm, params)
     finally:
@@ -632,11 +656,6 @@ def run(test, params, env):
 
         if "yes" == params.get("primary_boot", "no"):
             params['boot_order'] = 1
-            vmxml = vm_xml.VMXML.new_from_dumpxml(new_vm.name)
-            osxml = vmxml.os
-            osxml.boots = []
-            vmxml.os = osxml
-            vmxml.sync()
         else:
             params['boot_order'] = 0
 
