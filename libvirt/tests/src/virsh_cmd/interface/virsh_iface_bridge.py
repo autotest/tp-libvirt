@@ -42,6 +42,7 @@ def run(test, params, env):
 
         net_iface = utils_net.Interface(name=iface_name)
         iface_is_up = net_iface.is_up()
+        iface_ip = net_iface.get_ip()
 
         # Back up the interface script
         utils.run("cp %s %s" % (iface_script, iface_script_bk))
@@ -90,6 +91,15 @@ def run(test, params, env):
                     br_ip = utils_net.get_ip_address_by_interface(bridge_name)
                 except:
                     br_ip = ""
+                # check IP of new bridge
+                if check_iface and br_ip and br_ip != iface_ip:
+                    raise error.Testfail("bridge IP(%s) isn't the same as iface IP(%s)."
+                                         % (br_ip, iface_ip))
+                # check the status of STP feature
+                if "no-start" not in bridge_option:
+                    if "no-stp" not in bridge_option:
+                        if "yes" != net_bridge.get_stp_status(bridge_name):
+                            raise error.Testfail("Fail to enable STP.")
                 # Do ping test only bridge has IP address and ping_ip not empty
                 if br_ip and ping_ip:
                     if not libvirt.check_iface(bridge_name, "ping", ping_ip,
