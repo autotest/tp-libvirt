@@ -84,6 +84,8 @@ def run(test, params, env):
     status = result.exit_status
     output = result.stdout.strip()
     err = result.stderr.strip()
+    if os.path.exists(cpu_xmlfile):
+        os.remove(cpu_xmlfile)
 
     # Check status_error
     if status_error:
@@ -135,5 +137,3 @@ def run(test, params, env):
             if vm.is_alive():
                 vm.destroy(gracefully=False)
             vmxml_backup.sync()
-            if os.path.exists(cpu_xmlfile):
-                os.remove(cpu_xmlfile)
