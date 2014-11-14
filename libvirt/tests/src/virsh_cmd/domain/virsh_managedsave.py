@@ -1,12 +1,12 @@
 import os
 import re
-import time
 import logging
 from autotest.client import utils
 from autotest.client.shared import error
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_config
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
@@ -131,17 +131,23 @@ def run(test, params, env):
         """
         Check start_dealy option for multiple guests.
         """
+        # Destroy vm first
         if vm.is_alive():
             vm.destroy(gracefully=False)
         # Clone given number of guests
+        try:
+            utils_misc.find_command("virt-clone")
+        except ValueError:
+            raise error.TestNAError("No virt-clone command found.")
         for i in range(int(guests)):
             cmd = ("virt-clone --original=%s --name=%s_%s --auto-clone"
                    % (vm_name, vm_name, i))
             utils.run(cmd)
             virsh.start("%s_%s" % (vm_name, i))
 
-        # Wait for vm to start
-        time.sleep(10)
+        # Wait 10 seconds for vm to start
+        wait_func = lambda: False
+        utils_misc.wait_for(wait_func, 10)
         libvirt_guests.restart()
         ret = utils.run("service libvirt-guests status",
                         ignore_status=True)
@@ -183,8 +189,9 @@ def run(test, params, env):
             raise error.TestFail("The exit code %s for libvirt-guests"
                                  " status is not correct" % ret)
 
-        # Wait for 5 seconds for suspending to complete
-        time.sleep(5)
+        # Wait for VM in shut off state
+        wait_func = lambda: vm.state() == "shut off"
+        utils_misc.wait_for(wait_func, 10)
         virsh_cmd = "service libvirt-guests start"
         check_flags_parallel(virsh_cmd, bash_cmd %
                              (managed_save_file, managed_save_file,
@@ -262,8 +269,6 @@ def run(test, params, env):
             logging.error(str(e))
             raise error.TestNAError("Build domain xml failed")
 
-    domid = vm.get_id()
-    domuuid = vm.get_uuid()
     status_error = ("yes" == params.get("status_error", "no"))
     vm_ref = params.get("managedsave_vm_ref", "name")
     libvirtd_state = params.get("libvirtd", "on")
@@ -289,18 +294,6 @@ def run(test, params, env):
             raise error.TestNAError("Older libvirt does not"
                                     " handle arguments consistently")
 
-    # run test case
-    if vm_ref == "id":
-        vm_ref = domid
-    elif vm_ref == "uuid":
-        vm_ref = domuuid
-    elif vm_ref == "hex_id":
-        vm_ref = hex(int(domid))
-    elif vm_ref.count("invalid"):
-        vm_ref = params.get(vm_ref)
-    elif vm_ref == "name":
-        vm_ref = vm_name
-
     # Backup xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     # Get the libvirtd service
@@ -312,6 +305,9 @@ def run(test, params, env):
     libvirt_guests = Factory.create_service("libvirt-guests")
 
     try:
+        # Destroy vm first for setting configuration file
+        if vm.state() == "running":
+            vm.destroy(gracefully=False)
         # Prepare test environment.
         if libvirtd_state == "off":
             libvirtd.stop()
@@ -322,6 +318,16 @@ def run(test, params, env):
             libvirtd.restart()
         if security_driver:
             qemu_config.security_driver = [security_driver]
+        if test_libvirt_guests:
+            if multi_guests:
+                start_delay = params.get("start_delay", "20")
+                libvirt_guests_config.START_DELAY = start_delay
+            if check_flags:
+                libvirt_guests_config.BYPASS_CACHE = "1"
+            # The config file format should be "x=y" instead of "x = y"
+            utils.run("sed -i -e 's/ = /=/g' "
+                      "/etc/sysconfig/libvirt-guests")
+            libvirt_guests.restart()
 
         # Change domain xml.
         if cpu_mode:
@@ -340,20 +346,38 @@ def run(test, params, env):
                 vmxml_backup.define()
                 raise error.TestNAError("Cann't create the domain")
 
-        # Wait for vm to stable state
-        if vm.state() == "running":
-            vm.wait_for_login()
+        # Wait for vm in stable state
+        if params.get("start_vm") == "yes":
+            if vm.state() == "shut off":
+                vm.start()
+                vm.wait_for_login()
+
+        # run test case
+        domid = vm.get_id()
+        domuuid = vm.get_uuid()
+        if vm_ref == "id":
+            vm_ref = domid
+        elif vm_ref == "uuid":
+            vm_ref = domuuid
+        elif vm_ref == "hex_id":
+            vm_ref = hex(int(domid))
+        elif vm_ref.count("invalid"):
+            vm_ref = params.get(vm_ref)
+        elif vm_ref == "name":
+            vm_ref = vm_name
 
         # Ignore exception with "ignore_status=True"
         if progress:
             option += " --verbose"
         option += extra_param
 
-        # For bypass_cache test.
-        bash_cmd = ("let i=1; while((i++<20)); do if [ -e %s ]; then (cat /proc"
+        # For bypass_cache test. Run a shell command to check fd flags while
+        # excuting managedsave command
+        bash_cmd = ("let i=1; while((i++<200)); do if [ -e %s ]; then (cat /proc"
                     "/$(lsof -w %s|awk '/libvirt_i/{print $2}')/fdinfo/*%s* |"
-                    "grep 'flags:.*%s') && break; else sleep 1; fi; done;")
-        flags = "014000"
+                    "grep 'flags:.*%s') && break; else sleep 0.1; fi; done;")
+        # Flags to check bypass cache take effect
+        flags = "014"
         if test_bypass_cache:
             # Drop caches.
             drop_caches()
@@ -361,28 +385,20 @@ def run(test, params, env):
             check_flags_parallel(virsh_cmd, bash_cmd %
                                  (managed_save_file, managed_save_file,
                                   "1", flags), flags)
-            time.sleep(10)
+            # Wait for VM in shut off state
+            wait_func = lambda: vm.state() == "shut off"
+            utils_misc.wait_for(wait_func, 10)
             virsh_cmd = "virsh start %s %s" % (option, vm_name)
             check_flags_parallel(virsh_cmd, bash_cmd %
                                  (managed_save_file, managed_save_file,
                                   "0", flags), flags)
         elif test_libvirt_guests:
+            logging.debug("libvirt-guests status: %s", libvirt_guests.status())
             if multi_guests:
-                start_delay = params.get("start_delay", "20")
-                # Config start_delay in libvirt-guests file
-                libvirt_guests_config.START_DELAY = start_delay
-                # The config file format should be "x=y" instead of "x = y"
-                utils.run("sed -i -e 's/ = /=/g' "
-                          "/etc/sysconfig/libvirt-guests")
                 check_multi_guests(multi_guests,
                                    start_delay, libvirt_guests)
 
             if check_flags:
-                # Config bypass_cache in libvirt-guests file
-                libvirt_guests_config.BYPASS_CACHE = "1"
-                # The config file format should be "x=y" instead of "x = y"
-                utils.run("sed -i -e 's/ = /=/g' "
-                          "/etc/sysconfig/libvirt-guests")
                 check_guest_flags(bash_cmd, flags)
 
         else:
