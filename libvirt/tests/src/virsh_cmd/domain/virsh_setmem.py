@@ -311,15 +311,27 @@ def run(test, params, env):
         if not libvirtd.is_running():
             libvirtd.start()
 
-    if status_error or old_libvirt_fail:
+    if status_error or (old_libvirt_fail & old_libvirt):
         logging.info("Error Test: Expecting an error to occur!")
 
     try:
+        memory_change = True
         if manipulate_dom_before_setmem:
             manipulate_domain(vm_name, manipulate_action)
+            if manipulate_action in ['save', 'managedsave', 's4']:
+                memory_change = False
 
         result = virsh.setmem(**dargs)
         status = result.exit_status
+
+        if status is 0:
+            logging.info(
+                "Waiting %d seconds for VM memory to settle", quiesce_delay)
+            # It takes time for kernel to settle on new memory
+            # and current clean pages is not predictable. Therefor,
+            # extremely difficult to determine quiescence, so
+            # sleep one second per error percent is reasonable option.
+            time.sleep(quiesce_delay)
 
         if manipulate_dom_before_setmem:
             manipulate_domain(vm_name, manipulate_action, True)
@@ -331,19 +343,9 @@ def run(test, params, env):
         if libvirt == "off":
             libvirtd.start()
 
-        if status is 0:
-            logging.info(
-                "Waiting %d seconds for VM memory to settle", quiesce_delay)
-            # It takes time for kernel to settle on new memory
-            # and current clean pages is not predictable. Therefor,
-            # extremely difficult to determine quiescence, so
-            # sleep one second per error percent is reasonable option.
-            time.sleep(quiesce_delay)
-
         # Gather stats if not running error test
-        memory_change = "yes" == params.get("memory_change", "yes")
         if not status_error and not old_libvirt_fail:
-            if not start_vm or not memory_change:
+            if not memory_change:
                 test_inside_mem = original_inside_mem
                 test_outside_mem = original_outside_mem
             else:
@@ -362,7 +364,9 @@ def run(test, params, env):
             if remove_balloon_driver:
                 expected_mem = original_outside_mem
             else:
-                if sizearg == "yes":
+                if not memory_change:
+                    expected_mem = original_inside_mem
+                elif sizearg == "yes":
                     expected_mem = int(dargs["sizearg"])
                 else:
                     expected_mem = int(dargs["size"])
@@ -387,7 +391,7 @@ def run(test, params, env):
                 raise error.TestFail(msg)
 
             return  # Normal test passed
-        elif not status_error and old_libvirt_fail == "yes":
+        elif not status_error and old_libvirt_fail:
             if status is 0:
                 if old_libvirt:
                     raise error.TestFail("Error test did not result in an error")
