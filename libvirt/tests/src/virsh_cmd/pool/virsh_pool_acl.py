@@ -61,7 +61,7 @@ def run(test, params, env):
     # Clean up flags:
     # cleanup_env[0] for nfs, cleanup_env[1] for iscsi, cleanup_env[2] for lvm
     # cleanup_env[3] for selinux backup status.
-    cleanup_env = [False, False, False, ""]
+    cleanup_env = [False, False, False, "", False]
     # libvirt acl related params
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
