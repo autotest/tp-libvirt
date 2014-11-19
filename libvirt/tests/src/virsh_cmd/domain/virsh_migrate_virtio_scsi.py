@@ -61,6 +61,20 @@ def run(test, params, env):
             raise error.TestFail("Checking attached devices failed:%s"
                                  % fail_list)
 
+    def get_disk_id(device):
+        """
+        Show disk by id.
+        """
+        output = utils.run("ls /dev/disk/by-id/").stdout
+        for line in output.splitlines():
+            disk_ids = line.split()
+            for disk_id in disk_ids:
+                disk = os.path.basename(utils.run("readlink %s"
+                                                  % disk_id).stdout)
+                if disk == os.path.basename(device):
+                    return disk_id
+        return None
+
     def cleanup_ssh_config(vm):
         session = vm.wait_for_login()
         session.cmd("rm -f ~/.ssh/authorized_keys")
@@ -110,9 +124,36 @@ def run(test, params, env):
         params['added_disk_type'] = "block"
         block_device = params.get("disk_block_device", "/dev/EXAMPLE")
         if block_device.count("EXAMPLE"):
-            raise error.TestNAError("Please provide block device for "
-                                    "this case first. It should be same "
-                                    "both on local and remote host.")
+            # Prepare host parameters
+            local_host = params.get("migrate_source_host", "LOCAL.EXAMPLE")
+            remote_host = params.get("migrate_dest_host", "REMOTE.EXAMPLE")
+            remote_user = params.get("migrate_dest_user", "root")
+            remote_passwd = params.get("migrate_dest_pwd")
+            if remote_host.count("EXAMPLE") or local_host.count("EXAMPLE"):
+                raise error.TestNAError("Config remote or local host first.")
+            rdm_params = {'remote_ip': remote_host,
+                          'remote_user': remote_user,
+                          'remote_pwd': remote_passwd}
+            rdm = utils_test.RemoteDiskManager(rdm_params)
+            # Try to build an iscsi device
+            # For local, target is a device name
+            target = utlv.setup_or_cleanup_iscsi(is_setup=True, is_login=True,
+                                                 emulated_image="emulated_iscsi")
+            logging.debug("Created target: %s", target)
+            try:
+                # Attach this iscsi device both local and remote
+                remote_device = rdm.iscsi_login_setup(local_host, target)
+            except Exception, detail:
+                utlv.setup_or_cleanup_iscsi(is_setup=False)
+                raise error.TestError("Attach iscsi device on remote failed:%s"
+                                      % detail)
+
+            # Use id to get same path on local and remote
+            block_device = get_disk_id(target)
+            if block_device is None:
+                rdm.iscsi_login_setup(local_host, target, is_login=False)
+                utlv.setup_or_cleanup_iscsi(is_setup=False)
+                raise error.TestError("Set iscsi device couldn't find id?")
 
     srcuri = params.get("virsh_migrate_srcuri")
     dsturi = params.get("virsh_migrate_dsturi")
@@ -290,6 +331,15 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
         virsh.undefine(new_vm_name)
+
+        # Cleanup iscsi device for block if it is necessary
+        if source_type == "block":
+            if params.get("disk_block_device",
+                          "/dev/EXAMPLE").count("EXAMPLE"):
+                rdm.iscsi_login_setup(local_host, target, is_login=False)
+                utlv.setup_or_cleanup_iscsi(is_setup=False,
+                                            emulated_image="emulated_iscsi")
+
         if runner:
             runner.session.close()
         utils.run("rm -f %s/*vsmtest" % created_img_path)
