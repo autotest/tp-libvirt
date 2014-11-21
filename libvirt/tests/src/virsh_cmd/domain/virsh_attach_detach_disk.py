@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 from autotest.client.shared import error
 from autotest.client.shared import utils
@@ -365,6 +366,8 @@ def run(test, params, env):
             # Run command tiwce to make sure cdrom tray open first #BZ892289
             # Open tray
             virsh.attach_device(domainarg=vm_name, filearg=eject_xml, debug=True)
+            # Add time sleep between two attach commands.
+            time.sleep(5)
             # Eject cdrom
             result = virsh.attach_device(domainarg=vm_name, filearg=eject_xml,
                                          debug=True)
