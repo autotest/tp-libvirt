@@ -1,9 +1,11 @@
 import os
 import re
-import shutil
 import logging
-from autotest.client.shared import utils, error
-from virttest import utils_misc, virsh, libvirt_storage, utils_test
+from autotest.client.shared import error
+from autotest.client import utils
+from virttest import utils_misc
+from virttest import virsh
+from virttest import libvirt_storage
 from virttest.libvirt_xml import vol_xml
 from virttest.utils_test import libvirt as utlv
 
@@ -25,52 +27,6 @@ def run(test, params, env):
     6. Delete the pool and target
     TODO: Handle negative testcases
     """
-
-    cleanup_env = [False, False, False, "", False]
-
-    def define_start_pool(pool_name, pool_type, pool_target, **kwargs):
-        """
-        To define a pool
-        """
-        if not os.path.isdir(pool_target):
-            os.makedirs(pool_target)
-        result = utlv.define_pool(pool_name, pool_type, pool_target,
-                                  cleanup_env, **kwargs)
-        if result.exit_status != 0:
-            raise error.TestFail("Command virsh pool-define-as"
-                                 " failed:\n%s" % result.stderr.strip())
-        else:
-            logging.debug("%s type pool: %s defined successfully",
-                          pool_type, pool_name)
-        sp = libvirt_storage.StoragePool()
-        if not sp.start_pool(pool_name):
-            raise error.TestFail("Start pool %s failed." % pool_name)
-        return True
-
-    def cleanup_pool(pool_name, pool_target):
-        """
-        Destroys, undefines and delete the pool target
-        """
-        if not libvirt_storage.StoragePool().delete_pool(pool_name):
-            raise error.TestFail("Delete pool %s failed." % pool_name)
-        try:
-            logging.debug(
-                "Deleting the pool target: %s directory", pool_target)
-            shutil.rmtree(pool_target)
-        except OSError, detail:
-            raise error.TestFail("Failed to delete the pool target directory"
-                                 "%s:\n %s" % (pool_target, detail))
-
-    def create_volume(expected_vol):
-        """
-        Creates Volume
-        """
-
-        pv = libvirt_storage.PoolVolume(expected_vol['pool_name'])
-        return pv.create_volume(expected_vol['name'],
-                                expected_vol['capacity'],
-                                expected_vol['allocation'],
-                                expected_vol['format'])
 
     def delete_volume(expected_vol):
         """
@@ -95,7 +51,6 @@ def run(test, params, env):
         vol = {}
         vols = []
         volume_detail = None
-        found = False
         for line in output.stdout.splitlines():
             match = re.search(rg, line.lstrip())
             if match is not None:
@@ -109,15 +64,7 @@ def run(test, params, env):
         for volume in vols:
             if volume['name'] == vol_name:
                 volume_detail = volume
-                found = True
-        return (found, volume_detail)
-
-    def get_vol_info(pool_name, vol_name):
-        """
-        Parse the volume info
-        """
-        pv = libvirt_storage.PoolVolume(pool_name)
-        return pv.volume_info(vol_name)
+        return volume_detail
 
     def norm_capacity(capacity):
         """
@@ -175,26 +122,28 @@ def run(test, params, env):
         """
         error_count = 0
         volume_xml = {}
-        (isavail, actual_list) = get_vol_list(expected['pool_name'],
-                                              expected['name'])
-        actual_info = get_vol_info(expected['pool_name'],
-                                   expected['name'])
-        if not avail:
-            if isavail:
+
+        pv = libvirt_storage.PoolVolume(expected['pool_name'])
+        pool_exists = pv.volume_exists(expected['name'])
+        if pool_exists:
+            if not avail:
                 error_count += 1
-                logging.error("Deleted vol: %s is still shown in vol-list",
+                logging.error("Expect volume %s not exists but find it",
                               expected['name'])
+                return error_count
+        else:
+            if avail:
+                error_count += 1
+                logging.error("Expect volume %s exists but not find it",
+                              expected['name'])
+                return error_count
             else:
                 logging.info("Volume %s checked successfully for deletion",
                              expected['name'])
                 return error_count
-        else:
-            if not isavail:
-                logging.error("Volume list does not show volume %s",
-                              expected['name'])
-                logging.error("Volume creation failed")
-                error_count += 1
 
+        actual_list = get_vol_list(expected['pool_name'], expected['name'])
+        actual_info = pv.volume_info(expected['name'])
         # Get values from vol-dumpxml
         volume_xml = vol_xml.VolXML.get_vol_details_by_name(expected['name'],
                                                             expected['pool_name'])
@@ -203,7 +152,8 @@ def run(test, params, env):
         vol_key = virsh.vol_key(expected['name'], expected['pool_name'])
         if vol_key.stdout.strip() != volume_xml['key']:
             logging.error("Volume key is mismatch \n%s"
-                          "Key from xml: %s\n Key from command: %s", expected['name'], volume_xml['key'], vol_key)
+                          "Key from xml: %s\nKey from command: %s",
+                          expected['name'], volume_xml['key'], vol_key)
             error_count += 1
         else:
             logging.debug("virsh vol-key for volume: %s successfully"
@@ -213,14 +163,14 @@ def run(test, params, env):
         get_vol_name = virsh.vol_name(expected['path'])
         if get_vol_name.stdout.strip() != expected['name']:
             logging.error("Volume name mismatch\n"
-                          "Expected name: %s\n Output of vol-name: %s",
+                          "Expected name: %s\nOutput of vol-name: %s",
                           expected['name'], get_vol_name)
 
         # Check against virsh vol-path
         vol_path = virsh.vol_path(expected['name'], expected['pool_name'])
         if expected['path'] != vol_path.stdout.strip():
             logging.error("Volume path mismatch for volume: %s\n"
-                          "Expected path: %s\n Output of vol-path: %s\n",
+                          "Expected path: %s\nOutput of vol-path: %s\n",
                           expected['name'],
                           expected['path'], vol_path)
             error_count += 1
@@ -229,22 +179,22 @@ def run(test, params, env):
                           " against created volume path", expected['name'])
 
         # Check path against virsh vol-list
-        if isavail:
-            if expected['path'] != actual_list['path']:
-                logging.error("Volume path mismatch for volume:%s\n"
-                              "Expected Path: %s\n Path from virsh vol-list: %s", expected[
-                                  'name'], expected['path'],
-                              actual_list['path'])
-                error_count += 1
-            else:
-                logging.debug("Path of volume: %s from virsh vol-list "
-                              "successfully checked against created "
-                              "volume path", expected['name'])
+        if expected['path'] != actual_list['path']:
+            logging.error("Volume path mismatch for volume:%s\n"
+                          "Expected Path: %s\nPath from virsh vol-list: %s",
+                          expected['name'], expected['path'],
+                          actual_list['path'])
+            error_count += 1
+        else:
+            logging.debug("Path of volume: %s from virsh vol-list "
+                          "successfully checked against created "
+                          "volume path", expected['name'])
 
         # Check path against virsh vol-dumpxml
         if expected['path'] != volume_xml['path']:
             logging.error("Volume path mismatch for volume: %s\n"
-                          "Expected Path: %s\n Path from virsh vol-dumpxml: %s", expected['name'], expected['path'], volume_xml['path'])
+                          "Expected Path: %s\nPath from virsh vol-dumpxml: %s",
+                          expected['name'], expected['path'], volume_xml['path'])
             error_count += 1
 
         else:
@@ -253,17 +203,16 @@ def run(test, params, env):
                           expected['name'])
 
         # Check type against virsh vol-list
-        if isavail:
-            if expected['type'] != actual_list['type']:
-                logging.error("Volume type mismatch for volume: %s\n"
-                              "Expected Type: %s\n Type from vol-list: %s",
-                              expected['name'],
-                              expected['type'], actual_list['type'])
-                error_count += 1
-            else:
-                logging.debug("Type of volume: %s from virsh vol-list "
-                              "successfully checked against the created "
-                              "volume type", expected['name'])
+        if expected['type'] != actual_list['type']:
+            logging.error("Volume type mismatch for volume: %s\n"
+                          "Expected Type: %s\n Type from vol-list: %s",
+                          expected['name'], expected['type'],
+                          actual_list['type'])
+            error_count += 1
+        else:
+            logging.debug("Type of volume: %s from virsh vol-list "
+                          "successfully checked against the created "
+                          "volume type", expected['name'])
 
         # Check type against virsh vol-info
         if expected['type'] != actual_info['Type']:
@@ -291,28 +240,32 @@ def run(test, params, env):
 
         # Check format from against qemu-img info
         img_info = utils_misc.get_image_info(expected['path'])
-        if expected['format'] != img_info['format']:
-            logging.error("Volume format mismatch for volume: %s\n"
-                          "Expected format: %s\n Format from qemu-img info: %s",
-                          expected['name'],
-                          expected['format'], img_info['format'])
-            error_count += 1
-        else:
-            logging.debug("Format of volume: %s from qemu-img info checked "
-                          "successfully against the created volume format",
-                          expected['name'])
+        if expected['format']:
+            if expected['format'] != img_info['format']:
+                logging.error("Volume format mismatch for volume: %s\n"
+                              "Expected format: %s\n"
+                              "Format from qemu-img info: %s",
+                              expected['name'], expected['format'],
+                              img_info['format'])
+                error_count += 1
+            else:
+                logging.debug("Format of volume: %s from qemu-img info "
+                              "checked successfully against the created "
+                              "volume format", expected['name'])
 
         # Check format against vol-dumpxml
-        if expected['format'] != volume_xml['format']:
-            logging.error("Volume format mismatch for volume: %s\n"
-                          "Expected format: %s\n Format from vol-dumpxml: %s",
-                          expected['name'],
-                          expected['format'], volume_xml['format'])
-            error_count += 1
-        else:
-            logging.debug("Format of volume: %s from virsh vol-dumpxml checked"
-                          " successfully against the created volume format",
-                          expected['name'])
+        if expected['format']:
+            if expected['format'] != volume_xml['format']:
+                logging.error("Volume format mismatch for volume: %s\n"
+                              "Expected format: %s\n"
+                              "Format from vol-dumpxml: %s",
+                              expected['name'], expected['format'],
+                              volume_xml['format'])
+                error_count += 1
+            else:
+                logging.debug("Format of volume: %s from virsh vol-dumpxml "
+                              "checked successfully against the created"
+                              " volume format", expected['name'])
 
         # Check pool name against vol-pool
         vol_pool = virsh.vol_pool(expected['path'])
@@ -331,7 +284,8 @@ def run(test, params, env):
         capacity['xml'] = volume_xml['capacity']
         capacity['qemu_img'] = img_info['vsize']
         norm_cap = norm_capacity(capacity)
-        if expected['capacity'] != norm_cap['list']:
+        delta_size = params.get('delta_size', "1024")
+        if abs(expected['capacity'] - norm_cap['list']) > delta_size:
             logging.error("Capacity mismatch for volume: %s against virsh"
                           " vol-list\nExpected: %s\nActual: %s",
                           expected['name'], expected['capacity'],
@@ -341,7 +295,7 @@ def run(test, params, env):
             logging.debug("Capacity value checked successfully against"
                           " virsh vol-list for volume %s", expected['name'])
 
-        if expected['capacity'] != norm_cap['info']:
+        if abs(expected['capacity'] - norm_cap['info']) > delta_size:
             logging.error("Capacity mismatch for volume: %s against virsh"
                           " vol-info\nExpected: %s\nActual: %s",
                           expected['name'], expected['capacity'],
@@ -351,7 +305,7 @@ def run(test, params, env):
             logging.debug("Capacity value checked successfully against"
                           " virsh vol-info for volume %s", expected['name'])
 
-        if expected['capacity'] != norm_cap['xml']:
+        if abs(expected['capacity'] - norm_cap['xml']) > delta_size:
             logging.error("Capacity mismatch for volume: %s against virsh"
                           " vol-dumpxml\nExpected: %s\nActual: %s",
                           expected['name'], expected['capacity'],
@@ -362,7 +316,7 @@ def run(test, params, env):
                           " virsh vol-dumpxml for volume: %s",
                           expected['name'])
 
-        if expected['capacity'] != norm_cap['qemu_img']:
+        if abs(expected['capacity'] - norm_cap['qemu_img']) > delta_size:
             logging.error("Capacity mismatch for volume: %s against "
                           "qemu-img info\nExpected: %s\nActual: %s",
                           expected['name'], expected['capacity'],
@@ -372,7 +326,6 @@ def run(test, params, env):
             logging.debug("Capacity value checked successfully against"
                           " qemu-img info for volume: %s",
                           expected['name'])
-
         return error_count
 
     # Initialize the variables
@@ -383,55 +336,72 @@ def run(test, params, env):
         pool_target = os.path.join(test.tmpdir, pool_target)
     vol_name = params.get("volume_name")
     vol_number = int(params.get("number_of_volumes", "2"))
-    capacity = int(params.get("volume_size", "1048576"))
-    allocation = int(params.get("volume_allocation", "1048576"))
+    capacity = params.get("volume_size", "1048576")
+    allocation = params.get("volume_allocation", "1048576")
     vol_format = params.get("volume_format")
     source_name = params.get("gluster_source_name", "gluster-vol1")
     source_path = params.get("gluster_source_path", "/")
-    expected_vol = {}
-    if pool_type == 'dir':
-        vol_type = 'file'
+    emulated_image = params.get("emulated_image")
+    emulated_image_size = params.get("emulated_image_size")
+    try:
+        str_capa = utils_misc.normalize_data_size(capacity, "B")
+        int_capa = int(str(str_capa).split('.')[0])
+    except ValueError:
+        raise error.TestError("Translate size %s to 'B' failed" % capacity)
+    try:
+        str_capa = utils_misc.normalize_data_size(allocation, "B")
+        int_allo = int(str(str_capa).split('.')[0])
+    except ValueError:
+        raise error.TestError("Translate size %s to 'B' failed" % allocation)
 
+    expected_vol = {}
+    vol_type = 'file'
+    if pool_type in ['disk', 'logical']:
+        vol_type = 'block'
     if pool_type == 'gluster':
         vol_type = 'network'
+    logging.debug("Debug:\npool_name:%s\npool_type:%s\npool_target:%s\n"
+                  "vol_name:%s\nvol_number:%s\ncapacity:%s\nallocation:%s\n"
+                  "vol_format:%s", pool_name, pool_type, pool_target,
+                  vol_name, vol_number, capacity, allocation, vol_format)
 
-        logging.debug("Debug:\npool_name:%s\npool_type:%s\npool_target:%s\n"
-                      "vol_name:%s\nvol_number:%s\ncapacity:%s\nallocation:%s\n"
-                      "vol_format:%s", pool_name, pool_type, pool_target,
-                      vol_name, vol_number, capacity, allocation, vol_format)
+    libv_pvt = utlv.PoolVolumeTest(test, params)
     # Run Testcase
     total_err_count = 0
     try:
-        # Define and start pool
-        define_start_pool(pool_name, pool_type, pool_target,
-                          gluster_source_name=source_name,
-                          gluster_source_path=source_path,
-                          gluster_file_name=vol_name,
-                          gluster_file_type=vol_format,
-                          gluster_file_size=capacity,
-                          gluster_vol_number=vol_number)
+        # Create a new pool
+        libv_pvt.pre_pool(pool_name=pool_name,
+                          pool_type=pool_type,
+                          pool_target=pool_target,
+                          emulated_image=emulated_image,
+                          image_size=emulated_image_size,
+                          source_name=source_name,
+                          source_path=source_path)
         for i in range(vol_number):
             volume_name = "%s_%d" % (vol_name, i)
-            # Build expected results
             expected_vol['pool_name'] = pool_name
             expected_vol['pool_type'] = pool_type
             expected_vol['pool_target'] = pool_target
-            expected_vol['name'] = volume_name
-            expected_vol['capacity'] = capacity
-            expected_vol['allocation'] = allocation
+            expected_vol['capacity'] = int_capa
+            expected_vol['allocation'] = int_allo
             expected_vol['format'] = vol_format
-            if pool_type == 'gluster':
-                ip_addr = utlv.get_host_ipv4_addr()
-                expected_vol['path'] = "gluster://%s/%s/%s" % \
-                                       (ip_addr, source_name,
-                                        volume_name)
-            else:
-                expected_vol['path'] = pool_target + '/' + volume_name
+            expected_vol['name'] = volume_name
             expected_vol['type'] = vol_type
             # Creates volume
             if pool_type != "gluster":
-                create_volume(expected_vol)
-            # Different Checks for volume
+                expected_vol['path'] = pool_target + '/' + volume_name
+                libv_pvt.pre_vol(volume_name, vol_format, capacity,
+                                 allocation, pool_name)
+            else:
+                ip_addr = utlv.get_host_ipv4_addr()
+                expected_vol['path'] = "gluster://%s/%s/%s" % (ip_addr,
+                                                               source_name,
+                                                               volume_name)
+                utils.run("qemu-img create -f %s %s %s" % (vol_format,
+                                                           expected_vol['path'],
+                                                           capacity))
+            virsh.pool_refresh(pool_name)
+            # Check volumes
             total_err_count += check_vol(expected_vol)
             # Delete volume and check for results
             delete_volume(expected_vol)
@@ -440,7 +410,9 @@ def run(test, params, env):
             raise error.TestFail("Test case failed due to previous errors.\n"
                                  "Check for error logs")
     finally:
-        cleanup_pool(pool_name, pool_target)
-        if cleanup_env[4]:
-            utils_test.libvirt.setup_or_cleanup_gluster(
-                False, source_name)
+        # Clean up
+        try:
+            libv_pvt.cleanup_pool(pool_name, pool_type, pool_target,
+                                  emulated_image, source_name)
+        except error.TestFail, detail:
+            logging.error(str(detail))
