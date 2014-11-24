@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import logging
 from autotest.client import utils
 from autotest.client.shared import error
@@ -125,47 +126,39 @@ def run(test, params, env):
         lines = re.findall(r"^flags:.+%s" % flags, output, re.M)
         logging.debug("Find lines: %s" % lines)
         if not lines:
-            raise error.TestFail("Check flags %s failed" % flags)
+            raise error.TestFail("Checking flags %s failed" % flags)
 
-    def check_multi_guests(guests, start_dealy, libvirt_guests):
+    def check_multi_guests(guests, start_delay, libvirt_guests):
         """
-        Check start_dealy option for multiple guests.
+        Check start_delay option for multiple guests.
         """
         # Destroy vm first
         if vm.is_alive():
             vm.destroy(gracefully=False)
         # Clone given number of guests
-        try:
-            utils_misc.find_command("virt-clone")
-        except ValueError:
-            raise error.TestNAError("No virt-clone command found.")
         for i in range(int(guests)):
-            cmd = ("virt-clone --original=%s --name=%s_%s --auto-clone"
-                   % (vm_name, vm_name, i))
-            utils.run(cmd)
-            virsh.start("%s_%s" % (vm_name, i))
+            dst_vm = "%s_%s" % (vm_name, i)
+            libvirt.clone_vm(vm_name, dst_vm)
+            virsh.start(dst_vm)
 
         # Wait 10 seconds for vm to start
-        wait_func = lambda: False
-        utils_misc.wait_for(wait_func, 10)
+        time.sleep(10)
         libvirt_guests.restart()
         ret = utils.run("service libvirt-guests status",
                         ignore_status=True)
         logging.info("status output: %s", ret.stdout)
-        pattern = r'.+(\d\d:\d\d:\d\d).+: Resuming guest.+done'
+        pattern = r'(.+ \d\d:\d\d:\d\d).+: Resuming guest.+done'
         resume_time = re.findall(pattern, ret.stdout, re.M)
         if not resume_time:
             raise error.TestFail("Can't see messages of resuming guest")
 
         # Convert time string to int
-        time_patten = [3600, 60, 1]
-        resume_seconds = [sum([a*b for a, b in zip(
-            time_patten, map(int, resume_time[i].split(':')))])
-            for i in range(len(resume_time))]
+        resume_seconds = [time.mktime(time.strptime(
+            tm, "%b %y %H:%M:%S")) for tm in resume_time]
         logging.info("Resume time in seconds: %s", resume_seconds)
         # Check if start_delay take effect
         for i in range(len(resume_seconds)-1):
-            if resume_seconds[i+1] - resume_seconds[i] < 20:
+            if resume_seconds[i+1] - resume_seconds[i] < int(start_delay):
                 raise error.TestFail("Checking start_delay failed")
 
     def check_guest_flags(bash_cmd, flags):
@@ -448,7 +441,7 @@ def run(test, params, env):
         if autostart_bypass_cache:
             virsh.autostart(vm_name, "--disable",
                             ignore_status=True)
-        if vm.is_alive:
+        if vm.is_alive():
             vm.destroy(gracefully=False)
         vmxml_backup.sync()
         if multi_guests:
