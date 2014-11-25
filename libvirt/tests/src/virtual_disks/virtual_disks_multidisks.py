@@ -8,6 +8,7 @@ from virttest import aexpect, virt_vm, virsh, remote
 from virttest import nfs
 from virttest import utils_libvirtd
 from virttest.utils_test import libvirt
+from virttest.utils_config import LibvirtQemuConfig
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.input import Input
@@ -137,7 +138,7 @@ def run(test, params, env):
 
         return disk
 
-    def check_disk_format(targets_name):
+    def check_disk_format(targets_name, targets_format):
         """
         Check VM disk's type.
 
@@ -145,9 +146,11 @@ def run(test, params, env):
         :return: True if check successfully.
         """
         logging.info("Checking VM disks type... ")
-        for target in targets_name:
-            if None != vm_xml.VMXML.get_disk_attr(vm_name, target,
-                                                  "driver", "type"):
+        for i in range(len(targets_name)):
+            disk_format = vm_xml.VMXML.get_disk_attr(vm_name,
+                                                     targets_name[i],
+                                                     "driver", "type")
+            if disk_format not in [None, targets_format[i]]:
                 return False
         return True
 
@@ -306,7 +309,7 @@ def run(test, params, env):
         Get console output and check bootorder.
         """
         # Get console output.
-        vm.serial_console.read_until_output_matches(["Booting from Hard Disk", "Linux version"])
+        vm.serial_console.read_until_output_matches(["login"])
         output = vm.serial_console.get_stripped_output()
         lines = re.findall(r"^Booting from (.+)...", output, re.M)
         logging.debug("lines: %s", lines)
@@ -454,7 +457,15 @@ def run(test, params, env):
         logical_block_size = params.get("logical_block_size")
         physical_block_size = params.get("physical_block_size")
 
-    # Destroy VM first.
+    if test_boot_console:
+        if vm.is_dead():
+            vm.start()
+        session = vm.wait_for_login()
+        # Setting console to kernel parameters
+        vm.set_kernel_console("ttyS0", "115200")
+        vm.shutdown()
+
+    # Destroy VM.
     if vm.is_alive():
         vm.destroy(gracefully=False)
 
@@ -468,16 +479,9 @@ def run(test, params, env):
         device_source_path = test.virtdir
 
     # Prepare test environment.
-    qemu_conf_bak = None
+    qemu_config = LibvirtQemuConfig()
     if test_disks_format:
-        qemu_conf = "/etc/libvirt/qemu.conf"
-        qemu_conf_bak = os.path.join(test.tmpdir, "qemu.conf.bak")
-        shutil.copy(qemu_conf, qemu_conf_bak)
-        cmd = ("sed -i '/^allow_disk_format_probing/d' %s;"
-               " echo 'allow_disk_format_probing = 1' >> %s"
-               % (qemu_conf, qemu_conf))
-        if utils.run(cmd, ignore_status=True).exit_status:
-            raise error.TestNAError("Enable disk format probing failed")
+        qemu_config.allow_disk_format_probing = True
         utils_libvirtd.libvirtd_restart()
 
     # Create virtual device file.
@@ -767,7 +771,7 @@ def run(test, params, env):
                 raise error.TestFail("Disks slots order error in domain xml")
 
         if test_disks_format:
-            if not check_disk_format(device_targets):
+            if not check_disk_format(device_targets, device_formats):
                 raise error.TestFail("Disks type error in VM xml")
 
         if test_boot_console:
@@ -814,7 +818,7 @@ def run(test, params, env):
             if serial != "":
                 cmd += " | grep serial=%s" % serial
             if wwn != "":
-                cmd += " | grep wwn=%s" % wwn
+                cmd += " | grep -E \"wwn=(0x)?%s\"" % wwn
             if vendor != "":
                 cmd += " | grep vendor=%s" % vendor
             if product != "":
@@ -995,11 +999,9 @@ def run(test, params, env):
         virsh.define(vm_xml_file)
         os.remove(vm_xml_file)
 
-        # Delete tmp files/disks.
-        if qemu_conf_bak:
-            shutil.copy(qemu_conf_bak, "/etc/libvirt/qemu.conf")
-            os.remove(qemu_conf_bak)
-            utils_libvirtd.libvirtd_restart()
+        # Restore qemu_config file.
+        qemu_config.restore()
+        utils_libvirtd.libvirtd_restart()
 
         for img in disks_img:
             os.remove(img["source"])
