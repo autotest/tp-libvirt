@@ -2,7 +2,8 @@ import logging
 import os
 import re
 from autotest.client.shared import error
-from virttest import libvirt_vm, virsh, utils_net
+from virttest import virsh
+from virttest import utils_net
 from virttest.libvirt_xml import vm_xml
 
 
@@ -50,7 +51,8 @@ def run(test, params, env):
         # Get link state by ethtool
         cmd = "ethtool %s" % if_name
         cmd_status, output = session.cmd_status_output(cmd)
-        logging.info("====%s==%s===", cmd_status, output)
+        logging.info("ethtool exit: %s, output: %s",
+                     cmd_status, output)
         link_state = re.search("Link detected: ([a-zA-Z]+)",
                                output).group(1)
         return link_state == "yes"
@@ -118,97 +120,98 @@ def run(test, params, env):
     elif start_vm == "no" and vm.is_alive():
         vm.destroy()
 
-    # Test device net or mac address
-    if if_device == "net" and vm.is_alive():
-        device = if_name
-        # Get all vm's interface device
-        device = vm_xml.VMXML.get_net_dev(vm_name)[0]
+    try:
+        # Test device net or mac address
+        if if_device == "net" and vm.is_alive():
+            device = if_name
+            # Get all vm's interface device
+            device = vm_xml.VMXML.get_net_dev(vm_name)[0]
 
-    elif if_device == "mac":
-        device = mac_address
+        elif if_device == "mac":
+            device = mac_address
 
-    # Setlink opertation
-    result = domif_setlink(vm_name, device, if_operation, options)
-    status = result.exit_status
-    logging.info("Setlink done")
+        # Setlink opertation
+        result = domif_setlink(vm_name, device, if_operation, options)
+        status = result.exit_status
+        logging.info("Setlink done")
 
-    # Getlink opertation
-    get_result = domif_getlink(vm_name, device, options)
-    getlink_output = get_result.stdout.strip()
+        # Getlink opertation
+        get_result = domif_getlink(vm_name, device, options)
+        getlink_output = get_result.stdout.strip()
 
-    # Check the getlink command output
-    if not re.search(if_operation, getlink_output) and status_error == "no":
-        raise error.TestFail("Getlink result should "
-                             "equal with setlink operation ", getlink_output)
+        # Check the getlink command output
+        if not re.search(if_operation, getlink_output) and status_error == "no":
+            raise error.TestFail("Getlink result should "
+                                 "equal with setlink operation ", getlink_output)
 
-    logging.info("Getlink done")
-    # If --config is given should restart the vm then test link status
-    if options == "--config" and vm.is_alive():
-        vm.destroy()
-        vm.start()
-        logging.info("Restart VM")
+        logging.info("Getlink done")
+        # If --config is given should restart the vm then test link status
+        if options == "--config" and vm.is_alive():
+            vm.destroy()
+            vm.start()
+            logging.info("Restart VM")
 
-    elif start_vm == "no":
-        vm.start()
+        elif start_vm == "no":
+            vm.start()
 
-    error_msg = None
-    if status_error == "no":
-        # Serial login the vm to check link status
-        # Start vm check the link statue
-        session = vm.wait_for_serial_login()
-        guest_if_name = utils_net.get_linux_ifname(session, mac_address)
+        error_msg = None
+        if status_error == "no":
+            # Serial login the vm to check link status
+            # Start vm check the link statue
+            session = vm.wait_for_serial_login()
+            guest_if_name = utils_net.get_linux_ifname(session, mac_address)
 
-        # Check link state in guest
-        if check_link_state:
-            if (if_operation == "up" and
-                    not guest_if_state(guest_if_name, session)):
-                error_msg = "Link state should be up in guest"
-            if (if_operation == "down" and
-                    guest_if_state(guest_if_name, session)):
-                error_msg = "Link state should be down in guest"
+            # Check link state in guest
+            if check_link_state:
+                if (if_operation == "up" and
+                        not guest_if_state(guest_if_name, session)):
+                    error_msg = "Link state should be up in guest"
+                if (if_operation == "down" and
+                        guest_if_state(guest_if_name, session)):
+                    error_msg = "Link state should be down in guest"
 
-        # Test of setting link state by update_device command
-        if check_link_by_update_device:
-            if not check_update_device(vm, guest_if_name, session):
-                error_msg = "Check update_device failed"
+            # Test of setting link state by update_device command
+            if check_link_by_update_device:
+                if not check_update_device(vm, guest_if_name, session):
+                    error_msg = "Check update_device failed"
 
-        # Set the link up make host connect with vm
-        domif_setlink(vm_name, device, "up", "")
-        # Ignore status of this one
-        cmd_status = session.cmd_status('ifdown %s' % guest_if_name)
-        cmd_status = session.cmd_status('ifup %s' % guest_if_name)
-        if cmd_status != 0:
-            error_msg = ("Could not bring up interface %s inside guest"
-                         % guest_if_name)
-    else:  # negative test
-        # stop guest, so state is always consistent on next start
-        vm.destroy()
+            # Set the link up make host connect with vm
+            domif_setlink(vm_name, device, "up", "")
+            # Ignore status of this one
+            cmd_status = session.cmd_status('ifdown %s' % guest_if_name)
+            cmd_status = session.cmd_status('ifup %s' % guest_if_name)
+            if cmd_status != 0:
+                error_msg = ("Could not bring up interface %s inside guest"
+                             % guest_if_name)
+        else:  # negative test
+            # stop guest, so state is always consistent on next start
+            vm.destroy()
 
-    # Recover VM.
-    if vm.is_alive():
-        vm.destroy(gracefully=False)
-    virsh.undefine(vm_name)
-    virsh.define(vm_xml_file)
-    os.remove(vm_xml_file)
+        if error_msg:
+            raise error.TestFail(error_msg)
 
-    if error_msg:
-        raise error.TestFail(error_msg)
+        # Check status_error
+        if status_error == "yes":
+            if status:
+                logging.info("Expected error (negative testing). Output: %s",
+                             result.stderr.strip())
 
-    # Check status_error
-    if status_error == "yes":
-        if status:
-            logging.info("Expected error (negative testing). Output: %s",
-                         result.stderr.strip())
+            else:
+                raise error.TestFail("Unexpected return code %d "
+                                     "(negative testing)" % status)
+        elif status_error == "no":
+            status = cmd_status
+            if status:
+                raise error.TestFail("Unexpected error (positive testing). "
+                                     "Output: %s" % result.stderr.strip())
 
         else:
-            raise error.TestFail("Unexpected return code %d "
-                                 "(negative testing)" % status)
-    elif status_error == "no":
-        status = cmd_status
-        if status:
-            raise error.TestFail("Unexpected error (positive testing). "
-                                 "Output: %s" % result.stderr.strip())
-
-    else:
-        raise error.TestError("Invalid value for status_error '%s' "
-                              "(must be 'yes' or 'no')" % status_error)
+            raise error.TestError("Invalid value for status_error '%s' "
+                                  "(must be 'yes' or 'no')" % status_error)
+    finally:
+        # Recover VM.
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
+        virsh.undefine(vm_name)
+        virsh.define(vm_xml_file)
+        os.remove(vm_xml_file)
