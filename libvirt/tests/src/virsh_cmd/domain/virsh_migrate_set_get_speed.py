@@ -156,6 +156,7 @@ def run(test, params, env):
         for vm_name in load_vm_names:
             load_vms.append(libvirt_vm.VM(vm_name, params, test.bindir,
                                           env.get("address_cache")))
+        params["load_vms"] = load_vms
 
         bandwidth = int(params.get("bandwidth", "4"))
         stress_type = params.get("stress_type", "load_vms_booting")
