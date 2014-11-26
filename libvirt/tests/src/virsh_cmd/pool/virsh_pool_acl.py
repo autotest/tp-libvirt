@@ -7,6 +7,7 @@ from autotest.client.shared import error
 from virttest import libvirt_storage
 from virttest import utils_test
 from virttest import virsh
+from virttest.libvirt_xml.pool_xml import PoolXML
 from provider import libvirt_version
 
 
@@ -58,6 +59,12 @@ def run(test, params, env):
     delete_error = "yes" == params.get("delete_error", "no")
     refresh_error = "yes" == params.get("refresh_error", "no")
     vol_list_error = "yes" == params.get("vol_list_error", "no")
+    dir_mode_check = "yes" == params.get("dir_mode_check", "no")
+    dir_original_mode = params.get("dir_original_mode")
+    if dir_mode_check:
+        if not os.path.exists(pool_target):
+            os.mkdir(pool_target)
+        utils.run("chmod %s %s" % (dir_original_mode, pool_target))
     # Clean up flags:
     # cleanup_env[0] for nfs, cleanup_env[1] for iscsi, cleanup_env[2] for lvm
     # cleanup_env[3] for selinux backup status, cleanup_env[4] for gluster
@@ -185,6 +192,24 @@ def run(test, params, env):
                 result = virsh.pool_build(pool_name, option,
                                           ignore_status=True)
                 check_exit_status(result)
+
+        # Check directory pool permission after build it
+        if dir_mode_check:
+            expect_mode = "0755"
+            expect_mode_s = "drwxr-xr-x"
+            xml_mode = PoolXML.new_from_dumpxml(pool_name).mode
+            dir_mode = utils.system_output("ls -dl %s" % pool_target)
+            if expect_mode_s in dir_mode:
+                logging.debug("%s mode is: %s", pool_target, dir_mode)
+            else:
+                raise error.TestFail("Unexpect mode of %s: %s" % pool_target,
+                                     expect_mode_s)
+            if xml_mode == expect_mode:
+                logging.debug("Target path mode in pool XML is: %s",
+                              expect_mode)
+            else:
+                raise error.TestFail("Unexpect mode of %s in pool XML:"
+                                     " %s" % pool_target, dir_mode)
 
         # Step (4)
         # Pool start
