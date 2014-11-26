@@ -158,7 +158,7 @@ def run(test, params, env):
         if attach_scsi_disk:
             shared_dir = os.path.dirname(shared_storage)
             scsi_disk = "%s/scsi_test.img" % shared_dir
-            utils.run("qemu-img create %s 100M" % scsi_disk)
+            utils.run("qemu-img create -f qcow2 %s 100M" % scsi_disk)
             s_attach = virsh.attach_disk(vm_name, scsi_disk, "sdb",
                                          extra_attach, debug=True)
             if s_attach.exit_status != 0:
