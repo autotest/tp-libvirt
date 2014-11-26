@@ -88,11 +88,12 @@ def run(test, params, env):
     result = virsh.migrate_compcache(vm_ref, size=size)
     logging.debug(result)
 
-    remote_uri = params.get("jobabort_remote_uri")
+    remote_uri = params.get("compcache_remote_uri")
     remote_host = params.get("migrate_dest_host")
     remote_user = params.get("migrate_dest_user", "root")
     remote_pwd = params.get("migrate_dest_pwd")
     check_job_compcache = False
+    compressed_size = None
     if not remote_host.count("EXAMPLE") and size is not None and expect_succeed:
         # Config ssh autologin for remote host
         ssh_key.setup_ssh_key(remote_host, remote_user,
@@ -103,27 +104,33 @@ def run(test, params, env):
             vm.resume()
         vm.wait_for_login()
         # Do actual migration to verify compression cache of migrate jobs
-        command = "virsh migrate %s %s --compressed" % (vm_name, remote_uri)
+        command = "virsh migrate %s %s --compressed --verbose" % (vm_name,
+                                                                  remote_uri)
+        logging.debug("Start migrating: %s", command)
         p = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
 
         # Give enough time for starting job
         t = 0
         while t < 5:
-            jobtype = vm.get_job_type()
-            if "None" == jobtype:
+            jobinfo = virsh.domjobinfo(vm_ref, debug=True,
+                                       ignore_status=True).stdout
+            jobtype = "None"
+            for line in jobinfo.splitlines():
+                key = line.split(':')[0]
+                if key.count("type"):
+                    jobtype = line.split(':')[-1].strip()
+                elif key.strip() == "Compression cache":
+                    compressed_size = line.split(':')[-1].strip()
+            if "None" == jobtype or compressed_size is None:
                 t += 1
                 time.sleep(1)
                 continue
-            elif jobtype is False:
-                logging.error("Get job type failed.")
-                break
             else:
+                check_job_compcache = True
                 logging.debug("Job started: %s", jobtype)
                 break
 
-        jobinfo = virsh.domjobinfo(vm_ref, debug=True, ignore_status=True).stdout
-        check_job_compcache = True
         if p.poll():
             try:
                 p.kill()
@@ -143,24 +150,24 @@ def run(test, params, env):
             raise error.TestFail(
                 'Expected succeed, but failed with result:\n%s' % result)
         if check_job_compcache:
-            for line in jobinfo.splitlines():
-                detail = line.split(":")
-                if detail[0].count("Compression cache"):
-                    value = detail[-1].split()[0].strip()
-                    value = int(float(value))
-                    unit = detail[-1].split()[-1].strip()
-                    if unit == "KiB":
-                        size = int(int(size) / 1024)
-                    elif unit == "MiB":
-                        size = int(int(size) / 1048576)
-                    elif unit == "GiB":
-                        size = int(int(size) / 1073741824)
-                    if value != size:
-                        raise error.TestFail("Compression cache is not match"
-                                             " with setted")
-                    else:
-                        return
-            raise error.TestFail("Get compression cahce in job failed.")
+            value = compressed_size.split()[0].strip()
+            unit = compressed_size.split()[-1].strip()
+            value = int(float(value))
+            if unit == "KiB":
+                size = int(int(size) / 1024)
+            elif unit == "MiB":
+                size = int(int(size) / 1048576)
+            elif unit == "GiB":
+                size = int(int(size) / 1073741824)
+            if value != size:
+                raise error.TestFail("Compression cache is not match"
+                                     " with setted")
+            else:
+                return
+            raise error.TestFail("Get compression cache in job failed.")
+        else:
+            logging.warn("The compressed size wasn't been verified "
+                         "during migration.")
     elif not expect_succeed:
         if result.exit_status == 0:
             raise error.TestFail(
