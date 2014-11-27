@@ -72,8 +72,8 @@ def run(test, params, env):
         vm.verify_kernel_crash()
         return True
 
-    vm_name = params.get("main_vm")
-    vm = env.get_vm(params["main_vm"])
+    vm_name = params.get("migrate_main_vm")
+    vm = env.get_vm(vm_name)
     vm.verify_alive()
 
     # For safety reasons, we'd better back up  xmlfile.
@@ -158,7 +158,7 @@ def run(test, params, env):
         if attach_scsi_disk:
             shared_dir = os.path.dirname(shared_storage)
             scsi_disk = "%s/scsi_test.img" % shared_dir
-            utils.run("qemu-img create %s 100M" % scsi_disk)
+            utils.run("qemu-img create -f qcow2 %s 100M" % scsi_disk)
             s_attach = virsh.attach_disk(vm_name, scsi_disk, "sdb",
                                          extra_attach, debug=True)
             if s_attach.exit_status != 0:
@@ -175,6 +175,15 @@ def run(test, params, env):
         if s_ping != 0:
             raise error.TestError("%s did not respond after %d sec."
                                   % (vm.name, delay))
+
+        # Prepare for --dname dest_exist_vm
+        if extra.count("dest_exist_vm"):
+            logging.debug("Preparing a new vm on destination for exist dname")
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+            vmxml.vm_name = extra.split()[1].strip()
+            del vmxml.uuid
+            # Define a new vm on destination for --dname
+            virsh.define(vmxml.xml, uri=dest_uri)
 
         # Prepare for --xml.
         logging.debug("Preparing new xml file for --xml option.")

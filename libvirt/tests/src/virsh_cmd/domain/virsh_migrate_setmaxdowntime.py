@@ -91,7 +91,7 @@ def run(test, params, env):
     # timeout of threads
     thread_timeout = 180
 
-    vm_name = params.get("main_vm")
+    vm_name = params.get("migrate_main_vm")
     vm = env.get_vm(vm_name)
     domuuid = vm.get_uuid()
     # Confirm vm is running

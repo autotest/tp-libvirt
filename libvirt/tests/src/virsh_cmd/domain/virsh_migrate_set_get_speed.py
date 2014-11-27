@@ -130,6 +130,9 @@ def run(test, params, env):
         src_uri = params.get("migrate_src_uri", "qemu+ssh://EXAMPLE/system")
         dest_uri = params.get("migrate_dest_uri", "qemu+ssh://EXAMPLE/system")
 
+        if not len(vms):
+            raise error.TestNAError("Please provide migrate_vms for test.")
+
         if src_uri.count('///') or src_uri.count('EXAMPLE'):
             raise error.TestNAError("The src_uri '%s' is invalid", src_uri)
 
@@ -153,6 +156,7 @@ def run(test, params, env):
         for vm_name in load_vm_names:
             load_vms.append(libvirt_vm.VM(vm_name, params, test.bindir,
                                           env.get("address_cache")))
+        params["load_vms"] = load_vms
 
         bandwidth = int(params.get("bandwidth", "4"))
         stress_type = params.get("stress_type", "load_vms_booting")
