@@ -55,6 +55,7 @@ def run(test, params, env):
     options_ref = params.get("options_ref", "")
     status_error = params.get("status_error", "no")
     boundary_test_skip = "yes" == params.get("boundary_test_skip")
+    update_exist_filter = "yes" == params.get("update_exist_filter", 'no')
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
@@ -67,6 +68,14 @@ def run(test, params, env):
         if params.get('setup_libvirt_polkit') == 'yes':
             raise error.TestNAError("API acl test not supported in current"
                                     + " libvirt version.")
+
+    if update_exist_filter:
+        # Since commit 46a811d, the logic changed for not allow update filter
+        # with same name, so decide status_error with libvirt version.
+        if libvirt_version.version_compare(1, 2, 7):
+            status_error = 'yes'
+        else:
+            status_error = 'no'
 
     # prepare rule and protocol attributes
     protocol = {}
