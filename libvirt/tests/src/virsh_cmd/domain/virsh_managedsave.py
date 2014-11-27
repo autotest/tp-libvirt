@@ -8,6 +8,7 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_config
 from virttest import utils_misc
+from virttest import utils_libguestfs
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
@@ -138,7 +139,7 @@ def run(test, params, env):
         # Clone given number of guests
         for i in range(int(guests)):
             dst_vm = "%s_%s" % (vm_name, i)
-            libvirt.clone_vm(vm_name, dst_vm)
+            utils_libguestfs.virt_clone_cmd(vm_name, dst_vm, True)
             virsh.start(dst_vm)
 
         # Wait 10 seconds for vm to start
