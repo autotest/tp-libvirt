@@ -104,8 +104,8 @@ def run(test, params, env):
             vm.resume()
         vm.wait_for_login()
         # Do actual migration to verify compression cache of migrate jobs
-        command = "virsh migrate %s %s --compressed --verbose" % (vm_name,
-                                                                  remote_uri)
+        command = ("virsh migrate %s %s --compressed --unsafe --verbose"
+                   % (vm_name, remote_uri))
         logging.debug("Start migrating: %s", command)
         p = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)

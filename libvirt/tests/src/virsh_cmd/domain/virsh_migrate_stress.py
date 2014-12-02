@@ -77,7 +77,8 @@ def do_stress_migration(vms, srcuri, desturi, stress_type,
         logging.warning("Add stress for migration failed:%s", fail_info)
 
     logging.debug("Starting migration...")
-    migrate_options = "--live --timeout %s" % params.get("virsh_migrate_timeout", 60)
+    migrate_options = ("--live --unsafe --timeout %s"
+                       % params.get("virsh_migrate_timeout", 60))
     migtest.do_migration(vms, srcuri, desturi, migration_type, options=migrate_options,
                          thread_timeout=thread_timeout)
 
