@@ -2,9 +2,11 @@ import os
 import re
 import logging
 from autotest.client.shared import error
+from autotest.client import utils
 from virttest import virt_vm, virsh
 from virttest import utils_net
 from virttest import utils_libguestfs
+from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.network_xml import NetworkXML
 from virttest.libvirt_xml.network_xml import DNSXML
@@ -53,6 +55,13 @@ def run(test, params, env):
 
         if net_domain:
             netxml.domain_name = net_domain
+        net_inbound = eval(net_bandwidth_inbound)
+        net_outbound = eval(net_bandwidth_outbound)
+        if net_inbound:
+            netxml.bandwidth_inbound = net_inbound
+        if net_outbound:
+            netxml.bandwidth_outbound = net_outbound
+
         ipxml = netxml.get_ip()
         if guest_name and guest_ip:
             ipxml.hosts = [{"mac": iface_mac,
@@ -67,6 +76,31 @@ def run(test, params, env):
         logging.debug("New network xml file: %s", netxml)
         netxml.xmltreefile.write()
         netxml.sync()
+
+    def modify_iface_xml():
+        """
+        Modify interface xml options
+        """
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        xml_devices = vmxml.devices
+        iface_index = xml_devices.index(
+            xml_devices.by_device_tag("interface")[0])
+        iface = xml_devices[iface_index]
+        iface_bandwidth = {}
+        iface_inbound = eval(iface_bandwidth_inbound)
+        iface_outbound = eval(iface_bandwidth_outbound)
+        if iface_inbound:
+            iface_bandwidth["inbound"] = iface_inbound
+        if iface_outbound:
+            iface_bandwidth["outbound"] = iface_outbound
+        if iface_bandwidth:
+            bandwidth = iface.new_bandwidth(**iface_bandwidth)
+            iface.bandwidth = bandwidth
+
+        logging.debug("New interface xml file: %s", iface)
+        vmxml.devices = xml_devices
+        vmxml.xmltreefile.write()
+        vmxml.sync()
 
     def run_dnsmasq_default_test(key, value=None, exists=True):
         """
@@ -119,6 +153,99 @@ def run(test, params, env):
             raise error.TestFail("Can't find host configuration"
                                  " in file %s" % conf_file)
 
+    def check_class_rules(ifname, rule_id, bandwidth):
+        """
+        Check bandwidth settings via 'tc class' output
+        """
+        cmd = "tc class show dev %s" % ifname
+        class_output = utils.run(cmd).stdout
+        logging.debug("Bandwidth class output: %s", class_output)
+        class_pattern = ("class htb %s.*rate (\d+)Kbit ceil"
+                         " (\d+)Kbit burst (\d+)(K?M?)b.*" % rule_id)
+        se = re.search(r"%s" % class_pattern, class_output, re.M)
+        if not se:
+            raise error.TestFail("Can't find outbound setting"
+                                 " for htb %s" % rule_id)
+        logging.debug("bandwidth from tc output:%s" % se.groups())
+        ceil = None
+        if bandwidth.has_key("floor"):
+            ceil = int(bandwidth["floor"]) * 8
+        elif bandwidth.has_key("average"):
+            ceil = int(bandwidth["average"]) * 8
+        if ceil:
+            assert int(se.group(1)) == ceil
+        if bandwidth.has_key("peak"):
+            assert int(se.group(2)) == int(bandwidth["peak"]) * 8
+        if bandwidth.has_key("burst"):
+            if se.group(4) == 'M':
+                tc_burst = int(se.group(3)) * 1024
+            else:
+                tc_burst = int(se.group(3))
+            assert tc_burst == int(bandwidth["burst"])
+
+    def check_filter_rules(ifname, bandwidth):
+        """
+        Check bandwidth settings via 'tc filter' output
+        """
+        cmd = "tc -d filter show dev %s parent ffff:" % ifname
+        filter_output = utils.run(cmd).stdout
+        logging.debug("Bandwidth filter output: %s", filter_output)
+        if not filter_output.count("filter protocol all pref"):
+            raise error.TestFail("Can't find 'protocol all' settings"
+                                 " in filter rules")
+        filter_pattern = ".*police.*rate (\d+)Kbit burst (\d+)Kb.*"
+        se = re.search(r"%s" % filter_pattern, filter_output, re.M)
+        if not se:
+            raise error.TestFail("Can't find any filter policy")
+        logging.debug("bandwidth from tc output:%s" % se.groups())
+        if bandwidth.has_key("average"):
+            assert int(se.group(1)) == int(bandwidth["average"]) * 8
+        if bandwidth.has_key("burst"):
+            assert int(se.group(2)) == int(bandwidth["burst"])
+
+    def run_bandwidth_test():
+        """
+        Test bandwidth option by tc command.
+        """
+        iface_inbound = eval(iface_bandwidth_inbound)
+        iface_outbound = eval(iface_bandwidth_outbound)
+        net_inbound = eval(net_bandwidth_inbound)
+        net_outbound = eval(net_bandwidth_outbound)
+        iface_name = libvirt.get_ifname_host(vm_name, iface_mac)
+
+        try:
+            if net_inbound:
+                # Check qdisc rules
+                cmd = "tc -d qdisc show dev %s" % net_bridge
+                qdisc_output = utils.run(cmd).stdout
+                logging.debug("Bandwidth qdisc output: %s", qdisc_output)
+                if not qdisc_output.count("qdisc ingress ffff:"):
+                    raise error.TestFail("Can't find ingress setting")
+                check_class_rules(net_bridge, "1:1",
+                                  {"average": net_inbound["average"],
+                                   "peak": net_inbound["peak"]})
+                check_class_rules(net_bridge, "1:2", net_inbound)
+
+            # Check filter rules on bridge interface
+            if net_outbound:
+                check_filter_rules(net_bridge, net_outbound)
+
+            # Check class rules on interface inbound settings
+            if iface_inbound:
+                check_class_rules(iface_name, "1:1",
+                                  {'average': iface_inbound['average'],
+                                   'peak': iface_inbound['peak'],
+                                   'burst': iface_inbound['burst']})
+                if iface_inbound.has_key("floor"):
+                    check_class_rules(net_bridge, "1:3",
+                                      {'floor': iface_inbound["floor"]})
+
+            # Check filter rules on interface outbound settings
+            if iface_outbound:
+                check_filter_rules(iface_name, iface_outbound)
+        except AssertionError:
+            raise error.TestFail("Failed to check network bandwidth")
+
     def check_name_ip(session):
         """
         Check dns resolving on guest
@@ -136,11 +263,12 @@ def run(test, params, env):
             raise error.TestFail("Can't resolve name %s on guest" %
                                  guest_name)
 
-    status_error = "yes" == params.get("status_error", "no")
     start_error = "yes" == params.get("start_error", "no")
+    restart_error = "yes" == params.get("restart_error", "no")
 
     # network specific attributes.
     net_name = params.get("net_name", "default")
+    net_bridge = params.get("net_bridge", "virbr0")
     net_domain = params.get("net_domain")
     net_dns_forward = params.get("net_dns_forward")
     net_dns_forwarders = params.get("net_dns_forwarders", "").split()
@@ -152,23 +280,36 @@ def run(test, params, env):
     guest_ip = params.get("guest_ip")
     dhcp_start = params.get("dhcp_start")
     dhcp_end = params.get("dhcp_end")
+    net_bandwidth_inbound = params.get("net_bandwidth_inbound", "{}")
+    net_bandwidth_outbound = params.get("net_bandwidth_outbound", "{}")
+    iface_bandwidth_inbound = params.get("iface_bandwidth_inbound", "{}")
+    iface_bandwidth_outbound = params.get("iface_bandwidth_outbound", "{}")
     multiple_guests = params.get("multiple_guests")
-    change_option = "yes" == params.get("change_net_option", "no")
+    change_net_option = "yes" == params.get("change_net_option", "no")
+    change_iface_option = "yes" == params.get("change_iface_option", "no")
     test_dnsmasq = "yes" == params.get("test_dnsmasq", "no")
     test_dhcp_range = "yes" == params.get("test_dhcp_range", "no")
     test_dns_host = "yes" == params.get("test_dns_host", "no")
+    test_qos_bandwidth = "yes" == params.get("test_qos_bandwidth", "no")
+    test_qos_remove = "yes" == params.get("test_qos_remove", "no")
 
-    # Set serial console for serial login
-    if vm.is_dead():
-        vm.start()
-    session = vm.wait_for_login()
-    # Setting console to kernel parameters
-    vm.set_kernel_console("ttyS0", "115200")
-    vm.shutdown()
+    if test_dhcp_range:
+        # Set serial console for serial login
+        if vm.is_dead():
+            vm.start()
+        session = vm.wait_for_login()
+        # Set console option
+        vm.set_kernel_console("ttyS0", "115200")
+        # Shutdown here for sync fs
+        vm.shutdown()
+    else:
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
 
     # Back up xml file.
     netxml_backup = NetworkXML.new_from_net_dumpxml(net_name)
     iface_mac = vm_xml.VMXML.get_first_mac_by_name(vm_name)
+    vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vms_list = []
 
     # Build the xml and run test.
@@ -182,9 +323,12 @@ def run(test, params, env):
                 run_dnsmasq_default_test("domain", net_domain, exists=False)
                 run_dnsmasq_default_test("expand-hosts", exists=False)
 
-        # Edit the interface xml.
-        if change_option:
+        # Edit the network xml.
+        if change_net_option:
             modify_net_xml()
+        # Edit the interface xml.
+        if change_iface_option:
+            modify_iface_xml()
 
         if multiple_guests:
             # Clone more vms for testing
@@ -247,10 +391,23 @@ def run(test, params, env):
             if guest_name and guest_ip:
                 check_name_ip(session)
 
+        # Run bandwidth test
+        if test_qos_bandwidth:
+            run_bandwidth_test()
+        if test_qos_remove:
+            # Remove the bandwidth settings in network xml
+            logging.debug("Removing network bandwidth settings...")
+            netxml_backup.sync()
+            vm.destroy(gracefully=False)
+            # Should fail to start vm
+            vm.start()
+            if restart_error:
+                raise error.TestFail("VM started unexpectedly")
+
         session.close()
     except virt_vm.VMStartError, e:
         logging.error(str(e))
-        if start_error:
+        if start_error or restart_error:
             pass
         else:
             raise error.TestFail('VM Failed to start for some reason!')
@@ -263,3 +420,4 @@ def run(test, params, env):
             virsh.remove_domain(vms.name, "--remove-all-storage")
         logging.info("Restoring network...")
         netxml_backup.sync()
+        vmxml_backup.sync()
