@@ -224,7 +224,7 @@ def run(test, params, env):
                            "test_option_offloads", "no")
 
     if iface_driver_host or iface_driver_guest:
-        if not libvirt_version.version_compare(1, 2, 8):
+        if not libvirt_version.version_compare(1, 2, 9):
             raise error.TestNAError("Offloading options not supported "
                                     " in this libvirt version")
 
@@ -285,16 +285,12 @@ def run(test, params, env):
         # Run tests for offloads options
         if test_option_offloads:
             if iface_driver_host:
-                ret = virsh.domiflist(vm_name, **virsh_dargs)
-                libvirt.check_exit_status(ret)
-                iface_list = libvirt.get_interface_details(ret.stdout)
-                for iface in iface_list:
-                    if iface["mac"] == iface_mac:
-                        check_offloads_option(iface["interface"],
-                                              eval(iface_driver_host))
+                ifname_host = libvirt.get_ifname_host(vm_name, iface_mac)
+                check_offloads_option(ifname_host,
+                                      eval(iface_driver_host))
             if iface_driver_guest:
-                if_name = utils_net.get_linux_ifname(session, iface_mac)
-                check_offloads_option(if_name, eval(iface_driver_guest),
+                ifname_guest = utils_net.get_linux_ifname(session, iface_mac)
+                check_offloads_option(ifname_guest, eval(iface_driver_guest),
                                       session)
 
         # Detach hot-plugged interface at last
