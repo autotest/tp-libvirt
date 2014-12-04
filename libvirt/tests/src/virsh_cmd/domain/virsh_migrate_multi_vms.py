@@ -8,7 +8,9 @@ import time
 from autotest.client.shared import error
 from autotest.client.shared import utils
 from autotest.client.shared import ssh_key
-from virttest import libvirt_vm, virsh
+from virttest import libvirt_vm
+from virttest import virsh
+from virttest import remote
 
 
 # To get result in thread, using global parameters
@@ -16,9 +18,12 @@ from virttest import libvirt_vm, virsh
 global ret_migration
 # Result of virsh domjobabort
 global ret_jobabort
+# If downtime is tolerable
+global ret_downtime_tolerable
 # True means command executed successfully
 ret_migration = True
 ret_jobabort = True
+ret_downtime_tolerable = True
 
 
 def make_migration_options(optionstr="", timeout=60):
@@ -75,6 +80,7 @@ class MigrationHelper(object):
         self.virsh_instance = None
         self.migration_cmd = None
         self.virsh_migrate_timeout = int(params.get("virsh_migrate_timeout", 60))
+        self.vm_ip = None
 
     def __str__(self):
         return "Migration VM %s, Command '%s'" % (self.vm_name,
@@ -129,13 +135,42 @@ def thread_func_migration(virsh_instance, cmd):
         ret_migration = False
 
 
+def thread_func_ping(lrunner, rrunner, vm_ip, tolerable=5):
+    """
+    Check connectivity during migration: Ping vm every second, check whether
+    the paused state is intolerable.
+    """
+    cmd = "ping -c 1 %s" % vm_ip
+    time1 = None    # Flag the time local vm is down
+    time2 = None    # Flag the time remote vm is up
+    timeout = 360   # In case thread is not killed at the end of test
+    global ret_downtime_tolerable
+    while timeout:
+        ls = lrunner.run(cmd, ignore_status=True).exit_status
+        rs = rrunner.run(cmd, ignore_status=True).exit_status
+        if ls and time1 is None:   # The first time local vm is not connective
+            time1 = int(time.time())
+        if not rs and time2 is None:  # The first time remote vm is connective
+            time2 = int(time.time())
+        if time1 is None or time2 is None:
+            time.sleep(1)
+            timeout -= 1
+        else:
+            if int(time2 - time1) > int(tolerable):
+                logging.debug("The time local vm is down: %s", time1)
+                logging.debug("The time remote vm is up: %s", time2)
+                ret_downtime_tolerable = False
+            break   # Got enough information, leaving thread anyway
+
+
 def thread_func_jobabort(vm):
     global ret_jobabort
     if not vm.domjobabort():
         ret_jobabort = False
 
 
-def multi_migration(helpers, simultaneous=False, jobabort=False, timeout=60):
+def multi_migration(helpers, simultaneous=False, jobabort=False,
+                    lrunner=None, rrunner=None, timeout=60):
     """
     Migrate multiple vms simultaneously or not.
     If jobabort is True, run "virsh domjobabort vm_name" during migration.
@@ -179,6 +214,9 @@ def multi_migration(helpers, simultaneous=False, jobabort=False, timeout=60):
             cmd = helper.migration_cmd
             migration_thread = threading.Thread(target=thread_func_migration,
                                                 args=(inst, cmd))
+            ping_thread = threading.Thread(target=thread_func_ping,
+                                           args=(lrunner, rrunner,
+                                                 helper.vm_ip))
             migration_thread.start()
             migration_thread.join(timeout)
             if migration_thread.isAlive():
@@ -219,6 +257,12 @@ def run(test, params, env):
     # Config ssh autologin for remote host
     ssh_key.setup_ssh_key(remote_host, host_user, host_passwd, port=22)
 
+    # Prepare local session and remote session
+    localrunner = remote.RemoteRunner(host=remote_host, username=host_user,
+                                      password=host_passwd)
+    remoterunner = remote.RemoteRunner(host=remote_host, username=host_user,
+                                       password=host_passwd)
+
     # Prepare MigrationHelper instance
     helpers = []
     for vm_name in vm_names:
@@ -232,13 +276,19 @@ def run(test, params, env):
         if vm.is_dead():
             vm.start()
         vm.wait_for_login()
+        # Used for checking downtime
+        helper.vm_ip = vm.get_address()
 
     try:
-        multi_migration(helpers, simultaneous=False, jobabort=False)
+        multi_migration(helpers, simultaneous=False, jobabort=False,
+                        lrunner=localrunner, rrunner=remoterunner)
     finally:
         for helper in helpers:
             helper.virsh_instance.close_session()
             helper.cleanup_vm(srcuri, desturi)
+
+        localrunner.session.close()
+        remoterunner.session.close()
 
         if not ret_migration:
             if not status_error:
@@ -246,3 +296,5 @@ def run(test, params, env):
         if not ret_jobabort:
             if not status_error:
                 raise error.TestFail("Abort migration failed.")
+        if not ret_downtime_tolerable:
+            raise error.TestFail("Downtime during migration is intolerable.")
