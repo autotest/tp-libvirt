@@ -28,7 +28,7 @@ def run(test, params, env):
     password = params.get("password")
     create_file = params.get("create_file_name")
     uri = params.get("virsh_uri")
-    unprivileged_user = params.get('unprivileged_user')
+    unprivileged_user = params.get('unprivileged_user', "EXAMPLE")
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
             unprivileged_user = 'testacl'

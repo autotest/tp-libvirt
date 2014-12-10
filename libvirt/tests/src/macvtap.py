@@ -18,13 +18,15 @@ def run(test, params, env):
     4. Recover environment
     """
     vm_names = params.get("vms").split()
-    remote_ip = params.get("remote_ip")
+    remote_ip = params.get("remote_ip", "ENTER.YOUR.REMOTE.IP")
     iface_mode = params.get("mode", "vepa")
-    eth_card_no = params.get("eth_card_no")
-    vm1_ip = params.get("vm1_ip")
-    vm2_ip = params.get("vm2_ip")
-    eth_config_file = params.get("eth_config_file")
-    persistent_net_file = params.get("persistent_net_file")
+    eth_card_no = params.get("eth_card_no", "ENTER.YOUR.DEV.NAME")
+    vm1_ip = params.get("vm1_ip", "ENTER.YOUR.GUEST1.IP")
+    vm2_ip = params.get("vm2_ip", "ENTER.YOUR.GUEST2.IP")
+    eth_config_file = params.get("eth_config_file",
+                                 "ENTER.YOUR.CONFIG.FILE.PATH")
+    persistent_net_file = params.get("persistent_net_file",
+                                     "ENTER.YOUR.RULE.FILE.PATH")
 
     param_keys = ["remote_ip", "vm1_ip", "vm2_ip", "eth_card_no",
                   "eth_config_file", "persistent_net_file"]

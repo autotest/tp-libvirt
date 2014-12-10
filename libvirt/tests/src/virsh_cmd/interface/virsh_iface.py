@@ -120,7 +120,7 @@ def run(test, params, env):
     careful.
     """
 
-    iface_name = params.get("iface_name")
+    iface_name = params.get("iface_name", "ENTER.BRIDGE.NAME")
     iface_xml = params.get("iface_xml")
     iface_type = params.get("iface_type", "ethernet")
     iface_pro = params.get("iface_pro", "")
@@ -140,7 +140,7 @@ def run(test, params, env):
         raise error.TestNAError("Please input a existing bridge/ethernet name")
 
     uri = params.get("virsh_uri")
-    unprivileged_user = params.get('unprivileged_user')
+    unprivileged_user = params.get('unprivileged_user', "EXAMPLE")
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
             unprivileged_user = 'testacl'
