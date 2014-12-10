@@ -171,7 +171,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     target = params.get("target_disk", "")
     replace_vm_disk = "yes" == params.get("replace_vm_disk", "no")
-    disk_src_protocol = params.get("disk_source_protocol")
+    copy_to_nfs = "yes" == params.get("copy_to_nfs", "no")
     mnt_path_name = params.get("mnt_path_name")
     # check the source disk
     if not target:
@@ -194,10 +194,8 @@ def run(test, params, env):
     rerun_flag = 0
 
     original_xml = vm.backup_xml()
-    # Domain disk replacement with desire type
+    new_xml = original_xml
     tmp_dir = data_dir.get_tmp_dir()
-    if replace_vm_disk:
-        utl.set_vm_disk(vm, params, tmp_dir)
 
     # Prepare dest path params
     dest_path = params.get("dest_path", "")
@@ -212,15 +210,9 @@ def run(test, params, env):
     if not dest_path:
         tmp_file = time.strftime("%Y-%m-%d-%H.%M.%S.img")
         tmp_file += dest_extension
-        if disk_src_protocol == "netfs":
+        if copy_to_nfs:
             tmp_dir = "%s/%s" % (tmp_dir, mnt_path_name)
         dest_path = os.path.join(tmp_dir, tmp_file)
-
-    # Prepare transient/persistent vm
-    if persistent_vm == "no" and vm.is_persistent():
-        vm.undefine()
-    elif persistent_vm == "yes" and not vm.is_persistent():
-        vm.define(original_xml)
 
     # Prepare for --reuse-external option
     if reuse_external:
@@ -251,6 +243,9 @@ def run(test, params, env):
         if params.get('setup_libvirt_polkit') == 'yes':
             raise error.TestNAError("API acl test not supported in current"
                                     + " libvirt version.")
+        if not copy_to_nfs:
+            raise error.TestNAError("Bug will not fix:"
+                                    " https://bugzilla.redhat.com/show_bug.cgi?id=924151")
 
     extra_dict = {'uri': uri, 'unprivileged_user': unprivileged_user,
                   'debug': True, 'ignore_status': True, 'timeout': timeout}
@@ -296,6 +291,17 @@ def run(test, params, env):
     snap_path = ''
     save_path = ''
     try:
+        # Domain disk replacement with desire type
+        if replace_vm_disk:
+            utl.set_vm_disk(vm, params, tmp_dir)
+            new_xml = vm.backup_xml()
+
+        # Prepare transient/persistent vm
+        if persistent_vm == "no" and vm.is_persistent():
+            vm.undefine()
+        elif persistent_vm == "yes" and not vm.is_persistent():
+            vm.define(new_xml)
+
         try:
             # Run blockcopy command
             if rerun_flag == 1:
@@ -389,12 +395,16 @@ def run(test, params, env):
 
         if vm.is_alive():
             vm.destroy(gracefully=False)
-            virsh.define(original_xml)
+        virsh.define(original_xml)
 
-        if disk_src_protocol == 'netfs':
+        if copy_to_nfs:
             restore_selinux = params.get('selinux_status_bak')
             utl.setup_or_cleanup_nfs(is_setup=False,
                                      restore_selinux=restore_selinux)
+        if os.path.exists(original_xml):
+            os.remove(original_xml)
+        if os.path.exists(new_xml):
+            os.remove(new_xml)
         if os.path.exists(dest_path):
             os.remove(dest_path)
         if os.path.exists(snap_path):
