@@ -102,11 +102,8 @@ def run(test, params, env):
             elif suspend_target == 'disk':
                 pm_xml.disk_enabled = pm_enabled
             elif suspend_target == 'hybrid':
-                if 'hybrid_enabled' in dir(pm_xml):
-                    pm_xml.hybrid_enabled = pm_enabled
-                else:
-                    raise error.TestNAError("PM suspend type 'hybrid' is not "
-                                            "supported yet.")
+                pm_xml.mem_enabled = pm_enabled
+                pm_xml.disk_enabled = pm_enabled
             vmxml.pm = pm_xml
         vmxml.sync()
 
