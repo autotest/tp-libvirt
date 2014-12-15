@@ -18,7 +18,6 @@ def run(test, params, env):
     unixbench_control_file = params.get("unixbench_controle_file",
                                         "unixbench5.control")
     # Run unixbench on guest.
-    guest_unixbench_pids = []
     params["test_control_file"] = unixbench_control_file
     # Fork a new process to run unixbench on each guest.
     for vm in vms:
@@ -57,8 +56,6 @@ def run(test, params, env):
             # Check VM is running normally.
             vm.wait_for_login()
     finally:
-        for pid in guest_unixbench_pids:
-            utils_misc.kill_process_tree(pid)
         # Destroy VM.
         for vm in vms:
             vm.destroy()
