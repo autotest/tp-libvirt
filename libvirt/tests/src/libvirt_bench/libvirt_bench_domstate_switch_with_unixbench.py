@@ -51,7 +51,6 @@ def run(test, params, env):
                                         "unixbench5.control")
     timeout = int(params.get("LB_domstate_with_unixbench_loop_time", "600"))
     # Run unixbench on guest.
-    guest_unixbench_pids = []
     params["test_control_file"] = unixbench_control_file
     # Fork a new process to run unixbench on each guest.
     for vm in vms:
