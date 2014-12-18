@@ -1,15 +1,14 @@
-import os
 import re
 import logging
 from autotest.client.shared import error
 from autotest.client import utils
 from virttest import virt_vm, virsh
 from virttest import utils_net
+from virttest import utils_misc
 from virttest import utils_libguestfs
 from virttest.utils_test import libvirt
-from virttest.libvirt_xml import vm_xml, xcepts
+from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.network_xml import NetworkXML
-from virttest.libvirt_xml.network_xml import DNSXML
 
 
 def run(test, params, env):
@@ -24,58 +23,6 @@ def run(test, params, env):
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
-    virsh_dargs = {'debug': True, 'ignore_status': True}
-
-    def modify_net_xml():
-        """
-        Modify network xml options
-        """
-        netxml = NetworkXML.new_from_net_dumpxml(net_name)
-        dns_dict = {}
-        host_dict = {}
-        if net_dns_forward:
-            dns_dict["dns_forward"] = net_dns_forward
-        if net_dns_txt:
-            dns_dict["txt"] = eval(net_dns_txt)
-        if net_dns_srv:
-            dns_dict["srv"] = eval(net_dns_srv)
-        if net_dns_forwarders:
-            dns_dict["forwarders"] = [eval(x) for x in net_dns_forwarders]
-        if net_dns_hostip:
-            host_dict["host_ip"] = net_dns_hostip
-        if net_dns_hostnames:
-            host_dict["hostnames"] = net_dns_hostnames
-
-        dns_obj = netxml.new_dns(**dns_dict)
-        if host_dict:
-            host = dns_obj.new_host(**host_dict)
-            dns_obj.host = host
-        netxml.dns = dns_obj
-        logging.debug("New dns xml: %s", dns_obj)
-
-        if net_domain:
-            netxml.domain_name = net_domain
-        net_inbound = eval(net_bandwidth_inbound)
-        net_outbound = eval(net_bandwidth_outbound)
-        if net_inbound:
-            netxml.bandwidth_inbound = net_inbound
-        if net_outbound:
-            netxml.bandwidth_outbound = net_outbound
-
-        ipxml = netxml.get_ip()
-        if guest_name and guest_ip:
-            ipxml.hosts = [{"mac": iface_mac,
-                            "name": guest_name,
-                            "ip": guest_ip}]
-        logging.debug("ipxml: %s" % ipxml)
-        if dhcp_start and dhcp_end:
-            ipxml.address = dhcp_start
-            ipxml.dhcp_ranges = {"start": dhcp_start, "end": dhcp_end}
-        netxml.set_ip(ipxml)
-
-        logging.debug("New network xml file: %s", netxml)
-        netxml.xmltreefile.write()
-        netxml.sync()
 
     def modify_iface_xml():
         """
@@ -97,6 +44,11 @@ def run(test, params, env):
             bandwidth = iface.new_bandwidth(**iface_bandwidth)
             iface.bandwidth = bandwidth
 
+        iface_source = params.get("iface_source")
+        if iface_source:
+            source = eval(iface_source)
+            if source:
+                iface.source = source
         logging.debug("New interface xml file: %s", iface)
         vmxml.devices = xml_devices
         vmxml.xmltreefile.write()
@@ -160,13 +112,13 @@ def run(test, params, env):
         cmd = "tc class show dev %s" % ifname
         class_output = utils.run(cmd).stdout
         logging.debug("Bandwidth class output: %s", class_output)
-        class_pattern = ("class htb %s.*rate (\d+)Kbit ceil"
+        class_pattern = (r"class htb %s.*rate (\d+)Kbit ceil"
                          " (\d+)Kbit burst (\d+)(K?M?)b.*" % rule_id)
-        se = re.search(r"%s" % class_pattern, class_output, re.M)
+        se = re.search(class_pattern, class_output, re.M)
         if not se:
             raise error.TestFail("Can't find outbound setting"
                                  " for htb %s" % rule_id)
-        logging.debug("bandwidth from tc output:%s" % se.groups())
+        logging.debug("bandwidth from tc output:%s" % str(se.groups()))
         ceil = None
         if bandwidth.has_key("floor"):
             ceil = int(bandwidth["floor"]) * 8
@@ -197,53 +149,55 @@ def run(test, params, env):
         se = re.search(r"%s" % filter_pattern, filter_output, re.M)
         if not se:
             raise error.TestFail("Can't find any filter policy")
-        logging.debug("bandwidth from tc output:%s" % se.groups())
+        logging.debug("bandwidth from tc output:%s" % str(se.groups()))
         if bandwidth.has_key("average"):
             assert int(se.group(1)) == int(bandwidth["average"]) * 8
         if bandwidth.has_key("burst"):
             assert int(se.group(2)) == int(bandwidth["burst"])
 
-    def run_bandwidth_test():
+    def run_bandwidth_test(check_net=False, check_iface=False):
         """
-        Test bandwidth option by tc command.
+        Test bandwidth option for network or interface by tc command.
         """
         iface_inbound = eval(iface_bandwidth_inbound)
         iface_outbound = eval(iface_bandwidth_outbound)
         net_inbound = eval(net_bandwidth_inbound)
         net_outbound = eval(net_bandwidth_outbound)
+        net_bridge_name = eval(net_bridge)["name"]
         iface_name = libvirt.get_ifname_host(vm_name, iface_mac)
 
         try:
-            if net_inbound:
+            if check_net and net_inbound:
                 # Check qdisc rules
-                cmd = "tc -d qdisc show dev %s" % net_bridge
+                cmd = "tc -d qdisc show dev %s" % net_bridge_name
                 qdisc_output = utils.run(cmd).stdout
                 logging.debug("Bandwidth qdisc output: %s", qdisc_output)
                 if not qdisc_output.count("qdisc ingress ffff:"):
                     raise error.TestFail("Can't find ingress setting")
-                check_class_rules(net_bridge, "1:1",
+                check_class_rules(net_bridge_name, "1:1",
                                   {"average": net_inbound["average"],
                                    "peak": net_inbound["peak"]})
-                check_class_rules(net_bridge, "1:2", net_inbound)
+                check_class_rules(net_bridge_name, "1:2", net_inbound)
 
             # Check filter rules on bridge interface
-            if net_outbound:
-                check_filter_rules(net_bridge, net_outbound)
+            if check_net and net_outbound:
+                check_filter_rules(net_bridge_name, net_outbound)
 
             # Check class rules on interface inbound settings
-            if iface_inbound:
+            if check_iface and iface_inbound:
                 check_class_rules(iface_name, "1:1",
                                   {'average': iface_inbound['average'],
                                    'peak': iface_inbound['peak'],
                                    'burst': iface_inbound['burst']})
                 if iface_inbound.has_key("floor"):
-                    check_class_rules(net_bridge, "1:3",
+                    check_class_rules(net_bridge_name, "1:3",
                                       {'floor': iface_inbound["floor"]})
 
             # Check filter rules on interface outbound settings
-            if iface_outbound:
+            if check_iface and iface_outbound:
                 check_filter_rules(iface_name, iface_outbound)
         except AssertionError:
+            utils.log_last_traceback()
             raise error.TestFail("Failed to check network bandwidth")
 
     def check_name_ip(session):
@@ -258,42 +212,139 @@ def run(test, params, env):
             raise error.TestFail("Failed to install bind-utils"
                                  " on guest")
         # Run host command to check if hostname can be resolved
+        if not guest_ipv4 and not guest_ipv6:
+            raise error.TestFail("No ip address found from parameters")
+        guest_ip = guest_ipv4 if guest_ipv4 else guest_ipv6
         cmd = "host %s | grep %s" % (guest_name, guest_ip)
         if session.cmd_status(cmd):
             raise error.TestFail("Can't resolve name %s on guest" %
                                  guest_name)
+
+    def check_ipt_rules(check_ipv4=True, check_ipv6=False):
+        """
+        Check iptables for network/interface
+        """
+        br_name = eval(net_bridge)["name"]
+        net_forward = eval(params.get("net_forward", "{}"))
+        net_ipv4 = params.get("net_ipv4")
+        net_ipv6 = params.get("net_ipv6")
+        ipt_rules = ("FORWARD -i {0} -o {0} -j ACCEPT".format(br_name),
+                     "FORWARD -o %s -j REJECT --reject-with icmp" % br_name,
+                     "FORWARD -i %s -j REJECT --reject-with icmp" % br_name)
+        net_dev_in = ""
+        net_dev_out = ""
+        if net_forward.has_key("dev"):
+            net_dev_in = " -i %s" % net_forward["dev"]
+            net_dev_out = " -o %s" % net_forward["dev"]
+        if check_ipv4:
+            ipv4_rules = list(ipt_rules)
+            ctr_rule = ""
+            nat_rules = []
+            if net_forward.has_key("mode") and net_forward["mode"] == "nat":
+                nat_port = eval(params.get("nat_port"))
+                p_start = nat_port["start"]
+                p_end = nat_port["end"]
+                ctr_rule = " -m conntrack --ctstate RELATED,ESTABLISHED"
+                nat_rules = ["POSTROUTING -s %s -d 224.0.0.0/24 -j RETURN" % net_ipv4,
+                             "POSTROUTING -s %s -d 255.255.255.255/32 -j RETURN" % net_ipv4,
+                             ("POSTROUTING -s {0} ! -d {0} -p tcp -j MASQUERADE"
+                              " --to-ports {1}-{2}".format(net_ipv4, p_start, p_end)),
+                             ("POSTROUTING -s {0} ! -d {0} -p udp -j MASQUERADE"
+                              " --to-ports {1}-{2}".format(net_ipv4, p_start, p_end)),
+                             ("POSTROUTING -s {0} ! -d {0} -p udp"
+                              " -j MASQUERADE".format(net_ipv4))]
+            if nat_rules:
+                ipv4_rules.extend(nat_rules)
+            if (net_ipv4 and net_forward.has_key("mode") and
+                    net_forward["mode"] in ["nat", "route"]):
+                rules = [("FORWARD -d %s%s -o %s%s -j ACCEPT"
+                          % (net_ipv4, net_dev_in, br_name, ctr_rule)),
+                         ("FORWARD -s %s -i %s%s -j ACCEPT"
+                          % (net_ipv4, br_name, net_dev_out))]
+                ipv4_rules.extend(rules)
+
+            output = utils.run("iptables-save").stdout.strip()
+            logging.debug("iptables: %s", output)
+            for ipt in ipv4_rules:
+                if not output.count(ipt):
+                    raise error.TestFail("Can't find iptable rule:\n%s" % ipt)
+        if check_ipv6:
+            ipv6_rules = list(ipt_rules)
+            if (net_ipv6 and net_forward.has_key("mode") and
+                    net_forward["mode"] in ["nat", "route"]):
+                rules = [("FORWARD -d %s%s -o %s -j ACCEPT"
+                          % (net_ipv6, net_dev_in, br_name)),
+                         ("FORWARD -s %s -i %s%s -j ACCEPT"
+                          % (net_ipv6, br_name, net_dev_out))]
+                ipv6_rules.extend(rules)
+            output = utils.run("ip6tables-save").stdout.strip()
+            logging.debug("iptables: %s", output)
+            for ipt in ipv6_rules:
+                if not output.count(ipt):
+                    raise error.TestFail("Can't find ipbtable rule:\n%s" % ipt)
+
+    def run_ip_test(session, ip_ver):
+        """
+        Check iptables on host and ipv6 address on guest
+        """
+        if ip_ver == "ipv6":
+            # Clean up iptables rules for guest to get ipv6 address
+            session.cmd_status("ip6tables -F")
+        utils_net.restart_guest_network(session, iface_mac,
+                                        ip_version=ip_ver)
+        # It may take some time to get the ip address
+        get_ip_func = lambda: utils_net.get_guest_ip_addr(session, iface_mac,
+                                                          ip_version=ip_ver)
+        utils_misc.wait_for(get_ip_func, 10)
+        vm_ip = get_ip_func()
+        logging.debug("Guest has ip: %s", vm_ip)
+        if not vm_ip:
+            raise error.TestFail("Can't find ip address on guest")
+        ping_cmd = "ping -c 5"
+        ip_gateway = net_ip_address
+        if ip_ver == "ipv6":
+            ping_cmd = "ping6 -c 5"
+            ip_gateway = net_ipv6_address
+        if ip_gateway:
+            if utils.system("%s %s" % (ping_cmd, ip_gateway),
+                            ignore_status=True):
+                raise error.TestFail("Failed to ping gateway address: %s"
+                                     % ip_gateway)
 
     start_error = "yes" == params.get("start_error", "no")
     restart_error = "yes" == params.get("restart_error", "no")
 
     # network specific attributes.
     net_name = params.get("net_name", "default")
-    net_bridge = params.get("net_bridge", "virbr0")
+    net_bridge = params.get("net_bridge", "{'name':'virbr0'}")
     net_domain = params.get("net_domain")
+    net_ip_address = params.get("net_ip_address")
+    net_ipv6_address = params.get("net_ipv6_address")
     net_dns_forward = params.get("net_dns_forward")
-    net_dns_forwarders = params.get("net_dns_forwarders", "").split()
     net_dns_txt = params.get("net_dns_txt")
     net_dns_srv = params.get("net_dns_srv")
     net_dns_hostip = params.get("net_dns_hostip")
     net_dns_hostnames = params.get("net_dns_hostnames", "").split()
     guest_name = params.get("guest_name")
-    guest_ip = params.get("guest_ip")
-    dhcp_start = params.get("dhcp_start")
-    dhcp_end = params.get("dhcp_end")
+    guest_ipv4 = params.get("guest_ipv4")
+    guest_ipv6 = params.get("guest_ipv6")
     net_bandwidth_inbound = params.get("net_bandwidth_inbound", "{}")
     net_bandwidth_outbound = params.get("net_bandwidth_outbound", "{}")
     iface_bandwidth_inbound = params.get("iface_bandwidth_inbound", "{}")
     iface_bandwidth_outbound = params.get("iface_bandwidth_outbound", "{}")
     multiple_guests = params.get("multiple_guests")
-    change_net_option = "yes" == params.get("change_net_option", "no")
+    create_network = "yes" == params.get("create_network", "no")
+    serial_login = "yes" == params.get("serial_login", "no")
     change_iface_option = "yes" == params.get("change_iface_option", "no")
     test_dnsmasq = "yes" == params.get("test_dnsmasq", "no")
     test_dhcp_range = "yes" == params.get("test_dhcp_range", "no")
     test_dns_host = "yes" == params.get("test_dns_host", "no")
     test_qos_bandwidth = "yes" == params.get("test_qos_bandwidth", "no")
     test_qos_remove = "yes" == params.get("test_qos_remove", "no")
+    test_ipv4_address = "yes" == params.get("test_ipv4_address", "no")
+    test_ipv6_address = "yes" == params.get("test_ipv6_address", "no")
 
-    if test_dhcp_range:
+    if serial_login:
         # Set serial console for serial login
         if vm.is_dead():
             vm.start()
@@ -307,8 +358,9 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
 
     # Back up xml file.
-    netxml_backup = NetworkXML.new_from_net_dumpxml(net_name)
+    netxml_backup = NetworkXML.new_from_net_dumpxml("default")
     iface_mac = vm_xml.VMXML.get_first_mac_by_name(vm_name)
+    params["guest_mac"] = iface_mac
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vms_list = []
 
@@ -323,9 +375,9 @@ def run(test, params, env):
                 run_dnsmasq_default_test("domain", net_domain, exists=False)
                 run_dnsmasq_default_test("expand-hosts", exists=False)
 
-        # Edit the network xml.
-        if change_net_option:
-            modify_net_xml()
+        # Edit the network xml or create a new one.
+        if create_network:
+            libvirt.create_net_xml(net_name, params)
         # Edit the interface xml.
         if change_iface_option:
             modify_iface_xml()
@@ -345,8 +397,8 @@ def run(test, params, env):
             if net_domain:
                 run_dnsmasq_default_test("domain", net_domain)
                 run_dnsmasq_default_test("expand-hosts")
-            if guest_name and guest_ip:
-                run_dnsmasq_host_test(iface_mac, guest_ip, guest_name)
+            if guest_name and guest_ipv4:
+                run_dnsmasq_host_test(iface_mac, guest_ipv4, guest_name)
 
         if test_dns_host:
             if net_dns_txt:
@@ -364,36 +416,49 @@ def run(test, params, env):
             if net_dns_hostip and net_dns_hostnames:
                 run_dnsmasq_addnhosts_test(net_dns_hostip, net_dns_hostnames)
 
+        # Run bandwidth test for network
+        if test_qos_bandwidth:
+            run_bandwidth_test(check_net=True)
+
         # Start the VM.
         vm.start()
-        session = vm.wait_for_login()
         if start_error:
             raise error.TestFail("VM started unexpectedly")
+        if serial_login:
+            session = vm.wait_for_serial_login()
+        else:
+            session = vm.wait_for_login()
 
-        # Start other VMs.
         if test_dhcp_range:
+            # First vm should have a valid ip address
+            utils_net.restart_guest_network(session, iface_mac)
+            vm_ip = utils_net.get_guest_ip_addr(session, iface_mac)
+            logging.debug("Guest has ip: %s", vm_ip)
+            if not vm_ip:
+                raise error.TestFail("Guest has invalid ip address")
+            # Other vms cloudn't get the ip address
             for vms in vms_list:
+                # Start other VMs.
                 vms.start()
-                session = vms.wait_for_serial_login()
+                sess = vms.wait_for_serial_login()
                 vms_mac = vms.get_virsh_mac_address()
                 # restart guest network to get ip addr
-                utils_net.restart_guest_network(session, vms_mac)
-                vms_ip = utils_net.get_guest_ip_addr(session,
+                utils_net.restart_guest_network(sess, vms_mac)
+                vms_ip = utils_net.get_guest_ip_addr(sess,
                                                      vms_mac)
                 if vms_ip:
                     # Get IP address on guest should return Null
                     raise error.TestFail("Guest has ip address: %s"
                                          % vms_ip)
-                session.close()
+                sess.close()
 
         # Check dnsmasq settings if take affect in guest
-        if test_dnsmasq:
-            if guest_name and guest_ip:
-                check_name_ip(session)
+        if guest_ipv4 or guest_ipv6:
+            check_name_ip(session)
 
-        # Run bandwidth test
+        # Run bandwidth test for interface
         if test_qos_bandwidth:
-            run_bandwidth_test()
+            run_bandwidth_test(check_iface=True)
         if test_qos_remove:
             # Remove the bandwidth settings in network xml
             logging.debug("Removing network bandwidth settings...")
@@ -403,10 +468,16 @@ def run(test, params, env):
             vm.start()
             if restart_error:
                 raise error.TestFail("VM started unexpectedly")
+        if test_ipv4_address:
+            check_ipt_rules(check_ipv4=True)
+            run_ip_test(session, "ipv4")
+        if test_ipv6_address:
+            check_ipt_rules(check_ipv6=True)
+            run_ip_test(session, "ipv6")
 
         session.close()
-    except virt_vm.VMStartError, e:
-        logging.error(str(e))
+    except virt_vm.VMStartError, details:
+        logging.error(str(details))
         if start_error or restart_error:
             pass
         else:
@@ -419,5 +490,10 @@ def run(test, params, env):
         for vms in vms_list:
             virsh.remove_domain(vms.name, "--remove-all-storage")
         logging.info("Restoring network...")
-        netxml_backup.sync()
+        if net_name == "default":
+            netxml_backup.sync()
+        else:
+            # Destroy and undefine new created network
+            virsh.net_destroy(net_name)
+            virsh.net_undefine(net_name)
         vmxml_backup.sync()
