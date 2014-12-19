@@ -36,7 +36,7 @@ def thread_func_live_migration(vm, dest_uri, dargs):
     # Migrate the domain.
     debug = dargs.get("debug", "False")
     ignore_status = dargs.get("ignore_status", "False")
-    options = "--live"
+    options = "--live --unsafe"
     extra = dargs.get("extra")
     global ret_migration
     result = vm.migrate(dest_uri, options, extra, ignore_status, debug)
