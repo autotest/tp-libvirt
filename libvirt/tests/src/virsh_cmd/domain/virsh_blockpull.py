@@ -2,7 +2,7 @@ import os
 import logging
 import tempfile
 from autotest.client.shared import error
-from virttest import virsh, data_dir
+from virttest import virsh, data_dir, utils_libvirtd
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import snapshot_xml
@@ -335,10 +335,13 @@ def run(test, params, env):
                 if os.path.exists(disk):
                     os.remove(disk)
 
+        libvirtd = utils_libvirtd.Libvirtd()
+
         if disk_src_protocol == 'iscsi':
             libvirt.setup_or_cleanup_iscsi(is_setup=False)
         elif disk_src_protocol == 'gluster':
             libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
+            libvirtd.restart()
         elif disk_src_protocol == 'netfs':
             restore_selinux = params.get('selinux_status_bak')
             libvirt.setup_or_cleanup_nfs(is_setup=False,
