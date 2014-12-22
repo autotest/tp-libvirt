@@ -142,12 +142,9 @@ def run(test, params, env):
 
     # Backup original libvirtd status and prepare libvirtd status
     logging.debug('Preparing libvirtd')
-    libvirtd = params.get("libvirtd", "on")
-    libvirtd_status = utils_libvirtd.libvirtd_is_running()
-    if libvirtd == "off" and libvirtd_status:
-        utils_libvirtd.libvirtd_stop()
-    elif libvirtd == "on" and not libvirtd_status:
-        utils_libvirtd.libvirtd_start()
+    libvirtd = utils_libvirtd.Libvirtd()
+    if params.get("libvirtd", "on") == "off":
+        libvirtd.stop()
 
     # Get whether PCI devices are resettable from sysfs.
     devices = get_pci_info()
@@ -159,7 +156,7 @@ def run(test, params, env):
         info = devices[device]
         if info['reset'] and info['driver']:
             resettable_nodes.append(device)
-        else:
+        if not info['reset'] and not info['driver']:
             unresettable_nodes.append(device)
 
     # Find out all non-PCI devices.
@@ -216,8 +213,5 @@ def run(test, params, env):
     finally:
         # Restore libvirtd status
         logging.debug('Restoring libvirtd')
-        current_libvirtd_status = utils_libvirtd.libvirtd_is_running()
-        if current_libvirtd_status and not libvirtd_status:
-            utils_libvirtd.libvirtd_stop()
-        elif not current_libvirtd_status and libvirtd_status:
-            utils_libvirtd.libvirtd_start()
+        if not libvirtd.is_running():
+            libvirtd.start()
