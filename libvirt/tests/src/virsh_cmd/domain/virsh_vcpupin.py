@@ -44,9 +44,10 @@ def run(test, params, env):
         :param vcpu: VM cpu pid
         """
 
+        total_cpu = utils.run("ls -d /sys/devices/system/cpu/cpu[0-9]* |wc -l").stdout
         expected_output = utils_test.libvirt.cpus_string_to_affinity_list(
             cpu_list,
-            host_cpu_count)
+            int(total_cpu))
         logging.debug("Expecte affinity: %s", expected_output)
         actual_output = affinity_from_vcpuinfo(vm_name, vcpu)
         logging.debug("Actual affinity in vcpuinfo output: %s", actual_output)
@@ -64,7 +65,7 @@ def run(test, params, env):
         output = utils_test.libvirt.cpu_allowed_list_by_task(pid, vcpu_pid)
         actual_output_proc = utils_test.libvirt.cpus_string_to_affinity_list(
             output,
-            host_cpu_count)
+            int(total_cpu))
         logging.debug("Actual affinity in guest proc: %s", actual_output_proc)
         if expected_output == actual_output_proc:
             logging.info("successfully pinned vcpu: %s --> cpu: %s"
@@ -185,10 +186,15 @@ def run(test, params, env):
                                     "of cpu on host is %s."
                                     % (cpu_list, host_cpu_count))
 
+        # Find the alive cpus list
+        cpus_list = utils.run("x=$(cat /proc/cpuinfo |grep processor|cut -d: -f2);echo $x").stdout.strip()
+        cpus_int_list = [int(y) for y in cpus_list.split()]
+        logging.info("Active cpus in host are %s", cpus_int_list)
+
         # Run test case
         for vcpu in range(int(guest_vcpu_count)):
             if cpu_list == "x":
-                for cpu in range(int(host_cpu_count)):
+                for cpu in cpus_int_list:
                     left_cpus = "0-%s,^%s" % (cpu_max, cpu)
                     if offline_pin:
                         offline_pin_and_check(vm, vcpu, str(cpu))
