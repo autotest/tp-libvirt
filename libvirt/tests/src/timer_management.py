@@ -111,16 +111,33 @@ def get_time(vm=None, time_type=None, windows=False):
     :return: Epoch time or timezone
     """
     if vm:
+        session = vm.wait_for_login()
         if time_type == "utc":
             cmd = "date -u +%Y/%m/%d/%H/%M/%S"
+            ts, timestr = session.cmd_status_output(cmd)
         elif windows is True:
             time_type == "tz"
-            cmd = (r"echo %date:~0,4%/%date:~5,2%/%date:~8,2%/"
-                   "%time:~0,2%/%time:~3,2%/%time:~6,2%")
+            # Date in this format: Sun 09/14/2014 or 2014/09/14 Sun
+            # So deal with it after getting date
+            date_cmd = (r"echo %date%")
+            time_cmd = (r"echo %time:~0,2%/%time:~3,2%/%time:~6,2%")
+            ts1, output1 = session.cmd_status_output(date_cmd)
+            ts2, output2 = session.cmd_status_output(time_cmd)
+            ts = ts1 or ts2
+            if output1.split()[0].split('/') == 3:
+                datestr = output1.split()[0]
+            else:
+                datestr = output1.split()[1]
+            date_elems = datestr.split('/')
+            if int(date_elems[-1]) > 30:   # This is mm/dd/yyyy
+                timestr = "%s/%s/%s" % (date_elems[-1], date_elems[0],
+                                        date_elems[1])
+            else:
+                timestr = datestr
+            timestr += "/%s" % output2
         else:
             cmd = "date +%Y/%m/%d/%H/%M/%S"
-        session = vm.wait_for_login()
-        ts, timestr = session.cmd_status_output(cmd)
+            ts, timestr = session.cmd_status_output(cmd)
         session.close()
         if ts:
             logging.error("Get time in vm failed: %s", timestr)
@@ -338,7 +355,7 @@ def test_timers_in_vm(vm, params):
     set_vm_timezone(vm, vm_tz, windows_test)
 
     # manipulate vm if necessary, linux guest only
-    operation = params.get("operation")
+    operation = params.get("stress_type")
     if operation is not None:
         err_msg = manipulate_vm(vm, operation, params)
         if err_msg:
@@ -371,7 +388,7 @@ def test_timers_in_vm(vm, params):
         # Gap between vm timezone time and host utc time
         actual_tz_gap = abs(vm_tz_time - host_utc_time)
         logging.debug("Actual vm timezone time gap: %s", actual_tz_gap)
-        if abs(actual_tz_gap - expect_tz_gap) > delta:
+        if abs(actual_tz_gap - expect_utc_gap) > delta:
             raise error.TestFail("Timezone time of %s is not expected" % vm.name)
     else:
         # Get available clocksources
