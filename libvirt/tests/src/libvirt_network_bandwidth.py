@@ -87,8 +87,9 @@ def run(test, params, env):
                         default_interface.device_tag):
                     continue
                 if devices[index].mac_address == default_interface.mac_address:
-                    default_interface.bandwidth_inbound = bandwidth_inbound
-                    default_interface.bandwidth_outbound = bandwidth_outbound
+                    bound = {'inbound': bandwidth_inbound,
+                             'outbound': bandwidth_outbound}
+                    default_interface.bandwidth = default_interface.new_bandwidth(**bound)
                     devices[index] = default_interface
                     break
             vm_xml.devices = devices
@@ -112,7 +113,8 @@ def run(test, params, env):
                         default_interface.device_tag):
                     continue
                 if devices[index].mac_address == default_interface.mac_address:
-                    default_interface.portgroup = portgroup_name
+                    default_interface.source = {nettype: netdst,
+                                                'portgroup': portgroup_name}
                     devices[index] = default_interface
                     break
             vm_xml.devices = devices
