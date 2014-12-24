@@ -14,15 +14,7 @@ def get_present_cpu():
 
     :return: the host present cpu number
     """
-    if os.path.exists("%s/present" % SYSFS_SYSTEM_PATH):
-        cmd = "cat %s/present" % SYSFS_SYSTEM_PATH
-        cmd_result = utils.run(cmd, ignore_status=True)
-        output = cmd_result.stdout.strip()
-        if '-' not in output:
-            present = int(output)
-        else:
-            present = int(output.split('-')[1]) + 1
-    elif os.path.exists("%s/cpu0" % SYSFS_SYSTEM_PATH):
+    if os.path.exists("%s/cpu0" % SYSFS_SYSTEM_PATH):
         cmd = "ls %s | grep cpu[0-9] | wc -l" % SYSFS_SYSTEM_PATH
         cmd_result = utils.run(cmd, ignore_status=True)
         present = int(cmd_result.stdout.strip())
