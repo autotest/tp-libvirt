@@ -42,6 +42,7 @@ def run(test, params, env):
         :param edit_cmd: Edit command list to execute.
         :return: True if edit successed, False if edit failed.
         """
+        logging.info("Trying to edit xml with cmd %s", edit_cmd)
         session = aexpect.ShellSession("sudo -s")
         try:
             session.sendline("virsh -c %s edit %s" % (vm.connect_uri, source))
@@ -94,6 +95,41 @@ def run(test, params, env):
         if status and new_vcpus != expected_vcpu:
             return False
         return status
+
+    def edit_iface(vm_name):
+        """
+        Modify vm's interface information by virsh edit command.
+        """
+        iface_type = params.get("iface_type")
+        iface_model = params.get("iface_model")
+        edit_error = "yes" == params.get("edit_error", "no")
+        if iface_type:
+            edit_cmd = (r":%s /<interface type=.*>/<interface type='{0}'>/"
+                        "".format(iface_type))
+            status = exec_edit(vm_name, [edit_cmd])
+        elif iface_model:
+            edit_cmd = (r":/<interface/,/<\/interface>/s/<model type=.*\/>/"
+                        "<model type='%s'\/>/" % iface_model)
+            status = exec_edit(vm_name, [edit_cmd])
+
+        if not status and not edit_error:
+            logging.error("Expect success, but failure")
+            return False
+        if edit_error and status:
+            logging.error("Expect error, but success")
+            return False
+
+        # Destroy domain and start it to check if vm can be started
+        start_error = "yes" == params.get("start_error", "no")
+        vm.destroy()
+        ret = virsh.start(vm_name, ignore_status=True)
+        if start_error and not ret.exit_status:
+            logging.error("Vm started unexpectedly")
+            return False
+        if not start_error and ret.exit_status:
+            logging.error("Vm failed to start")
+            return False
+        return True
 
     def edit_memory(source):
         """
@@ -151,6 +187,8 @@ def run(test, params, env):
             status = edit_vcpu(vm_ref)
         elif edit_element == "memory":
             status = edit_memory(vm_ref)
+        elif edit_element == "iface":
+            status = edit_iface(vm_name)
         else:
             raise error.TestNAError("No edit method for %s" % edit_element)
         # check status_error
