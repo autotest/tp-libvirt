@@ -24,11 +24,53 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 
+    def prepare_pxe_boot():
+        """
+        Prepare tftp server and pxe boot files
+        """
+        pkg_list = ["syslinux", "tftp-server",
+                    "tftp", "ipxe-roms-qemu", "wget"]
+        # Try to install required packages
+        libvirt.yum_install(pkg_list)
+        boot_initrd = params.get("boot_initrd")
+        boot_vmlinuz = params.get("boot_vmlinuz")
+        # Download pxe boot images
+        utils.run("wget %s -O %s/initrd.img"
+                  % (boot_initrd, tftp_root))
+        utils.run("wget %s -O %s/vmlinuz"
+                  % (boot_vmlinuz, tftp_root))
+        utils.run("cp -f /usr/share/syslinux/pxelinux.0 {0};"
+                  " mkdir -m 777 -p {0}/pxelinux.cfg".format(tftp_root))
+        pxe_file = "%s/pxelinux.cfg/default" % tftp_root
+        boot_txt = """
+DISPLAY boot.txt
+DEFAULT rhel
+LABEL rhel
+        kernel vmlinuz
+        append initrd=initrd.img
+PROMPT 1
+TIMEOUT 3"""
+        with open(pxe_file, 'w') as p_file:
+            p_file.write(boot_txt)
+
     def modify_iface_xml():
         """
         Modify interface xml options
         """
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        if pxe_boot:
+            # Config boot console for pxe boot
+            osxml = vm_xml.VMOSXML()
+            osxml.type = vmxml.os.type
+            osxml.arch = vmxml.os.arch
+            osxml.machine = vmxml.os.machine
+            osxml.loader = "/usr/share/seabios/bios.bin"
+            osxml.bios_useserial = "yes"
+            osxml.bios_reboot_timeout = "-1"
+            osxml.boots = ['network']
+            del vmxml.os
+            vmxml.os = osxml
+
         xml_devices = vmxml.devices
         iface_index = xml_devices.index(
             xml_devices.by_device_tag("interface")[0])
@@ -328,6 +370,8 @@ def run(test, params, env):
     guest_name = params.get("guest_name")
     guest_ipv4 = params.get("guest_ipv4")
     guest_ipv6 = params.get("guest_ipv6")
+    tftp_root = params.get("tftp_root")
+    pxe_boot = "yes" == params.get("pxe_boot", "no")
     net_bandwidth_inbound = params.get("net_bandwidth_inbound", "{}")
     net_bandwidth_outbound = params.get("net_bandwidth_outbound", "{}")
     iface_bandwidth_inbound = params.get("iface_bandwidth_inbound", "{}")
@@ -375,6 +419,9 @@ def run(test, params, env):
                 run_dnsmasq_default_test("domain", net_domain, exists=False)
                 run_dnsmasq_default_test("expand-hosts", exists=False)
 
+        # Prepare pxe boot directory
+        if pxe_boot:
+            prepare_pxe_boot()
         # Edit the network xml or create a new one.
         if create_network:
             libvirt.create_net_xml(net_name, params)
@@ -424,58 +471,67 @@ def run(test, params, env):
         vm.start()
         if start_error:
             raise error.TestFail("VM started unexpectedly")
-        if serial_login:
-            session = vm.wait_for_serial_login()
+        if pxe_boot:
+            # Just check network boot messages here
+            vm.serial_console.read_until_output_matches(
+                ["Loading vmlinuz", "Loading initrd.img"],
+                utils_misc.strip_console_codes)
+            output = vm.serial_console.get_stripped_output()
+            logging.debug("Boot messages: %s", output)
+
         else:
-            session = vm.wait_for_login()
+            if serial_login:
+                session = vm.wait_for_serial_login()
+            else:
+                session = vm.wait_for_login()
 
-        if test_dhcp_range:
-            # First vm should have a valid ip address
-            utils_net.restart_guest_network(session, iface_mac)
-            vm_ip = utils_net.get_guest_ip_addr(session, iface_mac)
-            logging.debug("Guest has ip: %s", vm_ip)
-            if not vm_ip:
-                raise error.TestFail("Guest has invalid ip address")
-            # Other vms cloudn't get the ip address
-            for vms in vms_list:
-                # Start other VMs.
-                vms.start()
-                sess = vms.wait_for_serial_login()
-                vms_mac = vms.get_virsh_mac_address()
-                # restart guest network to get ip addr
-                utils_net.restart_guest_network(sess, vms_mac)
-                vms_ip = utils_net.get_guest_ip_addr(sess,
-                                                     vms_mac)
-                if vms_ip:
-                    # Get IP address on guest should return Null
-                    raise error.TestFail("Guest has ip address: %s"
-                                         % vms_ip)
-                sess.close()
+            if test_dhcp_range:
+                # First vm should have a valid ip address
+                utils_net.restart_guest_network(session, iface_mac)
+                vm_ip = utils_net.get_guest_ip_addr(session, iface_mac)
+                logging.debug("Guest has ip: %s", vm_ip)
+                if not vm_ip:
+                    raise error.TestFail("Guest has invalid ip address")
+                # Other vms cloudn't get the ip address
+                for vms in vms_list:
+                    # Start other VMs.
+                    vms.start()
+                    sess = vms.wait_for_serial_login()
+                    vms_mac = vms.get_virsh_mac_address()
+                    # restart guest network to get ip addr
+                    utils_net.restart_guest_network(sess, vms_mac)
+                    vms_ip = utils_net.get_guest_ip_addr(sess,
+                                                         vms_mac)
+                    if vms_ip:
+                        # Get IP address on guest should return Null
+                        raise error.TestFail("Guest has ip address: %s"
+                                             % vms_ip)
+                    sess.close()
 
-        # Check dnsmasq settings if take affect in guest
-        if guest_ipv4 or guest_ipv6:
-            check_name_ip(session)
+            # Check dnsmasq settings if take affect in guest
+            if guest_ipv4 or guest_ipv6:
+                check_name_ip(session)
 
-        # Run bandwidth test for interface
-        if test_qos_bandwidth:
-            run_bandwidth_test(check_iface=True)
-        if test_qos_remove:
-            # Remove the bandwidth settings in network xml
-            logging.debug("Removing network bandwidth settings...")
-            netxml_backup.sync()
-            vm.destroy(gracefully=False)
-            # Should fail to start vm
-            vm.start()
-            if restart_error:
-                raise error.TestFail("VM started unexpectedly")
-        if test_ipv4_address:
-            check_ipt_rules(check_ipv4=True)
-            run_ip_test(session, "ipv4")
-        if test_ipv6_address:
-            check_ipt_rules(check_ipv6=True)
-            run_ip_test(session, "ipv6")
+            # Run bandwidth test for interface
+            if test_qos_bandwidth:
+                run_bandwidth_test(check_iface=True)
+            if test_qos_remove:
+                # Remove the bandwidth settings in network xml
+                logging.debug("Removing network bandwidth settings...")
+                netxml_backup.sync()
+                vm.destroy(gracefully=False)
+                # Should fail to start vm
+                vm.start()
+                if restart_error:
+                    raise error.TestFail("VM started unexpectedly")
+            if test_ipv4_address:
+                check_ipt_rules(check_ipv4=True)
+                run_ip_test(session, "ipv4")
+            if test_ipv6_address:
+                check_ipt_rules(check_ipv6=True)
+                run_ip_test(session, "ipv6")
 
-        session.close()
+            session.close()
     except virt_vm.VMStartError, details:
         logging.error(str(details))
         if start_error or restart_error:
