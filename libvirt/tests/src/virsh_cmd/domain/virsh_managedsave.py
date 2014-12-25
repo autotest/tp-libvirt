@@ -423,8 +423,7 @@ def run(test, params, env):
                     vm_undefine_check(vm_name)
                 elif autostart_bypass_cache:
                     libvirtd.stop()
-                    virsh_cmd = ("(service libvirtd start; virsh start %s)"
-                                 % vm_name)
+                    virsh_cmd = ("(service libvirtd start)")
                     check_flags_parallel(virsh_cmd, bash_cmd %
                                          (managed_save_file, managed_save_file,
                                           "0", flags), flags)
@@ -437,8 +436,6 @@ def run(test, params, env):
         # Restore test environment.
         if vm.is_paused():
             virsh.resume(vm_name)
-        elif vm.is_dead():
-            vm.start()
         if autostart_bypass_cache:
             virsh.autostart(vm_name, "--disable",
                             ignore_status=True)
