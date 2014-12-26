@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 from autotest.client.shared import error
 from autotest.client.shared import utils
@@ -356,6 +357,7 @@ def run(test, params, env):
     eject_cdrom = "yes" == params.get("at_dt_disk_eject_cdrom", "no")
     save_vm = "yes" == params.get("at_dt_disk_save_vm", "no")
     save_file = os.path.join(test.tmpdir, "vm.save")
+    time_sleep = params.get("time_sleep")
     try:
         if eject_cdrom:
             eject_params = {'type_name': "file", 'device_type': "cdrom",
@@ -365,6 +367,9 @@ def run(test, params, env):
             # Run command tiwce to make sure cdrom tray open first #BZ892289
             # Open tray
             virsh.attach_device(domainarg=vm_name, filearg=eject_xml, debug=True)
+            # Add time sleep between two attach commands.
+            if time_sleep:
+                time.sleep(float(time_sleep))
             # Eject cdrom
             result = virsh.attach_device(domainarg=vm_name, filearg=eject_xml,
                                          debug=True)
