@@ -45,7 +45,15 @@ def run(test, params, env):
         virsh.start(vm_name)
         guest_session = vm.wait_for_login()
         if agent:
-            guest_session.cmd("qemu-ga -d")
+            if guest_session.cmd_status("which qemu-ga"):
+                raise error.TestNAError("Cannot execute this test for domain"
+                                        " doesn't have qemu-ga command!")
+            # check if the qemu-guest-agent is active or not firstly
+            stat_ps = guest_session.cmd_status("ps aux |grep [q]emu-ga")
+            if stat_ps != 0:
+                s, o = guest_session.cmd_status_output("qemu-ga -d")
+                if s != 0:
+                    raise error.TestError("'qemu-ga -d' failed.\noutput:%s" % o)
             stat_ps = guest_session.cmd_status("ps aux |grep [q]emu-ga")
             guest_session.close()
             if stat_ps:
