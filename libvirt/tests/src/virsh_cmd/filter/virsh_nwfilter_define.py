@@ -132,6 +132,7 @@ def run(test, params, env):
             # Backup xml if only update exist filter
             if exist_filter == filter_name:
                 backup_xml = filterxml.xmltreefile.backup_copy()
+                filter_uuid = filterxml.uuid
 
             # Set filter attribute
             filterxml.filter_name = filter_name
