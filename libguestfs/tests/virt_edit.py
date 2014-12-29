@@ -114,7 +114,6 @@ def run(test, params, env):
                     break
             if disk_format is None:
                 raise error.TestError("Cannot get disk format:%s" % info)
-            options = "--format=%s" % disk_format
         is_disk = True
     elif vm_ref == "domname":
         vm_ref = vm_name
@@ -142,8 +141,10 @@ def run(test, params, env):
         utils_libvirtd.libvirtd_stop()
 
     # Run test
-    result = lgf.virt_edit_cmd(vm_ref, file_ref, is_disk, options,
-                               options_suffix, expr, uri, debug=True)
+    result = lgf.virt_edit_cmd(vm_ref, file_ref, is_disk=is_disk,
+                               disk_format=disk_format, options=options,
+                               extra=options_suffix, expr=expr,
+                               connect_uri=uri, debug=True)
     status = result.exit_status
 
     # Recover libvirtd.
