@@ -236,6 +236,7 @@ def run(test, params, env):
 
     # Temparay way to avoid unmatched prompt
     params['shell_prompt'] = ".*@.*[\#\$]\s*"
+    vm.params = params
 
     # To avoid dirty after starting new vm
     if vm.is_alive():
