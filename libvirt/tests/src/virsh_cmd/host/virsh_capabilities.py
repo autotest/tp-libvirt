@@ -50,7 +50,10 @@ def run(test, params, env):
             img = utils_misc.find_command("qemu-kvm")
         except ValueError:
             raise error.TestNAError("Cannot find qemu-kvm")
-        cmd = img + " --cpu ? | grep qemu"
+        if re.search("ppc", utils.run("arch").stdout):
+            cmd = img + " --cpu ? | grep ppc"
+        else:
+            cmd = img + " --cpu ? | grep qemu"
         cmd_result = utils.run(cmd, ignore_status=True)
         for guest in xmltreefile.findall('guest'):
             guest_wordsize = guest.find('arch').find('wordsize').text
