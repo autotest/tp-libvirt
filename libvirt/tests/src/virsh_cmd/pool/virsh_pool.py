@@ -1,13 +1,11 @@
 import re
 import os
 import logging
-from autotest.client import utils
-from autotest.client import lv_utils
 from autotest.client.shared import error
 from virttest import utils_libvirtd
 from virttest import libvirt_storage
-from virttest import utils_test
 from virttest import virsh
+from virttest.utils_test import libvirt as utlv
 
 
 def run(test, params, env):
@@ -36,16 +34,18 @@ def run(test, params, env):
     (19) Refresh the pool
          For 'dir' type pool, touch a file under target path and refresh again
          to make the new file show in vol-list.
-    (20) Destroy the pool
-    (21) Delete pool for 'dir' type pool. After the command, the pool object
+    (20) Undefine the pool, and this should fail as pool is still active
+    (21) Destroy the pool
+    (22) Delete pool for 'dir' type pool. After the command, the pool object
          will still exist but target path will be deleted
-    (22) Undefine the pool
+    (23) Undefine the pool
     """
 
     # Initialize the variables
     pool_name = params.get("pool_name", "temp_pool_1")
     pool_type = params.get("pool_type", "dir")
     pool_target = params.get("pool_target", "")
+    source_format = params.get("source_format", "")
     source_name = params.get("pool_source_name", "gluster-vol1")
     source_path = params.get("pool_source_path", "/")
     # The file for dumped pool xml
@@ -54,13 +54,9 @@ def run(test, params, env):
         pool_target = os.path.join(test.tmpdir, pool_target)
     vol_name = params.get("vol_name", "temp_vol_1")
     # Use pool name as VG name
-    vg_name = pool_name
     status_error = "yes" == params.get("status_error", "no")
     vol_path = os.path.join(pool_target, vol_name)
-    # Clean up flags:
-    # cleanup_env[0] for nfs, cleanup_env[1] for iscsi, cleanup_env[2] for lvm,
-    # cleanup_env[3] for selinux backup status, cleanup_env[4] for gluster
-    cleanup_env = [False, False, False, "", False]
+    ip_protocal = params.get('ip_protocal', 'ipv4')
 
     def check_exit_status(result, expect_error=False):
         """
@@ -147,16 +143,18 @@ def run(test, params, env):
                                                             value))
 
     # Run Testcase
+    pvt = utlv.PoolVolumeTest(test, params)
+    emulated_image = "emulated_image"
+    kwargs = {'image_size': '1G', 'pre_disk_vol': ['1M'],
+              'source_name': source_name, 'source_path': source_path,
+              'source_format': source_format, 'persistent': True,
+              'ip_protocal': ip_protocal}
     try:
         _pool = libvirt_storage.StoragePool()
         # Step (1)
         # Pool define
-        result = utils_test.libvirt.define_pool(pool_name, pool_type,
-                                                pool_target, cleanup_env,
-                                                gluster_vol_number=0,
-                                                gluster_source_name=source_name,
-                                                gluster_source_path=source_path)
-        check_exit_status(result, status_error)
+        pvt.pre_pool(pool_name, pool_type, pool_target, emulated_image,
+                     **kwargs)
 
         # Step (2)
         # Pool list
@@ -237,10 +235,12 @@ def run(test, params, env):
 
         # Step (15)
         # Pool start
-        # If the filesystem cntaining the directory is mounted, then the
-        # directory will show as running, which means the local 'dir' pool
-        # don't need start after restart libvirtd
-        if pool_type != "dir":
+        # When libvirtd starts up, it'll check to see if any of the storage
+        # pools have been activated externally. If so, then it'll mark the
+        # pool as active. This is independent of autostart.
+        # So a directory based storage pool is thus pretty much always active,
+        # and so as the SCSI pool.
+        if pool_type not in ["dir", 'scsi']:
             result = virsh.pool_start(pool_name, ignore_status=True)
             check_exit_status(result)
 
@@ -269,14 +269,20 @@ def run(test, params, env):
             check_exit_status(result)
             check_vol_list(vol_name, pool_name)
 
-        # Step(20)
+        # Step (20)
+        # Undefine pool, this should fail as the pool is active
+        result = virsh.pool_undefine(pool_name, ignore_status=True)
+        check_exit_status(result, expect_error=True)
+        check_pool_list(pool_name, "", False)
+
+        # Step (21)
         # Pool destroy
         if virsh.pool_destroy(pool_name):
             logging.debug("Pool %s destroyed.", pool_name)
         else:
             raise error.TestFail("Destroy pool % failed." % pool_name)
 
-        # Step (21)
+        # Step (22)
         # Pool delete for 'dir' type pool
         if pool_type == "dir":
             if os.path.exists(vol_path):
@@ -291,26 +297,15 @@ def run(test, params, env):
             result = virsh.pool_start(pool_name, ignore_status=True)
             check_exit_status(result, True)
 
-        # Step (22)
+        # Step (23)
         # Pool undefine
         result = virsh.pool_undefine(pool_name, ignore_status=True)
         check_exit_status(result)
         check_pool_list(pool_name, "--all", True)
     finally:
         # Clean up
-        if os.path.exists(pool_xml):
-            os.remove(pool_xml)
-        if not _pool.delete_pool(pool_name):
-            logging.error("Can't delete pool: %s", pool_name)
-        if cleanup_env[4]:
-            utils_test.libvirt.setup_or_cleanup_gluster(False, source_name)
-        if cleanup_env[2]:
-            cmd = "pvs |grep %s |awk '{print $1}'" % vg_name
-            pv_name = utils.system_output(cmd)
-            lv_utils.vg_remove(vg_name)
-            utils.run("pvremove %s" % pv_name)
-        if cleanup_env[1]:
-            utils_test.libvirt.setup_or_cleanup_iscsi(False)
-        if cleanup_env[0]:
-            utils_test.libvirt.setup_or_cleanup_nfs(
-                False, restore_selinux=cleanup_env[3])
+        try:
+            pvt.cleanup_pool(pool_name, pool_type, pool_target,
+                             emulated_image, **kwargs)
+        except error.TestFail, detail:
+            logging.error(str(detail))
