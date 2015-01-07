@@ -1,9 +1,9 @@
 import grp
-import time
 import stat
 import logging
 import os.path
 from virttest import virsh
+from virttest import data_dir
 from virttest import utils_config
 from virttest import utils_libvirtd
 from autotest.client.shared import error
@@ -33,9 +33,9 @@ def run(test, params, env):
         bits /= 8
         return "%s%s%s%s" % (bits, obit, gbit, ubit)
 
-    def check_unix_sock(group, perms, path):
+    def check_unix_sock(group, perms, path, readonly=False):
         """
-        Check the validity of one libvirt socket file, including existance,
+        Check the validity of one libvirt socket file, including existence,
         group name, access permission and usability of virsh command.
 
         :param group: Expected group of the file.
@@ -75,12 +75,33 @@ def run(test, params, env):
 
         # Check virsh connection.
         uri = 'qemu+unix:///system?socket=%s' % path
-        result = virsh.dom_list('--all', uri=uri)
+
+        # Prepare test XML file.
+        net_name = "unix_sock_test"
+        xml_cont = "<network><name>%s</name></network>" % net_name
+        xml_path = os.path.join(data_dir.get_tmp_dir(), net_name + '.xml')
+        xml_file = open(xml_path, 'w')
+        try:
+            xml_file.write(xml_cont)
+        finally:
+            xml_file.close()
+
+        result = virsh.net_define(xml_path, uri=uri, ignore_status=True)
         logging.debug('Result of virsh test run is:\n %s' % result)
-        if result.exit_status:
-            logging.error('Error encountered when running virsh list on '
-                          'socket file %s' % path)
-            return False
+        try:
+            if result.exit_status and not readonly:
+                logging.error('Error encountered when running virsh net-define '
+                              'on socket file %s' % path)
+                return False
+            elif readonly and not result.exit_status:
+                logging.error('Expect fail when running virsh net-define on '
+                              'read-only socket file %s, but succeeded.' % path)
+                return False
+        finally:
+            # Cleanup network and temp file
+            virsh.net_undefine(net_name, uri=uri, ignore_status=True)
+            if os.path.exists(xml_path):
+                os.remove(xml_path)
 
         # All success
         return True
@@ -102,7 +123,7 @@ def run(test, params, env):
 
         ro_path = os.path.join(root_path, 'libvirt-sock-ro')
         logging.debug("Checking read-only socket file %s" % ro_path)
-        return check_unix_sock(group, ro_perms, ro_path)
+        return check_unix_sock(group, ro_perms, ro_path, readonly=True)
 
     config = utils_config.LibvirtdConfig()
     libvirtd = utils_libvirtd.Libvirtd()
