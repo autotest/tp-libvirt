@@ -42,7 +42,7 @@ def run(test, params, env):
         """
         if action != "--eject ":
             error.context("Checking guest %s files" % target_device)
-            if target_device == "hdc":
+            if target_device == "hdc" or target_device == "sdc":
                 mount_cmd = "mount /dev/sr0 /media"
             else:
                 if session.cmd_status("ls /dev/fd0"):
@@ -61,7 +61,7 @@ def run(test, params, env):
 
         else:
             error.context("Ejecting guest cdrom files")
-            if target_device == "hdc":
+            if target_device == "hdc" or target_device == "sdc":
                 if session.cmd_status("mount /dev/sr0 /media -o loop") == 32:
                     logging.info("Eject succeeded")
             else:
