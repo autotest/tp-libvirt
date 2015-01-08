@@ -137,14 +137,23 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
         # Clone given number of guests
+        timeout = params.get("clone_timeout", 360)
         for i in range(int(guests)):
             dst_vm = "%s_%s" % (vm_name, i)
-            utils_libguestfs.virt_clone_cmd(vm_name, dst_vm, True)
+            utils_libguestfs.virt_clone_cmd(vm_name, dst_vm,
+                                            True, timeout)
             virsh.start(dst_vm)
 
         # Wait 10 seconds for vm to start
         time.sleep(10)
         libvirt_guests.restart()
+        # libvirt-guests status command read messages from systemd
+        # journal, in cases of messages are not ready in time,
+        # add a time wait here.
+        wait_func = lambda: not utils.run("service libvirt-guests status"
+                                          " | grep 'Resuming guest'",
+                                          ignore_status=True).exit_status
+        utils_misc.wait_for(wait_func, 5)
         ret = utils.run("service libvirt-guests status",
                         ignore_status=True)
         logging.info("status output: %s", ret.stdout)
@@ -436,6 +445,9 @@ def run(test, params, env):
         # Restore test environment.
         if vm.is_paused():
             virsh.resume(vm_name)
+            # Wait for VM in running state
+            wait_func = lambda: vm.state() == "running"
+            utils_misc.wait_for(wait_func, 10)
         if autostart_bypass_cache:
             virsh.autostart(vm_name, "--disable",
                             ignore_status=True)
