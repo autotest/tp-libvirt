@@ -874,12 +874,47 @@ def test_ntfsresize_opts(vm, params):
 
     mount_point = params.get("mount_point")
 
-    gf.mkfs(mount_point, 'ntfs')
+    gf.mkfs('ntfs', mount_point)
     gf.mount(mount_point, '/')
 
+    #statvfs
     statvfs_result = gf.statvfs('/')
-    
+    List = statvfs_result.stdout.split()
+    bsize_index = List.index('bsize:')
+    blocks_index = List.index('blocks:')
+    bsize = int(List[bsize_index + 1])
+    blocks = int(List[blocks_index + 1])
 
+    expected_blocks = blocks / 2
+    new_size = expected_blocks * bsize
+    
+    #ntfsresize_opts: resize
+    gf.umount('/')
+    gf.ntfsresize_opts(mount_point, new_size, 'true')
+    
+    #statvfs: check
+    gf.mount(mount_point, '/')
+    statvfs_result = gf.statvfs('/')
+    List = statvfs_result.stdout.split()
+    new_blocks_index = List.index('blocks:')
+    new_blocks = int(List[new_blocks_index + 1])
+    if abs(new_blocks - expected_blocks) >= 2:
+        gf.close_session()
+        raise error.TestFail("test_ntfsresize_opts failed.")
+
+    ##ntfsresize_opts: expand
+    gf.umount('/')
+    gf.ntfsresize_opts(mount_point, None, 'true')
+    gf.mount(mount_point, '/')
+    statvfs_result = gf.statvfs('/')
+    List = statvfs_result.stdout.split()
+    new_blocks_index = List.index('blocks:')
+    new_blocks = int(List[new_blocks_index + 1])
+    if abs(new_blocks - blocks) >= 2:
+        gf.close_session()
+        raise error.TestFail("test_ntfsresize_opts failed.")
+
+    gf.close_session()
 
 def test_resize2fs(vm, params):
     pass
