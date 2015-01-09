@@ -4,6 +4,7 @@ from autotest.client.shared import error
 from virttest import libvirt_storage
 from virttest import virsh
 from virttest import data_dir
+from virttest import utils_selinux
 from virttest.utils_test import libvirt as utlv
 from virttest.tests import unattended_install
 
@@ -119,11 +120,17 @@ def run(test, params, env):
                                        "console=ttyS0,115200 console=tty0")
             params['cdroms'] = "unattended cd1"
             params['redirs'] += " unattended_install"
+            selinux_mode = None
             try:
-                unattended_install.run(test, params, env)
-            except error.CmdError, detail:
-                raise error.TestFail("Guest install failed:%s" % detail)
+                selinux_mode = utils_selinux.get_status()
+                utils_selinux.set_status("permissive")
+                try:
+                    unattended_install.run(test, params, env)
+                except error.CmdError, detail:
+                    raise error.TestFail("Guest install failed:%s" % detail)
             finally:
+                if selinux_mode is not None:
+                    utils_selinux.set_status(selinux_mode)
                 env.unregister_vm(vm_name)
     finally:
         try:
