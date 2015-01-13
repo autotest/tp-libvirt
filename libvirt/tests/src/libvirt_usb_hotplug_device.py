@@ -3,7 +3,7 @@ import shutil
 from autotest.client.shared import error
 from autotest.client import utils
 from virttest import data_dir, virsh
-from virttest import aexpect, utils_misc
+from virttest import aexpect, utils_misc, utils_selinux
 from virttest.aexpect import ShellError
 from virttest.remote import LoginError
 from virttest.utils_test import libvirt
@@ -32,6 +32,10 @@ def run(test, params, env):
 
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
+
+    # Set selinux of host.
+    backup_sestatus = utils_selinux.get_status()
+    utils_selinux.set_status("permissive")
 
     if usb_type == "storage":
         controllers = vm_xml.get_devices(device_type="controller")
@@ -156,4 +160,5 @@ def run(test, params, env):
         session.close()
         if os.path.isdir(tmp_dir):
             shutil.rmtree(tmp_dir)
+        utils_selinux.set_status(backup_sestatus)
         vm_xml_backup.sync()
