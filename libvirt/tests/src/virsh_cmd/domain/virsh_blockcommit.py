@@ -4,6 +4,8 @@ import tempfile
 from autotest.client.shared import error
 from autotest.client import utils
 from virttest import virsh, data_dir
+from virttest import aexpect
+from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.devices.disk import Disk
@@ -50,14 +52,15 @@ def run(test, params, env):
     4) Check result.
     """
 
-    def make_disk_snapshot():
+    def make_disk_snapshot(postfix_n):
         # Add all disks into commandline.
         disks = vm.get_disk_devices()
 
         # Make three external snapshots for disks only
         for count in range(1, 4):
-            options = "snapshot%s snap%s-desc " \
-                      "--disk-only --atomic --no-metadata" % (count, count)
+            options = "%s_%s %s%s-desc " % (postfix_n, count,
+                                            postfix_n, count)
+            options += "--disk-only --atomic --no-metadata"
             if needs_agent:
                 options += " --quiesce"
 
@@ -65,10 +68,11 @@ def run(test, params, env):
                 disk_detail = disks[disk]
                 basename = os.path.basename(disk_detail['source'])
 
-                # Remove the original suffix if any, appending ".snap[0-9]"
+                # Remove the original suffix if any, appending
+                # ".postfix_n[0-9]"
                 diskname = basename.split(".")[0]
-                disk_external = os.path.join(tmp_dir,
-                                             "%s.snap%s" % (diskname, count))
+                snap_name = "%s.%s%s" % (diskname, postfix_n, count)
+                disk_external = os.path.join(tmp_dir, snap_name)
 
                 snapshot_external_disks.append(disk_external)
                 options += " %s,snapshot=external,file=%s" % (disk,
@@ -107,6 +111,8 @@ def run(test, params, env):
     pivot_opt = "yes" == params.get("pivot_opt", "no")
     snap_in_mirror = "yes" == params.get("snap_in_mirror", "no")
     snap_in_mirror_err = "yes" == params.get("snap_in_mirror_err", "no")
+    with_active_commit = "yes" == params.get("with_active_commit", "no")
+    multiple_chain = "yes" == params.get("multiple_chain", "no")
     virsh_dargs = {'debug': True}
 
     # Process domain disk device parameters
@@ -132,6 +138,7 @@ def run(test, params, env):
                              vm_name)
 
     snapshot_external_disks = []
+    cmd_session = None
     try:
         if disk_src_protocol == 'iscsi' and disk_type == 'network':
             if not libvirt_version.version_compare(1, 0, 4):
@@ -155,11 +162,37 @@ def run(test, params, env):
         # get a vm session before snapshot
         session = vm.wait_for_login()
         # do snapshot
-        make_disk_snapshot()
+        postfix_n = 'snap'
+        make_disk_snapshot(postfix_n)
 
-        # snapshot src file list
+        basename = os.path.basename(blk_source)
+        diskname = basename.split(".")[0]
         snap_src_lst = [blk_source]
-        snap_src_lst += snapshot_external_disks
+        if multiple_chain:
+            snap_name = "%s.%s1" % (diskname, postfix_n)
+            snap_top = os.path.join(tmp_dir, snap_name)
+            top_index = snapshot_external_disks.index(snap_top) + 1
+            omit_list = snapshot_external_disks[top_index:]
+            vm.destroy()
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            disk_xml = vmxml.get_devices(device_type="disk")[0]
+            vmxml.del_device(disk_xml)
+            disk_dict = {'attrs': {'file': snap_top}}
+            disk_xml.source = disk_xml.new_disk_source(**disk_dict)
+            vmxml.add_device(disk_xml)
+            vmxml.sync()
+            vm.start()
+            session = vm.wait_for_login()
+            postfix_n = 'new_snap'
+            make_disk_snapshot(postfix_n)
+            snap_src_lst = [blk_source]
+            snap_src_lst += snapshot_external_disks
+            logging.debug("omit list is %s", omit_list)
+            for i in omit_list:
+                snap_src_lst.remove(i)
+        else:
+            # snapshot src file list
+            snap_src_lst += snapshot_external_disks
         backing_chain = ''
         for i in reversed(range(4)):
             if i == 0:
@@ -195,8 +228,6 @@ def run(test, params, env):
         # set blockcommit_options
         top_image = None
         blockcommit_options = "--wait --verbose"
-        basename = os.path.basename(blk_source)
-        diskname = basename.split(".")[0]
 
         if with_timeout:
             blockcommit_options += " --timeout 1"
@@ -205,13 +236,13 @@ def run(test, params, env):
             blockcommit_options += " --shallow"
         elif base_option == "base":
             if middle_base:
-                blk_source = os.path.join(tmp_dir, "%s.snap1" %
-                                          diskname)
+                snap_name = "%s.%s1" % (diskname, postfix_n)
+                blk_source = os.path.join(tmp_dir, snap_name)
             blockcommit_options += " --base %s" % blk_source
 
         if top_inactive:
-            top_image = os.path.join(tmp_dir, "%s.snap2" %
-                                     diskname)
+            snap_name = "%s.%s2" % (diskname, postfix_n)
+            top_image = os.path.join(tmp_dir, snap_name)
             blockcommit_options += " --top %s" % top_image
         else:
             blockcommit_options += " --active"
@@ -220,6 +251,12 @@ def run(test, params, env):
 
         if vm_state == "shut off":
             vm.shutdown()
+
+        if with_active_commit:
+            # inactive commit follow active commit will fail with bug 1135339
+            cmd = "virsh blockcommit %s %s --active --pivot" % (vm_name,
+                                                                blk_target)
+            cmd_session = aexpect.ShellSession(cmd)
 
         # Run test case
         result = virsh.blockcommit(vm_name, blk_target,
@@ -257,8 +294,12 @@ def run(test, params, env):
                         err_msg = "blockcommit base source "
                         err_msg += "%s not expected" % disk_src_file
                         if '--shallow' in blockcommit_options:
-                            if disk_src_file != snap_src_lst[2]:
-                                raise error.TestFail(err_msg)
+                            if not multiple_chain:
+                                if disk_src_file != snap_src_lst[2]:
+                                    raise error.TestFail(err_msg)
+                            else:
+                                if disk_src_file != snap_src_lst[3]:
+                                    raise error.TestFail(err_msg)
                         else:
                             if disk_src_file != blk_source:
                                 raise error.TestFail(err_msg)
@@ -333,7 +374,7 @@ def run(test, params, env):
                     break
 
         # Check flag files
-        if not vm_state == "shut off":
+        if not vm_state == "shut off" and not multiple_chain:
             for flag in snapshot_flag_files:
                 status, output = session.cmd_status_output("cat %s" % flag)
                 if status:
@@ -354,6 +395,8 @@ def run(test, params, env):
             vm.destroy()
         # Recover xml of vm.
         vmxml_backup.sync("--snapshots-metadata")
+        if cmd_session:
+            cmd_session.close()
         for disk in snapshot_external_disks:
             if os.path.exists(disk):
                 os.remove(disk)
@@ -362,6 +405,8 @@ def run(test, params, env):
             libvirt.setup_or_cleanup_iscsi(is_setup=False)
         elif disk_src_protocol == 'gluster':
             libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
+            libvirtd = utils_libvirtd.Libvirtd()
+            libvirtd.restart()
         elif disk_src_protocol == 'netfs':
             restore_selinux = params.get('selinux_status_bak')
             libvirt.setup_or_cleanup_nfs(is_setup=False,
