@@ -46,7 +46,6 @@ def test_set_get_e2uuid(vm, params):
     gf.run()
 
     mount_point = params.get("mount_point")
-    gf.mount(mount_point, '/')
     # set_e2uuid
     temp, uuid = commands.getstatusoutput("uuidgen")
     gf.set_e2uuid(mount_point, uuid)
@@ -91,7 +90,6 @@ def test_set_uuid(vm, params):
     gf.run()
 
     mount_point = params.get("mount_point")
-    gf.mount(mount_point, '/')
 
     # set_uuid
     temp, uuid = commands.getstatusoutput("uuidgen")
@@ -123,7 +121,6 @@ def test_set_get_e2label(vm, params):
     gf.run()
 
     mount_point = params.get("mount_point")
-    gf.mount(mount_point, '/')
 
     # set_e2label
     label = 'TEST_LABEL'
@@ -169,7 +166,6 @@ def test_set_label(vm, params):
     gf.run()
 
     mount_point = params.get("mount_point")
-    gf.mount(mount_point, '/')
 
     # set_label
     label = 'TEST_LABEL'
@@ -198,53 +194,61 @@ def test_set_get_e2attrs(vm, params):
         gf.add_domain(vm_name, readonly=readonly)
 
     pv_name = params.get("pv_name")
+    fstype = params.get("fs_type")
     gf.run()
 
     mount_point = params.get("mount_point")
     gf.mount(mount_point, '/')
-
     # set_e2attrs 't'
     filename = '/testfile'
-    attrs_t = 't'
     gf.rm_rf(filename)
     gf.touch(filename)
-    gf.set_e2attrs(filename, attrs_t)
+    gf.set_e2attrs(filename, 't')
     # get_e2attrs
+    expected_attrs = 't'
+    if fstype == 'ext4':
+        expected_attrs = 'et'
     gf_result = gf.get_e2attrs(filename)
-    if gf_result.stdout.split()[0] != attrs_t:
+    if gf_result.stdout.split()[0] != expected_attrs:
         gf.close_session()
         raise error.TestFail("set_get_e2attrs failed.")
-    # set_e2attrs 't'
-    attrs_u = 'u'
-    gf.set_e2attrs(filename, attrs_u)
+    # set_e2attrs 'u'
+    gf.set_e2attrs(filename, 'u')
     # get_e2attrs
+    expected_attrs = 'tu'
+    if fstype == 'ext4':
+        expected_attrs = 'etu'
     gf_result = gf.get_e2attrs(filename)
-    if gf_result.stdout.split()[0] != (attrs_t + attrs_u):
+    if gf_result.stdout.split()[0] != expected_attrs:
         gf.close_session()
         raise error.TestFail("set_get_e2attrs failed.")
     # set_e2attrs 'a', 'c'
-    attrs_a = 'a'
-    attrs_c = 'c'
-    gf.set_e2attrs(filename, attrs_a)
-    gf.set_e2attrs(filename, attrs_c)
+    gf.set_e2attrs(filename, 'a')
+    gf.set_e2attrs(filename, 'c')
     # get_e2attrs
+    expected_attrs = 'actu'
+    if fstype == 'ext4':
+        expected_attrs = 'acetu'
     gf_result = gf.get_e2attrs(filename)
-    if gf_result.stdout.split()[0] != (attrs_a + attrs_c + attrs_t + attrs_u):
+    if gf_result.stdout.split()[0] != expected_attrs:
         gf.close_session()
         raise error.TestFail("set_get_e2attrs failed.")
-    # set_e2attrs 'a' clear:true
-    gf.set_e2attrs(filename, attrs_c, 'true')
+    # set_e2attrs 'c' clear:true
+    gf.set_e2attrs(filename, 'c', 'true')
     # get_e2attrs
+    expected_attrs = 'atu'
+    if fstype == 'ext4':
+        expected_attrs = 'aetu'
     gf_result = gf.get_e2attrs(filename)
-    if gf_result.stdout.split()[0] != (attrs_a + attrs_t + attrs_u):
+    if gf_result.stdout.split()[0] != expected_attrs:
         gf.close_session()
         raise error.TestFail("set_get_e2attrs failed.")
 
     # set_e2attrs 't' clear:false
-    gf.set_e2attrs(filename, attrs_t, 'false')
+    gf.set_e2attrs(filename, 't', 'false')
     # get_e2attrs
     gf_result = gf.get_e2attrs(filename)
-    if gf_result.stdout.split()[0] != (attrs_a + attrs_t + attrs_u):
+    if gf_result.stdout.split()[0] != expected_attrs:
         gf.close_session()
         raise error.TestFail("set_get_e2attrs failed.")
     gf.close_session()
@@ -475,10 +479,15 @@ def test_mkfs_opts(vm, params):
     gf.run()
 
     mount_point = params.get("mount_point")
+    fstype = params.get("fs_type")
 
-    test_list = [['ext3', '1024'], ['ext4', '2048']]
-    for case in test_list:
-        fstype, blocksize = case[0], case[1]
+    size_list = ['1024', '2048']
+    # blocksize cannot be set on btrfs
+    if fstype == 'btrfs':
+        size_list = ['']
+    if fstype == 'vfat':
+        size_list = ['2048', '4096']
+    for blocksize in size_list:
         # mkfs-opts/mkfs
         gf.mkfs_opts(fstype, mount_point, blocksize)
         # check type
@@ -487,12 +496,21 @@ def test_mkfs_opts(vm, params):
             gf.close_session()
             raise error.TestFail("test_mkfs-opts failed.")
         # check blocksize
+        if fstype == 'btrfs':
+            gf.close_session()
+            return
+
         gf.mount(mount_point, '/')
         blocksize_str = 'bsize: %s' % blocksize
         statvfs_result = gf.statvfs('/')
+        logging.debug('---------------')
+        logging.debug(statvfs_result)
+        logging.debug('---------------')
+        logging.debug(blocksize_str)
+        logging.debug('---------------')
         if blocksize_str not in statvfs_result.stdout:
             gf.close_session()
-            raise error.TestFail("test_mkfs-opts failed.")
+            raise error.TestFail("test_mkfs_opts failed.")
 
         gf.umount('/')
     gf.close_session()
@@ -924,15 +942,151 @@ def test_ntfsresize_opts(vm, params):
 
 
 def test_resize2fs(vm, params):
-    pass
+    """
+    Test command resize2fs
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    pv_name = params.get("pv_name")
+
+    mount_point = params.get("mount_point")
+    image_size = params.get("image_size")
+    image_format = params.get("image_format")
+
+    last_char = image_size[len(image_size)-1]
+    if str.isdigit(last_char):
+        altsize_int = int(image_size[0: len(image_size)]) * 2
+        altsize = str(altsize_int)
+    else:
+        altsize_int = int(image_size[0: len(image_size)-1]) * 2
+        altsize = str(altsize_int) + image_size[len(image_size)-1]
+    tmpdir = '/tmp/autotest-libguestfs-resize2fs'
+    altimg = tmpdir + '/test_resize2fs.img'
+    altdev = '/dev/sdb'
+    os.system('mkdir -p ' + tmpdir)
+    os.system('qemu-img create -f ' + image_format + ' ' +
+              altimg + ' ' + altsize + ' > /dev/null')
+
+    gf.add_drive(altimg)
+    gf.run()
+    gf.dd(mount_point, altdev)
+    gf.e2fsck(altdev)
+    gf.resize2fs(altdev)
+    gf.mount(altdev, '/')
+    gf.umount_all()
+
+    t_result = gf.tune2fs_l(altdev)
+    b_result = gf.blockdev_getsize64(altdev)
+
+    for items in t_result.stdout.split('\n'):
+        if 'Block count' in items:
+            block_count = int(items.split(':')[1].strip())
+        if 'Block size' in items:
+            block_size = int(items.split(':')[1].strip())
+    getsize64 = int(b_result.stdout.split()[0])
+    os.system('rm -rf %s ' % tmpdir)
+    if block_count * block_size != getsize64:
+        gf.close_session()
+        raise error.TestFail("test_resize2fs failed.")
+    gf.close_session()
 
 
 def test_resize2fs_M(vm, params):
-    pass
+    """
+    Test command resize2fs_M
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    pv_name = params.get("pv_name")
+
+    mount_point = params.get("mount_point")
+    image_size = params.get("image_size")
+    image_format = params.get("image_format")
+    last_char = image_size[len(image_size)-1]
+    if str.isdigit(last_char):
+        altsize_int = int(image_size[0: len(image_size)]) * 2
+        altsize = str(altsize_int)
+    else:
+        altsize_int = int(image_size[0: len(image_size)-1]) * 2
+        altsize = str(altsize_int) + image_size[len(image_size)-1]
+    tmpdir = '/tmp/autotest-libguestfs-resize2fs'
+    altimg = tmpdir + '/test_resize2fs_M.img'
+    altdev = '/dev/sdb'
+    os.system('mkdir -p ' + tmpdir)
+    os.system('qemu-img create -f ' + image_format + ' ' +
+              altimg + ' ' + altsize + ' > /dev/null')
+
+    gf.add_drive(altimg)
+    gf.run()
+    gf.dd(mount_point, altdev)
+    e2_result = gf.e2fsck(altdev, None, 'true')
+    resize_result = gf.resize2fs_M(altdev)
+    mount_result = gf.mount(altdev, '/')
+
+    os.system('rm -rf %s ' % tmpdir)
+
+    if mount_result.exit_status != 0 and resize_result.exit_status != 0:
+        gf.close_session()
+        raise error.TestFail("test_resize2fs_M failed.")
+    gf.close_session()
 
 
 def test_resize2fs_size(vm, params):
-    pass
+    """
+    Test command resize2fs_size
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    if add_ref == "disk":
+        image_path = params.get("image_path")
+        gf.add_drive_opts(image_path, readonly=readonly)
+    elif add_ref == "domain":
+        vm_name = params.get("main_vm")
+        gf.add_domain(vm_name, readonly=readonly)
+
+    pv_name = params.get("pv_name")
+
+    mount_point = params.get("mount_point")
+    gf.run()
+
+    t_result = gf.tune2fs_l(mount_point)
+    for items in t_result.stdout.split('\n'):
+        if 'Block count' in items:
+            block_count = int(items.split(':')[1].strip())
+        if 'Block size' in items:
+            block_size = int(items.split(':')[1].strip())
+    filesystem_size = block_size / 2 * block_count
+    gf.e2fsck_f(mount_point)
+    gf.resize2fs_size(mount_point, filesystem_size)
+    new_t_result = gf.tune2fs_l(mount_point)
+    for items in new_t_result.stdout.split('\n'):
+        if 'Block count' in items:
+            new_block_count = int(items.split(':')[1].strip())
+    expected_blockcount = block_count / 2
+    if expected_blockcount != new_block_count:
+        gf.close_session()
+        raise error.TestFail("test_resize2fs_size failed.")
+    gf.close_session()
 
 
 def run(test, params, env):
