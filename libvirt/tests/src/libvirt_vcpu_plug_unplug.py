@@ -34,7 +34,7 @@ def check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin, setvcpu_option=""):
     if setvcpu_option == "--guest" and vm.state() == "running":
         vcpucount_option = "--guest"
     result = virsh.vcpucount(vm.name, vcpucount_option, ignore_status=True,
-                             debue=True)
+                             debug=True)
     libvirt.check_exit_status(result)
     output = result.stdout.strip()
     if vcpucount_option == "--guest":
@@ -282,6 +282,21 @@ def check_setvcpus_result(cmd_result, expect_error):
                      cmd_result.stderr):
             raise error.TestNAError("Your qemu unsupport unplug vcpu")
 
+        # Qemu guest agent version could be too low
+        if re.search("The command guest-get-vcpus has not been found",
+                     cmd_result.stderr):
+            err_msg = "Your agent version is too low: %s" % cmd_result.stderr
+            logging.warning(err_msg)
+            raise error.TestNAError(err_msg)
+
+        # Attempting to enable more vCPUs in the guest than is currently
+        # enabled in the guest but less than the maximum count for the VM
+        if re.search("requested vcpu count is greater than the count of "
+                     "enabled vcpus in the domain",
+                     cmd_result.stderr):
+            logging.debug("Expect fail: %s", cmd_result.stderr)
+            return
+
         # Otherwise, it seems we have a real error
         raise error.TestFail("Run failed with right command: %s"
                              % cmd_result.stderr)
@@ -328,6 +343,7 @@ def run(test, params, env):
     vcpu_unplug = "yes" == params.get("vcpu_unplug", "no")
     vcpu_unplug_num = params.get("vcpu_unplug_num")
     setvcpu_option = params.get("setvcpu_option", "")
+    agent_channel = "yes" == params.get("agent_channel", "yes")
     install_qemuga = "yes" == params.get("install_qemuga", "no")
     start_qemuga = "yes" == params.get("start_qemuga", "no")
     restart_libvirtd = "yes" == params.get("restart_libvirtd", "no")
@@ -370,64 +386,38 @@ def run(test, params, env):
         # Just use the value get from cfg
         pass
 
+    need_mkswap = False
     # Back up domain XML
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
-
     try:
-        # Custome domain vcpu number
+        # Customize domain vcpu number
         if vm.is_alive():
             vm.destroy()
+        if agent_channel:
+            vmxml.set_agent_channel()
+        else:
+            vmxml.remove_agent_channels()
+        vmxml.sync()
+
         vmxml.set_vm_vcpus(vm_name, int(vcpu_max_num), int(vcpu_current_num))
-        vmxml.set_agent_channel(vm_name)
         vmxml.set_pm_suspend(vm_name, "yes", "yes")
         vm.start()
 
         # Create swap partition/file if nessesary
-        need_mkswap = False
         if vm_operation == "s4":
             need_mkswap = not vm.has_swap()
         if need_mkswap:
             logging.debug("Creating swap partition")
             vm.create_swap_partition()
 
+        # Prepare qemu guest agent
         if install_qemuga:
-            # Install qemu-guest-agent
-            session = vm.wait_for_login()
-            try:
-                cmd = "rpm -q qemu-guest-agent||yum install -y qemu-guest-agent"
-                status_install = session.cmd_status(cmd, timeout=300)
-                if status_install != 0:
-                    raise error.TestFail("Yum install qemu-guest-agent failed")
-                # After do s3/s4 and wakeup domain, libvirt will lose connection
-                # with qemu-ga if selinux is Enforcing
-                cmd = "rpm -q libselinux-utils||yum install -y libselinux-utils"
-                status_install = session.cmd_status(cmd, timeout=600)
-                if status_install != 0:
-                    raise error.TestFail("Fail to install libselinux-utils")
-                if session.cmd_output("getenforce").strip() == "Enforcing":
-                    session.cmd("setenforce 0", timeout=10)
-
-                # Start/stop qemu-guest-agent
-                cmd = "ps aux |grep [q]emu-ga|grep -v grep"
-                status_ps, output_ps = session.cmd_status_output(cmd)
-                if status_ps != 0 and start_qemuga:
-                    cmd = "service qemu-guest-agent start"
-                    status_start = session.cmd_status(cmd, timeout=10)
-                    if status_start != 0:
-                        raise error.TestFail("Fail to start qemu-guest-agent")
-                if status_ps == 0 and not start_qemuga:
-                    cmd = "kill %s" % output_ps.strip().split()[1]
-                    session.cmd(cmd, timeout=10)
-            finally:
-                session.close()
+            vm.prepare_guest_agent(prepare_xml=False, start=start_qemuga)
+            vm.setenforce(0)
         else:
             # Remove qemu-guest-agent for negative test
-            if status_error and setvcpu_option.count("guest"):
-                session = vm.wait_for_login()
-                cmd = "rpm -e qemu-guest-agent"
-                session.cmd(cmd, ignore_all_errors=True)
-                session.close()
+            vm.remove_package('qemu-guest-agent')
 
         # Run test
         check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin)
@@ -524,6 +514,7 @@ def run(test, params, env):
             result = virsh.setvcpus(vm_name, vcpu_unplug_num, setvcpu_option,
                                     readonly=setvcpu_readonly,
                                     ignore_status=True, debug=True)
+
             try:
                 check_setvcpus_result(result, status_error)
             except error.TestNAError:

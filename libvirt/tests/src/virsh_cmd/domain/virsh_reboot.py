@@ -37,27 +37,7 @@ def run(test, params, env):
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     try:
         # Add or remove qemu-agent from guest before test
-        if agent:
-            vm_xml.VMXML.set_agent_channel(vm_name)
-        else:
-            vm_xml.VMXML.remove_agent_channel(vm_name)
-
-        virsh.start(vm_name)
-        guest_session = vm.wait_for_login()
-        if agent:
-            if guest_session.cmd_status("which qemu-ga"):
-                raise error.TestNAError("Cannot execute this test for domain"
-                                        " doesn't have qemu-ga command!")
-            # check if the qemu-guest-agent is active or not firstly
-            stat_ps = guest_session.cmd_status("ps aux |grep [q]emu-ga")
-            if stat_ps != 0:
-                s, o = guest_session.cmd_status_output("qemu-ga -d")
-                if s != 0:
-                    raise error.TestError("'qemu-ga -d' failed.\noutput:%s" % o)
-            stat_ps = guest_session.cmd_status("ps aux |grep [q]emu-ga")
-            guest_session.close()
-            if stat_ps:
-                raise error.TestError("Fail to start qemu-guest-agent!")
+        vm.prepare_guest_agent(channel=agent, start=agent)
         if pre_domian_status == "shutoff":
             virsh.destroy(vm_name)
         if libvirtd == "off":

@@ -15,24 +15,6 @@ def run(test, params, env):
     The command suspends a running domain using guest OS's power management.
     """
 
-    def check_vm_guestagent(session):
-        # Check if qemu-ga already started automatically
-        cmd = "rpm -q qemu-guest-agent || yum install -y qemu-guest-agent"
-        stat_install, output = session.cmd_status_output(cmd, 300)
-        logging.debug(output)
-        if stat_install != 0:
-            raise error.TestError("Fail to install qemu-guest-agent, make"
-                                  "sure that you have usable repo in guest")
-
-        # Check if qemu-ga already started
-        stat_ps = session.cmd_status("ps aux |grep [q]emu-ga | grep -v grep")
-        if stat_ps != 0:
-            session.cmd("service qemu-ga start")
-            # Check if the qemu-ga really started
-            stat_ps = session.cmd_status("ps aux |grep [q]emu-ga | grep -v grep")
-            if stat_ps != 0:
-                raise error.TestError("Fail to run qemu-ga in guest")
-
     # MAIN TEST CODE ###
     # Process cartesian parameters
     vm_name = params.get("main_vm")
@@ -43,6 +25,7 @@ def run(test, params, env):
     pm_enabled = params.get("pm_enabled", "not_set")
     test_managedsave = "yes" == params.get("test_managedsave", "no")
     test_save_restore = "yes" == params.get("test_save_restore", "no")
+    test_suspend_resume = "yes" == params.get("test_suspend_resume", "no")
     pmsuspend_error = 'yes' == params.get("pmsuspend_error", 'no')
 
     # Libvirt acl test related params
@@ -107,8 +90,7 @@ def run(test, params, env):
             vmxml.pm = pm_xml
         vmxml.sync()
 
-        vm_xml.VMXML.set_agent_channel(vm_name)
-        vm.start()
+        vm.prepare_guest_agent()
 
         # Create swap partition/file if nessesary.
         need_mkswap = False
@@ -122,7 +104,6 @@ def run(test, params, env):
             libvirtd = utils_libvirtd.Libvirtd()
             savefile = os.path.join(test.tmpdir, "%s.save" % vm_name)
             session = vm.wait_for_login()
-            check_vm_guestagent(session)
             # Touch a file on guest to test managed save command.
             if test_managedsave:
                 session.cmd_status("touch pmtest")
@@ -192,7 +173,15 @@ def run(test, params, env):
                 libvirt.check_exit_status(ret)
                 if not libvirtd.is_running():
                     raise error.TestFail("libvirtd crashed")
-
+            if test_suspend_resume:
+                ret = virsh.suspend(vm_name)
+                libvirt.check_exit_status(ret, expect_error=True)
+                if vm.state() != 'pmsuspended':
+                    raise  error.TestFail("VM state should be pmsuspended")
+                ret = virsh.resume(vm_name)
+                libvirt.check_exit_status(ret, expect_error=True)
+                if vm.state() != 'pmsuspended':
+                    raise  error.TestFail("VM state should be pmsuspended")
         finally:
             libvirtd.restart()
             # Remove the tmp file

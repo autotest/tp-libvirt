@@ -13,30 +13,15 @@ def reset_domain(vm, vm_state, needs_agent=False):
     """
     if vm.is_alive():
         vm.destroy()
-    vm_xml = libvirt_xml.VMXML()
-    vm_xml.set_vm_vcpus(vm.name, 4, 1)
+    vm_xml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm.name)
     if needs_agent:
         logging.debug("Attempting to set guest agent channel")
-        vm_xml.set_agent_channel(vm.name)
+        vm_xml.set_agent_channel()
+        vm_xml.sync()
+    vm_xml.set_vm_vcpus(vm.name, 4, 1)
     if not vm_state == "shut off":
         vm.start()
-        session = vm.wait_for_login()
-        if needs_agent:
-            # Check if qemu-ga already started automatically
-            cmd = "rpm -q qemu-guest-agent || yum install -y qemu-guest-agent"
-            stat_install = session.cmd_status(cmd, 300)
-            if stat_install != 0:
-                raise error.TestFail("Fail to install qemu-guest-agent, make "
-                                     "sure that you have usable repo in guest")
-
-            # Check if qemu-ga already started
-            stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
-            if stat_ps != 0:
-                session.cmd("qemu-ga -d")
-                # Check if the qemu-ga really started
-                stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
-                if stat_ps != 0:
-                    raise error.TestFail("Fail to run qemu-ga in guest")
+        vm.prepare_guest_agent(prepare_xml=False)
 
 
 def chk_output_running(output, expect_out, options):
@@ -171,11 +156,7 @@ def run(test, params, env):
         raise error.TestNAError("Options exceeds 2 is not supported")
 
     # Prepare domain
-    try:
-        reset_domain(vm, pre_vm_state, ("--guest" in options))
-    except Exception, details:
-        reset_env(vm_name, xml_file)
-        raise error.TestFail(details)
+    reset_domain(vm, pre_vm_state, ("--guest" in options))
 
     # Perform guest vcpu hotplug
     for i in range(len(set_option)):

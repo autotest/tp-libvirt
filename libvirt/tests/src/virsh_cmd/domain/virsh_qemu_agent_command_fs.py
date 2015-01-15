@@ -18,16 +18,6 @@ def run(test, params, env):
     thaw_cmd = params.get("thaw_cmd", "")
     tmp_file = params.get("tmp_file", "/tmp/test.file")
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    vm_xml.VMXML.set_agent_channel(vm_name)
-    vm.start()
-    session = vm.wait_for_login()
-    session.cmd("qemu-ga -d")
-    stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
-    if stat_ps:
-        session.close()
-        xml_backup.sync()
-        raise error.TestError("Fail to start qemu-guest-agent!")
-
     try:
         def get_dirty(session, frozen=False):
             """
@@ -62,53 +52,58 @@ def run(test, params, env):
             except (IndexError, ValueError), details:
                 raise error.TestFail("Get dirty info failed: %s" % details)
 
+        vm.prepare_guest_agent()
+
         # Do operation before freeze guest filesystem
-        session.cmd("rm -f %s" % tmp_file)
-        session.cmd_output("cp /dev/zero %s 2>/dev/null &" % tmp_file)
-        time.sleep(5)
-        # Get original dirty data
-        org_dirty_info = get_dirty(session)
-        fz_cmd_result = virsh.qemu_agent_command(vm_name, freeze_cmd,
-                                                 ignore_status=True,
-                                                 debug=True)
-        libvirt.check_exit_status(fz_cmd_result)
-        # Wait for freeze filesystem
-        time.sleep(1)
+        session = vm.wait_for_login()
+        try:
+            session.cmd("rm -f %s" % tmp_file)
+            session.cmd_output("cp /dev/zero %s 2>/dev/null &" % tmp_file)
+            time.sleep(5)
+            # Get original dirty data
+            org_dirty_info = get_dirty(session)
+            fz_cmd_result = virsh.qemu_agent_command(vm_name, freeze_cmd,
+                                                     ignore_status=True,
+                                                     debug=True)
+            libvirt.check_exit_status(fz_cmd_result)
+            # Wait for freeze filesystem
+            time.sleep(1)
 
-        # Get frozen dirty data
-        fz_dirty_info = get_dirty(session, True)
-        st_cmd_result = virsh.qemu_agent_command(vm_name, status_cmd,
-                                                 ignore_status=True,
-                                                 debug=True)
-        libvirt.check_exit_status(st_cmd_result)
-        if not st_cmd_result.stdout.count("frozen"):
-            raise error.TestFail("Guest filesystem status is not frozen: %s"
-                                 % st_cmd_result.stdout.strip())
+            # Get frozen dirty data
+            fz_dirty_info = get_dirty(session, True)
+            st_cmd_result = virsh.qemu_agent_command(vm_name, status_cmd,
+                                                     ignore_status=True,
+                                                     debug=True)
+            libvirt.check_exit_status(st_cmd_result)
+            if not st_cmd_result.stdout.count("frozen"):
+                raise error.TestFail("Guest filesystem status is not frozen: %s"
+                                     % st_cmd_result.stdout.strip())
 
-        tw_cmd_result = virsh.qemu_agent_command(vm_name, thaw_cmd,
-                                                 ignore_status=True,
-                                                 debug=True)
-        libvirt.check_exit_status(tw_cmd_result)
+            tw_cmd_result = virsh.qemu_agent_command(vm_name, thaw_cmd,
+                                                     ignore_status=True,
+                                                     debug=True)
+            libvirt.check_exit_status(tw_cmd_result)
 
-        # Get thawed dirty data
-        tw_dirty_info = get_dirty(session)
-        st_cmd_result = virsh.qemu_agent_command(vm_name, status_cmd,
-                                                 ignore_status=True,
-                                                 debug=True)
-        libvirt.check_exit_status(st_cmd_result)
-        if not st_cmd_result.stdout.count("thawed"):
-            raise error.TestFail("Guest filesystem status is not thawed: %s"
-                                 % st_cmd_result.stdout.strip())
-        logging.info("Original dirty data: %s" % org_dirty_info)
-        logging.info("Frozen dirty data: %s" % fz_dirty_info)
-        logging.info("Thawed dirty data: %s" % tw_dirty_info)
-        if not tw_dirty_info or not org_dirty_info:
-            raise error.TestFail("The thawed dirty data should not be 0!")
-        if fz_dirty_info:
-            raise error.TestFail("The frozen dirty data should be 0!")
+            # Get thawed dirty data
+            tw_dirty_info = get_dirty(session)
+            st_cmd_result = virsh.qemu_agent_command(vm_name, status_cmd,
+                                                     ignore_status=True,
+                                                     debug=True)
+            libvirt.check_exit_status(st_cmd_result)
+            if not st_cmd_result.stdout.count("thawed"):
+                raise error.TestFail("Guest filesystem status is not thawed: %s"
+                                     % st_cmd_result.stdout.strip())
+            logging.info("Original dirty data: %s" % org_dirty_info)
+            logging.info("Frozen dirty data: %s" % fz_dirty_info)
+            logging.info("Thawed dirty data: %s" % tw_dirty_info)
+            if not tw_dirty_info or not org_dirty_info:
+                raise error.TestFail("The thawed dirty data should not be 0!")
+            if fz_dirty_info:
+                raise error.TestFail("The frozen dirty data should be 0!")
+        finally:
+            # Thaw the file system that remove action can be done
+            virsh.qemu_agent_command(vm_name, thaw_cmd, ignore_status=True)
+            session.cmd("rm -f %s" % tmp_file)
+            session.close()
     finally:
-        # Thaw the file system that remove action can be done
-        virsh.qemu_agent_command(vm_name, thaw_cmd, ignore_status=True)
-        session.cmd("rm -f %s" % tmp_file)
-        session.close()
         xml_backup.sync()
