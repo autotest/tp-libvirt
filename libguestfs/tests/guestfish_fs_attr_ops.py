@@ -476,10 +476,35 @@ def test_mkfs_opts(vm, params):
         gf.add_domain(vm_name, readonly=readonly)
 
     pv_name = params.get("pv_name")
+    fstype = params.get("fs_type")
+    partition_type = params.get("partition_type")
+
+    test_format = params.get("image_format")
+    test_size = params.get("image_size")
+    test_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    test_img = test_dir + '/test_resize2fs.img'
+    test_pv = '/dev/sdb'
+    os.system('qemu-img create -f ' + test_format + ' ' +
+              test_img + ' ' + test_size + ' > /dev/null')
+    gf.add_drive(test_img)
     gf.run()
 
-    mount_point = params.get("mount_point")
-    fstype = params.get("fs_type")
+    # create pv and vg
+    if partition_type == "lvm":
+        test_vg = "mkfs_testvg"
+        test_lv = "mkfs_testlv"
+        test_mountpoint = "/dev/%s/%s" % (test_vg, test_lv)
+        if 'G' in test_size:
+            test_lv_size = int(test_size.replace('G', '')) * 1000
+        else:
+            test_lv_size = int(test_size.replace('M', '')) - 10
+        gf.pvcreate(test_pv)
+        gf.vgcreate(test_vg, test_pv)
+        gf.lvcreate(test_lv, test_vg, test_lv_size)
+    elif partition_type == "physical":
+        test_mountpoint = test_pv + "1"
+        gf.part_disk(test_pv, "mbr")
+        gf.part_list(test_pv)
 
     size_list = ['1024', '2048']
     # blocksize cannot be set on btrfs
@@ -489,30 +514,29 @@ def test_mkfs_opts(vm, params):
         size_list = ['2048', '4096']
     for blocksize in size_list:
         # mkfs-opts/mkfs
-        gf.mkfs_opts(fstype, mount_point, blocksize)
+        aaa = gf.mkfs_opts(fstype, test_mountpoint, blocksize)
         # check type
-        vfs_type_result = gf.vfs_type(mount_point).stdout.split()[0]
+        vfs_type_result = gf.vfs_type(test_mountpoint).stdout.split()[0]
         if fstype != vfs_type_result:
+            os.system('rm -f ' + test_img + ' > /dev/null')
             gf.close_session()
             raise error.TestFail("test_mkfs-opts failed.")
         # check blocksize
         if fstype == 'btrfs':
+            os.system('rm -f ' + test_img + ' > /dev/null')
             gf.close_session()
             return
 
-        gf.mount(mount_point, '/')
+        gf.mount(test_mountpoint, '/')
         blocksize_str = 'bsize: %s' % blocksize
         statvfs_result = gf.statvfs('/')
-        logging.debug('---------------')
-        logging.debug(statvfs_result)
-        logging.debug('---------------')
-        logging.debug(blocksize_str)
-        logging.debug('---------------')
         if blocksize_str not in statvfs_result.stdout:
             gf.close_session()
+            os.system('rm -f ' + test_img + ' > /dev/null')
             raise error.TestFail("test_mkfs_opts failed.")
 
         gf.umount('/')
+    os.system('rm -f ' + test_img + ' > /dev/null')
     gf.close_session()
 
 
@@ -1112,12 +1136,35 @@ def run(test, params, env):
     operation = params.get("guestfish_function")
     testcase = globals()["test_%s" % operation]
     partition_types = params.get("partition_types")
-    fs_types = params.get("fs_types")
+    fs_type = params.get("fs_type")
     image_formats = params.get("image_formats")
+    image_name = params.get("image_name", "gs_common")
 
     for image_format in re.findall("\w+", image_formats):
         params["image_format"] = image_format
         for partition_type in re.findall("\w+", partition_types):
             params["partition_type"] = partition_type
-            prepare_image(params)
+            image_dir = params.get("img_dir", data_dir.get_tmp_dir())
+            image_path = image_dir + '/' + image_name + '.' + image_format
+            image_name_with_fs_pt = image_name + '.' + fs_type + '.' + partition_type
+            params['image_name'] = image_name_with_fs_pt
+            image_path = image_dir + '/' + image_name_with_fs_pt + '.' + image_format
+
+            if params["gf_create_img_force"] == "no" and os.path.exists(image_path):
+                params["image_path"] = image_path
+                # get mount_point
+                if partition_type == 'lvm':
+                    pv_name = params.get("pv_name", "/dev/sdb")
+                    vg_name = params.get("vg_name", "vol_test")
+                    lv_name = params.get("lv_name", "vol_file")
+                    mount_point = "/dev/%s/%s" % (vg_name, lv_name)
+                elif partition_type == "physical":
+                    logging.info("create physical partition...")
+                    pv_name = params.get("pv_name", "/dev/sdb")
+                    mount_point = pv_name + "1"
+                params["mount_point"] = mount_point
+
+                logging.debug("Skip preparing image, " + image_path + " exists")
+            else:
+                prepare_image(params)
             testcase(vm, params)
