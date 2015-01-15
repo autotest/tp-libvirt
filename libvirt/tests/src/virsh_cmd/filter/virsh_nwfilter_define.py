@@ -2,17 +2,11 @@ import os
 import logging
 from autotest.client.shared import error
 from virttest import virsh, xml_utils, libvirt_xml
+from virttest.utils_test import libvirt as utlv
 from provider import libvirt_version
 
 
 NWFILTER_ETC_DIR = "/etc/libvirt/nwfilter"
-RULE_ATTR = ('rule_action', 'rule_direction', 'rule_priority',
-             'rule_statematch')
-PROTOCOL_TYPES = ['mac', 'vlan', 'stp', 'arp', 'rarp', 'ip', 'ipv6',
-                  'tcp', 'udp', 'sctp', 'icmp', 'igmp', 'esp', 'ah',
-                  'udplite', 'all', 'tcp-ipv6', 'udp-ipv6', 'sctp-ipv6',
-                  'icmpv6', 'esp-ipv6', 'ah-ipv6', 'udplite-ipv6',
-                  'all-ipv6']
 
 
 def check_list(uuid, name):
@@ -44,18 +38,15 @@ def run(test, params, env):
     """
     # Prepare parameters
     filter_name = params.get("filter_name", "testcase")
-    filter_chain = params.get("filter_chain", "root")
-    filter_priority = params.get("filter_priority", "")
     filter_uuid = params.get("filter_uuid",
-                             "5c6d49af-b071-6127-b4ec-6f8ed4b55335")
-    filterref = params.get("filterref")
-    filterref_name = params.get("filterref_name")
+                             "11111111-b071-6127-b4ec-111111111111")
     exist_filter = params.get("exist_filter", "no-mac-spoofing")
     filter_xml = params.get("filter_create_xml_file")
     options_ref = params.get("options_ref", "")
     status_error = params.get("status_error", "no")
     boundary_test_skip = "yes" == params.get("boundary_test_skip")
-    update_exist_filter = "yes" == params.get("update_exist_filter", 'no')
+    new_uuid = "yes" == params.get("new_uuid", 'no')
+    bug_url = params.get("bug_url")
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
@@ -69,51 +60,12 @@ def run(test, params, env):
             raise error.TestNAError("API acl test not supported in current"
                                     + " libvirt version.")
 
-    if update_exist_filter:
-        # Since commit 46a811d, the logic changed for not allow update filter
-        # with same name, so decide status_error with libvirt version.
+    if exist_filter == filter_name and new_uuid:
+        # Since commit 46a811d, update filter with new uuid will fail.
         if libvirt_version.version_compare(1, 2, 7):
             status_error = 'yes'
         else:
             status_error = 'no'
-
-    # prepare rule and protocol attributes
-    protocol = {}
-    rule_dict = {}
-    rule_dict_tmp = {}
-    # rule string should end with EOL as separator, multiple rules is supported
-    rule = params.get("rule",
-                      "rule_action=accept rule_direction=out protocol=mac EOL")
-    rule_list = rule.split('EOL')
-
-    for i in range(len(rule_list)):
-        if rule_list[i]:
-            attr = rule_list[i].split()
-            for j in range(len(attr)):
-                attr_list = attr[j].split('=')
-                rule_dict_tmp[attr_list[0]] = attr_list[1]
-            rule_dict[i] = rule_dict_tmp
-            rule_dict_tmp = {}
-
-    # process protocol parameter
-    for i in rule_dict.keys():
-        if 'protocol' not in rule_dict[i]:
-            # Set protocol as string 'None' as parse from cfg is
-            # string 'None'
-            protocol[i] = 'None'
-        else:
-            protocol[i] = rule_dict[i]['protocol']
-            rule_dict[i].pop('protocol')
-
-            if protocol[i] in PROTOCOL_TYPES:
-                # replace '-' with '_' in ipv6 types as '-' is not
-                # supposed to be in class name
-                if '-' in protocol[i]:
-                    protocol[i] = protocol[i].replace('-', '_')
-            else:
-                raise error.TestFail("Given protocol type %s" % protocol[i]
-                                     + " is not in supported list %s" %
-                                     PROTOCOL_TYPES)
 
     try:
         if filter_xml == "invalid-filter-xml":
@@ -124,56 +76,15 @@ def run(test, params, env):
             filter_xml = tmp_xml.name
             logging.info("Test invalid xml is: %s" % filter_xml)
         elif filter_xml:
-            # Use exist xml as template with new attributes
+            # Create filter xml
             new_filter = libvirt_xml.NwfilterXML()
-            filterxml = new_filter.new_from_filter_dumpxml(exist_filter)
-            logging.debug("the exist xml is:\n%s" % filterxml.xmltreefile)
-
+            filterxml_backup = new_filter.new_from_filter_dumpxml(exist_filter)
             # Backup xml if only update exist filter
-            if exist_filter == filter_name:
-                backup_xml = filterxml.xmltreefile.backup_copy()
-                filter_uuid = filterxml.uuid
+            if exist_filter == filter_name and not new_uuid:
+                filter_uuid = filterxml_backup.uuid
+                params['filter_uuid'] = filter_uuid
 
-            # Set filter attribute
-            filterxml.filter_name = filter_name
-            filterxml.filter_chain = filter_chain
-            filterxml.filter_priority = filter_priority
-            filterxml.uuid = filter_uuid
-            if filterref:
-                filterxml.filterref = filterref
-                filterxml.filterref_name = filterref_name
-
-            # Set rule attribute
-            index_total = filterxml.get_rule_index()
-            rule = filterxml.get_rule(0)
-            rulexml = rule.backup_rule()
-            for i in range(len(rule_dict.keys())):
-                rulexml.rule_action = rule_dict[i].get('rule_action')
-                rulexml.rule_direction = rule_dict[i].get('rule_direction')
-                rulexml.rule_priority = rule_dict[i].get('rule_priority')
-                rulexml.rule_statematch = rule_dict[i].get('rule_statematch')
-                for j in RULE_ATTR:
-                    if j in rule_dict[i].keys():
-                        rule_dict[i].pop(j)
-
-                # set protocol attribute
-                if protocol[i] != 'None':
-                    protocolxml = rulexml.get_protocol(protocol[i])
-                    new_one = protocolxml.new_attr(**rule_dict[i])
-                    protocolxml.attrs = new_one
-                    rulexml.xmltreefile = protocolxml.xmltreefile
-                else:
-                    rulexml.del_protocol()
-
-                if i <= len(index_total) - 1:
-                    filterxml.set_rule(rulexml, i)
-                else:
-                    filterxml.add_rule(rulexml)
-
-                # Reset rulexml
-                rulexml = rule.backup_rule()
-
-            logging.info("The xml for define is:\n%s" % filterxml.xmltreefile)
+            filterxml = utlv.create_nwfilter_xml(params)
             filterxml.xmltreefile.write(filter_xml)
 
         # Run command
@@ -192,10 +103,16 @@ def run(test, params, env):
                     raise error.TestNAError("Boundary check commit 4f20943 not"
                                             + " in this libvirt build yet.")
                 else:
-                    raise error.TestFail("Run successfully with wrong command.")
+                    err_msg = "Run successfully with wrong command."
+                    if bug_url:
+                        err_msg += " Check more info in %s" % bug_url
+                    raise error.TestFail(err_msg)
         elif status_error == "no":
             if status:
-                raise error.TestFail("Run failed with right command.")
+                err_msg = "Run failed with right command."
+                if bug_url:
+                    err_msg += " Check more info in %s" % bug_url
+                raise error.TestFail(err_msg)
             if not chk_result:
                 raise error.TestFail("Can't find filter in nwfilter-list" +
                                      " output")
@@ -211,16 +128,10 @@ def run(test, params, env):
         # Clean env
         if exist_filter == filter_name:
             logging.info("Restore exist filter: %s" % exist_filter)
-            backup_xml.write(filter_xml)
-            virsh.nwfilter_define(filter_xml,
-                                  options="",
-                                  ignore_status=True,
-                                  debug=True)
+            virsh.nwfilter_undefine(filter_name, ignore_status=True)
+            virsh.nwfilter_define(filterxml_backup.xml, ignore_status=True)
         else:
             if chk_result:
-                virsh.nwfilter_undefine(filter_name,
-                                        options="",
-                                        ignore_status=True,
-                                        debug=True)
+                virsh.nwfilter_undefine(filter_name, ignore_status=True)
         if os.path.exists(filter_xml):
             os.remove(filter_xml)
