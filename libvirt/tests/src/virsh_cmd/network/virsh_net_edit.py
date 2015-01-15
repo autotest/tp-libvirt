@@ -5,6 +5,7 @@ from virttest import aexpect
 from virttest import remote
 from autotest.client.shared import error
 from virttest import virsh
+from virttest import utils_libvirtd
 
 
 def run(test, params, env):
@@ -38,6 +39,7 @@ def run(test, params, env):
 
     # Gather test parameters
     net_name = params.get("net_edit_net_name", "editnet")
+    test_create = "yes" == params.get("test_create", "no")
 
     virsh_dargs = {'debug': True, 'ignore_status': True}
     virsh_instance = virsh.VirshPersistent(**virsh_dargs)
@@ -73,16 +75,39 @@ def run(test, params, env):
     try:
         test_xml = network_xml.NetworkXML(network_name=net_name)
         test_xml.xml = virtual_net
-        test_xml.define()
+        if test_create:
+            test_xml.create()
+        else:
+            test_xml.define()
     except xcepts.LibvirtXMLError, detail:
         raise error.TestNAError("Failed to define a test network.\n"
                                 "Detail: %s." % detail)
 
     # Run test case
     try:
+        libvirtd = utils_libvirtd.Libvirtd()
+        if test_create:
+            # Restart libvirtd and check state
+            libvirtd.restart()
+            net_state = virsh.net_state_dict()
+            if (not net_state[net_name]['active'] or
+                    net_state[net_name]['autostart'] or
+                    net_state[net_name]['persistent']):
+                raise error.TestFail("Found wrong network states"
+                                     " after restarting libvirtd: %s"
+                                     % net_state)
         edit_net_xml()
+        if test_create:
+            # Network become persistent after editing
+            net_state = virsh.net_state_dict()
+            if (not net_state[net_name]['active'] or
+                    net_state[net_name]['autostart'] or
+                    not net_state[net_name]['persistent']):
+                raise error.TestFail("Found wrong network states"
+                                     " after editing: %s"
+                                     % net_state)
 
-        cmd_result = virsh.net_dumpxml(net_name, debug=True)
+        cmd_result = virsh.net_dumpxml(net_name, '--inactive', debug=True)
         if cmd_result.exit_status:
             raise error.TestFail("Failed to dump xml of virtual network %s" %
                                  net_name)
@@ -94,4 +119,4 @@ def run(test, params, env):
             raise error.TestFail("The xml is not expected")
 
     finally:
-        test_xml.undefine()
+        test_xml.orbital_nuclear_strike()
