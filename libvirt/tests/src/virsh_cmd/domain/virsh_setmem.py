@@ -224,24 +224,12 @@ def run(test, params, env):
         else:
             logging.error("Not find %s on host", BIOS_BIN)
         vmxml.set_pm_suspend(vm_name, "yes", "yes")
-        vmxml.set_agent_channel(vm_name)
-        vm.start()
+        vm.prepare_guest_agent()
         if manipulate_action == "s4":
             need_mkswap = not vm.has_swap()
         if need_mkswap:
             logging.debug("Creating swap partition")
             vm.create_swap_partition()
-        session = vm.wait_for_login()
-        cmd = "rpm -q qemu-guest-agent||yum install -y qemu-guest-agent"
-        status_install = session.cmd_status(cmd, timeout=300)
-        if status_install != 0:
-            logging.error("yum install qemu-guest-agent failed")
-        cmd = "service qemu-guest-agent start"
-        s_start, o_start = session.cmd_status_output(cmd, timeout=10)
-        if s_start != 0:
-            logging.error("Fail to start qemu-guest-agent in guest:\n%s",
-                          o_start)
-        session.close()
 
     memballoon_model = params.get("memballoon_model", "")
     if memballoon_model:

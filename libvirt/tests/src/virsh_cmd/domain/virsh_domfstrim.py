@@ -1,3 +1,4 @@
+import os
 import logging
 from autotest.client.shared import error
 from autotest.client import utils
@@ -19,6 +20,36 @@ def run(test, params, env):
 
     Note: --mountpoint still not supported so will not test here
     """
+    def recompose_xml(vm_name, scsi_disk):
+        """
+        Add scsi disk, guest agent and scsi controller for guest
+        :param: vm_name: Name of domain
+        :param: scsi_disk: scsi_debug disk name
+        """
+        # Get disk path of scsi_disk
+        path_cmd = "udevadm info --name %s | grep /dev/disk/by-path/ | " \
+                   "cut -d' ' -f4" % scsi_disk
+        disk_path = utils.run(path_cmd).stdout.strip()
+
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+
+        # Add scsi disk xml
+        scsi_disk = Disk(type_name="block")
+        scsi_disk.device = "lun"
+        scsi_disk.source = scsi_disk.new_disk_source(
+            **{'attrs': {'dev': disk_path}})
+        scsi_disk.target = {'dev': "sdb", 'bus': "scsi"}
+        vmxml.add_device(scsi_disk)
+
+        # Add scsi disk controller
+        scsi_controller = Controller("controller")
+        scsi_controller.type = "scsi"
+        scsi_controller.index = "0"
+        scsi_controller.model = "virtio-scsi"
+        vmxml.add_device(scsi_controller)
+
+        # Redefine guest
+        vmxml.sync()
 
     if not virsh.has_help_command('domfstrim'):
         raise error.TestNAError("This version of libvirt does not support "
@@ -47,55 +78,8 @@ def run(test, params, env):
             raise error.TestNAError("API acl test not supported in current"
                                     " libvirt version.")
 
-    def recompose_xml(vm_name, scsi_disk):
-        """
-        Add scsi disk, guest agent and scsi controller for guest
-        :param: vm_name: Name of domain
-        :param: scsi_disk: scsi_debug disk name
-        """
-        # Get disk path of scsi_disk
-        path_cmd = "udevadm info --name %s | grep /dev/disk/by-path/ | " \
-                   "cut -d' ' -f4" % scsi_disk
-        disk_path = utils.run(path_cmd).stdout.strip()
-
-        # Add qemu guest agent in guest xml
-        vm_xml.VMXML.set_agent_channel(vm_name)
-
-        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        # Add scsi disk xml
-        scsi_disk = Disk(type_name="block")
-        scsi_disk.device = "lun"
-        scsi_disk.source = scsi_disk.new_disk_source(
-            **{'attrs': {'dev': disk_path}})
-        scsi_disk.target = {'dev': "sdb", 'bus': "scsi"}
-        vmxml.add_device(scsi_disk)
-
-        # Add scsi disk controller
-        scsi_controller = Controller("controller")
-        scsi_controller.type = "scsi"
-        scsi_controller.index = "0"
-        scsi_controller.model = "virtio-scsi"
-        vmxml.add_device(scsi_controller)
-
-        # Redefine guest
-        vmxml.sync()
-
-    def start_guest_agent(session):
-        """
-        Start guest agent service in guest
-        :param: session: session in guest
-        """
-        # Check if qemu-ga installed
-        check_cmd = "rpm -q qemu-guest-agent||yum install -y qemu-guest-agent"
-        session.cmd(check_cmd)
-        session.cmd("service qemu-guest-agent start")
-        # Check if the qemu-ga really started
-        stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
-        if stat_ps != 0:
-            raise error.TestFail("Fail to run qemu-ga in guest")
-
     # Do backup for origin xml
-    xml_backup = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     try:
         vm = env.get_vm(vm_name)
         if not vm.is_alive():
@@ -115,15 +99,17 @@ def run(test, params, env):
         output = utils.run("fdisk %s < /tmp/fdisk-cmd"
                            % scsi_disk).stdout.strip()
         logging.debug("fdisk output %s", output)
+        os.remove("/tmp/fdisk-cmd")
         # Format disk
         output = utils.run("mkfs.ext3 %s1" % scsi_disk).stdout.strip()
         logging.debug("output %s", output)
-        # Add scsi disk and agent channel in guest
+        # Add scsi disk in guest
         recompose_xml(vm_name, scsi_disk)
 
-        vm.start()
+        # Prepare guest agent and start guest
+        vm.prepare_guest_agent()
+
         guest_session = vm.wait_for_login()
-        start_guest_agent(guest_session)
         # Get new generated disk
         af_list = guest_session.cmd_output("fdisk -l|grep ^/dev|"
                                            "cut -d' ' -f1").split('\n')
@@ -200,13 +186,15 @@ def run(test, params, env):
                 return False
 
         if not utils_misc.wait_for(_trim_completed, timeout=30):
+            # Get result again to check partly fstrim
+            empty_size = get_diskmap_size()
             if not is_fulltrim:
-                # Get result again to check partly fstrim
-                empty_size = get_diskmap_size()
                 if ori_size < empty_size <= full_size:
                     logging.info("Success to do fstrim partly")
                     return True
-            raise error.TestFail("Fail to do fstrim %s, %s")
+            raise error.TestFail("Fail to do fstrim. (orignal size: %s), "
+                                 "(current size: %s), (full size: %s)" %
+                                 (ori_size, empty_size, full_size))
         logging.info("Success to do fstrim")
 
     finally:

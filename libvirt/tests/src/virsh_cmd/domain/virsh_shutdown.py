@@ -43,20 +43,8 @@ def run(test, params, env):
                                     " libvirt version.")
 
     try:
-
         # Add or remove qemu-agent from guest before test
-        if agent:
-            vm_xml.VMXML.set_agent_channel(vm_name)
-        else:
-            vm_xml.VMXML.remove_agent_channel(vm_name)
-        virsh.start(vm_name)
-        guest_session = vm.wait_for_login()
-        if agent:
-            guest_session.cmd("qemu-ga -d")
-            stat_ps = guest_session.cmd_status("ps aux |grep [q]emu-ga")
-            guest_session.close()
-            if stat_ps:
-                raise error.TestError("Fail to start qemu-guest-agent!")
+        vm.prepare_guest_agent(channel=agent, start=agent)
         if pre_domian_status == "shutoff":
             virsh.destroy(vm_name)
         domid = vm.get_id()
