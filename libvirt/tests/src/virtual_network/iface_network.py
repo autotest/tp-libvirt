@@ -31,7 +31,9 @@ def run(test, params, env):
         pkg_list = ["syslinux", "tftp-server",
                     "tftp", "ipxe-roms-qemu", "wget"]
         # Try to install required packages
-        libvirt.yum_install(pkg_list)
+        if not utils_misc.yum_install(pkg_list):
+            raise error.TestNAError("Failed ot install "
+                                    "required packages")
         boot_initrd = params.get("boot_initrd")
         boot_vmlinuz = params.get("boot_vmlinuz")
         # Download pxe boot images
@@ -247,12 +249,9 @@ TIMEOUT 3"""
         Check dns resolving on guest
         """
         # Check if bind-utils is installed
-        cmd = "rpm -q bind-utils || yum install -y bind-utils"
-        stat_install, output = session.cmd_status_output(cmd, 300)
-        logging.debug(output)
-        if stat_install:
-            raise error.TestFail("Failed to install bind-utils"
-                                 " on guest")
+        if not utils_misc.yum_install(['bind-utils'], session):
+            raise error.TestNAError("Failed to install bind-utils"
+                                    " on guest")
         # Run host command to check if hostname can be resolved
         if not guest_ipv4 and not guest_ipv6:
             raise error.TestFail("No ip address found from parameters")
@@ -367,6 +366,8 @@ TIMEOUT 3"""
     net_dns_srv = params.get("net_dns_srv")
     net_dns_hostip = params.get("net_dns_hostip")
     net_dns_hostnames = params.get("net_dns_hostnames", "").split()
+    dhcp_start_ipv4 = params.get("dhcp_start_ipv4")
+    dhcp_end_ipv4 = params.get("dhcp_end_ipv4")
     guest_name = params.get("guest_name")
     guest_ipv4 = params.get("guest_ipv4")
     guest_ipv6 = params.get("guest_ipv6")
@@ -380,6 +381,7 @@ TIMEOUT 3"""
     create_network = "yes" == params.get("create_network", "no")
     serial_login = "yes" == params.get("serial_login", "no")
     change_iface_option = "yes" == params.get("change_iface_option", "no")
+    test_bridge = "yes" == params.get("test_bridge", "no")
     test_dnsmasq = "yes" == params.get("test_dnsmasq", "no")
     test_dhcp_range = "yes" == params.get("test_dhcp_range", "no")
     test_dns_host = "yes" == params.get("test_dns_host", "no")
@@ -436,6 +438,11 @@ TIMEOUT 3"""
                 utils_libguestfs.virt_clone_cmd(vm_name, guest_name, True)
                 vms_list.append(vm.clone(guest_name))
 
+        if test_bridge:
+            bridge = eval(net_bridge)
+            br_if = utils_net.Interface(bridge['name'])
+            if not br_if.is_up():
+                raise error.TestFail("Bridge interface isn't up")
         if test_dnsmasq:
             # Check the settings in dnsmasq config file
             if net_dns_forward == "no":
@@ -444,6 +451,29 @@ TIMEOUT 3"""
             if net_domain:
                 run_dnsmasq_default_test("domain", net_domain)
                 run_dnsmasq_default_test("expand-hosts")
+            if net_bridge:
+                bridge = eval(net_bridge)
+                run_dnsmasq_default_test("interface", bridge['name'])
+                if bridge.has_key('stp') and bridge['stp'] == 'on':
+                    if bridge.has_key('delay'):
+                        br_delay = float(bridge['delay'])
+                        cmd = ("brctl showstp %s | grep 'bridge forward delay'"
+                               % bridge['name'])
+                        out = utils.run(cmd, ignore_status=False).stdout.strip()
+                        logging.debug("brctl showstp output: %s", out)
+                        pattern = (r"\s*forward delay\s+(\d+.\d+)\s+bridge"
+                                   " forward delay\s+(\d+.\d+)")
+                        match_obj = re.search(pattern, out, re.M)
+                        if not match_obj or len(match_obj.groups()) != 2:
+                            raise error.TestFail("Can't see forward delay"
+                                                 " messages from command")
+                        elif (float(match_obj.groups()[0]) != br_delay or
+                                float(match_obj.groups()[1]) != br_delay):
+                            raise error.TestFail("Foward delay setting"
+                                                 " can't take effect")
+            if dhcp_start_ipv4 and dhcp_end_ipv4:
+                run_dnsmasq_default_test("dhcp-range", "%s,%s"
+                                         % (dhcp_start_ipv4, dhcp_end_ipv4))
             if guest_name and guest_ipv4:
                 run_dnsmasq_host_test(iface_mac, guest_ipv4, guest_name)
 
