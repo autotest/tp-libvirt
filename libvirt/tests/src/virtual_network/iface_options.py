@@ -117,10 +117,6 @@ def run(test, params, env):
         # Try to modify interface xml by update-device or edit xml
         elif update:
             iface.xmltreefile.write()
-            # Validate the xml file
-            if not iface.get_validates():
-                raise error.TestFail("Failed to validate xml file")
-
             ret = virsh.update_device(vm_name, iface.xml,
                                       ignore_status=True)
             libvirt.check_exit_status(ret, status_error)
@@ -282,7 +278,7 @@ def run(test, params, env):
         Check multicast ip address on guests
         """
         src_addr = eval(iface_source)['address']
-        add_session = additional_vm.wait_for_login()
+        add_session = additional_vm.wait_for_serial_login()
         vms_sess_dict = {vm_name: session,
                          additional_vm.name: add_session}
 
@@ -295,6 +291,7 @@ def run(test, params, env):
         # Get ip address on each guest
         for vms in vms_sess_dict.keys():
             vm_mac = vm_xml.VMXML.get_first_mac_by_name(vms)
+            utils_net.restart_guest_network(vms_sess_dict[vms], vm_mac)
             vm_ip = utils_net.get_guest_ip_addr(vms_sess_dict[vms],
                                                 vm_mac)
             if not vm_ip:
@@ -306,6 +303,9 @@ def run(test, params, env):
         logging.debug("Found ips on guest: %s", vms_ip_dict)
 
         # Run omping server on host
+        if not utils_misc.yum_install(["omping"]):
+            raise error.TestNAError("Failed to install omping"
+                                    " on host")
         cmd = ("iptables -F;omping -m %s %s" %
                (src_addr, "192.168.122.1 %s" %
                 ' '.join(vms_ip_dict.values())))
@@ -315,12 +315,9 @@ def run(test, params, env):
         # Run omping client on guests
         for vms in vms_sess_dict.keys():
             # omping should be installed first
-            cmd = "rpm -q omping || yum install -y omping"
-            stat, output = vms_sess_dict[vms].cmd_status_output(cmd, 300)
-            logging.debug(output)
-            if stat:
-                raise error.TestFail("Failed to install omping"
-                                     " on guest")
+            if not utils_misc.yum_install(["omping"], vms_sess_dict[vms]):
+                raise error.TestNAError("Failed to install omping"
+                                        " on guest")
             cmd = ("iptables -F; omping -c 5 -T 5 -m %s %s" %
                    (src_addr, "192.168.122.1 %s" %
                     vms_ip_dict[vms]))
@@ -363,7 +360,7 @@ def run(test, params, env):
                        "test_iface_mcast", "no")
 
     if iface_driver_host or iface_driver_guest:
-        if not libvirt_version.version_compare(1, 2, 9):
+        if not libvirt_version.version_compare(1, 2, 8):
             raise error.TestNAError("Offloading options not supported "
                                     " in this libvirt version")
 
@@ -397,126 +394,127 @@ def run(test, params, env):
     # Additional vm for test
     additional_vm = None
 
-    # Build the xml and run test.
     try:
-        # Edit the interface xml.
-        if change_option:
-            modify_iface_xml(update=False)
-        # Check vhost driver.
-        if test_vhost_net:
-            if not os.path.exists("/dev/vhost-net"):
-                raise error.TestError("Can't find vhost-net dev")
-            cmd = ("modprobe -r {0}; lsmod | "
-                   "grep {0}".format("vhost_net"))
-            if not utils.system(cmd, ignore_status=True):
-                raise error.TestError("Can't remove vhost_net driver")
+        # Build the xml and run test.
+        try:
+            # Edit the interface xml.
+            if change_option:
+                modify_iface_xml(update=False)
+            # Check vhost driver.
+            if test_vhost_net:
+                if not os.path.exists("/dev/vhost-net"):
+                    raise error.TestError("Can't find vhost-net dev")
+                cmd = ("modprobe -r {0}; lsmod | "
+                       "grep {0}".format("vhost_net"))
+                if not utils.system(cmd, ignore_status=True):
+                    raise error.TestError("Can't remove vhost_net driver")
 
-        # Attach a interface when vm is shutoff
-        if attach_device == 'config':
-            iface_mac = utils_net.generate_mac_address_simple()
-            iface_xml_obj = create_iface_xml(iface_mac)
-            iface_xml_obj.xmltreefile.write()
-            ret = virsh.attach_device(vm_name, iface_xml_obj.xml,
-                                      flagstr="--config",
-                                      ignore_status=True)
-            libvirt.check_exit_status(ret)
+            # Attach a interface when vm is shutoff
+            if attach_device == 'config':
+                iface_mac = utils_net.generate_mac_address_simple()
+                iface_xml_obj = create_iface_xml(iface_mac)
+                iface_xml_obj.xmltreefile.write()
+                ret = virsh.attach_device(vm_name, iface_xml_obj.xml,
+                                          flagstr="--config",
+                                          ignore_status=True)
+                libvirt.check_exit_status(ret)
 
-        # Clone additional vm
-        if additional_guest:
-            guest_name = "%s_%s" % (vm_name, '1')
-            # Clone additional guest
-            utils_libguestfs.virt_clone_cmd(vm_name, guest_name, True)
-            additional_vm = vm.clone(guest_name)
-            additional_vm.start()
-            #additional_vm.wait_for_login()
+            # Clone additional vm
+            if additional_guest:
+                guest_name = "%s_%s" % (vm_name, '1')
+                # Clone additional guest
+                utils_libguestfs.virt_clone_cmd(vm_name, guest_name, True)
+                additional_vm = vm.clone(guest_name)
+                additional_vm.start()
+                #additional_vm.wait_for_login()
 
-        # Start the VM.
-        if unprivileged_user:
-            virsh.start(vm_name, **virsh_dargs)
-            cmd = ("su - %s -c 'virsh console %s'"
-                   % (unprivileged_user, vm_name))
-            session = aexpect.ShellSession(cmd)
-            session.sendline()
-            remote.handle_prompts(session, params.get("username"),
-                                  params.get("password"), "[\#\$]", 30)
-            utils_net.restart_guest_network(session)
-            # Get ip address on guest
-            if not utils_net.get_guest_ip_addr(session, iface_mac):
-                raise error.TestError("Can't get ip address on guest")
-        else:
-            # Will raise VMStartError exception if start fails
-            vm.start()
-            if test_iface_user:
-                session = vm.wait_for_serial_login()
+            # Start the VM.
+            if unprivileged_user:
+                virsh.start(vm_name, **virsh_dargs)
+                cmd = ("su - %s -c 'virsh console %s'"
+                       % (unprivileged_user, vm_name))
+                session = aexpect.ShellSession(cmd)
+                session.sendline()
+                remote.handle_prompts(session, params.get("username"),
+                                      params.get("password"), "[\#\$]", 30)
+                utils_net.restart_guest_network(session)
+                # Get ip address on guest
+                if not utils_net.get_guest_ip_addr(session, iface_mac):
+                    raise error.TestError("Can't get ip address on guest")
             else:
-                session = vm.wait_for_login()
-        if start_error:
-            raise error.TestFail("VM started unexpectedly")
+                # Will raise VMStartError exception if start fails
+                vm.start()
+                if serail_login:
+                    session = vm.wait_for_serial_login()
+                else:
+                    session = vm.wait_for_login()
+            if start_error:
+                raise error.TestFail("VM started unexpectedly")
 
-        if test_vhost_net:
-            if utils.system("lsmod | grep vhost_net", ignore_status=True):
-                raise error.TestFail("vhost_net module can't be"
-                                     " loaded automatically")
+            if test_vhost_net:
+                if utils.system("lsmod | grep vhost_net", ignore_status=True):
+                    raise error.TestFail("vhost_net module can't be"
+                                         " loaded automatically")
 
-        # Attach a interface when vm is running
-        if attach_device == 'live':
-            iface_mac = utils_net.generate_mac_address_simple()
-            iface_xml_obj = create_iface_xml(iface_mac)
-            iface_xml_obj.xmltreefile.write()
-            ret = virsh.attach_device(vm_name, iface_xml_obj.xml,
-                                      flagstr="--live",
-                                      ignore_status=True)
-            libvirt.check_exit_status(ret)
-            # Need sleep here for attachment take effect
-            time.sleep(5)
+            # Attach a interface when vm is running
+            if attach_device == 'live':
+                iface_mac = utils_net.generate_mac_address_simple()
+                iface_xml_obj = create_iface_xml(iface_mac)
+                iface_xml_obj.xmltreefile.write()
+                ret = virsh.attach_device(vm_name, iface_xml_obj.xml,
+                                          flagstr="--live",
+                                          ignore_status=True)
+                libvirt.check_exit_status(ret)
+                # Need sleep here for attachment take effect
+                time.sleep(5)
 
-        # Update a interface options
-        if update_device:
-            modify_iface_xml(update=True, status_error=status_error)
+            # Update a interface options
+            if update_device:
+                modify_iface_xml(update=True, status_error=status_error)
 
-        # Run tests for qemu-kvm command line options
-        if test_option_cmd:
-            run_cmdline_test(iface_mac)
-        # Run tests for vm xml
-        if test_option_xml:
-            run_xml_test(iface_mac)
-        # Run tests for offloads options
-        if test_option_offloads:
-            if iface_driver_host:
-                ifname_host = libvirt.get_ifname_host(vm_name, iface_mac)
-                check_offloads_option(ifname_host,
-                                      eval(iface_driver_host))
-            if iface_driver_guest:
-                ifname_guest = utils_net.get_linux_ifname(session, iface_mac)
-                check_offloads_option(ifname_guest, eval(iface_driver_guest),
-                                      session)
+            # Run tests for qemu-kvm command line options
+            if test_option_cmd:
+                run_cmdline_test(iface_mac)
+            # Run tests for vm xml
+            if test_option_xml:
+                run_xml_test(iface_mac)
+            # Run tests for offloads options
+            if test_option_offloads:
+                if iface_driver_host:
+                    ifname_host = libvirt.get_ifname_host(vm_name, iface_mac)
+                    check_offloads_option(ifname_host,
+                                          eval(iface_driver_host))
+                if iface_driver_guest:
+                    ifname_guest = utils_net.get_linux_ifname(session, iface_mac)
+                    check_offloads_option(ifname_guest, eval(iface_driver_guest),
+                                          session)
 
-        if test_iface_user:
-            # Test user type network
-            check_user_network(session)
-        if test_iface_mcast:
-            # Test mcast type network
-            check_mcast_network(session)
+            if test_iface_user:
+                # Test user type network
+                check_user_network(session)
+            if test_iface_mcast:
+                # Test mcast type network
+                check_mcast_network(session)
 
-        # Detach hot/cold-plugged interface at last
-        if attach_device:
-            ret = virsh.detach_device(vm_name, iface_xml_obj.xml,
-                                      flagstr="", ignore_status=True)
-            libvirt.check_exit_status(ret)
+            # Detach hot/cold-plugged interface at last
+            if attach_device:
+                ret = virsh.detach_device(vm_name, iface_xml_obj.xml,
+                                          flagstr="", ignore_status=True)
+                libvirt.check_exit_status(ret)
 
-        session.close()
-    except virt_vm.VMStartError, e:
-        logging.error(str(e))
-        if start_error:
-            pass
-        else:
-            raise error.TestFail('VM Failed to start for some reason!')
-    except xcepts.LibvirtXMLError, e:
-        logging.error(str(e))
-        if define_error:
-            pass
-        else:
-            raise error.TestFail("Failed to define VM")
+            session.close()
+        except virt_vm.VMStartError, e:
+            logging.info(str(e))
+            if start_error:
+                pass
+            else:
+                raise error.TestFail('VM Failed to start for some reason!')
+        except xcepts.LibvirtXMLError, e:
+            logging.info(str(e))
+            if define_error:
+                pass
+            else:
+                raise error.TestFail("Failed to define VM")
 
     finally:
         # Recover VM.
