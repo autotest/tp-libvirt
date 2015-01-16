@@ -141,15 +141,15 @@ def run(test, params, env):
         """
         Check VM disk's type.
 
-        :param targets_name. Device targets list.
+        :param targets_name. Device name list.
+        :param targets_format. Device format list.
         :return: True if check successfully.
         """
         logging.info("Checking VM disks type... ")
-        for i in range(len(targets_name)):
-            disk_format = vm_xml.VMXML.get_disk_attr(vm_name,
-                                                     targets_name[i],
+        for tn, tf in zip(targets_name, targets_format):
+            disk_format = vm_xml.VMXML.get_disk_attr(vm_name, tn,
                                                      "driver", "type")
-            if disk_format not in [None, targets_format[i]]:
+            if disk_format not in [None, tf]:
                 return False
         return True
 
