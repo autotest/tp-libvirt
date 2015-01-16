@@ -1018,9 +1018,10 @@ def test_resize2fs(vm, params):
             block_size = int(items.split(':')[1].strip())
     getsize64 = int(b_result.stdout.split()[0])
     os.system('rm -rf %s ' % tmpdir)
-    if block_count * block_size != getsize64:
+    if block_count * block_size <= getsize64 * 0.99:
         gf.close_session()
-        raise error.TestFail("test_resize2fs failed.")
+        raise error.TestFail("test_resize2fs failed, device size: %s, block_count: %s\
+                             block_size: %s" % (getsize64, block_count, block_size))
     gf.close_session()
 
 
