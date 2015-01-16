@@ -315,6 +315,9 @@ def run(test, params, env):
                     raise error.TestFail("Fail to find %s in active "
                                          "interface list" % iface_name)
             if vm:
+                if vm.is_alive():
+                    vm.destroy()
+                iface_index = 0
                 iface_mac_list = vm_xml.VMXML.get_iface_dev(vm_name)
                 # Before test, detach all interfaces in guest
                 for mac in iface_mac_list:
@@ -323,6 +326,10 @@ def run(test, params, env):
                     virsh.detach_interface(vm_name,
                                            "--type %s --mac %s"
                                            " --config" % (type, mac))
+                    # After detach interface, vm.virtnet also need update, the
+                    # easy way is free these mac addresses before start VM
+                    vm.free_mac_address(iface_index)
+                    iface_index += 1
                 virsh.attach_interface(vm_name,
                                        "--type %s --source %s"
                                        " --config" % (iface_type, iface_name))
