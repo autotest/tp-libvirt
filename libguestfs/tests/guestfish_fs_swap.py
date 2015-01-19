@@ -246,7 +246,7 @@ def test_swap_uuid(vm, params):
     if "swap file" not in file_result.stdout:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
-        logging.error(mkswap_result)
+        logging.error(mkswap_U_result)
         logging.error(file_result)
         raise error.TestFail("test_mkswap_U failed")
     if uuid not in file_result.stdout:
@@ -331,7 +331,7 @@ def test_swap_file(vm, params):
     if "swap file" not in file_result.stdout:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
-        logging.error(mkswap_result)
+        logging.error(mkswap_file_result)
         logging.error(file_result)
         raise error.TestFail("test_mkswap_file failed")
 
