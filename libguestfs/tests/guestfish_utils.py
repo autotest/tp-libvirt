@@ -136,8 +136,9 @@ def test_add_drive_opts(vm, params):
     ld_result = gf.list_devices()
     ldl_result = gf.list_disk_labels()
 
-    if ('/dev/sda' not in ld_result.stdout) or ('/dev/sdc' not in
-       ld_result.stdout) or (label not in ldl_result.stdout):
+    ld_rs = ld_result.stdout
+    ldl_rs = ldl_result.stdout
+    if ('/dev/sda' not in ld_rs) or ('/dev/sdc' not in ld_rs) or (label not in ldl_rs):
         gf.close_session()
         logging.error(ad_result)
         logging.error(ld_result)
@@ -647,8 +648,12 @@ def test_debug(vm, params):
     env_result = gf.debug("env", "''")
     fds_result = gf.debug("fds", "''")
     test_result = gf.debug("not_a_command", "''")
-    if (ls_result.exit_status != 0) or (ll_result.exit_status != 0) or (env_result.exit_status
-       != 0) or (fds_result.exit_status != 0) or (test_result.exit_status == 0):
+    ls_ret = ls_result.exit_status
+    ll_ret = ll_result.exit_status
+    env_ret = env_result.exit_status
+    fds_ret = fds_result.exit_status
+    test_ret = test_result.exit_status
+    if ls_ret != 0 or ll_ret != 0 or env_ret != 0 or fds_ret != 0 or test_ret == 0:
         gf.close_session()
         raise error.TestFail('test_debug failed')
     gf.close_session()
@@ -1472,8 +1477,7 @@ def test_feature_available(vm, params):
     for group in groups:
         gf_result = gf.feature_available(group)
         ret = gf_result.stdout.split()[0]
-        if (ret == 'true') and (group == 'grub' or group == 'ldm'
-           or group == 'zerofree'):
+        if (ret == 'true') and (group == 'grub' or group == 'ldm' or group == 'zerofree'):
             gf.close_session()
             raise error.TestFail('test_feature_available failed: %s supported' % group)
         elif (ret == 'false') and (group != 'grub' and group != 'ldm' and group != 'zerofree'):
