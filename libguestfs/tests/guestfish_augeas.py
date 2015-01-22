@@ -415,46 +415,56 @@ def test_aug_insert(vm, params):
         raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
+    mkdir_p_result = gf.mkdir_p('/usr/share/augeas/lenses/dist')
+    if mkdir_p_result.exit_status:
+        gf.close_session()
+        raise error.TestFail("Can not create directory /usr/share/augeas/lenses/dist. GSERROR_MSG: %s" % mkdir_p_result)
+    logging.info("Create directory /usr/share/augeas/lenses/dist successfully")
+
+    mkdir_result = gf.mkdir('/etc')
+    if mkdir_result.exit_status:
+        gf.close_session()
+        raise error.TestFail("Can not create directory /etc. GSERROR_MSG: %s" % mkdir_result)
+    logging.info("Create directory /etc successfully")
+
+    upload_result = gf.upload('/usr/share/augeas/lenses/dist/passwd.aug', '/usr/share/augeas/lenses/dist/passwd.aug')
+    if upload_result.exit_status:
+        gf.close_session()
+        raise error.TestFail("Can not upload file /usr/share/augeas/lenses/dist/passwd.aug. GSERROR_MSG: %s" % upload_result)
+    logging.info("upload file /usr/share/augeas/lenses/dist/passwd.aug successfully")
+
+    upload_result = gf.upload('/etc/passwd', '/etc/passwd')
+    if upload_result.exit_status:
+        gf.close_session()
+        raise error.TestFail("Can not upload file /etc/passwd. GSERROR_MSG: %s" % upload_result)
+    logging.info("upload file /etc/passwd successfully")
+
     aug_init_result = gf.aug_init("/", "0")
     if aug_init_result.exit_status:
         gf.close_session()
         raise error.TestFail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle successfully")
 
-    aug_set_result = gf.aug_set("/files/etc/passwd/root", "0")
-    if aug_set_result.exit_status:
-        gf.close_session()
-        raise error.TestFail("Can not set /files/etc/passwd/root to 0. GSERROR_MSG: %s" % aug_set_result)
-    logging.info("Set /files/etc/passwd/root to 0 successfully")
-
-    aug_set_result = gf.aug_set("/files/etc/passwd/mysql", "1")
-    if aug_set_result.exit_status:
-        gf.close_session()
-        raise error.TestFail("Can not set /files/etc/passwd/mysql to 1. GSERROR_MSG: %s" % aug_set_result)
-    logging.info("Set /files/etc/passwd/mysql to 1 successfully")
-
-    aug_insert_result = gf.aug_insert("/files/etc/passwd/root", "abrt", "true")
+    aug_insert_result = gf.aug_insert("/files/etc/passwd/root/name", "testbefore", "true")
     if aug_insert_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not insert abrt before /files/etc/passwd/root. GSERROR_MSG: %s" % aug_insert_result)
-    logging.info("Insert abrt before /files/etc/passwd/root successfully")
+        raise error.TestFail("Can not insert testbefore before /files/etc/passwd/root/name. GSERROR_MSG: %s" % aug_insert_result)
+    logging.info("Insert testbefore before /files/etc/passwd/root/name successfully")
 
-    aug_insert_result = gf.aug_insert("/files/etc/passwd/root", "qemu", "false")
+    aug_insert_result = gf.aug_insert("/files/etc/passwd/root/name", "testafter", "false")
     if aug_insert_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not insert qemu after /files/etc/passwd/root. GSERROR_MSG: %s" % aug_insert_result)
-    logging.info("Insert qemu after /files/etc/passwd/root successfully")
+        raise error.TestFail("Can not insert testafter after /files/etc/passwd/root/name. GSERROR_MSG: %s" % aug_insert_result)
+    logging.info("Insert testafter after /files/etc/passwd/root/name successfully")
 
-    aug_ls_result = gf.aug_ls("/files/etc/passwd")
-    if aug_ls_result.exit_status:
+    command_result = gf.inner_cmd("aug-match /files/etc/passwd/root/* |egrep 'name|test'")
+    if command_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not list augeas nodes under /files/etc/passwd. GSERROR_MSG: %s" % aug_ls_result)
-    logging.info("List augeas nodes under /files/etc/passwd successfully")
+        raise error.TestFail("Failed to run the command. GSERROR_MSG: %s" % command_result)
 
-    if aug_ls_result.stdout.strip('\n') != "/files/etc/passwd/mysql\n/files/etc/passwd/abrt\n/files/etc/passwd/root\n/files/etc/passwd/qemu":
+    if command_result.stdout.strip('\n') != '/files/etc/passwd/root/testbefore\n/files/etc/passwd/root/name\n/files/etc/passwd/root/testafter':
         gf.close_session()
-        raise error.TestFail("New node qemu and abrt are not inserted correctly. GSERROR_MSG: %s" % aug_ls_result.stdout.strip('\n'))
-    logging.info("New node qemu and abrt are inserted correctly")
+        raise error.TestFail("The match results is not correct. GSERROR_MSG: %s" % command_result.stdout)
     gf.close_session()
 
 
