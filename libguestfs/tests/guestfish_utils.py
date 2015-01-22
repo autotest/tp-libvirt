@@ -507,6 +507,190 @@ def test_reopen(vm, params):
     gf.close_session()
 
 
+def test_time(vm, params):
+    """
+    Test command time:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    time_result = gf.time("version")
+    if time_result.exit_status != 0 or 'elapsed time' not in time_result.stdout:
+        gf.close_session()
+        logging.error(time_result)
+        raise error.TestFail('test_time failed')
+    gf.close_session()
+
+
+def test_config(vm, params):
+    """
+    Test command config:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    gf.inner_cmd("trace 1")
+    cf_result = gf.config("-name", "libguestfs-appliance")
+    if cf_result.exit_status != 0 or 'libguestfs-appliance' not in cf_result.stdout:
+        gf.close_session()
+        logging.error(cf_result)
+        raise error.TestFail('test_config failed')
+    cf_result = gf.config("-dieqemudie", "\"\"")
+    if cf_result.exit_status != 0 or '-dieqemudie' not in cf_result.stdout:
+        gf.close_session()
+        logging.error(cf_result)
+        raise error.TestFail('test_config failed')
+    gf.close_session()
+
+
+def test_debug(vm, params):
+    """
+    Test command debug:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    image_path = params.get("image_path")
+    gf.add_drive(image_path)
+    gf.run()
+    ls_result = gf.debug("ls", "/dev")
+    ll_result = gf.debug("ll", "/")
+    env_result = gf.debug("env", "''")
+    fds_result = gf.debug("fds", "''")
+    test_result = gf.debug("not_a_command", "''")
+    if (ls_result.exit_status != 0) or (ll_result.exit_status != 0) or (env_result.exit_status
+       != 0) or (fds_result.exit_status != 0) or (test_result.exit_status == 0):
+        gf.close_session()
+        raise error.TestFail('test_debug failed')
+    gf.close_session()
+
+
+def test_kill_subprocess(vm, params):
+    """
+    Test command kill_subprocess:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    image_path = params.get("image_path")
+    gf.add_drive(image_path)
+    gf.run()
+    bf_result = gf.echo_daemon("1")
+    gf.kill_subprocess()
+    af_result = gf.echo_daemon("1")
+    if bf_result.exit_status != 0 or af_result.exit_status == 0:
+        gf.close_session()
+        logging.error(bf_result)
+        logging.error(af_result)
+        raise error.TestFail('test_kill_subprocess failed')
+    gf.close_session()
+
+
+def test_shutdown(vm, params):
+    """
+    Test command shutdown:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    image_path = params.get("image_path")
+    gf.add_drive(image_path)
+    gf.run()
+    bf_result = gf.echo_daemon("1")
+    gf.shutdown()
+    af_result = gf.echo_daemon("1")
+    if bf_result.exit_status != 0 or af_result.exit_status == 0:
+        gf.close_session()
+        logging.error(bf_result)
+        logging.error(af_result)
+        raise error.TestFail('test_shutdown failed')
+    gf.close_session()
+
+
+def test_ntfs_3g_probe(vm, params):
+    """
+    Test command ntfs_3g_probe:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    image_path = params.get("image_path")
+
+    test_format = params.get("image_format")
+    test_size = "100M"
+    test_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    test_img = test_dir + '/test_ntfs_3g_probe.img'
+    test_pv = '/dev/sda'
+    os.system('qemu-img create -f ' + test_format + ' ' +
+              test_img + ' ' + test_size + ' > /dev/null')
+    gf.add_drive(test_img)
+    gf.run()
+
+    test_mountpoint = test_pv + "1"
+    gf.part_disk(test_pv, "mbr")
+    gf.mkfs('ntfs', test_mountpoint)
+    gf_result = gf.ntfs_3g_probe('1', test_mountpoint)
+    v1 = gf_result.stdout.split()[0]
+    gf.zero(test_mountpoint)
+    gf_result = gf.ntfs_3g_probe('0', test_mountpoint)
+    v2 = gf_result.stdout.split()[0]
+    gf.mkfs('ext2', test_mountpoint)
+    gf_result = gf.ntfs_3g_probe('0', test_mountpoint)
+    v3 = gf_result.stdout.split()[0]
+
+    if v1 != '0' or v2 == '0' or v3 == '0':
+        gf.close_session()
+        os.system('rm -f %s' % test_img)
+        raise error.TestFail('test_ntfs_3g_probe failed')
+    gf.close_session()
+    os.system('rm -f %s' % test_img)
+
+
+def test_event(vm, params):
+    """
+    Test command event:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    gf.add_drive("/dev/null")
+
+    name = "evt0"
+    eventset = "launch_done"
+    script = "\"echo $EVENT $@\""
+    expected_script = "echo $EVENT $@"
+    gf.event(name, eventset, script)
+    le_result = gf.list_events()
+    if eventset not in le_result.stdout or expected_script not in le_result.stdout:
+        gf.close_session()
+        logging.error(le_result)
+        raise error.TestFail('test_event failed, list_event result not match')
+    run_result = gf.run()
+    if eventset not in run_result.stdout:
+        gf.close_session()
+        logging.error(run_result)
+        raise error.TestFail('test_event failed, event do not work')
+
+    name = "evt1"
+    eventset = "close"
+    script = "\"echo guestfish closed\""
+    expected_script = "echo guestfish closed"
+    gf.event(name, eventset, script)
+    le_result = gf.list_events()
+    if eventset not in le_result.stdout or expected_script not in le_result.stdout:
+        gf.close_session()
+        logging.error(le_result)
+        raise error.TestFail('test_event failed, list_event result not match')
+    logging.error(le_result)
+
+
 def run(test, params, env):
     """
     Test of built-in fs_attr_ops related commands in guestfish.
