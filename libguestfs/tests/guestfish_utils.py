@@ -688,7 +688,81 @@ def test_event(vm, params):
         gf.close_session()
         logging.error(le_result)
         raise error.TestFail('test_event failed, list_event result not match')
-    logging.error(le_result)
+
+    # include the upstream regression test for events
+    gf.reopen()
+    gf.event("ev1", "*", "\"echo $EVENT $@\"")
+    gf.event("ev1", "*", "\"echo $EVENT $@\"")
+    gf.event("ev2", "*", "\"echo $EVENT $@\"")
+
+    le_result = gf.list_events()
+    expected_strs = ["\"ev1\" (1): *: echo $EVENT $@",
+                     "\"ev1\" (2): *: echo $EVENT $@",
+                     "\"ev2\" (3): *: echo $EVENT $@"]
+    for expected_str in expected_strs:
+        if expected_str not in le_result.stdout:
+            gf.close_session()
+            logging.error(le_result)
+            raise error.TestFail('test_event failed, list_event result not match after reopen')
+
+    gf.delete_event("ev1")
+    le_result = gf.list_events()
+    expected_str = expected_strs[2]
+    if expected_str not in le_result.stdout:
+        gf.close_session()
+        logging.error(le_result)
+        raise error.TestFail('test_event failed, list_event result not match after delete_event')
+    gf.reopen()
+    le_result = gf.list_events()
+    for origin_str in expected_strs:
+        if origin_str in le_result.stdout:
+            gf.close_session()
+            logging.error(le_result)
+            raise error.TestFail('test_event failed, list_event result not match after reopen')
+
+    gf.event("ev1", "close,subprocess_quit", "\"echo $EVENT $@\"")
+    gf.event("ev2", "close,subprocess_quit", "\"echo $EVENT $@\"")
+    gf.event("ev3", "launch", "\"echo $EVENT $@\"")
+
+    le_result = gf.list_events()
+    expected_strs = ["\"ev1\" (1): close,subprocess_quit: echo $EVENT $@",
+                     "\"ev2\" (2): close,subprocess_quit: echo $EVENT $@",
+                     "\"ev3\" (3): launch_done: echo $EVENT $@"]
+
+    for expected_str in expected_strs:
+        if expected_str not in le_result.stdout:
+            gf.close_session()
+            logging.error(le_result)
+            raise error.TestFail('test_event failed, list_event result not match')
+    # delete_event("ev4")
+    gf.delete_event("ev4")
+    le_result = gf.list_events()
+    expected_strs = ["\"ev1\" (1): close,subprocess_quit: echo $EVENT $@",
+                     "\"ev2\" (2): close,subprocess_quit: echo $EVENT $@",
+                     "\"ev3\" (3): launch_done: echo $EVENT $@"]
+
+    for expected_str in expected_strs:
+        if expected_str not in le_result.stdout:
+            gf.close_session()
+            logging.error(le_result)
+            raise error.TestFail('test_event failed, list_event result not match')
+
+    # delete_event("ev1")
+    gf.delete_event("ev1")
+    le_result = gf.list_events()
+    if expected_str[1] not in le_result.stdout or expected_str[2] not in le_result.stdout:
+        gf.close_session()
+        logging.error(le_result)
+        raise error.TestFail('test_event failed, list_event result not match after delete_event')
+
+    # delete_event("ev3")
+    gf.delete_event("ev3")
+    le_result = gf.list_events()
+    if expected_str[1] not in le_result.stdout:
+        gf.close_session()
+        logging.error(le_result)
+        raise error.TestFail('test_event failed, list_event result not match after delete_event')
+    gf.close_session()
 
 
 def run(test, params, env):
