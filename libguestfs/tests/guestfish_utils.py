@@ -7,6 +7,7 @@ import shutil
 import os
 import re
 import commands
+import time
 
 
 def prepare_image(params):
@@ -521,6 +522,91 @@ def test_time(vm, params):
         logging.error(time_result)
         raise error.TestFail('test_time failed')
     gf.close_session()
+
+
+def test_launch(vm, params):
+    """
+    Test command launch:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    image_path = params.get("image_path")
+    gf.add_drive(image_path)
+    gf.run()
+    gf_result = gf.ping_daemon()
+    if gf_result.exit_status != 0:
+        gf.close_session()
+        raise error.TestFail("test_launch failed")
+
+    gf.close_session()
+
+
+def test_man(vm, params):
+    """
+    Test command man:
+    """
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    test_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    tmp_file = "test_man_file"
+    os.system("guestfish -- man > %s" % tmp_file)
+    temp, result = commands.getstatusoutput("grep 'libguestfs' %s" % tmp_file)
+    if 'libguestfs' not in result:
+        os.system("rm -f %s" % tmp_file)
+        gf.close_session()
+        raise error.TestFail("test_man failed")
+
+    os.system("rm -f %s" % tmp_file)
+    gf.close_session()
+
+
+def test_quit(vm, params):
+    """
+    Test command sleep:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    image_path = params.get("image_path")
+    gf.add_drive(image_path)
+    gf.set_attach_method("appliance")
+    gf.run()
+    gf_result = gf.get_pid()
+    temp, pids = commands.getstatusoutput("pgrep qemu-kvm")
+    if gf_result.stdout.split()[0] not in pids:
+        gf.close_session()
+        raise error.TestFail('test_quit failed, can not get_pid')
+    gf.close_session()
+    utils.CmdResult(quit)
+    temp, new_pids = commands.getstatusoutput("pgrep qemu-kvm")
+    if gf_result.stdout.split()[0] in new_pids:
+        gf.close_session()
+        raise error.TestFail('test_quit failed, pid killed failed')
+    gf.close_session()
+
+
+def test_sleep(vm, params):
+    """
+    Test command sleep:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    image_path = params.get("image_path")
+    gf.add_drive(image_path)
+    gf.run()
+    start_time = time.time()
+    gf.sleep("3")
+    end_time = time.time()
+    gap_time = end_time - start_time
+
+    if gap_time < 3.0:
+        gf.close_session()
+        logging.error(gap_time)
+        raise error.TestFail("test_sleep failed")
 
 
 def test_config(vm, params):
