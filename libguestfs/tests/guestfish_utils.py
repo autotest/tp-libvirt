@@ -765,6 +765,664 @@ def test_event(vm, params):
     gf.close_session()
 
 
+def test_set_get_append(vm, params):
+    """
+    Test command set_append and get_append:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    image_path = params.get("image_path")
+    gf.add_drive(image_path)
+
+    append = "LANG=en_US.UTF-8"
+    gf.set_append(append)
+    gf.run()
+    gf_result = gf.get_append()
+    if append != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_append failed')
+
+    gf.close_session()
+
+
+def test_set_get_smp(vm, params):
+    """
+    Test command set_smp and get_smp:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    gf.add_drive("/dev/null")
+
+    temp, smp = commands.getstatusoutput("cat /proc/cpuinfo | grep -E '^processor' | wc -l")
+    gf.set_smp(smp)
+    gf.run()
+    gf_result = gf.get_smp()
+    if smp != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_smp failed')
+
+    gf.close_session()
+
+
+def test_set_get_pgroup(vm, params):
+    """
+    Test command set_pgroup and get_pgroup:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    gf.add_drive("/dev/null")
+
+    pgroup = "1"
+    expected = "true"
+    gf.set_pgroup(pgroup)
+    gf.run()
+    gf_result = gf.get_pgroup()
+    if expected != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_pgroup failed')
+
+    gf.kill_subprocess()
+    pgroup = "0"
+    expected = "false"
+    gf.set_pgroup(pgroup)
+    gf.run()
+    gf_result = gf.get_pgroup()
+    if expected != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_pgroup failed')
+
+    gf.close_session()
+
+
+def test_set_get_attach_method(vm, params):
+    """
+    Test command set_attach_method and get_attach_method:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    gf.add_drive("/dev/null")
+
+    method = "appliance"
+    gf.set_attach_method(method)
+    gf.run()
+    gf_result = gf.get_attach_method()
+    if method != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_attach_method failed')
+
+    gf.close_session()
+
+
+def test_set_get_autosync(vm, params):
+    """
+    Test command set_autosync and get_autosync:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    gf.set_autosync("0")
+    expected = "false"
+    gf_result = gf.get_autosync()
+    if expected != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_autosync failed')
+
+    gf.set_autosync("1")
+    expected = "true"
+    gf_result = gf.get_autosync()
+    if expected != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_autosync failed')
+
+    gf.close_session()
+
+
+def test_set_get_direct(vm, params):
+    """
+    Test command set_direct and get_direct:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    gf.set_direct("0")
+    expected = "false"
+    gf_result = gf.get_direct()
+    if expected != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_direct failed')
+
+    gf.set_direct("1")
+    expected = "true"
+    gf_result = gf.get_direct()
+    if expected != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_direct failed')
+
+    gf.close_session()
+
+
+def test_set_get_memsize(vm, params):
+    """
+    Test command set_memsize and get_memsize:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    memsize = "700"
+    gf.set_memsize(memsize)
+    gf_result = gf.get_memsize()
+    if memsize != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_memsize failed')
+
+    gf.close_session()
+
+
+def test_set_get_path(vm, params):
+    """
+    Test command set_path and get_path:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    path = "/usr/lib/guestfs"
+    gf.set_path(path)
+    gf_result = gf.get_path()
+    if path != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_path failed')
+
+    gf.close_session()
+
+
+def test_set_get_qemu(vm, params):
+    """
+    Test command set_qemu and get_qemu:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    qemu = "/usr/libexec/qemu-kvm"
+    gf.set_path(qemu)
+    gf_result = gf.get_qemu()
+    if qemu != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_qemu failed')
+
+    gf.close_session()
+
+
+def test_set_get_recovery_proc(vm, params):
+    """
+    Test command set_recovery_proc and get_recovery_proc:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    recoveryproc = 0
+    expected = "false"
+    gf.set_recovery_proc(recoveryproc)
+    gf_result = gf.get_recovery_proc()
+    if expected != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_recovery_proc failed')
+
+    recoveryproc = 1
+    expected = "true"
+    gf.set_recovery_proc(recoveryproc)
+    gf_result = gf.get_recovery_proc()
+    if expected != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_recovery_proc failed')
+
+    gf.close_session()
+
+
+def test_set_get_trace(vm, params):
+    """
+    Test command set_trace and get_trace:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    trace = 0
+    expected = "false"
+    gf.set_trace(trace)
+    gf_result = gf.get_trace()
+    if expected != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_trace failed')
+
+    trace = 1
+    expected = "true"
+    gf.set_trace(trace)
+    gf_result = gf.get_trace()
+    if expected not in gf_result.stdout:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_trace failed')
+
+    gf.close_session()
+
+
+def test_set_get_verbose(vm, params):
+    """
+    Test command set_verbose and get_verbose:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    verbose = "0"
+    expected = "false"
+    gf.set_verbose(verbose)
+    gf_result = gf.get_verbose()
+    if expected != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_verbose failed')
+
+    verbose = "1"
+    expected = "true"
+    gf.set_verbose(verbose)
+    gf_result = gf.get_verbose()
+    if expected not in gf_result.stdout:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_verbose failed')
+
+    gf.close_session()
+
+
+def test_get_pid(vm, params):
+    """
+    Test command get_pid:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    image_path = params.get("image_path")
+    gf.add_drive(image_path)
+
+    gf.set_attach_method("appliance")
+    gf.run()
+    gf_result = gf.get_pid()
+    temp, pids = commands.getstatusoutput("pgrep qemu-kvm")
+    if gf_result.stdout.split()[0] not in pids:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_get_pid failed')
+
+    gf.close_session()
+
+
+def test_set_get_network(vm, params):
+    """
+    Test command set_network and get_network:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    network = 0
+    expected = "false"
+    gf.set_network(network)
+    gf_result = gf.get_network()
+    if expected != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_network failed')
+
+    network = 1
+    expected = "true"
+    gf.set_network(network)
+    gf_result = gf.get_network()
+    if expected != gf_result.stdout.split()[0]:
+        gf.close_session()
+        logging.error(gf_result)
+        raise error.TestFail('test_set_get_network failed')
+
+    gf.close_session()
+
+
+def test_setenv(vm, params):
+    """
+    Test command setenv:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    var1 = "VAR1"
+    value1 = "value1"
+    gf.setenv(var1, value1)
+    gf_result = gf.inner_cmd("!echo $%s" % var1)
+    v1 = gf_result.stdout.split()[0]
+
+    gf.add_drive("/dev/null")
+    gf.run()
+    var2 = "VAR2"
+    value2 = "value2"
+    gf.setenv(var2, value2)
+    gf_result = gf.inner_cmd("!echo $%s" % var2)
+    v2 = gf_result.stdout.split()[0]
+
+    gf.reopen()
+    var3 = "VAR3"
+    value3 = "value3"
+    gf.setenv(var3, value3)
+    gf_result = gf.inner_cmd("!echo $%s" % var3)
+    v3 = gf_result.stdout.split()[0]
+
+    if value1 != v1 or value2 != v2 or value3 != v3:
+        gf.close_session()
+        raise error.TestFail('test_setenv failed')
+
+    gf.close_session()
+
+
+def test_unsetenv(vm, params):
+    """
+    Test command unsetenv:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+
+    var1 = "VAR1"
+    value1 = "value1"
+    gf.setenv(var1, value1)
+    gf.unsetenv(var1)
+    gf_result = gf.inner_cmd("!echo $%s" % var1)
+    v1 = gf_result.stdout
+
+    var2 = "VAR2"
+    value2 = "value2"
+    gf.setenv(var2, value2)
+    gf.add_drive("/dev/null")
+    gf.run()
+    gf.unsetenv(var2)
+    gf_result = gf.inner_cmd("!echo $%s" % var2)
+    v2 = gf_result.stdout
+
+    var3 = "VAR3"
+    value3 = "value3"
+    gf.setenv(var3, value3)
+    gf.reopen()
+    gf.unsetenv(var3)
+    gf_result = gf.inner_cmd("!echo $%s" % var3)
+    v3 = gf_result.stdout
+
+    if (value1 in v1) or (value2 in v2) or (value3 in v3):
+        gf.close_session()
+        raise error.TestFail('test_setenv failed')
+
+    gf.close_session()
+
+
+def test_is_config(vm, params):
+    """
+    Test command is_config:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    image_path = params.get("image_path")
+
+    gf.add_drive(image_path)
+    gf_result = gf.is_config()
+    v1 = gf_result.stdout.split()[0]
+    gf.run()
+    gf_result = gf.is_config()
+    v2 = gf_result.stdout.split()[0]
+
+    if v1 != "true" or v2 != "false":
+        gf.close_session()
+        raise error.TestFail('test_is_config failed')
+
+    gf.close_session()
+
+
+def test_lcd(vm, params):
+    """
+    Test command lcd:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    os.system("rm -f /tmp/test_lcd.img")
+
+    gf.lcd("/tmp")
+    gf_result = gf.inner_cmd("!pwd")
+    wd = gf_result.stdout.split()[0]
+    gf.sparse("test_lcd.img", "10M")
+
+    if (wd != '/tmp') or (not os.path.exists('/tmp/test_lcd.img')):
+        gf.close_session()
+        os.system("rm -f /tmp/test_lcd.img")
+        raise error.TestFail('test_lcd failed')
+
+    gf.close_session()
+    os.system("rm -f /tmp/test_lcd.img")
+
+
+def test_supported(vm, params):
+    """
+    Test command supported:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    image_path = params.get("image_path")
+    gf.add_drive(image_path)
+    gf.run()
+
+    gf_result = gf.available_all_groups()
+    groups = gf_result.stdout.strip().split()
+    gf_result = gf.supported()
+    supported = gf_result.stdout
+    for group in groups:
+        if group not in supported:
+            gf.close_session()
+            logging.error(groups)
+            logging.error(supported)
+            raise error.TestFail('test_supported failed')
+
+    gf.close_session()
+
+
+def test_extlinux(vm, params):
+    """
+    Test command extlinux:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    test_format = params.get("image_format")
+    test_size = "100M"
+    test_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    test_img = test_dir + '/test_extlinux.img'
+    test_pv = '/dev/sda'
+    os.system('qemu-img create -f ' + test_format + ' ' +
+              test_img + ' ' + test_size + ' > /dev/null')
+    gf.add_drive(test_img)
+    gf.run()
+
+    test_mountpoint = test_pv + "1"
+    gf.part_disk(test_pv, "mbr")
+    gf.mkfs('ext2', test_mountpoint)
+    gf.mount(test_mountpoint, '/')
+    gf.extlinux('/')
+    gf.download("/ldlinux.sys", "ldlinux.sys.ext2")
+    gf.umount('/')
+
+    gf.mkfs('ext3', test_mountpoint)
+    gf.mount(test_mountpoint, '/')
+    gf.extlinux('/')
+    gf.download("/ldlinux.sys", "ldlinux.sys.ext3")
+    gf.umount('/')
+
+    gf.mkfs('ext4', test_mountpoint)
+    gf.mount(test_mountpoint, '/')
+    gf.extlinux('/')
+    gf.download("/ldlinux.sys", "ldlinux.sys.ext4")
+    gf.umount('/')
+
+    temp, v1 = commands.getstatusoutput("file ldlinux.sys.ext2 | grep data")
+    temp, v2 = commands.getstatusoutput("file ldlinux.sys.ext3 | grep data")
+    temp, v3 = commands.getstatusoutput("file ldlinux.sys.ext4 | grep data")
+    if ('ext' not in v1) or ('ext' not in v2) or ('ext' not in v3):
+        gf.close_session()
+        os.system("rm -f %s" % test_img)
+        os.system("rm -f ldlinux.sys.ext2")
+        os.system("rm -f ldlinux.sys.ext3")
+        os.system("rm -f ldlinux.sys.ext4")
+        raise error.TestFail('test_extlinux failed')
+
+    gf.close_session()
+    os.system("rm -f %s" % test_img)
+    os.system("rm -f ldlinux.sys.ext2")
+    os.system("rm -f ldlinux.sys.ext3")
+    os.system("rm -f ldlinux.sys.ext4")
+
+
+def test_syslinux(vm, params):
+    """
+    Test command syslinux:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    test_format = params.get("image_format")
+    test_size = "100M"
+    test_dir = params.get("img_dir", data_dir.get_tmp_dir())
+    test_img = test_dir + '/test_extlinux.img'
+    test_pv = '/dev/sda'
+    os.system('qemu-img create -f ' + test_format + ' ' +
+              test_img + ' ' + test_size + ' > /dev/null')
+    gf.add_drive(test_img)
+    gf.run()
+
+    test_mountpoint = test_pv + "1"
+    gf.part_disk(test_pv, "mbr")
+    gf.mkfs('vfat', test_mountpoint)
+    gf.syslinux(test_mountpoint)
+    gf.mount(test_mountpoint, '/')
+    gf.download("/ldlinux.sys", "ldlinux.sys.vfat")
+    gf.umount('/')
+
+    temp, v = commands.getstatusoutput("file ldlinux.sys.vfat | grep data")
+    if 'vfat' not in v:
+        gf.close_session()
+        os.system("rm -f %s" % test_img)
+        os.system("rm -f ldlinux.sys.vfat")
+        raise error.TestFail('test_syslinux failed')
+
+    gf.close_session()
+    os.system("rm -f %s" % test_img)
+    os.system("rm -f ldlinux.sys.vfat")
+
+
+def test_feature_available(vm, params):
+    """
+    Test command feature_available:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    image_path = params.get("image_path")
+    gf.add_drive(image_path)
+    gf.run()
+    gf_result = gf.available_all_groups()
+    groups = gf_result.stdout.strip().split()
+    for group in groups:
+        gf_result = gf.feature_available(group)
+        ret = gf_result.stdout.split()[0]
+        if (ret == 'true') and (group == 'grub' or group == 'ldm'
+           or group == 'zerofree'):
+            gf.close_session()
+            raise error.TestFail('test_feature_available failed: %s supported' % group)
+        elif (ret == 'false') and (group != 'grub' and group != 'ldm' and group != 'zerofree'):
+            gf.close_session()
+            raise error.TestFail('test_feature_available failed: %s not supported' % group)
+
+    gf.close_session()
+
+
+def test_set_get_program(vm, params):
+    """
+    Test command set_program and get_program:
+    """
+    add_ref = params.get("gf_add_ref", "disk")
+    readonly = params.get("gf_add_readonly", "no")
+
+    gf = utils_test.libguestfs.GuestfishTools(params)
+    image_path = params.get("image_path")
+    gf.add_drive(image_path)
+    gf.run()
+
+    gf_result = gf.get_program()
+    if gf_result.stdout.split()[0] != 'guestfish':
+        gf.close_session()
+        logging.debug(gf_result)
+        raise error.TestFail("test_set_get_program failed")
+
+    gf.set_program('testalais')
+    gf_result = gf.get_program()
+    if gf_result.stdout.split()[0] != 'testalais':
+        gf.close_session()
+        logging.debug(gf_result)
+        raise error.TestFail("test_set_get_program failed")
+
+
 def run(test, params, env):
     """
     Test of built-in fs_attr_ops related commands in guestfish.
