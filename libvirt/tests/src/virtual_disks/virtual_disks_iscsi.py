@@ -92,7 +92,7 @@ def run(test, params, env):
                 return False
 
             cmd = ("fdisk -l /dev/{0} && mkfs.ext3 -F /dev/{0} && "
-                   "mkdir test && mount /dev/{0} test && echo"
+                   "mkdir -p test && mount /dev/{0} test && echo"
                    " teststring > test/testfile && umount test"
                    .format(added_part))
             s, o = session.cmd_status_output(cmd)

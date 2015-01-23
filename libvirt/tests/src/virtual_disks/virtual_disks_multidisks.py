@@ -1,13 +1,13 @@
 import os
 import re
 import logging
-import shutil
 from autotest.client.shared import error
 from autotest.client import utils
 from virttest import aexpect, virt_vm, virsh, remote
 from virttest import nfs
 from virttest import utils_libvirtd
 from virttest.utils_test import libvirt
+from virttest.utils_config import LibvirtQemuConfig
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.input import Input
@@ -83,8 +83,8 @@ def run(test, params, env):
         if not nfs_obj.mount():
             return None
 
-        disk = {"disk_dev": nfs_obj, "format": "nfs", "source": "%s/%s"
-                % (mount_dir, os.path.split(device_source)[-1])}
+        disk = {"disk_dev": nfs_obj, "format": "nfs", "source":
+                "%s/%s" % (mount_dir, os.path.split(device_source)[-1])}
 
         return disk
 
@@ -108,9 +108,9 @@ def run(test, params, env):
                 raise error.TestNAError("Get scsi disk failed")
 
         elif disk_format in ["iso", "floppy"]:
-                disk_path = libvirt.create_local_disk(disk_format, path)
-                disk.update({"format": disk_format,
-                             "source": disk_path})
+            disk_path = libvirt.create_local_disk(disk_format, path)
+            disk.update({"format": disk_format,
+                         "source": disk_path})
         elif disk_format == "nfs":
             nfs_disk_type = params.get("nfs_disk_type", None)
             disk.update(setup_nfs_disk(os.path.split(path)[-1], nfs_disk_type))
@@ -137,17 +137,19 @@ def run(test, params, env):
 
         return disk
 
-    def check_disk_format(targets_name):
+    def check_disk_format(targets_name, targets_format):
         """
         Check VM disk's type.
 
-        :param targets_name. Device targets list.
+        :param targets_name. Device name list.
+        :param targets_format. Device format list.
         :return: True if check successfully.
         """
         logging.info("Checking VM disks type... ")
-        for target in targets_name:
-            if None != vm_xml.VMXML.get_disk_attr(vm_name, target,
-                                                  "driver", "type"):
+        for tn, tf in zip(targets_name, targets_format):
+            disk_format = vm_xml.VMXML.get_disk_attr(vm_name, tn,
+                                                     "driver", "type")
+            if disk_format not in [None, tf]:
                 return False
         return True
 
@@ -240,7 +242,7 @@ def run(test, params, env):
                 cmd = ("(%s && ls /mnt || exit 1) && (echo "
                        "'test' > /mnt/test || umount /mnt)" % mount_cmd)
                 s, o = session.cmd_status_output(cmd)
-                logging.debug("cmd exit: %s, output: %s" % (s, o))
+                logging.debug("cmd exit: %s, output: %s", s, o)
                 if s:
                     session.close()
                     return False
@@ -306,7 +308,7 @@ def run(test, params, env):
         Get console output and check bootorder.
         """
         # Get console output.
-        vm.serial_console.read_until_output_matches(["Booting from Hard Disk", "Linux version"])
+        vm.serial_console.read_until_output_matches(["login"])
         output = vm.serial_console.get_stripped_output()
         lines = re.findall(r"^Booting from (.+)...", output, re.M)
         logging.debug("lines: %s", lines)
@@ -318,7 +320,8 @@ def run(test, params, env):
 
         return True
 
-    def check_disk_save_restore(save_file, device_targets):
+    def check_disk_save_restore(save_file, device_targets,
+                                startup_policy):
         """
         Check domain save and restore operation.
         """
@@ -328,8 +331,15 @@ def run(test, params, env):
         libvirt.check_exit_status(ret)
 
         # Restore the domain.
+        restore_error = False
+        # Check disk startup policy option
+        if "optional" in startup_policy:
+            os.remove(disks[0]["source"])
+            restore_error = True
         ret = virsh.restore(save_file, **virsh_dargs)
-        libvirt.check_exit_status(ret)
+        libvirt.check_exit_status(ret, restore_error)
+        if restore_error:
+            return
 
         # Connect to the domain and check disk.
         try:
@@ -345,29 +355,6 @@ def run(test, params, env):
             session.close()
         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
             raise error.TestError(str(e))
-
-    def check_snapshot_startuppolicy(devices, device_targets):
-        """
-        Check disk snapshot with startup policy option.
-        """
-        ret = virsh.snapshot_create(vm_name, "")
-        libvirt.check_exit_status(ret)
-
-        snapshot_name = re.search(
-            "\d+", ret.stdout.strip()).group(0)
-        vm.destroy(gracefully=False)
-
-        # Remove the disk and revert snapshot.
-        os.remove(disks[0]["source"])
-        ret = virsh.snapshot_revert(vm_name, snapshot_name, "")
-        libvirt.check_exit_status(ret)
-
-        if vm.is_dead():
-            error.TestError("Revert snapshot failed")
-
-        # Check the disk partitions again, the disk should not exist.
-        if not check_vm_partitions(devices, device_targets, False):
-            error.TestError("Check partition failed after snapshot")
 
     status_error = "yes" == params.get("status_error", "no")
     define_error = "yes" == params.get("define_error", "no")
@@ -403,58 +390,64 @@ def run(test, params, env):
     input_usb_address = params.get("input_usb_address", "")
     hub_usb_address = params.get("hub_usb_address", "")
     hotplug = "yes" == params.get(
-              "virt_disk_device_hotplug", "no")
+        "virt_disk_device_hotplug", "no")
     device_at_dt_disk = "yes" == params.get("virt_disk_at_dt_disk", "no")
     device_with_source = "yes" == params.get(
-                         "virt_disk_with_source", "yes")
+        "virt_disk_with_source", "yes")
     virtio_scsi_controller = "yes" == params.get(
-                             "virtio_scsi_controller", "no")
+        "virtio_scsi_controller", "no")
     virtio_scsi_controller_driver = params.get(
         "virtio_scsi_controller_driver", "")
     source_path = "yes" == params.get(
-                  "virt_disk_device_source_path", "yes")
+        "virt_disk_device_source_path", "yes")
     check_patitions = "yes" == params.get(
-                      "virt_disk_check_partitions", "yes")
+        "virt_disk_check_partitions", "yes")
     check_patitions_hotunplug = "yes" == params.get(
-                                "virt_disk_check_partitions_hotunplug", "yes")
+        "virt_disk_check_partitions_hotunplug", "yes")
     test_slots_order = "yes" == params.get(
-                       "virt_disk_device_test_order", "no")
+        "virt_disk_device_test_order", "no")
     test_disks_format = "yes" == params.get(
-                        "virt_disk_device_test_format", "no")
+        "virt_disk_device_test_format", "no")
     test_block_size = "yes" == params.get(
-                      "virt_disk_device_test_block_size", "no")
+        "virt_disk_device_test_block_size", "no")
     test_file_img_on_disk = "yes" == params.get(
-                            "test_file_image_on_disk", "no")
+        "test_file_image_on_disk", "no")
     test_with_boot_disk = "yes" == params.get(
-                          "virt_disk_with_boot_disk", "no")
+        "virt_disk_with_boot_disk", "no")
     test_disk_option_cmd = "yes" == params.get(
-                           "test_disk_option_cmd", "no")
+        "test_disk_option_cmd", "no")
     test_disk_type_dir = "yes" == params.get(
-                         "virt_disk_test_type_dir", "no")
+        "virt_disk_test_type_dir", "no")
     test_disk_bootorder = "yes" == params.get(
-                          "virt_disk_test_bootorder", "no")
+        "virt_disk_test_bootorder", "no")
     test_disk_bootorder_snapshot = "yes" == params.get(
-                                   "virt_disk_test_bootorder_snapshot", "no")
+        "virt_disk_test_bootorder_snapshot", "no")
     test_boot_console = "yes" == params.get(
-                        "virt_disk_device_boot_console", "no")
+        "virt_disk_device_boot_console", "no")
     test_disk_readonly = "yes" == params.get(
-                         "virt_disk_device_test_readonly", "no")
+        "virt_disk_device_test_readonly", "no")
     test_disk_snapshot = "yes" == params.get(
-                         "virt_disk_test_snapshot", "no")
+        "virt_disk_test_snapshot", "no")
     test_disk_save_restore = "yes" == params.get(
-                             "virt_disk_test_save_restore", "no")
+        "virt_disk_test_save_restore", "no")
     test_bus_device_option = "yes" == params.get(
-                             "test_bus_option_cmd", "no")
+        "test_bus_option_cmd", "no")
     snapshot_before_start = "yes" == params.get(
-                            "snapshot_before_start", "no")
-    snapshot_with_startuppolicy = "yes" == params.get(
-                                  "test_snapshot_with_startuppolicy", "no")
+        "snapshot_before_start", "no")
 
     if test_block_size:
         logical_block_size = params.get("logical_block_size")
         physical_block_size = params.get("physical_block_size")
 
-    # Destroy VM first.
+    if test_boot_console:
+        if vm.is_dead():
+            vm.start()
+        session = vm.wait_for_login()
+        # Setting console to kernel parameters
+        vm.set_kernel_console("ttyS0", "115200")
+        vm.shutdown()
+
+    # Destroy VM.
     if vm.is_alive():
         vm.destroy(gracefully=False)
 
@@ -468,16 +461,9 @@ def run(test, params, env):
         device_source_path = test.virtdir
 
     # Prepare test environment.
-    qemu_conf_bak = None
+    qemu_config = LibvirtQemuConfig()
     if test_disks_format:
-        qemu_conf = "/etc/libvirt/qemu.conf"
-        qemu_conf_bak = os.path.join(test.tmpdir, "qemu.conf.bak")
-        shutil.copy(qemu_conf, qemu_conf_bak)
-        cmd = ("sed -i '/^allow_disk_format_probing/d' %s;"
-               " echo 'allow_disk_format_probing = 1' >> %s"
-               % (qemu_conf, qemu_conf))
-        if utils.run(cmd, ignore_status=True).exit_status:
-            raise error.TestNAError("Enable disk format probing failed")
+        qemu_config.allow_disk_format_probing = True
         utils_libvirtd.libvirtd_restart()
 
     # Create virtual device file.
@@ -767,7 +753,7 @@ def run(test, params, env):
                 raise error.TestFail("Disks slots order error in domain xml")
 
         if test_disks_format:
-            if not check_disk_format(device_targets):
+            if not check_disk_format(device_targets, device_formats):
                 raise error.TestFail("Disks type error in VM xml")
 
         if test_boot_console:
@@ -814,7 +800,7 @@ def run(test, params, env):
             if serial != "":
                 cmd += " | grep serial=%s" % serial
             if wwn != "":
-                cmd += " | grep wwn=%s" % wwn
+                cmd += " | grep -E \"wwn=(0x)?%s\"" % wwn
             if vendor != "":
                 cmd += " | grep vendor=%s" % vendor
             if product != "":
@@ -940,13 +926,10 @@ def run(test, params, env):
         # Check disk save and restore.
         if test_disk_save_restore:
             save_file = "/tmp/%s.save" % vm_name
-            check_disk_save_restore(save_file, device_targets)
+            check_disk_save_restore(save_file, device_targets,
+                                    startup_policy)
             if os.path.exists(save_file):
                 os.remove(save_file)
-
-        # Test snapshot with startuppolicy option.
-        if snapshot_with_startuppolicy:
-            check_snapshot_startuppolicy(devices, device_targets)
 
         # If we testing hotplug, detach the disk at last.
         if device_at_dt_disk:
@@ -995,11 +978,9 @@ def run(test, params, env):
         virsh.define(vm_xml_file)
         os.remove(vm_xml_file)
 
-        # Delete tmp files/disks.
-        if qemu_conf_bak:
-            shutil.copy(qemu_conf_bak, "/etc/libvirt/qemu.conf")
-            os.remove(qemu_conf_bak)
-            utils_libvirtd.libvirtd_restart()
+        # Restore qemu_config file.
+        qemu_config.restore()
+        utils_libvirtd.libvirtd_restart()
 
         for img in disks_img:
             os.remove(img["source"])
