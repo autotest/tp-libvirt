@@ -181,10 +181,9 @@ def run(test, params, env):
             if libvirt_pool.pool_exists(pool):
                 poolvolune_test.cleanup_pool(check_pool_name, pool_type,
                                              pool_target, emulated_image,
-                                             source_name)
+                                             source_name=source_name)
         if redefine_pool_flag:
             try:
-                name_s = "ss"
                 # poolxml could be empty if error happened when define pool
                 poolxml.pool_define()
             finally:
