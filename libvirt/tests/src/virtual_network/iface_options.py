@@ -99,7 +99,7 @@ def run(test, params, env):
             disk_xml = xml_devices[disk_index]
             logging.debug("source: %s", disk_xml.source)
             disk_source = disk_xml.source.attrs["file"]
-            cmd = ("cp %s %s && chmod a+rw %s" %
+            cmd = ("cp -f %s %s && chmod a+rw %s" %
                    (disk_source, dst_disk, dst_disk))
             utils.run(cmd)
             disk_xml.source = disk_xml.new_disk_source(
@@ -146,8 +146,9 @@ def run(test, params, env):
         logging.debug("ethtool output: %s", output)
         for offload in driver_options.keys():
             if offloads.has_key(offload):
-                if not output.count("%s: %s" % (offloads[offload],
-                                                driver_options[offload])):
+                if (output.count(offloads[offload]) and
+                        not output.count("%s: %s" % (
+                            offloads[offload], driver_options[offload]))):
                     raise error.TestFail("offloads option %s: %s isn't"
                                          " correct in ethtool output" %
                                          (offloads[offload],
@@ -257,7 +258,10 @@ def run(test, params, env):
                                                       iface_mac))
         logging.debug("IP address on guest: %s", vm_ips)
         if len(vm_ips) != len(set(vm_ips)):
-            raise error.TestFail("Duplicated IP address on guest")
+            raise error.TestFail("Duplicated IP address on guest. "
+                                 "Check bug: https://bugzilla.redhat."
+                                 "com/show_bug.cgi?id=1147238")
+
         for vm_ip in vm_ips:
             if vm_ip is None or not vm_ip.startswith("10.0.2."):
                 raise error.TestFail("Found wrong IP address"
@@ -481,13 +485,12 @@ def run(test, params, env):
             # Run tests for offloads options
             if test_option_offloads:
                 if iface_driver_host:
-                    ifname_host = libvirt.get_ifname_host(vm_name, iface_mac)
-                    check_offloads_option(ifname_host,
-                                          eval(iface_driver_host))
-                if iface_driver_guest:
                     ifname_guest = utils_net.get_linux_ifname(session, iface_mac)
-                    check_offloads_option(ifname_guest, eval(iface_driver_guest),
-                                          session)
+                    check_offloads_option(ifname_guest,
+                                          eval(iface_driver_host), session)
+                if iface_driver_guest:
+                    ifname_host = libvirt.get_ifname_host(vm_name, iface_mac)
+                    check_offloads_option(ifname_host, eval(iface_driver_guest))
 
             if test_iface_user:
                 # Test user type network
