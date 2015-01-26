@@ -352,6 +352,36 @@ TIMEOUT 3"""
                 raise error.TestFail("Failed to ping gateway address: %s"
                                      % ip_gateway)
 
+    def run_guest_libvirt(session):
+        """
+        Check guest libvirt network
+        """
+        # Try to install required packages
+        if not utils_misc.yum_install(['libvirt'], session):
+            raise error.TestNAError("Failed ot install libvirt"
+                                    " package on guest")
+        result = True
+        # Check network state on guest
+        cmd = ("service libvirtd restart; virsh net-info default"
+               " | grep 'Active:.*no'")
+        if session.cmd_status(cmd):
+            result = False
+            logging.error("Default network isn't in inactive state")
+        # Try to start default network on guest, check error messages
+        if result:
+            cmd = "virsh net-start default"
+            status, output = session.cmd_status_output(cmd)
+            logging.debug("Run command on guest exit %s, output %s"
+                          % (status, output))
+            if not status or not output.count("already in use"):
+                result = False
+                logging.error("Failed to see network messges on guest")
+        if session.cmd_status("rpm -e libvirt"):
+            logging.error("Failed to remove libvirt packages on guest")
+
+        if not result:
+            raise error.TestFail("Check libvirt network on guest failed")
+
     start_error = "yes" == params.get("start_error", "no")
     restart_error = "yes" == params.get("restart_error", "no")
 
@@ -389,6 +419,7 @@ TIMEOUT 3"""
     test_qos_remove = "yes" == params.get("test_qos_remove", "no")
     test_ipv4_address = "yes" == params.get("test_ipv4_address", "no")
     test_ipv6_address = "yes" == params.get("test_ipv6_address", "no")
+    test_guest_libvirt = "yes" == params.get("test_guest_libvirt", "no")
 
     if serial_login:
         # Set serial console for serial login
@@ -497,77 +528,81 @@ TIMEOUT 3"""
         if test_qos_bandwidth:
             run_bandwidth_test(check_net=True)
 
-        # Start the VM.
-        vm.start()
-        if start_error:
-            raise error.TestFail("VM started unexpectedly")
-        if pxe_boot:
-            # Just check network boot messages here
-            vm.serial_console.read_until_output_matches(
-                ["Loading vmlinuz", "Loading initrd.img"],
-                utils_misc.strip_console_codes)
-            output = vm.serial_console.get_stripped_output()
-            logging.debug("Boot messages: %s", output)
+        try:
+            # Start the VM.
+            vm.start()
+            if start_error:
+                raise error.TestFail("VM started unexpectedly")
+            if pxe_boot:
+                # Just check network boot messages here
+                vm.serial_console.read_until_output_matches(
+                    ["Loading vmlinuz", "Loading initrd.img"],
+                    utils_misc.strip_console_codes)
+                output = vm.serial_console.get_stripped_output()
+                logging.debug("Boot messages: %s", output)
 
-        else:
-            if serial_login:
-                session = vm.wait_for_serial_login()
             else:
-                session = vm.wait_for_login()
+                if serial_login:
+                    session = vm.wait_for_serial_login()
+                else:
+                    session = vm.wait_for_login()
 
-            if test_dhcp_range:
-                # First vm should have a valid ip address
-                utils_net.restart_guest_network(session, iface_mac)
-                vm_ip = utils_net.get_guest_ip_addr(session, iface_mac)
-                logging.debug("Guest has ip: %s", vm_ip)
-                if not vm_ip:
-                    raise error.TestFail("Guest has invalid ip address")
-                # Other vms cloudn't get the ip address
-                for vms in vms_list:
-                    # Start other VMs.
-                    vms.start()
-                    sess = vms.wait_for_serial_login()
-                    vms_mac = vms.get_virsh_mac_address()
-                    # restart guest network to get ip addr
-                    utils_net.restart_guest_network(sess, vms_mac)
-                    vms_ip = utils_net.get_guest_ip_addr(sess,
-                                                         vms_mac)
-                    if vms_ip:
-                        # Get IP address on guest should return Null
-                        raise error.TestFail("Guest has ip address: %s"
-                                             % vms_ip)
-                    sess.close()
+                if test_dhcp_range:
+                    # First vm should have a valid ip address
+                    utils_net.restart_guest_network(session, iface_mac)
+                    vm_ip = utils_net.get_guest_ip_addr(session, iface_mac)
+                    logging.debug("Guest has ip: %s", vm_ip)
+                    if not vm_ip:
+                        raise error.TestFail("Guest has invalid ip address")
+                    # Other vms cloudn't get the ip address
+                    for vms in vms_list:
+                        # Start other VMs.
+                        vms.start()
+                        sess = vms.wait_for_serial_login()
+                        vms_mac = vms.get_virsh_mac_address()
+                        # restart guest network to get ip addr
+                        utils_net.restart_guest_network(sess, vms_mac)
+                        vms_ip = utils_net.get_guest_ip_addr(sess,
+                                                             vms_mac)
+                        if vms_ip:
+                            # Get IP address on guest should return Null
+                            raise error.TestFail("Guest has ip address: %s"
+                                                 % vms_ip)
+                        sess.close()
 
-            # Check dnsmasq settings if take affect in guest
-            if guest_ipv4 or guest_ipv6:
-                check_name_ip(session)
+                # Check dnsmasq settings if take affect in guest
+                if guest_ipv4:
+                    check_name_ip(session)
 
-            # Run bandwidth test for interface
-            if test_qos_bandwidth:
-                run_bandwidth_test(check_iface=True)
-            if test_qos_remove:
-                # Remove the bandwidth settings in network xml
-                logging.debug("Removing network bandwidth settings...")
-                netxml_backup.sync()
-                vm.destroy(gracefully=False)
-                # Should fail to start vm
-                vm.start()
-                if restart_error:
-                    raise error.TestFail("VM started unexpectedly")
-            if test_ipv4_address:
-                check_ipt_rules(check_ipv4=True)
-                run_ip_test(session, "ipv4")
-            if test_ipv6_address:
-                check_ipt_rules(check_ipv6=True)
-                run_ip_test(session, "ipv6")
+                # Run bandwidth test for interface
+                if test_qos_bandwidth:
+                    run_bandwidth_test(check_iface=True)
+                if test_qos_remove:
+                    # Remove the bandwidth settings in network xml
+                    logging.debug("Removing network bandwidth settings...")
+                    netxml_backup.sync()
+                    vm.destroy(gracefully=False)
+                    # Should fail to start vm
+                    vm.start()
+                    if restart_error:
+                        raise error.TestFail("VM started unexpectedly")
+                if test_ipv4_address:
+                    check_ipt_rules(check_ipv4=True)
+                    run_ip_test(session, "ipv4")
+                if test_ipv6_address:
+                    check_ipt_rules(check_ipv6=True)
+                    run_ip_test(session, "ipv6")
 
-            session.close()
-    except virt_vm.VMStartError, details:
-        logging.error(str(details))
-        if start_error or restart_error:
-            pass
-        else:
-            raise error.TestFail('VM Failed to start for some reason!')
+                if test_guest_libvirt:
+                    run_guest_libvirt(session)
+
+                session.close()
+        except virt_vm.VMStartError, details:
+            logging.info(str(details))
+            if start_error or restart_error:
+                pass
+            else:
+                raise error.TestFail('VM Failed to start for some reason!')
 
     finally:
         # Recover VM.
