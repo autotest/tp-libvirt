@@ -5,6 +5,7 @@ from virttest.utils_test import libvirt as utlv
 from autotest.client.shared import error
 from autotest.client import utils
 from provider import libvirt_version
+from virttest.staging import service
 
 
 def run(test, params, env):
@@ -37,11 +38,21 @@ def run(test, params, env):
     src_emulated_image = params.get("src_emulated_image")
     extra_option = params.get("extra_option", "")
     prefix_vol_name = params.get("vol_name", "vol_create_test")
-    vol_format = params.get("vol_format")
+    vol_format = params.get("vol_format", "raw")
     vol_capacity = params.get("vol_capacity", 1048576)
+    vol_allocation = params.get("vol_allocation", 1048576)
     image_size = params.get("emulate_image_size", "1G")
     lazy_refcounts = "yes" == params.get("lazy_refcounts")
     status_error = "yes" == params.get("status_error", "no")
+    by_xml = "yes" == params.get("create_vol_by_xml", "yes")
+
+    # Stop multipathd to avoid start pool fail(For fs like pool, the new add
+    # disk may in use by device-mapper, so start pool will report disk already
+    # mounted error).
+    multipathd = service.Factory.create_service("multipathd")
+    multipathd_status = multipathd.status()
+    if multipathd_status:
+        multipathd.stop()
 
     # Set volume xml attribute dictionary, extract all params start with 'vol_'
     # which are for setting volume xml, except 'lazy_refcounts'.
@@ -168,6 +179,7 @@ def run(test, params, env):
     fmt_err2 += "image creation"
     fmt_err_list = [fmt_err0, fmt_err1, fmt_err2]
     skip_msg = "Volume format '%s' is not supported by qemu-img" % vol_format
+    vol_path_list = []
     try:
         # Create the src pool
         src_pool_name = "virt-%s-pool" % src_pool_type
@@ -182,30 +194,39 @@ def run(test, params, env):
                       libvirt_storage.StoragePool().list_pools())
 
         # Create volumes by virsh in a loop
-        vol_path_list = []
         while pool_vol_num > 0:
             # Set volume xml file
             vol_name = prefix_vol_name + "_%s" % pool_vol_num
-            vol_arg['name'] = vol_name
             pool_vol_num -= 1
-            volxml = libvirt_xml.VolXML()
-            newvol = volxml.new_vol(**vol_arg)
-            vol_xml = newvol['xml']
-            if params.get('setup_libvirt_polkit') == 'yes':
-                utils.run("chmod 666 %s" % vol_xml, ignore_status=True)
+            if by_xml:
+                vol_arg['name'] = vol_name
+                volxml = libvirt_xml.VolXML()
+                newvol = volxml.new_vol(**vol_arg)
+                vol_xml = newvol['xml']
+                if params.get('setup_libvirt_polkit') == 'yes':
+                    utils.run("chmod 666 %s" % vol_xml, ignore_status=True)
 
-            # Run virsh_vol_create to create vol
-            logging.debug("create volume from XML: %s" % newvol.xmltreefile)
-            cmd_result = virsh.vol_create(src_pool_name, vol_xml, extra_option,
-                                          unprivileged_user=unprivileged_user,
-                                          uri=uri, ignore_status=True, debug=True)
+                # Run virsh_vol_create to create vol
+                logging.debug("Create volume from XML: %s" % newvol.xmltreefile)
+                cmd_result = virsh.vol_create(
+                    src_pool_name, vol_xml, extra_option,
+                    unprivileged_user=unprivileged_user, uri=uri,
+                    ignore_status=True, debug=True)
+            else:
+                # Run virsh_vol_create_as to create_vol
+                cmd_result = virsh.vol_create_as(
+                    vol_name, src_pool_name, vol_capacity, vol_allocation,
+                    vol_format, unprivileged_user=unprivileged_user, uri=uri,
+                    ignore_status=True, debug=True)
             # Check result
             try:
                 utlv.check_exit_status(cmd_result, status_error)
-                check_vol(src_pool_name, vol_name)
-                vol_path = virsh.vol_path(vol_name, src_pool_name).stdout.strip()
-                logging.debug("Full path of %s: %s", vol_name, vol_path)
-                vol_path_list.append(vol_path)
+                check_vol(src_pool_name, vol_name, not status_error)
+                if not status_error:
+                    vol_path = virsh.vol_path(vol_name,
+                                              src_pool_name).stdout.strip()
+                    logging.debug("Full path of %s: %s", vol_name, vol_path)
+                    vol_path_list.append(vol_path)
             except error.TestFail, e:
                 stderr = cmd_result.stderr
                 if any(err in stderr for err in fmt_err_list):
@@ -235,7 +256,7 @@ def run(test, params, env):
         # For old version lvm2(2.02.106 or early), deactivate volume group
         # (destroy libvirt logical pool) will fail if which has deactivated
         # lv snapshot, so before destroy the pool, we need activate it manually
-        if src_pool_type == 'logical':
+        if src_pool_type == 'logical' and vol_path_list:
             vg_name = vol_path_list[0].split('/')[2]
             utils.run("lvchange -ay %s" % vg_name)
         try:
@@ -243,3 +264,5 @@ def run(test, params, env):
                              src_emulated_image)
         except error.TestFail, detail:
             logging.error(str(detail))
+        if multipathd_status:
+            multipathd.start()
