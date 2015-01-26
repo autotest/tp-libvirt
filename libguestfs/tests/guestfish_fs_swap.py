@@ -32,7 +32,7 @@ def test_swap_device(vm, params):
     Test mkswap, swapon_device and swapoff_device:
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -120,7 +120,7 @@ def test_swap_label(vm, params):
     Test mkswap_L, swapon_label and swapoff_label:
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -201,7 +201,7 @@ def test_swap_uuid(vm, params):
     Test mkswap_L, swapon_uuid and swapoff_uuid:
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -282,7 +282,7 @@ def test_swap_file(vm, params):
     Test mkswap_L, swapon_label and swapoff_label:
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 

@@ -32,7 +32,7 @@ def test_mount(vm, params):
     Test command mount:
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -68,7 +68,7 @@ def test_mount_options(vm, params):
     Test command mount_options:
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -105,7 +105,7 @@ def test_mount_ro(vm, params):
     Test command mount_ro:
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -142,7 +142,7 @@ def test_mounts(vm, params):
     Test command mounts:
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -167,7 +167,7 @@ def test_mount_loop(vm, params):
     Test command mount_loop:
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -209,7 +209,7 @@ def test_mountpoints(vm, params):
     Test command mountpoints:
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -238,7 +238,7 @@ def test_umount(vm, params):
     Test command umount:
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -306,7 +306,7 @@ def test_mount_vfs(vm, params):
     Test command mount_vfs:
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -344,7 +344,7 @@ def test_umount_all(vm, params):
     Test command umount_all:
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 

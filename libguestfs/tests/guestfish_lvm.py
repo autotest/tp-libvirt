@@ -58,7 +58,7 @@ def test_is_lv(vm, params):
     Test command is-lv
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -95,7 +95,7 @@ def test_lvcreate(vm, params):
     Test command lvcreate
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -137,7 +137,7 @@ def test_lvm_canonical_lv_name(vm, params):
     Test command lvm-canonical-lv-name
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -172,7 +172,7 @@ def test_lvremove(vm, params):
     Test command lvremove
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -206,7 +206,7 @@ def test_lvm_remove_all(vm, params):
     Test command lvm-remove-all
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -247,7 +247,7 @@ def test_lvrename(vm, params):
     Test command lvrename
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -282,7 +282,7 @@ def test_lvresize(vm, params):
     Test command lvresize
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -324,7 +324,7 @@ def test_lvresize_free(vm, params):
     Test command lvresize-free
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -369,7 +369,7 @@ def test_lvm_set_filter(vm, params):
     Test command lvm-set-filter and lvm-clear-filter
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -413,7 +413,7 @@ def test_lvuuid(vm, params):
     Test command lvuuid
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -451,7 +451,7 @@ def test_vgcreate(vm, params):
     Test command vgcreate
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -488,7 +488,7 @@ def test_vgremove(vm, params):
     Test command vgremove
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -522,7 +522,7 @@ def test_vgrename(vm, params):
     Test command vgrename
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -557,7 +557,7 @@ def test_vgscan(vm, params):
     Test command vgscan
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -586,7 +586,7 @@ def test_vguuid(vm, params):
     Test command vguuid
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -624,7 +624,7 @@ def test_vg_activate(vm, params):
     Test command vg-activate
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -667,7 +667,7 @@ def test_vg_activate_all(vm, params):
     Test command vg-activate-all
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -710,7 +710,7 @@ def test_vglvuuids(vm, params):
     Test command vglvuuids
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -744,7 +744,7 @@ def test_vgpvuuids(vm, params):
     Test command vgpvuuids
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -778,7 +778,7 @@ def test_pvcreate(vm, params):
     Test command pvcreate
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -809,7 +809,7 @@ def test_pvremove(vm, params):
     Test command pvremove
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -844,7 +844,7 @@ def test_pvresize(vm, params):
     Test command pvresize and pvresize-size
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -888,7 +888,7 @@ def test_pvuuid(vm, params):
     Test command pvuuid
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
