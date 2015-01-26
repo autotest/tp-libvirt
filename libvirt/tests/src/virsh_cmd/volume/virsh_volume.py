@@ -8,6 +8,7 @@ from virttest import virsh
 from virttest import libvirt_storage
 from virttest.libvirt_xml import vol_xml
 from virttest.utils_test import libvirt as utlv
+from virttest.staging import service
 
 
 def run(test, params, env):
@@ -389,6 +390,14 @@ def run(test, params, env):
     except ValueError:
         raise error.TestError("Translate size %s to 'B' failed" % allocation)
 
+    # Stop multipathd to avoid start pool fail(For fs like pool, the new add
+    # disk may in use by device-mapper, so start pool will report disk already
+    # mounted error).
+    multipathd = service.Factory.create_service("multipathd")
+    multipathd_status = multipathd.status()
+    if multipathd_status:
+        multipathd.stop()
+
     # Get exists libvirt secrets before test
     ori_secrets = get_all_secrets()
     expected_vol = {}
@@ -429,8 +438,6 @@ def run(test, params, env):
             # Creates volume
             if pool_type != "gluster":
                 expected_vol['path'] = pool_target + '/' + volume_name
-                #libv_pvt.pre_vol(volume_name, vol_format, capacity,
-                #                 allocation, pool_name)
                 new_volxml = vol_xml.VolXML()
                 new_volxml.name = volume_name
                 new_volxml.capacity = int_capa
@@ -472,3 +479,5 @@ def run(test, params, env):
                                   emulated_image, source_name=source_name)
         except error.TestFail, detail:
             logging.error(str(detail))
+        if multipathd_status:
+            multipathd.start()

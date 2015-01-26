@@ -6,6 +6,7 @@ from virttest import utils_libvirtd
 from virttest import libvirt_storage
 from virttest import virsh
 from virttest.utils_test import libvirt as utlv
+from virttest.staging import service
 
 
 def run(test, params, env):
@@ -34,11 +35,13 @@ def run(test, params, env):
     (19) Refresh the pool
          For 'dir' type pool, touch a file under target path and refresh again
          to make the new file show in vol-list.
-    (20) Undefine the pool, and this should fail as pool is still active
-    (21) Destroy the pool
-    (22) Delete pool for 'dir' type pool. After the command, the pool object
+    (20) Check pool 'Capacity', 'Allocation' and 'Available'
+         Create a over size vol in pool(expect fail), then check these values
+    (21) Undefine the pool, and this should fail as pool is still active
+    (22) Destroy the pool
+    (23) Delete pool for 'dir' type pool. After the command, the pool object
          will still exist but target path will be deleted
-    (23) Undefine the pool
+    (24) Undefine the pool
     """
 
     # Initialize the variables
@@ -141,6 +144,13 @@ def run(test, params, env):
         else:
             raise error.TestFail("Pool '%s' isn't '%s'." % (check_point,
                                                             value))
+    # Stop multipathd to avoid start pool fail(For fs like pool, the new add
+    # disk may in use by device-mapper, so start pool will report disk already
+    # mounted error).
+    multipathd = service.Factory.create_service("multipathd")
+    multipathd_status = multipathd.status()
+    if multipathd_status:
+        multipathd.stop()
 
     # Run Testcase
     pvt = utlv.PoolVolumeTest(test, params)
@@ -270,19 +280,32 @@ def run(test, params, env):
             check_vol_list(vol_name, pool_name)
 
         # Step (20)
+        # Create a over size vol in pool(expect fail), then check pool:
+        # 'Capacity', 'Allocation' and 'Available'
+        vol_capacity = "10000G"
+        vol_allocation = "10000G"
+        result = virsh.vol_create_as("oversize_vol", pool_name,
+                                     vol_capacity, vol_allocation, "raw")
+        check_exit_status(result, True)
+        new_pool_info = _pool.pool_info(pool_name)
+        check_pool_info(pool_info, "Capacity", new_pool_info['Capacity'])
+        check_pool_info(pool_info, "Allocation", new_pool_info['Allocation'])
+        check_pool_info(pool_info, "Available", new_pool_info['Available'])
+
+        # Step (21)
         # Undefine pool, this should fail as the pool is active
         result = virsh.pool_undefine(pool_name, ignore_status=True)
         check_exit_status(result, expect_error=True)
         check_pool_list(pool_name, "", False)
 
-        # Step (21)
+        # Step (22)
         # Pool destroy
         if virsh.pool_destroy(pool_name):
             logging.debug("Pool %s destroyed.", pool_name)
         else:
             raise error.TestFail("Destroy pool % failed." % pool_name)
 
-        # Step (22)
+        # Step (23)
         # Pool delete for 'dir' type pool
         if pool_type == "dir":
             if os.path.exists(vol_path):
@@ -297,7 +320,7 @@ def run(test, params, env):
             result = virsh.pool_start(pool_name, ignore_status=True)
             check_exit_status(result, True)
 
-        # Step (23)
+        # Step (24)
         # Pool undefine
         result = virsh.pool_undefine(pool_name, ignore_status=True)
         check_exit_status(result)
@@ -309,3 +332,5 @@ def run(test, params, env):
                              emulated_image, **kwargs)
         except error.TestFail, detail:
             logging.error(str(detail))
+        if multipathd_status:
+            multipathd.start()
