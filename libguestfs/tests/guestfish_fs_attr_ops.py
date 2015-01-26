@@ -32,7 +32,7 @@ def test_set_get_e2uuid(vm, params):
     Test command set_e2uuid, get_e2uuid, vfs_uuid and findfs-uuid:
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -76,7 +76,7 @@ def test_set_uuid(vm, params):
     Test command set_uuid
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -107,7 +107,7 @@ def test_set_get_e2label(vm, params):
     Test command set_e2label, get_e2label, vfs_label and findfs_label
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -152,7 +152,7 @@ def test_set_label(vm, params):
     Test command set_label
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -183,7 +183,7 @@ def test_set_get_e2attrs(vm, params):
     Test command set_e2attrs and get_e2attrs
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -259,7 +259,7 @@ def test_set_get_e2generation(vm, params):
     Test command set_e2generation and get_e2generation
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -294,7 +294,7 @@ def test_statvfs(vm, params):
     Test command statvfs
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -349,7 +349,7 @@ def test_tune2fs_l(vm, params):
     Test command tune2fs_l
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -385,7 +385,7 @@ def test_tune2fs(vm, params):
     Test command tune2fs
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -430,7 +430,7 @@ def test_checkfs(vm, params):
     Test command vfs_type, fsck
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -465,7 +465,7 @@ def test_mkfs_opts(vm, params):
     Test command mkfs/mkfs_opts
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -545,7 +545,7 @@ def test_blkid(vm, params):
     Test command blkid
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -587,7 +587,7 @@ def test_filesystem_available(vm, params):
     Test command filesystem_available
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -619,7 +619,7 @@ def test_e2fsck(vm, params):
     Test command e2fsck
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -649,7 +649,7 @@ def test_list_filesystems(vm, params):
     Test command list-filesystems
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -680,7 +680,7 @@ def test_mkfifo(vm, params):
     Test command test_mkfifo
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -712,7 +712,7 @@ def test_sync(vm, params):
     Test command sync
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -741,7 +741,7 @@ def test_mklost_and_found(vm, params):
     Test command mklost_and_found
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -772,7 +772,7 @@ def test_mknod(vm, params):
     Test command mknod
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -827,7 +827,7 @@ def test_mknod_b(vm, params):
     Test command mknod_b
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -867,7 +867,7 @@ def test_mknod_c(vm, params):
     Test command mknod_c
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -907,7 +907,7 @@ def test_ntfsresize_opts(vm, params):
     Test command ntfsresize_opts
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -970,7 +970,7 @@ def test_resize2fs(vm, params):
     Test command resize2fs
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -1030,7 +1030,7 @@ def test_resize2fs_M(vm, params):
     Test command resize2fs_M
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
@@ -1079,7 +1079,7 @@ def test_resize2fs_size(vm, params):
     Test command resize2fs_size
     """
     add_ref = params.get("gf_add_ref", "disk")
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     if add_ref == "disk":
