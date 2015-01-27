@@ -36,7 +36,7 @@ def test_aug_clear(vm, params):
     4) Check if the path have been cleared
     """
 
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -94,7 +94,7 @@ def test_aug_close(vm, params):
     2) Close the current augeas handle
     """
 
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -140,7 +140,7 @@ def test_aug_defnode(vm, params):
     3) Check the value of the node
     """
 
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -202,7 +202,7 @@ def test_aug_defvar(vm, params):
     3) Check the value of the variable
     """
 
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -259,7 +259,7 @@ def test_aug_set_get(vm, params):
     4) Check the value of the augeas path
     """
 
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -329,7 +329,7 @@ def test_aug_init(vm, params):
     5) Create a new augeas handle and set the flag to 32
     """
 
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -393,7 +393,7 @@ def test_aug_insert(vm, params):
     4) Check the status of the new insert node
     """
 
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -478,7 +478,7 @@ def test_aug_ls(vm, params):
     4) Check the results
     """
 
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -556,7 +556,7 @@ def test_aug_match(vm, params):
     4) Check the results
     """
 
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -624,7 +624,7 @@ def test_aug_mv(vm, params):
     4) Check the results
     """
 
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -685,7 +685,7 @@ def test_aug_rm(vm, params):
     4) Check the results
     """
 
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -746,7 +746,7 @@ def test_aug_label(vm, params):
     4) Check the results
     """
 
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -801,7 +801,7 @@ def test_aug_setm(vm, params):
     3) Check the results
     """
 
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -872,7 +872,7 @@ def test_aug_load(vm, params):
     4) Check the load results
     """
 
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
@@ -963,7 +963,7 @@ def test_aug_save(vm, params):
     9) Check the home directory of root user
     """
 
-    readonly = params.get("gf_add_readonly", "no")
+    readonly = "yes" == params.get("gf_add_readonly")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
