@@ -6,6 +6,7 @@ from autotest.client import utils
 from virttest import aexpect, virt_vm, virsh, remote
 from virttest import nfs
 from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest.utils_test import libvirt
 from virttest.utils_config import LibvirtQemuConfig
 from virttest.libvirt_xml import vm_xml, xcepts
@@ -308,8 +309,10 @@ def run(test, params, env):
         Get console output and check bootorder.
         """
         # Get console output.
-        vm.serial_console.read_until_output_matches(["login"])
+        vm.serial_console.read_until_output_matches(
+            ["Hard Disk"], utils_misc.strip_console_codes)
         output = vm.serial_console.get_stripped_output()
+        logging.debug("serial output: %s", output)
         lines = re.findall(r"^Booting from (.+)...", output, re.M)
         logging.debug("lines: %s", lines)
         if len(lines) != len(bootorders):
