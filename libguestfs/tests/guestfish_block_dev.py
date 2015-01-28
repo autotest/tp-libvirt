@@ -34,12 +34,9 @@ def test_blockdev_flushbufs(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
     pv_name = params.get("pv_name")
     gf_result = gf.blockdev_flushbufs(pv_name)
@@ -68,12 +65,9 @@ def test_blockdev_set_get_ro_rw(vm, params):
     expect_result = ['false', 'true', 'false']
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
     pv_name = params.get("pv_name")
 
@@ -98,12 +92,9 @@ def test_blockdev_getsz(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
     pv_name = params.get("pv_name")
     gf_result = gf.blockdev_getsz(pv_name).stdout.strip()
@@ -128,12 +119,9 @@ def test_blockdev_getbsz(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
     pv_name = params.get("pv_name")
     gf_result = gf.blockdev_getbsz(pv_name).stdout.strip()
@@ -153,12 +141,9 @@ def test_blockdev_getss(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
     pv_name = params.get("pv_name")
     gf_result = gf.blockdev_getss(pv_name).stdout.strip()
@@ -178,12 +163,9 @@ def test_blockdev_getsize64(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
     pv_name = params.get("pv_name")
     gf_result = gf.blockdev_getsize64(pv_name).stdout.strip()
@@ -208,13 +190,9 @@ def test_blockdev_rereadpt(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        # add three disks here
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    # add three disks here
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     pv_name = params.get("pv_name")
     gf.run()
 
@@ -234,12 +212,9 @@ def test_canonical_device_name(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
     pv_name = params.get("pv_name")
 
@@ -277,15 +252,11 @@ def test_device_index(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        # add three disks here
-        gf.add_drive_opts(image_path, readonly=readonly)
-        gf.add_drive_opts(image_path, readonly=readonly)
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    # add three disks here
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
+    gf.add_drive_opts(image_path, readonly=readonly)
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
 
     result = {'/dev/sda': '0', '/dev/sdb': '1', '/dev/sdc': '2'}
@@ -306,15 +277,11 @@ def test_list_devices(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        # add three disks here
-        gf.add_drive_opts(image_path, readonly=readonly)
-        gf.add_drive_opts(image_path, readonly=readonly)
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    # add three disks here
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
+    gf.add_drive_opts(image_path, readonly=readonly)
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
 
     result = ['/dev/sda', '/dev/sdb', '/dev/sdc']
@@ -337,12 +304,9 @@ def test_disk_format(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
 
     image_dir = params.get("img_dir", data_dir.get_tmp_dir())
@@ -375,12 +339,9 @@ def test_max_disks(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
     max_disk = gf.max_disks().stdout.strip()
     gf.close_session()
@@ -399,12 +360,9 @@ def test_nr_devices(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
     device_num = gf.nr_devices().stdout.strip()
     gf.close_session()
@@ -423,12 +381,9 @@ def test_list_partitions(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
 
     result = gf.list_partitions()
@@ -459,12 +414,9 @@ def test_disk_has_backing_file(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
 
     image_dir = params.get("img_dir", data_dir.get_tmp_dir())
@@ -504,12 +456,9 @@ def test_disk_virtual_size(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
 
     image_path = params.get("image_path")
@@ -541,12 +490,9 @@ def test_scrub_device(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     # create other disk has small size
     image_dir = params.get("img_dir", data_dir.get_tmp_dir())
@@ -613,12 +559,9 @@ def test_scrub_file(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
     gf.do_mount("/")
 
@@ -647,12 +590,9 @@ def test_scrub_freespace(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     # create other disk has small size
     image_dir = params.get("img_dir", data_dir.get_tmp_dir())
@@ -699,11 +639,8 @@ def test_md_test(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     image_dir = params.get("img_dir", data_dir.get_tmp_dir())
     image_name = params.get("image_name")
@@ -772,12 +709,9 @@ def test_part_add(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     image_dir = params.get("img_dir", data_dir.get_tmp_dir())
     image_name = params.get("image_name")
@@ -819,12 +753,9 @@ def test_part_del(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     image_dir = params.get("img_dir", data_dir.get_tmp_dir())
     image_name = params.get("image_name")
@@ -871,12 +802,9 @@ def test_part_init(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     image_dir = params.get("img_dir", data_dir.get_tmp_dir())
     image_name = params.get("image_name")
@@ -916,12 +844,9 @@ def test_part_set_get_bootable(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
     pv_name = params.get("pv_name")
 
@@ -946,12 +871,9 @@ def test_part_set_get_mbr_id(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
     pv_name = params.get("pv_name")
 
@@ -976,12 +898,9 @@ def test_part_disk(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     pv_name = params.get("pv_name")
     gf.run()
@@ -1013,12 +932,9 @@ def test_part_to_dev(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     pv_name = params.get("pv_name")
     gf.run()
@@ -1044,12 +960,9 @@ def test_part_to_partnum(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     pv_name = params.get("pv_name")
     gf.run()
@@ -1077,12 +990,9 @@ def test_sfdisk(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     pv_name = params.get("pv_name")
     gf.run()
@@ -1122,12 +1032,9 @@ def test_sfdiskM(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     pv_name = params.get("pv_name")
     gf.run()
@@ -1157,12 +1064,9 @@ def test_sfdisk_N(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     pv_name = params.get("pv_name")
     gf.run()
@@ -1199,12 +1103,9 @@ def test_sfdisk_disk_geometry(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     pv_name = params.get("pv_name")
     gf.run()
@@ -1227,12 +1128,9 @@ def test_sfdisk_kernel_geometry(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     pv_name = params.get("pv_name")
     gf.run()

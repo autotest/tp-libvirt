@@ -61,12 +61,9 @@ def test_is_lv(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
 
     # check physical device
@@ -98,12 +95,9 @@ def test_lvcreate(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
     pv_name = params.get("pv_name")
 
@@ -140,12 +134,9 @@ def test_lvm_canonical_lv_name(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
     pv_name = params.get("pv_name")
 
@@ -176,12 +167,8 @@ def test_lvremove(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
 
     create_lvm(gf, 'pvcreate')
@@ -210,12 +197,8 @@ def test_lvm_remove_all(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
 
     create_lvm(gf, 'pvcreate')
@@ -251,12 +234,8 @@ def test_lvrename(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
 
     create_lvm(gf, 'pvcreate')
@@ -286,12 +265,8 @@ def test_lvresize(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
 
     create_lvm(gf, 'pvcreate')
@@ -328,12 +303,8 @@ def test_lvresize_free(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
 
     create_lvm(gf, 'pvcreate')
@@ -373,12 +344,8 @@ def test_lvm_set_filter(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
 
@@ -417,12 +384,8 @@ def test_lvuuid(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
 
@@ -454,12 +417,9 @@ def test_vgcreate(vm, params):
     readonly = params.get("gf_add_readonly", "no")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
     pv_name = params.get("pv_name")
 
@@ -492,12 +452,8 @@ def test_vgremove(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
 
     create_lvm(gf, 'pvcreate')
@@ -526,12 +482,8 @@ def test_vgrename(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
 
     create_lvm(gf, 'pvcreate')
@@ -561,12 +513,8 @@ def test_vgscan(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
     gf.run()
 
     create_lvm(gf, 'pvcreate')
@@ -590,12 +538,8 @@ def test_vguuid(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
 
@@ -628,12 +572,8 @@ def test_vg_activate(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
 
@@ -671,12 +611,8 @@ def test_vg_activate_all(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
 
@@ -714,12 +650,8 @@ def test_vglvuuids(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
 
@@ -748,12 +680,8 @@ def test_vgpvuuids(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
 
@@ -782,12 +710,8 @@ def test_pvcreate(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
 
@@ -813,12 +737,8 @@ def test_pvremove(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
 
@@ -848,12 +768,8 @@ def test_pvresize(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
 
@@ -892,12 +808,8 @@ def test_pvuuid(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
 
