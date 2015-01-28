@@ -2,8 +2,7 @@ import logging
 import re
 import commands
 from autotest.client.shared import error, utils
-from virttest import utils_libguestfs as lgf
-from virttest import aexpect
+from virttest import aexpect, utils_test
 
 
 def primary_disk_virtio(vm):
@@ -121,7 +120,7 @@ def run(test, params, env):
         disk_or_domain = add_ref
         add_ref = "disk"
 
-    guestfs = lgf.GuestfishPersistent()
+    guestfs = utils_test.libguestfs.GuestfishTools(params)
     set_guestfs_args(guestfs)
 
     add_error = params.get("guestfs_add_error", "no")
