@@ -1,7 +1,7 @@
 from autotest.client.shared import error, utils
 from virttest import utils_test, utils_misc, data_dir
 from virttest.tests import unattended_install
-from virttest import qemu_storage
+from virttest import virsh, qemu_storage
 import logging
 import shutil
 import os
@@ -63,7 +63,7 @@ def test_add_domain(vm, params):
     f.write(xml_content)
     f.close()
 
-    os.system("virsh define %s > /dev/null" % test_xml)
+    virsh.define(test_xml)
     gf.add_domain(test_domain_name)
     gf.run()
     gf_result = gf.list_devices()
@@ -71,11 +71,11 @@ def test_add_domain(vm, params):
     if '/dev/sd' not in gf_result.stdout:
         gf.close_session()
         logging.error(gf_result)
-        os.system('virsh undefine %s > /dev/null' % test_xml)
+        virsh.undefine(test_domain_name)
         os.system('rm -f %s' % test_xml)
         raise error.TestFail("test_add_domain failed")
     gf.close_session()
-    os.system('virsh undefine %s > /dev/null' % test_xml)
+    virsh.undefine(test_domain_name)
     os.system('rm -f %s' % test_xml)
 
 
