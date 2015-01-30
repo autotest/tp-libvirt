@@ -131,10 +131,11 @@ def run(test, params, env):
         if create_bridge and check_iface:
             if libvirt.check_iface(bridge_name, "exists", "--all"):
                 virsh.iface_unbridge(bridge_name)
-            if not os.path.exists(iface_script):
+            if os.path.exists(iface_script_bk):
                 utils.run("mv %s %s" % (iface_script_bk, iface_script))
             if iface_is_up:
                 # Need reload script
+                utils.run("ifdown %s" % iface_name)
                 utils.run("ifup %s" % iface_name)
             else:
                 net_iface.down()
