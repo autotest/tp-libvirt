@@ -49,8 +49,9 @@ def run(test, params, env):
                         (image_info["format"], disk_format, image_source, disk_img))
 
         # Mount the gluster disk and create the image.
-        utils.run("mount -t glusterfs %s:%s /mnt; %s; umount /mnt"
-                  % (host_ip, vol_name, disk_cmd))
+        utils.run("mount -t glusterfs %s:%s /mnt;"
+                  " %s; chmod a+rw /mnt/%s; umount /mnt"
+                  % (host_ip, vol_name, disk_cmd, disk_img))
 
         return host_ip
 
