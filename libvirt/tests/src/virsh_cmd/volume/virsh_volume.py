@@ -8,6 +8,7 @@ from virttest import virsh
 from virttest import libvirt_storage
 from virttest.libvirt_xml import vol_xml
 from virttest.utils_test import libvirt as utlv
+from virttest.staging import service
 
 
 def run(test, params, env):
@@ -121,11 +122,10 @@ def run(test, params, env):
         qemu-img info
         """
         error_count = 0
-        volume_xml = {}
 
         pv = libvirt_storage.PoolVolume(expected['pool_name'])
-        pool_exists = pv.volume_exists(expected['name'])
-        if pool_exists:
+        vol_exists = pv.volume_exists(expected['name'])
+        if vol_exists:
             if not avail:
                 error_count += 1
                 logging.error("Expect volume %s not exists but find it",
@@ -145,15 +145,15 @@ def run(test, params, env):
         actual_list = get_vol_list(expected['pool_name'], expected['name'])
         actual_info = pv.volume_info(expected['name'])
         # Get values from vol-dumpxml
-        volume_xml = vol_xml.VolXML.get_vol_details_by_name(expected['name'],
-                                                            expected['pool_name'])
+        volume_xml = vol_xml.VolXML.new_from_vol_dumpxml(expected['name'],
+                                                         expected['pool_name'])
 
         # Check against virsh vol-key
         vol_key = virsh.vol_key(expected['name'], expected['pool_name'])
-        if vol_key.stdout.strip() != volume_xml['key']:
+        if vol_key.stdout.strip() != volume_xml.key:
             logging.error("Volume key is mismatch \n%s"
                           "Key from xml: %s\nKey from command: %s",
-                          expected['name'], volume_xml['key'], vol_key)
+                          expected['name'], volume_xml.key, vol_key)
             error_count += 1
         else:
             logging.debug("virsh vol-key for volume: %s successfully"
@@ -191,10 +191,10 @@ def run(test, params, env):
                           "volume path", expected['name'])
 
         # Check path against virsh vol-dumpxml
-        if expected['path'] != volume_xml['path']:
+        if expected['path'] != volume_xml.path:
             logging.error("Volume path mismatch for volume: %s\n"
                           "Expected Path: %s\nPath from virsh vol-dumpxml: %s",
-                          expected['name'], expected['path'], volume_xml['path'])
+                          expected['name'], expected['path'], volume_xml.path)
             error_count += 1
 
         else:
@@ -255,17 +255,41 @@ def run(test, params, env):
 
         # Check format against vol-dumpxml
         if expected['format']:
-            if expected['format'] != volume_xml['format']:
+            if expected['format'] != volume_xml.format:
                 logging.error("Volume format mismatch for volume: %s\n"
                               "Expected format: %s\n"
                               "Format from vol-dumpxml: %s",
                               expected['name'], expected['format'],
-                              volume_xml['format'])
+                              volume_xml.format)
                 error_count += 1
             else:
                 logging.debug("Format of volume: %s from virsh vol-dumpxml "
                               "checked successfully against the created"
                               " volume format", expected['name'])
+
+        logging.info(expected['encrypt_format'])
+        # Check encrypt against vol-dumpxml
+        if expected['encrypt_format']:
+            # As the 'default' format will change to specific valut(qcow), so
+            # just output it here
+            logging.debug("Encryption format of volume '%s' is: %s",
+                          expected['name'], volume_xml.encryption.format)
+            # And also output encryption secret uuid
+            secret_uuid = volume_xml.encryption.secret['uuid']
+            logging.debug("Encryption secret of volume '%s' is: %s",
+                          expected['name'], secret_uuid)
+            if expected['encrypt_secret']:
+                if expected['encrypt_secret'] != secret_uuid:
+                    logging.error("Encryption secret mismatch for volume: %s\n"
+                                  "Expected secret uuid: %s\n"
+                                  "Secret uuid from vol-dumpxml: %s",
+                                  expected['name'], expected['encrypt_secret'],
+                                  secret_uuid)
+                    error_count += 1
+                else:
+                    # If no set encryption secret value, automatically
+                    # generate a secret value at the time of volume creation
+                    logging.debug("Volume encryption secret is %s", secret_uuid)
 
         # Check pool name against vol-pool
         vol_pool = virsh.vol_pool(expected['path'])
@@ -281,7 +305,7 @@ def run(test, params, env):
         capacity = {}
         capacity['list'] = actual_list['capacity']
         capacity['info'] = actual_info['Capacity']
-        capacity['xml'] = volume_xml['capacity']
+        capacity['xml'] = volume_xml.capacity
         capacity['qemu_img'] = img_info['vsize']
         norm_cap = norm_capacity(capacity)
         delta_size = params.get('delta_size', "1024")
@@ -328,6 +352,16 @@ def run(test, params, env):
                           expected['name'])
         return error_count
 
+    def get_all_secrets():
+        """
+        Return all exist libvirt secrets uuid in a list
+        """
+        secret_list = []
+        secrets = virsh.secret_list().stdout.strip()
+        for secret in secrets.splitlines()[2:]:
+            secret_list.append(secret.strip().split()[0])
+        return secret_list
+
     # Initialize the variables
     pool_name = params.get("pool_name")
     pool_type = params.get("pool_type")
@@ -341,6 +375,8 @@ def run(test, params, env):
     vol_format = params.get("volume_format")
     source_name = params.get("gluster_source_name", "gluster-vol1")
     source_path = params.get("gluster_source_path", "/")
+    encrypt_format = params.get("vol_encrypt_format")
+    encrypt_secret = params.get("encrypt_secret")
     emulated_image = params.get("emulated_image")
     emulated_image_size = params.get("emulated_image_size")
     try:
@@ -354,6 +390,16 @@ def run(test, params, env):
     except ValueError:
         raise error.TestError("Translate size %s to 'B' failed" % allocation)
 
+    # Stop multipathd to avoid start pool fail(For fs like pool, the new add
+    # disk may in use by device-mapper, so start pool will report disk already
+    # mounted error).
+    multipathd = service.Factory.create_service("multipathd")
+    multipathd_status = multipathd.status()
+    if multipathd_status:
+        multipathd.stop()
+
+    # Get exists libvirt secrets before test
+    ori_secrets = get_all_secrets()
     expected_vol = {}
     vol_type = 'file'
     if pool_type in ['disk', 'logical']:
@@ -387,11 +433,26 @@ def run(test, params, env):
             expected_vol['format'] = vol_format
             expected_vol['name'] = volume_name
             expected_vol['type'] = vol_type
+            expected_vol['encrypt_format'] = encrypt_format
+            expected_vol['encrypt_secret'] = encrypt_secret
             # Creates volume
             if pool_type != "gluster":
                 expected_vol['path'] = pool_target + '/' + volume_name
-                libv_pvt.pre_vol(volume_name, vol_format, capacity,
-                                 allocation, pool_name)
+                new_volxml = vol_xml.VolXML()
+                new_volxml.name = volume_name
+                new_volxml.capacity = int_capa
+                new_volxml.allocation = int_allo
+                if vol_format:
+                    new_volxml.format = vol_format
+                encrypt_dict = {}
+                if encrypt_format:
+                    encrypt_dict.update({"format": encrypt_format})
+                if encrypt_secret:
+                    encrypt_dict.update({"secret": {'uuid': encrypt_secret}})
+                if encrypt_dict:
+                    new_volxml.encryption = new_volxml.new_encryption(**encrypt_dict)
+                logging.debug("Volume XML for creation:\n%s", str(new_volxml))
+                virsh.vol_create(pool_name, new_volxml.xml, debug=True)
             else:
                 ip_addr = utlv.get_host_ipv4_addr()
                 expected_vol['path'] = "gluster://%s/%s/%s" % (ip_addr,
@@ -407,12 +468,16 @@ def run(test, params, env):
             delete_volume(expected_vol)
             total_err_count += check_vol(expected_vol, False)
         if total_err_count > 0:
-            raise error.TestFail("Test case failed due to previous errors.\n"
-                                 "Check for error logs")
+            raise error.TestFail("Get %s errors when checking volume" % total_err_count)
     finally:
         # Clean up
+        for sec in get_all_secrets():
+            if sec not in ori_secrets:
+                virsh.secret_undefine(sec)
         try:
             libv_pvt.cleanup_pool(pool_name, pool_type, pool_target,
-                                  emulated_image, source_name)
+                                  emulated_image, source_name=source_name)
         except error.TestFail, detail:
             logging.error(str(detail))
+        if multipathd_status:
+            multipathd.start()
