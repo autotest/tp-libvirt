@@ -80,7 +80,7 @@ def run(test, params, env):
 
     # Skip 'qed' cases for libvirt version greater than 1.1.0
     if libvirt_version.version_compare(1, 1, 0):
-        if vol_format == "qed":
+        if vol_format == "qed" or image_format == "qed":
             raise error.TestNAError("QED support changed, check bug: "
                                     "https://bugzilla.redhat.com/show_bug.cgi"
                                     "?id=731570")
