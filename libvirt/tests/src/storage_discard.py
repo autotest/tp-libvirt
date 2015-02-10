@@ -151,13 +151,13 @@ def sig_delta(size1, size2, tolerable_shift=0.8):
     """
     To verfiy whether two size have significant shift.
     """
-    s1 = int(float(size1))
-    s2 = int(float(size2))
+    s1 = float(size1)
+    s2 = float(size2)
     if int(s2) == 0:
-        s2 += 1
+        s2 = 1.0
     if int(s1) == 0:
-        s1 += 1
-    return ((abs(s1 - s2) / s2) > tolerable_shift)
+        s1 = 1.0
+    return (abs(s1 - s2) / abs(s1 + s2) > tolerable_shift)
 
 
 def do_fstrim(fstrim_type, vm, status_error=False):
@@ -224,6 +224,7 @@ def run(test, params, env):
     disk_type = params.get("disk_type", "file")
     discard_device = params.get("discard_device", "/DEV/EXAMPLE")
     fstrim_type = params.get("fstrim_type", "fstrim_cmd")
+    tolerable_shift = float(params.get("fstrim_tolerable_shift", 0.8))
     # Whether to create iscsi device for test
     create_iscsi = True
     try:
@@ -292,12 +293,12 @@ def run(test, params, env):
                       bf_cpy, bf_fstrim_cpy, af_fstrim_cpy)
         # Check results
         if fstrim_type in ["fstrim_cmd", "qemu-guest-agent"]:
-            if not sig_delta(bf_fstrim_cpy, af_fstrim_cpy) and \
-                    not status_error:
+            if not sig_delta(bf_fstrim_cpy, af_fstrim_cpy,
+                             tolerable_shift) and not status_error:
                 raise error.TestFail("Manual 'fstrims' didn't work.")
         elif fstrim_type == "mount_with_discard":
-            if not sig_delta(bf_fstrim_cpy, af_fstrim_cpy) and \
-                    not status_error:
+            if not sig_delta(bf_fstrim_cpy, af_fstrim_cpy,
+                             tolerable_shift) and not status_error:
                 raise error.TestFail("Automatical 'fstrims' didn't work.")
     finally:
         if new_vm.is_alive():
