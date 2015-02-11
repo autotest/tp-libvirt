@@ -172,8 +172,7 @@ def run(test, params, env):
     if not utils_libvirtd.libvirtd_is_running():
         raise error.TestNAError("libvirt service is not running!")
 
-    ########## positive and negative testing #########
-
+    # Positive and negative testing
     try:
         if change_parameters == "no":
             get_blkdevio_parameter(test_dict)
