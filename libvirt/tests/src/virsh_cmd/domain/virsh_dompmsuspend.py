@@ -177,11 +177,11 @@ def run(test, params, env):
                 ret = virsh.suspend(vm_name)
                 libvirt.check_exit_status(ret, expect_error=True)
                 if vm.state() != 'pmsuspended':
-                    raise  error.TestFail("VM state should be pmsuspended")
+                    raise error.TestFail("VM state should be pmsuspended")
                 ret = virsh.resume(vm_name)
                 libvirt.check_exit_status(ret, expect_error=True)
                 if vm.state() != 'pmsuspended':
-                    raise  error.TestFail("VM state should be pmsuspended")
+                    raise error.TestFail("VM state should be pmsuspended")
         finally:
             libvirtd.restart()
             # Remove the tmp file
