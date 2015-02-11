@@ -147,12 +147,16 @@ def run(test, params, env):
         # Wait 10 seconds for vm to start
         time.sleep(10)
         libvirt_guests.restart()
+
         # libvirt-guests status command read messages from systemd
         # journal, in cases of messages are not ready in time,
         # add a time wait here.
-        wait_func = lambda: not utils.run("service libvirt-guests status"
-                                          " | grep 'Resuming guest'",
-                                          ignore_status=True).exit_status
+
+        def wait_func():
+            return not utils.run("service libvirt-guests status"
+                                 " | grep 'Resuming guest'",
+                                 ignore_status=True).exit_status
+
         utils_misc.wait_for(wait_func, 5)
         ret = utils.run("service libvirt-guests status",
                         ignore_status=True)
@@ -193,8 +197,7 @@ def run(test, params, env):
                                  " status is not correct" % ret)
 
         # Wait for VM in shut off state
-        wait_func = lambda: vm.state() == "shut off"
-        utils_misc.wait_for(wait_func, 10)
+        utils_misc.wait_for(lambda: vm.state() == "shut off", 10)
         virsh_cmd = "service libvirt-guests start"
         check_flags_parallel(virsh_cmd, bash_cmd %
                              (managed_save_file, managed_save_file,
@@ -389,8 +392,7 @@ def run(test, params, env):
                                  (managed_save_file, managed_save_file,
                                   "1", flags), flags)
             # Wait for VM in shut off state
-            wait_func = lambda: vm.state() == "shut off"
-            utils_misc.wait_for(wait_func, 10)
+            utils_misc.wait_for(lambda: vm.state() == "shut off", 10)
             virsh_cmd = "virsh start %s %s" % (option, vm_name)
             check_flags_parallel(virsh_cmd, bash_cmd %
                                  (managed_save_file, managed_save_file,
@@ -446,8 +448,7 @@ def run(test, params, env):
         if vm.is_paused():
             virsh.resume(vm_name)
             # Wait for VM in running state
-            wait_func = lambda: vm.state() == "running"
-            utils_misc.wait_for(wait_func, 10)
+            utils_misc.wait_for(lambda: vm.state() == "running", 10)
         if autostart_bypass_cache:
             virsh.autostart(vm_name, "--disable",
                             ignore_status=True)

@@ -101,9 +101,10 @@ def run(test, params, env):
             if check_cmd:
                 if "DEVNAME" in check_cmd:
                     check_cmd = check_cmd.replace("DEVNAME", iface_target)
-                wait_func = lambda: not utils.system(check_cmd,
-                                                     ignore_status=True)
-                ret = utils.wait_for(wait_func, timeout=30)
+                ret = utils.wait_for(lambda:
+                                     not utils.system(check_cmd,
+                                                      ignore_status=True),
+                                     timeout=30)
                 if not ret:
                     raise error.TestFail("Rum command '%s' failed" % check_cmd)
                 out = utils.system_output(check_cmd, ignore_status=False)
