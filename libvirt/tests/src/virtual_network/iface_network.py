@@ -333,9 +333,12 @@ TIMEOUT 3"""
             session.cmd_status("ip6tables -F")
         utils_net.restart_guest_network(session, iface_mac,
                                         ip_version=ip_ver)
+
         # It may take some time to get the ip address
-        get_ip_func = lambda: utils_net.get_guest_ip_addr(session, iface_mac,
-                                                          ip_version=ip_ver)
+        def get_ip_func():
+            return utils_net.get_guest_ip_addr(session, iface_mac,
+                                               ip_version=ip_ver)
+
         utils_misc.wait_for(get_ip_func, 10)
         vm_ip = get_ip_func()
         logging.debug("Guest has ip: %s", vm_ip)
