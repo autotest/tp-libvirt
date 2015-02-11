@@ -21,7 +21,8 @@ def reset_domain(vm, vm_state, needs_agent=False):
     vm_xml.set_vm_vcpus(vm.name, 4, 1)
     if not vm_state == "shut off":
         vm.start()
-        vm.prepare_guest_agent(prepare_xml=False)
+        if needs_agent:
+            vm.prepare_guest_agent(prepare_xml=False)
 
 
 def chk_output_running(output, expect_out, options):

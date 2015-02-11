@@ -486,7 +486,7 @@ def run(test, params, env):
             if vm.is_alive():
                 vm.destroy(gracefully=False)
             xml_inst = vm_xml.VMXML.new_from_dumpxml(vm_name)
-            xml_inst.remove_agent_channel(vm_name)
+            xml_inst.remove_agent_channels()
             vm.start()
 
         # Record the previous snapshot-list
