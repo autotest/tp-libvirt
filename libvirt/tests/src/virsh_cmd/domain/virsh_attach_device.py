@@ -557,8 +557,8 @@ class VirtualDiskBasic(AttachDeviceBase):
 
             # The device may not be ready on guest,
             # just wait at most 5 seconds here
-            wait_func = lambda: not session.cmd_status('ls %s' % dev_name)
-            utils_misc.wait_for(wait_func, 5)
+            utils_misc.wait_for(lambda:
+                                not session.cmd_status('ls %s' % dev_name), 5)
 
             # aexpect combines stdout + stderr, throw away stderr
             output = session.cmd_output('tail -c %d %s'
