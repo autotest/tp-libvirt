@@ -242,18 +242,18 @@ def run(test, params, env):
         """
         vm_ips = []
         utils_net.restart_guest_network(session)
-        wait_func = lambda: utils_net.get_guest_ip_addr(session,
-                                                        iface_mac_old)
         # Wait for IP address is ready
-        utils_misc.wait_for(wait_func, 10)
+        utils_misc.wait_for(lambda: utils_net.get_guest_ip_addr(session,
+                                                                iface_mac_old),
+                            10)
         vm_ips.append(utils_net.get_guest_ip_addr(session,
                                                   iface_mac_old))
         if attach_device:
             # Get the additional interafce ip address
-            wait_func = lambda: utils_net.get_guest_ip_addr(session,
-                                                            iface_mac)
             # Wait for IP address is ready
-            utils_misc.wait_for(wait_func, 10)
+            utils_misc.wait_for(lambda: utils_net.get_guest_ip_addr(session,
+                                                                    iface_mac),
+                                10)
             vm_ips.append(utils_net.get_guest_ip_addr(session,
                                                       iface_mac))
         logging.debug("IP address on guest: %s", vm_ips)
