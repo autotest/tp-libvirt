@@ -134,8 +134,8 @@ def run(test, params, env):
         ret = virsh.dompmsuspend(vm_name, "disk", **virsh_dargs)
         libvirt.check_exit_status(ret)
         # wait for vm to shutdown
-        wait_fun = lambda: vm.state() == "shut off"
-        if not utils_misc.wait_for(wait_fun, 30):
+
+        if not utils_misc.wait_for(lambda: vm.state() == "shut off", 30):
             raise error.TestFail("vm is still alive after S4 operation")
 
         # Wait for vm and qemu-ga service to start
