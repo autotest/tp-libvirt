@@ -29,6 +29,7 @@ def run(test, params, env):
     pre_domian_status = params.get("reboot_pre_domian_status", "running")
     libvirtd = params.get("libvirtd", "on")
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    test_xml = xml_backup.copy()
 
     # Libvirt acl test related params
     uri = params.get("virsh_uri")
@@ -46,9 +47,11 @@ def run(test, params, env):
 
         # Add or remove qemu-agent from guest before test
         if agent:
-            vm_xml.VMXML.set_agent_channel(vm_name)
+            test_xml.set_agent_channel()
+            test_xml.sync()
         else:
-            vm_xml.VMXML.remove_agent_channel(vm_name)
+            test_xml.remove_agent_channels()
+            test_xml.sync()
         virsh.start(vm_name)
         guest_session = vm.wait_for_login()
         if agent:

@@ -35,12 +35,15 @@ def run(test, params, env):
     mode = params.get("reboot_mode", "")
     pre_domian_status = params.get("reboot_pre_domian_status", "running")
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    test_xml = xml_backup.copy()
     try:
         # Add or remove qemu-agent from guest before test
         if agent:
-            vm_xml.VMXML.set_agent_channel(vm_name)
+            test_xml.set_agent_channel()
+            test_xml.sync()
         else:
-            vm_xml.VMXML.remove_agent_channel(vm_name)
+            test_xml.remove_agent_channels()
+            test_xml.sync()
 
         virsh.start(vm_name)
         guest_session = vm.wait_for_login()
