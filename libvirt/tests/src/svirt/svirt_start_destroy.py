@@ -85,12 +85,42 @@ def run(test, params, env):
 
     qemu_conf = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
+
+    def _resolve_label(label_string):
+        labels = label_string.split(":")
+        label_type = labels[2]
+        if len(labels) == 4:
+            label_range = labels[3]
+        elif len(labels) > 4:
+            label_range = "%s:%s" % (labels[3], labels[4])
+        else:
+            label_range = None
+        return (label_type, label_range)
+
+    def _check_label_equal(label1, label2):
+        label1s = label1.split(":")
+        label2s = label2.split(":")
+        for i in range(len(label1s)):
+            if label1s[i] != label2s[i]:
+                return False
+        return True
+
     try:
         # Set disk label
+        (img_label_type, img_label_range) = _resolve_label(img_label)
         for disk in disks.values():
             disk_path = disk['source']
-            utils_selinux.set_context_of_file(filename=disk_path,
-                                              context=img_label)
+            dir_path = "%s(/.*)?" % os.path.dirname(disk_path)
+            # Using semanage set context persistently
+            utils_selinux.set_defcon(context_type=img_label_type,
+                                     pathregex=dir_path,
+                                     context_range=img_label_range)
+            o_r = utils_selinux.verify_defcon(pathname=disk_path,
+                                              readonly=False,
+                                              forcedesc=True)
+            orig_label_type = backup_labels_of_disks[disk_path].split(":")[2]
+            if o_r and (orig_label_type != img_label_type):
+                raise error.TestFail("change disk label(%s) failed" % img_label_type)
             os.chown(disk_path, 107, 107)
 
         # Set selinux of host.
@@ -112,6 +142,9 @@ def run(test, params, env):
         vmxml.set_seclabel(sec_dict_list)
         vmxml.sync()
         logging.debug("the domain xml is: %s" % vmxml.xmltreefile)
+
+        # restart libvirtd
+        libvirtd.restart()
 
         # Start VM to check the VM is able to access the image or not.
         try:
@@ -137,7 +170,11 @@ def run(test, params, env):
             if sec_relabel == "yes" and not no_sec_model:
                 vmxml = VMXML.new_from_dumpxml(vm_name)
                 imagelabel = vmxml.get_seclabel()[0]['imagelabel']
-                if not disk_context == imagelabel:
+                # the disk context is 'system_u:object_r:svirt_image_t:s0',
+                # when VM started, the MLS/MCS Range will be added automatically.
+                # imagelabel turns to be 'system_u:object_r:svirt_image_t:s0:cxx,cxxx'
+                # but we shouldn't check the MCS range.
+                if not _check_label_equal(disk_context, imagelabel):
                     raise error.TestFail("Label of disk is not relabeled by "
                                          "VM\nDetal: disk_context="
                                          "%s, imagelabel=%s"
@@ -154,6 +191,7 @@ def run(test, params, env):
                 # Bug 547546 - RFE: the security drivers must remember original
                 # permissions/labels and restore them after
                 # https://bugzilla.redhat.com/show_bug.cgi?id=547546
+
                 err_msg = "Label of disk is not restored in VM shuting down.\n"
                 err_msg += "Detail: img_label_after=%s, " % img_label_after
                 err_msg += "img_label_before=%s.\n" % img_label
@@ -169,7 +207,15 @@ def run(test, params, env):
     finally:
         # clean up
         for path, label in backup_labels_of_disks.items():
-            utils_selinux.set_context_of_file(filename=path, context=label)
+            # Using semanage set context persistently
+            dir_path = "%s(/.*)?" % os.path.dirname(path)
+            (img_label_type, img_label_range) = _resolve_label(label)
+            utils_selinux.set_defcon(context_type=img_label_type,
+                                     pathregex=dir_path,
+                                     context_range=img_label_range)
+            utils_selinux.verify_defcon(pathname=path,
+                                        readonly=False,
+                                        forcedesc=True)
         for path, label in backup_ownership_of_disks.items():
             label_list = label.split(":")
             os.chown(path, int(label_list[0]), int(label_list[1]))
