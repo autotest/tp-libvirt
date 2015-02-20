@@ -411,6 +411,7 @@ def run(test, params, env):
                 libvirt.delete_local_disk("lvm", vgname=vg_name, lvname=lv_name)
                 lv_utils.vg_remove(vg_name)
             libvirt.setup_or_cleanup_iscsi(False)
+            utils.system("vgscan --cache")
         else:
             libvirt.delete_local_disk("file", device_source)
 
