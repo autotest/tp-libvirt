@@ -25,8 +25,8 @@ def run(test, params, env):
     remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
     remote_pwd = params.get("remote_pwd", None)
     local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
-    if vm_ref == "remote" and (remote_ip.count("EXAMPLE.COM")
-                               or local_ip.count("EXAMPLE.COM")):
+    if vm_ref == "remote" and (remote_ip.count("EXAMPLE.COM") or
+                               local_ip.count("EXAMPLE.COM")):
         raise error.TestNAError(
             "Remote test parameters unchanged from default")
 
@@ -39,7 +39,7 @@ def run(test, params, env):
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
             raise error.TestNAError("API acl test not supported in current"
-                                    + " libvirt version.")
+                                    " libvirt version.")
 
     if vm_ref == "id":
         vm_ref = domid

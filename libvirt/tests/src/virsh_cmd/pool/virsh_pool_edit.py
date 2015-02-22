@@ -127,16 +127,16 @@ def run(test, params, env):
                 edit_cmd = []
                 new_path = os.path.join(data_dir.get_tmp_dir(), "new_path")
                 os.mkdir(new_path)
-                edit_cmd.append(":%s/<path>.*</<path>"
-                                + new_path.replace('/', '\/') + "<")
+                edit_cmd.append(":%s/<path>.*</<path>" +
+                                new_path.replace('/', '\/') + "<")
                 pool_target = new_path
                 expect_value = new_path
             # Test: Edit disk pool format type:
             elif edit_target == "pool_format_type":
                 edit_cmd = []
                 new_format_type = params.get("pool_format", "dos")
-                edit_cmd.append(":%s/<format type=.*\/>/<format type='"
-                                + new_format_type + "'\/>/")
+                edit_cmd.append(":%s/<format type=.*\/>/<format type='" +
+                                new_format_type + "'\/>/")
                 expect_value = new_format_type
             # Test: Refine(Delete uuid, edit pool name and target path)
             elif edit_target == "pool_redefine":
@@ -145,8 +145,8 @@ def run(test, params, env):
                 edit_cmd.append(":g/<uuid>/d")
                 new_path = os.path.join(data_dir.get_tmp_dir(), "new_pool")
                 os.mkdir(new_path)
-                edit_cmd.append(":%s/<path>.*</<path>"
-                                + new_path.replace('/', '\/') + "<")
+                edit_cmd.append(":%s/<path>.*</<path>" +
+                                new_path.replace('/', '\/') + "<")
                 edit_cmd.append(":%s/<name>" + pool_name + "</<name>" +
                                 new_pool_name + "<")
                 pool_target = new_path

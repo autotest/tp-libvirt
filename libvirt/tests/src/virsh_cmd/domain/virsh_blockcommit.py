@@ -126,7 +126,7 @@ def run(test, params, env):
     if not top_inactive:
         if not libvirt_version.version_compare(1, 2, 4):
             raise error.TestNAError("live active block commit is not supported"
-                                    + " in current libvirt version.")
+                                    " in current libvirt version.")
 
     # A backup of original vm
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -143,7 +143,7 @@ def run(test, params, env):
         if disk_src_protocol == 'iscsi' and disk_type == 'network':
             if not libvirt_version.version_compare(1, 0, 4):
                 raise error.TestNAError("'iscsi' disk doesn't support in"
-                                        + " current libvirt version.")
+                                        " current libvirt version.")
 
         # Set vm xml and guest agent
         if replace_vm_disk:

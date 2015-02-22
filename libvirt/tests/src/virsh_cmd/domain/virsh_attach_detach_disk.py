@@ -138,7 +138,7 @@ def run(test, params, env):
         if cache_options.count("directsync"):
             if not libvirt_version.version_compare(1, 0, 0):
                 raise error.TestNAError("'directsync' cache option doesn't support in"
-                                        + " current libvirt version.")
+                                        " current libvirt version.")
         at_options += (" --cache %s" % cache_options)
 
     vm_name = params.get("main_vm")

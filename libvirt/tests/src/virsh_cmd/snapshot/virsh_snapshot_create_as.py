@@ -349,12 +349,12 @@ def run(test, params, env):
     if disk_src_protocol == 'iscsi':
         if not libvirt_version.version_compare(1, 0, 4):
             raise error.TestNAError("'iscsi' disk doesn't support in"
-                                    + " current libvirt version.")
+                                    " current libvirt version.")
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
             raise error.TestNAError("API acl test not supported in current"
-                                    + " libvirt version.")
+                                    " libvirt version.")
 
     if not libvirt_version.version_compare(1, 2, 7):
         # As bug 1017289 closed as WONTFIX, the support only
@@ -530,8 +530,8 @@ def run(test, params, env):
                     raise error.TestFail("Run successfully with wrong command!")
                 else:
                     # Check memspec file should be removed if failed
-                    if (options.find("memspec") >= 0
-                            and options.find("atomic") >= 0):
+                    if (options.find("memspec") >= 0 and
+                            options.find("atomic") >= 0):
                         if os.path.isfile(option_dict['memspec']):
                             os.remove(option_dict['memspec'])
                             raise error.TestFail("Run failed but file %s exist"
