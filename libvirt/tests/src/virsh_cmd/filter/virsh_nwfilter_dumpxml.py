@@ -44,7 +44,7 @@ def run(test, params, env):
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
             raise error.TestNAError("API acl test not supported in current"
-                                    + " libvirt version.")
+                                    " libvirt version.")
 
     virsh_dargs = {'ignore_status': True, 'debug': True}
     if params.get('setup_libvirt_polkit') == 'yes':
@@ -71,12 +71,12 @@ def run(test, params, env):
         uuid = new_filter.uuid
         name = new_filter.filter_name
         if check_list(uuid, name):
-            logging.debug("The filter with uuid %s and name %s" % (uuid, name)
-                          + " from nwfilter-dumpxml was found in" +
+            logging.debug("The filter with uuid %s and name %s" % (uuid, name) +
+                          " from nwfilter-dumpxml was found in"
                           " nwfilter-list output")
         else:
-            raise error.TestFail("The uuid %s with name %s from" % (uuid, name)
-                                 + " nwfilter-dumpxml did not match with" +
+            raise error.TestFail("The uuid %s with name %s from" % (uuid, name) +
+                                 " nwfilter-dumpxml did not match with"
                                  " nwfilter-list output")
 
         # Run command second time with uuid

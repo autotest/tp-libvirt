@@ -53,11 +53,11 @@ def run(test, params, env):
     if disk_src_protocol == 'iscsi':
         if not libvirt_version.version_compare(1, 0, 4):
             raise error.TestNAError("'iscsi' disk doesn't support in"
-                                    + " current libvirt version.")
+                                    " current libvirt version.")
     if disk_type == "volume":
         if not libvirt_version.version_compare(1, 0, 5):
             raise error.TestNAError("'volume' type disk doesn't support in"
-                                    + " current libvirt version.")
+                                    " current libvirt version.")
     # Back VM XML
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 

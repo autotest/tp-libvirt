@@ -73,7 +73,7 @@ def run(test, params, env):
     if not libvirt_version.version_compare(1, 0, 0):
         if "--prealloc-metadata" in extra_option:
             raise error.TestNAError("metadata preallocation not supported in"
-                                    + " current libvirt version.")
+                                    " current libvirt version.")
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
@@ -85,7 +85,7 @@ def run(test, params, env):
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
             raise error.TestNAError("API acl test not supported in current"
-                                    + " libvirt version.")
+                                    " libvirt version.")
 
     def post_process_vol(ori_vol_path):
         """

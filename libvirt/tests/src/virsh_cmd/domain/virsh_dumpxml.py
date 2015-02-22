@@ -161,7 +161,7 @@ def run(test, params, env):
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
             raise error.TestNAError("API acl test not supported in current"
-                                    + " libvirt version.")
+                                    " libvirt version.")
 
     # Prepare vm state for test
     if vm_state == "shutoff" and vm.is_alive():
@@ -228,8 +228,8 @@ def run(test, params, env):
                     if not output.count("passwd='%s'" % security_pwd):
                         raise error.TestFail("No more cpu info outputed!")
                 else:
-                    if (vm_state == "shutoff"
-                            and is_dumpxml_of_running_vm(output, domid)):
+                    if (vm_state == "shutoff" and
+                            is_dumpxml_of_running_vm(output, domid)):
                         raise error.TestFail("Got dumpxml for active vm "
                                              "when vm is shutoff.")
     finally:

@@ -43,8 +43,8 @@ def write_file(path):
     """
     logging.info("write data into file %s", path)
     write_fd = open(path, 'wb')
-    datastr = ''.join(string.lowercase + string.uppercase
-                      + string.digits + '.' + '\n')
+    datastr = ''.join(string.lowercase + string.uppercase +
+                      string.digits + '.' + '\n')
     data = ''.join(16384 * datastr)
     write_fd.write(data)
     write_fd.close()
@@ -88,7 +88,7 @@ def run(test, params, env):
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
             raise error.TestNAError("API acl test not supported in current"
-                                    + " libvirt version.")
+                                    " libvirt version.")
 
     try:
         pvt = utlv.PoolVolumeTest(test, params)

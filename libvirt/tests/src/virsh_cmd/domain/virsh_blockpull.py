@@ -185,7 +185,7 @@ def run(test, params, env):
         if disk_src_protocol == 'iscsi' and disk_type == 'network':
             if not libvirt_version.version_compare(1, 0, 4):
                 raise error.TestNAError("'iscsi' disk doesn't support in"
-                                        + " current libvirt version.")
+                                        " current libvirt version.")
         if disk_src_protocol == 'gluster':
             if not libvirt_version.version_compare(1, 2, 7):
                 raise error.TestNAError("Snapshot on glusterfs not"

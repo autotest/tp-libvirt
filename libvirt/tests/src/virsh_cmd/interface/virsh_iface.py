@@ -148,7 +148,7 @@ def run(test, params, env):
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
             raise error.TestNAError("API acl test not supported in current"
-                                    + " libvirt version.")
+                                    " libvirt version.")
 
     virsh_dargs = {'debug': True}
     list_dumpxml_dargs = {'debug': True}
@@ -376,9 +376,9 @@ def run(test, params, env):
                 # acl_test negative test
                 libvirt.check_exit_status(result, stop_status_error)
                 virsh.iface_destroy(iface_name, debug=True)
-            elif (not net_restart and iface_type == "ethernet"
-                    and iface_pro in ["", "dhcp"] or iface_type == "bridge"
-                    and iface_pro == "dhcp"):
+            elif (not net_restart and iface_type == "ethernet" and
+                    iface_pro in ["", "dhcp"] or iface_type == "bridge" and
+                    iface_pro == "dhcp"):
                 libvirt.check_exit_status(result, True)
             else:
                 libvirt.check_exit_status(result, status_error)

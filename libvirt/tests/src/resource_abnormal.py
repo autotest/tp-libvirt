@@ -412,8 +412,8 @@ class Snapshot_create(object):
                 os.remove(tmp_sh_file)
         virsh.destroy(self.vm_name)
         if len(self.snp_list) < len(self.current_snp_list):
-            self.diff_snp_list = list(set(self.current_snp_list)
-                                      - set(self.snp_list))
+            self.diff_snp_list = list(set(self.current_snp_list) -
+                                      set(self.snp_list))
             for item in self.diff_snp_list:
                 virsh.snapshot_delete(self.vm_name, item)
         remove_machine_cgroup()

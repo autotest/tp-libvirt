@@ -241,8 +241,8 @@ def run(test, params, env):
                     raise error.TestNAError("libvirt service is not running!")
 
         # Recover previous running guest
-        if (cgconfig == "off" and libvirtd == "restart"
-                and not vm.is_alive() and start_vm == "yes"):
+        if (cgconfig == "off" and libvirtd == "restart" and
+                not vm.is_alive() and start_vm == "yes"):
             vm.start()
         if status_error == "yes":
             if change_parameters == "no":
