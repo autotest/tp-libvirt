@@ -2,6 +2,7 @@ import logging
 
 import aexpect
 
+from autotest.client.shared import utils
 from autotest.client.shared import error
 
 from virttest import utils_test
@@ -60,6 +61,86 @@ def vm_console_config(vm, device='ttyS0', speed='115200'):
     # Confirm vm is down
     vm.wait_for_shutdown()
     return True
+
+
+def check_duplicated_console(command, force_command, status_error, login_user,
+                             login_passwd):
+    """
+    Test opening a second console with another console active using --force
+    option or not.
+
+    :param command: Test command without --force option
+    :param force_command: Test command with --force option
+    :param status_error: Whether the command is fault.
+    :param login_user: User name for logging into the VM.
+    :param login_passwd: Password for logging into the VM.
+    """
+    session = aexpect.ShellSession(command)
+    if not status_error:
+        # Test duplicated console session
+        res = utils.run(command, 10, ignore_status=True)
+        logging.debug(res)
+        if res.exit_status == 0:
+            raise error.TestFail("Duplicated console session should fail. "
+                                 "but succeeded with:\n%s" % res)
+
+        # Test duplicated console session with force option
+        force_session = aexpect.ShellSession(force_command)
+        force_status = utils_test.libvirt.verify_virsh_console(
+            force_session, login_user, login_passwd, timeout=10, debug=True)
+        if not force_status:
+            raise error.TestFail("Expect force console session should succeed, "
+                                 "but failed.")
+        force_session.close()
+    session.close()
+
+
+def check_disconnect_on_shutdown(command, status_error, login_user, login_passwd):
+    """
+    Test whether an active console will disconnect after shutting down the VM.
+
+    :param command: Test command without --force option
+    :param status_error: Whether the command is fault.
+    :param login_user: User name for logging into the VM.
+    :param login_passwd: Password for logging into the VM.
+    """
+    session = aexpect.ShellSession(command)
+    if not status_error:
+        log = ""
+        console_cmd = "shutdown -h now"
+        try:
+            while True:
+                match, text = session.read_until_last_line_matches(
+                    [r"[E|e]scape character is", r"login:",
+                     r"[P|p]assword:", session.prompt],
+                    10, internal_timeout=1)
+
+                if match == 0:
+                    logging.debug("Got '^]', sending '\\n'")
+                    session.sendline()
+                elif match == 1:
+                    logging.debug("Got 'login:', sending '%s'", login_user)
+                    session.sendline(login_user)
+                elif match == 2:
+                    logging.debug("Got 'Password:', sending '%s'", login_passwd)
+                    session.sendline(login_passwd)
+                elif match == 3:
+                    logging.debug("Got Shell prompt -- logged in")
+                    break
+
+            status, output = session.cmd_status_output(console_cmd)
+
+            raise error.TestError('Do not expect output from shutdown command. '
+                                  'but got:\n%s', output)
+            session.close()
+        except (aexpect.ShellError,
+                aexpect.ExpectError), detail:
+            if 'Shell process terminated' not in str(detail):
+                raise error.TestFail('Expect shell terminated, but found %s'
+                                     % detail)
+            log = session.get_output()
+            logging.debug("Shell terminated on VM shutdown:\n%s\n%s", detail, log)
+            session.close()
 
 
 def run(test, params, env):
@@ -131,14 +212,19 @@ def run(test, params, env):
         if params.get('setup_libvirt_polkit') == 'yes':
             cmd = "virsh -c %s console %s" % (uri, vm_ref)
             command = "su - %s -c '%s'" % (unprivileged_user, cmd)
+            force_command = "su - %s -c '%s --force'" % (unprivileged_user, cmd)
         else:
             command = "virsh console %s" % vm_ref
+            force_command = "virsh console %s --force" % vm_ref
         console_session = aexpect.ShellSession(command)
 
         status = utils_test.libvirt.verify_virsh_console(
             console_session, login_user, login_passwd, timeout=10, debug=True)
         console_session.close()
 
+        check_duplicated_console(command, force_command, status_error,
+                                 login_user, login_passwd)
+        check_disconnect_on_shutdown(command, status_error, login_user, login_passwd)
     finally:
         # Recover state of vm.
         if vm_state == "paused":
