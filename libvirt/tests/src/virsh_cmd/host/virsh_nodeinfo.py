@@ -67,9 +67,9 @@ def run(test, params, env):
                           "frequency within 20 percent")
 
         # Get CPU topolopy from virsh capabilities xml
-        cpu_topolopy = capability_xml.CapabilityXML()['cpu_topolopy']
+        cpu_topology = capability_xml.CapabilityXML()['cpu_topology']
         logging.debug("Cpu topolopy in virsh capabilities output: %s",
-                      cpu_topolopy)
+                      cpu_topology)
 
         # Check CPU socket(s)
         cpu_sockets_nodeinfo = int(
@@ -82,7 +82,7 @@ def run(test, params, env):
         if cpu_sockets_os != cpu_sockets_nodeinfo:
             raise error.TestFail("Virsh nodeinfo output didn't match CPU "
                                  "socket(s) of host OS")
-        if cpu_sockets_nodeinfo != int(cpu_topolopy['sockets']):
+        if cpu_sockets_nodeinfo != int(cpu_topology['sockets']):
             raise error.TestFail("Virsh nodeinfo output didn't match CPU "
                                  "socket(s) of virsh capabilities output")
 
@@ -95,14 +95,14 @@ def run(test, params, env):
         if not re.match(cores_per_socket_nodeinfo, cores_per_socket_os):
             raise error.TestFail("Virsh nodeinfo output didn't match Core(s) "
                                  "per socket of host OS")
-        if cores_per_socket_nodeinfo != cpu_topolopy['cores']:
+        if cores_per_socket_nodeinfo != cpu_topology['cores']:
             raise error.TestFail("Virsh nodeinfo output didn't match Core(s) "
                                  "per socket of virsh capabilities output")
 
         # Ckeck Thread(s) per core
         threads_per_core_nodeinfo = _check_nodeinfo(nodeinfo_output,
                                                     'Thread(s) per core', 4)
-        if threads_per_core_nodeinfo != cpu_topolopy['threads']:
+        if threads_per_core_nodeinfo != cpu_topology['threads']:
             raise error.TestFail("Virsh nodeinfo output didn't match Thread(s) "
                                  "per core of virsh capabilities output")
 
