@@ -41,7 +41,7 @@ def check_numatune_xml(params):
         virsh.start(vm_name)
 
     try:
-        numa_params = libvirt_xml.VMXML.get_numa_params(vm_name)
+        numa_params = libvirt_xml.VMXML.get_numa_memory_params(vm_name)
     # VM XML omit numa entry when the placement is auto and mode is strict
     # So we need to set numa_params manually when exception happens.
     except LibvirtXMLAccessorError:
