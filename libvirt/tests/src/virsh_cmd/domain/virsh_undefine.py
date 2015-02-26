@@ -64,7 +64,7 @@ def run(test, params, env):
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
             raise error.TestNAError("API acl test not supported in current"
-                                    + " libvirt version.")
+                                    " libvirt version.")
 
     # Back up xml file.Xen host has no guest xml file to define a guset.
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -100,7 +100,7 @@ def run(test, params, env):
                 else:
                     # Backup snapshots for domain
                     for snp_item in snp_list:
-                        tmp_file = os.path.join(test.tmpdir, snp_item+".xml")
+                        tmp_file = os.path.join(test.tmpdir, snp_item + ".xml")
                         virsh.snapshot_dumpxml(vm_name, snp_item, to_file=tmp_file)
                         snp_file_list.append(tmp_file)
             else:

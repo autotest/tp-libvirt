@@ -296,18 +296,18 @@ def run(test, params, env):
                 if dynamic_ownership:
                     if not img_label_after == "0:0":
                         raise error.TestFail("Label of disk is img_label_after"
-                                             + ":%s" % img_label_after + ", it "
-                                             + "did not restore to 0:0 in VM "
-                                             + "shuting down.")
+                                             ":%s" % img_label_after + ", it "
+                                             "did not restore to 0:0 in VM "
+                                             "shuting down.")
             elif set_qemu_conf and not set_sec_label:
                 # As dynamic_ownership as 1 on non-share fs, current domain
                 # image will restore to 0:0 when only set qemu.conf.
                 if dynamic_ownership:
                     if not img_label_after == "0:0":
                         raise error.TestFail("Label of disk is img_label_after"
-                                             + ":%s" % img_label_after + ", it "
-                                             + "did not restore to 0:0 in VM "
-                                             + "shuting down.")
+                                             ":%s" % img_label_after + ", it "
+                                             "did not restore to 0:0 in VM "
+                                             "shuting down.")
                 else:
                     if (not img_label_after == img_label):
                         raise error.TestFail("Bug: Label of disk is changed\n"

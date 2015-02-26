@@ -124,9 +124,9 @@ def run(test, params, env):
             time.sleep(5)
 
             # Check if host down time within tolerance
-            if not (suspend_time - lower_tolerance
-                    < down_time
-                    < suspend_time + upper_tolerance):
+            if not (suspend_time - lower_tolerance <
+                    down_time <
+                    suspend_time + upper_tolerance):
                 raise error.TestFail('Down time (%.2fs) not in range (%ds)'
                                      '+ (%ds) - (%ds).'
                                      % (down_time, suspend_time,

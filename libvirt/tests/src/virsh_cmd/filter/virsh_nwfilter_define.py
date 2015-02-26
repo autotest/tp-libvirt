@@ -58,7 +58,7 @@ def run(test, params, env):
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
             raise error.TestNAError("API acl test not supported in current"
-                                    + " libvirt version.")
+                                    " libvirt version.")
 
     if exist_filter == filter_name and new_uuid:
         # Since commit 46a811d, update filter with new uuid will fail.
@@ -101,7 +101,7 @@ def run(test, params, env):
             if status == 0:
                 if boundary_test_skip:
                     raise error.TestNAError("Boundary check commit 4f20943 not"
-                                            + " in this libvirt build yet.")
+                                            " in this libvirt build yet.")
                 else:
                     err_msg = "Run successfully with wrong command."
                     if bug_url:

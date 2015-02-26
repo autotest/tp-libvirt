@@ -333,8 +333,8 @@ def test_timers_in_vm(vm, params):
     host_tz_vector = convert_tz_to_vector(host_tz)
     vm_tz_vector = convert_tz_to_vector(vm_tz)
     set_tz_vector = convert_tz_to_vector(clock_tz)
-    if ((host_tz_vector is None) or (vm_tz_vector is None)
-            or (set_tz_vector is None)):
+    if ((host_tz_vector is None) or (vm_tz_vector is None) or
+            (set_tz_vector is None)):
         raise error.TestError("Not supported timezone to convert.")
     delta = int(params.get("allowd_delta", "300"))
     windows_test = "yes" == params.get("windows_test", "no")

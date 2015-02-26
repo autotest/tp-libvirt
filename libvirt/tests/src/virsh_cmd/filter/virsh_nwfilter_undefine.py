@@ -48,7 +48,7 @@ def run(test, params, env):
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
             raise error.TestNAError("API acl test not supported in current"
-                                    + " libvirt version.")
+                                    " libvirt version.")
     # Backup filter xml
     if filter_ref:
         new_filter = libvirt_xml.NwfilterXML()

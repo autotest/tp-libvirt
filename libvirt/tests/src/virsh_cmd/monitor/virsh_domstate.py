@@ -224,9 +224,9 @@ def run(test, params, env):
                                              dump_file):
                         raise ActionError(vm_action)
             if vm_ref == "remote":
-                if not (re.search("running", output)
-                        or re.search("blocked", output)
-                        or re.search("idle", output)):
+                if not (re.search("running", output) or
+                        re.search("blocked", output) or
+                        re.search("idle", output)):
                     raise error.TestFail("Run failed with right command")
     finally:
         # recover libvirtd service start
