@@ -45,6 +45,7 @@ def run(test, params, env):
     disk_target = params.get("disk_target", "vdb")
     test_message = params.get("test_message", "")
     vm_name = params.get("main_vm", "virt-tests-vm1")
+    block_device = params.get("block_device", "/DEV/EXAMPLE")
     if application == "install":
         cdrom_path = os.path.join(data_dir.get_data_dir(),
                                   params.get("cdrom_cd1"))
@@ -57,7 +58,8 @@ def run(test, params, env):
     try:
         pvtest = utlv.PoolVolumeTest(test, params)
         pvtest.pre_pool(pool_name, pool_type, pool_target, emulated_img,
-                        emulated_size, pre_disk_vol=[volume_size])
+                        emulated_size, pre_disk_vol=[volume_size],
+                        device_name=block_device)
 
         logging.debug("Current pools:\n%s",
                       libvirt_storage.StoragePool().list_pools())
@@ -141,4 +143,5 @@ def run(test, params, env):
                 virsh.detach_disk(vm_name, disk_target)
         finally:
             pvtest.cleanup_pool(pool_name, pool_type,
-                                pool_target, emulated_img)
+                                pool_target, emulated_img,
+                                device_name=block_device)
