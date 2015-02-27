@@ -77,6 +77,7 @@ def run(test, params, env):
     frmt = params.get("vol_download_upload_format")
     operation = params.get("vol_download_upload_operation")
     create_vol = ("yes" == params.get("vol_download_upload_create_vol", "yes"))
+    setup_libvirt_polkit = "yes" == params.get("setup_libvirt_polkit")
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
@@ -86,7 +87,7 @@ def run(test, params, env):
             unpri_user = 'testacl'
 
     if not libvirt_version.version_compare(1, 1, 1):
-        if params.get('setup_libvirt_polkit') == 'yes':
+        if setup_libvirt_polkit:
             raise error.TestNAError("API acl test not supported in current"
                                     " libvirt version.")
 
@@ -94,6 +95,17 @@ def run(test, params, env):
         pvt = utlv.PoolVolumeTest(test, params)
         pvt.pre_pool(pool_name, pool_type, pool_target, "volumetest",
                      pre_disk_vol=["50M"])
+        # According to BZ#1138523, we need inpect the right name
+        # (disk partition) for new volume
+        if pool_type == "disk":
+            vol_name = utlv.new_disk_vol_name(pool_name)
+            if vol_name is None:
+                raise error.TestError("Fail to generate volume name")
+            # update polkit rule as the volume name changed
+            if setup_libvirt_polkit:
+                vol_pat = r"lookup\('vol_name'\) == ('\S+')"
+                new_value = "lookup('vol_name') == '%s'" % vol_name
+                utlv.update_polkit_rule(params, vol_pat, new_value)
         if create_vol:
             pvt.pre_vol(vol_name, frmt, capacity, allocation, pool_name)
 
@@ -156,7 +168,7 @@ def run(test, params, env):
             logging.debug("ori digest read from %s is %s", file_path,
                           ori_digest)
 
-            if params.get('setup_libvirt_polkit') == 'yes':
+            if setup_libvirt_polkit:
                 utils.run("chmod 666 %s" % file_path)
 
             # Do volume upload
@@ -180,8 +192,6 @@ def run(test, params, env):
 
         if operation == "download":
             # Write date to volume
-            if pool_type == "disk":
-                utils.run("mkfs.ext3 -F %s" % vol_path)
             write_file(vol_path)
 
             # Record the digest value before operation
@@ -190,7 +200,7 @@ def run(test, params, env):
                           ori_digest)
 
             utils.run("touch %s" % file_path)
-            if params.get('setup_libvirt_polkit') == 'yes':
+            if setup_libvirt_polkit:
                 utils.run("chmod 666 %s" % file_path)
 
             # Do volume download

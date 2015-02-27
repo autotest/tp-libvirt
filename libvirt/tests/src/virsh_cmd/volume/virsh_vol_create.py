@@ -45,6 +45,31 @@ def run(test, params, env):
     lazy_refcounts = "yes" == params.get("lazy_refcounts")
     status_error = "yes" == params.get("status_error", "no")
     by_xml = "yes" == params.get("create_vol_by_xml", "yes")
+    incomplete_target = "yes" == params.get("incomplete_target", "no")
+
+    if not libvirt_version.version_compare(1, 0, 0):
+        if "--prealloc-metadata" in extra_option:
+            raise error.TestNAError("metadata preallocation not supported in"
+                                    " current libvirt version.")
+        if incomplete_target:
+            raise error.TestNAError("It does not support generate target "
+                                    "path in thi libvirt version.")
+
+    pool_type = ['dir', 'disk', 'fs', 'logical', 'netfs', 'iscsi', 'scsi']
+    if src_pool_type not in pool_type:
+        raise error.TestNAError("pool type %s not in supported type list: %s" %
+                                (src_pool_type, pool_type))
+
+    # libvirt acl polkit related params
+    if not libvirt_version.version_compare(1, 1, 1):
+        if params.get('setup_libvirt_polkit') == 'yes':
+            raise error.TestNAError("API acl test not supported in current"
+                                    " libvirt version.")
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
 
     # Stop multipathd to avoid start pool fail(For fs like pool, the new add
     # disk may in use by device-mapper, so start pool will report disk already
@@ -64,28 +89,6 @@ def run(test, params, env):
             else:
                 vol_arg[key[4:]] = params[key]
     vol_arg['lazy_refcounts'] = lazy_refcounts
-
-    pool_type = ['dir', 'disk', 'fs', 'logical', 'netfs', 'iscsi', 'scsi']
-    if src_pool_type not in pool_type:
-        raise error.TestNAError("pool type %s not in supported type list: %s" %
-                                (src_pool_type, pool_type))
-
-    if not libvirt_version.version_compare(1, 0, 0):
-        if "--prealloc-metadata" in extra_option:
-            raise error.TestNAError("metadata preallocation not supported in"
-                                    " current libvirt version.")
-
-    # libvirt acl polkit related params
-    uri = params.get("virsh_uri")
-    unprivileged_user = params.get('unprivileged_user')
-    if unprivileged_user:
-        if unprivileged_user.count('EXAMPLE'):
-            unprivileged_user = 'testacl'
-
-    if not libvirt_version.version_compare(1, 1, 1):
-        if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
 
     def post_process_vol(ori_vol_path):
         """
@@ -199,6 +202,12 @@ def run(test, params, env):
             vol_name = prefix_vol_name + "_%s" % pool_vol_num
             pool_vol_num -= 1
             if by_xml:
+                # According to BZ#1138523, we need inpect the right name
+                # (disk partition) for new volume
+                if src_pool_type == "disk":
+                    vol_name = utlv.new_disk_vol_name(src_pool_name)
+                    if vol_name is None:
+                        raise error.TestError("Fail to generate volume name")
                 vol_arg['name'] = vol_name
                 volxml = libvirt_xml.VolXML()
                 newvol = volxml.new_vol(**vol_arg)
@@ -241,9 +250,9 @@ def run(test, params, env):
             process_vol = post_process_vol(vol_path_list[0])
             if process_vol is not None:
                 try:
-                    virsh.pool_refresh(src_pool_name)
+                    virsh.pool_refresh(src_pool_name, ignore_status=False)
                     check_vol(src_pool_name, process_vol, expect_vol_exist)
-                except error.TestFail, e:
+                except (error.CmdError, error.TestFail), e:
                     if process_vol_type == "thin":
                         logging.error(e)
                         raise error.TestNAError("You may encounter bug BZ#1060287")
