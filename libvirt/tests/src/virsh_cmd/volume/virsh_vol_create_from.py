@@ -3,6 +3,7 @@ import os
 from virttest import virsh, libvirt_storage
 from virttest.utils_test import libvirt as utlv
 from autotest.client.shared import error
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -29,6 +30,12 @@ def run(test, params, env):
     prealloc_option = params.get("prealloc_option")
     status_error = params.get("status_error", "no")
 
+    if not libvirt_version.version_compare(1, 0, 0):
+        if "--prealloc-metadata" in prealloc_option:
+            raise error.TestNAError("metadata preallocation not supported in"
+                                    " current libvirt version.")
+
+    vol_file = ""
     try:
         # Create the src/dest pool
         src_pool_name = "virt-%s-pool" % src_pool_type
@@ -64,6 +71,12 @@ def run(test, params, env):
                 raise error.TestFail("No volume in pool: %s", src_pool_name)
         # Prepare vol xml file
         dest_vol_name = "dest_vol"
+        # According to BZ#1138523, we need inpect the right name
+        # (disk partition) for new volume
+        if dest_pool_type == "disk":
+            dest_vol_name = utlv.new_disk_vol_name(dest_pool_name)
+            if dest_vol_name is None:
+                raise error.TestError("Fail to generate volume name")
         if dest_pool_type == "disk":
             dest_vol_format = ""
             prealloc_option = ""

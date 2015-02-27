@@ -9,6 +9,7 @@ from virttest import libvirt_storage
 from virttest.libvirt_xml import vol_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.staging import service
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -379,6 +380,11 @@ def run(test, params, env):
     encrypt_secret = params.get("encrypt_secret")
     emulated_image = params.get("emulated_image")
     emulated_image_size = params.get("emulated_image_size")
+    if not libvirt_version.version_compare(1, 0, 0):
+        if pool_type == "gluster":
+            raise error.TestNAError("Gluster pool is not supported in current"
+                                    " libvirt version.")
+
     try:
         str_capa = utils_misc.normalize_data_size(capacity, "B")
         int_capa = int(str(str_capa).split('.')[0])
