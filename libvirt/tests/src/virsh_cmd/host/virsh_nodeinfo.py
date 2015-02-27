@@ -66,9 +66,9 @@ def run(test, params, env):
             logging.debug("Virsh nodeinfo output didn't match CPU "
                           "frequency within 20 percent")
 
-        # Get CPU topolopy from virsh capabilities xml
+        # Get CPU topology from virsh capabilities xml
         cpu_topology = capability_xml.CapabilityXML()['cpu_topology']
-        logging.debug("Cpu topolopy in virsh capabilities output: %s",
+        logging.debug("Cpu topology in virsh capabilities output: %s",
                       cpu_topology)
 
         # Check CPU socket(s)
