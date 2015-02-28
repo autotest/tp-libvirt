@@ -13,6 +13,7 @@ from virttest import utils_misc
 from virttest.libvirt_xml.devices import channel
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.controller import Controller
+from virttest.utils_test import libvirt as utlv
 
 
 def run(test, params, env):
@@ -54,39 +55,26 @@ def run(test, params, env):
     vm.start()
     session = vm.wait_for_login()
 
-    def create_channel_xml(vm_name, char_type, id=0):
-        """
-        Create a XML contains channel information.
-        """
-        channel_type = char_type
+    def prepare_channel_xml(to_file, char_type, id=0):
+        params = {}
+        mode = ''
         if char_type == "file":
+            channel_type = char_type
             channel_path = os.path.join(tmp_dir, char_type)
-            channel_source = {'path': channel_path}
-            channel_target = {'type': 'virtio', 'name': 'file'}
-        if char_type == "socket":
+        elif char_type == "socket":
             channel_type = 'unix'
             channel_path = os.path.join(tmp_dir, char_type)
-            channel_source = {'mode': 'bind', 'path': channel_path}
-            channel_target = {'type': 'virtio', 'name': 'socket'}
-        if char_type == "pty":
+            mode = 'bind'
+        elif char_type == "pty":
+            channel_type = char_type
             channel_path = ("/dev/pts/%s" % id)
-            channel_source = {'path': channel_path}
-            channel_target = {'type': 'virtio', 'name': 'pty'}
-
-        channel_alias = {'name': char_type}
-        channel_address = {'type': 'virtio-serial', 'controller': '0', 'bus': '0'}
-        channel_params = {'type_name': channel_type, 'source': channel_source,
-                          'target': channel_target, 'alias': channel_alias,
-                          'address': channel_address}
-        channelxml = channel.Channel.new_from_dict(channel_params)
-        logging.debug("Channel XML:\n%s", channelxml)
-
-        xmlf = open(channelxml.xml)
-        try:
-            xml_lines = xmlf.read()
-        finally:
-            xmlf.close()
-        return xml_lines
+        params = {'channel_type_name': channel_type,
+                  'source_path': channel_path,
+                  'source_mode': mode,
+                  'target_type': 'virtio',
+                  'target_name': char_type}
+        channel_xml = utlv.create_channel_xml(params, alias=True, address=True)
+        shutil.copyfile(channel_xml.xml, to_file)
 
     def hotplug_device(type, char_dev, id=0):
         tmp_file = os.path.join(tmp_dir, char_dev)
@@ -113,12 +101,9 @@ def run(test, params, env):
         elif type == "attach":
             xml_file = os.path.join(tmp_dir, "xml_%s" % char_dev)
             if char_dev in ["file", "socket"]:
-                xml_info = create_channel_xml(vm_name, char_dev)
+                prepare_channel_xml(xml_file, char_dev)
             elif char_dev == "pty":
-                xml_info = create_channel_xml(vm_name, char_dev, id)
-            f = open(xml_file, "w")
-            f.write(xml_info)
-            f.close()
+                prepare_channel_xml(xml_file, char_dev, id)
             result = virsh.attach_device(vm_name, xml_file)
         return result
 
@@ -159,7 +144,7 @@ def run(test, params, env):
 
     def confirm_hotplug_result(char_dev, id=0):
         tmp_file = os.path.join(tmp_dir, char_dev)
-        serial_file = "/dev/virtio-ports/%s" % char_dev
+        serial_file = os.path.join("/dev/virtio-ports", char_dev)
         result = virsh.qemu_monitor_command(vm_name, "info qtree", "--hmp")
         h_o = result.stdout.strip()
         if not h_o.count("name = \"%s\"" % char_dev):
@@ -208,7 +193,7 @@ def run(test, params, env):
             result = virsh.detach_device(vm_name, xml_file)
 
     def confirm_unhotplug_result(char_dev):
-        serial_file = "/dev/virtio-ports/%s" % char_dev
+        serial_file = os.path.join("/dev/virtio-ports", char_dev)
         result = virsh.qemu_monitor_command(vm_name, "info qtree", "--hmp")
         uh_o = result.stdout.strip()
         if uh_o.count("chardev = \"%s\"" % char_dev):
