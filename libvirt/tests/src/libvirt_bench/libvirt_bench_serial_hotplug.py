@@ -8,6 +8,7 @@ import shutil
 from autotest.client.shared import error
 from virttest import virsh, libvirt_vm, utils_test, utils_misc
 from virttest.libvirt_xml.devices import channel
+from virttest.utils_test import libvirt as utlv
 
 
 def run(test, params, env):
@@ -38,38 +39,26 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     session = vm.wait_for_login()
 
-    def create_channel_xml(vm_name, char_type, index=1, id=0):
-        """
-        Create a XML contains channel information.
-        """
-        channel_type = char_type
+    def prepare_channel_xml(to_file, char_type, index=1, id=0):
+        params = {}
+        mode = ''
         if char_type == "file":
+            channel_type = char_type
             channel_path = ("%s/%s%s" % (tmp_dir, char_type, index))
-            channel_source = {'path': channel_path}
-        if char_type == "socket":
+        elif char_type == "socket":
             channel_type = 'unix'
             channel_path = ("%s/%s%s" % (tmp_dir, char_type, index))
-            channel_source = {'mode': 'bind', 'path': channel_path}
-        if char_type == "pty":
+            mode = 'bind'
+        elif char_type == "pty":
+            channel_type = char_type
             channel_path = ("/dev/pts/%s" % id)
-            channel_source = {'path': channel_path}
-
-        target_name = "%s%s" % (char_type, index)
-        channel_target = {'type': 'virtio', 'name': target_name}
-        channel_alias = {'name': target_name}
-        channel_address = {'type': 'virtio-serial', 'controller': '0', 'bus': '0'}
-        channel_params = {'type_name': channel_type, 'source': channel_source,
-                          'target': channel_target, 'alias': channel_alias,
-                          'address': channel_address}
-        channelxml = channel.Channel.new_from_dict(channel_params)
-        logging.debug("Channel XML:\n%s", channelxml)
-
-        xmlf = open(channelxml.xml)
-        try:
-            xml_lines = xmlf.read()
-        finally:
-            xmlf.close()
-        return xml_lines
+        params = {'channel_type_name': channel_type,
+                  'source_path': channel_path,
+                  'source_mode': mode,
+                  'target_type': 'virtio',
+                  'target_name': char_type + str(index)}
+        channel_xml = utlv.create_channel_xml(params, alias=True, address=True)
+        shutil.copyfile(channel_xml.xml, to_file)
 
     def hotplug_device(hotplug_type, char_dev, index=1, id=0):
         if hotplug_type == "qmp":
@@ -92,16 +81,12 @@ def run(test, params, env):
             virsh.qemu_monitor_command(vm_name, char_add_opt, "--hmp")
             virsh.qemu_monitor_command(vm_name, dev_add_opt, "--hmp")
         elif hotplug_type == "attach":
+            xml_file = "%s/xml_%s%s" % (tmp_dir, char_dev, index)
             if char_dev in ["file", "socket"]:
-                xml_info = create_channel_xml(vm_name, char_dev, index)
+                prepare_channel_xml(xml_file, char_dev, index)
             elif char_dev == "pty":
-                xml_info = create_channel_xml(vm_name, char_dev, index, id)
-
-            xmlf = "%s/xml_%s%s" % (tmp_dir, char_dev, index)
-            f = open(xmlf, "w")
-            f.write(xml_info)
-            f.close()
-            virsh.attach_device(vm_name, xmlf, flagstr="--live")
+                prepare_channel_xml(xml_file, char_dev, index, id)
+            virsh.attach_device(vm_name, xml_file, flagstr="--live")
 
     def confirm_hotplug_result(char_dev, index=1, id=0):
         result = virsh.qemu_monitor_command(vm_name, "info qtree", "--hmp")
@@ -150,8 +135,8 @@ def run(test, params, env):
             virsh.qemu_monitor_command(vm_name, del_dev_opt, "--hmp")
             virsh.qemu_monitor_command(vm_name, del_char_opt, "--hmp")
         elif hotplug_type == "attach":
-            xmlf = "%s/xml_%s%s" % (tmp_dir, char_dev, index)
-            virsh.detach_device(vm_name, xmlf, flagstr="--live")
+            xml_file = "%s/xml_%s%s" % (tmp_dir, char_dev, index)
+            virsh.detach_device(vm_name, xml_file, flagstr="--live")
 
     def confirm_unhotplug_result(char_dev, index=1):
         serial_file = "/dev/virtio-ports/%s%s" % (char_dev, index)
