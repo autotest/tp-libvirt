@@ -30,7 +30,7 @@ def run(test, params, env):
     os.chmod(tmp_dir, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
 
     load_vms = []
-    if load_type in ['stress', 'memory', 'io']:
+    if load_type in ['cpu', 'memory', 'io']:
         params["stress_args"] = load_params
     load_vms.append(libvirt_vm.VM(vm_name, params, test.bindir,
                                   env.get("address_cache")))
@@ -165,7 +165,7 @@ def run(test, params, env):
     # run test case
     try:
         # increase workload
-        if load_type in ['stress', 'memory']:
+        if load_type in ['cpu', 'memory']:
             utils_test.load_stress("stress_in_vms", load_vms, params)
         else:
             utils_test.load_stress("iozone_in_vms", load_vms, params)
