@@ -173,7 +173,7 @@ def run(test, params, env):
             snap_top = os.path.join(tmp_dir, snap_name)
             top_index = snapshot_external_disks.index(snap_top) + 1
             omit_list = snapshot_external_disks[top_index:]
-            vm.destroy()
+            vm.destroy(gracefully=False)
             vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
             disk_xml = vmxml.get_devices(device_type="disk")[0]
             vmxml.del_device(disk_xml)
@@ -250,7 +250,7 @@ def run(test, params, env):
                 blockcommit_options += " --pivot"
 
         if vm_state == "shut off":
-            vm.shutdown()
+            vm.destroy(gracefully=True)
 
         if with_active_commit:
             # inactive commit follow active commit will fail with bug 1135339
@@ -323,6 +323,8 @@ def run(test, params, env):
                                 break
                         else:
                             break
+                    else:
+                        break
                 else:
                     if disk_mirror is None:
                         logging.debug(disk_xml)
@@ -392,7 +394,7 @@ def run(test, params, env):
             libvirt.check_exit_status(cmd_result, snap_in_mirror_err)
     finally:
         if vm.is_alive():
-            vm.destroy()
+            vm.destroy(gracefully=False)
         # Recover xml of vm.
         vmxml_backup.sync("--snapshots-metadata")
         if cmd_session:
