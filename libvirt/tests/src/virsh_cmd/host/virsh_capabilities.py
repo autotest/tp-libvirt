@@ -1,6 +1,5 @@
 import logging
 import re
-from xml.dom.minidom import parseString
 from autotest.client.shared import utils, error
 from autotest.client import os_dep
 from virttest import libvirt_vm, virsh, utils_libvirtd, utils_misc
@@ -44,8 +43,8 @@ def run(test, params, env):
 
         # Check the arch of guest supported.
         xmltreefile = cap_xml.__dict_get__('xml')
-        xml_os_arch_machine_map = cap_xml.os_arch_machine_map
-        logging.debug(xml_os_arch_machine_map['hvm'])
+        guest_capa = cap_xml.get_guest_capabilities()
+        logging.debug(guest_capa)
         try:
             img = utils_misc.find_command("qemu-kvm")
         except ValueError:
