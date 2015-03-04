@@ -47,13 +47,15 @@ def run(test, params, env):
         :param guest_name : VM's name
         :param file_source : virsh command's file option.
         """
+        args = ""
         if action == "managedsave":
             file = ""
         elif action == "migrate":
             # Slow down migration for domjobabort
             virsh.migrate_setspeed(vm_name, "1")
             file = remote_uri
-        command = "virsh %s %s %s --unsafe" % (action, vm_name, file)
+            args = "--unsafe"
+        command = "virsh %s %s %s %s" % (action, vm_name, file, args)
         logging.debug("Action: %s", command)
         p = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
