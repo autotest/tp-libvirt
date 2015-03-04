@@ -98,7 +98,8 @@ def check_xml(vm_name, target, dest_path, blk_options):
                     # When mirror_type == "network" is supported <source>
                     # will be defined...
                     #
-                    if mirror_type == "file" and disk_mirror_source is not None:
+                    if (mirror_type == "file" and
+                            disk_mirror_source is not None):
                         disk_mirror_src = disk_mirror_source.get('file')
                     else:
                         disk_mirror_src = None
@@ -109,11 +110,14 @@ def check_xml(vm_name, target, dest_path, blk_options):
                     re2 = 2
         except Exception, detail:
             logging.error(detail)
+            return False
     finally:
         if re1 + re2 == expect_re:
             logging.debug("Domain XML check pass.")
+            return True
         else:
-            raise error.TestFail("Domain XML check fail.")
+            logging.error("Domain XML check fail.")
+            return False
 
 
 def finish_job(vm_name, target, timeout):
@@ -171,6 +175,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     target = params.get("target_disk", "")
     replace_vm_disk = "yes" == params.get("replace_vm_disk", "no")
+    disk_source_protocol = params.get("disk_source_protocol")
     copy_to_nfs = "yes" == params.get("copy_to_nfs", "no")
     mnt_path_name = params.get("mnt_path_name")
     # check the source disk
@@ -187,14 +192,14 @@ def run(test, params, env):
     persistent_vm = params.get("persistent_vm", "no")
     status_error = "yes" == params.get("status_error", "no")
     active_error = "yes" == params.get("active_error", "no")
-    active_sanp = "yes" == params.get("active_sanp", "no")
+    active_snap = "yes" == params.get("active_snap", "no")
     active_save = "yes" == params.get("active_save", "no")
     check_state_lock = "yes" == params.get("check_state_lock", "no")
+    bug_url = params.get("bug_url", "")
     timeout = int(params.get("timeout", 1200))
     rerun_flag = 0
 
-    original_xml = vm.backup_xml()
-    new_xml = original_xml
+    original_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     tmp_dir = data_dir.get_tmp_dir()
 
     # Prepare dest path params
@@ -245,7 +250,8 @@ def run(test, params, env):
                                     " libvirt version.")
         if not copy_to_nfs:
             raise error.TestNAError("Bug will not fix:"
-                                    " https://bugzilla.redhat.com/show_bug.cgi?id=924151")
+                                    " https://bugzilla.redhat.com/show_bug."
+                                    "cgi?id=924151")
 
     extra_dict = {'uri': uri, 'unprivileged_user': unprivileged_user,
                   'debug': True, 'ignore_status': True, 'timeout': timeout}
@@ -258,7 +264,6 @@ def run(test, params, env):
     logging.debug("the libvirtd config file content is:\n %s" %
                   libvirtd_conf)
     libvirtd_utl.restart()
-    bug_log = "Hit on bug: https://bugzilla.redhat.com/show_bug.cgi?id=1134294"
 
     def check_format(dest_path, dest_extension, expect):
         """
@@ -286,7 +291,7 @@ def run(test, params, env):
         err_pattern += " state change lock"
         ret = chk_libvirtd_log(libvirtd_log_path, err_pattern, "error")
         if ret:
-            raise error.TestFail("blockcopy command hang, %s" % bug_log)
+            raise error.TestFail("Hit on bug: %s" % bug_url)
 
     snap_path = ''
     save_path = ''
@@ -294,98 +299,106 @@ def run(test, params, env):
         # Domain disk replacement with desire type
         if replace_vm_disk:
             utl.set_vm_disk(vm, params, tmp_dir)
-            new_xml = vm.backup_xml()
+            new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
         # Prepare transient/persistent vm
         if persistent_vm == "no" and vm.is_persistent():
             vm.undefine()
         elif persistent_vm == "yes" and not vm.is_persistent():
-            vm.define(new_xml)
+            new_xml.define()
 
-        try:
-            # Run blockcopy command
-            if rerun_flag == 1:
-                options1 = "--wait --raw --finish --verbose"
-                cmd_result = virsh.blockcopy(vm_name, target,
-                                             dest_path, options1,
-                                             **extra_dict)
-                status = cmd_result.exit_status
-                if status != 0:
-                    raise error.TestFail("Run blockcopy command fail.")
-                elif not os.path.exists(dest_path):
-                    raise error.TestFail("Cannot find the created copy.")
-
-            cmd_result = virsh.blockcopy(vm_name, target, dest_path,
-                                         options,
+        # Run blockcopy command
+        if rerun_flag == 1:
+            options1 = "--wait --raw --finish --verbose"
+            cmd_result = virsh.blockcopy(vm_name, target,
+                                         dest_path, options1,
                                          **extra_dict)
             status = cmd_result.exit_status
+            if status != 0:
+                raise error.TestFail("Run blockcopy command fail.")
+            elif not os.path.exists(dest_path):
+                raise error.TestFail("Cannot find the created copy.")
 
-            if not libvirtd_utl.is_running():
-                raise error.TestFail("Libvirtd service is dead.")
+        cmd_result = virsh.blockcopy(vm_name, target, dest_path,
+                                     options,
+                                     **extra_dict)
+        status = cmd_result.exit_status
 
-            if not status_error:
-                if status == 0:
-                    check_xml(vm_name, target, dest_path, options)
-                    if options.count("--bandwidth"):
-                        utl.check_blockjob(vm_name, target,
-                                           "bandwidth", bandwidth)
-                        if check_state_lock:
-                            # Run blockjob pivot in subprocess as it will hang
-                            # for a while, run blockjob info again to check
-                            # job state
-                            command = "virsh blockjob %s %s --pivot" % (vm_name,
-                                                                        target)
-                            session = aexpect.ShellSession(command)
-                            ret = virsh.blockjob(vm_name, target, "--info")
-                            err_info = "cannot acquire state change lock"
-                            if err_info in ret.stderr:
-                                logging.error(bug_log)
-                            utl.check_exit_status(ret, status_error)
-                            session.close()
-                    val = options.count("--pivot") + options.count("--finish")
-                    if val == 0:
-                        finish_job(vm_name, target, default_timeout)
-                    if options.count("--raw"):
-                        check_format(dest_path, dest_extension, dest_format)
-                    if active_sanp:
-                        snap_path = "%s/%s.snap" % (tmp_dir, vm_name)
-                        snap_opt = "--disk-only --atomic --no-metadata "
-                        snap_opt += "vda,snapshot=external,file=%s" % snap_path
-                        ret = virsh.snapshot_create_as(vm_name, snap_opt,
-                                                       ignore_statues=True,
-                                                       debug=True)
-                        utl.check_exit_status(ret, active_error)
-                    if active_save:
-                        save_path = "%s/%s.save" % (tmp_dir, vm_name)
-                        ret = virsh.save(vm_name, save_path,
-                                         ignore_statues=True,
-                                         debug=True)
-                        utl.check_exit_status(ret, active_error)
-                else:
-                    err_msg = "internal error: unable to execute QEMU command"
-                    err_msg += " 'block-job-complete'"
-                    if err_msg in cmd_result.stderr:
-                        logging.error(bug_log)
-                    raise error.TestFail(cmd_result.stderr)
-            else:
-                if status:
-                    logging.debug("Expect error: %s", cmd_result.stderr)
-                else:
-                    # Commit id '4c297728' changed how virsh exits when
-                    # unexpectedly failing due to timeout from a fail (1)
-                    # to a success(0), so we need to look for a different
-                    # marker to indicate the copy aborted
-                    if options.count("--timeout") and \
-                            options.count("--wait") and \
-                            re.search("Copy aborted", cmd_result.stdout):
-                        logging.debug("Found success a timed out block copy")
-                    else:
-                        raise error.TestFail("Expect fail, but run "
-                                             "successfully.")
-        except (JobTimeout, Exception), excpt:
+        if not libvirtd_utl.is_running():
+            raise error.TestFail("Libvirtd service is dead.")
+
+        if not status_error:
             blockcopy_chk()
-            if not status_error:
-                raise error.TestFail("Run command failed: %s" % excpt)
+            if status == 0:
+                ret = utils_misc.wait_for(
+                    lambda: check_xml(vm_name, target, dest_path, options), 5)
+                if not ret:
+                    raise error.TestFail("Domain xml not expected after"
+                                         " blockcopy")
+                if options.count("--bandwidth"):
+                    utl.check_blockjob(vm_name, target,
+                                       "bandwidth", bandwidth)
+                    if check_state_lock:
+                        # Run blockjob pivot in subprocess as it will hang
+                        # for a while, run blockjob info again to check
+                        # job state
+                        command = "virsh blockjob %s %s --pivot" % (vm_name,
+                                                                    target)
+                        session = aexpect.ShellSession(command)
+                        ret = virsh.blockjob(vm_name, target, "--info")
+                        err_info = "cannot acquire state change lock"
+                        if err_info in ret.stderr:
+                            raise error.TestFail("Hit on bug: %s" % bug_url)
+                        utl.check_exit_status(ret, status_error)
+                        session.close()
+                val = options.count("--pivot") + options.count("--finish")
+                if val == 0:
+                    try:
+                        finish_job(vm_name, target, default_timeout)
+                    except JobTimeout, excpt:
+                        raise error.TestFail("Run command failed: %s" %
+                                             excpt)
+                if options.count("--raw"):
+                    check_format(dest_path, dest_extension, dest_format)
+                if active_snap:
+                    snap_path = "%s/%s.snap" % (tmp_dir, vm_name)
+                    snap_opt = "--disk-only --atomic --no-metadata "
+                    snap_opt += "vda,snapshot=external,file=%s" % snap_path
+                    ret = virsh.snapshot_create_as(vm_name, snap_opt,
+                                                   ignore_statues=True,
+                                                   debug=True)
+                    utl.check_exit_status(ret, active_error)
+                if active_save:
+                    save_path = "%s/%s.save" % (tmp_dir, vm_name)
+                    ret = virsh.save(vm_name, save_path,
+                                     ignore_statues=True,
+                                     debug=True)
+                    utl.check_exit_status(ret, active_error)
+            else:
+                err_msg = "internal error: unable to execute QEMU command"
+                err_msg += " 'block-job-complete'"
+                if err_msg in cmd_result.stderr:
+                    raise error.TestFail("Hit on bug: %s" % bug_url)
+                raise error.TestFail(cmd_result.stderr)
+        else:
+            if status:
+                logging.debug("Expect error: %s", cmd_result.stderr)
+            else:
+                # Commit id '4c297728' changed how virsh exits when
+                # unexpectedly failing due to timeout from a fail (1)
+                # to a success(0), so we need to look for a different
+                # marker to indicate the copy aborted. As "stdout: Now
+                # in mirroring phase" could be in stdout which fail the
+                # check, so also do check in libvirtd log to confirm.
+                if options.count("--timeout") and options.count("--wait"):
+                    log_pattern = "Copy aborted"
+                    if (re.search(log_pattern, cmd_result.stdout) or
+                            chk_libvirtd_log(libvirtd_log_path,
+                                             log_pattern, "debug")):
+                        logging.debug("Found success a timed out block copy")
+                else:
+                    raise error.TestFail("Expect fail, but run "
+                                         "successfully.")
     finally:
         # Restore libvirtd conf and restart libvirtd
         libvirtd_conf.restore()
@@ -395,16 +408,14 @@ def run(test, params, env):
 
         if vm.is_alive():
             vm.destroy(gracefully=False)
-        virsh.define(original_xml)
+        utils_misc.wait_for(
+            lambda: virsh.domstate(vm_name, ignore_status=True).exit_status, 2)
+        original_xml.sync("--snapshots-metadata")
 
-        if copy_to_nfs:
+        if replace_vm_disk and disk_source_protocol == "netfs":
             restore_selinux = params.get('selinux_status_bak')
             utl.setup_or_cleanup_nfs(is_setup=False,
                                      restore_selinux=restore_selinux)
-        if os.path.exists(original_xml):
-            os.remove(original_xml)
-        if os.path.exists(new_xml):
-            os.remove(new_xml)
         if os.path.exists(dest_path):
             os.remove(dest_path)
         if os.path.exists(snap_path):
