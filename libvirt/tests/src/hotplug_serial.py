@@ -4,6 +4,7 @@ import stat
 import subprocess
 import time
 import socket
+import shutil
 
 from autotest.client import utils
 from autotest.client.shared import error
@@ -12,6 +13,7 @@ from virttest import utils_misc
 from virttest.libvirt_xml.devices import channel
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.controller import Controller
+from virttest.utils_test import libvirt as utlv
 
 
 def run(test, params, env):
@@ -26,7 +28,11 @@ def run(test, params, env):
     dup_charid = "yes" == params.get("dup_charid", "no")
     dup_devid = "yes" == params.get("dup_devid", "no")
     diff_devid = "yes" == params.get("diff_devid", "no")
-    xml_file = params.get("xml_file", "/tmp/xml_file")
+
+    tmp_dir = os.path.join(test.tmpdir, "hotplug_serial")
+    if not os.path.exists(tmp_dir):
+        os.mkdir(tmp_dir)
+    os.chmod(tmp_dir, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
 
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
@@ -49,50 +55,37 @@ def run(test, params, env):
     vm.start()
     session = vm.wait_for_login()
 
-    def create_channel_xml(vm_name, char_type, id=0):
-        """
-        Create a XML contains channel information.
-        """
-        channel_type = char_type
+    def prepare_channel_xml(to_file, char_type, id=0):
+        params = {}
+        mode = ''
         if char_type == "file":
-            channel_path = ("/tmp/%s" % char_type)
-            channel_source = {'path': channel_path}
-            channel_target = {'type': 'virtio', 'name': 'file'}
-        if char_type == "socket":
+            channel_type = char_type
+            channel_path = os.path.join(tmp_dir, char_type)
+        elif char_type == "socket":
             channel_type = 'unix'
-            channel_path = ("/tmp/%s" % char_type)
-            channel_source = {'mode': 'bind', 'path': channel_path}
-            channel_target = {'type': 'virtio', 'name': 'socket'}
-        if char_type == "pty":
+            channel_path = os.path.join(tmp_dir, char_type)
+            mode = 'bind'
+        elif char_type == "pty":
+            channel_type = char_type
             channel_path = ("/dev/pts/%s" % id)
-            channel_source = {'path': channel_path}
-            channel_target = {'type': 'virtio', 'name': 'pty'}
-
-        channel_alias = {'name': char_type}
-        channel_address = {'type': 'virtio-serial', 'controller': '0', 'bus': '0'}
-        channel_params = {'type_name': channel_type, 'source': channel_source,
-                          'target': channel_target, 'alias': channel_alias,
-                          'address': channel_address}
-        channelxml = channel.Channel.new_from_dict(channel_params)
-        logging.debug("Channel XML:\n%s", channelxml)
-
-        xmlf = open(channelxml.xml)
-        try:
-            xml_lines = xmlf.read()
-        finally:
-            xmlf.close()
-        return xml_lines
+        params = {'channel_type_name': channel_type,
+                  'source_path': channel_path,
+                  'source_mode': mode,
+                  'target_type': 'virtio',
+                  'target_name': char_type}
+        channel_xml = utlv.create_channel_xml(params, alias=True, address=True)
+        shutil.copyfile(channel_xml.xml, to_file)
 
     def hotplug_device(type, char_dev, id=0):
-        tmp_file = "/tmp/%s" % char_dev
+        tmp_file = os.path.join(tmp_dir, char_dev)
         if type == "qmp":
             char_add_opt = "chardev-add "
             dev_add_opt = "device_add virtserialport,chardev="
             if char_dev == "file":
-                char_add_opt += "file,path=/tmp/file,id=file"
+                char_add_opt += "file,path=%s,id=file" % tmp_file
                 dev_add_opt += "file,name=file,bus=virtio-serial0.0,id=file"
             elif char_dev == "socket":
-                char_add_opt += "socket,path=/tmp/socket,server,nowait,id=socket"
+                char_add_opt += "socket,path=%s,server,nowait,id=socket" % tmp_file
                 dev_add_opt += "socket,name=socket,bus=virtio-serial0.0,id=socket"
             elif char_dev == "pty":
                 char_add_opt += ("pty,path=/dev/pts/%s,id=pty" % id)
@@ -106,32 +99,29 @@ def run(test, params, env):
                 raise error.TestError('Failed to add device %s to %s. Result:\n %s'
                                       % (char_dev, vm_name, result))
         elif type == "attach":
+            xml_file = os.path.join(tmp_dir, "xml_%s" % char_dev)
             if char_dev in ["file", "socket"]:
-                xml_info = create_channel_xml(vm_name, char_dev)
+                prepare_channel_xml(xml_file, char_dev)
             elif char_dev == "pty":
-                xml_info = create_channel_xml(vm_name, char_dev, id)
-            f = open(xml_file, "w")
-            f.write(xml_info)
-            f.close()
-            if os.path.exists(tmp_file):
-                os.chmod(tmp_file, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+                prepare_channel_xml(xml_file, char_dev, id)
             result = virsh.attach_device(vm_name, xml_file)
         return result
 
     def dup_hotplug(type, char_dev, id, dup_charid=False, dup_devid=False, diff_devid=False):
+        tmp_file = os.path.join(tmp_dir, char_dev)
         if type == "qmp":
             char_add_opt = "chardev-add "
             dev_add_opt = "device_add virtserialport,chardev="
             if char_dev == "file":
                 if dup_charid:
-                    char_add_opt += "file,path=/tmp/file,id=file"
+                    char_add_opt += "file,path=%s,id=file" % tmp_file
                 if dup_devid:
                     dev_add_opt += "file,name=file,bus=virtio-serial0.0,id=file"
                 if diff_devid:
                     dev_add_opt += "file,name=file,bus=virtio-serial0.0,id=file1"
             elif char_dev == "socket":
                 if dup_charid:
-                    char_add_opt += "socket,path=/tmp/socket,server,nowait,id=socket"
+                    char_add_opt += "socket,path=%s,server,nowait,id=socket" % tmp_file
                 if dup_devid:
                     dev_add_opt += "socket,name=socket,bus=virtio-serial0.0,id=socket"
                 if diff_devid:
@@ -153,9 +143,8 @@ def run(test, params, env):
         return result
 
     def confirm_hotplug_result(char_dev, id=0):
-        tmp_file = "/tmp/%s" % char_dev
-        serial_file = "/dev/virtio-ports/%s" % char_dev
-
+        tmp_file = os.path.join(tmp_dir, char_dev)
+        serial_file = os.path.join("/dev/virtio-ports", char_dev)
         result = virsh.qemu_monitor_command(vm_name, "info qtree", "--hmp")
         h_o = result.stdout.strip()
         if not h_o.count("name = \"%s\"" % char_dev):
@@ -200,10 +189,11 @@ def run(test, params, env):
                                       % (char_dev, vm_name, result))
             result = virsh.qemu_monitor_command(vm_name, del_char_opt, "--hmp")
         elif type == "attach":
+            xml_file = os.path.join(tmp_dir, "xml_%s" % char_dev)
             result = virsh.detach_device(vm_name, xml_file)
 
     def confirm_unhotplug_result(char_dev):
-        serial_file = "/dev/virtio-ports/%s" % char_dev
+        serial_file = os.path.join("/dev/virtio-ports", char_dev)
         result = virsh.qemu_monitor_command(vm_name, "info qtree", "--hmp")
         uh_o = result.stdout.strip()
         if uh_o.count("chardev = \"%s\"" % char_dev):
@@ -270,5 +260,5 @@ def run(test, params, env):
                 confirm_unhotplug_result("pty")
     finally:
         vm_xml_backup.sync()
-        if os.path.exists(xml_file):
-            os.remove(xml_file)
+        if os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir)
