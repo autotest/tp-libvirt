@@ -417,7 +417,7 @@ def run(test, params, env):
                     if status_start != 0:
                         raise error.TestFail("Fail to start qemu-guest-agent")
                 if status_ps == 0 and not start_qemuga:
-                    cmd = "kill %s" % output_ps.strip().split()[1]
+                    cmd = "service qemu-guest-agent stop"
                     session.cmd(cmd, timeout=10)
             finally:
                 session.close()
