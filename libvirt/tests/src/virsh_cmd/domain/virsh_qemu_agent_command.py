@@ -6,7 +6,6 @@ from virttest import virsh
 from virttest import aexpect
 from virttest import remote
 from virttest import utils_libvirtd
-from virttest import libvirt_xml
 
 
 def reset_domain(vm, vm_state, needs_agent=False, guest_cpu_busy=False,
@@ -19,31 +18,12 @@ def reset_domain(vm, vm_state, needs_agent=False, guest_cpu_busy=False,
     """
     if vm.is_alive():
         vm.destroy()
-    vm_xml = libvirt_xml.VMXML()
-    vm_xml.new_from_dumpxml(vm.name)
     if needs_agent:
-        logging.debug("Attempting to set guest agent channel")
-        vm_xml.set_agent_channel(vm.name)
+        logging.debug("Attempting to prepare guest agent")
+        start_ga = vm_state != 'shut off'
+        vm.prepare_guest_agent(start=start_ga)
     if not vm_state == "shut off":
-        vm.start()
         session = vm.wait_for_login()
-        if needs_agent:
-            # Check if qemu-ga already started automatically
-            session = vm.wait_for_login()
-            cmd = "rpm -q qemu-guest-agent || yum install -y qemu-guest-agent"
-            stat_install = session.cmd_status(cmd, 300)
-            if stat_install != 0:
-                raise error.TestFail("Fail to install qemu-guest-agent, make "
-                                     "sure that you have usable repo in guest")
-
-            # Check if qemu-ga already started
-            stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
-            if stat_ps != 0:
-                session.cmd("qemu-ga -d")
-                # Check if the qemu-ga really started
-                stat_ps = session.cmd_status("ps aux |grep [q]emu-ga")
-                if stat_ps != 0:
-                    raise error.TestFail("Fail to run qemu-ga in guest")
         if guest_cpu_busy:
             shell_file = "/tmp/test.sh"
             cpu_detail_list = ['while true',
@@ -102,7 +82,6 @@ def run(test, params, env):
     cmd = params.get("agent_cmd", "")
     options = params.get("options", "")
     needs_agent = "yes" == params.get("needs_agent", "yes")
-    start_vm = "yes" == params.get("start_vm")
     status_error = "yes" == params.get("status_error", "no")
     if not status_error and options:
         option = options.split()[0]

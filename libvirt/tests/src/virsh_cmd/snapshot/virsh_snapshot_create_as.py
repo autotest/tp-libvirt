@@ -463,7 +463,7 @@ def run(test, params, env):
 
         # Start qemu-ga on guest if have --quiesce
         if unix_channel and options.find("quiesce") >= 0:
-            libvirt.set_guest_agent(vm)
+            vm.prepare_guest_agent()
             session = vm.wait_for_login()
             if start_ga == "no":
                 # The qemu-ga could be running and should be killed
@@ -486,7 +486,7 @@ def run(test, params, env):
             if vm.is_alive():
                 vm.destroy(gracefully=False)
             xml_inst = vm_xml.VMXML.new_from_dumpxml(vm_name)
-            xml_inst.remove_agent_channel(vm_name)
+            xml_inst.remove_agent_channels()
             vm.start()
 
         # Record the previous snapshot-list

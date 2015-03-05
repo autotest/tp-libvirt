@@ -150,7 +150,7 @@ def run(test, params, env):
             libvirt.set_vm_disk(vm, params, tmp_dir)
 
         if needs_agent:
-            libvirt.set_guest_agent(vm)
+            vm.prepare_guest_agent()
 
         # The first disk is supposed to include OS
         # We will perform blockcommit operation for it.
