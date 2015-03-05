@@ -58,10 +58,10 @@ def run(test, params, env):
                    "cut -d' ' -f4" % scsi_disk
         disk_path = utils.run(path_cmd).stdout.strip()
 
-        # Add qemu guest agent in guest xml
-        vm_xml.VMXML.set_agent_channel(vm_name)
-
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        # Add qemu guest agent in guest xml
+        vmxml.set_agent_channel()
+
         # Add scsi disk xml
         scsi_disk = Disk(type_name="block")
         scsi_disk.device = "lun"

@@ -23,7 +23,8 @@ def reset_domain(vm, vm_state, needs_agent=False, guest_cpu_busy=False,
     vm_xml.new_from_dumpxml(vm.name)
     if needs_agent:
         logging.debug("Attempting to set guest agent channel")
-        vm_xml.set_agent_channel(vm.name)
+        vm_xml.set_agent_channel()
+        vm_xml.sync()
     if not vm_state == "shut off":
         vm.start()
         session = vm.wait_for_login()

@@ -17,7 +17,7 @@ def reset_domain(vm, vm_state, needs_agent=False):
     vm_xml.set_vm_vcpus(vm.name, 4, 1)
     if needs_agent:
         logging.debug("Attempting to set guest agent channel")
-        vm_xml.set_agent_channel(vm.name)
+        vm_xml.set_agent_channel()
     if not vm_state == "shut off":
         vm.start()
         session = vm.wait_for_login()

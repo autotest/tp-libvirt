@@ -37,10 +37,12 @@ def run(test, params, env):
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     try:
         # Add or remove qemu-agent from guest before test
+        vmxml= xml_backup.copy()
         if agent:
-            vm_xml.VMXML.set_agent_channel(vm_name)
+            vmxml.set_agent_channel()
         else:
-            vm_xml.VMXML.remove_agent_channel(vm_name)
+            vmxml.remove_agent_channels()
+        vmxml.sync()
 
         virsh.start(vm_name)
         guest_session = vm.wait_for_login()
