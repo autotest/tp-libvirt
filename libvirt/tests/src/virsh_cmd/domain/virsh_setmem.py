@@ -224,7 +224,7 @@ def run(test, params, env):
         else:
             logging.error("Not find %s on host", BIOS_BIN)
         vmxml.set_pm_suspend(vm_name, "yes", "yes")
-        vmxml.set_agent_channel(vm_name)
+        vmxml.set_agent_channel()
         vm.start()
         if manipulate_action == "s4":
             need_mkswap = not vm.has_swap()

@@ -379,7 +379,7 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy()
         vmxml.set_vm_vcpus(vm_name, int(vcpu_max_num), int(vcpu_current_num))
-        vmxml.set_agent_channel(vm_name)
+        vmxml.set_agent_channel()
         vmxml.set_pm_suspend(vm_name, "yes", "yes")
         vm.start()
 

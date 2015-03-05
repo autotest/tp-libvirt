@@ -43,12 +43,14 @@ def run(test, params, env):
                                     " libvirt version.")
 
     try:
-
         # Add or remove qemu-agent from guest before test
+        vmxml = xml_backup.copy()
         if agent:
-            vm_xml.VMXML.set_agent_channel(vm_name)
+            vmxml.set_agent_channel()
         else:
-            vm_xml.VMXML.remove_agent_channel(vm_name)
+            vmxml.remove_agent_channels()
+        vmxml.sync()
+
         virsh.start(vm_name)
         guest_session = vm.wait_for_login()
         if agent:

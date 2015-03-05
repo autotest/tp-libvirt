@@ -105,9 +105,9 @@ def run(test, params, env):
                 pm_xml.mem_enabled = pm_enabled
                 pm_xml.disk_enabled = pm_enabled
             vmxml.pm = pm_xml
+        vmxml.set_agent_channel()
         vmxml.sync()
 
-        vm_xml.VMXML.set_agent_channel(vm_name)
         vm.start()
 
         # Create swap partition/file if nessesary.
