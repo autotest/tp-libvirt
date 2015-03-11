@@ -176,10 +176,14 @@ def run(test, params, env):
                 # Run a series of operations to check libvirtd status.
                 ret = virsh.dompmwakeup(vm_name, **virsh_dargs)
                 libvirt.check_exit_status(ret)
+                # Wait for vm is started
+                vm.wait_for_login()
                 ret = virsh.save(vm_name, savefile, **virsh_dargs)
                 libvirt.check_exit_status(ret)
                 ret = virsh.restore(savefile, **virsh_dargs)
                 libvirt.check_exit_status(ret)
+                # Wait for vm is started
+                vm.wait_for_login()
                 # run pmsuspend again
                 ret = virsh.dompmsuspend(vm_name, suspend_target, **virsh_dargs)
                 libvirt.check_exit_status(ret)
