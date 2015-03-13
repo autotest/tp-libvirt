@@ -58,7 +58,8 @@ def run(test, params, env):
     try:
         pvtest = utlv.PoolVolumeTest(test, params)
         pvtest.pre_pool(pool_name, pool_type, pool_target, emulated_img,
-                        emulated_size, pre_disk_vol=[volume_size],
+                        image_size=emulated_size,
+                        pre_disk_vol=[volume_size],
                         device_name=block_device)
 
         logging.debug("Current pools:\n%s",
