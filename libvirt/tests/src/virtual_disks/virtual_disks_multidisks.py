@@ -445,7 +445,7 @@ def run(test, params, env):
     if test_boot_console:
         if vm.is_dead():
             vm.start()
-        session = vm.wait_for_login()
+        vm.wait_for_login().close()
         # Setting console to kernel parameters
         vm.set_kernel_console("ttyS0", "115200")
         vm.shutdown()
