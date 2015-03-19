@@ -208,17 +208,6 @@ def execute_ttcp(vm, params):
         session2.close()
 
 
-def remove_os_boot(vm_name, boot_order):
-    """
-    Remove boot elements in os tag ofr order in devices.
-    """
-    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-    osxml = vmxml.os
-    osxml.boots = []
-    vmxml.os = osxml
-    vmxml.sync()
-
-
 def format_disk(vm, device, partsize):
     """
     Create a partition on given disk and check it.
@@ -287,14 +276,10 @@ def test_nic_group(vm, params):
     vm.destroy()
 
     boot_order = int(params.get("boot_order", 0))
-    xmlfile = utlv.create_hostdev_xml(pci_id, boot_order)
     prepare_devices(pci_id, device_type)
     try:
-        virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
-                            flagstr="--config", debug=True,
-                            ignore_status=False)
         if boot_order:
-            remove_os_boot(vm.name, boot_order)
+            utlv.alter_boot_order(vm.name, pci_id, boot_order)
         logging.debug("VMXML with disk boot:\n%s", virsh.dumpxml(vm.name))
         vm.start()
     except (error.CmdError, virt_vm.VMStartError), detail:
@@ -309,10 +294,9 @@ def test_nic_group(vm, params):
             raise error.TestFail("Login vm successfully, but not expected.")
         except remote.LoginTimeoutError:
             logging.debug("Expected failure.")
-            return
-        finally:
             vm.destroy(gracefully=False)
             cleanup_devices(pci_id, device_type)
+            return
 
     # Get devices in vm again after attaching
     after_pci_nics = vm.get_pci_devices("Ethernet")
@@ -362,14 +346,10 @@ def test_fibre_group(vm, params):
     vm.destroy()
 
     boot_order = int(params.get("boot_order", 0))
-    xmlfile = utlv.create_hostdev_xml(pci_id, boot_order)
     prepare_devices(pci_id, device_type)
     try:
-        virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
-                            flagstr="--config", debug=True,
-                            ignore_status=False)
         if boot_order:
-            remove_os_boot(vm.name, boot_order)
+            utlv.alter_boot_order(vm.name, pci_id, boot_order)
         logging.debug("VMXML with disk boot:\n%s", virsh.dumpxml(vm.name))
         vm.start()
     except (error.CmdError, virt_vm.VMStartError), detail:
@@ -384,10 +364,9 @@ def test_fibre_group(vm, params):
             raise error.TestFail("Login vm successfully, but not expected.")
         except remote.LoginTimeoutError:
             logging.debug("Expected failure.")
-            return
-        finally:
             vm.destroy(gracefully=False)
             cleanup_devices(pci_id, device_type)
+            return
 
     # Get devices in vm again after attaching
     after_pci_fibres = vm.get_pci_devices("Fibre")
