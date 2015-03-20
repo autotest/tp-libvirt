@@ -187,14 +187,13 @@ def run(test, params, env):
                                     % (cpu_list, host_cpu_count))
 
         # Find the alive cpus list
-        cpus_list = utils.run("x=$(cat /proc/cpuinfo |grep processor|cut -d: -f2);echo $x").stdout.strip()
-        cpus_int_list = [int(y) for y in cpus_list.split()]
-        logging.info("Active cpus in host are %s", cpus_int_list)
+        cpus_list = utils.cpu_online_map()
+        logging.info("Active cpus in host are %s", cpus_list)
 
         # Run test case
         for vcpu in range(int(guest_vcpu_count)):
             if cpu_list == "x":
-                for cpu in cpus_int_list:
+                for cpu in cpus_list:
                     left_cpus = "0-%s,^%s" % (cpu_max, cpu)
                     if offline_pin:
                         offline_pin_and_check(vm, vcpu, str(cpu))
