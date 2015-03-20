@@ -169,6 +169,50 @@ def run(test, params, env):
             return False
         return status
 
+    def edit_rng(vm_name):
+        """
+        Modify rng device in xml.
+        """
+        rng_model = params.get("rng_model")
+        rng_backend = params.get("rng_backend")
+        backend_model = params.get("backend_model")
+        backend_type = params.get("backend_type")
+        edit_error = "yes" == params.get("edit_error", "no")
+        edit_cmd = []
+        del_cmd = r":g/<rng.*<\/rng>/d"
+        edit_cmd.append(del_cmd)
+        if backend_type:
+            bc_type = "type='%s'" % backend_type
+        else:
+            bc_type = ""
+        update_cmd = (r":/<devices>/s/$/<rng model='%s'>"
+                      "<backend model='%s' %s>%s<\/backend><\/rng>"
+                      % (rng_model, backend_model,
+                         bc_type, rng_backend))
+        edit_cmd.append(update_cmd)
+        status = exec_edit(vm_name, edit_cmd)
+        vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        if not libvirtd.is_running():
+            logging.error("libvirtd isn't running")
+            return False
+        if not status and not edit_error:
+            logging.error("Expect success, but failure")
+            return False
+        if edit_error and status:
+            logging.error("Expect error, but success")
+            return False
+        # Destroy domain and start it to check if vm can be started
+        start_error = "yes" == params.get("start_error", "no")
+        vm.destroy()
+        ret = virsh.start(vm_name, ignore_status=True)
+        if start_error and not ret.exit_status:
+            logging.error("Vm started unexpectedly")
+            return False
+        if not start_error and ret.exit_status:
+            logging.error("Vm failed to start")
+            return False
+        return True
+
     # run test case
     if libvirtd_stat == "off":
         libvirtd.stop()
@@ -189,6 +233,8 @@ def run(test, params, env):
             status = edit_memory(vm_ref)
         elif edit_element == "iface":
             status = edit_iface(vm_name)
+        elif edit_element == "rng":
+            status = edit_rng(vm_name)
         else:
             raise error.TestNAError("No edit method for %s" % edit_element)
         # check status_error
