@@ -130,8 +130,8 @@ def run(test, params, env):
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()
 
-    # Get the host cpu count
-    host_cpu_count = utils.count_cpus()
+    # Get the host cpu list
+    host_cpus_list = utils.cpu_online_map()
 
     # Run test case for 5 iterations default can be changed in subtests.cfg
     # file
@@ -153,8 +153,8 @@ def run(test, params, env):
 
         elif status_error == "no":
             # Run the testcase for each cpu to get the cpu stats
-            for cpu in range(host_cpu_count):
-                option = "--cpu %d" % cpu
+            for cpu in host_cpus_list:
+                option = "--cpu %s" % cpu
                 output = virsh.nodecpustats(ignore_status=True, option=option)
                 status = output.exit_status
 
@@ -166,8 +166,8 @@ def run(test, params, env):
                                          "not succeeded" % option)
 
             # Run the test case for each cpu to get the cpu stats in percentage
-            for cpu in range(host_cpu_count):
-                option = "--cpu %d --percent" % cpu
+            for cpu in host_cpus_list:
+                option = "--cpu %s --percent" % cpu
                 output = virsh.nodecpustats(ignore_status=True, option=option)
                 status = output.exit_status
 
@@ -185,7 +185,7 @@ def run(test, params, env):
 
             if status == 0:
                 actual_value = parse_output(output)
-                virsh_check_nodecpustats(actual_value, host_cpu_count)
+                virsh_check_nodecpustats(actual_value, len(host_cpus_list))
             else:
                 raise error.TestFail("Command 'virsh nodecpustats %s'"
                                      " not succeeded" % option)
