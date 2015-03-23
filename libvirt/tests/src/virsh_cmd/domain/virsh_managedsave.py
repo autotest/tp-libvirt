@@ -141,7 +141,7 @@ def run(test, params, env):
         for i in range(int(guests)):
             dst_vm = "%s_%s" % (vm_name, i)
             utils_libguestfs.virt_clone_cmd(vm_name, dst_vm,
-                                            True, timeout)
+                                            True, timeout=float(timeout))
             virsh.start(dst_vm)
 
         # Wait 10 seconds for vm to start
@@ -153,12 +153,12 @@ def run(test, params, env):
         # add a time wait here.
 
         def wait_func():
-            return not utils.run("service libvirt-guests status"
+            return not utils.run("systemctl status libvirt-guests"
                                  " | grep 'Resuming guest'",
                                  ignore_status=True).exit_status
 
         utils_misc.wait_for(wait_func, 5)
-        ret = utils.run("service libvirt-guests status",
+        ret = utils.run("systemctl status libvirt-guests",
                         ignore_status=True)
         logging.info("status output: %s", ret.stdout)
         pattern = r'(.+ \d\d:\d\d:\d\d).+: Resuming guest.+done'
