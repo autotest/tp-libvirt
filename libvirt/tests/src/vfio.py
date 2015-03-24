@@ -280,6 +280,11 @@ def test_nic_group(vm, params):
     try:
         if boot_order:
             utlv.alter_boot_order(vm.name, pci_id, boot_order)
+        else:
+            xmlfile = utlv.create_hostdev_xml(pci_id)
+            virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
+                                flagstr="--config", debug=True,
+                                ignore_status=False)
         logging.debug("VMXML with disk boot:\n%s", virsh.dumpxml(vm.name))
         vm.start()
     except (error.CmdError, virt_vm.VMStartError), detail:
@@ -333,6 +338,7 @@ def test_fibre_group(vm, params):
     device_type = "Fibre"
     if pci_id.count("EXAMPLE"):
         raise error.TestNAError("Invalid pci device id.")
+    disk_check = "yes" == params.get("fibre_pci_disk_check", "no")
 
     # Login vm to get disks before attaching pci device.
     if vm.is_dead():
@@ -350,6 +356,11 @@ def test_fibre_group(vm, params):
     try:
         if boot_order:
             utlv.alter_boot_order(vm.name, pci_id, boot_order)
+        else:
+            xmlfile = utlv.create_hostdev_xml(pci_id)
+            virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
+                                flagstr="--config", debug=True,
+                                ignore_status=False)
         logging.debug("VMXML with disk boot:\n%s", virsh.dumpxml(vm.name))
         vm.start()
     except (error.CmdError, virt_vm.VMStartError), detail:
@@ -378,11 +389,14 @@ def test_fibre_group(vm, params):
     new_pci = "".join(list(set(before_pci_fibres) ^ set(after_pci_fibres)))
     new_disk = "".join(list(set(before_disks) ^ set(after_disks)))
     try:
-        if not new_pci or not new_disk:
+        if not new_pci:
             raise error.TestFail("Cannot find attached host device in vm.")
-        # Config disk for new disk device
-        format_disk(vm, new_disk, "10M")
-        # Mount and use the partition to verify it
+        if disk_check:
+            after_disks = vm.get_disks()
+            if not new_disk:
+                raise error.TestFail("Cannot find attached host device in vm.")
+            # Config disk for new disk device
+            format_disk(vm, new_disk, "10M")
     finally:
         if vm.is_alive():
             vm.destroy()
@@ -452,6 +466,7 @@ def test_nic_fibre_group(vm, params):
         raise error.TestNAError("Invalid Ethernet pci device id.")
     if fibre_pci_id.count("EXAMPLE"):
         raise error.TestNAError("Invalid Fibre pci device id.")
+    disk_check = "yes" == params.get("fibre_pci_disk_check", "no")
 
     nic_ip = params.get("nic_pci_ip")
     nic_mask = params.get("nic_pci_mask", "255.255.0.0")
@@ -519,12 +534,13 @@ def test_nic_fibre_group(vm, params):
         # Check interface
         execute_ttcp(vm, params)
 
-        if not new_pci_fibre or not new_disk:
+        if not new_pci_fibre:
             raise error.TestFail("Cannot find attached host device in vm.")
-        # Config disk for new disk device
-        format_disk(vm, new_disk, "10M")
-        # Mount and use the partition to verify it
-
+        if disk_check:
+            if not new_disk:
+                raise error.TestFail("Cannot find attached host device in vm.")
+            # Config disk for new disk device
+            format_disk(vm, new_disk, "10M")
     finally:
         if vm.is_alive():
             vm.destroy()
@@ -562,11 +578,10 @@ def test_nic_single(vm, params):
                   before_interfaces)
     vm.destroy()
 
-    xmlfile = utlv.create_hostdev_xml(pci_id)
-
     # Add only this device to corresponding iommu group
     prepare_devices(pci_id, device_type, only=True)
     try:
+        xmlfile = utlv.create_hostdev_xml(pci_id)
         virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
                             flagstr="--config", debug=True,
                             ignore_status=False)
