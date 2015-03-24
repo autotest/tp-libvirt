@@ -436,6 +436,63 @@ class SerialPipe(SerialFile):
         return super(SerialPipe, self).init_device(index)  # stub for now
 
 
+class Console(AttachDeviceBase):
+
+    """
+    Simple console device
+    """
+
+    def init_device(self, index):
+        consoleclass = self.test_params.vmxml.get_device_class('console')
+        console_device = consoleclass(type_name=self.type,
+                                      virsh_instance=self.test_params.virsh)
+        # Assume default domain console device on port 0 and index starts at 0
+        console_device.add_target(type=self.targettype, port=str(index + 1))
+        return console_device
+
+    def function(self, index):
+        return not self.test_params.status_error
+
+
+class Channel(AttachDeviceBase):
+
+    """
+    Simple channel device
+    """
+
+    def init_device(self, index):
+        channelclass = self.test_params.vmxml.get_device_class('channel')
+        channel_device = channelclass(type_name=self.type,
+                                      virsh_instance=self.test_params.virsh)
+        if hasattr(self, 'sourcemode') and hasattr(self, 'sourcepath'):
+            channel_device.add_source(mode=self.sourcemode,
+                                      path=self.sourcepath)
+        if hasattr(self, 'targettype') and hasattr(self, 'targetname'):
+            channel_device.add_target(type=self.targettype,
+                                      name=self.targetname)
+        return channel_device
+
+    def function(self, index):
+        return not self.test_params.status_error
+
+
+class Controller(AttachDeviceBase):
+
+    """
+    Simple controller device
+    """
+
+    def init_device(self, index):
+        controllerclass = self.test_params.vmxml.get_device_class('controller')
+        controller_device = controllerclass(type_name=self.type,
+                                            virsh_instance=self.test_params.virsh)
+        controller_device.model = self.model
+        return controller_device
+
+    def function(self, index):
+        return not self.test_params.status_error
+
+
 class VirtualDiskBasic(AttachDeviceBase):
 
     """
@@ -695,7 +752,7 @@ def analyze_results(test_params, operational_results=None,
 
 def run(test, params, env):
     """
-    Test virsh {at|de}tach-interface command.
+    Test virsh {at|de}tach-device command.
 
     1) Prepare test environment and its parameters
     2) Operate virsh on one or more devices
