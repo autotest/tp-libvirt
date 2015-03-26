@@ -2,10 +2,10 @@ import logging
 from virttest import remote
 from autotest.client.shared import error
 from virttest import virsh
-from virttest import aexpect
 from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):
@@ -34,30 +34,6 @@ def run(test, params, env):
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     libvirtd = utils_libvirtd.Libvirtd()
 
-    def exec_edit(source, edit_cmd):
-        """
-        Execute edit command.
-
-        :param source : virsh edit's option.
-        :param edit_cmd: Edit command list to execute.
-        :return: True if edit successed, False if edit failed.
-        """
-        logging.info("Trying to edit xml with cmd %s", edit_cmd)
-        session = aexpect.ShellSession("sudo -s")
-        try:
-            session.sendline("virsh -c %s edit %s" % (vm.connect_uri, source))
-            for cmd in edit_cmd:
-                session.sendline(cmd)
-            session.send('\x1b')
-            session.send('ZZ')
-            remote.handle_prompts(session, None, None, r"[\#\$]\s*$", debug=True)
-            session.close()
-            return True
-        except Exception, e:
-            session.close()
-            logging.error("Error occured: %s", e)
-            return False
-
     def edit_vcpu(source):
         """
         Modify vm's cpu information by virsh edit command.
@@ -77,7 +53,7 @@ def run(test, params, env):
         dic_mode = {
             "edit": r":%s /[0-9]*<\/vcpu>/" + expected_vcpu + r"<\/vcpu>",
             "recover": r":%s /[0-9]*<\/vcpu>/" + original_vcpu + r"<\/vcpu>"}
-        status = exec_edit(source, [dic_mode["edit"]])
+        status = libvirt.exec_virsh_edit(source, [dic_mode["edit"]])
         logging.info(status)
         if not status:
             return status
@@ -91,7 +67,7 @@ def run(test, params, env):
         new_vcpus = str(vm_xml.VMXML.new_from_inactive_dumpxml(vm_name).vcpu)
         # Recover cpuinfo
         # Use name rather than source, since source could be domid
-        status = exec_edit(vm_name, [dic_mode["recover"]])
+        status = libvirt.exec_virsh_edit(vm_name, [dic_mode["recover"]])
         if status and new_vcpus != expected_vcpu:
             return False
         return status
@@ -106,11 +82,11 @@ def run(test, params, env):
         if iface_type:
             edit_cmd = (r":%s /<interface type=.*>/<interface type='{0}'>/"
                         "".format(iface_type))
-            status = exec_edit(vm_name, [edit_cmd])
+            status = libvirt.exec_virsh_edit(vm_name, [edit_cmd])
         elif iface_model:
             edit_cmd = (r":/<interface/,/<\/interface>/s/<model type=.*\/>/"
                         "<model type='%s'\/>/" % iface_model)
-            status = exec_edit(vm_name, [edit_cmd])
+            status = libvirt.exec_virsh_edit(vm_name, [edit_cmd])
 
         if not status and not edit_error:
             logging.error("Expect success, but failure")
@@ -154,7 +130,7 @@ def run(test, params, env):
             logging.error("Fail to translate %s to KiB", mem_value + mem_unit)
             return False
         logging.debug("Expected max memory is %s", expected_mem)
-        status = exec_edit(source, edit_cmd)
+        status = libvirt.exec_virsh_edit(source, edit_cmd)
         try:
             if status:
                 # Restart vm to check memory value
@@ -190,7 +166,7 @@ def run(test, params, env):
                       % (rng_model, backend_model,
                          bc_type, rng_backend))
         edit_cmd.append(update_cmd)
-        status = exec_edit(vm_name, edit_cmd)
+        status = libvirt.exec_virsh_edit(vm_name, edit_cmd)
         vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         if not libvirtd.is_running():
             logging.error("libvirtd isn't running")
