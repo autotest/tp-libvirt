@@ -42,7 +42,6 @@ def run(test, params, env):
                                  "%s" % (exp_cpu_count, xml_cpu_count))
 
         # Check the arch of guest supported.
-        xmltreefile = cap_xml.__dict_get__('xml')
         guest_capa = cap_xml.get_guest_capabilities()
         logging.debug(guest_capa)
         try:
@@ -54,7 +53,7 @@ def run(test, params, env):
         else:
             cmd = img + " --cpu ? | grep qemu"
         cmd_result = utils.run(cmd, ignore_status=True)
-        for guest in xmltreefile.findall('guest'):
+        for guest in cap_xml.xmltreefile.findall('guest'):
             guest_wordsize = guest.find('arch').find('wordsize').text
             logging.debug("Arch of guest supported (capabilities_xml):%s",
                           guest_wordsize)
@@ -63,7 +62,7 @@ def run(test, params, env):
                                      "of guest to support!")
 
         # Check the type of hypervisor.
-        first_guest = xmltreefile.findall('guest')[0]
+        first_guest = cap_xml.xmltreefile.findall('guest')[0]
         first_domain = first_guest.find('arch').findall('domain')[0]
         guest_domain_type = first_domain.get('type')
         logging.debug("Hypervisor (capabilities_xml):%s", guest_domain_type)
