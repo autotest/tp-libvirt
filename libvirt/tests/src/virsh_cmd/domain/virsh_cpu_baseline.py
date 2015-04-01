@@ -83,7 +83,6 @@ def run(test, params, env):
     result = virsh.cpu_baseline(cpu_ref, ignore_status=True, debug=True)
     status = result.exit_status
     output = result.stdout.strip()
-    err = result.stderr.strip()
     if os.path.exists(cpu_xmlfile):
         os.remove(cpu_xmlfile)
 
@@ -91,8 +90,7 @@ def run(test, params, env):
     if status_error:
         if status == 0:
             raise error.TestFail("Run successfully with wrong command!")
-        if err == "":
-            raise error.TestFail("The wrong command has no error outputed!")
+        logging.debug("Command fail as expected")
     else:
         if status != 0:
             raise error.TestFail("Run failed with right command")
