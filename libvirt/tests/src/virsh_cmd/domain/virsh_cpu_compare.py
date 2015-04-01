@@ -89,6 +89,10 @@ def run(test, params, env):
     try:
         # Prepare VM cpu feature if necessary
         if modify_target in ['feature_name', 'feature_policy', 'delete']:
+            if not vmxml.get('cpu'):
+                new_cpu = vm_xml.VMCPUXML()
+                new_cpu['model'] = "core2duo"
+                vmxml['cpu'] = new_cpu
             if len(vmxml['cpu'].get_feature_list()) == 0:
                 # Add a host feature to VM for testing
                 vmxml_cpu = vmxml['cpu'].copy()
@@ -105,6 +109,7 @@ def run(test, params, env):
             cpu_compare_xml.xmltreefile.write(cpu_compare_xml_f)
         cpu_compare_xml_f.seek(0)
         logging.debug("CPU description XML:\n%s", cpu_compare_xml_f.read())
+        cpu_compare_xml_f.close()
 
         # Expected possible result msg patterns and exit status
         msg_patterns = ""
