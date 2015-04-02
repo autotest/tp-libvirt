@@ -183,7 +183,7 @@ def run(test, params, env):
         else:
             # Create a new pool
             libv_pvt.pre_pool(pool_name, pool_type, pool_target,
-                              emulated_image, emulated_image_size)
+                              emulated_image, image_size=emulated_image_size)
             pool_info = libv_pool.pool_info(pool_name)
             for key in pool_info:
                 logging.debug("Pool info: %s = %s", key, pool_info[key])
