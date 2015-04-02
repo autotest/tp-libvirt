@@ -50,7 +50,7 @@ def run(test, params, env):
                         if target_name.startswith("vd"):
                             if added_parts[i].startswith("vd"):
                                 attached = True
-                        elif target_name.startswith("hd"):
+                        elif target_name.startswith("hd") or target_name.startswith("sd"):
                             if added_parts[i].startswith("sd"):
                                 attached = True
                     elif device == "cdrom":
