@@ -158,6 +158,11 @@ def run(test, params, env):
     check_vol_size = "yes" == params.get("check_vol_size", "yes")
     status_error = "yes" == params.get("status_error", "no")
 
+    if not libvirt_version.version_compare(1, 0, 0):
+        if "--allocate" in resize_option:
+            raise error.TestNAError("'--allocate' flag is not supported in"
+                                    " current libvirt version.")
+
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
     unpri_user = params.get('unprivileged_user')
@@ -173,17 +178,13 @@ def run(test, params, env):
     libv_pvt = libvirt.PoolVolumeTest(test, params)
     try:
         libv_pool = libvirt_storage.StoragePool()
-        pool_rename_times = 0
-        # Rename pool if given name pool exist, the max rename times is 5
-        while libv_pool.pool_exists(pool_name) and pool_rename_times < 5:
-            logging.debug("Pool '%s' already exist.", pool_name)
-            pool_name = pool_name + "_t"
-            logging.debug("Using a new name '%s' to define pool.", pool_name)
-            pool_rename_times += 1
+        # Raise error if given name pool already exist
+        if libv_pool.pool_exists(pool_name):
+            raise error.TestError("Pool '%s' already exist", pool_name)
         else:
             # Create a new pool
             libv_pvt.pre_pool(pool_name, pool_type, pool_target,
-                              emulated_image, emulated_image_size)
+                              emulated_image, image_size=emulated_image_size)
             pool_info = libv_pool.pool_info(pool_name)
             for key in pool_info:
                 logging.debug("Pool info: %s = %s", key, pool_info[key])

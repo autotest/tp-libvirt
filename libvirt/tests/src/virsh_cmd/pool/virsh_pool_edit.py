@@ -8,6 +8,7 @@ from virttest import remote
 from virttest import aexpect
 from virttest.libvirt_xml import pool_xml
 from virttest.utils_test import libvirt
+from provider import libvirt_version
 
 
 def edit_pool(pool, edit_cmd):
@@ -91,6 +92,12 @@ def run(test, params, env):
     source_path = params.get("pool_source_path", "/")
     emulated_image = params.get("emulated_image", "emulated_image_disk")
     edit_target = params.get("edit_target", "target_path")
+
+    if not libvirt_version.version_compare(1, 0, 0):
+        if pool_type == "gluster":
+            raise error.TestNAError("Gluster pool is not supported in current"
+                                    " libvirt version.")
+
     redefine_pool_flag = False
     pool = pool_name
     if pool_ref == "uuid":

@@ -7,6 +7,7 @@ from virttest import xml_utils
 from virttest import libvirt_storage
 from virttest import libvirt_xml
 from virttest.utils_test import libvirt as utlv
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -29,6 +30,11 @@ def run(test, params, env):
     pool_target = params.get("pool_create_target", "pool_target")
     duplicate_element = params.get("pool_create_duplicate_element", "")
     new_pool_name = params.get("new_pool_create_name")
+
+    if not libvirt_version.version_compare(1, 0, 0):
+        if pool_type == "gluster":
+            raise error.TestNAError("Gluster pool is not supported in current"
+                                    " libvirt version.")
 
     if "/PATH/TO/POOL.XML" in pool_xml_f:
         raise error.TestNAError("Please replace %s with valid pool xml file" %
