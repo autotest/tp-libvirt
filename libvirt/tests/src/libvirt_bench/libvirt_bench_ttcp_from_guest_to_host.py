@@ -28,7 +28,7 @@ def run(test, params, env):
         if status:
             raise error.TestNAError("Not find ttcp command on guest.")
     # Get parameters from params.
-    timeout = int(params.get("LB_ttcp_timeout", "600"))
+    timeout = int(params.get("LB_ttcp_timeout", "300"))
     ttcp_server_command = params.get("LB_ttcp_server_command",
                                      "ttcp -s -r -v -D -p5015")
     ttcp_client_command = params.get("LB_ttcp_client_command",
@@ -54,7 +54,7 @@ def run(test, params, env):
                         return False
                     return True
 
-                if not utils_misc.wait_for(_ttcp_good, timeout=5):
+                if not utils_misc.wait_for(_ttcp_good, timeout=60):
                     status, output = session.cmd_status_output(cmd)
                     if status:
                         raise error.TestFail("Failed to run ttcp command on guest.\n"
