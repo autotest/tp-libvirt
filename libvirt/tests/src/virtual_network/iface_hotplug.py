@@ -126,11 +126,12 @@ def run(test, params, env):
             # Restart libvirtd service
             if restart_libvirtd:
                 libvirtd.restart()
+                vm.cleanup_serial_console()
 
             # Start the domain if needed
             if vm.is_dead():
                 vm.start()
-            session = vm.wait_for_login()
+            session = vm.wait_for_serial_login()
 
             # Check if interface was attached
             for iface in iface_list:
