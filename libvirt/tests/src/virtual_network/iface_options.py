@@ -413,6 +413,9 @@ def run(test, params, env):
                                     " in this libvirt version")
 
     if unprivileged_user:
+        if not libvirt_version.version_compare(1, 1, 1):
+            raise error.TestNAError("qemu-bridge-helper not supported"
+                                    " on this host")
         virsh_dargs["unprivileged_user"] = unprivileged_user
         # Create unprivileged user if needed
         cmd = ("grep {0} /etc/passwd || "
