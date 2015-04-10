@@ -210,13 +210,13 @@ def run(test, params, env):
         Test for qemu-kvm command line options
         """
         cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
-        if test_vhost_net:
-            cmd += " | grep 'vhost=on'"
         ret = utils.run(cmd)
-        if ret.exit_status:
-            raise error.TestFail("Can't parse qemu-kvm command line")
-
         logging.debug("Command line %s", ret.stdout)
+        if test_vhost_net:
+            if not ret.stdout.count("vhost=on") and not rm_vhost_driver:
+                raise error.TestFail("Can't see vhost options in"
+                                     " qemu-kvm command line")
+
         if iface_model == "virtio":
             model_option = "device virtio-net-pci"
         else:
@@ -386,6 +386,7 @@ def run(test, params, env):
     update_device = "yes" == params.get("update_iface_device", "no")
     additional_guest = "yes" == params.get("additional_guest", "no")
     serial_login = "yes" == params.get("serial_login", "no")
+    rm_vhost_driver = "yes" == params.get("rm_vhost_driver", "no")
     test_option_cmd = "yes" == params.get(
                       "test_iface_option_cmd", "no")
     test_option_xml = "yes" == params.get(
@@ -455,14 +456,17 @@ def run(test, params, env):
             # Edit the interface xml.
             if change_option:
                 modify_iface_xml(update=False)
+
             # Check vhost driver.
-            if test_vhost_net:
-                if os.path.exists("/dev/vhost-net"):
-                    cmd = ("modprobe -r {0}; lsmod | "
-                           "grep {0}".format("vhost_net"))
-                    if not utils.system(cmd, ignore_status=True):
-                        raise error.TestError("Can't remove "
-                                              "vhost_net driver")
+            if rm_vhost_driver:
+                cmd = ("modprobe -r {0}; lsmod | "
+                       "grep {0}".format("vhost_net"))
+                if not utils.system(cmd, ignore_status=True):
+                    raise error.TestError("Can't remove vhost_net driver")
+            else:
+                # Load vhost_net driver by default
+                cmd = "modprobe vhost_net"
+                utils.system(cmd)
 
             # Attach a interface when vm is shutoff
             if attach_device == 'config':
@@ -506,11 +510,6 @@ def run(test, params, env):
                     session = vm.wait_for_login()
             if start_error:
                 raise error.TestFail("VM started unexpectedly")
-
-            if test_vhost_net:
-                if utils.system("lsmod | grep vhost_net", ignore_status=True):
-                    raise error.TestFail("vhost_net module can't be"
-                                         " loaded automatically")
 
             # Attach a interface when vm is running
             if attach_device == 'live':
