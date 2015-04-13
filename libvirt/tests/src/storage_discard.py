@@ -5,6 +5,7 @@ Test module for Storage Discard.
 import re
 import os
 import logging
+import time
 from autotest.client import utils, lv_utils
 from autotest.client.shared import error
 from virttest.libvirt_xml import vm_xml, xcepts
@@ -74,7 +75,7 @@ def create_volume(device, vgname="vgthin", lvname="lvthin"):
     iscsi service if it is None.
     """
     # Create volume group
-    lv_utils.vg_create(vgname, device)
+    lv_utils.vg_create(vgname, device, force=True)
     # Create thin volume
     thinpool, thinlv = lv_utils.thin_lv_create(vgname, thinlv_name=lvname)
     logging.debug("Created thin volume successfully.")
@@ -150,13 +151,13 @@ def sig_delta(size1, size2, tolerable_shift=0.8):
     """
     To verfiy whether two size have significant shift.
     """
-    s1 = int(float(size1))
-    s2 = int(float(size2))
+    s1 = float(size1)
+    s2 = float(size2)
     if int(s2) == 0:
-        s2 += 1
+        s2 = 1.0
     if int(s1) == 0:
-        s1 += 1
-    return ((abs(s1 - s2) / s2) > tolerable_shift)
+        s1 = 1.0
+    return (abs(s1 - s2) / abs(s1 + s2) > tolerable_shift)
 
 
 def do_fstrim(fstrim_type, vm, status_error=False):
@@ -223,6 +224,9 @@ def run(test, params, env):
     disk_type = params.get("disk_type", "file")
     discard_device = params.get("discard_device", "/DEV/EXAMPLE")
     fstrim_type = params.get("fstrim_type", "fstrim_cmd")
+    tolerable_shift = float(params.get("fstrim_tolerable_shift", 0.8))
+    # Whether to create iscsi device for test
+    create_iscsi = True
     try:
         if disk_type == "file":
             device_dir = data_dir.get_tmp_dir()
@@ -233,10 +237,10 @@ def run(test, params, env):
             device_path, _ = qs.create(params)
         else:
             if not discard_device.count("/DEV/EXAMPLE"):
-                device_path = discard_device
+                create_iscsi = False
             else:
                 discard_device = create_iscsi_device()
-                device_path = create_volume(discard_device)
+            device_path = create_volume(discard_device)
 
         discard_type = params.get("discard_type", "ignore")
         target_bus = params.get("storage_target_bus", "virtio")
@@ -279,6 +283,8 @@ def run(test, params, env):
                                           lvname="lvthin")
         logging.debug("Disk size after used:%s", bf_fstrim_cpy)
         do_fstrim(fstrim_type, new_vm, status_error)
+        # Wait a given time to avoid mistake
+        time.sleep(10)
         af_fstrim_cpy = get_disk_capacity(disk_type, imagefile=device_path,
                                           lvname="lvthin")
         logging.debug("\nBefore occupying disk:%s\n"
@@ -287,11 +293,12 @@ def run(test, params, env):
                       bf_cpy, bf_fstrim_cpy, af_fstrim_cpy)
         # Check results
         if fstrim_type in ["fstrim_cmd", "qemu-guest-agent"]:
-            if not sig_delta(bf_fstrim_cpy, af_fstrim_cpy) and \
-                    not status_error:
+            if not sig_delta(bf_fstrim_cpy, af_fstrim_cpy,
+                             tolerable_shift) and not status_error:
                 raise error.TestFail("Manual 'fstrims' didn't work.")
         elif fstrim_type == "mount_with_discard":
-            if sig_delta(bf_cpy, bf_fstrim_cpy) and not status_error:
+            if not sig_delta(bf_fstrim_cpy, af_fstrim_cpy,
+                             tolerable_shift) and not status_error:
                 raise error.TestFail("Automatical 'fstrims' didn't work.")
     finally:
         if new_vm.is_alive():
@@ -299,8 +306,14 @@ def run(test, params, env):
         new_vm.undefine()
         if disk_type == "block":
             try:
+                lv_utils.lv_remove("vgthin", "lvthin")
+            except error.TestError, detail:
+                logging.debug(str(detail))
+            try:
                 lv_utils.vg_remove("vgthin")
             except error.TestError, detail:
                 logging.debug(str(detail))
             utils.run("pvremove -f %s" % discard_device, ignore_status=True)
-            utlv.setup_or_cleanup_iscsi(is_setup=False)
+            # Didn't provide iscsi device
+            if create_iscsi:
+                utlv.setup_or_cleanup_iscsi(is_setup=False)
