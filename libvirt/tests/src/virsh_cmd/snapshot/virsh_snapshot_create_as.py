@@ -580,6 +580,7 @@ def run(test, params, env):
 
         if disk_src_protocol == 'gluster':
             libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
+            libvirtd.restart()
 
         # rm bad disks
         if bad_disk is not None:
