@@ -1,7 +1,7 @@
 import re
 import logging
 from autotest.client.shared import error
-from virttest import libvirt_vm
+from virttest import libvirt_vm, virt_vm, aexpect
 from virttest import virsh
 from virttest import remote
 from virttest import utils_libvirtd
@@ -37,7 +37,13 @@ def run(test, params, env):
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     try:
         # Add or remove qemu-agent from guest before test
-        vm.prepare_guest_agent(channel=agent, start=agent)
+        try:
+            vm.prepare_guest_agent(channel=agent, start=agent)
+        except virt_vm.VMError, e:
+            logging.debug(e)
+            # qemu-guest-agent is not available on REHL5
+            raise error.TestNAError("qemu-guest-agent package is not available")
+
         if pre_domian_status == "shutoff":
             virsh.destroy(vm_name)
         if libvirtd == "off":
@@ -69,9 +75,8 @@ def run(test, params, env):
                 status, output = session.cmd_status_output(command,
                                                            internal_timeout=5)
                 session.close()
-            # FIXME: Catch specific exception
-            except Exception, detail:
-                logging.error("Exception: %s", str(detail))
+            except (remote.LoginError, error.CmdError, aexpect.ShellError), e:
+                logging.error("Exception: %s", str(e))
                 status = -1
         if vm_ref != "remote_name":
             vm_ref = "%s %s" % (vm_ref, extra)
