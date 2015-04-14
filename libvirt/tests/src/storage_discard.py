@@ -74,7 +74,7 @@ def create_volume(device, vgname="vgthin", lvname="lvthin"):
     iscsi service if it is None.
     """
     # Create volume group
-    lv_utils.vg_create(vgname, device)
+    lv_utils.vg_create(vgname, device, force=True)
     # Create thin volume
     thinpool, thinlv = lv_utils.thin_lv_create(vgname, thinlv_name=lvname)
     logging.debug("Created thin volume successfully.")
@@ -232,10 +232,11 @@ def run(test, params, env):
             device_path, _ = qs.create(params)
         else:
             if not discard_device.count("/DEV/EXAMPLE"):
-                device_path = discard_device
+                create_iscsi = False
             else:
+                create_iscsi = True
                 discard_device = create_iscsi_device()
-                device_path = create_volume(discard_device)
+            device_path = create_volume(discard_device)
 
         discard_type = params.get("discard_type", "ignore")
         target_bus = params.get("storage_target_bus", "virtio")
@@ -298,8 +299,13 @@ def run(test, params, env):
         new_vm.undefine()
         if disk_type == "block":
             try:
+                lv_utils.lv_remove("vgthin", "lvthin")
+            except error.TestError, detail:
+                logging.debug(str(detail))
+            try:
                 lv_utils.vg_remove("vgthin")
             except error.TestError, detail:
                 logging.debug(str(detail))
             utils.run("pvremove -f %s" % discard_device, ignore_status=True)
-            utlv.setup_or_cleanup_iscsi(is_setup=False)
+            if create_iscsi:
+                utlv.setup_or_cleanup_iscsi(is_setup=False)
