@@ -63,6 +63,8 @@ def run(test, params, env):
         try:
             # Attach an interface when vm is running
             iface_list = []
+            err_msgs = ("No more available PCI slots",
+                        "No more available PCI addresses")
             if attach_device:
                 for i in range(int(iface_num)):
                     logging.info("Try to attach interface loop %s" % i)
@@ -76,8 +78,13 @@ def run(test, params, env):
                                               flagstr=attach_option,
                                               ignore_status=True)
                     if ret.exit_status:
-                        if ret.stderr.count("No more available PCI slots"):
+                        if any([msg in ret.stderr for msg in err_msgs]):
+                            logging.debug("No more pci slots, can't"
+                                          " attach more devices")
                             break
+                        elif (ret.stderr.count("doesn't support option %s"
+                                               % attach_option)):
+                            raise error.TestNAError(ret.stderr)
                         elif status_error:
                             continue
                         else:
@@ -105,8 +112,13 @@ def run(test, params, env):
                     ret = virsh.attach_interface(vm_name, options,
                                                  ignore_status=True)
                     if ret.exit_status:
-                        if ret.stderr.count("No more available PCI slots"):
+                        if any([msg in ret.stderr for msg in err_msgs]):
+                            logging.debug("No more pci slots, can't"
+                                          " attach more devices")
                             break
+                        elif (ret.stderr.count("doesn't support option %s"
+                                               % attach_option)):
+                            raise error.TestNAError(ret.stderr)
                         elif status_error:
                             continue
                         else:
