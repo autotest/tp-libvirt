@@ -1,7 +1,7 @@
 import os
 import signal
-from autotest.client import utils
 from autotest.client.shared import error
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 
 
@@ -30,7 +30,8 @@ def run(test, params, env):
 
         os.kill(vm.get_pid(), getattr(signal, sig_name))
 
-        stopped = bool(utils.wait_for(lambda: vm.state() == 'shut off', 10))
+        stopped = bool(
+            utils_misc.wait_for(lambda: vm.state() == 'shut off', 10))
         if stopped != expect_stop:
             raise error.TestFail('Expected VM stop is "%s", got "%s"'
                                  % (expect_stop, vm.state()))
