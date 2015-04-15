@@ -5,13 +5,14 @@ Test module for Storage Discard.
 import re
 import os
 import logging
+import time
 from autotest.client import utils, lv_utils
 from autotest.client.shared import error
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.devices import disk, channel
 from virttest import utils_test, virsh, data_dir, virt_vm
 from virttest.utils_test import libvirt as utlv
-from virttest import iscsi, qemu_storage, libvirt_vm
+from virttest import iscsi, qemu_storage, libvirt_vm, utils_misc
 
 
 def volumes_capacity(lv_name):
@@ -123,6 +124,17 @@ def get_vm_disks(vm):
     return disks
 
 
+def _sync_finished():
+    """
+    check volume's capacity once every 60 seconds
+    """
+    lv_cap_before = volumes_capacity("lvthin")
+    time.sleep(60)
+    lv_cap_later = volumes_capacity("lvthin")
+    logging.debug("Synchronizing: %s -> %s", lv_cap_before, lv_cap_later)
+    return lv_cap_before == lv_cap_later
+
+
 def occupy_disk(vm, device, size, frmt_type="ext4", mount_options=None):
     """
     Create an image file in formatted device.
@@ -139,6 +151,7 @@ def occupy_disk(vm, device, size, frmt_type="ext4", mount_options=None):
         session.cmd(mount_cmd)
         dd_cmd = "dd if=/dev/zero of=/mnt/test.img bs=1M count=%s" % size
         session.cmd(dd_cmd, timeout=120)
+        utils_misc.wait_for(_sync_finished, timeout=300)
         # Delete image to create sparsing space
         session.cmd("rm -f /mnt/test.img")
     finally:
@@ -162,6 +175,9 @@ def do_fstrim(fstrim_type, vm, status_error=False):
     """
     Execute fstrim in different ways, and check its result.
     """
+    # ensure that volume capacity won't change before trimming disk.
+    if not _sync_finished():
+        utils_misc.wait_for(_sync_finished, timeout=300)
     if fstrim_type == "fstrim_cmd":
         session = vm.wait_for_login()
         output = session.cmd_output("fstrim -v /mnt", timeout=240)
