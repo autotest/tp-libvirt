@@ -178,8 +178,10 @@ def run(test, params, env):
             # Set the link up make host connect with vm
             domif_setlink(vm_name, device, "up", "")
             # Ignore status of this one
-            cmd_status = session.cmd_status('ifdown %s' % guest_if_name)
-            cmd_status = session.cmd_status('ifup %s' % guest_if_name)
+            cmd_status = session.cmd_status('ip link set dev %s down'
+                                            % guest_if_name)
+            cmd_status = session.cmd_status('ip link set dev %s up'
+                                            % guest_if_name)
             if cmd_status != 0:
                 error_msg = ("Could not bring up interface %s inside guest"
                              % guest_if_name)
