@@ -124,7 +124,7 @@ def run(test, params, env):
         cmd = ("%s & %s" % (virsh_cmd, bash_cmd))
         output = utils.run(cmd, ignore_status=True).stdout.strip()
         logging.debug("check flags output: %s" % output)
-        lines = re.findall(r"^flags:.+%s" % flags, output, re.M)
+        lines = re.findall(r"flags:.+%s" % flags, output, re.M)
         logging.debug("Find lines: %s" % lines)
         if not lines:
             raise error.TestFail("Checking flags %s failed" % flags)
@@ -141,7 +141,7 @@ def run(test, params, env):
         for i in range(int(guests)):
             dst_vm = "%s_%s" % (vm_name, i)
             utils_libguestfs.virt_clone_cmd(vm_name, dst_vm,
-                                            True, timeout)
+                                            True, timeout=timeout)
             virsh.start(dst_vm)
 
         # Wait 10 seconds for vm to start
@@ -175,6 +175,12 @@ def run(test, params, env):
             if resume_seconds[i+1] - resume_seconds[i] < int(start_delay):
                 raise error.TestFail("Checking start_delay failed")
 
+    def wait_for_state(vm_state):
+        """
+        Wait for vm state is ready.
+        """
+        utils_misc.wait_for(lambda: vm.state() == vm_state, 10)
+
     def check_guest_flags(bash_cmd, flags):
         """
         Check bypass_cache option for single guest.
@@ -188,8 +194,8 @@ def run(test, params, env):
         ret = utils.run("service libvirt-guests status",
                         ignore_status=True)
         logging.info("status output: %s", ret.stdout)
-        if not re.findall(r"Suspending %s" % vm_name,
-                          ret.stdout, re.M):
+        if any(["Suspending %s" % vm_name not in ret.stdout,
+                "stopped, with saved guests" not in ret.stdout]):
             raise error.TestFail("Can't see messages of suspending vm")
         # status command should return 3.
         if ret.exit_status != 3:
@@ -197,11 +203,13 @@ def run(test, params, env):
                                  " status is not correct" % ret)
 
         # Wait for VM in shut off state
-        utils_misc.wait_for(lambda: vm.state() == "shut off", 10)
+        wait_for_state("shut off")
         virsh_cmd = "service libvirt-guests start"
         check_flags_parallel(virsh_cmd, bash_cmd %
                              (managed_save_file, managed_save_file,
                               "0", flags), flags)
+        # Wait for VM in running state
+        wait_for_state("running")
 
     def vm_msave_remove_check(vm_name):
         """
@@ -392,11 +400,13 @@ def run(test, params, env):
                                  (managed_save_file, managed_save_file,
                                   "1", flags), flags)
             # Wait for VM in shut off state
-            utils_misc.wait_for(lambda: vm.state() == "shut off", 10)
+            wait_for_state("shut off")
             virsh_cmd = "virsh start %s %s" % (option, vm_name)
             check_flags_parallel(virsh_cmd, bash_cmd %
                                  (managed_save_file, managed_save_file,
                                   "0", flags), flags)
+            # Wait for VM in running state
+            wait_for_state("running")
         elif test_libvirt_guests:
             logging.debug("libvirt-guests status: %s", libvirt_guests.status())
             if multi_guests:
@@ -447,8 +457,10 @@ def run(test, params, env):
         # Restore test environment.
         if vm.is_paused():
             virsh.resume(vm_name)
-            # Wait for VM in running state
-            utils_misc.wait_for(lambda: vm.state() == "running", 10)
+        elif vm.is_dead():
+            vm.start()
+        # Wait for VM in running state
+        wait_for_state("running")
         if autostart_bypass_cache:
             virsh.autostart(vm_name, "--disable",
                             ignore_status=True)
