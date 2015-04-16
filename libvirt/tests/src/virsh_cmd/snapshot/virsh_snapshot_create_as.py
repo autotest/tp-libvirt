@@ -335,6 +335,7 @@ def run(test, params, env):
     # gluster related params
     replace_vm_disk = "yes" == params.get("replace_vm_disk", "no")
     disk_src_protocol = params.get("disk_source_protocol")
+    restart_tgtd = params.get("restart_tgtd", "no")
     vol_name = params.get("vol_name")
     tmp_dir = data_dir.get_tmp_dir()
     pool_name = params.get("pool_name", "gluster-pool")
@@ -581,6 +582,9 @@ def run(test, params, env):
         if disk_src_protocol == 'gluster':
             libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
             libvirtd.restart()
+
+        if disk_src_protocol == 'iscsi':
+            libvirt.setup_or_cleanup_iscsi(False, restart_tgtd=restart_tgtd)
 
         # rm bad disks
         if bad_disk is not None:
