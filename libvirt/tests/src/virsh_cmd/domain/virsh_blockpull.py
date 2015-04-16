@@ -166,6 +166,7 @@ def run(test, params, env):
     disk_type = params.get("disk_type")
     disk_target = params.get("disk_target", 'vda')
     disk_src_protocol = params.get("disk_source_protocol")
+    restart_tgtd = params.get("restart_tgtd", "no")
     vol_name = params.get("vol_name")
     tmp_dir = data_dir.get_tmp_dir()
     pool_name = params.get("pool_name", "gluster-pool")
@@ -338,7 +339,8 @@ def run(test, params, env):
         libvirtd = utils_libvirtd.Libvirtd()
 
         if disk_src_protocol == 'iscsi':
-            libvirt.setup_or_cleanup_iscsi(is_setup=False)
+            libvirt.setup_or_cleanup_iscsi(is_setup=False,
+                                           restart_tgtd=restart_tgtd)
         elif disk_src_protocol == 'gluster':
             libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
             libvirtd.restart()
