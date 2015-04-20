@@ -116,7 +116,6 @@ def get_time(vm=None, time_type=None, windows=False):
             cmd = "date -u +%Y/%m/%d/%H/%M/%S"
             ts, timestr = session.cmd_status_output(cmd)
         elif windows is True:
-            time_type == "tz"
             # Date in this format: Sun 09/14/2014 or 2014/09/14 Sun
             # So deal with it after getting date
             date_cmd = (r"echo %date%")
@@ -144,7 +143,7 @@ def get_time(vm=None, time_type=None, windows=False):
             return -1
         # To avoid some unexpected space, strip it manually
         timestr = timestr.replace(" ", "").strip()
-        struct_time = time.strptime(timestr, '%Y/%m/%d/%H/%M/%S')
+        struct_time = time.strptime(timestr, "%Y/%m/%d/%H/%M/%S")
     else:
         if time_type == 'utc':
             struct_time = time.gmtime()
@@ -214,23 +213,21 @@ def set_vm_timezone(vm, timezone="America/New_York", windows=False):
         logging.debug("Set vm timezone to %s", timezone)
 
 
-def convert_tz_to_vector(tz_name="Europe/London"):
+def numeric_timezone(tz_name="Europe/London"):
     """
-    Convert string of city to a vector with utc time(hours).
+    Return numeric(in hour) timezone
 
     :param tz_name: Timezone name
-    :return: Timezone code or None
     """
-    # TODO: inspect timezone automatically
-    zoneinfo = {'0': ["Europe/London"],
-                '8': ["Asia/HongKong", "Asia/Shanghai"],
-                '9': ["Asia/Tokyo"],
-                '-4': ["America/New_York"]}
-    for key in zoneinfo:
-        if tz_name in zoneinfo[key]:
-            return int(key)
-    logging.error("Not supported timezone:%s", tz_name)
-    return None
+    numeric_tz = None
+    try:
+        cmd = "TZ='%s'" % tz_name
+        cmd += " date +%z"
+        z = utils.system_output(cmd)
+        numeric_tz = float(z[0:-2]) + float(z[0] + z[-2:]) / 60
+    except Exception, e:
+        logging.error("Convert timezone error: %s", e)
+    return numeric_tz
 
 
 def manipulate_vm(vm, operation, params=None):
@@ -330,11 +327,10 @@ def test_timers_in_vm(vm, params):
     host_tz = params.get("host_timezone", "Asia/Tokyo")
     vm_tz = params.get("vm_timezone", "America/New_York")
     clock_tz = params.get("clock_timezone", "Asia/Shanghai")
-    host_tz_vector = convert_tz_to_vector(host_tz)
-    vm_tz_vector = convert_tz_to_vector(vm_tz)
-    set_tz_vector = convert_tz_to_vector(clock_tz)
-    if ((host_tz_vector is None) or (vm_tz_vector is None) or
-            (set_tz_vector is None)):
+    host_tz_vector = numeric_timezone(host_tz)
+    vm_tz_vector = numeric_timezone(vm_tz)
+    set_tz_vector = numeric_timezone(clock_tz)
+    if not any([host_tz_vector, vm_tz_vector, set_tz_vector]):
         raise error.TestError("Not supported timezone to convert.")
     delta = int(params.get("allowd_delta", "300"))
     windows_test = "yes" == params.get("windows_test", "no")
@@ -377,8 +373,9 @@ def test_timers_in_vm(vm, params):
 
     logging.debug("Expected UTC time gap between vm and host: %s",
                   abs(expect_utc_gap))
-    expect_tz_gap = abs(vm_tz_span + host_tz_span)
+    expect_tz_gap = abs(vm_tz_span)
     logging.debug("Expected vm timezone time gap: %s", expect_tz_gap)
+
     host_utc_time = get_time(time_type='utc')
     logging.debug("UTC time on host: %s", host_utc_time)
     if windows_test:
