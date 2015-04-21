@@ -115,6 +115,9 @@ def run(test, params, env):
             result = virsh.start(vm_name, ignore_status=True, debug=True)
             libvirt.check_exit_status(result)
             vm_pid = vm.get_pid()
+        except:
+            pass
+        else:
             # Check qemu cmdline
             with open("/proc/%d/cmdline" % vm_pid) as vm_cmdline_file:
                 vm_cmdline = vm_cmdline_file.read()
