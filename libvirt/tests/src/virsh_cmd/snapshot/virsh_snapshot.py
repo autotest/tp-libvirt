@@ -22,7 +22,7 @@ def run(test, params, env):
             try:
                 virsh.snapshot_delete(vm, snap)
             except error.CmdError:
-                logging.debug("Can not remove snapshot %s.", snaps)
+                logging.debug("Can not remove snapshot %s.", snap)
                 remove_failed = remove_failed + 1
 
         return remove_failed
