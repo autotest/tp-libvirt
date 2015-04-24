@@ -6,6 +6,7 @@ from autotest.client.shared import error
 from virttest import virsh, utils_test
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+from virttest import utils_misc
 
 
 def run(test, params, env):
@@ -118,6 +119,7 @@ def run(test, params, env):
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
         vmxml.cputune = cputune
         vmxml.sync()
+        utils_misc.wait_for(lambda: vm.state() == "shut off", 10)
         cmdResult = virsh.start(vm.name, debug=True)
         libvirt.check_exit_status(cmdResult, status_error)
         pid = vm.get_pid()
