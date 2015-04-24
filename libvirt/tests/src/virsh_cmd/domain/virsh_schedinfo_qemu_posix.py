@@ -1,7 +1,7 @@
 import re
 import logging
 import os
-from autotest.client.shared import utils, error
+from autotest.client.shared import error
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest import virsh
 

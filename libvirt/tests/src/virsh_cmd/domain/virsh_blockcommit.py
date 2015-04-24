@@ -2,13 +2,11 @@ import os
 import logging
 import tempfile
 from autotest.client.shared import error
-from autotest.client import utils
 from virttest import virsh, data_dir
 from virttest import aexpect
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
-from virttest.libvirt_xml.devices.disk import Disk
 from provider import libvirt_version
 
 

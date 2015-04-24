@@ -1,5 +1,5 @@
 import logging
-from autotest.client.shared import error, utils
+from autotest.client.shared import error
 from autotest.client.shared import ssh_key
 from virttest import virsh, libvirt_vm, utils_test
 from provider import libvirt_version

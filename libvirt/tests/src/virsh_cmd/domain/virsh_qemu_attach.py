@@ -1,10 +1,7 @@
-import os
 import re
-import time
-import subprocess
 import logging
-from autotest.client.shared import error, utils
-from virttest import virsh, utils_libvirtd, utils_misc, qemu_vm
+from autotest.client.shared import error
+from virttest import virsh, utils_libvirtd, qemu_vm
 
 
 def run(test, params, env):

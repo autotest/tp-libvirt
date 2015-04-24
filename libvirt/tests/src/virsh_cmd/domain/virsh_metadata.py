@@ -128,4 +128,4 @@ def run(test, params, env):
             # Get metadata again
             check_result(get_metadata(), True)
     finally:
-            vmxml.sync()
+        vmxml.sync()

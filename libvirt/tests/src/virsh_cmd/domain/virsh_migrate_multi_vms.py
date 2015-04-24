@@ -1,12 +1,7 @@
-import re
-import os
 import logging
-import commands
-import shutil
 import threading
 import time
 from autotest.client.shared import error
-from autotest.client.shared import utils
 from autotest.client.shared import ssh_key
 from virttest import libvirt_vm
 from virttest import virsh
