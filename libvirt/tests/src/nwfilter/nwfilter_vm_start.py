@@ -91,7 +91,8 @@ def run(test, params, env):
         # Run command
         try:
             vm.start()
-            vm.wait_for_serial_login()
+            if not mount_noexec_tmp:
+                vm.wait_for_serial_login()
             vmxml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
             iface_xml = vmxml.get_devices('interface')[0]
             iface_target = iface_xml.target['dev']
@@ -138,7 +139,8 @@ def run(test, params, env):
         if filter_name != exist_filter:
             virsh.nwfilter_undefine(filter_name, debug=True)
         if mount_noexec_tmp:
-            utils.run("umount -l %s" % device_name)
+            if device_name:
+                utils.run("umount -l %s" % device_name, ignore_status=True)
             utlv.setup_or_cleanup_iscsi(is_setup=False)
         if ipset_command:
             utils.run("ipset destroy blacklist")
