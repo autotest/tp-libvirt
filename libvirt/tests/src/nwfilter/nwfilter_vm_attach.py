@@ -4,6 +4,7 @@ from autotest.client.shared import utils, error
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices import interface
 
@@ -71,9 +72,10 @@ def run(test, params, env):
         if check_cmd:
             if "DEVNAME" in check_cmd:
                 check_cmd = check_cmd.replace("DEVNAME", iface_target)
-            ret = utils.wait_for(lambda: not utils.system(check_cmd,
-                                                          ignore_status=True),
-                                 timeout=30)
+            ret = utils_misc.wait_for(lambda: not
+                                      utils.system(check_cmd,
+                                                   ignore_status=True),
+                                      timeout=30)
             if not ret:
                 raise error.TestFail("Rum command '%s' failed" % check_cmd)
             out = utils.system_output(check_cmd, ignore_status=False)

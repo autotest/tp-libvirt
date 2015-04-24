@@ -1,10 +1,11 @@
 import time
 import threading
 import logging
-from autotest.client.shared import utils, error
+from autotest.client.shared import error
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest.libvirt_xml.devices import interface
 from provider import libvirt_version
 
@@ -78,9 +79,9 @@ def run(test, params, env):
         time.sleep(0.3)
         vm_thread.start()
 
-        ret = utils.wait_for(lambda: not libvirtd.is_working(),
-                             timeout=240,
-                             step=1)
+        ret = utils_misc.wait_for(lambda: not libvirtd.is_working(),
+                                  timeout=240,
+                                  step=1)
 
         filter_thread.join()
         vm_thread.join()
