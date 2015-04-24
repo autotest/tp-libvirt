@@ -6,7 +6,6 @@ from autotest.client.shared import error
 from autotest.client import utils
 from virttest import virsh, data_dir, utils_test, utils_misc
 from virttest import utils_selinux
-from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.staging.service import Factory
 

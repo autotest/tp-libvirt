@@ -141,7 +141,7 @@ def run(test, params, env):
                 elif modify_value == "ia64":
                     msg_patterns = "incompatible"
                 elif modify_invalid:
-                        msg_patterns = "Unknown"
+                    msg_patterns = "Unknown"
             elif modify_target == "feature_policy":
                 if modify_value == "forbid":
                     msg_patterns = "incompatible"

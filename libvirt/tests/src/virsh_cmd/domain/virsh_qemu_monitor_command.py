@@ -1,6 +1,5 @@
-import os
 import logging
-from autotest.client.shared import error, utils
+from autotest.client.shared import error
 from virttest import virsh, utils_libvirtd
 
 

@@ -4,7 +4,6 @@ import threading
 from autotest.client.shared import error, ssh_key
 from virttest import utils_test, libvirt_vm, virsh
 from virttest.libvirt_xml import vm_xml
-from virttest.libvirt_xml import xcepts
 from virttest.utils_test import libvirt as utlv
 from provider import libvirt_version
 

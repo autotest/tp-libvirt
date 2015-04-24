@@ -10,7 +10,6 @@ from virttest import virsh
 from virttest import utils_misc
 from virttest import libvirt_vm
 from virttest import virt_vm
-from virttest import data_dir
 from virttest import remote
 from virttest import aexpect
 from virttest.utils_test import libvirt as utlv
