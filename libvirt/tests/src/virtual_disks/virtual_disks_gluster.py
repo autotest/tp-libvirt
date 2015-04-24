@@ -151,7 +151,10 @@ def run(test, params, env):
         # Build new vm xml.
         if pm_enabled:
             vm_xml.VMXML.set_pm_suspend(vm_name)
-            vm_xml.VMXML.set_agent_channel(vm_name)
+            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
+            logging.debug("Attempting to set guest agent channel")
+            vmxml.set_agent_channel()
+            vmxml.sync()
 
         if gluster_disk:
             # Setup glusterfs and disk xml.
