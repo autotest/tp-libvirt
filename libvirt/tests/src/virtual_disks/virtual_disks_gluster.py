@@ -5,6 +5,7 @@ from autotest.client import utils
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_misc
+from virttest import virt_vm, remote
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
@@ -94,33 +95,6 @@ def run(test, params, env):
         vmxml.add_device(disk_xml)
         vmxml.sync()
 
-    def check_vm_guestagent(session):
-        """
-        Try to start guestgent if it's not started in vm.
-        """
-        # Check if qemu-ga already started automatically
-        cmd = "rpm -q qemu-guest-agent || yum install -y qemu-guest-agent"
-        stat_install, output = session.cmd_status_output(cmd, 300)
-        logging.debug(output)
-        if stat_install != 0:
-            raise error.TestError("Fail to install qemu-guest-agent, make"
-                                  "sure that you have usable repo in guest")
-
-        # Check if qemu-ga already started
-        stat_ps = session.cmd_status("ps aux |grep [q]emu-ga | grep -v grep")
-        if stat_ps != 0:
-            # Check guest version to start qemu-guest-agent service.
-            # Rhel 6.x: service qemu-ga start
-            # Rhel 7.x, fedora: service qemu-guest-agent start
-            cmd = ("grep 'release 6' /etc/redhat-release ; "
-                   "if [ $? eq 0 ]; then service qemu-ga start; "
-                   "else service qemu-guest-agent start; fi")
-            session.cmd(cmd)
-            # Check if the qemu-ga really started
-            stat_ps = session.cmd_status("ps aux |grep [q]emu-ga | grep -v grep")
-            if stat_ps != 0:
-                raise error.TestError("Fail to run qemu-ga in guest")
-
     def test_pmsuspend(vm_name):
         """
         Test pmsuspend command.
@@ -140,9 +114,11 @@ def run(test, params, env):
 
         # Wait for vm and qemu-ga service to start
         vm.start()
-        session = vm.wait_for_login()
-        check_vm_guestagent(session)
-        session.close()
+        # Prepare guest agent and start guest
+        try:
+            vm.prepare_guest_agent()
+        except (remote.LoginError, virt_vm.VMError), e:
+            raise error.TestFail("failed to prepare agent")
 
         #TODO This step may hang for rhel6 guest
         ret = virsh.dompmsuspend(vm_name, "mem", **virsh_dargs)
@@ -196,11 +172,13 @@ def run(test, params, env):
                 vmxml_backup.define()
                 raise error.TestNAError("Cann't create the domain")
 
-        session = vm.wait_for_login()
         # Run the tests.
         if pm_enabled:
             # Makesure the guest agent is started
-            check_vm_guestagent(session)
+            try:
+                vm.prepare_guest_agent()
+            except (remote.LoginError, virt_vm.VMError), e:
+                raise error.TestFail("failed to prepare agent")
             # Run dompmsuspend command.
             test_pmsuspend(vm_name)
         if transport:
