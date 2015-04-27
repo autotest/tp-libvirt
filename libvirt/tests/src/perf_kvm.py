@@ -134,14 +134,6 @@ def get_kernel_file(vm):
     return (guestkallsyms, guestmodules)
 
 
-def run_dd_on_guest(vm):
-    """
-    Run dd command on guest to add load.
-    """
-    session = vm.wait_for_login()
-    session.cmd("dd if=/dev/zero of=/dev/null bs=1 count=1G &")
-
-
 def run(test, params, env):
     """
     Test for perf kvm command.
