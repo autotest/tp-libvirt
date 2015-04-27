@@ -94,20 +94,19 @@ def create_disk_xml(disk_type, device_path, discard_type='ignore',
     return utlv.create_disk_xml(disk_params)
 
 
-def create_channel_xml(vm_name, agent_index=0):
+def prepare_channel_xml(vm_name, agent_index=0):
     """
     Create a XML contains channel information for agent.
     """
     channel_path = ("/var/lib/libvirt/qemu/channel/target/"
                     "%s.org.qemu.guest_agent.%s" % (vm_name, agent_index))
-    channel_source = {'mode': "bind", 'path': channel_path}
-    channel_target = {'type': "virtio",
-                      'name': "org.qemu.guest_agent.%s" % agent_index}
-    channel_params = {'type_name': "unix", 'source': channel_source,
-                      'target': channel_target}
-    channelxml = channel.Channel.new_from_dict(channel_params)
-    logging.debug("Channel XML:\n%s", channelxml)
-    return channelxml.xml
+    channel_params = {'channel_type_name': 'unix',
+                      'source_mode': 'bind',
+                      'source_path': channel_path,
+                      'target_type': 'virtio',
+                      'target_name': "org.qemu.guest_agent.%s" % agent_index}
+    channel_xml = utlv.create_channel_xml(channel_params)
+    return channel_xml.xml
 
 
 def get_vm_disks(vm):
@@ -247,7 +246,7 @@ def run(test, params, env):
         virsh.attach_device(domain_opt=new_vm_name, file_opt=xmlfile,
                             flagstr="--persistent", ignore_status=False)
         if fstrim_type == "qemu-guest-agent":
-            channelfile = create_channel_xml(new_vm_name)
+            channelfile = prepare_channel_xml(new_vm_name)
             virsh.attach_device(domain_opt=new_vm_name, file_opt=channelfile,
                                 flagstr="--persistent", ignore_status=False)
         logging.debug("New VMXML:\n%s", virsh.dumpxml(new_vm_name))
