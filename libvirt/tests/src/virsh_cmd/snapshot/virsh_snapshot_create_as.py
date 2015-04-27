@@ -1,5 +1,6 @@
 import re
 import os
+import time
 import commands
 import string
 import logging
@@ -522,6 +523,12 @@ def run(test, params, env):
                                                       uri=uri,
                                                       ignore_status=True,
                                                       debug=True)
+                # for multi snapshots without specific snapshot name, the
+                # snapshot name is using time string with 1 second
+                # incremental, to avoid get snapshot failure with same name,
+                # sleep 1 second here.
+                if int(multi_num) > 1:
+                    time.sleep(1.1)
             output = cmd_result.stdout.strip()
             status = cmd_result.exit_status
 
