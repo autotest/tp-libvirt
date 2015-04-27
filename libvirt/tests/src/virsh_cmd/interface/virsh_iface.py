@@ -368,20 +368,23 @@ def run(test, params, env):
 
         # Step 9
         if not use_exist_iface:
-            # Step 9.1
-            # Destroy interface
-            result = virsh.iface_destroy(iface_name, **virsh_dargs)
-            if (params.get('setup_libvirt_polkit') == 'yes' and
-                    stop_status_error):
-                # acl_test negative test
-                libvirt.check_exit_status(result, stop_status_error)
-                virsh.iface_destroy(iface_name, debug=True)
-            elif (not net_restart and iface_type == "ethernet" and
-                    iface_pro in ["", "dhcp"] or iface_type == "bridge" and
-                    iface_pro == "dhcp"):
-                libvirt.check_exit_status(result, True)
-            else:
-                libvirt.check_exit_status(result, status_error)
+            # Step 9.0
+            # check if interface's state is active before destroy
+            if libvirt.check_iface(iface_name, "state", "--all"):
+                # Step 9.1
+                # Destroy interface
+                result = virsh.iface_destroy(iface_name, **virsh_dargs)
+                if (params.get('setup_libvirt_polkit') == 'yes' and
+                        stop_status_error):
+                    # acl_test negative test
+                    libvirt.check_exit_status(result, stop_status_error)
+                    virsh.iface_destroy(iface_name, debug=True)
+                elif (not net_restart and iface_type == "ethernet" and
+                        iface_pro in ["", "dhcp"] or iface_type == "bridge" and
+                        iface_pro == "dhcp"):
+                    libvirt.check_exit_status(result, True)
+                else:
+                    libvirt.check_exit_status(result, status_error)
 
             # Step 9.2
             # Undefine interface
