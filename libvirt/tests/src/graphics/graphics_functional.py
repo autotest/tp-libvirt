@@ -875,19 +875,19 @@ def setup_networks(params):
         if net_type == 'vnet':
             address = params.get('vnet_address', '192.168.123.1')
             networks[net_type] = LibvirtNetwork(
-                net_type, address=address)
+                net_type, address=address, persistent=True)
         elif net_type == 'macvtap':
             iface = params.get('macvtap_device', 'EXAMPLE.MACVTAP.DEVICE')
             if 'EXAMPLE' in iface:
                 raise error.TestNAError('Need to setup macvtap_device first.')
             networks[net_type] = LibvirtNetwork(
-                net_type, iface=iface)
+                net_type, iface=iface, persistent=True)
         elif net_type == 'bridge':
             iface = params.get('bridge_device', 'EXAMPLE.BRIDGE.DEVICE')
             if 'EXAMPLE' in iface:
                 raise error.TestNAError('Need to setup bridge_device first.')
             networks[net_type] = LibvirtNetwork(
-                net_type, iface=iface)
+                net_type, iface=iface, persistent=True)
 
     return networks
 
@@ -938,9 +938,11 @@ def run(test, params, env):
         vm_xml.remove_all_graphics()
         if spice_xml:
             spice_graphic = generate_spice_graphic_xml(params, expected_result)
+            logging.debug('Test SPICE XML is: %s', spice_graphic)
             vm_xml.devices = vm_xml.devices.append(spice_graphic)
         if vnc_xml:
             vnc_graphic = generate_vnc_graphic_xml(params, expected_result)
+            logging.debug('Test VNC XML is: %s', vnc_graphic)
             vm_xml.devices = vm_xml.devices.append(vnc_graphic)
         vm_xml.sync()
         all_ips = utils_net.get_all_ips()
@@ -984,7 +986,7 @@ def run(test, params, env):
             sock.close()
         if networks:
             for network in networks.values():
-                network.destroy()
+                network.cleanup()
         vm_xml_backup.sync()
         os.system('rm -f /dev/shm/spice*')
         env_state.restore()
