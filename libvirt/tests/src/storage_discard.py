@@ -5,13 +5,14 @@ Test module for Storage Discard.
 import re
 import os
 import logging
+import time
 from autotest.client import utils, lv_utils
 from autotest.client.shared import error
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.devices import disk, channel
 from virttest import utils_test, virsh, data_dir, virt_vm
 from virttest.utils_test import libvirt as utlv
-from virttest import iscsi, qemu_storage, libvirt_vm
+from virttest import iscsi, qemu_storage, libvirt_vm, utils_misc
 
 
 def volumes_capacity(lv_name):
@@ -74,7 +75,7 @@ def create_volume(device, vgname="vgthin", lvname="lvthin"):
     iscsi service if it is None.
     """
     # Create volume group
-    lv_utils.vg_create(vgname, device)
+    lv_utils.vg_create(vgname, device, force=True)
     # Create thin volume
     thinpool, thinlv = lv_utils.thin_lv_create(vgname, thinlv_name=lvname)
     logging.debug("Created thin volume successfully.")
@@ -123,6 +124,17 @@ def get_vm_disks(vm):
     return disks
 
 
+def _sync_finished():
+    """
+    check volume's capacity once every 60 seconds
+    """
+    lv_cap_before = volumes_capacity("lvthin")
+    time.sleep(60)
+    lv_cap_later = volumes_capacity("lvthin")
+    logging.debug("Synchronizing: %s -> %s", lv_cap_before, lv_cap_later)
+    return lv_cap_before == lv_cap_later
+
+
 def occupy_disk(vm, device, size, frmt_type="ext4", mount_options=None):
     """
     Create an image file in formatted device.
@@ -139,6 +151,7 @@ def occupy_disk(vm, device, size, frmt_type="ext4", mount_options=None):
         session.cmd(mount_cmd)
         dd_cmd = "dd if=/dev/zero of=/mnt/test.img bs=1M count=%s" % size
         session.cmd(dd_cmd, timeout=120)
+        utils_misc.wait_for(_sync_finished, timeout=300)
         # Delete image to create sparsing space
         session.cmd("rm -f /mnt/test.img")
     finally:
@@ -162,6 +175,9 @@ def do_fstrim(fstrim_type, vm, status_error=False):
     """
     Execute fstrim in different ways, and check its result.
     """
+    # ensure that volume capacity won't change before trimming disk.
+    if not _sync_finished():
+        utils_misc.wait_for(_sync_finished, timeout=300)
     if fstrim_type == "fstrim_cmd":
         session = vm.wait_for_login()
         output = session.cmd_output("fstrim -v /mnt", timeout=240)
@@ -232,10 +248,11 @@ def run(test, params, env):
             device_path, _ = qs.create(params)
         else:
             if not discard_device.count("/DEV/EXAMPLE"):
-                device_path = discard_device
+                create_iscsi = False
             else:
+                create_iscsi = True
                 discard_device = create_iscsi_device()
-                device_path = create_volume(discard_device)
+            device_path = create_volume(discard_device)
 
         discard_type = params.get("discard_type", "ignore")
         target_bus = params.get("storage_target_bus", "virtio")
@@ -298,8 +315,13 @@ def run(test, params, env):
         new_vm.undefine()
         if disk_type == "block":
             try:
+                lv_utils.lv_remove("vgthin", "lvthin")
+            except error.TestError, detail:
+                logging.debug(str(detail))
+            try:
                 lv_utils.vg_remove("vgthin")
             except error.TestError, detail:
                 logging.debug(str(detail))
             utils.run("pvremove -f %s" % discard_device, ignore_status=True)
-            utlv.setup_or_cleanup_iscsi(is_setup=False)
+            if create_iscsi:
+                utlv.setup_or_cleanup_iscsi(is_setup=False)
