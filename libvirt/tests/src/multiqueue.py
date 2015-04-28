@@ -61,7 +61,7 @@ def setting_channel(vm, interface, parameter, value):
     try:
         if int(current['Combined']) == int(value):
             return True
-    except KeyError, error.TestFail:
+    except KeyError:
         pass
     logging.debug("Setting passed, but checking failed:%s", current)
     return False
