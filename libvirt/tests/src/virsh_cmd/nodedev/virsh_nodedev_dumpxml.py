@@ -47,9 +47,13 @@ def do_nodedev_dumpxml(dev_name, dev_opt="", **dargs):
         value_xml = key2value_dict_xml.get(key)
         value_sys = key2value_dict_sys.get(key)
         if not value_xml == value_sys:
-            raise error.TestError("key: %s in xml is %s,"
-                                  "but in sysfs is %s." %
-                                  (key, value_xml, value_sys))
+            if (key == 'numa_node' and not
+                    libvirt_version.version_compare(1, 2, 5)):
+                logging.warning("key: %s in xml is not supported yet" % key)
+            else:
+                raise error.TestError("key: %s in xml is %s,"
+                                      "but in sysfs is %s." %
+                                      (key, value_xml, value_sys))
         else:
             continue
 
