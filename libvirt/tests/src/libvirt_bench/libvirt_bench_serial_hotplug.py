@@ -1,13 +1,11 @@
 import os
 import stat
-import logging
 import socket
 import subprocess
 import time
 import shutil
 from autotest.client.shared import error
 from virttest import virsh, libvirt_vm, utils_test, utils_misc
-from virttest.libvirt_xml.devices import channel
 from virttest.utils_test import libvirt as utlv
 
 
@@ -17,7 +15,6 @@ def run(test, params, env):
     """
 
     vm_name = params.get("main_vm", "vm1")
-    status_error = "yes" == params.get("status_error", "no")
     char_dev = params.get("char_dev", "file")
     hotplug_type = params.get("hotplug_type", "qmp")
     load_type = params.get("load_type", "")
