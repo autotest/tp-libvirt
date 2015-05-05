@@ -40,10 +40,11 @@ def run(test, params, env):
         :param target_file: the expected files
         :param action: test case action
         """
+        drive_name = session.cmd("cat /proc/sys/dev/cdrom/info | grep -i 'drive name'", ignore_all_errors=True).split()[2]
         if action != "--eject ":
             error.context("Checking guest %s files" % target_device)
             if target_device == "hdc" or target_device == "sdc":
-                mount_cmd = "mount /dev/sr0 /media"
+                mount_cmd = "mount /dev/%s /media" % drive_name
             else:
                 if session.cmd_status("ls /dev/fd0"):
                     session.cmd("mknod /dev/fd0 b 2 0")
@@ -62,7 +63,7 @@ def run(test, params, env):
         else:
             error.context("Ejecting guest cdrom files")
             if target_device == "hdc" or target_device == "sdc":
-                if session.cmd_status("mount /dev/sr0 /media -o loop") == 32:
+                if session.cmd_status("mount /dev/%s /media -o loop" % drive_name) == 32:
                     logging.info("Eject succeeded")
             else:
                 if session.cmd_status("ls /dev/fd0"):
