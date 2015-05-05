@@ -40,7 +40,8 @@ def run(test, params, env):
         :param target_file: the expected files
         :param action: test case action
         """
-        drive_name = session.cmd("cat /proc/sys/dev/cdrom/info | grep -i 'drive name'", ignore_all_errors=True).split()[2]
+        if target_device == "hdc" or target_device == "sdc":
+            drive_name = session.cmd("cat /proc/sys/dev/cdrom/info | grep -i 'drive name'", ignore_all_errors=True).split()[2]
         if action != "--eject ":
             error.context("Checking guest %s files" % target_device)
             if target_device == "hdc" or target_device == "sdc":
