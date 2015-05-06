@@ -206,12 +206,12 @@ def run(test, params, env):
     try:
         try:
             session = guest_config(vm1, vm1_ip)
-        except (remote.LoginTimeoutError, aexpect.ShellCmdError), fail:
+        except remote.LoginTimeoutError, fail:
             raise error.TestFail(str(fail))
         if vm2:
             try:
                 guest_config(vm2, vm2_ip)
-            except (remote.LoginTimeoutError, aexpect.ShellCmdError), fail:
+            except remote.LoginTimeoutError, fail:
                 raise error.TestFail(str(fail))
 
         # Four mode test
