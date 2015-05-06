@@ -75,7 +75,9 @@ def run(test, params, env):
         """
         session = vm.wait_for_login()
 
-        def f(): return utils_net.get_guest_ip_addr(session, mac_addr)
+        def f():
+            return utils_net.get_guest_ip_addr(session, mac_addr)
+
         try:
             ip_addr = utils_misc.wait_for(f, 10)
             if ip_addr is None:
