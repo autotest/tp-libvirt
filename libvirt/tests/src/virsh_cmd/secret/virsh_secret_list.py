@@ -1,8 +1,6 @@
 import os
 import re
 import commands
-import logging
-import tempfile
 from autotest.client.shared import error
 from virttest import virsh
 from virttest import data_dir
@@ -39,7 +37,6 @@ def run(test, params, env):
         virsh_dargs['unprivileged_user'] = unprivileged_user
         virsh_dargs['uri'] = uri
 
-    num = 0
     uuid_list = []
     for i in ['yes', 'no']:
         for j in ['yes', 'no']:
