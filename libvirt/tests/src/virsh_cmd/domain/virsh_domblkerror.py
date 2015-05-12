@@ -32,7 +32,6 @@ def run(test, params, env):
     target_dev = params.get("domblkerror_target_dev", "vdb")
     pool_name = params.get("domblkerror_pool_name", "fs_pool")
     vol_name = params.get("domblkerror_vol_name", "vol1")
-    loop_dev = params.get("domblkerror_loop_dev", "/dev/loop0")
 
     vm = env.get_vm(vm_name)
     # backup /etc/exports
