@@ -137,5 +137,18 @@ def run(test, params, env):
                     logging.info("SUCCESS")
                 else:
                     raise error.TestFail("FAIL")
+
+        logging.info("Check device mapping")
+        dev_map = ""
+        if re.search('el7', kernel_version):
+            dev_map = '/boot/grub2/device.map'
+        else:
+            dev_map = '/boot/grub/device.map'
+
+        if check_obj.get_grub_device(dev_map):
+            logging.info("SUCCESS")
+        else:
+            raise error.TestFail("FAIL")
+
     finally:
         del check_obj
