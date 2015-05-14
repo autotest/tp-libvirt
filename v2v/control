@@ -22,6 +22,9 @@ from virttest import utils_misc, cartesian_config
 # set English environment (command output might be localized, need to be safe)
 os.environ['LANG'] = 'en_US.UTF-8'
 
+# set libguestfs environment
+os.environ['LIBGUESTFS_BACKEND'] = 'direct'
+
 str = """
 # This string will be parsed after build.cfg.  Make any desired changes to the
 # build configuration here.  For example (to install from koji/brew):
