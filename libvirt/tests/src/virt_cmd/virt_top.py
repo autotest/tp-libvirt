@@ -18,7 +18,6 @@ def run(test, params, env):
         raise error.TestNAError("No virt-top command found.")
 
     vm_name = params.get("main_vm", "virt-tests-vm1")
-    vm = env.get_vm(vm_name)
     output = params.get("output_file", "output")
     output_path = os.path.join(data_dir.get_tmp_dir(), output)
 

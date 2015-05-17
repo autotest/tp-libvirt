@@ -191,7 +191,6 @@ def run(test, params, env):
         raise error.TestNAError("Not find virt-xml-validate command on host.")
 
     vm_name = params.get("main_vm", "virt-tests-vm1")
-    vm = env.get_vm(vm_name)
     net_name = params.get("net_dumpxml_name", "default")
     pool_name = params.get("pool_dumpxml_name", "default")
     schema = params.get("schema", "domain")
