@@ -446,6 +446,8 @@ def run(test, params, env):
                                          " attach.")
                 if not check_audit_after_cmd:
                     raise error.TestFail("Audit hotplug failure after attach")
+                if not check_cache_after_cmd:
+                    raise error.TestFail("Check cache failure after attach")
                 if at_options.count("persistent"):
                     if not check_count_after_shutdown:
                         raise error.TestFail("Cannot see device attached "
