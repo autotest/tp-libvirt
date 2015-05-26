@@ -14,7 +14,6 @@ def run(test, params, env):
     vm_state = params.get("vm_state", "running")
     cmd = params.get("qemu_cmd", "")
     options = params.get("options", "")
-    start_vm = "yes" == params.get("start_vm")
     status_error = "yes" == params.get("status_error", "no")
     domuuid = vm.get_uuid()
     domid = ""
