@@ -43,7 +43,7 @@ def run(test, params, env):
     if pre_def_pool and pool_ins.pool_exists(pool_name):
         raise error.TestFail("Pool %s already exist" % pool_name)
 
-    emulated_image = "emulated_image"
+    emulated_image = "emulated-image"
     kwargs = {'image_size': '1G', 'source_path': source_path,
               'source_name': source_name, 'source_format': source_format}
     pvt = utlv.PoolVolumeTest(test, params)

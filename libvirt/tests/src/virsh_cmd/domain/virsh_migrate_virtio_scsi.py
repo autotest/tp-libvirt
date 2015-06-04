@@ -137,7 +137,7 @@ def run(test, params, env):
             # Try to build an iscsi device
             # For local, target is a device name
             target = utlv.setup_or_cleanup_iscsi(is_setup=True, is_login=True,
-                                                 emulated_image="emulated_iscsi")
+                                                 emulated_image="emulated-iscsi")
             logging.debug("Created target: %s", target)
             try:
                 # Attach this iscsi device both local and remote
@@ -337,7 +337,7 @@ def run(test, params, env):
                           "/dev/EXAMPLE").count("EXAMPLE"):
                 rdm.iscsi_login_setup(local_host, target, is_login=False)
                 utlv.setup_or_cleanup_iscsi(is_setup=False,
-                                            emulated_image="emulated_iscsi")
+                                            emulated_image="emulated-iscsi")
 
         if runner:
             runner.session.close()

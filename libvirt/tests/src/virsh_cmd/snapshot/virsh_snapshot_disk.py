@@ -47,7 +47,7 @@ def run(test, params, env):
     pool_name = params.get("pool_name")
     pool_type = params.get("pool_type")
     pool_target = params.get("pool_target")
-    emulated_image = params.get("emulated_image")
+    emulated_image = params.get("emulated_image", "emulated-image")
     vol_format = params.get("vol_format")
     lazy_refcounts = "yes" == params.get("lazy_refcounts")
     options = params.get("snapshot_options", "")
