@@ -17,7 +17,7 @@ def run(test, params, env):
     """
 
     source_type = params.get("source_type", "")
-    source_host = params.get("source_host", "localhost")
+    source_host = params.get("source_host", "127.0.0.1")
     source_port = params.get("source_port", "")
     options = params.get("extra_options", "")
     vg_name = params.get("vg_name", "virttest_vg_0")
@@ -31,20 +31,13 @@ def run(test, params, env):
     cleanup_iscsi = False
     cleanup_logical = False
 
-    if source_host == "localhost":
+    if source_host == "127.0.0.1":
         if source_type == "netfs":
             # Set up nfs
             res = utils_test.libvirt.setup_or_cleanup_nfs(True)
             selinux_bak = res["selinux_status_bak"]
             cleanup_nfs = True
         if source_type in ["iscsi", "logical"]:
-            # Do we have the necessary tools?
-            try:
-                utils_misc.find_command("tgtadm")
-                utils_misc.find_command("iscsiadm")
-            except ValueError:
-                raise error.TestNAError("Command 'tgtadm' and/or 'iscsiadm' "
-                                        "is missing. You must install it.")
             # Set up iscsi
             try:
                 iscsi_device = utils_test.libvirt.setup_or_cleanup_iscsi(True)
