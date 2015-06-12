@@ -51,7 +51,7 @@ def format_map(map_str, map_test, map_length):
     return cpu_map
 
 
-def get_online_cpu():
+def get_online_cpu(option=''):
     """
     Get host online cpu map and number
 
@@ -78,6 +78,8 @@ def get_online_cpu():
         cmd = "cat %s/online" % SYSFS_SYSTEM_PATH
         cmd_result = utils.run(cmd, ignore_status=True)
         output = cmd_result.stdout.strip()
+        if 'pretty' in option:
+            return tuple(output)
         if ',' in output:
             output1 = output.split(',')
             for i in range(len(output1)):
@@ -106,7 +108,8 @@ def run(test, params, env):
     Test the command virsh nodecpumap
 
     (1) Call virsh nodecpumap
-    (2) Call virsh nodecpumap with an unexpected option
+    (2) Call virsh nodecpumap with pretty option
+    (3) Call virsh nodecpumap with an unexpected option
     """
 
     option = params.get("virsh_node_options")
@@ -135,7 +138,7 @@ def run(test, params, env):
             if present != int(out_value[0]):
                 raise error.TestFail("Present cpu is not expected")
 
-        cpu_map = get_online_cpu()
+        cpu_map = get_online_cpu(option)
         if not cpu_map:
             raise error.TestNAError("Host cpu map not supported")
         else:
@@ -145,6 +148,8 @@ def run(test, params, env):
                 raise error.TestFail("Cpu map is not expected")
 
         online = 0
+        if 'pretty' in option:
+            cpu_map = get_online_cpu()
         for i in range(present):
             if cpu_map[i] == 'y':
                 online += 1
