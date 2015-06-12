@@ -35,7 +35,7 @@ def run(test, params, env):
         command_on_remote = ("virsh -c %s list %s"
                              % (complete_uri, options_ref))
         session = remote.remote_login(
-            "ssh", remote_ip, "22", "root", remote_passwd, "#")
+            "ssh", remote_ip, "22", "root", remote_passwd, "#", timeout=60)
         time.sleep(5)
         status, output = session.cmd_status_output(
             command_on_remote, internal_timeout=5)
