@@ -21,7 +21,7 @@ def run(test, params, env):
     """
 
     source_type = params.get("source_type", "")
-    source_host = params.get("source_host", "localhost")
+    source_host = params.get("source_host", "127.0.0.1")
     srcSpec = params.get("source_Spec", "")
     vg_name = params.get("vg_name", "virttest_vg_0")
     ro_flag = "yes" == params.get("readonly_mode", "no")
@@ -45,7 +45,7 @@ def run(test, params, env):
     cleanup_logical = False
 
     # Prepare source storage
-    if source_host == "localhost":
+    if source_host == "127.0.0.1":
         if source_type == "netfs":
             # Set up nfs
             res = utils_test.libvirt.setup_or_cleanup_nfs(True)
