@@ -1,13 +1,10 @@
 import logging
-import os
-import commands
 import time
 import threading
 import re
 from autotest.client.shared import error, utils
-from virttest import libvirt_vm, virsh, data_dir, remote
-from virttest.libvirt_xml import xcepts, vm_xml
-from virttest.libvirt_xml.devices import disk
+from virttest import libvirt_vm, virsh, remote
+from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
 
