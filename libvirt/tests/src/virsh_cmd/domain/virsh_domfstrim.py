@@ -69,6 +69,8 @@ def run(test, params, env):
     is_fulltrim = ("yes" == params.get("is_fulltrim", "yes"))
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
+    has_qemu_ga = not ("yes" == params.get("no_qemu_ga", "no"))
+    start_qemu_ga = not ("yes" == params.get("no_start_qemu_ga", "no"))
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
             unprivileged_user = 'testacl'
@@ -107,7 +109,11 @@ def run(test, params, env):
         recompose_xml(vm_name, scsi_disk)
 
         # Prepare guest agent and start guest
-        vm.prepare_guest_agent()
+        if has_qemu_ga:
+            vm.prepare_guest_agent(start=start_qemu_ga)
+        else:
+            # Remove qemu-ga channel
+            vm.prepare_guest_agent(channel=has_qemu_ga, start=False)
 
         guest_session = vm.wait_for_login()
         # Get new generated disk
@@ -121,8 +127,9 @@ def run(test, params, env):
         # Do first fstrim before all to get original map for compare
         cmd_result = virsh.domfstrim(vm_name)
         if cmd_result.exit_status != 0:
-            raise error.TestFail("Fail to do virsh domfstrim, error %s" %
-                                 cmd_result.stderr)
+            if not status_error:
+                raise error.TestFail("Fail to do virsh domfstrim, error %s" %
+                                     cmd_result.stderr)
 
         def get_diskmap_size():
             """
