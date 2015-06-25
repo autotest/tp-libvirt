@@ -256,7 +256,7 @@ def run(test, params, env):
         # pool as active. This is independent of autostart.
         # So a directory based storage pool is thus pretty much always active,
         # and so as the SCSI pool.
-        if pool_type not in ["dir", 'scsi']:
+        if pool_type != "scsi" and (pool_type != "dir" or libvirt_version.version_compare(1, 2, 15)):
             result = virsh.pool_start(pool_name, ignore_status=True)
             check_exit_status(result)
 
