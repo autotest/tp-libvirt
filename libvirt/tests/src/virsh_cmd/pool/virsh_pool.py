@@ -160,7 +160,7 @@ def run(test, params, env):
 
     # Run Testcase
     pvt = utlv.PoolVolumeTest(test, params)
-    emulated_image = "emulated_image"
+    emulated_image = "emulated-image"
     kwargs = {'image_size': '1G', 'pre_disk_vol': ['1M'],
               'source_name': source_name, 'source_path': source_path,
               'source_format': source_format, 'persistent': True,
