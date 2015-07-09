@@ -40,7 +40,7 @@ class Vol_clone(object):
         self.volume_size = params.get("volume_size", "1G")
         self.pool_type = params.get("pool_type")
         self.pool_target = params.get("pool_target")
-        self.emulated_img = params.get("emulated_img", "emulated_img")
+        self.emulated_img = params.get("emulated_image", "emulated-img")
 
     def run_test(self):
         """
@@ -50,8 +50,11 @@ class Vol_clone(object):
         if int(self.volume_size[:-1]) <= 1:
             raise error.TestNAError("Volume size must large than 1G")
         self.pvtest = libvirt.PoolVolumeTest(self.test, self.params)
-        self.pvtest.pre_pool(self.pool_name, self.pool_type, self.pool_target,
-                             self.emulated_img, emulated_size,
+        self.pvtest.pre_pool(self.pool_name,
+                             self.pool_type,
+                             self.pool_target,
+                             self.emulated_img,
+                             image_size=emulated_size,
                              pre_disk_vol=[self.volume_size])
         self.pool = libvirt_storage.PoolVolume(self.pool_name)
         self.pool.create_volume(self.vol_name, self.volume_size)
@@ -90,7 +93,7 @@ class Vol_create(object):
         self.volume_size = params.get("volume_size", "1G")
         self.pool_type = params.get("pool_type")
         self.pool_target = params.get("pool_target")
-        self.emulated_img = params.get("emulated_img", "emulated_img")
+        self.emulated_img = params.get("emulated_image", "emulated-img")
 
     def run_test(self):
         """
@@ -100,8 +103,11 @@ class Vol_create(object):
         if int(self.volume_size[:-1]) <= 1:
             raise error.TestNAError("Volume size must large than 1G")
         self.pvtest = libvirt.PoolVolumeTest(self.test, self.params)
-        self.pvtest.pre_pool(self.pool_name, self.pool_type, self.pool_target,
-                             self.emulated_img, emulated_size,
+        self.pvtest.pre_pool(self.pool_name,
+                             self.pool_type,
+                             self.pool_target,
+                             self.emulated_img,
+                             image_size=emulated_size,
                              pre_disk_vol=[self.volume_size])
         self.pool = libvirt_storage.PoolVolume(self.pool_name)
         self.pool.create_volume(self.vol_name, self.volume_size)
