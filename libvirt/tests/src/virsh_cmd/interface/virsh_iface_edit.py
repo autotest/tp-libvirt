@@ -20,7 +20,7 @@ def get_ifstart_mode(iface_name):
     try:
         xml = virsh.iface_dumpxml(iface_name, "--inactive", "", debug=True)
         start_mode = re.findall("start mode='(\S+)'", xml)[0]
-    except error.CmdError, IndexError:
+    except (error.CmdError, IndexError):
         logging.error("Fail to get start mode for interface %s", iface_name)
     return start_mode
 
