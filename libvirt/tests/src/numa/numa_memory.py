@@ -47,9 +47,10 @@ def run(test, params, env):
         :param cpu_list: list of cpu number
         :return: cpu affinity string
         """
+        cmd = "lscpu | grep '^CPU(s):'"
+        cpu_num = int(utils.run(cmd).stdout.strip().split(':')[1].strip())
         cpu_affinity_str = ""
-        host_cpu_count = utils.count_cpus()
-        for i in range(host_cpu_count):
+        for i in range(cpu_num):
             if i in cpu_list:
                 cpu_affinity_str += "y"
             else:
@@ -126,7 +127,7 @@ def run(test, params, env):
         vmxml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
         vmxml.numa_memory = numa_memory
         vcpu_num = vmxml.vcpu
-        current_mem = vmxml.current_mem
+        max_mem = vmxml.max_mem
         if vcpu_placement:
             vmxml.placement = vcpu_placement
         if vcpu_cpuset:
@@ -135,7 +136,7 @@ def run(test, params, env):
             logging.debug("Parsed cpuset list is %s", pre_cpuset)
         logging.debug("vm xml is %s", vmxml)
         vmxml.sync()
-        numad_cmd_opt = "-w %s:%s" % (vcpu_num, current_mem/1024)
+        numad_cmd_opt = "-w %s:%s" % (vcpu_num, max_mem/1024)
 
         try:
             vm.start()
@@ -190,7 +191,11 @@ def run(test, params, env):
                     raise error.TestFail("cpu %s is not expected" % i)
             cpu_affinity_check(cpuset=pre_cpuset)
         if numa_memory.get('nodeset'):
-            left_node = [i for i in node_list if i not in used_node]
+            # If there are non-consitent node numbers on host,
+            # convert it to sequence number so that it can be used
+            # in mem_compare
+            left_node = [node_list.index(i) for i in node_list if i not in used_node]
+            used_node = [node_list.index(i) for i in used_node]
             mem_compare(used_node, left_node)
 
         logging.debug("numad log list is %s", numad_log)
@@ -201,7 +206,8 @@ def run(test, params, env):
                 raise error.TestFail("numad command not expected in log")
             numad_ret = numad_log[1].split("numad: ")[-1]
             numad_node = utils_test.libvirt.cpus_parser(numad_ret)
-            left_node = [i for i in node_list if i not in numad_node]
+            left_node = [node_list.index(i) for i in node_list if i not in numad_node]
+            numad_node = [node_list.index(i) for i in numad_node]
             logging.debug("numad nodes are %s", numad_node)
             if numa_memory.get('placement') == 'auto':
                 mem_compare(numad_node, left_node)
