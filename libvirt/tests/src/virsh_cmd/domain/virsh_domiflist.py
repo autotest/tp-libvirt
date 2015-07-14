@@ -6,7 +6,8 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
 driver_dict = {'virtio': 'virtio_net', '-': '8139cp', 'e1000': 'e1000',
-               'rtl8139': '8139cp'}
+               'rtl8139': '8139cp', 'spapr-vlan': 'ibmveth',
+               'virtio-net-pci': 'virtio_net'}
 
 # Regular expression for the below output
 #      vnet0      bridge     virbr0     virtio      52:54:00:b2:b3:b4
