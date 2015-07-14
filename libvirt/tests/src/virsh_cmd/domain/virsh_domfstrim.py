@@ -26,27 +26,29 @@ def run(test, params, env):
         :param: vm_name: Name of domain
         :param: scsi_disk: scsi_debug disk name
         """
-        # Get disk path of scsi_disk
-        path_cmd = "udevadm info --name %s | grep /dev/disk/by-path/ | " \
-                   "cut -d' ' -f4" % scsi_disk
-        disk_path = utils.run(path_cmd).stdout.strip()
 
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-
+        disk_path = scsi_disk
         # Add scsi disk xml
         scsi_disk = Disk(type_name="block")
         scsi_disk.device = "lun"
         scsi_disk.source = scsi_disk.new_disk_source(
             **{'attrs': {'dev': disk_path}})
         scsi_disk.target = {'dev': "sdb", 'bus': "scsi"}
+        find_scsi = "no"
+        controllers = vmxml.xmltreefile.findall("devices/controller")
+        for controller in controllers:
+            if controller.get("type") == "scsi":
+                find_scsi = "yes"
         vmxml.add_device(scsi_disk)
 
         # Add scsi disk controller
-        scsi_controller = Controller("controller")
-        scsi_controller.type = "scsi"
-        scsi_controller.index = "0"
-        scsi_controller.model = "virtio-scsi"
-        vmxml.add_device(scsi_controller)
+        if find_scsi == "no":
+            scsi_controller = Controller("controller")
+            scsi_controller.type = "scsi"
+            scsi_controller.index = "0"
+            scsi_controller.model = "virtio-scsi"
+            vmxml.add_device(scsi_controller)
 
         # Redefine guest
         vmxml.sync()
@@ -199,5 +201,6 @@ def run(test, params, env):
 
     finally:
         # Do domain recovery
+        vm.shutdown()
         xml_backup.sync()
         utils.unload_module("scsi_debug")
