@@ -317,8 +317,8 @@ def run(test, params, env):
         # Step (23)
         # Pool delete for 'dir' type pool
         if pool_type == "dir":
-            if os.path.exists(vol_path):
-                os.remove(vol_path)
+            for f in os.listdir(pool_target):
+                os.remove(os.path.join(pool_target, f))
             result = virsh.pool_delete(pool_name, ignore_status=True)
             check_exit_status(result)
             option = "--inactive --type %s" % pool_type
