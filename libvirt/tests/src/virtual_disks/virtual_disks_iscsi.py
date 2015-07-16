@@ -105,12 +105,25 @@ def run(test, params, env):
             logging.error(str(e))
             return False
 
+    def check_qemu_cmd():
+        """
+        Check qemu-kvm command line options
+        """
+        cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
+        if driver_iothread:
+            cmd += " | grep iothread=iothread%s" % driver_iothread
+
+        if utils.run(cmd, ignore_status=True).exit_status:
+            raise error.TestFail("Can't see disk option '%s' "
+                                 "in command line" % cmd)
+
     # Disk specific attributes.
     device = params.get("virt_disk_device", "disk")
     device_target = params.get("virt_disk_device_target", "vdd")
     device_format = params.get("virt_disk_device_format", "raw")
     device_type = params.get("virt_disk_device_type", "file")
     device_bus = params.get("virt_disk_device_bus", "virtio")
+    driver_iothread = params.get("driver_iothread")
 
     # iscsi options.
     iscsi_target = params.get("iscsi_target")
@@ -123,6 +136,7 @@ def run(test, params, env):
 
     status_error = "yes" == params.get("status_error")
     test_save_snapshot = "yes" == params.get("test_save_snapshot", "no")
+    test_qemu_cmd = "yes" == params.get("test_qemu_cmd", "no")
     check_partitions = "yes" == params.get("virt_disk_check_partitions", "yes")
 
     secret_uuid = ""
@@ -193,7 +207,11 @@ def run(test, params, env):
             **{"attrs": {"protocol": "iscsi", "name": "%s/1" % iscsi_target},
                "hosts": [{"name": iscsi_host, "port": iscsi_port}]})
         disk_xml.target = {"dev": device_target, "bus": device_bus}
-        disk_xml.driver = {"name": "qemu", "type": device_format}
+        driver_dict = {"name": "qemu", "type": device_format}
+        if driver_iothread:
+            driver_dict.update({"iothread": driver_iothread})
+            vmxml.iothreads = int(driver_iothread)
+        disk_xml.driver = driver_dict
 
         # Check if we want to use a faked uuid.
         if not uuid:
@@ -218,6 +236,10 @@ def run(test, params, env):
             vm.start()
             if status_error:
                 raise error.TestFail("VM started unexpectedly.")
+
+            # Check Qemu command line
+            if test_qemu_cmd:
+                check_qemu_cmd()
 
         except virt_vm.VMStartError, e:
             if status_error:
