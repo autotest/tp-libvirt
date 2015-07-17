@@ -128,8 +128,13 @@ def run(test, params, env):
                 host_numa_node,
                 vm.get_pid())
             logging.debug("The memory status is %s", memory_status)
-            left_node_new = [i for i in left_node if i != node]
-            mem_compare([node], left_node_new)
+            # If there are inconsistent node numbers on host,
+            # convert it into sequence number so that it can be used
+            # in mem_compare
+            left_node_new = [node_list.index(i) for i in node_list if i != node]
+            used_node = [node_list.index(node)]
+
+            mem_compare(used_node, left_node_new)
 
     finally:
         libvirtd.exit()
