@@ -6,11 +6,9 @@ import time
 import socket
 import shutil
 
-from autotest.client import utils
 from autotest.client.shared import error
 from virttest import virsh
 from virttest import utils_misc
-from virttest.libvirt_xml.devices import channel
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.controller import Controller
 from virttest.utils_test import libvirt as utlv
@@ -105,6 +103,12 @@ def run(test, params, env):
             elif char_dev == "pty":
                 prepare_channel_xml(xml_file, char_dev, id)
             result = virsh.attach_device(vm_name, xml_file)
+            # serial device was introduced by the following commit,
+            # http://libvirt.org/git/?
+            # p=libvirt.git;a=commit;h=b63ea467617e3cbee4282ab2e5e780b4119cef3d
+            if "unknown device type" in result.stderr:
+                raise error.TestNAError('Failed to attach %s to %s. Result:\n %s'
+                                        % (char_dev, vm_name, result))
         return result
 
     def dup_hotplug(type, char_dev, id, dup_charid=False, dup_devid=False, diff_devid=False):
