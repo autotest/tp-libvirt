@@ -27,7 +27,7 @@ def run(test, params, env):
     source_format = params.get("pool_src_format", "")
     source_name = params.get("pool_source_name", "")
     source_path = params.get("pool_source_path", "/")
-    pool_target = params.get("pool_create_target", "pool_target")
+    pool_target = params.get("pool_target", "pool_target")
     duplicate_element = params.get("pool_create_duplicate_element", "")
     new_pool_name = params.get("new_pool_create_name")
 
