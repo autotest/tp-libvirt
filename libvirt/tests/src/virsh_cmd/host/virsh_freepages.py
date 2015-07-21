@@ -79,9 +79,7 @@ def run(test, params, env):
         host_cells = int(host_cells)
     except (TypeError, ValueError), e:
         raise error.TestError("Fail to get host nodes number: %s" % e)
-    if not cellno:
-        pass
-    elif cellno == "AUTO":
+    if cellno == "AUTO":
         cellno_list = range(0, host_cells)
     elif cellno == "OUT_OF_RANGE":
         cellno_list.append(host_cells)
@@ -95,9 +93,7 @@ def run(test, params, env):
         raise error.TestError("Fail to get default page size: %s" % e)
     default_huge_pagesize = utils_memory.get_huge_page_size()
     pagesize_list = []
-    if not pagesize:
-        pass
-    elif pagesize == "AUTO":
+    if pagesize == "AUTO":
         pagesize_list.append(default_pagesize)
         pagesize_list.append(default_huge_pagesize)
     else:
