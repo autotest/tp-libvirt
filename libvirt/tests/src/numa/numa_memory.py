@@ -191,8 +191,8 @@ def run(test, params, env):
                     raise error.TestFail("cpu %s is not expected" % i)
             cpu_affinity_check(cpuset=pre_cpuset)
         if numa_memory.get('nodeset'):
-            # If there are non-consitent node numbers on host,
-            # convert it to sequence number so that it can be used
+            # If there are inconsistent node numbers on host,
+            # convert it into sequence number so that it can be used
             # in mem_compare
             left_node = [node_list.index(i) for i in node_list if i not in used_node]
             used_node = [node_list.index(i) for i in used_node]
