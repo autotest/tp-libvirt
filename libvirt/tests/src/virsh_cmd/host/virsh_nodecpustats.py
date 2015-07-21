@@ -123,6 +123,7 @@ def run(test, params, env):
     # Initialize the variables
     itr = int(params.get("inner_test_iterations"))
     option = params.get("virsh_cpunodestats_options")
+    invalid_cpunum = params.get("invalid_cpunum")
     status_error = params.get("status_error")
     libvirtd = params.get("libvirtd", "on")
 
@@ -138,6 +139,8 @@ def run(test, params, env):
     for i in range(itr):
 
         if status_error == "yes":
+            if invalid_cpunum == "yes":
+                option = "--cpu %s" % (len(host_cpus_list) + 1)
             output = virsh.nodecpustats(ignore_status=True, option=option)
             status = output.exit_status
 
