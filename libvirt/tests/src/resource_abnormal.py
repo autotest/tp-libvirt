@@ -11,7 +11,6 @@ from virttest import utils_selinux
 from virttest import qemu_storage
 from virttest import libvirt_vm
 from virttest import utils_misc
-from virttest.staging import service
 from virttest import virsh
 from virttest import remote
 from virttest import data_dir
@@ -230,7 +229,7 @@ class Virt_clone(object):
             self.td1.start()
         self.td0.start()
         # Wait for virt-clone has been started
-        time.sleep(1)
+        time.sleep(30)
 
     def result_confirm(self, params):
         """
