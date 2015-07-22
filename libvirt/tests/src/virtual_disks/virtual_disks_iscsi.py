@@ -129,6 +129,7 @@ def run(test, params, env):
     iscsi_target = params.get("iscsi_target")
     iscsi_host = params.get("iscsi_host")
     iscsi_port = params.get("iscsi_port")
+    lun_num = params.get("lun_num", "0")
     emulated_size = params.get("iscsi_image_size", "1")
     uuid = params.get("uuid", "")
     auth_uuid = "yes" == params.get("auth_uuid", "")
@@ -190,12 +191,13 @@ def run(test, params, env):
                                                       is_login=False,
                                                       image_size=emulated_size,
                                                       chap_user=chap_user,
-                                                      chap_passwd=chap_passwd)
+                                                      chap_passwd=chap_passwd,
+                                                      portal_ip=iscsi_host)
 
         # If we use qcow2 disk format, should format iscsi disk first.
         if device_format == "qcow2":
-            cmd = ("qemu-img create -f qcow2 iscsi://%s:%s/%s/1 %s"
-                   % (iscsi_host, iscsi_port, iscsi_target, emulated_size))
+            cmd = ("qemu-img create -f qcow2 iscsi://%s:%s/%s/%s %s"
+                   % (iscsi_host, iscsi_port, iscsi_target, lun_num, emulated_size))
             utils.run(cmd)
 
         # Add disk xml.
@@ -204,7 +206,8 @@ def run(test, params, env):
         disk_xml = Disk(type_name=device_type)
         disk_xml.device = device
         disk_xml.source = disk_xml.new_disk_source(
-            **{"attrs": {"protocol": "iscsi", "name": "%s/1" % iscsi_target},
+            **{"attrs": {"protocol": "iscsi",
+                         "name": "%s/%s" % (iscsi_target, lun_num)},
                "hosts": [{"name": iscsi_host, "port": iscsi_port}]})
         disk_xml.target = {"dev": device_target, "bus": device_bus}
         driver_dict = {"name": "qemu", "type": device_format}
