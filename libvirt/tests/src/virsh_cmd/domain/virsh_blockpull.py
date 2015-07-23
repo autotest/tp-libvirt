@@ -2,7 +2,7 @@ import os
 import logging
 import tempfile
 from autotest.client.shared import error
-from virttest import virsh, data_dir, utils_libvirtd
+from virttest import virsh, data_dir, utils_libvirtd, utils_misc
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import snapshot_xml
@@ -161,6 +161,11 @@ def run(test, params, env):
     base_option = params.get("base_option", None)
     keep_relative = "yes" == params.get("keep_relative", 'no')
     virsh_dargs = {'debug': True}
+    snap_options = params.get("snap_options", "")
+    snapshot_create = "yes" == params.get("snapshot_create", "yes")
+    snapshot_create_as = "yes" == params.get("create_snap_short", "no")
+    check_blockjob = "yes" == params.get("check_blockjob", "no")
+    check_image_info = "yes" == params.get("check_image_info", "no")
 
     # Process domain disk device parameters
     disk_type = params.get("disk_type")
@@ -210,10 +215,35 @@ def run(test, params, env):
         blk_target = first_disk['target']
         snapshot_flag_files = []
 
+        if check_image_info:
+            # Get the first disk source path
+            first_disk = vm.get_first_disk_devices()
+            disk_source = first_disk['source']
+            logging.debug("disk source: %s", disk_source)
+            image_info_dict = utils_misc.get_image_info(disk_source)
+            logging.debug("Check disk image info before snapshorting "
+                          "and pulling: %s", image_info_dict)
+
         # get a vm session before snapshot
         session = vm.wait_for_login()
         # do snapshot
-        make_disk_snapshot()
+        if snapshot_create:
+            make_disk_snapshot()
+
+        if snapshot_create_as:
+            ret = virsh.snapshot_create_as(vm_name, snap_options,
+                                           ignore_status=True,
+                                           debug=True)
+            libvirt.check_exit_status(ret, snap_in_mirror_err)
+
+        if check_image_info:
+            # Get the first disk source path
+            first_disk = vm.get_first_disk_devices()
+            disk_source = first_disk['source']
+            logging.debug("disk source: %s", disk_source)
+            image_info_dict = utils_misc.get_image_info(disk_source)
+            logging.debug("Check disk image info after snapshorting "
+                          "and before pulling: %s", image_info_dict)
 
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         logging.debug("The domain xml after snapshot is %s" % vmxml)
@@ -271,6 +301,22 @@ def run(test, params, env):
         # Check status_error
         libvirt.check_exit_status(result, status_error)
 
+        if check_blockjob:
+            logging.info("get active job information for the specified disk")
+            ret = virsh.blockjob(vm_name, blk_target, "--info")
+            if ret.exit_status:
+                logging.error(ret.stderr)
+            libvirt.check_exit_status(ret, status_error)
+
+        if check_image_info:
+            # Get the first disk source path
+            first_disk = vm.get_first_disk_devices()
+            disk_source = first_disk['source']
+            logging.debug("disk source: %s", disk_source)
+            image_info_dict = utils_misc.get_image_info(disk_source)
+            logging.debug("Check disk image info after snapshorting "
+                          "and pulling: %s", image_info_dict)
+
         if not status and not with_timeout:
             if snap_in_mirror:
                 snap_mirror_path = "%s/snap_mirror" % tmp_dir
@@ -301,7 +347,7 @@ def run(test, params, env):
                     ret = check_chain_xml(disk_xml, chain_lst)
                     if not ret:
                         raise error.TestFail(err_msg)
-                elif "base" or "shallow" in base_option:
+                elif "base" in base_option or "shallow" in base_option:
                     chain_lst = snap_src_lst[::-1]
                     if not base_index and base_image:
                         base_index = chain_lst.index(base_image)
