@@ -126,8 +126,9 @@ def run(test, params, env):
                        'readonly': disk_readonly}
         disk_params_src = {}
         if disk_type == "network":
+            lun_num = params.get("lun_num", "0")
             disk_params_src = {'source_protocol': disk_src_protocol,
-                               'source_name': iscsi_target + "/1",
+                               'source_name': iscsi_target + "/%s" % lun_num,
                                'source_host_name': disk_src_host,
                                'source_host_port': disk_src_port}
         elif disk_type == "volume":
