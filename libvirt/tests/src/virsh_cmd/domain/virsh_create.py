@@ -2,7 +2,7 @@ import time
 import commands
 import logging
 from autotest.client.shared import error
-from virttest import aexpect, utils_test, virsh
+from virttest import aexpect, utils_test, virsh, utils_misc
 
 
 def run(test, params, env):
@@ -49,10 +49,10 @@ def run(test, params, env):
             1. if have options --paused: check status and resume
             2. check if guest is running after 1
             """
-            # sleep to make sure guest is paused
-            time.sleep(2)
             if "--paused" in options:
-                if not vm.is_paused():
+                # make sure guest is paused
+                ret = utils_misc.wait_for(lambda: vm.is_paused(), 30)
+                if not ret:
                     raise error.TestFail("Guest status is not paused with"
                                          "options %s, state is %s" %
                                          (options, vm.state()))
@@ -60,7 +60,9 @@ def run(test, params, env):
                     logging.info("Guest status is paused.")
                 vm.resume()
 
-            if vm.state() == "running":
+            # make sure guest is running
+            ret = utils_misc.wait_for(lambda: vm.state() == "running", 30)
+            if ret:
                 logging.info("Guest is running now.")
             else:
                 raise error.TestFail("Fail to create guest, guest state is %s"
@@ -70,7 +72,9 @@ def run(test, params, env):
             """
             check if guest will disappear with --autodestroy
             """
-            if vm.exists():
+            # make sure guest is auto destroyed
+            ret = utils_misc.wait_for(lambda: not vm.exists(), 30)
+            if not ret:
                 raise error.TestFail("Guest still exist with options %s" %
                                      options)
             else:
