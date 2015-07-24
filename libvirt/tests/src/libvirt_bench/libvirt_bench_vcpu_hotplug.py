@@ -17,7 +17,6 @@ def run(test, params, env):
     """
 
     vm_name = params.get("main_vm")
-    vm = env.get_vm(vm_name)
     min_count = int(params.get("setvcpus_min_count", "1"))
     max_count = int(params.get("setvcpus_max_count", "2"))
     test_times = int(params.get("setvcpus_test_times", "1"))
@@ -32,22 +31,24 @@ def run(test, params, env):
 
     # Set min/max of vcpu
     libvirt_xml.VMXML.set_vm_vcpus(vm_name, test_set_max, min_count)
+
+    # prepare VM instance
+    vm = libvirt_vm.VM(vm_name, params, test.bindir, env.get("address_cache"))
+
     # prepare guest-agent service
     vm.prepare_guest_agent()
-
-    session = vm.wait_for_login()
 
     # Increase the workload
     load_vms = []
     if stress_type in ['cpu', 'memory', 'io']:
         params["stress_args"] = stress_param
-    load_vms.append(libvirt_vm.VM(vm_name, params, test.bindir,
-                                  env.get("address_cache")))
+    load_vms.append(vm)
     if stress_type in ['cpu', 'memory']:
         utils_test.load_stress("stress_in_vms", load_vms, params)
     else:
         utils_test.load_stress("iozone_in_vms", load_vms, params)
 
+    session = vm.wait_for_login()
     try:
         # Clear dmesg before set vcpu
         session.cmd("dmesg -c")
@@ -66,8 +67,10 @@ def run(test, params, env):
                                      % add_result.stderr.strip())
             # 1.2 check dmesg
             domain_add_dmesg = session.cmd_output("dmesg -c")
-            if not domain_add_dmesg.count("CPU%d has been hot-added"
-                                          % (max_count - 1)):
+            dmesg1 = "CPU%d has been hot-added" % (max_count - 1)
+            dmesg2 = "CPU %d got hotplugged" % (max_count - 1)
+            if (not domain_add_dmesg.count(dmesg1) and
+                    not domain_add_dmesg.count(dmesg2)):
                 raise error.TestFail("Cannot find hotplug info in dmesg: %s"
                                      % domain_add_dmesg)
             # 1.3 check cpu related file
