@@ -95,7 +95,8 @@ def run(test, params, env):
         iscsi_target = libvirt.setup_or_cleanup_iscsi(is_setup=True,
                                                       is_login=False,
                                                       chap_user=chap_user,
-                                                      chap_passwd=chap_passwd)
+                                                      chap_passwd=chap_passwd,
+                                                      portal_ip=disk_src_host)
         # Create iscsi pool
         if disk_type == "volume":
             # Create an iscsi pool xml to create it
