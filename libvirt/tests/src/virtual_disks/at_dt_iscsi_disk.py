@@ -167,6 +167,8 @@ def run(test, params, env):
             cmd_result = virsh.start(vm_name, **virsh_dargs)
             libvirt.check_exit_status(cmd_result)
 
+        # Wait for domain is stable
+        vm.wait_for_login().close()
         domain_operation = params.get("domain_operation", "")
         if domain_operation == "save":
             save_file = os.path.join(test.tmpdir, "vm.save")
