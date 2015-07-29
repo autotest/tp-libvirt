@@ -24,7 +24,7 @@ def run(test, params, env):
         lsusb_lines=lsusb_op.splitlines()
         usb_list=[]
         for i in lsusb_lines:
-               usbs.append(re.sub(r' ',' ',i.split(' ')[5]))
+               usb_list.append(re.sub(r' ',' ',i.split(' ')[5]))
         return usb_list
 
     def is_USB(device_type):
