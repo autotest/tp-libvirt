@@ -21,17 +21,16 @@ def run(test, params, env):
     """
     # Prepare parameters
     filter_name = params.get("filter_name", "testcase")
-    status_error = "yes" == params.get("status_error", "no")
     bug_url = params.get("bug_url", "")
     vm_name = params.get("main_vm")
-    vm = env.get_vm(vm_name)
-
-    # Prepare vm filterref parameters dict list
-    filterref_dict = {}
-    filterref_dict['name'] = filter_name
 
     if not libvirt_version.version_compare(1, 2, 6):
         raise error.TestNAError("Bug %s not fixed on current build" % bug_url)
+
+    vm = env.get_vm(vm_name)
+    # Prepare vm filterref parameters dict list
+    filterref_dict = {}
+    filterref_dict['name'] = filter_name
 
     # backup vm and filter xml
     vmxml_backup = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
