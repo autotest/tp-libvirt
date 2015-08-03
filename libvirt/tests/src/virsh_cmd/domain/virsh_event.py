@@ -165,6 +165,11 @@ def run(test, params, env):
             # various events
             logging.info("Sending '%s' to virsh shell", event_cmd)
             virsh_session.sendline(event_cmd)
+        elif qemu_monitor_test:
+            result = virsh.qemu_monitor_event(domain=vm_name, event=event_name,
+                                              event_timeout=event_timeout,
+                                              options=event_option, **virsh_dargs)
+            utlv.check_exit_status(result, status_error)
         else:
             result = virsh.event(domain=vm_name, event=event_name,
                                  event_timeout=event_timeout,
