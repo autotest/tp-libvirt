@@ -23,7 +23,7 @@ def check_blkdeviotune(params):
 
     virt_xml_obj = libvirt_xml.vm_xml.VMXML(virsh_instance=virsh)
 
-    if options == "config" and vm.is_alive():
+    if "config" in options and vm.is_alive():
         blkdev_xml = virt_xml_obj.get_blkdevio_params(vm_name, "--inactive")
     else:
         blkdev_xml = virt_xml_obj.get_blkdevio_params(vm_name)
@@ -33,7 +33,7 @@ def check_blkdeviotune(params):
     blkdevio_list = ["total_bytes_sec", "read_bytes_sec", "write_bytes_sec",
                      "total_iops_sec", "read_iops_sec", "write_iops_sec"]
 
-    if vm.is_alive() and options != "config":
+    if vm.is_alive() and "config" not in options:
         for k in blkdevio_list:
             arg_from_test_input = params.get("blkdevio_" + k)
             arg_from_cmd_output = dicts.get(k)
@@ -63,7 +63,7 @@ def get_blkdevio_parameter(params):
     options = params.get("blkdevio_options")
     device = params.get("blkdevio_device")
 
-    result = virsh.blkdeviotune(vm_name, device, options=options)
+    result = virsh.blkdeviotune(vm_name, device, options=options, debug=True)
     status = result.exit_status
 
     # Check status_error
@@ -100,7 +100,7 @@ def set_blkdevio_parameter(params):
                                 options, total_bytes_sec,
                                 read_bytes_sec, write_bytes_sec,
                                 total_iops_sec, read_iops_sec,
-                                write_iops_sec)
+                                write_iops_sec, debug=True)
     status = result.exit_status
 
     # Check status_error
