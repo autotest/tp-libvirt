@@ -74,6 +74,8 @@ def run(test, params, env):
         driver_dict = {"name": "qemu",
                        "type": disk_format,
                        "cache": "none"}
+        if driver_iothread:
+            driver_dict.update({"iothread": driver_iothread})
         disk_xml.driver = driver_dict
         disk_xml.target = {"dev": "vda", "bus": "virtio"}
         if default_pool:
@@ -91,6 +93,15 @@ def run(test, params, env):
                 host_dict.update({"transport": transport})
             disk_xml.source = disk_xml.new_disk_source(
                 **{"attrs": source_dict, "hosts": [host_dict]})
+        # set domain options
+        if dom_iothreads:
+            try:
+                vmxml.iothreads = int(dom_iothreads)
+            except ValueError:
+                # 'iothreads' may not invalid number in negative tests
+                logging.debug("Can't convert '%s' to integer type"
+                              % dom_iothreads)
+
         # Add the new disk xml.
         vmxml.add_device(disk_xml)
         vmxml.sync()
@@ -136,7 +147,10 @@ def run(test, params, env):
     transport = params.get("transport", "")
     default_pool = params.get("default_pool", "")
     pool_name = params.get("pool_name")
+    driver_iothread = params.get("driver_iothread")
+    dom_iothreads = params.get("dom_iothreads")
     brick_path = os.path.join(test.virtdir, pool_name)
+    test_qemu_cmd = "yes" == params.get("test_qemu_cmd", "no")
 
     pre_vm_state = params.get("pre_vm_state", "running")
 
@@ -184,13 +198,15 @@ def run(test, params, env):
                 raise error.TestFail("failed to prepare agent")
             # Run dompmsuspend command.
             test_pmsuspend(vm_name)
-        if transport:
+        if test_qemu_cmd:
             # Check qemu-kvm command line
             cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
-            if transport == "tcp":
-                cmd += " | grep gluster.*format=%s" % disk_format
-            else:
+            if transport == "rdma":
                 cmd += " | grep gluster+%s.*format=%s" % (transport, disk_format)
+            else:
+                cmd += " | grep gluster.*format=%s" % disk_format
+            if driver_iothread:
+                cmd += " | grep iothread=iothread%s" % driver_iothread
             if utils.run(cmd, ignore_status=True).exit_status:
                 raise error.TestFail("Can't see gluster option '%s' "
                                      "in command line" % cmd)
