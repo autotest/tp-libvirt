@@ -19,20 +19,23 @@ def run(test, params, env):
         logging.debug("topo xml is %s", topo.xmltreefile)
         cell_list = topo.get_cell()
         numa_info = utils_misc.NumaInfo()
+        node_list = numa_info.online_nodes
+
         for cell_num in range(len(cell_list)):
             # check node distances
+            node_num = node_list[cell_num]
             cell_distance = cell_list[cell_num].sibling
-            logging.debug("cell %s distance is %s", cell_num, cell_distance)
-            node_distance = numa_info.distances[cell_num]
+            logging.debug("cell %s distance is %s", node_num, cell_distance)
+            node_distance = numa_info.distances[node_num]
             for j in range(len(cell_list)):
                 if cell_distance[j]['value'] != node_distance[j]:
                     raise error.TestFail("cell distance value not expected.")
             # check node cell cpu
             cell_xml = cell_list[cell_num]
             cpu_list_from_xml = cell_xml.cpu
-            node_ = numa_info.nodes[cell_num]
+            node_ = numa_info.nodes[node_num]
             cpu_list = node_.cpus
-            logging.debug("cell %s cpu list is %s", cell_num, cpu_list)
+            logging.debug("cell %s cpu list is %s", node_num, cpu_list)
             cpu_topo_list = []
             for cpu_id in cpu_list:
                 cpu_dict = node_.get_cpu_topology(cpu_id)

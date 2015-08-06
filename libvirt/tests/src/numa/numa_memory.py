@@ -115,14 +115,30 @@ def run(test, params, env):
         host_numa_node = utils_misc.NumaInfo()
         node_list = host_numa_node.online_nodes
         logging.debug("host node list is %s", node_list)
+
+        # Get host cpu list
+        tmp_list = []
+        for node_num in node_list:
+            host_node = utils_misc.NumaNode(i=node_num+1)
+            logging.debug("node %s cpu list is %s" %
+                          (node_num, host_node.cpus))
+            tmp_list += host_node.cpus
+        cpu_list = [int(i) for i in tmp_list]
+
         if numa_memory.get('nodeset'):
             used_node = utils_test.libvirt.cpus_parser(numa_memory['nodeset'])
             logging.debug("set node list is %s", used_node)
             if not status_error:
-                for i in used_node:
-                    if i > max(node_list):
-                        raise error.TestNAError("nodeset %s out of range" %
-                                                numa_memory['nodeset'])
+                if not set(used_node).issubset(node_list):
+                    raise error.TestNAError("nodeset %s out of range" %
+                                            numa_memory['nodeset'])
+
+        if vcpu_cpuset:
+            pre_cpuset = utils_test.libvirt.cpus_parser(vcpu_cpuset)
+            logging.debug("Parsed cpuset list is %s", pre_cpuset)
+            if not set(pre_cpuset).issubset(cpu_list):
+                raise error.TestNAError("cpuset %s out of range" %
+                                        vcpu_cpuset)
 
         vmxml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
         vmxml.numa_memory = numa_memory
@@ -132,8 +148,6 @@ def run(test, params, env):
             vmxml.placement = vcpu_placement
         if vcpu_cpuset:
             vmxml.cpuset = vcpu_cpuset
-            pre_cpuset = utils_test.libvirt.cpus_parser(vcpu_cpuset)
-            logging.debug("Parsed cpuset list is %s", pre_cpuset)
         logging.debug("vm xml is %s", vmxml)
         vmxml.sync()
         numad_cmd_opt = "-w %s:%s" % (vcpu_num, max_mem/1024)
@@ -175,7 +189,6 @@ def run(test, params, env):
                                      " %s\n%s" % (e, bug_url))
 
         # Check qemu process numa memory usage
-        host_numa_node = utils_misc.NumaInfo()
         memory_status, qemu_cpu = utils_test.qemu.get_numa_status(
             host_numa_node,
             vm.get_pid())
@@ -207,10 +220,10 @@ def run(test, params, env):
             numad_ret = numad_log[1].split("numad: ")[-1]
             numad_node = utils_test.libvirt.cpus_parser(numad_ret)
             left_node = [node_list.index(i) for i in node_list if i not in numad_node]
-            numad_node = [node_list.index(i) for i in numad_node]
+            numad_node_seq = [node_list.index(i) for i in numad_node]
             logging.debug("numad nodes are %s", numad_node)
             if numa_memory.get('placement') == 'auto':
-                mem_compare(numad_node, left_node)
+                mem_compare(numad_node_seq, left_node)
             if vcpu_placement == 'auto':
                 for i in left_node:
                     if qemu_cpu[i]:

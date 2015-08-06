@@ -11,18 +11,6 @@ except ImportError:
     from autotest.client.shared import utils_cgroup
 
 
-def num_numa_nodes():
-    """
-    Return the number of available numa nodes
-    """
-    output = utils.run('numactl -H').stdout.strip()
-    mobj = re.match(r'available:\s+(\d+)\s+nodes\s+.*', output)
-    if mobj is not None:
-        return int(mobj.group(1))
-    else:
-        return 0
-
-
 def check_numatune_xml(params):
     """
     Compare mode and nodeset value with guest XML configuration
@@ -32,7 +20,7 @@ def check_numatune_xml(params):
     mode = params.get("numa_mode", "")
     nodeset = params.get("numa_nodeset", "")
     options = params.get("options", "")
-    #--config option will act after vm shutdown.
+    # --config option will act after vm shutdown.
     if options == "config":
         virsh.shutdown(vm_name)
     # The verification of the numa params should
@@ -119,6 +107,11 @@ def set_numa_parameter(params, cgstop):
     options = params.get("options", None)
     start_vm = params.get("start_vm", "yes")
 
+    # Get host numa node list
+    host_numa_node = utils_misc.NumaInfo()
+    node_list = host_numa_node.online_nodes
+    logging.debug("host node list is %s", node_list)
+
     # Don't use libvirt_xml here because testing numatune command
     result = virsh.numatune(vm_name, mode, nodeset, options, debug=True)
     status = result.exit_status
@@ -153,9 +146,10 @@ def set_numa_parameter(params, cgstop):
                 logging.info("Control groups stopped, thus expected success")
     elif status_error == "no":
         if status:
-            if (cpus_parser(nodeset)[-1] + 1) > num_numa_nodes():
+            used_node = cpus_parser(nodeset)
+            if not set(used_node).issubset(node_list):
                 raise error.TestNAError("Host does not support requested"
-                                        " nodeset")
+                                        " nodeset %s" % used_node)
             else:
                 raise error.TestFail(result.stderr)
         else:
