@@ -75,7 +75,7 @@ def check_parameters(params):
 
     for arg in args_list:
         if arg and arg.count("ENTER.YOUR."):
-            raise error.TestNAError("Please assign a value for %s!", arg)
+            raise error.TestNAError("Please assign a value for %s!" % arg)
 
 
 def compare_virt_version(server_ip, server_user, server_pwd):
