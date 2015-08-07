@@ -42,7 +42,7 @@ def remote_access(params):
                 fp = open(logfile, "r")
                 if not re.findall(pattern, fp.read()):
                     fp.close()
-                    raise error.TestFail("Failed to find %s in log!!, pattern")
+                    raise error.TestFail("Failed to find %s in log!!" % pattern)
                 fp.close()
             logging.info("Succeed to connect libvirt daemon.")
         else:
