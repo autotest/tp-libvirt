@@ -68,7 +68,7 @@ def run(test, params, env):
             if src_vols:
                 src_vol_name = src_vols[0]
             else:
-                raise error.TestFail("No volume in pool: %s", src_pool_name)
+                raise error.TestFail("No volume in pool: %s" % src_pool_name)
         # Prepare vol xml file
         dest_vol_name = "dest_vol"
         # According to BZ#1138523, we need inpect the right name
@@ -97,8 +97,8 @@ def run(test, params, env):
 
         # iSCSI and SCSI type pool can't create vols via virsh
         if dest_pool_type in ["iscsi", "scsi"]:
-            raise error.TestFail("Unsupport create vol for %s type pool",
-                                 dest_pool_type)
+            raise error.TestFail("Unsupport create vol for %s type pool"
+                                 % dest_pool_type)
         # Metadata preallocation is not supported for block volumes
         if dest_pool_type in ["disk", "logical"]:
             prealloc_option = ""
@@ -117,8 +117,8 @@ def run(test, params, env):
                 logging.debug("Current volumes in %s: %s",
                               dest_pool_name, dest_volumes)
                 if dest_vol_name not in dest_volumes:
-                    raise error.TestFail("Can't find volume: % from pool: %s",
-                                         dest_vol_name, dest_pool_name)
+                    raise error.TestFail("Can't find volume: % from pool: %s"
+                                         % (dest_vol_name, dest_pool_name))
             else:
                 raise error.TestFail(cmd_result.stderr)
         else:

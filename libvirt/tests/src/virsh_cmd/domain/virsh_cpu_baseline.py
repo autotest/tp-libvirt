@@ -62,7 +62,7 @@ def run(test, params, env):
             feature_name += names.getAttribute("name")
         dom.unlink()
         if not re.search(test_feature, feature_name):
-            raise error.TestFail("Cannot see '%s' feature", test_feature)
+            raise error.TestFail("Cannot see '%s' feature" % test_feature)
 
     # Get all parameters.
     file_name = params.get("cpu_baseline_cpu_file", "cpu.xml")

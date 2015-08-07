@@ -101,11 +101,11 @@ def run(test, params, env):
 
     src_uri = params.get("migrate_src_uri", "qemu+ssh://EXAMPLE/system")
     if src_uri.count('///') or src_uri.count('EXAMPLE'):
-        raise error.TestNAError("The src_uri '%s' is invalid", src_uri)
+        raise error.TestNAError("The src_uri '%s' is invalid" % src_uri)
 
     dest_uri = params.get("migrate_dest_uri", "qemu+ssh://EXAMPLE/system")
     if dest_uri.count('///') or dest_uri.count('EXAMPLE'):
-        raise error.TestNAError("The dest_uri '%s' is invalid", dest_uri)
+        raise error.TestNAError("The dest_uri '%s' is invalid" % dest_uri)
 
     # Migrated vms' instance
     vms = []

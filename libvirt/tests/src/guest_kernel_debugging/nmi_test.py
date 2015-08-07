@@ -88,5 +88,5 @@ def run(test, params, env):
 
         # check Non-maskable interrupts times
         if real_nmi_times != expected_nmi_times:
-            raise error.TestFail("NMI times aren't expected %s:%s",
-                                 real_nmi_times, expected_nmi_times)
+            raise error.TestFail("NMI times aren't expected %s:%s"
+                                 % (real_nmi_times, expected_nmi_times))

@@ -226,10 +226,10 @@ def run(test, params, env):
             logging.debug("Secret uuid is %s", uuid)
             params['secret_uuid'] = uuid
         else:
-            raise error.TestFail('Cannot find secret %s in:\n %s',
-                                 (usage_volume, output))
+            raise error.TestFail('Cannot find secret %s in:\n %s'
+                                 % (usage_volume, output))
     else:
-        raise error.TestFail('No secret found in:\n %s', output)
+        raise error.TestFail('No secret found in:\n %s' % output)
 
     # Update parameters dictionary with automatically generated UUID
     if not params.get('secret_ref'):

@@ -44,7 +44,7 @@ def copied_migration(vms, params):
         raise error.TestFail("Migrate vms with storage copied failed.")
 
     if len(check_ip_failures):
-        raise error.TestFail("Check IP failed:%s", check_ip_failures)
+        raise error.TestFail("Check IP failed:%s" % check_ip_failures)
 
 
 def run(test, params, env):

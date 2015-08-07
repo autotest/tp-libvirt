@@ -64,7 +64,7 @@ def run(test, params, env):
                     lv_utils.vg_create(vg_name, iscsi_device)
                 except Exception, detail:
                     utils_test.libvirt.setup_or_cleanup_iscsi(False)
-                    raise error.TestFail("vg_create failed: %s", detail)
+                    raise error.TestFail("vg_create failed: %s" % detail)
                 cleanup_logical = True
 
     # Prepare srcSpec xml

@@ -143,8 +143,8 @@ def run(test, params, env):
             # Create disk snapshot before all to make the origin image clean
             ret = virsh.snapshot_create_as(vm_name, "snap-temp --disk-only")
             if ret.exit_status != 0:
-                raise error.TestFail("Fail to create temp snap, Error: %s",
-                                     ret.stderr.strip())
+                raise error.TestFail("Fail to create temp snap, Error: %s"
+                                     % ret.stderr.strip())
 
             # Create snapshots
             for opt in snap_opt:
