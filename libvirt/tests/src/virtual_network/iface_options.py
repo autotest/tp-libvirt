@@ -460,12 +460,19 @@ def run(test, params, env):
             if change_option:
                 modify_iface_xml(update=False)
 
-            # Check vhost driver.
             if rm_vhost_driver:
+                # Check vhost driver.
+                kvm_version = os.uname()[2]
+                driver_path = ("/lib/modules/%s/kernel/drivers/vhost/"
+                               "vhost_net.ko" % kvm_version)
+                driver_backup = driver_path + ".bak"
                 cmd = ("modprobe -r {0}; lsmod | "
                        "grep {0}".format("vhost_net"))
                 if not utils.system(cmd, ignore_status=True):
-                    raise error.TestError("Can't remove vhost_net driver")
+                    raise error.TestError("Failed to remove vhost_net driver")
+                # Move the vhost_net driver
+                if os.path.exists(driver_path):
+                    os.rename(driver_path, driver_backup)
             else:
                 # Load vhost_net driver by default
                 cmd = "modprobe vhost_net"
@@ -593,6 +600,10 @@ def run(test, params, env):
                 os.rename(backend["tap"], backend_tap)
             if not os.path.exists(backend_vhost):
                 os.rename(backend["vhost"], backend_vhost)
+        if rm_vhost_driver:
+            # Restore vhost_net driver
+            if os.path.exists(driver_backup):
+                os.rename(driver_backup, driver_path)
         if unprivileged_user:
             virsh.remove_domain(vm_name, "--remove-all-storage",
                                 **virsh_dargs)
