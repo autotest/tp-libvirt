@@ -103,8 +103,8 @@ def run(test, params, env):
         logging.debug("Create snap-temp --disk-only")
         ret = virsh.snapshot_create_as(vm_name, "snap-temp --disk-only")
         if ret.exit_status != 0:
-            raise error.TestFail("Fail to create temp snap, Error: %s",
-                                 ret.stderr.strip())
+            raise error.TestFail("Fail to create temp snap, Error: %s"
+                                 % ret.stderr.strip())
 
         # Create snapshots
         for opt in [snap_create_opt1, snap_create_opt2]:
@@ -181,8 +181,8 @@ def run(test, params, env):
 
         if snap_opt == "--rename":
             if pre_name in snapshots:
-                raise error.TestFail("After rename, snapshot %s still exist",
-                                     pre_name)
+                raise error.TestFail("After rename, snapshot %s still exist"
+                                     % pre_name)
             snap_xml_compare(pre_xml, after_xml)
 
         # Check if --current effect take effect

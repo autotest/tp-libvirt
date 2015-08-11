@@ -127,7 +127,7 @@ def create_nodedev_from_xml(params):
                     if check_nodedev(scsi, scsi_host):
                         return scsi
                     else:
-                        raise error.TestFail("Can't find %s", scsi)
+                        raise error.TestFail("Can't find %s" % scsi)
 
 
 def destroy_nodedev(params):

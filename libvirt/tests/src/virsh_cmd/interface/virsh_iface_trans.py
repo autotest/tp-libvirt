@@ -43,7 +43,7 @@ def write_iface_cfg(iface_cfg):
         fp.write(content)
         fp.close()
     except IOError:
-        raise error.TestFail("Failed to write %s to %s!", (content, iface_cfg))
+        raise error.TestFail("Failed to write %s to %s!" % (content, iface_cfg))
 
 
 def cleanup(iface_cfg, exist_trans="no"):

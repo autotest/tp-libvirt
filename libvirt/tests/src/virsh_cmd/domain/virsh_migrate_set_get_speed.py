@@ -134,10 +134,10 @@ def run(test, params, env):
             raise error.TestNAError("Please provide migrate_vms for test.")
 
         if src_uri.count('///') or src_uri.count('EXAMPLE'):
-            raise error.TestNAError("The src_uri '%s' is invalid", src_uri)
+            raise error.TestNAError("The src_uri '%s' is invalid" % src_uri)
 
         if dest_uri.count('///') or dest_uri.count('EXAMPLE'):
-            raise error.TestNAError("The dest_uri '%s' is invalid", dest_uri)
+            raise error.TestNAError("The dest_uri '%s' is invalid" % dest_uri)
 
         remote_host = params.get("migrate_dest_host")
         username = params.get("migrate_dest_user", "root")

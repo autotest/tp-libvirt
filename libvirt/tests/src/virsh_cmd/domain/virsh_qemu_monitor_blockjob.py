@@ -125,7 +125,7 @@ def copied_migration(vm, params, blockjob_type=None, block_target="vda"):
                                  "storage copied migration.")
 
     if len(check_ip_failures):
-        raise error.TestFail("Check IP failed:%s", check_ip_failures)
+        raise error.TestFail("Check IP failed:%s" % check_ip_failures)
 
 
 def run(test, params, env):

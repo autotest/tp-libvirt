@@ -201,7 +201,7 @@ def run(test, params, env):
                      'storagevol', 'nodedev', 'capability',
                      'nwfilter', 'secret', 'interface']
     if schema not in valid_schemas:
-        raise error.TestFail("invalid %s specified", schema)
+        raise error.TestFail("invalid %s specified" % schema)
 
     virsh_dargs = {'ignore_status': True, 'debug': True}
     if schema == "domainsnapshot":

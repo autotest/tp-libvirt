@@ -132,7 +132,7 @@ def run(test, params, env):
                 if vols:
                     vol_name = vols[0]
                 else:
-                    raise error.TestNAError("No volume in pool: %s", pool_name)
+                    raise error.TestNAError("No volume in pool: %s" % pool_name)
             else:
                 # Set volume xml file
                 volxml = libvirt_xml.VolXML()

@@ -105,8 +105,8 @@ def run(test, params, env):
                 logging.debug("No dhcp lease info find as expected")
         else:
             if not expected_find:
-                raise error.TestFail("Find unexpected dhcp lease info: %s",
-                                     net_leases)
+                raise error.TestFail("Find unexpected dhcp lease info: %s"
+                                     % net_leases)
         find_mac = False
         for net_lease in net_leases:
             net_mac = net_lease['MAC address']

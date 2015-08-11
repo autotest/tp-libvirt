@@ -245,9 +245,9 @@ def run(test, params, env):
 
     # Don't allow the defaults.
     if srcuri.count('///') or srcuri.count('EXAMPLE'):
-        raise error.TestNAError("The srcuri '%s' is invalid", srcuri)
+        raise error.TestNAError("The srcuri '%s' is invalid" % srcuri)
     if desturi.count('///') or desturi.count('EXAMPLE'):
-        raise error.TestNAError("The desturi '%s' is invalid", desturi)
+        raise error.TestNAError("The desturi '%s' is invalid" % desturi)
 
     # Config ssh autologin for remote host
     ssh_key.setup_ssh_key(remote_host, host_user, host_passwd, port=22)
