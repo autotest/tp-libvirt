@@ -1,8 +1,9 @@
 import os
 import logging
-
+import random
 from virttest.libvirt_xml import vm_xml
 from autotest.client.shared import error
+from autotest.client import utils
 from virttest import utils_libvirtd, virsh
 from virttest.utils_test.libvirt import cpus_parser
 
@@ -48,7 +49,7 @@ def check_emulatorpin(params):
     cgconfig = params.get("cgconfig", "on")
     options = params.get("emulatorpin_options")
 
-    result = virsh.emulatorpin(vm_name)
+    result = virsh.emulatorpin(vm_name, debug=True)
     cmd_output = result.stdout.strip().splitlines()
     logging.debug(cmd_output)
     # Parsing command output and putting them into python dictionary.
@@ -109,7 +110,7 @@ def get_emulatorpin_parameter(params):
     if start_vm == "no" and vm and vm.is_alive():
         vm.destroy()
 
-    result = virsh.emulatorpin(vm_name, options=options)
+    result = virsh.emulatorpin(vm_name, options=options, debug=True)
     status = result.exit_status
 
     # Check status_error
@@ -142,7 +143,7 @@ def set_emulatorpin_parameter(params):
     if start_vm == "no" and vm and vm.is_alive():
         vm.destroy()
 
-    result = virsh.emulatorpin(vm_name, cpulist, options)
+    result = virsh.emulatorpin(vm_name, cpulist, options, debug=True)
     status = result.exit_status
 
     # Check status_error
@@ -207,19 +208,36 @@ def run(test, params, env):
     test_dicts = dict(params)
     test_dicts['vm'] = vm
 
-    host_cpus = int(open('/proc/cpuinfo').read().count('processor'))
+    host_cpus = utils.count_cpus()
     test_dicts['host_cpus'] = host_cpus
+    cpu_max = int(host_cpus) - 1
 
     cpu_list = None
 
+    # Assemble cpu list for positive test
+    if status_error == "no":
+        if cpulist is None:
+            pass
+        elif cpulist == "x":
+            cpulist = random.choice(utils.cpu_online_map())
+        elif cpulist == "x-y":
+            cpulist = "0-%s" % cpu_max
+        elif cpulist == "x,y":
+            cpulist = ','.join(random.sample(utils.cpu_online_map(), 2))
+        elif cpulist == "x-y,^z":
+            cpulist = "0-%s,^%s" % (cpu_max, cpu_max)
+        elif cpulist == "-1":
+            cpulist = "-1"
+        elif cpulist == "out_of_max":
+            cpulist = str(cpu_max + 1)
+        else:
+            raise error.TestNAError("CPU-list=%s is not recognized."
+                                    % cpulist)
+    test_dicts['emulatorpin_cpulist'] = cpulist
     if cpulist:
         cpu_list = cpus_parser(cpulist)
         test_dicts['cpu_list'] = cpu_list
         logging.debug("CPU list is %s", cpu_list)
-
-    # If the physical CPU N doesn't exist, it's an expected error
-    if cpu_list and max(cpu_list) > host_cpus - 1:
-        test_dicts["status_error"] = "yes"
 
     cg = utils_cgroup.CgconfigService()
 

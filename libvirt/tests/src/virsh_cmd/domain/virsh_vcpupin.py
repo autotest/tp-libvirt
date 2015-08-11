@@ -1,6 +1,6 @@
 import logging
 import re
-
+import random
 from autotest.client import utils
 from autotest.client.shared import error
 from virttest import virsh, utils_test
@@ -84,7 +84,7 @@ def run(test, params, env):
         elif vm_ref == "uuid":
             vm_ref = vm.get_uuid()
         # Execute virsh vcpupin command.
-        cmdResult = virsh.vcpupin(vm_ref, vcpu, cpu_list, options)
+        cmdResult = virsh.vcpupin(vm_ref, vcpu, cpu_list, options, debug=True)
         if cmdResult.exit_status:
             if not status_error:
                 # Command fail and it is in positive case.
@@ -211,7 +211,8 @@ def run(test, params, env):
                 if cpu_list == "x-y":
                     cpus = "0-%s" % cpu_max
                 elif cpu_list == "x,y":
-                    cpus = "0,%s" % cpu_max
+                    cpus = ','.join(random.sample(cpus_list, 2))
+                    logging.info(cpus)
                 elif cpu_list == "x-y,^z":
                     cpus = "0-%s,^%s" % (cpu_max, cpu_max)
                 elif cpu_list == "r":
