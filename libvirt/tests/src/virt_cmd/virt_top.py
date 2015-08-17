@@ -20,30 +20,41 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "virt-tests-vm1")
     output = params.get("output_file", "output")
     output_path = os.path.join(data_dir.get_tmp_dir(), output)
+    status_error = ("yes" == params.get("status_error", "no"))
+    options = params.get("options", "")
 
     id_result = virsh.domid(vm_name)
     if id_result.exit_status:
         raise error.TestNAError("Get domid failed.")
     domid = id_result.stdout.strip()
 
-    cmd = "%s --stream 1>%s" % (VIRT_TOP, output_path)
+    if "--stream" in options:
+        cmd = "%s %s 1>%s" % (VIRT_TOP, options, output_path)
+    else:
+        cmd = "%s %s" % (VIRT_TOP, options)
     # Add a timeout command to end it automatically.
     cmd = "timeout 10 %s" % cmd
     cmd_result = utils.run(cmd, ignore_status=True)
-    # Read and analyse the output of virt-top.
-    success = False
-    output_file = open(output_path)
-    lines = output_file.readlines()
-    for line in lines:
-        if line.count(vm_name):
-            sub_string = line.split()
-            if domid == sub_string[0].strip():
-                success = True
-                break
+
+    if not status_error:
+        # Read and analyse the output of virt-top.
+        success = False
+        output_file = open(output_path)
+        lines = output_file.readlines()
+        for line in lines:
+            if line.count(vm_name):
+                sub_string = line.split()
+                if domid == sub_string[0].strip():
+                    success = True
+                    break
+                else:
+                    continue
             else:
                 continue
-        else:
-            continue
-    if not success:
-        raise error.TestFail("Command virt-top exit successfully, but "
-                             "domid is expected")
+        if not success:
+            raise error.TestFail("Command virt-top exit successfully, but "
+                                 "domid is expected")
+    else:
+        if cmd_result.exit_status != 2:
+            raise error.TestFail("Command virt-top exit successfully with"
+                                 "invalid option:%s\n", cmd_result.stdout)
