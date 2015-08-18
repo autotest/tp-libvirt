@@ -92,11 +92,11 @@ def run(test, params, env):
             chap_passwd = ""
 
         # Setup iscsi target
-        iscsi_target = libvirt.setup_or_cleanup_iscsi(is_setup=True,
-                                                      is_login=False,
-                                                      chap_user=chap_user,
-                                                      chap_passwd=chap_passwd,
-                                                      portal_ip=disk_src_host)
+        iscsi_target, lun_num = libvirt.setup_or_cleanup_iscsi(is_setup=True,
+                                                               is_login=False,
+                                                               chap_user=chap_user,
+                                                               chap_passwd=chap_passwd,
+                                                               portal_ip=disk_src_host)
         # Create iscsi pool
         if disk_type == "volume":
             # Create an iscsi pool xml to create it
@@ -127,7 +127,6 @@ def run(test, params, env):
                        'readonly': disk_readonly}
         disk_params_src = {}
         if disk_type == "network":
-            lun_num = params.get("lun_num", "0")
             disk_params_src = {'source_protocol': disk_src_protocol,
                                'source_name': iscsi_target + "/%s" % lun_num,
                                'source_host_name': disk_src_host,

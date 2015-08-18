@@ -91,7 +91,7 @@ def run(test, params, env):
                 logging.error("Cann't see added partition in VM")
                 return False
 
-            cmd = ("fdisk -l /dev/{0} && mkfs.ext3 -F /dev/{0} && "
+            cmd = ("fdisk -l /dev/{0} && mkfs.ext4 -F /dev/{0} && "
                    "mkdir -p test && mount /dev/{0} test && echo"
                    " teststring > test/testfile && umount test"
                    .format(added_part))
@@ -129,7 +129,6 @@ def run(test, params, env):
     iscsi_target = params.get("iscsi_target")
     iscsi_host = params.get("iscsi_host")
     iscsi_port = params.get("iscsi_port")
-    lun_num = params.get("lun_num", "0")
     emulated_size = params.get("iscsi_image_size", "1")
     uuid = params.get("uuid", "")
     auth_uuid = "yes" == params.get("auth_uuid", "")
@@ -187,12 +186,12 @@ def run(test, params, env):
             libvirt.check_exit_status(ret)
 
         # Setup iscsi target
-        iscsi_target = libvirt.setup_or_cleanup_iscsi(is_setup=True,
-                                                      is_login=False,
-                                                      image_size=emulated_size,
-                                                      chap_user=chap_user,
-                                                      chap_passwd=chap_passwd,
-                                                      portal_ip=iscsi_host)
+        iscsi_target, lun_num = libvirt.setup_or_cleanup_iscsi(is_setup=True,
+                                                               is_login=False,
+                                                               image_size=emulated_size,
+                                                               chap_user=chap_user,
+                                                               chap_passwd=chap_passwd,
+                                                               portal_ip=iscsi_host)
 
         # If we use qcow2 disk format, should format iscsi disk first.
         if device_format == "qcow2":
