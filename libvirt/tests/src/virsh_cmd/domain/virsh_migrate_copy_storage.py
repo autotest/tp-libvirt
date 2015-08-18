@@ -101,8 +101,8 @@ def run(test, params, env):
             lv_utils.vg_create(vgname, target1)
             logging.debug("Created VG %s", vgname)
             # For remote, target is real target name
-            target2 = utlv.setup_or_cleanup_iscsi(is_setup=True, is_login=False,
-                                                  emulated_image="emulated-iscsi2")
+            target2, _ = utlv.setup_or_cleanup_iscsi(is_setup=True, is_login=False,
+                                                     emulated_image="emulated-iscsi2")
             logging.debug("Created target: %s", target2)
             # Login on remote host
             remote_device = rdm.iscsi_login_setup(local_host, target2)
