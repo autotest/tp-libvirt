@@ -457,6 +457,10 @@ def run(test, params, env):
         # Run blockcopy command
         if rerun_flag == 1:
             options1 = "--wait %s --finish --verbose" % dest_format
+            if with_blockdev:
+                options1 += " --blockdev"
+            if with_shallow:
+                options1 += " --shallow"
             cmd_result = virsh.blockcopy(vm_name, target,
                                          dest_path, options1,
                                          **extra_dict)
