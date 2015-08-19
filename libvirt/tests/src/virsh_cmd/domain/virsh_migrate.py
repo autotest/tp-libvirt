@@ -189,6 +189,12 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
 
+        logging.info("Setup NFS test environment...")
+        nfs_serv = nfs.Nfs(params)
+        nfs_serv.setup()
+        nfs_cli = nfs.NFSClient(params)
+        nfs_cli.setup()
+
         devices = vm.get_blk_devices()
         for device in devices:
             s_detach = virsh.detach_disk(vm_name, device, "--config", debug=True)
@@ -202,12 +208,6 @@ def run(test, params, env):
                                      extra_attach, debug=True)
         if s_attach.exit_status != 0:
             logging.error("Attach vda failed before test.")
-
-        logging.info("Setup NFS test environment...")
-        nfs_serv = nfs.Nfs(params)
-        nfs_serv.setup()
-        nfs_cli = nfs.NFSClient(params)
-        nfs_cli.setup()
 
         # Attach a scsi device for special testcases
         if attach_scsi_disk:
