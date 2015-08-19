@@ -97,7 +97,7 @@ def run(test, params, env):
                 elif (disk_xml.source.attrs.has_key('dev') or
                       disk_xml.source.attrs.has_key('name')):
                     if (disk_xml.type_name == 'block' or
-                            disk_src_protocol == 'iscsi'):
+                            disk_src_protocol in ['iscsi', 'rbd']):
                         # Use local file as external snapshot target for block
                         # and iscsi network type.
                         # As block device will be treat as raw format by
@@ -198,6 +198,11 @@ def run(test, params, env):
 
         # Set vm xml and guest agent
         if replace_vm_disk:
+            if disk_src_protocol == "rbd" and disk_type == "network":
+                src_host = params.get("disk_source_host", "EXAMPLE_HOSTS")
+                mon_host = params.get("mon_host", "EXAMPLE_MON_HOST")
+                if src_host.count("EXAMPLE") or mon_host.count("EXAMPLE"):
+                    raise error.TestNAError("Please provide ceph host first.")
             libvirt.set_vm_disk(vm, params, tmp_dir)
 
         if needs_agent:
