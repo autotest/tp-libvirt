@@ -146,6 +146,11 @@ def run(test, params, env):
 
         # Set vm xml and guest agent
         if replace_vm_disk:
+            if disk_src_protocol == "rbd" and disk_type == "network":
+                src_host = params.get("disk_source_host", "EXAMPLE_HOSTS")
+                mon_host = params.get("mon_host", "EXAMPLE_MON_HOST")
+                if src_host.count("EXAMPLE") or mon_host.count("EXAMPLE"):
+                    raise error.TestNAError("Please provide rbd host first.")
             libvirt.set_vm_disk(vm, params, tmp_dir)
 
         if needs_agent:
@@ -258,6 +263,7 @@ def run(test, params, env):
             cmd_session = aexpect.ShellSession(cmd)
 
         # Run test case
+        # Active commit does not support on rbd based disk with bug 1200726
         result = virsh.blockcommit(vm_name, blk_target,
                                    blockcommit_options, **virsh_dargs)
 
