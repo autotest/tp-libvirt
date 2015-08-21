@@ -108,11 +108,12 @@ def run(test, params, env):
             if vm.is_alive():
                 vm.destroy(gracefully=False)
             vmxml.on_crash = vm_oncrash_action
-            # Add <panic> device to domain
-            panic_dev = Panic()
-            panic_dev.addr_type = "isa"
-            panic_dev.addr_iobase = "0x505"
-            vmxml.add_device(panic_dev)
+            if not vmxml.xmltreefile.find('devices').findall('panic'):
+                # Add <panic> device to domain
+                panic_dev = Panic()
+                panic_dev.addr_type = "isa"
+                panic_dev.addr_iobase = "0x505"
+                vmxml.add_device(panic_dev)
             vmxml.sync()
             # Config auto_dump_path in qemu.conf
             cmd = "echo auto_dump_path = \\\"%s\\\" >> %s" % (dump_path,
