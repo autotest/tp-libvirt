@@ -1,11 +1,12 @@
 import logging
 from virttest import ovirt
+from autotest.client.shared import error
 
 
 def get_args_dict(params):
     args_dict = {}
     keys_list = ['ovirt_engine_url', 'ovirt_engine_user',
-                 'ovirt_engine_password', 'vm_name', 'export_name',
+                 'ovirt_engine_password', 'main_vm', 'export_name',
                  'storage_name', 'cluster_name']
 
     for key in keys_list:
@@ -26,7 +27,7 @@ def run(test, params, env):
     args_dict = get_args_dict(params)
     logging.debug("arguments dictionary: %s" % args_dict)
 
-    vm_name = params.get('vm_name')
+    vm_name = params.get('main_vm')
     export_name = params.get('export_name')
     storage_name = params.get('storage_name')
     cluster_name = params.get('cluster_name')
@@ -46,7 +47,7 @@ def run(test, params, env):
     logging.info("Current vm list: %s" % vm.list())
 
     vm.import_from_export_domain(export_name, storage_name, cluster_name)
-    logging.info("Current vm list: %s" % vm.list())
+    logging.info("The latest list: %s" % vm.list())
 
     vm.start()
 
@@ -59,6 +60,3 @@ def run(test, params, env):
 
     if vm.is_dead():
         logging.info("The %s is dead" % vm_name)
-
-#    vm.delete()
-#    logging.info("Current vm list: %s" % vm.list())
