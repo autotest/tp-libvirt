@@ -1,7 +1,6 @@
 import os
 import re
 import ast
-import time
 import logging
 from autotest.client.shared import error
 from autotest.client import utils
@@ -111,7 +110,7 @@ def run(test, params, env):
         """
         Check domain xml options.
         """
-        # Global varible to store max/current memory
+        # Global variable to store max/current memory
         global new_max_mem
         global new_cur_mem
         if attach_option.count("config"):
