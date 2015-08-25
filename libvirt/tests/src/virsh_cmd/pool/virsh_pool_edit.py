@@ -8,7 +8,6 @@ from virttest import remote
 from virttest import aexpect
 from virttest.libvirt_xml import pool_xml
 from virttest.utils_test import libvirt
-from provider import libvirt_version
 
 
 def edit_pool(pool, edit_cmd):
@@ -88,15 +87,8 @@ def run(test, params, env):
     pool_type = params.get("pool_type", "dir")
     pool_target = os.path.join(data_dir.get_tmp_dir(),
                                params.get("pool_target", "pool_target"))
-    source_name = params.get("pool_source_name", "gluster-vol1")
-    source_path = params.get("pool_source_path", "/")
     emulated_image = params.get("emulated_image", "emulated-image-disk")
     edit_target = params.get("edit_target", "target_path")
-
-    if not libvirt_version.version_compare(1, 0, 0):
-        if pool_type == "gluster":
-            raise error.TestNAError("Gluster pool is not supported in current"
-                                    " libvirt version.")
 
     redefine_pool_flag = False
     pool = pool_name
@@ -114,14 +106,8 @@ def run(test, params, env):
                 redefine_pool_flag = True
             else:
                 logging.debug("Define pool '%s' as it not exist", pool_name)
-                if pool_type == "gluster":
-                    poolvolune_test.pre_pool(pool_name, pool_type, pool_target,
-                                             emulated_image,
-                                             source_name=source_name,
-                                             source_path=source_path)
-                else:
-                    poolvolune_test.pre_pool(pool_name, pool_type, pool_target,
-                                             emulated_image)
+                poolvolune_test.pre_pool(pool_name, pool_type, pool_target,
+                                         emulated_image)
             if not pool_uuid and pool_ref == "uuid":
                 pool = libvirt_pool.get_pool_uuid(pool_name)
             poolxml.xml = pool_xml.PoolXML().new_from_dumpxml(pool_name).xml
@@ -158,7 +144,6 @@ def run(test, params, env):
                                 new_pool_name + "<")
                 pool_target = new_path
                 check_pool_name = new_pool_name
-
             else:
                 raise error.TestNAError("No edit method for %s" % edit_target)
 
@@ -187,8 +172,7 @@ def run(test, params, env):
         for pool in [pool_name, check_pool_name]:
             if libvirt_pool.pool_exists(pool):
                 poolvolune_test.cleanup_pool(check_pool_name, pool_type,
-                                             pool_target, emulated_image,
-                                             source_name=source_name)
+                                             pool_target, emulated_image)
         if redefine_pool_flag:
             try:
                 # poolxml could be empty if error happened when define pool
