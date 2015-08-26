@@ -421,6 +421,8 @@ TIMEOUT 3"""
             raise error.TestError("Failed ot install libvirt"
                                   " package on guest")
         result = True
+        # Try to load tun module first
+        session.cmd("lsmod | grep tun || modprobe  tun")
         # Check network state on guest
         cmd = ("service libvirtd restart; virsh net-info default"
                " | grep 'Active:.*no'")
