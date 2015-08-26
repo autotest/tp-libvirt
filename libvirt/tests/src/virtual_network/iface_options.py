@@ -269,11 +269,11 @@ def run(test, params, env):
             cmd = "lsof %s | grep %s" % (backend["tap"], guest_pid)
             if utils.system(cmd, ignore_status=True):
                 raise error.TestFail("Guest process didn't open backend file"
-                                     % backend["tap"])
+                                     " %s" % backend["tap"])
             cmd = "lsof %s | grep %s" % (backend["vhost"], guest_pid)
             if utils.system(cmd, ignore_status=True):
                 raise error.TestFail("Guest process didn't open backend file"
-                                     % backend["tap"])
+                                     " %s" % backend["tap"])
 
     def get_guest_ip(session, mac):
         """
