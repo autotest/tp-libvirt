@@ -38,8 +38,10 @@ def run(test, params, env):
         if not utils_misc.yum_install(pkg_list):
             raise error.TestError("Failed ot install "
                                   "required packages")
-        boot_initrd = params.get("boot_initrd")
-        boot_vmlinuz = params.get("boot_vmlinuz")
+        boot_initrd = params.get("boot_initrd", "EXAMPLE_INITRD")
+        boot_vmlinuz = params.get("boot_vmlinuz", "EXAMPLE_VMLINUZ")
+        if boot_initrd.count("EXAMPLE") or boot_vmlinuz.count("EXAMPLE"):
+            raise error.TestNAError("Please provide initrd/vmlinuz URL")
         # Download pxe boot images
         utils.run("wget %s -O %s/initrd.img"
                   % (boot_initrd, tftp_root))
