@@ -1,4 +1,4 @@
-from autotest.client.shared import error
+from autotest.client.shared import error, ssh_key
 from virttest import libvirt_vm, remote, virsh, utils_libvirtd
 from provider import libvirt_version
 
@@ -25,6 +25,7 @@ def run(test, params, env):
     remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
     remote_pwd = params.get("remote_pwd", None)
     local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
+    local_pwd = params.get("local_pwd", "LOCAL.EXAMPLE.COM")
     if vm_ref == "remote" and (remote_ip.count("EXAMPLE.COM") or
                                local_ip.count("EXAMPLE.COM")):
         raise error.TestNAError(
@@ -64,9 +65,14 @@ def run(test, params, env):
         status = 0
         try:
             remote_uri = libvirt_vm.complete_uri(local_ip)
-            session = remote.remote_login("ssh", remote_ip, "22", "root",
-                                          remote_pwd, "#")
+            session = remote.remote_login("ssh", remote_ip, "22",
+                                          "root", remote_pwd, "#")
             session.cmd_output('LANG=C')
+
+            # Setup up remote to remote login in local host
+            ssh_key.setup_remote_ssh_key(remote_ip, "root", remote_pwd,
+                                         local_ip, "root", local_pwd)
+
             command = "virsh -c %s destroy %s" % (remote_uri, vm_name)
             status, output = session.cmd_status_output(command,
                                                        internal_timeout=5)
