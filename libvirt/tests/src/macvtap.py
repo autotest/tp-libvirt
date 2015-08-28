@@ -93,17 +93,17 @@ def run(test, params, env):
                                         params.get('password'), 22,
                                         eth_config_file)
         remote_file.truncate()
-        remote_file.add(eth_config_detail_list)
+        remote_file.add(eth_config_detail_list, linesep='\n')
         try:
             # Attached interface maybe already active
             session.cmd("ifdown %s" % eth_name)
         except aexpect.ShellCmdError:
-            pass
+            raise error.TestFail("ifdown %s failed." % eth_name)
 
         try:
             session.cmd("ifup %s" % eth_name)
         except aexpect.ShellCmdError:
-            pass
+            raise error.TestFail("ifup %s failed." % eth_name)
         return session
 
     def guest_clean(vm, vmxml):
