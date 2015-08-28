@@ -105,8 +105,8 @@ def run(test, params, env):
                 logging.debug("No dhcp lease info find as expected")
         else:
             if not expected_find:
-                raise error.TestFail("Find unexpected dhcp lease info: %s",
-                                     net_leases)
+                raise error.TestFail("Find unexpected dhcp lease info: %s"
+                                     % net_leases)
         find_mac = False
         for net_lease in net_leases:
             net_mac = net_lease['MAC address']
@@ -156,17 +156,15 @@ def run(test, params, env):
                 virsh.attach_interface(vm_name, option=op, debug=True,
                                        ignore_status=False)
                 vm.start()
-                vm.wait_for_login().close()
-                expected_find = True
             else:
                 vm.start()
                 virsh.attach_interface(vm_name, option=op, debug=True,
                                        ignore_status=False)
-                new_interface_ip = get_ip_by_mac(iface_mac, try_dhclint=True)
-                # Allocate IP address for the new interface may fail, so only
-                # check the result if get new IP address
-                if new_interface_ip:
-                    expected_find = True
+            new_interface_ip = get_ip_by_mac(iface_mac, try_dhclint=True)
+            # Allocate IP address for the new interface may fail, so only
+            # check the result if get new IP address
+            if new_interface_ip:
+                expected_find = True
             result = virsh.net_dhcp_leases(net_name, mac=nic_mac,
                                            debug=False, ignore_status=True)
             utlv.check_exit_status(result, status_error)

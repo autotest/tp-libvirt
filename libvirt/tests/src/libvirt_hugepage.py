@@ -143,6 +143,8 @@ def run(test, params, env):
             stress_path = prepare_c_file()
             remote.scp_to_remote(vm.get_address(), 22, 'root',
                                  params.get('password'), stress_path, "/tmp/")
+            # Try to install gcc on guest first
+            utils_misc.yum_install(["gcc"], session, 360)
             # increasing workload
             session.cmd("gcc %s -o %s" % (stress_path, target_path))
             session.cmd("%s &" % target_path)

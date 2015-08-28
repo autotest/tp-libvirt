@@ -106,7 +106,8 @@ def run(test, params, env):
 
     hp_cl = test_setup.HugePageConfig(params)
     default_hp_size = hp_cl.get_hugepage_size()
-    mount_path = ["/dev/hugepages2M", "/dev/hugepages1G"]
+    supported_hp_size = hp_cl.get_multi_supported_hugepage_size()
+    mount_path = []
     qemu_conf = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
     qemu_conf_restore = False
@@ -115,17 +116,17 @@ def run(test, params, env):
         """
         Mount hugepage path, update qemu conf then restart libvirtd
         """
-        size_dict = {'2M': 2048, '1G': 1048576}
-        for mt_path in mount_path:
-            hp_cl.hugepage_size = size_dict[mt_path[-2:]]
-            hp_cl.hugepage_path = mt_path
-            try:
-                hp_cl.mount_hugepage_fs()
-            except error.CmdError, e:
-                raise error.TestError("Default hugepage size is not 2M, "
-                                      "please make sure all sizes hugepage "
-                                      "configuration is in kernel cmdline."
-                                      "\n%s" % e)
+        size_dict = {'2048': '2M', '1048576': '1G', '16384': '16M'}
+        for page in page_list:
+            if page['size'] not in supported_hp_size:
+                raise error.TestError("Hugepage size [%s] isn't supported, "
+                                      "please verify kernel cmdline configuration."
+                                      % page['size'])
+            m_path = "/dev/hugepages%s" % size_dict[page['size']]
+            hp_cl.hugepage_size = int(page['size'])
+            hp_cl.hugepage_path = m_path
+            hp_cl.mount_hugepage_fs()
+            mount_path.append(m_path)
         qemu_conf.hugetlbfs_mount = mount_path
         libvirtd.restart()
 

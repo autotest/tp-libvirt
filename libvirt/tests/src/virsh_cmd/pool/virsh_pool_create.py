@@ -27,7 +27,7 @@ def run(test, params, env):
     source_format = params.get("pool_src_format", "")
     source_name = params.get("pool_source_name", "")
     source_path = params.get("pool_source_path", "/")
-    pool_target = params.get("pool_create_target", "pool_target")
+    pool_target = params.get("pool_target", "pool_target")
     duplicate_element = params.get("pool_create_duplicate_element", "")
     new_pool_name = params.get("new_pool_create_name")
 
@@ -43,7 +43,7 @@ def run(test, params, env):
     if pre_def_pool and pool_ins.pool_exists(pool_name):
         raise error.TestFail("Pool %s already exist" % pool_name)
 
-    emulated_image = "emulated_image"
+    emulated_image = "emulated-image"
     kwargs = {'image_size': '1G', 'source_path': source_path,
               'source_name': source_name, 'source_format': source_format}
     pvt = utlv.PoolVolumeTest(test, params)

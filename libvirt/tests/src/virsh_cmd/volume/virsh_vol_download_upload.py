@@ -221,8 +221,8 @@ def run(test, params, env):
         if ori_digest == aft_digest:
             logging.info("file digests match, volume %s suceed", operation)
         else:
-            raise error.TestFail("file digests do not match, volume %s failed",
-                                 operation)
+            raise error.TestFail("file digests do not match, volume %s failed"
+                                 % operation)
 
     finally:
         pvt.cleanup_pool(pool_name, pool_type, pool_target, "volumetest")

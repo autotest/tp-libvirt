@@ -142,8 +142,8 @@ def run(test, params, env):
         if output == expect:
             logging.info("Get correct display:%s", output)
         else:
-            raise error.TestFail("Expect %s, but get %s", expect,
-                                 output)
+            raise error.TestFail("Expect %s, but get %s"
+                                 % (expect, output))
 
     finally:
         # Domain xml recovery

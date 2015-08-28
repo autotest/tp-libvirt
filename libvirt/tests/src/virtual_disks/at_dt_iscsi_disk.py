@@ -92,10 +92,11 @@ def run(test, params, env):
             chap_passwd = ""
 
         # Setup iscsi target
-        iscsi_target = libvirt.setup_or_cleanup_iscsi(is_setup=True,
-                                                      is_login=False,
-                                                      chap_user=chap_user,
-                                                      chap_passwd=chap_passwd)
+        iscsi_target, lun_num = libvirt.setup_or_cleanup_iscsi(is_setup=True,
+                                                               is_login=False,
+                                                               chap_user=chap_user,
+                                                               chap_passwd=chap_passwd,
+                                                               portal_ip=disk_src_host)
         # Create iscsi pool
         if disk_type == "volume":
             # Create an iscsi pool xml to create it
@@ -127,7 +128,7 @@ def run(test, params, env):
         disk_params_src = {}
         if disk_type == "network":
             disk_params_src = {'source_protocol': disk_src_protocol,
-                               'source_name': iscsi_target + "/1",
+                               'source_name': iscsi_target + "/%s" % lun_num,
                                'source_host_name': disk_src_host,
                                'source_host_port': disk_src_port}
         elif disk_type == "volume":
@@ -165,6 +166,8 @@ def run(test, params, env):
             cmd_result = virsh.start(vm_name, **virsh_dargs)
             libvirt.check_exit_status(cmd_result)
 
+        # Wait for domain is stable
+        vm.wait_for_login().close()
         domain_operation = params.get("domain_operation", "")
         if domain_operation == "save":
             save_file = os.path.join(test.tmpdir, "vm.save")

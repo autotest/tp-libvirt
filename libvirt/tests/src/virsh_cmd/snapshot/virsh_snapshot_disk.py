@@ -47,7 +47,7 @@ def run(test, params, env):
     pool_name = params.get("pool_name")
     pool_type = params.get("pool_type")
     pool_target = params.get("pool_target")
-    emulated_image = params.get("emulated_image")
+    emulated_image = params.get("emulated_image", "emulated-image")
     vol_format = params.get("vol_format")
     lazy_refcounts = "yes" == params.get("lazy_refcounts")
     options = params.get("snapshot_options", "")
@@ -132,7 +132,7 @@ def run(test, params, env):
                 if vols:
                     vol_name = vols[0]
                 else:
-                    raise error.TestNAError("No volume in pool: %s", pool_name)
+                    raise error.TestNAError("No volume in pool: %s" % pool_name)
             else:
                 # Set volume xml file
                 volxml = libvirt_xml.VolXML()

@@ -90,7 +90,7 @@ def run(test, params, env):
                                params.get("pool_target", "pool_target"))
     source_name = params.get("pool_source_name", "gluster-vol1")
     source_path = params.get("pool_source_path", "/")
-    emulated_image = params.get("emulated_image", "emulated_image_disk")
+    emulated_image = params.get("emulated_image", "emulated-image-disk")
     edit_target = params.get("edit_target", "target_path")
 
     if not libvirt_version.version_compare(1, 0, 0):

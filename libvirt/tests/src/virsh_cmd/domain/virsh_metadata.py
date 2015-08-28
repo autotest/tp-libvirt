@@ -56,7 +56,7 @@ def run(test, params, env):
             if output != expect_output:
                 raise error.TestFail("Metadat is not expected")
 
-    def get_metadata():
+    def get_metadata(metadata_option=""):
         """
         Get domain metadata
         """
@@ -101,20 +101,22 @@ def run(test, params, env):
                                         new_metadata=metadata_value,
                                         **virsh_dargs)
                 check_result(result, status_error)
-            if "--config" in metadata_option:
+        # Get metadata
+        for option in metadata_option.split():
+            if option == "--config":
                 vm.destroy()
                 vm.start()
-                check_result(get_metadata(), status_error, metadata_value)
-        # Get metadata
-        if metadata_get:
-            check_result(get_metadata(), status_error, metadata_value)
+                check_result(get_metadata(metadata_option=option), status_error, metadata_value)
+            elif metadata_get:
+                check_result(get_metadata(metadata_option=option), status_error, metadata_value)
 
         # Restart libvirtd:
         if restart_libvirtd:
             libvirtd = Libvirtd()
             libvirtd.restart()
             # Get metadata again
-            check_result(get_metadata(), status_error, metadata_value)
+            for option in metadata_option.split():
+                check_result(get_metadata(metadata_option=option), status_error, metadata_value)
         # Remove metadata
         if metadata_remove:
             remove_option = metadata_option.replace("--edit", "")
@@ -126,6 +128,7 @@ def run(test, params, env):
                                     **virsh_dargs)
             check_result(result, status_error)
             # Get metadata again
-            check_result(get_metadata(), True)
+            for option in metadata_option.split():
+                check_result(get_metadata(metadata_option=option), True)
     finally:
         vmxml.sync()

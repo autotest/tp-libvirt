@@ -42,7 +42,7 @@ def remote_access(params):
                 fp = open(logfile, "r")
                 if not re.findall(pattern, fp.read()):
                     fp.close()
-                    raise error.TestFail("Failed to find %s in log!!, pattern")
+                    raise error.TestFail("Failed to find %s in log!!" % pattern)
                 fp.close()
             logging.info("Succeed to connect libvirt daemon.")
         else:
@@ -75,7 +75,7 @@ def check_parameters(params):
 
     for arg in args_list:
         if arg and arg.count("ENTER.YOUR."):
-            raise error.TestNAError("Please assign a value for %s!", arg)
+            raise error.TestNAError("Please assign a value for %s!" % arg)
 
 
 def compare_virt_version(server_ip, server_user, server_pwd):

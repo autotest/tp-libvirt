@@ -26,27 +26,29 @@ def run(test, params, env):
         :param: vm_name: Name of domain
         :param: scsi_disk: scsi_debug disk name
         """
-        # Get disk path of scsi_disk
-        path_cmd = "udevadm info --name %s | grep /dev/disk/by-path/ | " \
-                   "cut -d' ' -f4" % scsi_disk
-        disk_path = utils.run(path_cmd).stdout.strip()
 
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-
+        disk_path = scsi_disk
         # Add scsi disk xml
         scsi_disk = Disk(type_name="block")
         scsi_disk.device = "lun"
         scsi_disk.source = scsi_disk.new_disk_source(
             **{'attrs': {'dev': disk_path}})
         scsi_disk.target = {'dev': "sdb", 'bus': "scsi"}
+        find_scsi = "no"
+        controllers = vmxml.xmltreefile.findall("devices/controller")
+        for controller in controllers:
+            if controller.get("type") == "scsi":
+                find_scsi = "yes"
         vmxml.add_device(scsi_disk)
 
         # Add scsi disk controller
-        scsi_controller = Controller("controller")
-        scsi_controller.type = "scsi"
-        scsi_controller.index = "0"
-        scsi_controller.model = "virtio-scsi"
-        vmxml.add_device(scsi_controller)
+        if find_scsi == "no":
+            scsi_controller = Controller("controller")
+            scsi_controller.type = "scsi"
+            scsi_controller.index = "0"
+            scsi_controller.model = "virtio-scsi"
+            vmxml.add_device(scsi_controller)
 
         # Redefine guest
         vmxml.sync()
@@ -69,6 +71,8 @@ def run(test, params, env):
     is_fulltrim = ("yes" == params.get("is_fulltrim", "yes"))
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
+    has_qemu_ga = not ("yes" == params.get("no_qemu_ga", "no"))
+    start_qemu_ga = not ("yes" == params.get("no_start_qemu_ga", "no"))
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
             unprivileged_user = 'testacl'
@@ -107,7 +111,11 @@ def run(test, params, env):
         recompose_xml(vm_name, scsi_disk)
 
         # Prepare guest agent and start guest
-        vm.prepare_guest_agent()
+        if has_qemu_ga:
+            vm.prepare_guest_agent(start=start_qemu_ga)
+        else:
+            # Remove qemu-ga channel
+            vm.prepare_guest_agent(channel=has_qemu_ga, start=False)
 
         guest_session = vm.wait_for_login()
         # Get new generated disk
@@ -121,8 +129,9 @@ def run(test, params, env):
         # Do first fstrim before all to get original map for compare
         cmd_result = virsh.domfstrim(vm_name)
         if cmd_result.exit_status != 0:
-            raise error.TestFail("Fail to do virsh domfstrim, error %s" %
-                                 cmd_result.stderr)
+            if not status_error:
+                raise error.TestFail("Fail to do virsh domfstrim, error %s" %
+                                     cmd_result.stderr)
 
         def get_diskmap_size():
             """
@@ -199,5 +208,6 @@ def run(test, params, env):
 
     finally:
         # Do domain recovery
+        vm.shutdown()
         xml_backup.sync()
         utils.unload_module("scsi_debug")

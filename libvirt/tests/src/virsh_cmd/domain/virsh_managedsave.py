@@ -194,7 +194,7 @@ def run(test, params, env):
         ret = utils.run("service libvirt-guests status",
                         ignore_status=True)
         logging.info("status output: %s", ret.stdout)
-        if any(["Suspending %s" % vm_name not in ret.stdout,
+        if all(["Suspending %s" % vm_name not in ret.stdout,
                 "stopped, with saved guests" not in ret.stdout]):
             raise error.TestFail("Can't see messages of suspending vm")
         # status command should return 3.
@@ -387,9 +387,9 @@ def run(test, params, env):
 
         # For bypass_cache test. Run a shell command to check fd flags while
         # excuting managedsave command
-        bash_cmd = ("let i=1; while((i++<200)); do if [ -e %s ]; then (cat /proc"
+        bash_cmd = ("let i=1; while((i++<400)); do if [ -e %s ]; then (cat /proc"
                     "/$(lsof -w %s|awk '/libvirt_i/{print $2}')/fdinfo/*%s* |"
-                    "grep 'flags:.*%s') && break; else sleep 0.1; fi; done;")
+                    "grep 'flags:.*%s') && break; else sleep 0.05; fi; done;")
         # Flags to check bypass cache take effect
         flags = "014"
         if test_bypass_cache:

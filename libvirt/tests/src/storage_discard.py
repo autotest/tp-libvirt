@@ -3,14 +3,11 @@ Test module for Storage Discard.
 """
 
 import re
-import os
 import logging
 import time
 from autotest.client import utils, lv_utils
 from autotest.client.shared import error
-from virttest.libvirt_xml import vm_xml, xcepts
-from virttest.libvirt_xml.devices import disk, channel
-from virttest import utils_test, virsh, data_dir, virt_vm
+from virttest import virsh, data_dir
 from virttest.utils_test import libvirt as utlv
 from virttest import iscsi, qemu_storage, libvirt_vm, utils_misc
 
@@ -52,9 +49,7 @@ def create_iscsi_device(device_size="2G"):
                                               emulated_image=imgname,
                                               image_size=device_size)
     # Verify if expected iscsi device has been set
-    iscsi_sessions = iscsi.iscsi_get_sessions()
-    iscsi_target = ()
-    for iscsi_node in iscsi_sessions:
+    for iscsi_node in iscsi.iscsi_get_sessions():
         if iscsi_node[1].count(imgname):
             # Remove port for pool operations
             ip_addr = iscsi_node[0].split(":3260")[0]

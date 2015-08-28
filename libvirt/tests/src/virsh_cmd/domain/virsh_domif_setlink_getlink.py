@@ -177,6 +177,9 @@ def run(test, params, env):
 
             # Set the link up make host connect with vm
             domif_setlink(vm_name, device, "up", "")
+            if not guest_if_state(guest_if_name, session):
+                error_msg = "Link state isn't up in guest"
+
             # Ignore status of this one
             cmd_status = session.cmd_status('ip link set dev %s down'
                                             % guest_if_name)

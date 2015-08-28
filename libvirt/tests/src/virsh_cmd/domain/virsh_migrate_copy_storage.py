@@ -44,7 +44,7 @@ def copied_migration(vms, params):
         raise error.TestFail("Migrate vms with storage copied failed.")
 
     if len(check_ip_failures):
-        raise error.TestFail("Check IP failed:%s", check_ip_failures)
+        raise error.TestFail("Check IP failed:%s" % check_ip_failures)
 
 
 def run(test, params, env):
@@ -97,12 +97,12 @@ def run(test, params, env):
             # Create volume group with iscsi
             # For local, target is a device name
             target1 = utlv.setup_or_cleanup_iscsi(is_setup=True, is_login=True,
-                                                  emulated_image="emulated_iscsi1")
+                                                  emulated_image="emulated-iscsi1")
             lv_utils.vg_create(vgname, target1)
             logging.debug("Created VG %s", vgname)
             # For remote, target is real target name
-            target2 = utlv.setup_or_cleanup_iscsi(is_setup=True, is_login=False,
-                                                  emulated_image="emulated_iscsi2")
+            target2, _ = utlv.setup_or_cleanup_iscsi(is_setup=True, is_login=False,
+                                                     emulated_image="emulated-iscsi2")
             logging.debug("Created target: %s", target2)
             # Login on remote host
             remote_device = rdm.iscsi_login_setup(local_host, target2)
@@ -175,6 +175,6 @@ def run(test, params, env):
             except:
                 pass    # let it go to confirm cleanup iscsi device
             utlv.setup_or_cleanup_iscsi(is_setup=False,
-                                        emulated_image="emulated_iscsi1")
+                                        emulated_image="emulated-iscsi1")
             utlv.setup_or_cleanup_iscsi(is_setup=False,
-                                        emulated_image="emulated_iscsi2")
+                                        emulated_image="emulated-iscsi2")

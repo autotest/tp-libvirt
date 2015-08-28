@@ -2,6 +2,7 @@ import logging
 import os
 import time
 import re
+from autotest.client import utils
 from autotest.client.shared import error
 from virttest import utils_libvirtd
 from virttest import utils_config
@@ -11,6 +12,7 @@ from virttest import data_dir
 from virttest import aexpect
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import snapshot_xml
 from virttest.utils_test import libvirt as utl
 from provider import libvirt_version
 
@@ -60,7 +62,27 @@ def check_xml(vm_name, target, dest_path, blk_options):
     try:
         try:
             dev_index = blk_list.index(target)
-            disk_src = disk_list[dev_index].find('source').get('file')
+            disk_elem = disk_list[dev_index]
+            if blk_options.count("--blockdev"):
+                disk_src = disk_elem.find('source').get('dev')
+            else:
+                disk_src = disk_elem.find('source').get('file')
+
+            # check disk type
+            disk_type = disk_elem.get('type')
+            if "--pivot" in blk_options:
+                if "--blockdev" in blk_options:
+                    if disk_type != 'block':
+                        logging.error("Disk type '%s' is not expected when "
+                                      "--blockdev option specified.",
+                                      disk_type)
+                        return False
+                else:
+                    if disk_type != 'file':
+                        logging.error("Disk type '%s' is not expected.",
+                                      disk_type)
+                        return False
+
             if disk_src == dest_path:
                 logging.debug("Disk source change to %s.", dest_path)
                 re1 = 1
@@ -101,6 +123,9 @@ def check_xml(vm_name, target, dest_path, blk_options):
                     if (mirror_type == "file" and
                             disk_mirror_source is not None):
                         disk_mirror_src = disk_mirror_source.get('file')
+                    elif (mirror_type == "block" and
+                            disk_mirror_source is not None):
+                        disk_mirror_src = disk_mirror_source.get('dev')
                     else:
                         disk_mirror_src = None
                 else:
@@ -176,6 +201,10 @@ def run(test, params, env):
     target = params.get("target_disk", "")
     replace_vm_disk = "yes" == params.get("replace_vm_disk", "no")
     disk_source_protocol = params.get("disk_source_protocol")
+    disk_type = params.get("disk_type")
+    pool_name = params.get("pool_name")
+    image_size = params.get("image_size")
+    emu_image = params.get("emulated_image")
     copy_to_nfs = "yes" == params.get("copy_to_nfs", "no")
     mnt_path_name = params.get("mnt_path_name")
     # check the source disk
@@ -187,7 +216,7 @@ def run(test, params, env):
         raise error.TestFail("Can't find %s in domain %s." % (target, vm_name))
     options = params.get("blockcopy_options", "")
     bandwidth = params.get("blockcopy_bandwidth", "")
-    default_timeout = params.get("default_timeout", "300")
+    default_timeout = int(params.get("default_timeout", "300"))
     reuse_external = "yes" == params.get("reuse_external", "no")
     persistent_vm = params.get("persistent_vm", "no")
     status_error = "yes" == params.get("status_error", "no")
@@ -195,9 +224,14 @@ def run(test, params, env):
     active_snap = "yes" == params.get("active_snap", "no")
     active_save = "yes" == params.get("active_save", "no")
     check_state_lock = "yes" == params.get("check_state_lock", "no")
+    with_shallow = "yes" == params.get("with_shallow", "no")
+    with_blockdev = "yes" == params.get("with_blockdev", "no")
     bug_url = params.get("bug_url", "")
     timeout = int(params.get("timeout", 1200))
     rerun_flag = 0
+    blkdev_n = None
+    back_n = 'blockdev-backing-iscsi'
+    snapshot_external_disks = []
 
     original_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     tmp_dir = data_dir.get_tmp_dir()
@@ -212,16 +246,10 @@ def run(test, params, env):
     dest_extension = ""
     if dest_format != "":
         dest_extension = ".%s" % dest_format
-    if not dest_path:
-        tmp_file = time.strftime("%Y-%m-%d-%H.%M.%S.img")
-        tmp_file += dest_extension
-        if copy_to_nfs:
-            tmp_dir = "%s/%s" % (tmp_dir, mnt_path_name)
-        dest_path = os.path.join(tmp_dir, tmp_file)
 
     # Prepare for --reuse-external option
     if reuse_external:
-        options += "--reuse-external"
+        options += "--reuse-external --wait"
         # Set rerun_flag=1 to do blockcopy twice, and the first time created
         # file can be reused in the second time if no dest_path given
         # This will make sure the image size equal to original disk size
@@ -233,9 +261,14 @@ def run(test, params, env):
 
     # Prepare other options
     if dest_format == "raw":
-        options += "--raw"
+        options += " --raw"
+    if with_blockdev:
+        if not libvirt_version.version_compare(1, 2, 13):
+            raise error.TestNAError("--blockdev option not supported in "
+                                    "current version")
+        options += " --blockdev"
     if len(bandwidth):
-        options += "--bandwidth %s" % bandwidth
+        options += " --bandwidth %s" % bandwidth
 
     # Prepare acl options
     uri = params.get("virsh_uri")
@@ -283,23 +316,137 @@ def run(test, params, env):
         else:
             raise error.TestFail("%s format is not %s." % (dest_path, expect))
 
-    def blockcopy_chk():
+    def _blockjob_and_libvirtd_chk(cmd_result):
         """
-        Raise TestFail when blockcopy hang with state change lock
+        Raise TestFail when blockcopy fail with block-job-complete error or
+        blockcopy hang with state change lock.
         """
+        bug_url_ = "https://bugzilla.redhat.com/show_bug.cgi?id=1197592"
+        err_msg = "internal error: unable to execute QEMU command"
+        err_msg += " 'block-job-complete'"
+        if err_msg in cmd_result.stderr:
+            raise error.TestFail("Hit on bug: %s" % bug_url_)
+
         err_pattern = "Timed out during operation: cannot acquire"
         err_pattern += " state change lock"
         ret = chk_libvirtd_log(libvirtd_log_path, err_pattern, "error")
         if ret:
-            raise error.TestFail("Hit on bug: %s" % bug_url)
+            raise error.TestFail("Hit on bug: %s" % bug_url_)
+
+    def _blockcopy_cmd():
+        """
+        Run blockcopy command
+        """
+        cmd_result = virsh.blockcopy(vm_name, target, dest_path,
+                                     options, **extra_dict)
+        _blockjob_and_libvirtd_chk(cmd_result)
+        if cmd_result.exit_status:
+            return False
+        elif "Copy aborted" in cmd_result.stdout:
+            return False
+        else:
+            return cmd_result
+
+    def _make_snapshot():
+        """
+        Make external disk snapshot
+        """
+        snap_xml = snapshot_xml.SnapshotXML()
+        snapshot_name = "blockcopy_snap"
+        snap_xml.snap_name = snapshot_name
+        snap_xml.description = "blockcopy snapshot"
+
+        # Add all disks into xml file.
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        disks = vmxml.devices.by_device_tag('disk')
+        new_disks = []
+        src_disk_xml = disks[0]
+        disk_xml = snap_xml.SnapDiskXML()
+        disk_xml.xmltreefile = src_disk_xml.xmltreefile
+        del disk_xml.device
+        del disk_xml.address
+        disk_xml.snapshot = "external"
+        disk_xml.disk_name = disk_xml.target['dev']
+
+        # Only qcow2 works as external snapshot file format, update it
+        # here
+        driver_attr = disk_xml.driver
+        driver_attr.update({'type': 'qcow2'})
+        disk_xml.driver = driver_attr
+
+        new_attrs = disk_xml.source.attrs
+        if disk_xml.source.attrs.has_key('file'):
+            new_file = os.path.join(tmp_dir, "blockcopy_shallow.snap")
+            snapshot_external_disks.append(new_file)
+            new_attrs.update({'file': new_file})
+            hosts = None
+        elif (disk_xml.source.attrs.has_key('dev') or
+              disk_xml.source.attrs.has_key('name') or
+              disk_xml.source.attrs.has_key('pool')):
+            if (disk_xml.type_name == 'block' or
+                    disk_source_protocol == 'iscsi'):
+                disk_xml.type_name = 'block'
+                if new_attrs.has_key('name'):
+                    del new_attrs['name']
+                    del new_attrs['protocol']
+                elif new_attrs.has_key('pool'):
+                    del new_attrs['pool']
+                    del new_attrs['volume']
+                    del new_attrs['mode']
+                back_path = utl.setup_or_cleanup_iscsi(is_setup=True,
+                                                       is_login=True,
+                                                       image_size="1G",
+                                                       emulated_image=back_n)
+                cmd = "qemu-img create -f qcow2 %s 1G" % back_path
+                utils.system(cmd)
+                new_attrs.update({'dev': back_path})
+                hosts = None
+
+        new_src_dict = {"attrs": new_attrs}
+        if hosts:
+            new_src_dict.update({"hosts": hosts})
+        disk_xml.source = disk_xml.new_disk_source(**new_src_dict)
+
+        new_disks.append(disk_xml)
+
+        snap_xml.set_disks(new_disks)
+        snapshot_xml_path = snap_xml.xml
+        logging.debug("The snapshot xml is: %s" % snap_xml.xmltreefile)
+
+        options = "--disk-only --xmlfile %s " % snapshot_xml_path
+
+        snapshot_result = virsh.snapshot_create(
+            vm_name, options, debug=True)
+
+        if snapshot_result.exit_status != 0:
+            raise error.TestFail(snapshot_result.stderr)
 
     snap_path = ''
     save_path = ''
     try:
+        # Prepare dest_path
+        tmp_file = time.strftime("%Y-%m-%d-%H.%M.%S.img")
+        tmp_file += dest_extension
+        if not dest_path:
+            if with_blockdev:
+                blkdev_n = 'blockdev-iscsi'
+                dest_path = utl.setup_or_cleanup_iscsi(is_setup=True,
+                                                       is_login=True,
+                                                       image_size=image_size,
+                                                       emulated_image=blkdev_n)
+            else:
+                if copy_to_nfs:
+                    tmp_dir = "%s/%s" % (tmp_dir, mnt_path_name)
+                dest_path = os.path.join(tmp_dir, tmp_file)
+
         # Domain disk replacement with desire type
         if replace_vm_disk:
-            utl.set_vm_disk(vm, params, tmp_dir)
+            utl.set_vm_disk(vm, params, tmp_dir, test)
             new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+
+        if with_shallow:
+            options += " --shallow"
+            _make_snapshot()
 
         # Prepare transient/persistent vm
         if persistent_vm == "no" and vm.is_persistent():
@@ -309,7 +456,11 @@ def run(test, params, env):
 
         # Run blockcopy command
         if rerun_flag == 1:
-            options1 = "--wait --raw --finish --verbose"
+            options1 = "--wait %s --finish --verbose" % dest_format
+            if with_blockdev:
+                options1 += " --blockdev"
+            if with_shallow:
+                options1 += " --shallow"
             cmd_result = virsh.blockcopy(vm_name, target,
                                          dest_path, options1,
                                          **extra_dict)
@@ -318,17 +469,20 @@ def run(test, params, env):
                 raise error.TestFail("Run blockcopy command fail.")
             elif not os.path.exists(dest_path):
                 raise error.TestFail("Cannot find the created copy.")
-
-        cmd_result = virsh.blockcopy(vm_name, target, dest_path,
-                                     options,
-                                     **extra_dict)
-        status = cmd_result.exit_status
+            cmd_result = utils_misc.wait_for(_blockcopy_cmd, 10)
+            if not cmd_result:
+                raise error.TestFail("Run blockcopy command fail.")
+            status = 0
+        else:
+            cmd_result = virsh.blockcopy(vm_name, target, dest_path,
+                                         options, **extra_dict)
+            _blockjob_and_libvirtd_chk(cmd_result)
+            status = cmd_result.exit_status
 
         if not libvirtd_utl.is_running():
             raise error.TestFail("Libvirtd service is dead.")
 
         if not status_error:
-            blockcopy_chk()
             if status == 0:
                 ret = utils_misc.wait_for(
                     lambda: check_xml(vm_name, target, dest_path, options), 5)
@@ -358,7 +512,7 @@ def run(test, params, env):
                     except JobTimeout, excpt:
                         raise error.TestFail("Run command failed: %s" %
                                              excpt)
-                if options.count("--raw"):
+                if options.count("--raw") and not with_blockdev:
                     check_format(dest_path, dest_extension, dest_format)
                 if active_snap:
                     snap_path = "%s/%s.snap" % (tmp_dir, vm_name)
@@ -375,10 +529,6 @@ def run(test, params, env):
                                      debug=True)
                     utl.check_exit_status(ret, active_error)
             else:
-                err_msg = "internal error: unable to execute QEMU command"
-                err_msg += " 'block-job-complete'"
-                if err_msg in cmd_result.stderr:
-                    raise error.TestFail("Hit on bug: %s" % bug_url)
                 raise error.TestFail(cmd_result.stderr)
         else:
             if status:
@@ -398,7 +548,7 @@ def run(test, params, env):
                         logging.debug("Found success a timed out block copy")
                 else:
                     raise error.TestFail("Expect fail, but run "
-                                         "successfully.")
+                                         "successfully. %s" % bug_url)
     finally:
         # Restore libvirtd conf and restart libvirtd
         libvirtd_conf.restore()
@@ -410,13 +560,35 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
         utils_misc.wait_for(
             lambda: virsh.domstate(vm_name, ignore_status=True).exit_status, 2)
-        original_xml.sync("--snapshots-metadata")
+        if active_snap or with_shallow:
+            option = "--snapshots-metadata"
+        else:
+            option = None
+        original_xml.sync(option)
 
-        if replace_vm_disk and disk_source_protocol == "netfs":
-            restore_selinux = params.get('selinux_status_bak')
-            utl.setup_or_cleanup_nfs(is_setup=False,
-                                     restore_selinux=restore_selinux)
-        if os.path.exists(dest_path):
+        for disk in snapshot_external_disks:
+            if os.path.exists(disk):
+                os.remove(disk)
+
+        if replace_vm_disk:
+            if disk_source_protocol == "netfs":
+                restore_selinux = params.get('selinux_status_bak')
+                utl.setup_or_cleanup_nfs(is_setup=False,
+                                         restore_selinux=restore_selinux)
+            elif disk_source_protocol == "iscsi":
+                if disk_type == 'volume':
+                    virsh.pool_destroy(pool_name, ignore_status=True,
+                                       debug=True)
+                if with_blockdev:
+                    utl.setup_or_cleanup_iscsi(is_setup=False,
+                                               emulated_image=blkdev_n)
+                if with_shallow:
+                    utl.setup_or_cleanup_iscsi(is_setup=False,
+                                               emulated_image=back_n)
+                utl.setup_or_cleanup_iscsi(is_setup=False,
+                                           emulated_image=emu_image,
+                                           restart_tgtd='yes')
+        if os.path.exists(dest_path) and not with_blockdev:
             os.remove(dest_path)
         if os.path.exists(snap_path):
             os.remove(snap_path)

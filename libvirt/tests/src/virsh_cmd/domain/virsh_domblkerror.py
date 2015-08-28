@@ -8,6 +8,7 @@ from virttest import virsh, data_dir, utils_test, utils_misc
 from virttest import utils_selinux
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.staging.service import Factory
+from virttest.libvirt_xml import vm_xml
 
 
 def run(test, params, env):
@@ -23,11 +24,11 @@ def run(test, params, env):
 
     vm_name = params.get("main_vm", "virt-tests-vm1")
     error_type = params.get("domblkerror_error_type")
-    timeout = params.get("domblkerror_timeout", 120)
+    timeout = params.get("domblkerror_timeout", 240)
     mnt_dir = params.get("domblkerror_mnt_dir", "/home/test")
     tmp_file = params.get("domblkerror_tmp_file", "/tmp/fdisk-cmd")
     export_file = params.get("nfs_export_file", "/etc/exports")
-    img_name = params.get("domblkerror_img_name", "libvirt_disk")
+    img_name = params.get("domblkerror_img_name", "libvirt-disk")
     img_size = params.get("domblkerror_img_size")
     target_dev = params.get("domblkerror_target_dev", "vdb")
     pool_name = params.get("domblkerror_pool_name", "fs_pool")
@@ -37,6 +38,8 @@ def run(test, params, env):
     # backup /etc/exports
     shutil.copyfile(export_file, "%s.bak" % export_file)
     selinux_bak = ""
+    # backup xml
+    vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     try:
         # Gerenate tmp dir
@@ -60,8 +63,8 @@ def run(test, params, env):
                 is_setup=True, mount_dir=nfs_dir, is_mount=False,
                 export_options=mount_opt, export_dir=img_dir)
             selinux_bak = res["selinux_status_bak"]
-            utils.run("mount -o soft,timeo=1,retrans=1,retry=0 localhost:%s "
-                      "%s" % (img_dir, nfs_dir))
+            utils.run("mount -o nolock,soft,timeo=1,retrans=1,retry=0 "
+                      "127.0.0.1:%s %s" % (img_dir, nfs_dir))
             img_path = os.path.join(nfs_dir, img_name)
             nfs_service = Factory.create_service("nfs")
 
@@ -76,7 +79,7 @@ def run(test, params, env):
             pool_target = os.path.join(tmp_dir, pool_name)
             _pool_vol = utils_test.libvirt.PoolVolumeTest(test, params)
             _pool_vol.pre_pool(pool_name, "fs", pool_target, img_name,
-                               img_size)
+                               image_size=img_size)
             _pool_vol.pre_vol(vol_name, "raw", "100M", "0", pool_name)
             img_path = os.path.join(pool_target, vol_name)
 
@@ -175,3 +178,4 @@ def run(test, params, env):
         elif error_type == "no space":
             vm.destroy()
             _pool_vol.cleanup_pool(pool_name, "fs", pool_target, img_name)
+        vmxml_backup.sync()

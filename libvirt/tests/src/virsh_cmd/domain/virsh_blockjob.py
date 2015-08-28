@@ -26,7 +26,7 @@ def finish_job(vm_name, target, timeout):
             job_time += 2
             time.sleep(2)
     if job_time >= timeout:
-        raise error.TestFail("Blockjob timeout in %s sec.", timeout)
+        raise error.TestFail("Blockjob timeout in %s sec." % timeout)
 
 
 def get_disk(vm_name):

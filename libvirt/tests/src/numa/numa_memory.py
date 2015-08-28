@@ -47,9 +47,10 @@ def run(test, params, env):
         :param cpu_list: list of cpu number
         :return: cpu affinity string
         """
+        cmd = "lscpu | grep '^CPU(s):'"
+        cpu_num = int(utils.run(cmd).stdout.strip().split(':')[1].strip())
         cpu_affinity_str = ""
-        host_cpu_count = utils.count_cpus()
-        for i in range(host_cpu_count):
+        for i in range(cpu_num):
             if i in cpu_list:
                 cpu_affinity_str += "y"
             else:
@@ -114,28 +115,42 @@ def run(test, params, env):
         host_numa_node = utils_misc.NumaInfo()
         node_list = host_numa_node.online_nodes
         logging.debug("host node list is %s", node_list)
+
+        # Get host cpu list
+        tmp_list = []
+        for node_num in node_list:
+            host_node = utils_misc.NumaNode(i=node_num+1)
+            logging.debug("node %s cpu list is %s" %
+                          (node_num, host_node.cpus))
+            tmp_list += host_node.cpus
+        cpu_list = [int(i) for i in tmp_list]
+
         if numa_memory.get('nodeset'):
             used_node = utils_test.libvirt.cpus_parser(numa_memory['nodeset'])
             logging.debug("set node list is %s", used_node)
             if not status_error:
-                for i in used_node:
-                    if i > max(node_list):
-                        raise error.TestNAError("nodeset %s out of range" %
-                                                numa_memory['nodeset'])
+                if not set(used_node).issubset(node_list):
+                    raise error.TestNAError("nodeset %s out of range" %
+                                            numa_memory['nodeset'])
+
+        if vcpu_cpuset:
+            pre_cpuset = utils_test.libvirt.cpus_parser(vcpu_cpuset)
+            logging.debug("Parsed cpuset list is %s", pre_cpuset)
+            if not set(pre_cpuset).issubset(cpu_list):
+                raise error.TestNAError("cpuset %s out of range" %
+                                        vcpu_cpuset)
 
         vmxml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
         vmxml.numa_memory = numa_memory
         vcpu_num = vmxml.vcpu
-        current_mem = vmxml.current_mem
+        max_mem = vmxml.max_mem
         if vcpu_placement:
             vmxml.placement = vcpu_placement
         if vcpu_cpuset:
             vmxml.cpuset = vcpu_cpuset
-            pre_cpuset = utils_test.libvirt.cpus_parser(vcpu_cpuset)
-            logging.debug("Parsed cpuset list is %s", pre_cpuset)
         logging.debug("vm xml is %s", vmxml)
         vmxml.sync()
-        numad_cmd_opt = "-w %s:%s" % (vcpu_num, current_mem/1024)
+        numad_cmd_opt = "-w %s:%s" % (vcpu_num, max_mem/1024)
 
         try:
             vm.start()
@@ -174,7 +189,6 @@ def run(test, params, env):
                                      " %s\n%s" % (e, bug_url))
 
         # Check qemu process numa memory usage
-        host_numa_node = utils_misc.NumaInfo()
         memory_status, qemu_cpu = utils_test.qemu.get_numa_status(
             host_numa_node,
             vm.get_pid())
@@ -190,7 +204,11 @@ def run(test, params, env):
                     raise error.TestFail("cpu %s is not expected" % i)
             cpu_affinity_check(cpuset=pre_cpuset)
         if numa_memory.get('nodeset'):
-            left_node = [i for i in node_list if i not in used_node]
+            # If there are inconsistent node numbers on host,
+            # convert it into sequence number so that it can be used
+            # in mem_compare
+            left_node = [node_list.index(i) for i in node_list if i not in used_node]
+            used_node = [node_list.index(i) for i in used_node]
             mem_compare(used_node, left_node)
 
         logging.debug("numad log list is %s", numad_log)
@@ -201,10 +219,11 @@ def run(test, params, env):
                 raise error.TestFail("numad command not expected in log")
             numad_ret = numad_log[1].split("numad: ")[-1]
             numad_node = utils_test.libvirt.cpus_parser(numad_ret)
-            left_node = [i for i in node_list if i not in numad_node]
+            left_node = [node_list.index(i) for i in node_list if i not in numad_node]
+            numad_node_seq = [node_list.index(i) for i in numad_node]
             logging.debug("numad nodes are %s", numad_node)
             if numa_memory.get('placement') == 'auto':
-                mem_compare(numad_node, left_node)
+                mem_compare(numad_node_seq, left_node)
             if vcpu_placement == 'auto':
                 for i in left_node:
                     if qemu_cpu[i]:
