@@ -4,7 +4,7 @@ import time
 from autotest.client.shared import error
 from autotest.client.shared import ssh_key
 from virttest import virsh
-
+from provider import libvirt_version
 
 # To get result in thread, using global parameters
 # result of virsh migrate-setmaxdowntime command
@@ -160,8 +160,15 @@ def run(test, params, env):
     # Check results.
     if status_error:
         if ret_setmmdt:
-            raise error.TestFail("virsh migrate-setmaxdowntime succeed "
-                                 "but not expected.")
+            if not do_migrate and libvirt_version.version_compare(1, 2, 9):
+                # https://bugzilla.redhat.com/show_bug.cgi?id=1146618
+                # Commit fe808d9 fix it and allow setting migration
+                # max downtime any time since libvirt-1.2.9
+                logging.info("Libvirt version is newer than 1.2.9,"
+                             "Allow set maxdowntime while VM isn't migrating")
+            else:
+                raise error.TestFail("virsh migrate-setmaxdowntime succeed "
+                                     "but not expected.")
     else:
         if do_migrate and not ret_migration:
             raise error.TestFail("Migration failed.")
