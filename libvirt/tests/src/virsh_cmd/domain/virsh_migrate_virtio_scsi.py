@@ -80,39 +80,6 @@ def run(test, params, env):
         session.cmd("rm -f ~/.ssh/id_rsa*")
         session.close()
 
-    def set_remote_vm_autologin(vm_ip, vm_pwd, runner):
-        """
-        Setup autologin between remote host and its vm.
-        """
-        runner.run("ssh-keygen -y -t rsa -q -N '' -f ~/.ssh/id_rsa")
-        rsession = runner.session
-        rsession.sendline("ssh-copy-id -i ~/.ssh/id_rsa.pub root@%s"
-                          % vm_ip)
-        while True:
-            matched_strs = [r"[Aa]re you sure", r"[Pp]assword:\s*$",
-                            r"lost connection", r"]#"]
-            try:
-                index, text = rsession.read_until_last_line_matches(
-                    matched_strs, timeout=20,
-                    internal_timeout=0.5)
-            except (aexpect.ExpectTimeoutError,
-                    aexpect.ExpectProcessTerminatedError), e:
-                raise error.TestFail("Setup autologin to vm failed:%s" % e)
-            logging.debug("%s:%s", index, text)
-            if index == 0:
-                logging.debug("Sending 'yes' for fingerprint...")
-                rsession.sendline("yes")
-                continue
-            elif index == 1:
-                logging.debug("Sending '%s' for vm logging...", vm_pwd)
-                rsession.sendline(vm_pwd)
-                continue
-            elif index == 2:
-                raise error.TestFail("Disconnected to vm on remote host.")
-            elif index == 3:
-                logging.debug("Logged in now...")
-                break
-
     vm = env.get_vm(params.get("migrate_main_vm"))
     source_type = params.get("disk_source_type", "file")
     device_type = params.get("disk_device_type", "disk")
@@ -315,7 +282,7 @@ def run(test, params, env):
             runner = remote.RemoteRunner(host=remote_ip, username=username,
                                          password=host_pwd)
             # After migration, config autologin to vm
-            set_remote_vm_autologin(vm_ip, vm_pwd, runner)
+            ssh_key.setup_remote_ssh_key(vm_ip, "root", vm_pwd)
             check_disks_in_vm(vm, vm_ip, disks_after, runner)
 
             if migrate_in_advance:
