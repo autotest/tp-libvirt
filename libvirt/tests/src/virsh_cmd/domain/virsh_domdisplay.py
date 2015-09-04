@@ -6,6 +6,7 @@ from autotest.client.shared import error
 from virttest import utils_misc, utils_libvirtd, virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.graphics import Graphics
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -33,6 +34,14 @@ def run(test, params, env):
     # Do xml backup for final recovery
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     tmp_file = os.path.join(test.tmpdir, "qemu.conf.bk")
+
+    if "--type" in options:
+        if not libvirt_version.version_compare(1, 2, 6):
+            raise error.TestNAError("--type option is not supportted in this"
+                                    " libvirt version.")
+        elif "vnc" in options and graphic != "vnc" or \
+             "spice" in options and graphic != "spice":
+            status_error = True
 
     def prepare_ssl_env():
         """
@@ -128,7 +137,7 @@ def run(test, params, env):
         elif graphic == "spice":
             expect = "spice://%s:%s" % (expect_addr, port)
 
-        if options != "" and passwd is not None:
+        if options == "--include-password" and passwd is not None:
             # have --include-passwd and have passwd in xml
             if graphic == "vnc":
                 expect = "vnc://:%s@%s:%s" % \
