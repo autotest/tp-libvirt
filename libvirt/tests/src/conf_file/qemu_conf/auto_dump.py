@@ -27,11 +27,12 @@ def run(test, params, env):
     config = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
     try:
-        # Set panic device
-        panic_dev = Panic()
-        panic_dev.addr_type = "isa"
-        panic_dev.addr_iobase = "0x505"
-        vmxml.add_device(panic_dev)
+        if not vmxml.xmltreefile.find('devices').findall('panic'):
+            # Set panic device
+            panic_dev = Panic()
+            panic_dev.addr_type = "isa"
+            panic_dev.addr_iobase = "0x505"
+            vmxml.add_device(panic_dev)
         vmxml.on_crash = "coredump-restart"
         vmxml.sync()
 
