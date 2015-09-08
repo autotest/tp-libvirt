@@ -3,6 +3,7 @@ import os
 from autotest.client.shared import error
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 from virttest.utils_test import libvirt
@@ -63,7 +64,10 @@ def run(test, params, env):
         fail_pat.append('disabled')
 
     if vm_state == 'paused':
+        # For older version
         fail_pat.append('not responding')
+        # For newer version
+        fail_pat.append('not running')
     elif vm_state == 'shutoff':
         fail_pat.append('not running')
 
@@ -130,6 +134,8 @@ def run(test, params, env):
                 if not any(p in result.stderr for p in fail_pat):
                     raise error.TestFail("Expected failed with one of %s, but "
                                          "failed with:\n%s" % (fail_pat, result))
+
+            utils_misc.wait_for(lambda: vm.state() == 'pmsuspended', 30)
             if test_managedsave:
                 ret = virsh.managedsave(vm_name, **virsh_dargs)
                 libvirt.check_exit_status(ret)
