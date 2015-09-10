@@ -1,8 +1,10 @@
 import os
 import re
+import json
 import logging
 from autotest.client.shared import error
 from autotest.client import utils
+from provider import libvirt_version
 from virttest import aexpect, virt_vm, virsh, remote
 from virttest import nfs
 from virttest import utils_libvirtd
@@ -262,6 +264,7 @@ def run(test, params, env):
         logging.info("Checking diskorder option with snapshot...")
         snapshot1 = "s1"
         snapshot2 = "s2"
+        snapshot2_file = os.path.join(test.tmpdir, "s2")
         ret = virsh.snapshot_create(vm_name, "")
         libvirt.check_exit_status(ret)
 
@@ -277,7 +280,7 @@ def run(test, params, env):
 
         ret = virsh.snapshot_create_as(vm_name,
                                        "%s --memspec file=%s,snapshot=external"
-                                       % (snapshot2, snapshot2))
+                                       % (snapshot2, snapshot2_file))
         libvirt.check_exit_status(ret)
 
         ret = virsh.dumpxml(vm_name)
@@ -359,8 +362,22 @@ def run(test, params, env):
         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
             raise error.TestError(str(e))
 
+    def check_dom_iothread():
+        """
+        Check iothread by qemu-monitor-command.
+        """
+        ret = virsh.qemu_monitor_command(vm_name,
+                                         '{"execute": "query-iothreads"}',
+                                         "--pretty")
+        libvirt.check_exit_status(ret)
+        logging.debug("Domain iothreads: %s", ret.stdout)
+        iothreads_ret = json.loads(ret.stdout)
+        if len(iothreads_ret['return']) != int(dom_iothreads):
+            raise error.TestFail("Failed to check domain iothreads")
+
     status_error = "yes" == params.get("status_error", "no")
     define_error = "yes" == params.get("define_error", "no")
+    dom_iothreads = params.get("dom_iothreads")
 
     # Disk specific attributes.
     devices = params.get("virt_disk_device", "disk").split()
@@ -385,6 +402,7 @@ def run(test, params, env):
     wwn = params.get("virt_disk_wwn", "")
     vendor = params.get("virt_disk_vendor", "")
     product = params.get("virt_disk_product", "")
+    add_disk_driver = params.get("add_disk_driver")
     iface_driver = params.get("iface_driver_option", "")
     bootdisk_snapshot = params.get("bootdisk_snapshot", "")
     snapshot_option = params.get("snapshot_option", "")
@@ -438,16 +456,27 @@ def run(test, params, env):
     snapshot_before_start = "yes" == params.get(
         "snapshot_before_start", "no")
 
+    if dom_iothreads:
+        if not libvirt_version.version_compare(1, 2, 8):
+            raise error.TestNAError("iothreads not supported for"
+                                    " this libvirt version")
+
     if test_block_size:
         logical_block_size = params.get("logical_block_size")
         physical_block_size = params.get("physical_block_size")
 
-    if test_boot_console:
+    if any([test_boot_console, add_disk_driver]):
         if vm.is_dead():
             vm.start()
-        vm.wait_for_login().close()
-        # Setting console to kernel parameters
-        vm.set_kernel_console("ttyS0", "115200")
+        session = vm.wait_for_login()
+        if test_boot_console:
+            # Setting console to kernel parameters
+            vm.set_kernel_console("ttyS0", "115200")
+        if add_disk_driver:
+            # Ignore errors here
+            session.cmd("dracut --force --add-drivers '%s'"
+                        % add_disk_driver)
+        session.close()
         vm.shutdown()
 
     # Destroy VM.
@@ -576,6 +605,7 @@ def run(test, params, env):
                 disk_xml.address = disk_xml.new_disk_address(
                     **{"attrs": addr_dict})
 
+            logging.debug("disk xml: %s", disk_xml)
             if hotplug:
                 disks_xml.append(disk_xml)
             else:
@@ -618,7 +648,7 @@ def run(test, params, env):
                 iface_list = xml_devices.by_device_tag("interface")[0]
                 iface_index = xml_devices.index(iface_list)
                 iface = xml_devices[iface_index]
-                iface.driver = driver_dict
+                iface.driver = iface.new_driver(**{"driver_attr": driver_dict})
                 iface.model = "virtio"
                 del iface.address
 
@@ -645,6 +675,7 @@ def run(test, params, env):
                         d = driver_option.split('=')
                         driver_dict.update({d[0].strip(): d[1].strip()})
                 scsi_controller.driver = driver_dict
+            vmxml.del_controller("scsi")
             vmxml.add_device(scsi_controller)
 
         # Test usb devices.
@@ -699,6 +730,9 @@ def run(test, params, env):
                     **{"attrs": addr_dict})
             vmxml.add_device(hub_obj)
             usb_devices.update({"hub": addr_dict})
+
+        if dom_iothreads:
+            vmxml.iothreads = int(dom_iothreads)
 
         # After compose the disk xml, redefine the VM xml.
         vmxml.sync()
@@ -800,6 +834,11 @@ def run(test, params, env):
             if copy_on_read:
                 cmd += " | grep copy-on-read=%s" % copy_on_read
 
+            iothread = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
+                                                  "driver", "iothread")
+            if iothread:
+                cmd += " | grep iothread=iothread%s" % iothread
+
             if serial != "":
                 cmd += " | grep serial=%s" % serial
             if wwn != "":
@@ -887,8 +926,7 @@ def run(test, params, env):
                 cmd += (" | grep %s,bus=ide.%d,unit=%d,drive=drive-%s,id=%s"
                         % (device_option, dev_bus, dev_unit, dev_id, dev_id))
             if device_bus[0] == "sata":
-                cmd += (" | grep ide-hd,bus=ahci%d.%d,drive=drive-%s,id=%s"
-                        % (dev_bus, dev_unit, dev_id, dev_id))
+                cmd += (" | grep 'device ahci,.*,bus=pci.%s'" % dev_bus)
             if device_bus[0] == "scsi":
                 if devices[0] == "lun":
                     device_option = "scsi-block"
@@ -919,6 +957,9 @@ def run(test, params, env):
             if utils.run(cmd, ignore_status=True).exit_status:
                 raise error.TestFail("Cann't see disk option"
                                      " in command line")
+
+        if dom_iothreads:
+            check_dom_iothread()
 
         # Check in VM after command.
         if check_patitions:
