@@ -29,9 +29,12 @@ def get_disk_info(vm_name, options):
     for i in range(len(sourcelist)):
         new_disk['xml'] = ElementTree.tostring(sourcelist[i])
         logging.debug("Current disk xml is: %s" % new_disk.xmltreefile)
-        for key in new_disk.source.attrs.keys():
-            if key in SOURCE_LIST:
-                source_path = new_disk.source.attrs[key]
+        if hasattr(new_disk, 'source'):
+            for key in new_disk.source.attrs.keys():
+                if key in SOURCE_LIST:
+                    source_path = new_disk.source.attrs[key]
+        else:
+            source_path = '-'
         disk_info_dict[i] = [new_disk.type_name, new_disk.device,
                              new_disk.target['dev'],
                              source_path]
@@ -52,7 +55,9 @@ def run(test, params, env):
         """
         Run domblklist and check result, raise error if check fail.
         """
+        disk_info_list = []
         output_disk_info = {}
+        output_disk_info_list = []
         result = virsh.domblklist(vm_ref, options,
                                   ignore_status=True, debug=True)
         status = result.exit_status
@@ -75,16 +80,25 @@ def run(test, params, env):
             logging.debug("The disk info dict from command output is: %s"
                           % output_disk_info)
 
+            for (k, v) in output_disk_info.items():
+                output_disk_info_list.append(v)
+
             if "--details" in options:
-                if disk_info != output_disk_info:
-                    raise error.TestFail("The output did not match with disk"
-                                         " info from xml")
+                for (k, v) in disk_info.items():
+                    disk_info_list.append(v)
             else:
-                for i in range(len(disk_info.keys())):
-                    disk_info[i] = disk_info[i][2:]
-                if disk_info != output_disk_info:
-                    raise error.TestFail("The output did not match with disk"
-                                         " info from xml")
+                for (k, v) in disk_info.items():
+                    disk_info_list.append(v[2:])
+
+            disk_info_list.sort()
+            logging.debug("The disk info list from xml is: %s" % disk_info_list)
+            output_disk_info_list.sort()
+            logging.debug("The disk info list from command output is: %s"
+                          % output_disk_info_list)
+
+            if disk_info_list != output_disk_info_list:
+                raise error.TestFail("The output did not match with disk"
+                                     " info from xml")
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
