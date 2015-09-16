@@ -13,7 +13,6 @@ def run(test, params, env):
     net_name = params.get("net_update_net_name", "updatenet")
     net_section = params.get("network_section", "ip-dhcp-range")
     update_command = params.get("update_command", "add-last")
-    add_portgroup = "yes" == params.get("add_portgroup", "no")
     options = params.get("cmd_options", "")
     net_state = params.get("net_state")
 
