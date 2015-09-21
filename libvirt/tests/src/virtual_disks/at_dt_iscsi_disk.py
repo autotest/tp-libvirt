@@ -110,6 +110,9 @@ def run(test, params, env):
             # Create iscsi pool
             cmd_result = virsh.pool_create(poolxml.xml, **virsh_dargs)
             libvirt.check_exit_status(cmd_result)
+            # refresh the pool
+            cmd_result = virsh.pool_refresh(disk_src_pool)
+            libvirt.check_exit_status(cmd_result)
             # Get volume name
             cmd_result = virsh.vol_list(disk_src_pool, **virsh_dargs)
             libvirt.check_exit_status(cmd_result)
