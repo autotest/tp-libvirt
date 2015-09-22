@@ -1,8 +1,11 @@
 import re
 import logging
+
 from autotest.client.shared import error
 from autotest.client import utils
-from virttest import virt_vm, virsh
+
+from virttest import virt_vm
+from virttest import virsh
 from virttest import utils_net
 from virttest import utils_misc
 from virttest import utils_libguestfs

@@ -1,9 +1,11 @@
 import os
 
-from autotest.client import os_dep, utils
+from autotest.client import os_dep
+from autotest.client import utils
 from autotest.client.shared import error
 
-from virttest import common, virsh, data_dir
+from virttest import virsh
+from virttest import data_dir
 
 
 def run(test, params, env):

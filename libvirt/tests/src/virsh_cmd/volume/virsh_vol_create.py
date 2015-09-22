@@ -1,11 +1,16 @@
 import os
 import logging
-from virttest import virsh, libvirt_storage, libvirt_xml
-from virttest.utils_test import libvirt as utlv
-from autotest.client.shared import error
+
 from autotest.client import utils
-from provider import libvirt_version
+from autotest.client.shared import error
+
+from virttest import virsh
+from virttest import libvirt_storage
+from virttest import libvirt_xml
+from virttest.utils_test import libvirt as utlv
 from virttest.staging import service
+
+from provider import libvirt_version
 
 
 def run(test, params, env):

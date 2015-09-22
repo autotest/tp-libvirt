@@ -3,7 +3,9 @@ import os
 from autotest.client import os_dep, utils
 from autotest.client.shared import error
 
-from virttest import common, virsh, data_dir, utils_misc
+from virttest import virsh
+from virttest import data_dir
+from virttest import utils_misc
 
 
 def run(test, params, env):

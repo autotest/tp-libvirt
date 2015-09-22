@@ -1,11 +1,15 @@
 import os
 import re
 import shutil
-import time
 
-from virttest import data_dir, aexpect
-from autotest.client import os_dep, utils
-from autotest.client.shared import error, ssh_key
+import aexpect
+
+from autotest.client import os_dep
+from autotest.client import utils
+from autotest.client.shared import error
+from autotest.client.shared import ssh_key
+
+from virttest import data_dir
 
 
 def _perf_kvm_help():

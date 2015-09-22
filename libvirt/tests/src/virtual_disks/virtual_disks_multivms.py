@@ -1,8 +1,14 @@
 import os
 import logging
+
+import aexpect
+
 from autotest.client.shared import error
+
 from virttest import utils_selinux
-from virttest import aexpect, virt_vm, virsh, remote, qemu_storage
+from virttest import virt_vm
+from virttest import virsh
+from virttest import remote
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk

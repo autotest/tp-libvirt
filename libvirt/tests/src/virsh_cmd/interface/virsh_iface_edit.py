@@ -1,13 +1,16 @@
 import os
 import re
 import logging
+
+import aexpect
+
 from autotest.client import utils
 from autotest.client.shared import error
-from virttest import aexpect
+
 from virttest import remote
-from virttest.utils_test import libvirt
 from virttest import utils_net
 from virttest import virsh
+from virttest.utils_test import libvirt
 
 NETWORK_SCRIPT = "/etc/sysconfig/network-scripts/ifcfg-"
 

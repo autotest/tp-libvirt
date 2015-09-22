@@ -1,8 +1,14 @@
 import logging
 import re
-from autotest.client.shared import utils, error
+
 from autotest.client import os_dep
-from virttest import libvirt_vm, virsh, utils_libvirtd, utils_misc
+from autotest.client.shared import utils
+from autotest.client.shared import error
+
+from virttest import libvirt_vm
+from virttest import virsh
+from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest.libvirt_xml import capability_xml
 
 

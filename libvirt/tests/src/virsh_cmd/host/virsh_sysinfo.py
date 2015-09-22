@@ -1,6 +1,8 @@
 import logging
+
 from autotest.client import utils
 from autotest.client.shared import error
+
 from virttest import libvirt_xml
 from virttest import virsh
 

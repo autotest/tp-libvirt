@@ -1,6 +1,8 @@
 import os
 import subprocess
+
 from autotest.client.shared import error
+
 from virttest import virsh
 
 

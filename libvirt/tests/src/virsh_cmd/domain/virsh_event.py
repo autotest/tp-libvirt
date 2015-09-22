@@ -1,9 +1,12 @@
 import os
 import time
 import logging
-from virttest import virsh
+
+import aexpect
+
 from autotest.client.shared import error
-from virttest import aexpect
+
+from virttest import virsh
 from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv

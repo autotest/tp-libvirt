@@ -1,14 +1,14 @@
 import re
 import logging
 import os
-from autotest.client.shared import error
-from virttest.libvirt_xml import vm_xml, xcepts
-from virttest import virsh
 
-try:
-    from virttest.staging import utils_cgroup
-except ImportError:
-    from autotest.client.shared import utils_cgroup
+from autotest.client.shared import error
+
+from virttest import virsh
+from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import xcepts
+
+from virttest.staging import utils_cgroup
 
 
 def run(test, params, env):

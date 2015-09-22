@@ -1,5 +1,7 @@
 import os
+
 from autotest.client.shared import error
+
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 

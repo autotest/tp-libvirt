@@ -5,7 +5,8 @@ import re
 from autotest.client import os_dep, utils
 from autotest.client.shared import error
 
-from virttest import common, virsh, data_dir
+from virttest import virsh
+from virttest import data_dir
 from virttest.utils_test import libvirt
 
 

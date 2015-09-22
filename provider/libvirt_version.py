@@ -2,9 +2,10 @@
 Shared code for tests that need to get the libvirt version
 """
 
-from virttest import virsh
 import re
 import logging
+
+from virttest import virsh
 
 LIBVIRT_LIB_VERSION = 0
 

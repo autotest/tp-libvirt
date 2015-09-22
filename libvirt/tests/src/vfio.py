@@ -1,10 +1,15 @@
 import logging
 import tempfile
 import re
+
 from autotest.client.shared import error
-from virttest import libvirt_vm, virsh, data_dir
-from virttest import remote, utils_misc, virt_vm
-from virttest.libvirt_xml import vm_xml
+
+from virttest import libvirt_vm
+from virttest import virsh
+from virttest import data_dir
+from virttest import remote
+from virttest import utils_misc
+from virttest import virt_vm
 from virttest.utils_test import libvirt as utlv
 
 

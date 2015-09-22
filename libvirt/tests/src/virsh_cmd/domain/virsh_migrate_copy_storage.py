@@ -1,8 +1,11 @@
 import os
 import logging
+
 from autotest.client import lv_utils
 from autotest.client.shared import error, ssh_key
-from virttest import utils_test, libvirt_vm
+
+from virttest import utils_test
+from virttest import libvirt_vm
 from virttest.utils_test import libvirt as utlv
 
 

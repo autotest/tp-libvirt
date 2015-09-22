@@ -1,13 +1,15 @@
 import re
 import os
 import logging
+from xml.dom.minidom import parse
+
 from autotest.client.shared import error
+
 from virttest import remote
 from virttest import virsh
-from virttest.libvirt_xml import vm_xml
 from virttest import libvirt_vm
+from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
-from xml.dom.minidom import parse
 
 
 def remote_test(remote_ip, local_ip, remote_pwd, remote_prompt,

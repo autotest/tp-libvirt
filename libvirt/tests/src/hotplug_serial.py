@@ -7,11 +7,12 @@ import socket
 import shutil
 
 from autotest.client.shared import error
+
 from virttest import virsh
 from virttest import utils_misc
 from virttest.libvirt_xml.vm_xml import VMXML
-from virttest.libvirt_xml.devices.controller import Controller
 from virttest.utils_test import libvirt as utlv
+from virttest.libvirt_xml.devices.controller import Controller
 
 
 def run(test, params, env):

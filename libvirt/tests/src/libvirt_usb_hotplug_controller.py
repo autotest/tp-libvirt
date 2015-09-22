@@ -1,9 +1,11 @@
+from aexpect import ShellError
+
 from autotest.client.shared import error
+
 from virttest.virt_vm import VMStartError
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.controller import Controller
 from virttest.libvirt_xml.xcepts import LibvirtXMLError
-from virttest.aexpect import ShellError
 from virttest.remote import LoginError
 
 

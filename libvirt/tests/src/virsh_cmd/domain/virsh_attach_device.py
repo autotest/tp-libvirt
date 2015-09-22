@@ -6,11 +6,13 @@ import os
 import os.path
 import logging
 from string import ascii_lowercase
+
 from autotest.client.shared import error
+
 from virttest import virt_vm, virsh, remote, aexpect, utils_misc
 from virttest.libvirt_xml.vm_xml import VMXML
-# The backports module will take care of using the builtins if available
 from virttest.staging.backports import itertools
+
 from provider import libvirt_version
 
 # TODO: Move all these helper classes someplace else

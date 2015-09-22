@@ -1,12 +1,14 @@
 import os
 import time
 import logging
+
 from autotest.client.shared import error
+
 from virttest import data_dir
 from virttest import utils_libvirtd
+from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utl
-from virttest import virsh
 
 
 def finish_job(vm_name, target, timeout):

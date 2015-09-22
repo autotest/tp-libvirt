@@ -1,7 +1,11 @@
 import logging
+
 from autotest.client.shared import error
-from virttest import virsh, utils_libvirtd
-from virttest.libvirt_xml import network_xml, xcepts
+
+from virttest import virsh
+from virttest import utils_libvirtd
+from virttest.libvirt_xml import network_xml
+from virttest.libvirt_xml import xcepts
 
 
 def run(test, params, env):

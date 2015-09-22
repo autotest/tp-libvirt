@@ -1,6 +1,7 @@
-import re
 import logging
+
 from autotest.client.shared import error
+
 from virttest.lvsb import make_sandboxes
 
 

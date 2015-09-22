@@ -2,15 +2,19 @@ import os
 import re
 import base64
 import logging
+
+from aexpect import ShellError
+
 from autotest.client.shared import error
+
 from virttest import virsh
 from virttest.remote import LoginError
 from virttest.virt_vm import VMError
-from virttest.aexpect import ShellError
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml.secret_xml import SecretXML
+
 from provider import libvirt_version
 
 

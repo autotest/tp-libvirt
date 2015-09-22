@@ -1,7 +1,11 @@
 import re
 import logging
+
 from autotest.client.shared import error
-from virttest import virsh, utils_libvirtd, qemu_vm
+
+from virttest import virsh
+from virttest import utils_libvirtd
+from virttest import qemu_vm
 
 
 def run(test, params, env):

@@ -1,12 +1,15 @@
 import os
 import logging
+
+from aexpect import ShellTimeoutError
+
+from autotest.client.shared import error
+from autotest.client.shared import utils
+
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
-from virttest.aexpect import ShellTimeoutError
-from autotest.client.shared import error
-from autotest.client.shared import utils
 
 
 def run(test, params, env):

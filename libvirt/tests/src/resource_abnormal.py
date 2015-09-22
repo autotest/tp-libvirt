@@ -4,8 +4,10 @@ import stat
 import signal
 import logging
 import threading
+
 from autotest.client.shared import error
 from autotest.client.shared import utils
+
 from virttest import libvirt_storage
 from virttest import utils_selinux
 from virttest import qemu_storage

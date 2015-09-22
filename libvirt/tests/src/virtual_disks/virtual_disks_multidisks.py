@@ -2,10 +2,15 @@ import os
 import re
 import json
 import logging
-from autotest.client.shared import error
+
+import aexpect
+
 from autotest.client import utils
-from provider import libvirt_version
-from virttest import aexpect, virt_vm, virsh, remote
+from autotest.client.shared import error
+
+from virttest import virt_vm
+from virttest import virsh
+from virttest import remote
 from virttest import nfs
 from virttest import utils_libvirtd
 from virttest import utils_misc
@@ -16,6 +21,8 @@ from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.input import Input
 from virttest.libvirt_xml.devices.hub import Hub
 from virttest.libvirt_xml.devices.controller import Controller
+
+from provider import libvirt_version
 
 
 def run(test, params, env):

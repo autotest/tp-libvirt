@@ -1,15 +1,19 @@
 import os
 import logging
+
+import aexpect
+
 from autotest.client.shared import error
 from autotest.client import utils
+
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import remote
 from virttest import utils_libvirtd
-from virttest import aexpect
 from virttest import libvirt_storage
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
+
 from provider import libvirt_version
 
 

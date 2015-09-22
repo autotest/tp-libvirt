@@ -2,10 +2,14 @@ import os
 import re
 import logging
 import commands
-from autotest.client.shared import error
-from virttest import virsh, data_dir, utils_misc
-from provider import libvirt_version
 
+from autotest.client.shared import error
+
+from virttest import virsh
+from virttest import data_dir
+from virttest import utils_misc
+
+from provider import libvirt_version
 
 OVER_SIZE = (1 << 64)
 

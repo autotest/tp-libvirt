@@ -7,8 +7,10 @@ import random
 import socket
 import shutil
 import logging
+
 from autotest.client.shared import error
 from autotest.client.shared import utils
+
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest import virt_vm
 from virttest import utils_net

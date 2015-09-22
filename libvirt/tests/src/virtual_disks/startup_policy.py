@@ -1,11 +1,13 @@
 import os
 import logging
 import shutil
+
 from autotest.client import utils
 from autotest.client.shared import error
+
+from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
-from virttest import virsh
 
 
 def create_disk_xml(xml_file, device_type, source_file, target_dev, policy):

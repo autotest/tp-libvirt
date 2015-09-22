@@ -1,9 +1,13 @@
 import logging
+
+import aexpect
+
 from autotest.client.shared import error
+
 from virttest import virsh
 from virttest import libvirt_xml
-from virttest import aexpect
 from virttest import remote
+
 from provider import libvirt_version
 
 

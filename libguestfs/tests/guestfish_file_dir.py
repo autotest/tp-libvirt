@@ -1,13 +1,14 @@
-from autotest.client.shared import error, utils
-from virttest import utils_test, utils_misc, data_dir
-from virttest.tests import unattended_install
 import logging
-import shutil
 import os
 import re
 import random
 import string
 import hashlib
+
+from autotest.client.shared import error
+from autotest.client.shared import utils
+from virttest import utils_test
+from virttest import data_dir
 
 
 def prepare_image(params):

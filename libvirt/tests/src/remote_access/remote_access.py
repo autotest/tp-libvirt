@@ -3,15 +3,19 @@ import os
 import logging
 import commands
 
+from autotest.client.shared import error
+from autotest.client.shared import utils
+
 from virttest import remote
-from autotest.client.shared import error, utils
 from virttest.utils_sasl import SASL
-from virttest.utils_conn import SSHConnection, TCPConnection, \
-    TLSConnection, UNIXConnection
-from virttest.utils_net import IPv6Manager, \
-    check_listening_port_remote_by_service
-from virttest.utils_test.libvirt import remotely_control_libvirtd, \
-    connect_libvirtd
+from virttest.utils_conn import SSHConnection
+from virttest.utils_conn import TCPConnection
+from virttest.utils_conn import TLSConnection
+from virttest.utils_conn import UNIXConnection
+from virttest.utils_net import IPv6Manager
+from virttest.utils_net import check_listening_port_remote_by_service
+from virttest.utils_test.libvirt import remotely_control_libvirtd
+from virttest.utils_test.libvirt import connect_libvirtd
 
 
 def remote_access(params):

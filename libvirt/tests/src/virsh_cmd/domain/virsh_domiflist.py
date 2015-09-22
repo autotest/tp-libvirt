@@ -1,7 +1,10 @@
 import re
 import logging
+
 from autotest.client.shared import error
-from virttest import virsh, utils_net
+
+from virttest import virsh
+from virttest import utils_net
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 

@@ -5,11 +5,17 @@ Test module for Storage Discard.
 import re
 import logging
 import time
+
 from autotest.client import utils, lv_utils
 from autotest.client.shared import error
-from virttest import virsh, data_dir
+
+from virttest import virsh
+from virttest import data_dir
+from virttest import iscsi
+from virttest import qemu_storage
+from virttest import libvirt_vm
+from virttest import utils_misc
 from virttest.utils_test import libvirt as utlv
-from virttest import iscsi, qemu_storage, libvirt_vm, utils_misc
 
 
 def volumes_capacity(lv_name):

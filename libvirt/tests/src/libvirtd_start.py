@@ -1,13 +1,16 @@
 import os
 import re
 import logging
-from virttest import aexpect
+
+import aexpect
+
+from autotest.client.shared import error
+from autotest.client.shared import utils
+
 from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import utils_selinux
 from virttest.staging import service
-from autotest.client.shared import error
-from autotest.client.shared import utils
 
 
 class LibvirtdSession(aexpect.Tail):

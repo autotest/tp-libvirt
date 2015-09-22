@@ -1,8 +1,13 @@
-import time
 import commands
 import logging
+
+import aexpect
+
 from autotest.client.shared import error
-from virttest import aexpect, utils_test, virsh, utils_misc
+
+from virttest import utils_test
+from virttest import virsh
+from virttest import utils_misc
 
 
 def run(test, params, env):

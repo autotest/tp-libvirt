@@ -1,10 +1,16 @@
 import logging
 import time
 import threading
-from autotest.client.shared import error, ssh_key
-from virttest import utils_test, libvirt_vm, virsh
+
+from autotest.client.shared import error
+from autotest.client.shared import ssh_key
+
+from virttest import utils_test
+from virttest import libvirt_vm
+from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
+
 from provider import libvirt_version
 
 

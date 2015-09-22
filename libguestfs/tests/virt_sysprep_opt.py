@@ -1,6 +1,8 @@
 import os
 import stat
+
 from autotest.client.shared import error
+
 from virttest import data_dir
 from virttest import remote
 import virttest.utils_libguestfs as lgf

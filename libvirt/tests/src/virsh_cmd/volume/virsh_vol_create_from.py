@@ -1,8 +1,12 @@
 import logging
 import os
-from virttest import virsh, libvirt_storage
-from virttest.utils_test import libvirt as utlv
+
 from autotest.client.shared import error
+
+from virttest import virsh
+from virttest import libvirt_storage
+from virttest.utils_test import libvirt as utlv
+
 from provider import libvirt_version
 
 

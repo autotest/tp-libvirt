@@ -2,9 +2,17 @@ import re
 import os
 import logging
 import commands
-from autotest.client.shared import error, utils
-from virttest import virt_vm, data_dir, remote, aexpect
-from virttest import utils_test, utils_misc
+
+import aexpect
+
+from autotest.client.shared import error
+from autotest.client.shared import utils
+
+from virttest import virt_vm
+from virttest import data_dir
+from virttest import remote
+from virttest import utils_test
+from virttest import utils_misc
 
 
 def test_unformatted_part(vm, params):

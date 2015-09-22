@@ -3,11 +3,12 @@ import re
 import logging
 from tempfile import mktemp
 
-from virttest import virsh
 from autotest.client.shared import error
-from virttest.libvirt_xml.nodedev_xml import NodedevXML
-from provider import libvirt_version
 
+from virttest import virsh
+from virttest.libvirt_xml.nodedev_xml import NodedevXML
+
+from provider import libvirt_version
 
 _FC_HOST_PATH = "/sys/class/fc_host"
 

@@ -1,10 +1,13 @@
 import os
 import re
 import commands
-import logging
 import tempfile
+
 from autotest.client.shared import error
-from virttest import virsh, data_dir
+
+from virttest import virsh
+from virttest import data_dir
+
 from provider import libvirt_version
 
 

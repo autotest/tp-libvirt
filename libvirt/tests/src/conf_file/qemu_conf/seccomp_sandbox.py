@@ -1,9 +1,11 @@
 import re
 import logging
-from virttest import utils_config
-from virttest import utils_libvirtd
+
 from autotest.client import utils
 from autotest.client.shared import error
+
+from virttest import utils_config
+from virttest import utils_libvirtd
 
 
 def run(test, params, env):

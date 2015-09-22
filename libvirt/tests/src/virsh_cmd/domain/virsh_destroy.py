@@ -1,5 +1,11 @@
-from autotest.client.shared import error, ssh_key
-from virttest import libvirt_vm, remote, virsh, utils_libvirtd
+from autotest.client.shared import error
+from autotest.client.shared import ssh_key
+
+from virttest import libvirt_vm
+from virttest import remote
+from virttest import virsh
+from virttest import utils_libvirtd
+
 from provider import libvirt_version
 
 

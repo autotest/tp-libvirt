@@ -1,6 +1,12 @@
 import logging
+
+import aexpect
+
 from autotest.client.shared import error
-from virttest import virsh, libvirt_xml, aexpect, remote
+
+from virttest import virsh
+from virttest import libvirt_xml
+from virttest import remote
 
 
 def edit_filter_xml(filter_name, edit_cmd):

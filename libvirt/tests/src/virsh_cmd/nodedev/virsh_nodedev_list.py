@@ -1,9 +1,13 @@
 import logging
 import os
 import re
-from autotest.client.shared import error, utils
+
+from autotest.client.shared import error
+from autotest.client.shared import utils
+
 from virttest import virsh
 from virttest import utils_misc
+
 from provider import libvirt_version
 
 

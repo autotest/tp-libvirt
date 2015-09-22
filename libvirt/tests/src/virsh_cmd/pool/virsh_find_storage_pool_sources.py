@@ -1,10 +1,13 @@
 import logging
-from virttest import xml_utils
-from virttest import utils_test
+
 from autotest.client import utils
 from autotest.client import lv_utils
 from autotest.client.shared import error
+
+from virttest import xml_utils
+from virttest import utils_test
 from virttest import virsh
+
 from provider import libvirt_version
 
 

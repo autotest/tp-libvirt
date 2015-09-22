@@ -4,7 +4,10 @@ svirt guest_undefine_define test.
 import os
 
 from autotest.client.shared import error
-from virttest import utils_selinux, virsh, data_dir
+
+from virttest import utils_selinux
+from virttest import virsh
+from virttest import data_dir
 from virttest.libvirt_xml.vm_xml import VMXML
 
 

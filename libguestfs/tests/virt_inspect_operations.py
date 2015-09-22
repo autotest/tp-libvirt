@@ -1,8 +1,12 @@
 import logging
 import re
 import os
+
 from autotest.client.shared import error
-from virttest import virt_vm, remote, utils_test
+
+from virttest import virt_vm
+from virttest import remote
+from virttest import utils_test
 
 
 def test_inspect_get(vm, params):

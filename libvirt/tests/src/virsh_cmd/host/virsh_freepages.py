@@ -1,8 +1,10 @@
 import logging
+
 from autotest.client.shared import error
 from autotest.client import utils
-from virttest.staging import utils_memory
+
 from virttest import virsh
+from virttest.staging import utils_memory
 from virttest.utils_test import libvirt as utlv
 
 

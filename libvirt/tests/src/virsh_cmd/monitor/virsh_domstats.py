@@ -1,10 +1,13 @@
 import logging
+
+from aexpect import ShellTimeoutError
+from aexpect import ShellProcessTerminatedError
+
 from autotest.client.shared import error
+
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
-from virttest.aexpect import ShellTimeoutError
-from virttest.aexpect import ShellProcessTerminatedError
 
 
 def prepare_vm_state(vm, vm_state):

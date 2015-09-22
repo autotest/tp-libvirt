@@ -1,7 +1,11 @@
 import logging
 import os
-from autotest.client.shared import error, utils
-from virttest import data_dir, utils_test
+
+from autotest.client.shared import error
+from autotest.client.shared import utils
+
+from virttest import data_dir
+from virttest import utils_test
 
 
 def umount_fs(mountpoint):

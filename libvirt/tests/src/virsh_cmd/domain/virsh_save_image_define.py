@@ -2,7 +2,9 @@ import os
 import logging
 import tempfile
 import re
+
 from autotest.client.shared import error
+
 from virttest import data_dir
 from virttest import virsh
 

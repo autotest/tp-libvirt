@@ -3,7 +3,9 @@ Simple test that executes date command in a sanbox and verifies it is correct
 """
 
 import datetime
+
 from autotest.client.shared import error
+
 from virttest.lvsb import make_sandboxes
 
 
