@@ -76,7 +76,7 @@ def create_volume(device, vgname="vgthin", lvname="lvthin"):
     iscsi service if it is None.
     """
     # Create volume group
-    lv_utils.vg_create(vgname, device, force=True)
+    lv_utils.vg_create(vgname, device)
     # Create thin volume
     thinpool, thinlv = lv_utils.thin_lv_create(vgname, thinlv_name=lvname)
     logging.debug("Created thin volume successfully.")
