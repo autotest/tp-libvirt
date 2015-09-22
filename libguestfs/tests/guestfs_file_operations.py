@@ -2,8 +2,11 @@ import re
 import os
 import logging
 import tarfile
-from autotest.client.shared import utils, error
-from virttest import data_dir, utils_test
+
+from autotest.client.shared import utils
+from autotest.client.shared import error
+from virttest import data_dir
+from virttest import utils_test
 
 
 def test_tar_in(vm, params):

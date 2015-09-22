@@ -4,8 +4,13 @@ import socket
 import subprocess
 import time
 import shutil
+
 from autotest.client.shared import error
-from virttest import virsh, libvirt_vm, utils_test, utils_misc
+
+from virttest import virsh
+from virttest import libvirt_vm
+from virttest import utils_test
+from virttest import utils_misc
 from virttest.utils_test import libvirt as utlv
 
 

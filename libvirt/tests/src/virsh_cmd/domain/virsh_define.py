@@ -1,7 +1,10 @@
 import logging
+
 from autotest.client.shared import error
-from virttest.libvirt_xml import VMXML, LibvirtXMLError
+
 from virttest import virt_vm
+from virttest.libvirt_xml import VMXML
+from virttest.libvirt_xml import LibvirtXMLError
 
 
 def run(test, params, env):

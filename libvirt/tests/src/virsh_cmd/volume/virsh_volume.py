@@ -1,14 +1,17 @@
 import os
 import re
 import logging
+
 from autotest.client.shared import error
 from autotest.client import utils
+
 from virttest import utils_misc
 from virttest import virsh
 from virttest import libvirt_storage
 from virttest.libvirt_xml import vol_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.staging import service
+
 from provider import libvirt_version
 
 

@@ -1,14 +1,17 @@
 import os
 import logging
+
 from autotest.client import utils
 from autotest.client.shared import error
-from virttest.utils_test import libvirt
-from virttest.staging import service
+
 from virttest import utils_net
 from virttest import utils_misc
 from virttest import virsh
 from virttest import remote
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
+from virttest.staging import service
+
 from provider import libvirt_version
 
 NETWORK_SCRIPT = "/etc/sysconfig/network-scripts/ifcfg-"

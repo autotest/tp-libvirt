@@ -1,13 +1,13 @@
 import re
 import logging
+
 from autotest.client import utils
 from autotest.client.shared import error
-from virttest import virsh, utils_libvirtd
+
+from virttest import virsh
+from virttest import utils_libvirtd
 from virttest.libvirt_xml import capability_xml
-try:
-    from virttest.staging import utils_memory
-except ImportError:
-    from autotest.client.shared import utils_memory
+from virttest.staging import utils_memory
 
 
 def run(test, params, env):

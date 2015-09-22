@@ -1,8 +1,12 @@
 import os
 
+import aexpect
+
 from autotest.client import utils
 from autotest.client.shared import error
-from virttest import virsh, utils_test, aexpect
+
+from virttest import virsh
+from virttest import utils_test
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.nodedev_xml import NodedevXML
 from virttest.staging import service

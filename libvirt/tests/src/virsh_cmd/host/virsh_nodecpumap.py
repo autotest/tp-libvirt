@@ -1,9 +1,10 @@
 import os
 import logging
+
 from autotest.client import utils
 from autotest.client.shared import error
-from virttest import virsh
 
+from virttest import virsh
 
 SYSFS_SYSTEM_PATH = "/sys/devices/system/cpu"
 

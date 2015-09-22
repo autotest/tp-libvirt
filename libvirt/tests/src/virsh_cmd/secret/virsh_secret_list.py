@@ -1,10 +1,13 @@
 import os
 import re
 import commands
+
 from autotest.client.shared import error
+
 from virttest import virsh
 from virttest import data_dir
 from virttest.libvirt_xml.secret_xml import SecretXML
+
 from provider import libvirt_version
 
 

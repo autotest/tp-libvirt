@@ -1,9 +1,11 @@
 import re
 import os
 import logging
-from autotest.client.shared import error
-from virttest import virsh
 from xml.dom.minidom import parseString
+
+from autotest.client.shared import error
+
+from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 

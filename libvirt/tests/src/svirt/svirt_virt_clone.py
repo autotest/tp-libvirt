@@ -3,7 +3,11 @@ svirt virt-clone test.
 """
 from autotest.client import utils
 from autotest.client.shared import error
-from virttest import utils_selinux, virt_vm, utils_misc, virsh, libvirt_vm
+
+from virttest import utils_selinux
+from virttest import utils_misc
+from virttest import virsh
+from virttest import libvirt_vm
 from virttest.libvirt_xml.vm_xml import VMXML
 
 

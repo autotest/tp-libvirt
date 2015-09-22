@@ -5,13 +5,15 @@ Test module for timer management.
 import os
 import logging
 import time
+
 from autotest.client import utils
 from autotest.client.shared import error
-from virttest.libvirt_xml import vm_xml
+
 from virttest import utils_test
 from virttest import virsh
 from virttest import data_dir
 from virttest import virt_vm
+from virttest.libvirt_xml import vm_xml
 
 CLOCK_SOURCE_PATH = '/sys/devices/system/clocksource/clocksource0/'
 

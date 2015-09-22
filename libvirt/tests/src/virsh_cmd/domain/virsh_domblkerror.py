@@ -2,13 +2,18 @@ import logging
 import time
 import shutil
 import os
-from autotest.client.shared import error
+
 from autotest.client import utils
-from virttest import virsh, data_dir, utils_test, utils_misc
+from autotest.client.shared import error
+
+from virttest import virsh
+from virttest import data_dir
+from virttest import utils_test
+from virttest import utils_misc
 from virttest import utils_selinux
+from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.staging.service import Factory
-from virttest.libvirt_xml import vm_xml
 
 
 def run(test, params, env):

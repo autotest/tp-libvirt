@@ -1,10 +1,13 @@
 import os
 import time
 import logging
+
+import aexpect
+
 from autotest.client.shared import error
 from autotest.client.shared import utils
 from autotest.client import lv_utils
-from virttest import aexpect
+
 from virttest import virt_vm
 from virttest import virsh
 from virttest import remote
@@ -12,6 +15,7 @@ from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
+
 from provider import libvirt_version
 
 

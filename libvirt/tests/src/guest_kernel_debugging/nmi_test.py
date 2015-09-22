@@ -1,8 +1,10 @@
 import logging
 
 from virttest import virsh
-from provider import libvirt_version
+
 from autotest.client.shared import error
+
+from provider import libvirt_version
 
 
 def run_cmd_in_guest(vm, cmd):

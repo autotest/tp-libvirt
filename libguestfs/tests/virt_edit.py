@@ -1,7 +1,12 @@
 import logging
 import re
-from autotest.client.shared import utils, error, ssh_key
-from virttest import libvirt_vm, utils_libvirtd
+
+from autotest.client.shared import utils
+from autotest.client.shared import error
+from autotest.client.shared import ssh_key
+
+from virttest import libvirt_vm
+from virttest import utils_libvirtd
 import virttest.utils_libguestfs as lgf
 
 

@@ -1,9 +1,12 @@
 import logging
 import re
 import commands
-from autotest.client.shared import error, utils
+
+import aexpect
+
+from autotest.client.shared import error
+from autotest.client.shared import utils
 from virttest import utils_libguestfs as lgf
-from virttest import aexpect
 
 
 def primary_disk_virtio(vm):

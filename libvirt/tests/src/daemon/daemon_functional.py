@@ -1,12 +1,14 @@
 import os
 import time
 import logging
+
+from autotest.client.shared import error
+from autotest.client import utils
+
 from virttest import virsh
 from virttest import utils_config
 from virttest.utils_libvirtd import LibvirtdSession
 from virttest.libvirt_xml import capability_xml
-from autotest.client.shared import error
-from autotest.client import utils
 
 
 def run(test, params, env):

@@ -1,11 +1,15 @@
 import logging
 import re
-from virttest.libvirt_xml import network_xml, xcepts
-from virttest import aexpect
-from virttest import remote
+
+import aexpect
+
 from autotest.client.shared import error
+
+from virttest import remote
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest.libvirt_xml import network_xml
+from virttest.libvirt_xml import xcepts
 
 
 def run(test, params, env):

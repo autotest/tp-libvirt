@@ -1,13 +1,17 @@
 import os
 import logging
+
+import aexpect
+
 from autotest.client.shared import error
+
 from virttest import virsh
 from virttest import libvirt_storage
 from virttest import data_dir
 from virttest import remote
-from virttest import aexpect
 from virttest.libvirt_xml import pool_xml
 from virttest.utils_test import libvirt
+
 from provider import libvirt_version
 
 

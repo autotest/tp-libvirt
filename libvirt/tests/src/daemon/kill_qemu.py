@@ -1,6 +1,8 @@
 import os
 import signal
+
 from autotest.client.shared import error
+
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 

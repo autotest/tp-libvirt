@@ -1,9 +1,11 @@
 import os
 import logging
 
-from virttest import data_dir, remote
-from autotest.client import os_dep, utils
+from autotest.client import os_dep
+from autotest.client import utils
 from autotest.client.shared import error
+
+from virttest import data_dir
 
 
 def run(test, params, env):

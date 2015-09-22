@@ -2,7 +2,9 @@ import os
 import pwd
 import grp
 import logging
+
 from autotest.client.shared import error
+
 from virttest import qemu_storage
 from virttest import data_dir
 from virttest import virsh
@@ -10,6 +12,7 @@ from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.vm_xml import VMXML
+
 from provider import libvirt_version
 
 

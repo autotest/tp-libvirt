@@ -1,10 +1,14 @@
 import os
 import logging
-from autotest.client.shared import error
-from virttest import virsh, xml_utils, libvirt_xml
-from virttest.utils_test import libvirt as utlv
-from provider import libvirt_version
 
+from autotest.client.shared import error
+
+from virttest import virsh
+from virttest import xml_utils
+from virttest import libvirt_xml
+from virttest.utils_test import libvirt as utlv
+
+from provider import libvirt_version
 
 NWFILTER_ETC_DIR = "/etc/libvirt/nwfilter"
 

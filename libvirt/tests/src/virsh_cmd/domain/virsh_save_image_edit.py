@@ -1,8 +1,11 @@
 import logging
 import os
 import re
+
+import aexpect
+
 from autotest.client.shared import error
-from virttest import aexpect
+
 from virttest import data_dir
 from virttest import remote
 from virttest import virsh

@@ -1,8 +1,14 @@
 import re
 import time
 import logging
+
+import aexpect
+
 from autotest.client.shared import error
-from virttest import virsh, aexpect, utils_test, remote
+
+from virttest import virsh
+from virttest import utils_test
+from virttest import remote
 from virttest.libvirt_xml import vm_xml
 
 

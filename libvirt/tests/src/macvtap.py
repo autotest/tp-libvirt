@@ -1,11 +1,14 @@
 import os
+
+import aexpect
+
 from autotest.client.shared import error
+
 from virttest import remote
 from virttest import utils_net
-from virttest import aexpect
+from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import ping
-from virttest import virsh
 
 
 def run(test, params, env):

@@ -1,8 +1,11 @@
 import os
 import logging
 import shutil
+
+import aexpect
+
 from autotest.client.shared import error
-from virttest import aexpect
+
 from virttest import virt_vm
 from virttest import virsh
 from virttest import remote

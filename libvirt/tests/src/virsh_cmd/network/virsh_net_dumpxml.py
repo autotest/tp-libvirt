@@ -1,7 +1,10 @@
 import os
+
 from autotest.client.shared import error
 from autotest.client.shared import utils
+
 from virttest import virsh
+
 from provider import libvirt_version
 
 

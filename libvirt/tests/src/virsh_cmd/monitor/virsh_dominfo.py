@@ -1,5 +1,9 @@
 from autotest.client.shared import error
-from virttest import libvirt_vm, remote, virsh, utils_libvirtd
+
+from virttest import libvirt_vm
+from virttest import remote
+from virttest import virsh
+from virttest import utils_libvirtd
 
 
 def run(test, params, env):

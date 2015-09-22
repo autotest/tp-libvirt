@@ -1,8 +1,11 @@
 import time
 import logging
-from virttest import virsh
+
+import aexpect
+
 from autotest.client.shared import error
-from virttest import aexpect
+
+from virttest import virsh
 from virttest.utils_test import libvirt as utlv
 
 

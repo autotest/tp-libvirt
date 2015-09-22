@@ -2,9 +2,13 @@ import os
 import logging
 import string
 import hashlib
-from autotest.client.shared import utils, error
+
+from autotest.client.shared import utils
+from autotest.client.shared import error
+
 from virttest import virsh
 from virttest.utils_test import libvirt as utlv
+
 from provider import libvirt_version
 
 

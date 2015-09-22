@@ -4,11 +4,11 @@ import base64
 import logging
 from tempfile import mktemp
 
-from virttest import virsh
 from autotest.client import utils
 from autotest.client.shared import error
-from virttest.libvirt_xml.secret_xml import SecretXML
 
+from virttest import virsh
+from virttest.libvirt_xml.secret_xml import SecretXML
 
 _VIRT_SECRETS_PATH = "/etc/libvirt/secrets"
 

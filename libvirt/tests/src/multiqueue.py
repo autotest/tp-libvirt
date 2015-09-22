@@ -2,8 +2,13 @@ import logging
 import time
 import threading
 import re
-from autotest.client.shared import error, utils
-from virttest import libvirt_vm, virsh, remote
+
+from autotest.client.shared import error
+from autotest.client.shared import utils
+
+from virttest import virsh
+from virttest import remote
+from virttest import libvirt_vm
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 

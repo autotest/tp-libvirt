@@ -2,11 +2,13 @@ import os
 import re
 import logging
 import tempfile
+
+from autotest.client.shared import error
+
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
 from virttest.libvirt_xml.vm_xml import VMXML
-from autotest.client.shared import error
 
 
 def get_pci_info():

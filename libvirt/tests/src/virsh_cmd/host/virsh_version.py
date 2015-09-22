@@ -1,4 +1,5 @@
 from autotest.client.shared import error
+
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_libvirtd

@@ -1,9 +1,12 @@
 import os
 import logging
+
+from autotest.client import utils
+from autotest.client.shared import ssh_key
+from autotest.client.shared import error
+
 from virttest import utils_v2v
 from virttest import utils_misc
-from autotest.client import utils
-from autotest.client.shared import ssh_key, error
 
 
 def get_args_dict(params):

@@ -2,17 +2,20 @@ import re
 import os
 import shutil
 import logging
+
+from aexpect import ShellTimeoutError
+from aexpect import ShellProcessTerminatedError
+
 from autotest.client.shared import error
-from virttest.utils_misc import kill_process_by_pattern
 from autotest.client.shared import utils
+
 from virttest import libvirt_vm
 from virttest import remote
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest.utils_misc import kill_process_by_pattern
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
-from virttest.aexpect import ShellTimeoutError
-from virttest.aexpect import ShellProcessTerminatedError
 
 QEMU_CONF = "/etc/libvirt/qemu.conf"
 QEMU_CONF_BK = "/etc/libvirt/qemu.conf.bk"

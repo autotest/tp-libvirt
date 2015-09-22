@@ -1,8 +1,10 @@
 import os
 import re
 import logging
+
 from autotest.client import utils
 from autotest.client.shared import error
+
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_misc

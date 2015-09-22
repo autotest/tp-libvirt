@@ -1,8 +1,10 @@
 import logging
 import threading
 import time
+
 from autotest.client.shared import error
 from autotest.client.shared import ssh_key
+
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import remote

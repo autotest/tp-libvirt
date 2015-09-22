@@ -2,10 +2,12 @@ import os
 import glob
 import shutil
 import logging
-from virttest import utils_libvirtd
+
 from autotest.client import os_dep
 from autotest.client import utils
 from autotest.client.shared import error
+
+from virttest import utils_libvirtd
 
 
 def run(test, params, env):

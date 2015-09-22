@@ -1,6 +1,8 @@
 import os
 import logging
+
 from autotest.client.shared import error
+
 from virttest import utils_selinux
 from virttest import virt_vm
 from virttest import utils_config

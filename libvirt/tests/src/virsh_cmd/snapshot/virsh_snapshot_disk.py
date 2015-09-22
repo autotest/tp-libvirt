@@ -2,13 +2,18 @@ import os
 import logging
 import re
 import tempfile
+
 from autotest.client.shared import error
 from autotest.client import utils
-from virttest import virsh, qemu_storage, data_dir
+
+from virttest import virsh
+from virttest import qemu_storage
+from virttest import data_dir
 from virttest import libvirt_xml
 from virttest import libvirt_storage
 from virttest import utils_libvirtd
 from virttest.utils_test import libvirt as utlv
+
 from provider import libvirt_version
 
 

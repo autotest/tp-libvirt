@@ -1,6 +1,10 @@
 import logging
+
 from autotest.client.shared import error
-from virttest import libvirt_xml, utils_libvirtd, virsh
+
+from virttest import libvirt_xml
+from virttest import utils_libvirtd
+from virttest import virsh
 
 
 def check_blkdeviotune(params):

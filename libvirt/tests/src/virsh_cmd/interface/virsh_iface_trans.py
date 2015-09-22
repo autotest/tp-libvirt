@@ -3,10 +3,11 @@ import re
 import logging
 import commands
 
+from autotest.client.shared import error
+
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
-from autotest.client.shared import error
 
 
 def netcf_trans_control(command="status"):

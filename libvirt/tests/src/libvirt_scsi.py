@@ -6,13 +6,15 @@ libvirt scsi test
 import os
 
 from autotest.client.shared import error
+
+from virttest import virt_vm
+from virttest import qemu_storage
+from virttest import data_dir
 from virttest.utils_disk import CdromDisk
-from virttest import virt_vm, qemu_storage
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.controller import Controller
 from virttest.libvirt_xml.xcepts import LibvirtXMLError
-from virttest import data_dir
 
 
 def run(test, params, env):

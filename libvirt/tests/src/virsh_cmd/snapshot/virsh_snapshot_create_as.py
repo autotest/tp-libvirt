@@ -4,18 +4,21 @@ import time
 import commands
 import string
 import logging
+
 from autotest.client.shared import error
 from autotest.client import utils
+
 from virttest import virsh
 from virttest import utils_misc
 from virttest import xml_utils
-from virttest import libvirt_xml
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import data_dir
-from virttest.libvirt_xml import vm_xml, xcepts
-from virttest.libvirt_xml.devices import disk
 from virttest.utils_test import libvirt
+from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import xcepts
+from virttest.libvirt_xml.devices import disk
+
 from provider import libvirt_version
 
 

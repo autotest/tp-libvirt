@@ -1,8 +1,11 @@
 import logging
-import os
-from virttest import virsh, utils_test, utils_misc
-from autotest.client import utils, lv_utils
+
+from autotest.client import utils
+from autotest.client import lv_utils
 from autotest.client.shared import error
+
+from virttest import virsh
+from virttest import utils_test
 
 
 def run(test, params, env):

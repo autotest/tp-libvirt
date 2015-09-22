@@ -2,10 +2,13 @@ import os
 import logging
 import re
 import tempfile
+
 from autotest.client.shared import error
+
 from virttest import data_dir
-from virttest.libvirt_xml import network_xml, xcepts
 from virttest import virsh
+from virttest.libvirt_xml import network_xml
+from virttest.libvirt_xml import xcepts
 
 
 def run(test, params, env):

@@ -1,7 +1,9 @@
 import logging
 import re
+
 from autotest.client import utils
 from autotest.client.shared import error
+
 from virttest.libvirt_xml.vm_xml import VMXML
 
 

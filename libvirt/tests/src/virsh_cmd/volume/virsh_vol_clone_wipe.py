@@ -1,12 +1,15 @@
 import os
 import random
 import logging
+
 from autotest.client import utils
 from autotest.client.shared import error
+
 from virttest.utils_test import libvirt
 from virttest import libvirt_storage
 from virttest import virsh
 from virttest import utils_misc
+
 from provider import libvirt_version
 
 

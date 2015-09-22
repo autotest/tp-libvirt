@@ -1,9 +1,12 @@
 import logging
 import xml.dom.minidom
-from virttest import aexpect
+
+import aexpect
+
+from autotest.client.shared import error
+
 from virttest import remote
 from virttest import virsh
-from autotest.client.shared import error
 from virttest.utils_test import libvirt as utlv
 from virttest.utils_libvirtd import Libvirtd
 from virttest.libvirt_xml import vm_xml

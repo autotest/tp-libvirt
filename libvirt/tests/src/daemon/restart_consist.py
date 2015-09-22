@@ -1,8 +1,11 @@
 import logging
 import difflib
+
+from aexpect import ExpectTimeoutError
+from aexpect import ShellTimeoutError
+
 from autotest.client.shared import error
-from virttest.aexpect import ExpectTimeoutError
-from virttest.aexpect import ShellTimeoutError
+
 from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import remote

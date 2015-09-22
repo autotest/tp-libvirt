@@ -2,8 +2,10 @@ import os
 import subprocess
 import logging
 import time
+
 from autotest.client.shared import error
 from autotest.client.shared import ssh_key
+
 from virttest import virsh
 from virttest.utils_test import libvirt as utlv
 

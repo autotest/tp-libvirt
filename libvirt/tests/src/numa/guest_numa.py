@@ -1,5 +1,9 @@
 import re
 import logging
+
+from autotest.client.shared import utils
+from autotest.client.shared import error
+
 from virttest import virt_vm
 from virttest import libvirt_xml
 from virttest import utils_misc
@@ -7,8 +11,7 @@ from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import test_setup
 from virttest.utils_test import libvirt as utlv
-from autotest.client.shared import utils
-from autotest.client.shared import error
+
 from provider import libvirt_version
 
 

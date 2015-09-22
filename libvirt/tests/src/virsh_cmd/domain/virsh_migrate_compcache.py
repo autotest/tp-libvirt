@@ -1,10 +1,13 @@
 import logging
 import subprocess
 import time
+
 from autotest.client.shared import error
 from autotest.client.shared import utils
 from autotest.client.shared import ssh_key
-from virttest import virsh, utils_misc
+
+from virttest import virsh
+from virttest import utils_misc
 from virttest.utils_test import libvirt as utlv
 
 

@@ -2,9 +2,10 @@ import os
 import time
 import glob
 
-from autotest.client.shared import error
 from virttest import installer
+
 from autotest.client import utils
+from autotest.client.shared import error
 from autotest.client.shared import software_manager
 
 

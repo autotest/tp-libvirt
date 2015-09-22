@@ -1,6 +1,9 @@
 import re
+
 from autotest.client.shared import error
+
 from virttest import virsh
+
 from provider import libvirt_version
 
 

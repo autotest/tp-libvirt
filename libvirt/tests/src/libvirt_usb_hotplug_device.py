@@ -1,10 +1,15 @@
 import os
 import shutil
+
+from aexpect import ShellError
+from aexpect import ShellTimeoutError
+
 from autotest.client.shared import error
-from autotest.client import utils
-from virttest import data_dir, virsh
-from virttest import aexpect, utils_misc, utils_selinux
-from virttest.aexpect import ShellError
+
+from virttest import data_dir
+from virttest import virsh
+from virttest import utils_misc
+from virttest import utils_selinux
 from virttest.remote import LoginError
 from virttest.utils_test import libvirt
 from virttest.virt_vm import VMError
@@ -62,7 +67,7 @@ def run(test, params, env):
                 return False
             else:
                 return True
-        except aexpect.ShellTimeoutError, detail:
+        except ShellTimeoutError, detail:
             raise error.TestFail("unhotplug failed: %s, " % detail)
 
     tmp_dir = os.path.join(data_dir.get_tmp_dir(), "usb_hotplug_files")

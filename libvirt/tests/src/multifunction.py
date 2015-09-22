@@ -1,9 +1,14 @@
 import logging
 import os
 import commands
+
 from autotest.client.shared import error
-from virttest import libvirt_vm, virsh, data_dir
-from virttest.libvirt_xml import xcepts, vm_xml
+
+from virttest import libvirt_vm
+from virttest import virsh
+from virttest import data_dir
+from virttest.libvirt_xml import xcepts
+from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import disk
 
 

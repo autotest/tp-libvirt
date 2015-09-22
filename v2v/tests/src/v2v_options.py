@@ -6,9 +6,11 @@ import re
 import pwd
 import logging
 import shutil
+
 from autotest.client import utils
 from autotest.client.shared import ssh_key
 from autotest.client.shared import error
+
 from virttest import virsh
 from virttest import utils_v2v
 from virttest import utils_misc

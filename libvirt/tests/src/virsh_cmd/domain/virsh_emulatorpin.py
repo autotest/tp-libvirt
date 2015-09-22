@@ -1,17 +1,14 @@
 import os
 import logging
 import random
-from virttest.libvirt_xml import vm_xml
+
 from autotest.client.shared import error
 from autotest.client import utils
+
+from virttest.libvirt_xml import vm_xml
 from virttest import utils_libvirtd, virsh
 from virttest.utils_test.libvirt import cpus_parser
-
-try:
-    from virttest.staging import utils_cgroup
-except ImportError:
-    # TODO: Obsoleted path used prior autotest-0.15.2/virttest-2013.06.24
-    from autotest.client.shared import utils_cgroup
+from virttest.staging import utils_cgroup
 
 
 def get_emulatorpin_from_cgroup(params):

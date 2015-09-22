@@ -3,12 +3,15 @@ import logging
 import commands
 import time
 import signal
+
 from autotest.client.shared import error
 from autotest.client.shared import utils
+
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_config
 from virttest.libvirt_xml import vm_xml
+
 from provider import libvirt_version
 
 

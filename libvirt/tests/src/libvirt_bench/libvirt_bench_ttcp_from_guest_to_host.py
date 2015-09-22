@@ -1,9 +1,14 @@
 import time
 import logging
 
-from autotest.client import os_dep, utils
+import aexpect
+
+from autotest.client import os_dep
 from autotest.client.shared import error
-from virttest import virsh, utils_net, remote, aexpect, utils_misc
+
+from virttest import utils_net
+from virttest import remote
+from virttest import utils_misc
 
 
 def run(test, params, env):

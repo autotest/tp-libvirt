@@ -1,9 +1,12 @@
 import os
 import time
 import logging
+
+import aexpect
+
 from autotest.client.shared import error
+
 from virttest import virsh
-from virttest import aexpect
 from virttest import remote
 from virttest import utils_libvirtd
 

@@ -3,9 +3,12 @@ import re
 import ast
 import time
 import logging
+
+import aexpect
+
 from autotest.client.shared import error
 from autotest.client import utils
-from virttest import aexpect
+
 from virttest import remote
 from virttest import virt_vm
 from virttest import virsh
@@ -14,8 +17,9 @@ from virttest import utils_misc
 from virttest import utils_libguestfs
 from virttest import utils_libvirtd
 from virttest.utils_test import libvirt
-from virttest.libvirt_xml.devices.interface import Interface
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.devices.interface import Interface
+
 from provider import libvirt_version
 
 

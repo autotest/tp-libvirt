@@ -3,9 +3,13 @@ import os
 import re
 import time
 import codecs
+
 from autotest.client.shared import error
 from autotest.client.shared import utils
-from virttest import utils_test, virsh, utils_libvirtd
+
+from virttest import utils_test
+from virttest import virsh
+from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 
 

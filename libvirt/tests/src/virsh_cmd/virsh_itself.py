@@ -1,7 +1,11 @@
 import logging
+
 from autotest.client import utils
 from autotest.client.shared import error
-from virttest import virsh, aexpect, element_tree
+
+from virttest import virsh
+from virttest import aexpect
+from virttest import element_tree
 
 
 def sh_escape(sh_str):

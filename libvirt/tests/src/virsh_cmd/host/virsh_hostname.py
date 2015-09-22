@@ -1,5 +1,8 @@
-from autotest.client.shared import utils, error
-from virttest import virsh, utils_libvirtd
+from autotest.client.shared import utils
+from autotest.client.shared import error
+
+from virttest import virsh
+from virttest import utils_libvirtd
 
 
 def run(test, params, env):

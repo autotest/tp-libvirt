@@ -2,18 +2,22 @@ import logging
 import os
 import time
 import re
+
+import aexpect
+
 from autotest.client import utils
 from autotest.client.shared import error
+
 from virttest import utils_libvirtd
 from virttest import utils_config
 from virttest import virsh
 from virttest import qemu_storage
 from virttest import data_dir
-from virttest import aexpect
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import snapshot_xml
 from virttest.utils_test import libvirt as utl
+
 from provider import libvirt_version
 
 

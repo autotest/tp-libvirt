@@ -1,12 +1,14 @@
 import grp
 import stat
 import logging
-import os.path
+import os
+
+from autotest.client.shared import error
+
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_config
 from virttest import utils_libvirtd
-from autotest.client.shared import error
 
 
 def run(test, params, env):

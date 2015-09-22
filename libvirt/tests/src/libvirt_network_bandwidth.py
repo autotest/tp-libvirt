@@ -3,7 +3,9 @@ import time
 
 from autotest.client.shared import error
 from autotest.client import utils
-from virttest import data_dir, virsh
+
+from virttest import data_dir
+from virttest import virsh
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.network_xml import NetworkXML, PortgroupXML
 

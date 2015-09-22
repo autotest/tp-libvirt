@@ -4,7 +4,9 @@ This case is used for testing security option of the virt-sandbox command.
 
 import re
 import logging
+
 from autotest.client.shared import error
+
 from virttest.lvsb import make_sandboxes
 
 # The default base context, please check virt-sandbox man page.

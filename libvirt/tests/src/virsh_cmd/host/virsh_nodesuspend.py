@@ -1,10 +1,13 @@
 import time
 import logging
-from virttest import virsh
-from virttest import libvirt_vm
-from virttest.remote import LoginTimeoutError, LoginProcessTerminatedError
+
 from autotest.client.shared import error
 from autotest.client import utils
+
+from virttest import virsh
+from virttest import libvirt_vm
+from virttest.remote import LoginTimeoutError
+from virttest.remote import LoginProcessTerminatedError
 
 
 class TimeoutError(Exception):

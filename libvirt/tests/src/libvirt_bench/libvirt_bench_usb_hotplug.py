@@ -1,12 +1,16 @@
 import os
 import shutil
 import logging
+
 from autotest.client.shared import error
-from virttest import data_dir, virsh
+
+from virttest import data_dir
+from virttest import virsh
+from virttest import utils_test
+from virttest import utils_misc
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.input import Input
-from virttest import utils_test, utils_misc
 
 
 def run(test, params, env):

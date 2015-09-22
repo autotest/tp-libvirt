@@ -1,10 +1,14 @@
 import logging
 import threading
 import time
+
 from autotest.client.shared import error
 from autotest.client.shared import ssh_key
+
 from virttest import virsh
+
 from provider import libvirt_version
+
 
 # To get result in thread, using global parameters
 # result of virsh migrate-setmaxdowntime command

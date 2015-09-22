@@ -1,11 +1,15 @@
 import os
 import logging
 import time
+
 from autotest.client.shared import utils_memory
 from autotest.client.shared import error
 from autotest.client.shared import ssh_key
+
 from virttest import libvirt_vm
-from virttest import utils_test, remote, data_dir
+from virttest import utils_test
+from virttest import remote
+from virttest import data_dir
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml import vm_xml
 

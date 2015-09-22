@@ -1,7 +1,10 @@
 import re
 import logging
+
 from autotest.client import os_dep
-from autotest.client.shared import utils, error
+from autotest.client.shared import utils
+from autotest.client.shared import error
+
 from virttest import virsh
 from virttest import virt_vm
 from virttest import libvirt_xml

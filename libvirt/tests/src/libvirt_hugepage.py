@@ -2,13 +2,18 @@ import logging
 import os
 import time
 
+from aexpect import ShellError
+
 from autotest.client import utils
 from autotest.client.shared import error
 
-from virttest import virsh, utils_libvirtd, remote, utils_misc, utils_test
+from virttest import virsh
+from virttest import utils_libvirtd
+from virttest import remote
+from virttest import utils_misc
+from virttest import utils_test
 from virttest.remote import LoginError
 from virttest.virt_vm import VMError
-from virttest.aexpect import ShellError
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import utils_memory
 

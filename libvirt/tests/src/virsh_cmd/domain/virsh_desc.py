@@ -1,6 +1,8 @@
 import logging
 import os
+
 from autotest.client.shared import error
+
 from virttest import virsh
 
 

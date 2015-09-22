@@ -1,11 +1,15 @@
 import os
 import logging
+
 from autotest.client.shared import error
 from autotest.client import utils
-from virttest import virsh, utils_misc
+
+from virttest import virsh
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.controller import Controller
+
 from provider import libvirt_version
 
 

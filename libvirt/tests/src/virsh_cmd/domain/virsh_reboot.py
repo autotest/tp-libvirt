@@ -1,7 +1,12 @@
 import re
 import logging
+
+import aexpect
+
 from autotest.client.shared import error
-from virttest import libvirt_vm, virt_vm, aexpect
+
+from virttest import libvirt_vm
+from virttest import virt_vm
 from virttest import virsh
 from virttest import remote
 from virttest import utils_libvirtd
