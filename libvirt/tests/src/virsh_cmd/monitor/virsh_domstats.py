@@ -153,7 +153,8 @@ def run(test, params, env):
     if vm_list:
         for name in vm_list.split():
             if name != default_vm_name:
-                vms.append(env.get_vm(name))
+                if env.get_vm(name):
+                    vms.append(env.get_vm(name))
     backup_xml_list = []
     try:
         if not status_error:
