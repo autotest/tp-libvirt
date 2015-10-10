@@ -124,12 +124,15 @@ def run(test, params, env):
         Run the commands parallel and check the output.
         """
         cmd = ("%s & %s" % (virsh_cmd, bash_cmd))
-        output = utils.run(cmd, ignore_status=True).stdout.strip()
+        ret = utils.run(cmd, ignore_status=True)
+        output = ret.stdout.strip()
         logging.debug("check flags output: %s" % output)
         lines = re.findall(r"flags:.+%s" % flags, output, re.M)
         logging.debug("Find lines: %s" % lines)
         if not lines:
             raise error.TestFail("Checking flags %s failed" % flags)
+
+        return ret
 
     def check_multi_guests(guests, start_delay, libvirt_guests):
         """
@@ -148,22 +151,25 @@ def run(test, params, env):
 
         # Wait 10 seconds for vm to start
         time.sleep(10)
-        libvirt_guests.restart()
+        is_systemd = utils.run("cat /proc/1/comm").stdout.count("systemd")
+        if is_systemd:
+            libvirt_guests.restart()
+            pattern = r'(.+ \d\d:\d\d:\d\d).+: Resuming guest.+done'
+        else:
+            ret = utils.run("service libvirt-guests restart | \
+            awk '{ print strftime(\"%b %y %H:%M:%S\"), $0; fflush(); }'")
+            pattern = r'(.+ \d\d:\d\d:\d\d)+ Resuming guest.+done'
 
         # libvirt-guests status command read messages from systemd
         # journal, in cases of messages are not ready in time,
         # add a time wait here.
-
         def wait_func():
-            return not utils.run("service libvirt-guests status"
-                                 " | grep 'Resuming guest'",
-                                 ignore_status=True).exit_status
+            return libvirt_guests.raw_status().stdout.count("Resuming guest")
 
         utils_misc.wait_for(wait_func, 5)
-        ret = utils.run("service libvirt-guests status",
-                        ignore_status=True)
+        if is_systemd:
+            ret = libvirt_guests.raw_status()
         logging.info("status output: %s", ret.stdout)
-        pattern = r'(.+ \d\d:\d\d:\d\d).+: Resuming guest.+done'
         resume_time = re.findall(pattern, ret.stdout, re.M)
         if not resume_time:
             raise error.TestFail("Can't see messages of resuming guest")
@@ -189,25 +195,34 @@ def run(test, params, env):
         """
         # Drop caches.
         drop_caches()
-        virsh_cmd = "service libvirt-guests stop"
-        check_flags_parallel(virsh_cmd, bash_cmd %
-                             (managed_save_file, managed_save_file,
-                              "1", flags), flags)
-        ret = utils.run("service libvirt-guests status",
-                        ignore_status=True)
+        # form proper parallel command based on if systemd is used or not
+        is_systemd = utils.run("cat /proc/1/comm").stdout.count("systemd")
+        if is_systemd:
+            virsh_cmd_stop = "systemctl stop libvirt-guests"
+            virsh_cmd_start = "systemctl start libvirt-guests"
+        else:
+            virsh_cmd_stop = "service libvirt-guests stop"
+            virsh_cmd_start = "service libvirt-guests start"
+
+        ret = check_flags_parallel(virsh_cmd_stop, bash_cmd %
+                                   (managed_save_file, managed_save_file,
+                                    "1", flags), flags)
+        if is_systemd:
+            ret = libvirt_guests.raw_status()
         logging.info("status output: %s", ret.stdout)
         if all(["Suspending %s" % vm_name not in ret.stdout,
                 "stopped, with saved guests" not in ret.stdout]):
             raise error.TestFail("Can't see messages of suspending vm")
         # status command should return 3.
+        if not is_systemd:
+            ret = libvirt_guests.raw_status()
         if ret.exit_status != 3:
             raise error.TestFail("The exit code %s for libvirt-guests"
                                  " status is not correct" % ret)
 
         # Wait for VM in shut off state
         wait_for_state("shut off")
-        virsh_cmd = "service libvirt-guests start"
-        check_flags_parallel(virsh_cmd, bash_cmd %
+        check_flags_parallel(virsh_cmd_start, bash_cmd %
                              (managed_save_file, managed_save_file,
                               "0", flags), flags)
         # Wait for VM in running state
@@ -357,6 +372,8 @@ def run(test, params, env):
             vmxml_for_test = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             if vm.is_alive():
                 vm.destroy(gracefully=False)
+            # Wait for VM to be in shut off state
+            utils_misc.wait_for(lambda: vm.state() == "shut off", 10)
             vm.undefine()
             if virsh.create(vmxml_for_test.xml, ignore_status=True).exit_status:
                 vmxml_backup.define()
@@ -419,6 +436,8 @@ def run(test, params, env):
                 check_guest_flags(bash_cmd, flags)
 
         else:
+            # Ensure VM is running
+            utils_misc.wait_for(lambda: vm.state() == "running", 10)
             ret = virsh.managedsave(vm_ref, options=option, ignore_status=True)
             status = ret.exit_status
             # The progress information outputed in error message
@@ -457,6 +476,10 @@ def run(test, params, env):
                     vm_recover_check(option, libvirtd, check_shutdown)
     finally:
         # Restore test environment.
+
+        # Ensure libvirtd is started
+        if not libvirtd.is_running():
+            libvirtd.start()
         if vm.is_paused():
             virsh.resume(vm_name)
         elif vm.is_dead():
@@ -468,6 +491,9 @@ def run(test, params, env):
                             ignore_status=True)
         if vm.is_alive():
             vm.destroy(gracefully=False)
+        # Wait for VM to be in shut off state
+        utils_misc.wait_for(lambda: vm.state() == "shut off", 10)
+        virsh.managedsave_remove(vm_name)
         vmxml_backup.sync()
         if multi_guests:
             for i in range(int(multi_guests)):
