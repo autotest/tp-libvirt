@@ -37,8 +37,8 @@ def get_args_dict(params):
         if val is None:
             raise KeyError("%s doesn't exist" % key)
         elif val.count("EXAMPLE"):
-            raise error.TestNAError("Please provide specific value for %s: %s",
-                                    key, val)
+            raise error.TestNAError("Please provide specific value for %s: %s"
+                                    % (key, val))
         else:
             args_dict[key] = val
 
