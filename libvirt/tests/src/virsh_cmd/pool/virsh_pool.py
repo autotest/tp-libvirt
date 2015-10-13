@@ -70,21 +70,6 @@ def run(test, params, env):
             raise error.TestNAError("Gluster pool is not supported in current"
                                     " libvirt version.")
 
-    def check_exit_status(result, expect_error=False):
-        """
-        Check the exit status of virsh commands.
-
-        :param result: Virsh command result object
-        :param expect_error: Boolean value, expect command success or fail
-        """
-        if not expect_error:
-            if result.exit_status != 0:
-                raise error.TestFail(result.stderr)
-            else:
-                logging.debug("Command output:\n%s", result.stdout.strip())
-        elif expect_error and result.exit_status == 0:
-            raise error.TestFail("Expect fail, but run successfully.")
-
     def check_pool_list(pool_name, option="--all", expect_error=False):
         """
         Check pool by running pool-list command with given option.
@@ -96,7 +81,7 @@ def run(test, params, env):
         found = False
         # Get the list stored in a variable
         result = virsh.pool_list(option, ignore_status=True)
-        check_exit_status(result, False)
+        utlv.check_exit_status(result, False)
         output = re.findall(r"(\S+)\ +(\S+)\ +(\S+)[\ +\n]",
                             str(result.stdout))
         for item in output:
@@ -122,7 +107,7 @@ def run(test, params, env):
         found = False
         # Get the volume list stored in a variable
         result = virsh.vol_list(pool_name, ignore_status=True)
-        check_exit_status(result)
+        utlv.check_exit_status(result)
 
         output = re.findall(r"(\S+)\ +(\S+)[\ +\n]", str(result.stdout))
         for item in output:
@@ -188,13 +173,13 @@ def run(test, params, env):
         # Step (4)
         # Undefine pool
         result = virsh.pool_undefine(pool_name, ignore_status=True)
-        check_exit_status(result)
+        utlv.check_exit_status(result)
         check_pool_list(pool_name, "--all", True)
 
         # Step (5)
         # Define pool from XML file
         result = virsh.pool_define(pool_xml)
-        check_exit_status(result, status_error)
+        utlv.check_exit_status(result, status_error)
 
         # Step (6)
         # Buid pool, this step may fail for 'disk' and 'logical' types pool
@@ -205,12 +190,12 @@ def run(test, params, env):
             # if pool_type == "fs":
             #    option = '--overwrite'
             result = virsh.pool_build(pool_name, option, ignore_status=True)
-            check_exit_status(result)
+            utlv.check_exit_status(result)
 
         # Step (7)
         # Pool start
         result = virsh.pool_start(pool_name, ignore_status=True)
-        check_exit_status(result)
+        utlv.check_exit_status(result)
 
         # Step (8)
         # Pool list
@@ -220,7 +205,7 @@ def run(test, params, env):
         # Step (9)
         # Pool autostart
         result = virsh.pool_autostart(pool_name, ignore_status=True)
-        check_exit_status(result)
+        utlv.check_exit_status(result)
 
         # Step (10)
         # Pool list
@@ -244,7 +229,7 @@ def run(test, params, env):
         # Pool autostart disable
         result = virsh.pool_autostart(pool_name, "--disable",
                                       ignore_status=True)
-        check_exit_status(result)
+        utlv.check_exit_status(result)
 
         # Step (14)
         # Repeat step (11)
@@ -261,7 +246,7 @@ def run(test, params, env):
         # and so as the SCSI pool.
         if pool_type not in ["dir", 'scsi']:
             result = virsh.pool_start(pool_name, ignore_status=True)
-            check_exit_status(result)
+            utlv.check_exit_status(result)
 
         # Step (16)
         # Pool info
@@ -271,13 +256,13 @@ def run(test, params, env):
         # Step (17)
         # Pool UUID
         result = virsh.pool_uuid(pool_info["Name"], ignore_status=True)
-        check_exit_status(result)
+        utlv.check_exit_status(result)
         check_pool_info(pool_info, "UUID", result.stdout.strip())
 
         # Step (18)
         # Pool Name
         result = virsh.pool_name(pool_info["UUID"], ignore_status=True)
-        check_exit_status(result)
+        utlv.check_exit_status(result)
         check_pool_info(pool_info, "Name", result.stdout.strip())
 
         # Step (19)
@@ -285,7 +270,7 @@ def run(test, params, env):
         if pool_type == "dir":
             os.mknod(vol_path)
             result = virsh.pool_refresh(pool_name)
-            check_exit_status(result)
+            utlv.check_exit_status(result)
             check_vol_list(vol_name, pool_name)
 
         # Step (20)
@@ -298,7 +283,7 @@ def run(test, params, env):
             vol_allocation = "10000G"
             result = virsh.vol_create_as("oversize_vol", pool_name,
                                          vol_capacity, vol_allocation, "raw")
-            check_exit_status(result, True)
+            utlv.check_exit_status(result, True)
             new_info = _pool.pool_info(pool_name)
             check_pool_info(pool_info, "Capacity", new_info['Capacity'])
             check_pool_info(pool_info, "Allocation", new_info['Allocation'])
@@ -307,7 +292,7 @@ def run(test, params, env):
         # Step (21)
         # Undefine pool, this should fail as the pool is active
         result = virsh.pool_undefine(pool_name, ignore_status=True)
-        check_exit_status(result, expect_error=True)
+        utlv.check_exit_status(result, expect_error=True)
         check_pool_list(pool_name, "", False)
 
         # Step (22)
@@ -323,19 +308,19 @@ def run(test, params, env):
             for f in os.listdir(pool_target):
                 os.remove(os.path.join(pool_target, f))
             result = virsh.pool_delete(pool_name, ignore_status=True)
-            check_exit_status(result)
+            utlv.check_exit_status(result)
             option = "--inactive --type %s" % pool_type
             check_pool_list(pool_name, option)
             if os.path.exists(pool_target):
                 raise error.TestFail("The target path '%s' still exist." %
                                      pool_target)
             result = virsh.pool_start(pool_name, ignore_status=True)
-            check_exit_status(result, True)
+            utlv.check_exit_status(result, True)
 
         # Step (24)
         # Pool undefine
         result = virsh.pool_undefine(pool_name, ignore_status=True)
-        check_exit_status(result)
+        utlv.check_exit_status(result)
         check_pool_list(pool_name, "--all", True)
     finally:
         # Clean up
