@@ -277,7 +277,7 @@ def run(test, params, env):
         helper.vm_ip = vm.get_address()
 
     try:
-        multi_migration(helpers, simultaneous=False, jobabort=False,
+        multi_migration(helpers, simultaneous, jobabort,
                         lrunner=localrunner, rrunner=remoterunner)
     finally:
         for helper in helpers:
