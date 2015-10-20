@@ -9,7 +9,7 @@ def run(test, params, env):
     (1). Login guest & execute virt-waht command.
     (2). Check the result, lxc or kvm.
     """
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     expect_output = params.get("fact")
 

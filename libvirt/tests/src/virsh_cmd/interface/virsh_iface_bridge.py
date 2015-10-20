@@ -4,6 +4,8 @@ import logging
 from autotest.client.shared import error
 from autotest.client import utils
 
+from avocado.utils import path as utils_path
+
 from virttest import utils_misc
 from virttest import utils_net
 from virttest import virsh
@@ -55,8 +57,8 @@ def run(test, params, env):
 
     # Stop NetworkManager service
     try:
-        NM = utils_misc.find_command("NetworkManager")
-    except ValueError:
+        NM = utils_path.find_command("NetworkManager")
+    except utils_path.CmdNotFoundError:
         logging.debug("No NetworkManager service.")
         NM = None
     NM_is_running = False

@@ -8,6 +8,8 @@ import threading
 from autotest.client.shared import error
 from autotest.client.shared import utils
 
+from avocado.utils import path as utils_path
+
 from virttest import libvirt_storage
 from virttest import utils_selinux
 from virttest import qemu_storage
@@ -792,8 +794,8 @@ int main(void){
     c_file.write(c_str)
     c_file.close()
     try:
-        utils_misc.find_command('gcc')
-    except ValueError:
+        utils_path.find_command('gcc')
+    except utils_path.CmdNotFoundError:
         raise error.TestNAError('gcc command is needed!')
     result = utils.run("gcc %s -o %s" % (tmp_c_file, tmp_exe_file))
     if result.exit_status:

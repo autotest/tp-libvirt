@@ -634,7 +634,7 @@ def get_expected_vnc_options(params, networks, expected_result):
     """
     Predict qemu VNC options from parameters.
     """
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     x509_dir = params.get("vnc_x509_dir", "/etc/pki/libvirt-vnc")
     vnc_tls = params.get("vnc_tls", "0")
     auto_unix_socket = params.get("vnc_auto_unix_socket", 'not_set')
@@ -923,7 +923,7 @@ def run(test, params, env):
     6) Clean up environment.
     """
 
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     spice_xml = params.get("spice_xml", "no") == 'yes'
     vnc_xml = params.get("vnc_xml", "no") == 'yes'
 

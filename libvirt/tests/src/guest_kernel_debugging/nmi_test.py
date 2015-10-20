@@ -36,7 +36,7 @@ def run(test, params, env):
             raise error.TestNAError("This version of libvirt does not "
                                     " support the %s test", cmd)
 
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     start_vm = params.get("start_vm")
     expected_nmi_times = params.get("expected_nmi_times", '0')

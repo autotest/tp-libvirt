@@ -23,7 +23,7 @@ def run(test, params, env):
     4. Clean up.
     """
     # get the params from params
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
 
     inbound_average = params.get("LNB_inbound_average", "512")

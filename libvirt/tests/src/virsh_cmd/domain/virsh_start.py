@@ -18,7 +18,7 @@ def run(test, params, env):
     5) clean up.
     """
     # get the params from params
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm_ref = params.get("vm_ref", "vm1")
     opt = params.get("vs_opt", "")
 

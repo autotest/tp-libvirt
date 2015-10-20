@@ -19,7 +19,7 @@ def run(test, params, env):
         raise error.TestNAError("This version of libvirt does not support "
                                 "the domfsthaw test")
 
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     start_vm = ("yes" == params.get("start_vm", "no"))
     no_freeze = ("yes" == params.get("no_freeze", "yes"))
     has_qemu_ga = not ("yes" == params.get("no_qemu_ga", "no"))

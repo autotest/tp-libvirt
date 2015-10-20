@@ -18,7 +18,7 @@ def run(test, params, env):
     Stress test for the hotplug feature of usb device.
     """
     # get the params from params
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
 
     keyboard = "yes" == params.get("usb_hotplug_keyboard", "no")

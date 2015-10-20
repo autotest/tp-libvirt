@@ -45,7 +45,7 @@ def run(test, params, env):
         session.close()
         return int(status), output
 
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     options_ref = params.get("list_options_ref", "")
     list_ref = params.get("list_type_ref", "")
     vm_ref = params.get("vm_ref", "")

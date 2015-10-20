@@ -27,7 +27,7 @@ def run(test, params, env):
         raise error.TestNAError("This version of libvirt does not support "
                                 "domblkerror test")
 
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     error_type = params.get("domblkerror_error_type")
     timeout = params.get("domblkerror_timeout", 240)
     mnt_dir = params.get("domblkerror_mnt_dir", "/home/test")

@@ -72,7 +72,7 @@ def run(test, params, env):
     4.Recover test environment.
     5.Confirm the test result.
     """
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
 
     libvirtd = params.get("libvirtd", "on")

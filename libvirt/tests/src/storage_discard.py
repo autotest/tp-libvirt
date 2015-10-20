@@ -218,7 +218,7 @@ def run(test, params, env):
     (Only supported after special libvirt version.)
     These are test cases for it:
     """
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     if vm.is_dead():
         vm.start()

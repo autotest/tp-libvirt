@@ -3,10 +3,11 @@ import re
 
 from autotest.client.shared import error
 
+from avocado.utils import path as utils_path
+
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_net
-from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 
 
@@ -102,8 +103,8 @@ def run(test, params, env):
     iface_type = params.get("at_detach_iface_type", "network")
     if iface_type == "bridge":
         try:
-            utils_misc.find_command("brctl")
-        except ValueError:
+            utils_path.find_command("brctl")
+        except utils_path.CmdNotFoundError:
             raise error.TestNAError("Command 'brctl' is missing. You must "
                                     "install it.")
 

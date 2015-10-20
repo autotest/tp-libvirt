@@ -5,10 +5,11 @@ from autotest.client import os_dep
 from autotest.client.shared import utils
 from autotest.client.shared import error
 
+from avocado.utils import path as utils_path
+
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_libvirtd
-from virttest import utils_misc
 from virttest.libvirt_xml import capability_xml
 
 
@@ -51,8 +52,8 @@ def run(test, params, env):
         guest_capa = cap_xml.get_guest_capabilities()
         logging.debug(guest_capa)
         try:
-            img = utils_misc.find_command("qemu-kvm")
-        except ValueError:
+            img = utils_path.find_command("qemu-kvm")
+        except utils_path.CmdNotFoundError:
             raise error.TestNAError("Cannot find qemu-kvm")
         if re.search("ppc", utils.run("arch").stdout):
             cmd = img + " --cpu ? | grep ppc"

@@ -4,8 +4,10 @@ svirt virt-clone test.
 from autotest.client import utils
 from autotest.client.shared import error
 
+from avocado.utils import path as utils_path
+
 from virttest import utils_selinux
-from virttest import utils_misc
+from virttest.utils_test import libvirt as utils_libvirt
 from virttest import virsh
 from virttest import libvirt_vm
 from virttest.libvirt_xml.vm_xml import VMXML
@@ -17,8 +19,8 @@ def run(test, params, env):
     """
     VIRT_CLONE = None
     try:
-        VIRT_CLONE = utils_misc.find_command("virt-clone")
-    except ValueError:
+        VIRT_CLONE = utils_path.find_command("virt-clone")
+    except utils_path.CmdNotFoundError:
         raise error.TestNAError("No virt-clone command found.")
 
     # Get general variables.
@@ -60,9 +62,7 @@ def run(test, params, env):
         cmd = ("%s --original %s --name %s --auto-clone" %
                (VIRT_CLONE, vm.name, clone_name))
         cmd_result = utils.run(cmd, ignore_status=True)
-        if cmd_result.exit_status:
-            raise error.TestFail("Failed to execute virt-clone command."
-                                 "Detail: %s." % cmd_result)
+        utils_libvirt.check_exit_status(cmd_result, status_error)
     finally:
         # clean up
         for path, label in backup_labels_of_disks.items():

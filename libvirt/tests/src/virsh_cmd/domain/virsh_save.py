@@ -30,7 +30,7 @@ def run(test, params, env):
     progress = ("yes" == params.get("save_progress", "no"))
     options = params.get("save_option", "")
     status_error = ("yes" == params.get("save_status_error", "yes"))
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')

@@ -127,7 +127,7 @@ def run(test, params, env):
             Type:  'help' for help with commands
                    'quit' to quit
 
-            virsh # event 'lifecycle' for domain virt-tests-vm1: Started Booted
+            virsh # event 'lifecycle' for domain avocado-vt-vm1: Started Booted
             events received: 1
 
             virsh #

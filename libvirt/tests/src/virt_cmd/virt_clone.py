@@ -23,7 +23,7 @@ def run(test, params, env):
     except ValueError:
         raise error.TestNAError("Not find virt-clone command on host.")
 
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
 
     dest_guest_name = params.get("dest_vm", "test-clone")

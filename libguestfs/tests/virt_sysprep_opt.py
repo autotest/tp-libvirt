@@ -111,7 +111,7 @@ def run(test, params, env):
                     status = 1
                 return status
 
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     sysprep_opt = params.get("sysprep_opt", "")
     dir_mode = params.get("sysprep_opt", "file")

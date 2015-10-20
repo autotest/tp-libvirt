@@ -29,7 +29,7 @@ def run(test, params, env):
     (6). cleanup.
     """
     # Init variables.
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     vm_state = params.get("vm_state", "running")
     image_format = params.get("snapshot_image_format", "qcow2")

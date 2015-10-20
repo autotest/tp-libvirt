@@ -4,6 +4,8 @@ import logging
 from autotest.client.shared import error
 from autotest.client import utils
 
+from avocado.utils import path as utils_path
+
 from virttest import virsh
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
@@ -62,12 +64,12 @@ def run(test, params, env):
                                 "the domfstrim test")
 
     try:
-        utils_misc.find_command("lsscsi")
-    except ValueError:
+        utils_path.find_command("lsscsi")
+    except utils_path.CmdNotFoundError:
         raise error.TestNAError("Command 'lsscsi' is missing. You must "
                                 "install it.")
 
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     status_error = ("yes" == params.get("status_error", "no"))
     minimum = params.get("domfstrim_minimum")
     mountpoint = params.get("domfstrim_mountpoint")

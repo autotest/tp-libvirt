@@ -7,6 +7,8 @@ import aexpect
 from autotest.client.shared import error
 from autotest.client.shared import utils
 
+from avocado.utils import path as utils_path
+
 from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import utils_selinux
@@ -162,16 +164,16 @@ def _set_iptables_firewalld(iptables_status, firewalld_status):
 
     # Check the availability of both packages.
     try:
-        utils_misc.find_command('iptables')
+        utils_path.find_command('iptables')
         iptables = service.Factory.create_service('iptables')
-    except ValueError:
+    except utils_path.CmdNotFoundError:
         msg = "Can't find service iptables."
         raise error.TestNAError(msg)
 
     try:
-        utils_misc.find_command('firewalld')
+        utils_path.find_command('firewalld')
         firewalld = service.Factory.create_service('firewalld')
-    except ValueError:
+    except utils_path.CmdNotFoundError:
         msg = "Can't find service firewalld."
         raise error.TestNAError(msg)
 
@@ -249,9 +251,9 @@ def run(test, params, env):
             # using the  _set_iptables_firewalld function and direct stop
             # iptables.
             try:
-                utils_misc.find_command('iptables')
+                utils_path.find_command('iptables')
                 iptables = service.Factory.create_service('iptables')
-            except ValueError:
+            except utils_path.CmdNotFoundError:
                 msg = "Can't find service iptables."
                 raise error.TestNAError(msg)
 

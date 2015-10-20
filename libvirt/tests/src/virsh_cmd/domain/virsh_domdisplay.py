@@ -25,7 +25,7 @@ def run(test, params, env):
         raise error.TestNAError("This version of libvirt doesn't support "
                                 "domdisplay test")
 
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     status_error = ("yes" == params.get("status_error", "no"))
     options = params.get("domdisplay_options", "")
     graphic = params.get("domdisplay_graphic", "vnc")

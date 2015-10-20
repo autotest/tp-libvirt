@@ -255,7 +255,7 @@ def run(test, params, env):
     addr_str = params.get('controller_address', None)
     usb_cntlr_model = params.get('usb_controller_model', None)
     usb_cntlr_addr = params.get('usb_controller_address', None)
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
 
     vm = env.get_vm(vm_name)
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)

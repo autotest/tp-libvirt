@@ -140,7 +140,7 @@ def run(test, params, env):
     3.Confirm the test result.
     4.Recover test environment.
     """
-    default_vm_name = params.get("main_vm", "virt-tests-vm1")
+    default_vm_name = params.get("main_vm", "avocado-vt-vm1")
     default_vm = env.get_vm(default_vm_name)
     vm_list = params.get("vm_list", "")
     vm_state = params.get("vm_state", "")

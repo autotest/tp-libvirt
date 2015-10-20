@@ -147,7 +147,7 @@ def run(test, params, env):
     sysprep_type = params.get("sysprep_type", 'clone')
     sysprep_target = params.get("sysprep_target", 'guest')
     sysprep_hostname = params.get("sysprep_hostname", 'sysprep_test')
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     file_system = params.get("sysprep_file_system", "ext3")
     vm = env.get_vm(vm_name)
     disks = vm.get_disk_devices()
