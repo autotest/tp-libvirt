@@ -289,8 +289,8 @@ def run(test, params, env):
             if re.search("unable to execute QEMU command 'cpu-add'",
                          setvcpu_exit_stderr):
                 raise error.TestNAError("guest <os> machine property '%s' "
-                                        "may be too old to allow hotplug.",
-                                        mtype)
+                                        "may be too old to allow hotplug."
+                                        % mtype)
 
             # A qemu older than 1.5 or an unplug for 1.6 will result in
             # the following failure.  In general, any time libvirt determines
