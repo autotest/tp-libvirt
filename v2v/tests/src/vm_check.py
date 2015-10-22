@@ -1,6 +1,4 @@
-import os
 import re
-import time
 import logging
 import commands
 
@@ -8,7 +6,6 @@ from autotest.client.shared import error
 
 from virttest import utils_v2v
 from virttest import utils_sasl
-from virttest import data_dir
 
 
 def run(test, params, env):
@@ -155,61 +152,10 @@ def run(test, params, env):
         """
         Check windows guest after v2v convert.
         """
-        match_image_timeout = 300
-        logging.info("Initialize windows in %s seconds", match_image_timeout)
-        compare_screenshot_vms = ["win2003", "win2008", "win2008r2", "win7"]
-        timeout_msg = "Not match expected images in %s" % match_image_timeout
-        timeout_msg += " seconds, try to login VM directly"
-        match_image_list = []
-        if check_obj.os_version in compare_screenshot_vms:
-            image_name_list = params.get("images_for_match", '').split(',')
-            for image_name in image_name_list:
-                match_image = os.path.join(data_dir.get_data_dir(), image_name)
-                if not os.path.exists(match_image):
-                    raise error.TestError("%s not exist" % match_image)
-                match_image_list.append(match_image)
-            img_match_ret = check_obj.wait_for_match(match_image_list,
-                                                     timeout=match_image_timeout)
-            if img_match_ret < 0:
-                logging.error(timeout_msg)
-            else:
-                if check_obj.os_version == "win2003":
-                    if img_match_ret == 0:
-                        check_obj.click_left_button()
-                        # VM may have no response in awhile
-                        time.sleep(20)
-                        check_obj.click_left_button()
-                        check_obj.click_tab_enter()
-                    elif img_match_ret == 1:
-                        check_obj.click_left_button()
-                        time.sleep(20)
-                        check_obj.click_left_button()
-                        check_obj.click_tab_enter()
-                        check_obj.click_left_button()
-                        check_obj.send_win32_key('VK_RETURN')
-                    else:
-                        pass
-                elif check_obj.os_version in ["win7", "win2008r2"]:
-                    if img_match_ret in [0, 1]:
-                        check_obj.click_left_button()
-                        check_obj.click_left_button()
-                        check_obj.send_win32_key('VK_TAB')
-                        check_obj.click_tab_enter()
-                elif check_obj.os_version == "win2008":
-                    if img_match_ret in [0, 1]:
-                        check_obj.click_tab_enter()
-                        check_obj.click_install_driver()
-                        check_obj.move_mouse((0, -50))
-                        check_obj.click_left_button()
-                        check_obj.click_tab_enter()
-                    else:
-                        check_obj.click_install_driver()
-        else:
-            # No need sendkey/click button for Win8, Win8.1, Win2012, Win2012r2
-            # So give a long timeout(10 min)for these VMs
-            check_obj.timeout = 600
-            logging.info("%s is booting up ...", check_obj.os_version)
-        # Try to create nc/telnet session for windows guest
+        # Initialize windows boot up
+        check_obj.init_windows()
+
+        # Create nc/telnet session for windows guest
         check_obj.create_session()
 
         errs = []
@@ -259,6 +205,7 @@ def run(test, params, env):
             logging.info("All check passed")
 
     check_obj = utils_v2v.VMCheck(test, params, env)
+    virsh_session = None
     try:
         virsh_session_id = None
         if target == "ovirt":
@@ -270,6 +217,8 @@ def run(test, params, env):
         else:
             check_windows_vm(check_obj)
     finally:
+        if virsh_session:
+            virsh_session.close()
         if check_obj:
             if check_obj.session:
                 check_obj.session.close()
