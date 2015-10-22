@@ -110,7 +110,7 @@ def run(test, params, env):
         """
         Attach interface for the vm
         """
-        if vm.is_alive():
+        if vm.is_alive() and "--inactive" not in additional_options:
             vm.destroy(gracefully=False)
         iface_source = params.get("iface_source", "default")
         iface_type = params.get("iface_type", "network")
@@ -120,13 +120,15 @@ def run(test, params, env):
                       % (iface_type, iface_source, iface_model, iface_mac))
         ret = virsh.attach_interface(vm.name, at_options, ignore_status=True)
         libvirt.check_exit_status(ret)
-        vm.start()
+        if not vm.is_alive():
+            vm.start()
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     domid = vm.get_id()
     domuuid = vm.get_uuid()
     attach_iface = "yes" == params.get("attach_iface", "no")
+    additional_options = params.get("domiflist_extra_options", "")
     vm_backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     try:
@@ -137,7 +139,6 @@ def run(test, params, env):
         vm.verify_alive()
         # Get the virsh domiflist
         options = params.get("domiflist_domname_options", "id")
-        additional_options = params.get("domiflist_extra_options", "")
         status_error = params.get("status_error", "no")
 
         if options == "id":
