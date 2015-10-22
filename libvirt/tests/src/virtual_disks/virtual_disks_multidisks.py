@@ -674,7 +674,9 @@ def run(test, params, env):
             scsi_controller = Controller("controller")
             scsi_controller.type = "scsi"
             scsi_controller.index = "0"
-            scsi_controller.model = "virtio-scsi"
+            ctl_model = params.get("virtio_scsi_controller_model")
+            if ctl_model:
+                scsi_controller.model = ctl_model
             if virtio_scsi_controller_driver != "":
                 driver_dict = {}
                 for driver_option in virtio_scsi_controller_driver.split(','):
@@ -856,14 +858,19 @@ def run(test, params, env):
                 cmd += " | grep \"product=%s\"" % product
 
             num_queues = ""
+            ioeventfd = ""
             if virtio_scsi_controller_driver != "":
                 for driver_option in virtio_scsi_controller_driver.split(','):
                     if driver_option != "":
                         d = driver_option.split('=')
                         if d[0].strip() == "queues":
                             num_queues = d[1].strip()
+                        elif d[0].strip() == "ioeventfd":
+                            ioeventfd = d[1].strip()
             if num_queues != "":
                 cmd += " | grep num_queues=%s" % num_queues
+            if ioeventfd:
+                cmd += " | grep ioeventfd=%s" % ioeventfd
 
             iface_event_idx = ""
             if iface_driver != "":
