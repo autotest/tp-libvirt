@@ -1,6 +1,5 @@
 import os
 import commands
-import logging
 
 from autotest.client import utils
 from autotest.client.shared import error
@@ -8,6 +7,7 @@ from autotest.client.shared import error
 from virttest import virsh
 from virttest import data_dir
 from virttest.libvirt_xml.secret_xml import SecretXML
+from virttest.utils_test import libvirt
 
 from provider import libvirt_version
 
@@ -74,22 +74,6 @@ def run(test, params, env):
 
     secret_obj_xmlfile = os.path.join(SECRET_DIR, uuid + ".xml")
 
-    def check_exit_status(result, expect_error=False):
-        """
-        Check the exit status of virsh commands.
-
-        :param result: Virsh command result object
-        :param expect_error: Boolean value, expect command success or fail
-        """
-        if expect_error:
-            if result.exit_status == 0:
-                raise error.TestFail("Expect fail, but run successfully.")
-            else:
-                logging.debug("Command failed as expected.")
-        else:
-            if result.exit_status != 0:
-                raise error.TestFail(result.stderr)
-
     # Run the test
     try:
         if define_acl:
@@ -97,7 +81,7 @@ def run(test, params, env):
             cmd_result = virsh.secret_define(secret_xml_obj.xml, **acl_dargs)
         else:
             cmd_result = virsh.secret_define(secret_xml_obj.xml, debug=True)
-        check_exit_status(cmd_result, define_error)
+        libvirt.check_exit_status(cmd_result, define_error)
         if cmd_result.exit_status:
             return
 
@@ -113,7 +97,7 @@ def run(test, params, env):
             cmd_result = virsh.secret_get_value(uuid, **acl_dargs)
         else:
             cmd_result = virsh.secret_get_value(uuid, debug=True)
-        check_exit_status(cmd_result, get_value_error)
+        libvirt.check_exit_status(cmd_result, get_value_error)
         status = cmd_result.exit_status
         err_msg = "The private attribute worked not expected"
         if private == "yes" and not status:
@@ -142,7 +126,7 @@ def run(test, params, env):
             cmd_result = virsh.secret_undefine(uuid, **acl_dargs)
         else:
             cmd_result = virsh.secret_undefine(uuid, debug=True)
-            check_exit_status(cmd_result, undefine_error)
+            libvirt.check_exit_status(cmd_result, undefine_error)
     finally:
         # cleanup
         virsh.secret_undefine(uuid, ignore_status=True)
