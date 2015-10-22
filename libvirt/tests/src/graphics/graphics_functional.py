@@ -210,6 +210,9 @@ def check_addr_port(all_ips, expected_ips, ports):
     """
     for ip in all_ips:
         for port in ports:
+            # port 0 means port not set. No need to check here.
+            if int(port) == 0:
+                continue
             logging.debug("Checking %s %s:%s", ip.iface, ip, port)
             if not ip.listening_on(port) and ip in expected_ips:
                 raise error.TestFail(
@@ -228,6 +231,8 @@ def qemu_spice_options(libvirt_vm):
     match = re.search(r'-spice\s*(\S*)', res.stdout)
     if match:
         spice_opt = match.groups()[0]
+    logging.info('Qemu spice option is: %s', spice_opt)
+
     spice_dict = {}
     plaintext_channels = set()
     tls_channels = set()
@@ -438,10 +443,12 @@ def get_expected_ports(params, expected_result):
             if secure_autoport:
                 expected_tls_port = port_allocator.allocate()
 
-        if expected_port != 'not_set' and int(expected_port) < -1:
-            expected_port = 'not_set'
         if expected_tls_port != 'not_set' and int(expected_tls_port) < -1:
             expected_tls_port = 'not_set'
+
+        if expected_port != 'not_set' and int(expected_port) < -1:
+            if expected_tls_port != 'not_set':
+                expected_port = 'not_set'
 
         logging.debug('Expected SPICE port: ' + expected_port)
         logging.debug('Expected SPICE tls_port: ' + expected_tls_port)
@@ -520,10 +527,7 @@ def get_fail_pattern(params, expected_result):
             fail_patts += tls_fail_patts + plaintext_fail_patts
 
         if expected_spice_port == expected_spice_tls_port:
-            if expected_spice_port == 'not_set':
-                fail_patts.append(r'neither port nor tls-port specified')
-                fail_patts.append(r'port is out of range')
-            else:
+            if expected_spice_port != 'not_set':
                 if 0 <= int(expected_spice_port) < 1024:
                     fail_patts.append(r'binding socket to \S* failed')
                 elif int(expected_spice_port) > 65535 or int(expected_spice_port) < -1:
@@ -566,10 +570,12 @@ def get_fail_pattern(params, expected_result):
             vnc_fail_patts.append('Failed to find x509 certificates')
 
         if expected_vnc_port != 'not_set':
-            if int(expected_vnc_port) - 5900 < 0:
+            if int(expected_vnc_port) < 5900:
                 vnc_fail_patts.append('Failed to start VNC server')
+                vnc_fail_patts.append(r'vnc port must be in range \[5900,65535\]')
             elif int(expected_vnc_port) > 65535:
                 vnc_fail_patts.append('Failed to start VNC server')
+                vnc_fail_patts.append(r'vnc port must be in range \[5900,65535\]')
         fail_patts += vnc_fail_patts
 
         if any([ip not in utils_net.get_all_ips() for ip in expected_vnc_ips]):
@@ -614,6 +620,9 @@ def get_expected_spice_options(params, networks, expected_result):
 
     if expected_port != 'not_set':
         expected_opts['port'] = expected_port
+    else:
+        expected_opts['port'] = ['0', None]
+
     if expected_tls_port != 'not_set':
         expected_opts['tls-port'] = expected_tls_port
         expected_opts['x509-dir'] = x509_dir
@@ -659,7 +668,8 @@ def get_expected_vnc_options(params, networks, expected_result):
 
     if auto_unix_socket == '1':
         listen_address = 'unix'
-        port = '/var/lib/libvirt/qemu/%s.vnc' % vm_name
+        port = ['/var/lib/libvirt/qemu/%s.vnc' % vm_name,
+                '/var/lib/libvirt/qemu/domain-%s/vnc.sock' % vm_name]
     else:
         if expected_port != 'not_set':
             port = str(int(expected_port) - 5900)
@@ -696,6 +706,7 @@ def get_expected_results(params, networks):
     except ValueError:
         expected_result['fail_patts'] = ['Unable to find an unused port']
     else:
+
         get_fail_pattern(params, expected_result)
         if spice_xml:
             get_expected_spice_options(params, networks, expected_result)
@@ -711,6 +722,15 @@ def compare_opts(opts, exp_opts):
     """
     created = set(opts) - set(exp_opts)
     deleted = set(exp_opts) - set(opts)
+
+    # Ignore changed keys that are list containing None.
+    created = set(
+        key for key in created
+        if isinstance(exp_opts[key], list) and None not in exp_opts[key])
+    deleted = set(
+        key for key in deleted
+        if isinstance(exp_opts[key], list) and None not in exp_opts[key])
+
     if len(created) or len(deleted):
         logging.debug("Created: %s", created)
         logging.debug("Deleted: %s", deleted)
@@ -718,13 +738,21 @@ def compare_opts(opts, exp_opts):
                              % (exp_opts, opts))
     else:
         if type(opts) == dict:
-            for key in exp_opts:
-                if opts[key] != exp_opts[key]:
-                    logging.debug("Key %s expected %s, but got %s",
-                                  key, exp_opts[key], opts[key])
-                    raise error.TestFail(
-                        "Expect qemu spice options is %s, but get %s"
-                        % (exp_opts, opts))
+            for key in opts:
+                if isinstance(exp_opts[key], list):
+                    if all(opts[key] != opt for opt in exp_opts[key]):
+                        logging.debug("Key %s expected one in %s, but got %s",
+                                      key, exp_opts[key], opts[key])
+                        raise error.TestFail(
+                            "Expect qemu options is %s, but get %s"
+                            % (exp_opts, opts))
+                else:
+                    if opts[key] != exp_opts[key]:
+                        logging.debug("Key %s expected %s, but got %s",
+                                      key, exp_opts[key], opts[key])
+                        raise error.TestFail(
+                            "Expect qemu options is %s, but get %s"
+                            % (exp_opts, opts))
 
 
 def check_spice_result(spice_opts,
@@ -926,6 +954,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "virt-tests-vm1")
     spice_xml = params.get("spice_xml", "no") == 'yes'
     vnc_xml = params.get("vnc_xml", "no") == 'yes'
+    is_negative = params.get("negative_test", "no") == 'yes'
 
     sockets = block_ports(params)
     networks = setup_networks(params)
@@ -976,7 +1005,8 @@ def run(test, params, env):
             vnc_opts = qemu_vnc_options(vm)
             check_vnc_result(vnc_opts, expected_result, all_ips)
 
-        logging.debug("Test Succeed!")
+        if is_negative:
+            raise error.TestFail("Expect negative result. But start succeed!")
     except error.TestFail, detail:
         bug_url = params.get('bug_url', None)
         if bug_url:
