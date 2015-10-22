@@ -80,7 +80,7 @@ def run(test, params, env):
             virsh.attach_disk(vm_name, dst_image, target, extra=options,
                               ignore_status=False)
         except (remote.LoginError, virt_vm.VMError,
-                aexpect.ShellError), detail:
+                aexpect.ShellError, error.CmdError), detail:
             raise error.TestFail("Modify guest source failed: %s" % detail)
 
     def modify_network(vm_name, first_nic):
