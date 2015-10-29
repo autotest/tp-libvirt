@@ -14,6 +14,8 @@ from autotest.client.shared import error
 from virttest import virsh
 from virttest import utils_v2v
 from virttest import utils_misc
+from virttest import utils_sasl
+from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
 
@@ -26,7 +28,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "EXAMPLE")
     new_vm_name = params.get("new_vm_name")
     input_mode = params.get("input_mode")
-    v2v_options = params.get("v2v_options", "EXAMPLE")
+    v2v_options = params.get("v2v_options", "")
     hypervisor = params.get("hypervisor", "kvm")
     remote_host = params.get("remote_host", "EXAMPLE")
     vpx_dc = params.get("vpx_dc", "EXAMPLE")
@@ -39,7 +41,7 @@ def run(test, params, env):
     output_storage = params.get("output_storage", "default")
     export_name = params.get("export_name", "EXAMPLE")
     storage_name = params.get("storage_name", "EXAMPLE")
-    disk_img = params.get("input_disk_image")
+    disk_img = params.get("input_disk_image", "")
     nfs_storage = params.get("nfs_storage")
     mnt_point = params.get("mount_point")
     export_domain_uuid = params.get("export_domain_uuid", "")
@@ -51,7 +53,6 @@ def run(test, params, env):
     v2v_user = params.get("unprivileged_user", "")
     v2v_timeout = int(params.get("v2v_timeout", 1200))
     status_error = "yes" == params.get("status_error", "no")
-    address_cache = env.get('address_cache')
     for param in [vm_name, remote_host, esx_ip, vpx_dc, ovirt_engine_url,
                   ovirt_engine_user, ovirt_engine_passwd, output_storage,
                   export_name, storage_name, disk_img, export_domain_uuid,
@@ -66,10 +67,10 @@ def run(test, params, env):
     pool_target = params.get("pool_target_path", "v2v_pool")
     emulated_img = params.get("emulated_image_path", "v2v-emulated-img")
     pvt = utlv.PoolVolumeTest(test, params)
-    global vm_imported
-    vm_imported = False
     new_v2v_user = False
     restore_image_owner = False
+    address_cache = env.get('address_cache')
+    params['vmcheck'] = None
 
     def create_pool():
         """
@@ -103,7 +104,7 @@ def run(test, params, env):
         Get export domain uuid, image uuid and vol uuid from command output.
         """
         tmp_target = re.findall(r"qemu-img\sconvert\s.+\s'(\S+)'\n", output)
-        if len(tmp_target) != 1:
+        if len(tmp_target) < 1:
             raise error.TestError("Fail to find tmp target file name when"
                                   " converting vm disk image")
         targets = tmp_target[0].split('/')
@@ -144,6 +145,8 @@ def run(test, params, env):
             export_domain_uuid, image_uuid, vol_uuid = get_all_uuids(output)
             img_path = os.path.join(mnt_point, export_domain_uuid, 'images',
                                     image_uuid, vol_uuid)
+        if not img_path or not os.path.isfile(img_path):
+            raise error.TestError("Get image path: '%s' is invalid", img_path)
         return img_path
 
     def check_vmtype(ovf, expected_vmtype):
@@ -164,32 +167,30 @@ def run(test, params, env):
         else:
             raise error.TestFail("VmType check failed")
 
-    def check_image(output, check_point, expected_value):
+    def check_image(img_path, check_point, expected_value):
         """
-        Verify converted image file allocation mode and format
+        Verify image file allocation mode and format
         """
-        img_path = get_img_path(output)
-        if not img_path or not os.path.isfile(img_path):
-            logging.error("Fail to get image path: %s", img_path)
-            return
         img_info = utils_misc.get_image_info(img_path)
-        logging.info("Image info after converted: %s", img_info)
+        logging.debug("Image info: %s", img_info)
         if check_point == "allocation":
             if expected_value == "sparse":
                 if img_info['vsize'] > img_info['dsize']:
-                    logging.info("Image file is sparse")
+                    logging.info("%s is a sparse image", img_path)
                 else:
-                    raise error.TestFail("Image allocation check fail")
+                    raise error.TestFail("%s is not a sparse image" % img_path)
             elif expected_value == "preallocated":
                 if img_info['vsize'] <= img_info['dsize']:
-                    logging.info("Image file is preallocated")
+                    logging.info("%s is a preallocated image", img_path)
                 else:
-                    raise error.TestFail("Image allocation check fail")
+                    raise error.TestFail("%s is not a preallocated image"
+                                         % img_path)
         if check_point == "format":
             if expected_value == img_info['format']:
-                logging.info("Image file format is %s", expected_value)
+                logging.info("%s format is %s", img_path, expected_value)
             else:
-                raise error.TestFail("Image format check fail")
+                raise error.TestFail("%s format is not %s"
+                                     % (img_path, expected_value))
 
     def check_new_name(output, expected_name):
         """
@@ -231,6 +232,44 @@ def run(test, params, env):
         else:
             raise error.TestFail("Not find message: %s" % init_msg)
 
+    def check_disks(ori_disks):
+        """
+        Check disk counts inside the VM
+        """
+        vmcheck = params.get("vmcheck")
+        if vmcheck is None:
+            raise error.TestError("VM check object is None")
+        # Initialize windows boot up
+        os_type = params.get("os_type", "linux")
+        if os_type == "windows":
+            virsh_session = utils_sasl.VirshSessionSASL(params)
+            virsh_session_id = virsh_session.get_id()
+            vmcheck.virsh_session_id = virsh_session_id
+            vmcheck.init_windows()
+            virsh_session.close()
+        # Creatge VM session
+        vmcheck.create_session()
+        expected_disks = int(params.get("added_disks_count", "1")) - ori_disks
+        logging.debug("Expect %s disks im VM after convert", expected_disks)
+        # Get disk counts
+        disks = 0
+        if os_type == "linux":
+            cmd = "lsblk |grep disk |wc -l"
+            disks = int(vmcheck.session.cmd(cmd).strip())
+        else:
+            cmd = r"echo list disk > C:\list_disk.txt"
+            vmcheck.session.cmd(cmd)
+            cmd = r"diskpart /s C:\list_disk.txt"
+            output = vmcheck.session.cmd(cmd).strip()
+            logging.debug("Disks in VM: %s", output)
+            disks = len(output.splitlines()) - 6
+        logging.debug("Find %s disks in VM after convert", disks)
+        vmcheck.session.close()
+        if disks == expected_disks:
+            logging.info("Disk counts is expected")
+        else:
+            raise error.TestFail("Disk counts is wrong")
+
     def check_result(cmd, result, status_error):
         """
         Check virt-v2v command result
@@ -246,10 +285,12 @@ def run(test, params, env):
                     check_vmtype(ovf, expected_vmtype)
             if '-oa' in cmd and '--no-copy' not in cmd:
                 expected_mode = re.findall(r"-oa\s(\w+)", cmd)[0]
-                check_image(output, "allocation", expected_mode)
+                img_path = get_img_path(output)
+                check_image(img_path, "allocation", expected_mode)
             if '-of' in cmd and '--no-copy' not in cmd:
                 expected_format = re.findall(r"-of\s(\w+)", cmd)[0]
-                check_image(output, "format", expected_format)
+                img_path = get_img_path(output)
+                check_image(img_path, "format", expected_format)
             if '-on' in cmd:
                 expected_name = re.findall(r"-on\s(\w+)", cmd)[0]
                 check_new_name(output, expected_name)
@@ -258,16 +299,21 @@ def run(test, params, env):
             if '-oc' in cmd:
                 expected_uri = re.findall(r"-oc\s(\S+)", cmd)[0]
                 check_connection(output, expected_uri)
-            global vm_imported
             if output_mode == "rhev":
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache):
                     raise error.TestFail("Import VM failed")
                 else:
-                    vm_imported = True
+                    params['vmcheck'] = utils_v2v.VMCheck(test, params, env)
+                    if attach_disks:
+                        check_disks(params.get("ori_disks"))
             if output_mode == "libvirt":
                 if "qemu:///session" not in v2v_options:
                     virsh.start(vm_name, debug=True, ignore_status=False)
 
+    backup_xml = None
+    attach_disks = "yes" == params.get("attach_disk_config", "no")
+    attach_disk_path = os.path.join(test.tmpdir, "attach_disks")
+    vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
     try:
         # Build input options
         input_option = ""
@@ -277,23 +323,44 @@ def run(test, params, env):
             uri_obj = utils_v2v.Uri(hypervisor)
             ic_uri = uri_obj.get_uri(remote_host, vpx_dc, esx_ip)
             input_option = "-i %s -ic %s %s" % (input_mode, ic_uri, vm_name)
-            # Build network/bridge option
+            # Build network&bridge option to avoid network error
             v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
                                              params.get("output_network"))
+            # Multiple disks testing
+            if attach_disks:
+                backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+                # Get original vm disk counts
+                params['ori_disks'] = backup_xml.get_disk_count(vm_name)
+                utlv.attach_disks(env.get_vm(vm_name), attach_disk_path,
+                                  None, params)
         elif input_mode == "disk":
             input_option += "-i %s %s" % (input_mode, disk_img)
         elif input_mode in ['libvirtxml', 'ova']:
             raise error.TestNAError("Unsupported input mode: %s" % input_mode)
         else:
             raise error.TestError("Unknown input mode %s" % input_mode)
+        input_format = params.get("input_format")
+        input_allo_mode = params.get("input_allo_mode")
+        if input_format:
+            input_option += " -if %s" % input_format
+            if not status_error:
+                logging.info("Check image before convert")
+                check_image(disk_img, "format", input_format)
+                if input_allo_mode:
+                    check_image(disk_img, "allocation", input_allo_mode)
 
         # Build output options
         output_option = ""
         if output_mode:
             output_option = "-o %s -os %s" % (output_mode, output_storage)
+        output_format = params.get("output_format")
+        if output_format:
+            output_option += " -of %s" % output_format
+        output_allo_mode = params.get("output_allo_mode")
+        if output_allo_mode:
+            output_option += " -oa %s" % output_allo_mode
 
         # Build vdsm related options
-        vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
         if output_mode in ['vdsm', 'rhev']:
             if not os.path.isdir(mnt_point):
                 os.mkdir(mnt_point)
@@ -402,10 +469,14 @@ def run(test, params, env):
             else:
                 virsh.remove_domain(vm_name)
             cleanup_pool()
-        if output_mode == "rhev" and vm_imported:
-            vm_c = utils_v2v.VMCheck(test, params, env)
-            vm_c.cleanup()
+        vmcheck = params.get("vmcheck")
+        if vmcheck:
+            vmcheck.cleanup()
         if new_v2v_user:
             utils.system("userdel -f %s" % v2v_user)
         if restore_image_owner:
             os.chown(disk_img, ori_owner, ori_group)
+        if backup_xml:
+            backup_xml.sync()
+        if os.path.exists(attach_disk_path):
+            shutil.rmtree(attach_disk_path)
