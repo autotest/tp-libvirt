@@ -603,6 +603,7 @@ def run(test, params, env):
     client_pwd = test_dict.get("client_pwd")
     server_cn = test_dict.get("server_cn")
     ipv6_addr_des = test_dict.get("ipv6_addr_des")
+    portal_ip = test_dict.get("portal_ip", "127.0.0.1")
     restart_libvirtd = test_dict.get("restart_src_libvirtd", "no")
     driver = test_dict.get("test_driver", "qemu")
     uri_path = test_dict.get("uri_path", "/system")
@@ -812,7 +813,8 @@ def run(test, params, env):
     try:
         if iscsi_setup:
             target = libvirt.setup_or_cleanup_iscsi(is_setup=True, is_login=False,
-                                                    emulated_image="emulated_iscsi")
+                                                    emulated_image="emulated_iscsi",
+                                                    portal_ip=portal_ip)
             logging.debug("Created iscsi target: %s", target)
             host_ip = None
             ipv6_addr_src = params.get("ipv6_addr_src")
@@ -1007,7 +1009,7 @@ def run(test, params, env):
                 if not status:
                     raise error.TestNAError("The CPU model is the same between local "
                                             "and remote host %s:%s" % (local_vendor,
-                                            output))
+                                                                       output))
                 if not session:
                     raise error.TestFail("The session is dead!!")
 
@@ -1569,7 +1571,7 @@ def run(test, params, env):
                     logging.debug(stderr)
                     err_str = ".*error.*migration job: canceled by client"
                     if not re.search(err_str, stderr):
-                        raise error.TestFail("Can't find error: %s."  % (err_str))
+                        raise error.TestFail("Can't find error: %s." % (err_str))
                     else:
                         logging.info("Find error: %s.", err_str)
 
