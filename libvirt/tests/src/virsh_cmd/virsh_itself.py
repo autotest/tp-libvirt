@@ -1,10 +1,10 @@
 import logging
+import aexpect
 
 from autotest.client import utils
 from autotest.client.shared import error
 
 from virttest import virsh
-from virttest import aexpect
 from virttest import element_tree
 
 
