@@ -73,6 +73,7 @@ def run(test, params, env):
         prepare_hook_file(hook_script %
                           (vm_name, hook_log))
         vm.start()
+        vm.wait_for_login().close()
         try:
             hook_str = hook_para + " prepare begin -"
             assert check_hooks(hook_str)
@@ -255,11 +256,26 @@ def run(test, params, env):
             raise error.TestFail("Failed to check"
                                  " attach hooks")
 
+    def edit_iface(net_name):
+        """
+        Edit interface options for vm.
+        """
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+        iface_xml = vmxml.get_devices(device_type="interface")[0]
+        vmxml.del_device(iface_xml)
+        iface_xml.type_name = "network"
+        iface_xml.source = {"network": net_name}
+        del iface_xml.address
+        vmxml.add_device(iface_xml)
+        vmxml.sync()
+
     def network_hook():
         """
         Check network hooks.
         """
-        net_name = "default"
+        # Set interface to use default network
+        net_name = params.get("net_name", "default")
+        edit_iface(net_name)
         prepare_hook_file(hook_script %
                           (net_name, hook_log))
         try:
