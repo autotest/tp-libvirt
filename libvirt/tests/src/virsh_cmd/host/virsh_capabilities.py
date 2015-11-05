@@ -109,13 +109,11 @@ def run(test, params, env):
 
     # Run test case
     option = params.get("virsh_cap_options")
-    try:
-        output = virsh.capabilities(option, uri=connect_uri,
-                                    ignore_status=False, debug=True)
-        status = 0  # good
-    except error.CmdError:
-        status = 1  # bad
-        output = ''
+    output = virsh.capabilities(option, uri=connect_uri,
+                                ignore_status=True, debug=True)
+    status = 0
+    if output == '':
+        status = 1
 
     # Recover libvirtd service start
     if libvirtd == "off":
