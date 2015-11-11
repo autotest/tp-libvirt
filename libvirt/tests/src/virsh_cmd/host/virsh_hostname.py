@@ -26,13 +26,12 @@ def run(test, params, env):
 
     # Run test case
     option = params.get("virsh_hostname_options")
-    try:
-        hostname_test = virsh.hostname(option,
-                                       ignore_status=False,
-                                       debug=True)
-        status = 0  # good
-    except error.CmdError:
-        status = 1  # bad
+    hostname_test = virsh.hostname(option,
+                                   ignore_status=True,
+                                   debug=True)
+    status = 0
+    if hostname_test == '':
+        status = 1
         hostname_test = None
 
     # Recover libvirtd service start
