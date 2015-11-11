@@ -53,7 +53,7 @@ def run(test, params, env):
     if wipe_data:
         option += " --wipe-storage"
 
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     vm_id = vm.get_id()
     vm_uuid = vm.get_uuid()

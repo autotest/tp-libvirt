@@ -20,7 +20,7 @@ def run(test, params, env):
     2) Restart libvirt daemon;
     4) Check if file open state changed accordingly.
     """
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     bypass_cache = params.get("auto_dump_bypass_cache", "not_set")
     vm = env.get_vm(vm_name)
 

@@ -2,6 +2,8 @@ import logging
 
 from autotest.client.shared import error
 
+from avocado.utils import path as utils_path
+
 from virttest import libvirt_xml
 from virttest import virsh
 from virttest import utils_libvirtd
@@ -183,8 +185,8 @@ def run(test, params, env):
     """
 
     try:
-        utils_misc.find_command("numactl")
-    except ValueError:
+        utils_path.find_command("numactl")
+    except utils_path.CmdNotFoundError:
         raise error.TestNAError("Command 'numactl' is missing. You must "
                                 "install it.")
 

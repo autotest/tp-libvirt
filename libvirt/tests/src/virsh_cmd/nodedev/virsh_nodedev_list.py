@@ -5,8 +5,9 @@ import re
 from autotest.client.shared import error
 from autotest.client.shared import utils
 
+from avocado.utils import path as utils_path
+
 from virttest import virsh
-from virttest import utils_misc
 
 from provider import libvirt_version
 
@@ -35,7 +36,7 @@ def get_storage_devices():
     """
     devices = []
     try:
-        utils_misc.find_command('udevadm')
+        utils_path.find_command('udevadm')
         storage_path = '/sys/class/block'
         if not os.path.exists(storage_path):
             logging.debug(
@@ -57,7 +58,7 @@ def get_storage_devices():
                         dev_name = re.sub(
                             r'\W', '_', 'block_%s_%s' % (device, serial))
                         devices.append(dev_name)
-    except ValueError:
+    except utils_path.CmdNotFoundError:
         logging.warning('udevadm not found! Skipping storage test!')
         logging.warning('You can try install it using `yum install udev`')
     return devices

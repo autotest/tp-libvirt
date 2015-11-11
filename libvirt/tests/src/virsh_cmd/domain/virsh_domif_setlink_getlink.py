@@ -97,7 +97,7 @@ def run(test, params, env):
         # Passed all test
         return True
 
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     options = params.get("if_options", "--config")
     start_vm = params.get("start_vm", "no")

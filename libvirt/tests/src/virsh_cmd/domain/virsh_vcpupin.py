@@ -132,7 +132,7 @@ def run(test, params, env):
     if not virsh.has_help_command('vcpucount'):
         raise error.TestNAError("This version of libvirt doesn't"
                                 " support this test")
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     # Get the variables for vcpupin command.
     vm_ref = params.get("vcpupin_vm_ref", "name")

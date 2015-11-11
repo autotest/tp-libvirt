@@ -4,8 +4,9 @@ import logging
 from autotest.client import utils
 from autotest.client.shared import error
 
+from avocado.utils import path as utils_path
+
 from virttest import utils_net
-from virttest import utils_misc
 from virttest import virsh
 from virttest import remote
 from virttest.libvirt_xml import vm_xml
@@ -209,8 +210,8 @@ def run(test, params, env):
 
     # Stop NetworkManager as which may conflict with virsh iface commands
     try:
-        NM = utils_misc.find_command("NetworkManager")
-    except ValueError:
+        NM = utils_path.find_command("NetworkManager")
+    except utils_path.CmdNotFoundError:
         logging.debug("No NetworkManager service.")
         NM = None
     NM_is_running = False

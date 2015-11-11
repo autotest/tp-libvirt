@@ -5,6 +5,8 @@ import logging
 from autotest.client import utils
 from autotest.client.shared import error
 
+from avocado.utils import path as utils_path
+
 from virttest.utils_test import libvirt
 from virttest import libvirt_storage
 from virttest import virsh
@@ -45,8 +47,8 @@ def run(test, params, env):
 
     # Using algorithms other than zero need scrub installed.
     try:
-        utils_misc.find_command('scrub')
-    except ValueError:
+        utils_path.find_command('scrub')
+    except utils_path.CmdNotFoundError:
         logging.warning("Can't locate scrub binary, only 'zero' algorithm "
                         "is used.")
         valid_algorithms = ["zero"]

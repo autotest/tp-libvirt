@@ -37,7 +37,7 @@ def run(test, params, env):
             if match:
                 return match.groups()[0]
 
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     expected_result = params.get("expected_result", "not_set")
     seccomp_sandbox = params.get("seccomp_sandbox", "not_set")
     vm = env.get_vm(vm_name)

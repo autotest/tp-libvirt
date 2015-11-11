@@ -4,6 +4,8 @@ import logging
 from autotest.client.shared import error
 from autotest.client.shared import utils
 
+from avocado.utils import path as utils_path
+
 from virttest import virsh
 from virttest import data_dir
 from virttest import virt_vm
@@ -144,8 +146,8 @@ def run(test, params, env):
         raise error.TestNAError("Got a invalid device type:/n%s" % device_type)
 
     try:
-        utils_misc.find_command("mkisofs")
-    except ValueError:
+        utils_path.find_command("mkisofs")
+    except utils_path.CmdNotFoundError:
         raise error.TestNAError("Command 'mkisofs' is missing. You must "
                                 "install it (try 'genisoimage' package.")
 

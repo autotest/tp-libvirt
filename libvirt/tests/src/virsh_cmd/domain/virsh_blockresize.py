@@ -27,7 +27,7 @@ def run(test, params, env):
 
     # MAIN TEST CODE ###
     # Process cartesian parameters
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     image_format = params.get("disk_image_format", "qcow2")
     initial_disk_size = params.get("initial_disk_size", "500K")
     status_error = "yes" == params.get("status_error", "yes")

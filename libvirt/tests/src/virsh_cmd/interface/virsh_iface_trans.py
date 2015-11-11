@@ -5,9 +5,10 @@ import commands
 
 from autotest.client.shared import error
 
+from avocado.utils import path as utils_path
+
 from virttest import virsh
 from virttest import utils_libvirtd
-from virttest import utils_misc
 
 
 def netcf_trans_control(command="status"):
@@ -19,8 +20,8 @@ def netcf_trans_control(command="status"):
     """
     try:
         # For OS using systemd, this command usually located in /usr/libexec/.
-        cmd = utils_misc.find_command("netcf-transaction.sh")
-    except ValueError:
+        cmd = utils_path.find_command("netcf-transaction.sh")
+    except utils_path.CmdNotFoundError:
         # This is the default location for sysV init.
         old_path = "/etc/rc.d/init.d/netcf-transaction"
         if os.path.isfile(old_path):
@@ -192,8 +193,8 @@ def run(test, params, env):
     """
 
     try:
-        utils_misc.find_command("locate")
-    except ValueError:
+        utils_path.find_command("locate")
+    except utils_path.CmdNotFoundError:
         raise error.TestNAError("Command 'locate' is missing. You must "
                                 "install it.")
     # Run test case

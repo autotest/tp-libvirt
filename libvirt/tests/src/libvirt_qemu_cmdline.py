@@ -88,7 +88,7 @@ def run(test, params, env):
     3) Check corresponding feature flags in qemu cmdline;
     4) Login VM to test feature if necessary.
     """
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     expect_fail = "yes" == params.get("expect_start_vm_fail", "no")
     test_feature = params.get("test_feature")

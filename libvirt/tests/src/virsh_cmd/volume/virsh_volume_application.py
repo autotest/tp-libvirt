@@ -46,7 +46,7 @@ def run(test, params, env):
     application = params.get("application", "install")
     disk_target = params.get("disk_target", "vdb")
     test_message = params.get("test_message", "")
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     block_device = params.get("block_device", "/DEV/EXAMPLE")
     if application == "install":
         cdrom_path = os.path.join(data_dir.get_data_dir(),

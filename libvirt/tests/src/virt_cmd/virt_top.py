@@ -19,7 +19,7 @@ def run(test, params, env):
     except ValueError:
         raise error.TestNAError("No virt-top command found.")
 
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     output = params.get("output_file", "output")
     output_path = os.path.join(data_dir.get_tmp_dir(), output)
     status_error = ("yes" == params.get("status_error", "no"))

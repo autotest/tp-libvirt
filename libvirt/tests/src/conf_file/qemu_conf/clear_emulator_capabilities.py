@@ -54,7 +54,7 @@ def run(test, params, env):
             raise error.TestNAError('Host do not support capabilities or '
                                     'an error has occured.')
 
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     expected_result = params.get("expected_result", "name_not_set")
     user = params.get("qemu_user", "not_set")
     clear_emulator_capabilities = params.get(

@@ -201,7 +201,7 @@ def run(test, params, env):
     libvirt = params.get("libvirt", "on")
     delta_percentage = float(params.get("setmem_delta_per", "10"))
     start_vm = "yes" == params.get("start_vm", "yes")
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     paused_after_start_vm = "yes" == params.get("paused_after_start_vm", "no")
     manipulate_dom_before_setmem = "yes" == params.get(
         "manipulate_dom_before_setmem", "no")

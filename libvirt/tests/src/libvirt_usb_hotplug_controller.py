@@ -14,7 +14,7 @@ def run(test, params, env):
     Test for adding controller for usb.
     """
     # get the params from params
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
 
     index = params.get("index", "1")

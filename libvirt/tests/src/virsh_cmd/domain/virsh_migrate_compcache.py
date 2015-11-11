@@ -6,8 +6,9 @@ from autotest.client.shared import error
 from autotest.client.shared import utils
 from autotest.client.shared import ssh_key
 
+from avocado.utils import path as utils_path
+
 from virttest import virsh
-from virttest import utils_misc
 from virttest.utils_test import libvirt as utlv
 
 
@@ -19,9 +20,9 @@ def get_page_size():
     :return: An integer of current page size bytes.
     """
     try:
-        getconf_path = utils_misc.find_command('getconf')
+        getconf_path = utils_path.find_command('getconf')
         return int(utils.run(getconf_path + ' PAGESIZE').stdout)
-    except ValueError:
+    except utils_path.CmdNotFoundError:
         logging.warning('getconf not found! Assuming 4K for PAGESIZE')
         return 4096
 

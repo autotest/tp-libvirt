@@ -154,7 +154,7 @@ def run(test, params, env):
     perf_kvm_exec = _perf_kvm_help()
     if not perf_kvm_exec:
         raise error.TestNAError("No perf-kvm found in your host.")
-    vm = env.get_vm(params.get("main_vm", "virt-tests-vm1"))
+    vm = env.get_vm(params.get("main_vm", "avocado-vt-vm1"))
     vms = env.get_all_vms()
     guestmount = ("yes" == params.get("perf_kvm_guestmount", "no"))
 

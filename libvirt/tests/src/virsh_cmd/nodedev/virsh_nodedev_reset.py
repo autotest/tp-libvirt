@@ -197,7 +197,7 @@ def run(test, params, env):
         elif device_option == 'active':
             # Test specified device if attached to VM.
             if specified_device != unspecified:
-                vm_name = params.get('main_vm', 'virt-tests-vm1')
+                vm_name = params.get('main_vm', 'avocado-vt-vm1')
                 vm = env.get_vm(vm_name)
                 test_active_nodedev_reset(
                     specified_device, vm, expect_succeed)

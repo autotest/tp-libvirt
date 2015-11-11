@@ -25,7 +25,7 @@ def run(test, params, env):
     partition_type = ('yes' == params.get("libvirt_scsi_partition_type", "no"))
     partition = params.get("libvirt_scsi_partition",
                            "ENTER.YOUR.AVAILABLE.PARTITION")
-    vm_name = params.get("main_vm", "virt-tests-vm1")
+    vm_name = params.get("main_vm", "avocado-vt-vm1")
     # Init a VM instance and a VMXML instance.
     vm = env.get_vm(vm_name)
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
