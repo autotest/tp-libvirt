@@ -5,11 +5,13 @@ Module to exercize virsh attach-device command with various devices/options
 import os
 import os.path
 import logging
+import aexpect
+
 from string import ascii_lowercase
 
 from autotest.client.shared import error
 
-from virttest import virt_vm, virsh, remote, aexpect, utils_misc
+from virttest import virt_vm, virsh, remote, utils_misc
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.staging.backports import itertools
 

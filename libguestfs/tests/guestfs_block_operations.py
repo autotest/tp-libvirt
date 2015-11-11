@@ -1,11 +1,11 @@
 import re
 import logging
+import aexpect
 
 from autotest.client.shared import error
 from autotest.client.shared import utils
 from virttest import virt_vm
 from virttest import remote
-from virttest import aexpect
 from virttest import utils_test
 
 

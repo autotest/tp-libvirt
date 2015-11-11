@@ -2,11 +2,12 @@ import os
 import logging
 import commands
 import time
+import aexpect
 
 from autotest.client.shared import error
 
 from virttest.libvirt_xml import vm_xml
-from virttest import virsh, aexpect
+from virttest import virsh
 from virttest.libvirt_xml.devices.emulator import Emulator
 from virttest.libvirt_xml.devices.console import Console
 
