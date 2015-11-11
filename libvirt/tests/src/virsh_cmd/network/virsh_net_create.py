@@ -26,8 +26,9 @@ def do_low_level_test(virsh_dargs, test_xml, options_ref, extra):
                   "extra '%s'", alt_file, extra)
 
     try:
-        # ignore_status==False
-        virsh.net_create(alt_file, extra, **virsh_dargs)
+        result = virsh.net_create(alt_file, extra, **virsh_dargs)
+        if result.exit_status:
+            return False
         return True
     except (error.CmdError), cmd_excpt:
         # CmdError catches failing virsh commands
@@ -94,7 +95,7 @@ def run(test, params, env):
     bridge = eval(params.get("net_create_bridge", "None"),
                   {'__builtins__': None}, {})
     # make easy to maintain
-    virsh_dargs = {'uri': uri, 'debug': False, 'ignore_status': False}
+    virsh_dargs = {'uri': uri, 'debug': False, 'ignore_status': True}
     vrsh = virsh.VirshPersistent(**virsh_dargs)
 
     # Prepare environment and record current net_state_dict
