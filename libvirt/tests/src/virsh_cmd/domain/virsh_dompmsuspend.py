@@ -27,10 +27,14 @@ def run(test, params, env):
     vm_state = params.get("vm_state", "running")
     suspend_target = params.get("pm_suspend_target", "mem")
     pm_enabled = params.get("pm_enabled", "not_set")
+    pm_enabled_disk = params.get("pm_enabled_disk", "no")
+    pm_enabled_mem = params.get("pm_enabled_mem", "no")
     test_managedsave = "yes" == params.get("test_managedsave", "no")
     test_save_restore = "yes" == params.get("test_save_restore", "no")
     test_suspend_resume = "yes" == params.get("test_suspend_resume", "no")
     pmsuspend_error = 'yes' == params.get("pmsuspend_error", 'no')
+    pmsuspend_error_msg = params.get("pmsuspend_error_msg")
+    agent_error_test = 'yes' == params.get("agent_error_test", 'no')
 
     # Libvirt acl test related params
     uri = params.get("virsh_uri")
@@ -74,6 +78,9 @@ def run(test, params, env):
     elif vm_state == 'shutoff':
         fail_pat.append('not running')
 
+    if pmsuspend_error_msg:
+        fail_pat.append(pmsuspend_error_msg)
+
     try:
         if vm.is_alive():
             vm.destroy()
@@ -87,17 +94,14 @@ def run(test, params, env):
                 pass
         else:
             pm_xml = vm_xml.VMPMXML()
-            if suspend_target == 'mem':
-                pm_xml.mem_enabled = pm_enabled
-            elif suspend_target == 'disk':
-                pm_xml.disk_enabled = pm_enabled
-            elif suspend_target == 'hybrid':
-                pm_xml.mem_enabled = pm_enabled
-                pm_xml.disk_enabled = pm_enabled
+            pm_xml.mem_enabled = pm_enabled_mem
+            pm_xml.disk_enabled = pm_enabled_disk
             vmxml.pm = pm_xml
         vmxml.sync()
 
         vm.prepare_guest_agent()
+        # Selinux should be enforcing
+        vm.setenforce(1)
 
         # Create swap partition/file if nessesary.
         need_mkswap = False
@@ -114,6 +118,7 @@ def run(test, params, env):
             # Touch a file on guest to test managed save command.
             if test_managedsave:
                 session.cmd_status("touch pmtest")
+            session.close()
 
             # Set vm state
             if vm_state == "paused":
@@ -139,6 +144,16 @@ def run(test, params, env):
                                          "failed with:\n%s" % (fail_pat, result))
 
             utils_misc.wait_for(lambda: vm.state() == 'pmsuspended', 30)
+            if agent_error_test:
+                err_msg = ("Requested operation is not valid:"
+                           " domain is not running")
+                ret = virsh.dompmsuspend(vm_name, "mem", **virsh_dargs)
+                libvirt.check_result(ret, [err_msg])
+                ret = virsh.dompmsuspend(vm_name, "disk", **virsh_dargs)
+                libvirt.check_result(ret, [err_msg])
+                ret = virsh.domtime(vm_name, **virsh_dargs)
+                libvirt.check_result(ret, [err_msg])
+
             if test_managedsave:
                 ret = virsh.managedsave(vm_name, **virsh_dargs)
                 libvirt.check_exit_status(ret)
@@ -212,9 +227,6 @@ def run(test, params, env):
                     vm.wait_for_shutdown()
                 if vm.is_dead():
                     vm.start()
-
-            # Cleanup
-            session.close()
 
             if need_mkswap:
                 vm.cleanup_swap()
