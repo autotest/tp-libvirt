@@ -11,7 +11,7 @@ from string import ascii_lowercase
 
 from autotest.client.shared import error
 
-from virttest import virt_vm, virsh, remote, utils_misc
+from virttest import virt_vm, virsh, remote, utils_misc, data_dir
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.staging.backports import itertools
 
@@ -384,7 +384,7 @@ class SerialFile(AttachDeviceBase):
     def make_filepath(self, index):
         """Return full path to unique filename per device index"""
         # auto-cleaned at end of test
-        return os.path.join(self.test_params.test.tmpdir, 'serial_%s_%s-%d.log'
+        return os.path.join(data_dir.get_tmp_dir(), 'serial_%s_%s-%d.log'
                             % (self.type_name, self.identifier, index))
 
     @staticmethod
@@ -541,7 +541,7 @@ class VirtualDiskBasic(AttachDeviceBase):
 
     def make_image_file_path(self, index):
         """Create backing file for test disk device"""
-        return os.path.join(self.test_params.test.tmpdir,
+        return os.path.join(data_dir.get_tmp_dir(),
                             'disk_%s_%s_%d.raw'
                             % (self.__class__.__name__,
                                self.identifier,
