@@ -855,8 +855,8 @@ def test_mknod_b(vm, params):
     gf.mknod_b(mode, major, minor, nodename)
     ll_result = gf.ll(nodename)
     if permission not in ll_result.stdout:
-            gf.close_session()
-            raise error.TestFail("test_mknod_b failed.")
+        gf.close_session()
+        raise error.TestFail("test_mknod_b failed.")
     gf.rm_rf(nodename)
     gf.close_session()
 
@@ -895,8 +895,8 @@ def test_mknod_c(vm, params):
     gf.mknod_c(mode, major, minor, nodename)
     ll_result = gf.ll(nodename)
     if permission not in ll_result.stdout:
-            gf.close_session()
-            raise error.TestFail("test_mknod_c failed.")
+        gf.close_session()
+        raise error.TestFail("test_mknod_c failed.")
     gf.rm_rf(nodename)
     gf.close_session()
 

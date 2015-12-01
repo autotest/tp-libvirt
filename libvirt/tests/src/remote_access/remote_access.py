@@ -206,14 +206,14 @@ def run(test, params, env):
 
     # generate auth.conf and default under the '/etc/libvirt'
     if auth_conf_cxt and auth_conf:
-            cmd = "echo -e '%s' > %s" % (auth_conf_cxt, auth_conf)
-            utils.system(cmd, ignore_status=True)
+        cmd = "echo -e '%s' > %s" % (auth_conf_cxt, auth_conf)
+        utils.system(cmd, ignore_status=True)
 
     # generate polkit_pkla and default under the
     # '/etc/polkit-1/localauthority/50-local.d/'
     if polkit_pkla_cxt and polkit_pkla:
-            cmd = "echo -e '%s' > %s" % (polkit_pkla_cxt, polkit_pkla)
-            utils.system(cmd, ignore_status=True)
+        cmd = "echo -e '%s' > %s" % (polkit_pkla_cxt, polkit_pkla)
+        utils.system(cmd, ignore_status=True)
 
     # generate remote IP
     if config_ipv6 == "yes" and ipv6_addr_des:
