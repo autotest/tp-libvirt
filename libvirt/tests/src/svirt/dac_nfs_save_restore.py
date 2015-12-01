@@ -71,6 +71,8 @@ def run(test, params, env):
         except ValueError:
             raise error.TestNAError("%s value '%s' is not a number." %
                                     (i, params.get(i)))
+    # False positive - file_val was filled in the for loop above.
+    # pylint: disable=E0632
     file_user, file_group, file_mode = file_val
 
     # Get variables about VM and get a VM object and VMXML instance.
