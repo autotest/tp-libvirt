@@ -6,7 +6,6 @@ from autotest.client import utils
 
 from avocado.utils import path as utils_path
 
-from virttest import utils_misc
 from virttest import utils_net
 from virttest import virsh
 from virttest.utils_test import libvirt
