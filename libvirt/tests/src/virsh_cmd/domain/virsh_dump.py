@@ -108,7 +108,7 @@ def run(test, params, env):
     start_vm = params.get("start_vm") == "yes"
     paused_after_start_vm = params.get("paused_after_start_vm") == "yes"
     status_error = params.get("status_error", "no") == "yes"
-    timeout = int(params.get("timeout", "5"))
+    timeout = int(params.get("check_pid_timeout", "5"))
     memory_dump_format = params.get("memory_dump_format", "")
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
