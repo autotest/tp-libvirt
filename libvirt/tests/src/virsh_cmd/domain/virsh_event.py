@@ -140,7 +140,9 @@ def run(test, params, env):
             if event_str in output:
                 continue
             else:
-                raise error.TestFail("Not find expected event")
+                raise error.TestFail("Not find expected event:%s. Is your "
+                                     "guest too slow to get started in %ss?" %
+                                     (event_str, event_timeout))
 
     try:
         # Set vcpu placement to static to avoid emulatorpin fail
