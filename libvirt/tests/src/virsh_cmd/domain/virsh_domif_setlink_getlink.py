@@ -1,11 +1,13 @@
 import logging
 import os
 import re
+import uuid
 
 from autotest.client.shared import error
 
 from virttest import virsh
 from virttest import utils_net
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 
 
@@ -97,10 +99,13 @@ def run(test, params, env):
         # Passed all test
         return True
 
-    vm_name = params.get("main_vm", "avocado-vt-vm1")
-    vm = env.get_vm(vm_name)
+    vm_name = []
+    # vm_name list:first element for original name in config
+    vm_name.append(params.get("main_vm", "avocado-vt-vm1"))
+    vm = env.get_vm(vm_name[0])
     options = params.get("if_options", "--config")
     start_vm = params.get("start_vm", "no")
+    domain = params.get("domain", "name")
     if_device = params.get("if_device", "net")
     if_name = params.get("if_name", "vnet0")
     if_operation = params.get("if_operation", "up")
@@ -113,7 +118,7 @@ def run(test, params, env):
 
     # Back up xml file.
     vm_xml_file = os.path.join(test.tmpdir, "vm.xml")
-    virsh.dumpxml(vm_name, extra="--inactive", to_file=vm_xml_file)
+    virsh.dumpxml(vm_name[0], extra="--inactive", to_file=vm_xml_file)
 
     # Vm status
     if start_vm == "yes" and vm.is_dead():
@@ -122,29 +127,59 @@ def run(test, params, env):
     elif start_vm == "no" and vm.is_alive():
         vm.destroy()
 
+    # vm_name list: second element for 'domain' in virsh command
+    if domain == "ID":
+        # Get ID for the running domain
+        vm_name.append(vm.get_id())
+    elif domain == "UUID":
+        # Get UUID for the domain
+        vm_name.append(vm.get_uuid())
+    elif domain == "no_match_UUID":
+        # Generate a random UUID
+        vm_name.append(uuid.uuid1())
+    elif domain == "no_match_name":
+        # Generate a random string as domain name
+        vm_name.append(utils_misc.generate_random_string(6))
+    elif domain == " ":
+        # Set domain name empty
+        vm_name.append("''")
+    else:
+        # Set domain name
+        vm_name.append(vm_name[0])
+
     try:
         # Test device net or mac address
         if if_device == "net" and vm.is_alive():
             device = if_name
             # Get all vm's interface device
-            device = vm_xml.VMXML.get_net_dev(vm_name)[0]
+            device = vm_xml.VMXML.get_net_dev(vm_name[0])[0]
 
         elif if_device == "mac":
             device = mac_address
 
+        # Test no exist device
+        if if_device == "no_exist_net":
+            device = "vnet-1"
+        elif if_device == "no_exist_mac":
+            # Generate random mac address for negative test
+            device = utils_net.VirtIface.complete_mac_address("01:02")
+        elif if_device == " ":
+            device = "''"
+
         # Setlink opertation
-        result = domif_setlink(vm_name, device, if_operation, options)
+        result = domif_setlink(vm_name[1], device, if_operation, options)
         status = result.exit_status
         logging.info("Setlink done")
 
         # Getlink opertation
-        get_result = domif_getlink(vm_name, device, options)
+        get_result = domif_getlink(vm_name[1], device, options)
         getlink_output = get_result.stdout.strip()
 
         # Check the getlink command output
-        if not re.search(if_operation, getlink_output) and status_error == "no":
-            raise error.TestFail("Getlink result should "
-                                 "equal with setlink operation ", getlink_output)
+        if status_error == "no":
+            if not re.search(if_operation, getlink_output):
+                raise error.TestFail("Getlink result should "
+                                     "equal with setlink operation")
 
         logging.info("Getlink done")
         # If --config is given should restart the vm then test link status
@@ -178,15 +213,13 @@ def run(test, params, env):
                     error_msg = "Check update_device failed"
 
             # Set the link up make host connect with vm
-            domif_setlink(vm_name, device, "up", "")
+            domif_setlink(vm_name[0], device, "up", "")
             if not guest_if_state(guest_if_name, session):
                 error_msg = "Link state isn't up in guest"
 
             # Ignore status of this one
-            cmd_status = session.cmd_status('ip link set dev %s down'
-                                            % guest_if_name)
-            cmd_status = session.cmd_status('ip link set dev %s up'
-                                            % guest_if_name)
+            cmd_status = session.cmd_status('ifdown %s' % guest_if_name)
+            cmd_status = session.cmd_status('ifup %s' % guest_if_name)
             if cmd_status != 0:
                 error_msg = ("Could not bring up interface %s inside guest"
                              % guest_if_name)
@@ -219,6 +252,6 @@ def run(test, params, env):
         # Recover VM.
         if vm.is_alive():
             vm.destroy(gracefully=False)
-        virsh.undefine(vm_name)
+        virsh.undefine(vm_name[0])
         virsh.define(vm_xml_file)
         os.remove(vm_xml_file)
