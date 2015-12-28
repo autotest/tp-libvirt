@@ -1,6 +1,7 @@
 import logging
 
 from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import libvirt_vm
 from virttest import libvirt_xml
@@ -29,7 +30,7 @@ def do_low_level_test(virsh_dargs, test_xml, options_ref, extra):
         # ignore_status==False
         virsh.net_create(alt_file, extra, **virsh_dargs)
         return True
-    except (error.CmdError), cmd_excpt:
+    except (process.CmdError), cmd_excpt:
         # CmdError catches failing virsh commands
         logging.debug("Exception-thrown: " + str(cmd_excpt))
         return False
@@ -61,7 +62,7 @@ def do_high_level_test(virsh_dargs, test_xml, net_name, net_uuid, bridge):
     try:
         test_netxml.create()
         return test_netxml.defined
-    except (IOError, error.CmdError), cmd_excpt:
+    except (IOError, process.CmdError), cmd_excpt:
         # CmdError catches failing virsh commands
         # IOError catches corrupt XML data
         logging.debug("Exception-thrown: " + str(cmd_excpt))
