@@ -76,13 +76,26 @@ def run(test, params, env):
     4) Check result.
     """
 
-    def vm_proc_meminfo(session):
+    def vm_usable_mem(session):
         """
-        Get guest total memory
+        Get total usable RAM from /proc/meminfo
         """
-        proc_meminfo = session.cmd_output("cat /proc/meminfo")
-        # verify format and units are expected
-        return int(re.search(r'MemTotal:\s+(\d+)\s+[kK]B', proc_meminfo).group(1))
+        cmd = "cat /proc/meminfo"
+        proc_mem = session.cmd_output(cmd)
+        total_usable_mem = re.search(r'MemTotal:\s+(\d+)\s+[kK]B',
+                                     proc_mem).group(1)
+        return int(total_usable_mem)
+
+    def vm_unusable_mem(session):
+        """
+        Get the unusable RAM of the VM.
+        """
+        # Get total physical memory from dmidecode
+        cmd = "dmidecode -t 17"
+        dmi_mem = session.cmd_output(cmd)
+        total_physical_mem = reduce(lambda x, y: int(x) + int(y),
+                                    re.findall(r'Size:\s(\d+)\sMB', dmi_mem))
+        return int(total_physical_mem) * 1024 - vm_usable_mem(session)
 
     def make_domref(domarg, vm_ref, domid, vm_name, domuuid):
         """
@@ -160,24 +173,27 @@ def run(test, params, env):
 
     def print_debug_stats(original_inside_mem, original_outside_mem,
                           test_inside_mem, test_outside_mem,
-                          expected_mem, delta_percentage):
+                          expected_mem, expected_inside_mem,
+                          delta_percentage, unusable_mem):
         """
         Print debug message for test
         """
         # Calculate deviation
-        inside_deviation = cal_deviation(test_inside_mem, expected_mem)
+        inside_deviation = cal_deviation(test_inside_mem, expected_inside_mem)
         outside_deviation = cal_deviation(test_outside_mem, expected_mem)
-        dbgmsg = ("Original inside mem  : %d KiB\n"
-                  "Expected inside mem  : %d KiB\n"
-                  "Actual inside mem    : %d KiB\n"
-                  "Inside mem deviation : %0.2f%%\n"
-                  "Original outside mem : %d KiB\n"
-                  "Expected outside mem : %d KiB\n"
-                  "Actual outside mem   : %d KiB\n"
-                  "Outside mem deviation: %0.2f%%\n"
-                  "Acceptable deviation %0.2f%%" % (
+        dbgmsg = ("Unusable memory of VM   : %d KiB\n"
+                  "Original inside memory  : %d KiB\n"
+                  "Expected inside memory  : %d KiB\n"
+                  "Actual inside memory    : %d KiB\n"
+                  "Inside memory deviation : %0.2f%%\n"
+                  "Original outside memory : %d KiB\n"
+                  "Expected outside memory : %d KiB\n"
+                  "Actual outside memory   : %d KiB\n"
+                  "Outside memory deviation: %0.2f%%\n"
+                  "Acceptable deviation    : %0.2f%%" % (
+                      unusable_mem,
                       original_inside_mem,
-                      expected_mem,
+                      expected_inside_mem,
                       test_inside_mem,
                       inside_deviation,
                       original_outside_mem,
@@ -256,28 +272,23 @@ def run(test, params, env):
                 logging.error("Fail to remove module virtio_balloon in guest:\n%s",
                               o_rmmod)
             session.close()
-
-    if start_vm:
-        if not vm.is_alive():
-            vm.start()
-        if paused_after_start_vm:
-            vm.resume()
-        session = vm.wait_for_login()
-        original_inside_mem = vm_proc_meminfo(session)
-        session.close()
-        if paused_after_start_vm:
-            vm.pause()
-        original_outside_mem = vm.get_used_mem()
-    else:
-        if vm.is_alive():
-            vm.destroy()
-        # Retrieve known mem value, convert into kilobytes
-        original_inside_mem = int(params.get("mem", "1024")) * 1024
-        original_outside_mem = original_inside_mem
+    # Get original data
     domid = vm.get_id()
     domuuid = vm.get_uuid()
     uri = vm.connect_uri
-
+    if not vm.is_alive():
+        vm.start()
+    session = vm.wait_for_login()
+    unusable_mem = vm_unusable_mem(session)
+    original_outside_mem = vm.get_used_mem()
+    original_inside_mem = vm_usable_mem(session)
+    session.close()
+    # Prepare VM state
+    if not start_vm:
+        vm.destroy()
+    else:
+        if paused_after_start_vm:
+            vm.pause()
     old_libvirt = is_old_libvirt()
     if old_libvirt:
         logging.info("Running test on older libvirt")
@@ -346,7 +357,7 @@ def run(test, params, env):
                 session = vm.wait_for_login()
 
                 # Actual results
-                test_inside_mem = vm_proc_meminfo(session)
+                test_inside_mem = vm_usable_mem(session)
                 session.close()
                 test_outside_mem = vm.get_used_mem()
 
@@ -360,16 +371,19 @@ def run(test, params, env):
                     expected_mem = int(dargs["sizearg"])
                 else:
                     expected_mem = int(dargs["size"])
+            # Should minus unusable memory for inside memory check
+            expected_inside_mem = expected_mem - unusable_mem
 
             print_debug_stats(original_inside_mem, original_outside_mem,
                               test_inside_mem, test_outside_mem,
-                              expected_mem, delta_percentage)
+                              expected_mem, expected_inside_mem,
+                              delta_percentage, unusable_mem)
 
             # Don't care about memory comparison on error test
             outside_pass = cal_deviation(test_outside_mem,
                                          expected_mem) <= delta_percentage
             inside_pass = cal_deviation(test_inside_mem,
-                                        expected_mem) <= delta_percentage
+                                        expected_inside_mem) <= delta_percentage
             if status is not 0 or not outside_pass or not inside_pass:
                 msg = "test conditions not met: "
                 if status is not 0:
