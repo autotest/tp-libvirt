@@ -72,6 +72,10 @@ def run(test, params, env):
             for src_disk_xml in disks:
                 disk_xml = snap_xml.SnapDiskXML()
                 disk_xml.xmltreefile = src_disk_xml.xmltreefile
+
+                # Skip cdrom
+                if disk_xml.device == "cdrom":
+                    continue
                 del disk_xml.device
                 del disk_xml.address
                 disk_xml.snapshot = "external"
