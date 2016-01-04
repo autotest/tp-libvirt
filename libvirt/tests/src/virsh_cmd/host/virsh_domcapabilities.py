@@ -32,23 +32,23 @@ def run(test, params, env):
         capa_xml = capability_xml.CapabilityXML()
         guest_capa = capa_xml.get_guest_capabilities()
         for arch_prop in guest_capa.values():
-            arch = arch_prop.keys()[0]
-            machine_list = arch_prop[arch]['machine']
-            virttype_list = []
-            emulatorbin_list = [arch_prop[arch]['emulator']]
-            for key in arch_prop[arch].keys():
-                if key.startswith("domain_"):
-                    virttype_list.append(key[7:])
-                    if arch_prop[arch][key].values():
-                        emulatorbin_list.append(arch_prop[arch][key]['emulator'])
-            for virttype in virttype_list:
-                for emulatorbin in emulatorbin_list:
-                    for machine in machine_list:
-                        option_dict = {'arch': arch,
-                                       'virttype': virttype,
-                                       'emulatorbin': emulatorbin,
-                                       'machine': machine}
-                        options_list.append(option_dict)
+            for arch in arch_prop.keys():
+                machine_list = arch_prop[arch]['machine']
+                virttype_list = []
+                emulatorbin_list = [arch_prop[arch]['emulator']]
+                for key in arch_prop[arch].keys():
+                    if key.startswith("domain_"):
+                        virttype_list.append(key[7:])
+                        if arch_prop[arch][key].values():
+                            emulatorbin_list.append(arch_prop[arch][key]['emulator'])
+                for virttype in virttype_list:
+                    for emulatorbin in emulatorbin_list:
+                        for machine in machine_list:
+                            option_dict = {'arch': arch,
+                                           'virttype': virttype,
+                                           'emulatorbin': emulatorbin,
+                                           'machine': machine}
+                            options_list.append(option_dict)
 
     # Run test cases
     for option in options_list:
