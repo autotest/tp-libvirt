@@ -1,5 +1,7 @@
 import re
+import os
 import ast
+import shutil
 import logging
 from autotest.client.shared import error
 from autotest.client import utils
@@ -205,7 +207,7 @@ def run(test, params, env):
             rate_real = float(ret.group(1)) / float(ret.group(2))
             logging.debug("Find rate: %s, config rate: %s",
                           rate_real, rate_conf)
-            if rate_real > rate_conf:
+            if rate_real > rate_conf * 1.2:
                 raise error.TestFail("The rate of reading exceed"
                                      " the limitation of configuration")
         if device_num > 1:
@@ -241,6 +243,21 @@ def run(test, params, env):
     # Try to install rng-tools on host, it can speed up random rate
     # if installation failed, ignore the error and continue the test
     if utils_misc.yum_install(["rng-tools"], timeout=300):
+        rngd_conf = "/etc/sysconfig/rngd"
+        rngd_srv = "/usr/lib/systemd/system/rngd.service"
+        if os.path.exists(rngd_conf):
+            # For rhel6 host, add extraoptions
+            with open(rngd_conf, 'w') as f_rng:
+                f_rng.write('EXTRAOPTIONS="--rng-device /dev/urandom"')
+        elif os.path.exists(rngd_srv):
+            # For rhel7 host, modify start options
+            rngd_srv_conf = "/etc/systemd/system/rngd.service"
+            if not os.path.exists(rngd_srv_conf):
+                shutil.copy(rngd_srv, rngd_srv_conf)
+            utils.run("sed -i -e 's#^ExecStart=.*#ExecStart=/sbin/rngd"
+                      " -f -r /dev/urandom -o /dev/random#' %s"
+                      % rngd_srv_conf)
+            utils.run('systemctl daemon-reload')
         utils.run("service rngd start")
 
     # Build the xml and run test.
@@ -313,7 +330,9 @@ def run(test, params, env):
             if start_error:
                 pass
             else:
-                raise error.TestFail('VM Failed to start for some reason!')
+                raise error.TestFail('VM Failed to start for some reason,'
+                                     'please refer to https://bugzilla.'
+                                     'redhat.com/show_bug.cgi?id=1220252')
 
     finally:
         # Delete snapshots.
