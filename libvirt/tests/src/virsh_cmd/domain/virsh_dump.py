@@ -11,6 +11,7 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_config
 from virttest.libvirt_xml import vm_xml
+from virttest import data_dir
 
 from provider import libvirt_version
 
@@ -103,7 +104,7 @@ def run(test, params, env):
     options = params.get("dump_options")
     dump_file = params.get("dump_file", "vm.core")
     if os.path.dirname(dump_file) is "":
-        dump_file = os.path.join(test.tmpdir, dump_file)
+        dump_file = os.path.join(data_dir.get_tmp_dir(), dump_file)
     dump_image_format = params.get("dump_image_format")
     start_vm = params.get("start_vm") == "yes"
     paused_after_start_vm = params.get("paused_after_start_vm") == "yes"
