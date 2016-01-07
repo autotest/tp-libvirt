@@ -162,7 +162,7 @@ def run(test, params, env):
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-
+    mnt_src = ""
     try:
         # Build new vm xml.
         if pm_enabled:
@@ -176,6 +176,7 @@ def run(test, params, env):
             # Setup glusterfs and disk xml.
             disk_img = "gluster.%s" % disk_format
             host_ip = prepare_gluster_disk(disk_img, disk_format)
+            mnt_src = "%s:%s" % (host_ip, vol_name)
             build_disk_xml(disk_img, disk_format, host_ip)
 
         # Turn VM into certain state.
@@ -219,7 +220,7 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
         logging.info("Restoring vm...")
         vmxml_backup.sync()
-        if default_pool:
+        if utils_misc.is_mounted(mnt_src, default_pool, 'glusterfs'):
             utils.run("umount %s" % default_pool)
         if gluster_disk:
             libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
