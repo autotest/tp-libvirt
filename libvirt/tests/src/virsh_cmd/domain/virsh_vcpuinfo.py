@@ -2,6 +2,8 @@ import logging
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import virsh
 from virttest import utils_libvirtd
 
@@ -62,7 +64,7 @@ def run(test, params, env):
             vcback.close_session()
             if status != 0:
                 err = output
-        except error.CmdError:
+        except process.CmdError:
             status = 1
             output = ""
             err = "remote test failed"

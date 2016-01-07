@@ -1,5 +1,7 @@
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import remote
@@ -65,7 +67,7 @@ def run(test, params, env):
                                                         extra)
             status = session.cmd_status(command, internal_timeout=5)
             session.close()
-        except error.CmdError:
+        except process.CmdError:
             status = 1
 
     # recover libvirtd service start

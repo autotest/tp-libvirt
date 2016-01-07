@@ -3,6 +3,8 @@ import re
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import virt_vm
 from virttest import virsh
 
@@ -23,7 +25,7 @@ def run(test, params, env):
         for snap in snaps:
             try:
                 virsh.snapshot_delete(vm, snap)
-            except error.CmdError:
+            except process.CmdError:
                 logging.debug("Can not remove snapshot %s.", snap)
                 remove_failed = remove_failed + 1
 
@@ -136,7 +138,7 @@ def run(test, params, env):
             check_info(infos["Descendants"], sni["Descendants"],
                        "Incorrect descendants count")
 
-        except error.CmdError:
+        except process.CmdError:
             handle_error("Failed getting snapshots info", vm_name)
         except error.TestFail, e:
             handle_error(str(e), vm_name)
@@ -163,7 +165,7 @@ def run(test, params, env):
             session = vm.wait_for_login()
             test_file(session, sni["to_create"], 0)
             test_file(session, sni["to_delete"], 2)
-        except error.CmdError:
+        except process.CmdError:
             handle_error("Failed to revert snapshot", vm_name)
         except (error.TestFail, virt_vm.VMDeadError), e:
             handle_error(str(e), vm_name)

@@ -57,7 +57,7 @@ def prepare_vm_state(vm, vm_state):
             except (ShellTimeoutError, ShellProcessTerminatedError):
                 pass
             session.close()
-        except error.CmdError, e:
+        except Exception, e:
             logging.error("Crash domain failed: %s", e)
     else:
         logging.error("Unknown state for this test")

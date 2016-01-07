@@ -5,6 +5,8 @@ from xml.dom.minidom import parse
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import remote
 from virttest import virsh
 from virttest import libvirt_vm
@@ -33,7 +35,7 @@ def remote_test(remote_ip, local_ip, remote_pwd, remote_prompt,
         session.close()
         if status != 0:
             err = output
-    except error.CmdError:
+    except process.CmdError:
         status = 1
         err = "remote test failed"
     return status, status_error, err

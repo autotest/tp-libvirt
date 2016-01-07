@@ -6,6 +6,8 @@ from aexpect import ShellTimeoutError
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import data_dir
 from virttest import virsh
 from virttest import utils_misc
@@ -91,7 +93,7 @@ def run(test, params, env):
 
                     result = virsh.qemu_monitor_command(vm_name, attach_cmd, options=opt)
                     if result.exit_status or (result.stdout.find("OK") == -1):
-                        raise error.CmdError(result.command, result)
+                        raise process.CmdError(result.command, result)
 
                     attach_cmd = "device_add usb-storage,"
                     attach_cmd += ("id=drive-usb-%s,bus=usb1.0,drive=drive-usb-%s" % (i, i))
@@ -101,7 +103,7 @@ def run(test, params, env):
 
                 result = virsh.qemu_monitor_command(vm_name, attach_cmd, options=opt)
                 if result.exit_status:
-                    raise error.CmdError(result.command, result)
+                    raise process.CmdError(result.command, result)
             else:
                 attributes = {'type_name': "usb", 'bus': "1", 'port': "0"}
                 if usb_type == "storage":
@@ -124,7 +126,7 @@ def run(test, params, env):
 
                 result = virsh.attach_device(vm_name, dev_xml.xml)
                 if result.exit_status:
-                    raise error.CmdError(result.command, result)
+                    raise process.CmdError(result.command, result)
 
         if status_error and usb_type == "storage":
             if utils_misc.wait_for(is_hotplug_ok, timeout=30):
@@ -148,12 +150,12 @@ def run(test, params, env):
 
                 result = virsh.qemu_monitor_command(vm_name, attach_cmd, options=opt)
                 if result.exit_status:
-                    raise error.CmdError(result.command, result)
+                    raise process.CmdError(result.command, result)
             else:
                 result = virsh.detach_device(vm_name, dev_xml.xml)
                 if result.exit_status:
-                    raise error.CmdError(result.command, result)
-    except error.CmdError, e:
+                    raise process.CmdError(result.command, result)
+    except process.CmdError, e:
         if not status_error:
             # live attach of device 'input' is not supported
             ret = result.stderr.find("Operation not supported")

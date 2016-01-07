@@ -4,7 +4,8 @@ import logging
 import aexpect
 
 from autotest.client.shared import error
-from autotest.client import utils
+
+from avocado.utils import process
 
 from virttest import libvirt_vm
 from virttest import virsh
@@ -154,7 +155,7 @@ def run(test, params, env):
                 cmd_undefine = "virsh -c %s undefine %s" % (uri, vm_name)
                 status, output = session.cmd_status_output(cmd_undefine)
                 logging.info("Undefine output: %s", output)
-            except (error.CmdError, remote.LoginError, aexpect.ShellError), de:
+            except (process.CmdError, remote.LoginError, aexpect.ShellError), de:
                 logging.error("Detail: %s", de)
                 status = 1
 
@@ -167,7 +168,7 @@ def run(test, params, env):
             try:
                 if vm.is_alive():
                     vm.destroy(gracefully=False)
-            except error.CmdError, detail:
+            except process.CmdError, detail:
                 logging.error("Detail: %s", detail)
 
         # Check if VM exists.
@@ -197,7 +198,7 @@ def run(test, params, env):
             if virsh.domain_exists(vm.name):
                 virsh.undefine(vm_ref, ignore_status=True)
             cmd = "chmod 666 %s" % backup_xml.xml
-            utils.run(cmd, ignore_status=False)
+            process.run(cmd, ignore_status=False, shell=True)
             s_define = virsh.define(backup_xml.xml,
                                     unprivileged_user=unprivileged_user,
                                     uri=uri, ignore_status=True, debug=True)

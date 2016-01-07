@@ -2,6 +2,8 @@ import re
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import virsh
 
 from provider import libvirt_version
@@ -59,7 +61,7 @@ def run(test, params, env):
         else:
             if network_status == "inactive":
                 virsh.net_destroy(network_name)
-    except error.CmdError:
+    except process.CmdError:
         raise error.TestError("Prepare network status failed!")
 
     status = virsh.net_destroy(net_ref, extra, uri=uri, debug=True,
@@ -78,7 +80,7 @@ def run(test, params, env):
         if (network_current_status == "inactive" and
                 virsh.net_state_dict()[network_name]['active']):
             virsh.net_destroy(network_name)
-    except error.CmdError:
+    except process.CmdError:
         raise error.TestError("Recover network status failed!")
 
     # Check status_error

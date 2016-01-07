@@ -1,8 +1,9 @@
 import os
 import logging
 
-from autotest.client import utils
 from autotest.client.shared import error
+
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import libvirt_storage
@@ -147,7 +148,7 @@ def run(test, params, env):
         else:
             logging.error(unsupport_err)
             return
-        rst = utils.run(process_vol_cmd, ignore_status=True)
+        rst = process.run(process_vol_cmd, ignore_status=True, shell=True)
         if rst.exit_status:
             if "Snapshots of snapshots are not supported" in rst.stderr:
                 logging.debug("%s is already a snapshot volume", ori_vol_path)
@@ -218,7 +219,8 @@ def run(test, params, env):
                 newvol = volxml.new_vol(**vol_arg)
                 vol_xml = newvol['xml']
                 if params.get('setup_libvirt_polkit') == 'yes':
-                    utils.run("chmod 666 %s" % vol_xml, ignore_status=True)
+                    process.run("chmod 666 %s" % vol_xml, ignore_status=True,
+                                shell=True)
 
                 # Run virsh_vol_create to create vol
                 logging.debug("Create volume from XML: %s" % newvol.xmltreefile)
@@ -257,7 +259,7 @@ def run(test, params, env):
                 try:
                     virsh.pool_refresh(src_pool_name, ignore_status=False)
                     check_vol(src_pool_name, process_vol, expect_vol_exist)
-                except (error.CmdError, error.TestFail), e:
+                except (process.CmdError, error.TestFail), e:
                     if process_vol_type == "thin":
                         logging.error(e)
                         raise error.TestNAError("You may encounter bug BZ#1060287")
@@ -272,7 +274,7 @@ def run(test, params, env):
         # lv snapshot, so before destroy the pool, we need activate it manually
         if src_pool_type == 'logical' and vol_path_list:
             vg_name = vol_path_list[0].split('/')[2]
-            utils.run("lvchange -ay %s" % vg_name)
+            process.run("lvchange -ay %s" % vg_name, shell=True)
         try:
             pvt.cleanup_pool(src_pool_name, src_pool_type, src_pool_target,
                              src_emulated_image)

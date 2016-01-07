@@ -5,6 +5,8 @@ import time
 from autotest.client.shared import error
 from autotest.client.shared import ssh_key
 
+from avocado.utils import process
+
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import remote
@@ -126,8 +128,8 @@ def thread_func_migration(virsh_instance, cmd):
     global ret_migration
     # Migrate the domain.
     try:
-        result = virsh_instance.command(cmd, ignore_status=False)
-    except error.CmdError, detail:
+        virsh_instance.command(cmd, ignore_status=False)
+    except process.CmdError, detail:
         logging.error("Migration with %s failed:\n%s" % (cmd, detail))
         ret_migration = False
 

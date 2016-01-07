@@ -4,6 +4,8 @@ import commands
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import data_dir
@@ -33,7 +35,7 @@ def cleanup_vm(vm_name=None, disk_removed=None):
     try:
         if vm_name is not None:
             virsh.undefine(vm_name)
-    except error.CmdError:
+    except process.CmdError:
         pass
     try:
         if disk_removed is not None:

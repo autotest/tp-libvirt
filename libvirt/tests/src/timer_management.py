@@ -9,6 +9,8 @@ import time
 from autotest.client import utils
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import utils_test
 from virttest import virsh
 from virttest import data_dir
@@ -253,7 +255,7 @@ def manipulate_vm(vm, operation, params=None):
             try:
                 inject_times -= 1
                 virsh.inject_nmi(vm.name, debug=True, ignore_status=False)
-            except error.CmdError, detail:
+            except process.CmdError, detail:
                 err_msg = "Inject nmi failed: %s" % detail
     elif operation == "dump":
         dump_times = int(params.get("dump_times", 10))
@@ -263,7 +265,7 @@ def manipulate_vm(vm, operation, params=None):
             dump_path = os.path.join(data_dir.get_tmp_dir(), "dump.file")
             try:
                 virsh.dump(vm.name, dump_path, debug=True, ignore_status=False)
-            except (error.CmdError, OSError), detail:
+            except (process.CmdError, OSError), detail:
                 err_msg = "Dump %s failed: %s" % (vm.name, detail)
             try:
                 os.remove(dump_path)
@@ -277,7 +279,7 @@ def manipulate_vm(vm, operation, params=None):
             try:
                 virsh.suspend(vm.name, debug=True, ignore_status=False)
                 virsh.resume(vm.name, debug=True, ignore_status=False)
-            except error.CmdError, detail:
+            except process.CmdError, detail:
                 err_msg = "Suspend-Resume %s failed: %s" % (vm.name, detail)
     elif operation == "save_restore":
         save_times = int(params.get("save_times", 10))
@@ -289,7 +291,7 @@ def manipulate_vm(vm, operation, params=None):
                 virsh.save(vm.name, save_path, debug=True,
                            ignore_status=False)
                 virsh.restore(save_path, debug=True, ignore_status=False)
-            except error.CmdError, detail:
+            except process.CmdError, detail:
                 err_msg = "Save-Restore %s failed: %s" % (vm.name, detail)
             try:
                 os.remove(save_path)

@@ -2,10 +2,10 @@ import logging
 import re
 
 from autotest.client import os_dep
-from autotest.client.shared import utils
 from autotest.client.shared import error
 
 from avocado.utils import path as utils_path
+from avocado.utils import process
 
 from virttest import libvirt_vm
 from virttest import virsh
@@ -34,7 +34,7 @@ def run(test, params, env):
         # Check the host arch.
         xml_arch = cap_xml.arch
         logging.debug("Host arch (capabilities_xml): %s", xml_arch)
-        exp_arch = utils.run("arch", ignore_status=True).stdout.strip()
+        exp_arch = process.run("arch", shell=True).stdout.strip()
         if cmp(xml_arch, exp_arch) != 0:
             raise error.TestFail("The host arch in capabilities_xml is expected"
                                  " to be %s, but get %s" % (exp_arch, xml_arch))
@@ -43,7 +43,7 @@ def run(test, params, env):
         xml_cpu_count = cap_xml.cpu_count
         logging.debug("Host cpus count (capabilities_xml): %s", xml_cpu_count)
         cmd = "grep processor /proc/cpuinfo | wc -l"
-        exp_cpu_count = int(utils.run(cmd, ignore_status=True).stdout.strip())
+        exp_cpu_count = int(process.run(cmd, shell=True).stdout.strip())
         if xml_cpu_count != exp_cpu_count:
             raise error.TestFail("Host cpus count is expected to be %s, but get "
                                  "%s" % (exp_cpu_count, xml_cpu_count))
@@ -55,11 +55,11 @@ def run(test, params, env):
             img = utils_path.find_command("qemu-kvm")
         except utils_path.CmdNotFoundError:
             raise error.TestNAError("Cannot find qemu-kvm")
-        if re.search("ppc", utils.run("arch").stdout):
+        if re.search("ppc", process.run("arch", shell=True).stdout):
             cmd = img + " --cpu ? | grep ppc"
         else:
             cmd = img + " --cpu ? | grep qemu"
-        cmd_result = utils.run(cmd, ignore_status=True)
+        cmd_result = process.run(cmd, shell=True)
         for guest in cap_xml.xmltreefile.findall('guest'):
             guest_wordsize = guest.find('arch').find('wordsize').text
             logging.debug("Arch of guest supported (capabilities_xml):%s",
@@ -73,7 +73,7 @@ def run(test, params, env):
         first_domain = first_guest.find('arch').findall('domain')[0]
         guest_domain_type = first_domain.get('type')
         logging.debug("Hypervisor (capabilities_xml):%s", guest_domain_type)
-        cmd_result = utils.run("virsh uri", ignore_status=True)
+        cmd_result = process.run("virsh uri", shell=True)
         if not re.search(guest_domain_type, cmd_result.stdout.strip()):
             raise error.TestFail("The capabilities_xml gives an different "
                                  "hypervisor")
@@ -88,7 +88,7 @@ def run(test, params, env):
             exp_pms = []
             for opt in pm_cap_map:
                 cmd = '%s --%s' % (pm_cmd, opt)
-                res = utils.run(cmd, ignore_status=True)
+                res = process.run(cmd, ignore_status=True, shell=True)
                 if res.exit_status == 0:
                     exp_pms.append(pm_cap_map[opt])
             pms = cap_xml.power_management_list
@@ -114,7 +114,7 @@ def run(test, params, env):
         output = virsh.capabilities(option, uri=connect_uri,
                                     ignore_status=False, debug=True)
         status = 0  # good
-    except error.CmdError:
+    except process.CmdError:
         status = 1  # bad
         output = ''
 

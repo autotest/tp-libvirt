@@ -1,8 +1,9 @@
 import re
 import logging
 
-from autotest.client.shared import utils
 from autotest.client.shared import error
+
+from avocado.utils import process
 
 from virttest import virt_vm
 from virttest import libvirt_xml
@@ -359,6 +360,6 @@ def run(test, params, env):
             libvirtd.restart()
             for mt_path in mount_path:
                 try:
-                    utils.system("umount %s" % mt_path)
-                except error.CmdError:
+                    process.run("umount %s" % mt_path, shell=True)
+                except process.CmdError:
                     logging.warning("umount %s failed" % mt_path)

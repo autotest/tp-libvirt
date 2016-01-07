@@ -5,6 +5,8 @@ import threading
 from autotest.client.shared import error
 from autotest.client.shared import ssh_key
 
+from avocado.utils import process
+
 from virttest import utils_test
 from virttest import libvirt_vm
 from virttest import virsh
@@ -88,7 +90,7 @@ def copied_migration(vm, params, blockjob_type=None, block_target="vda"):
         elif blockjob_type == "complete":
             virsh.qemu_monitor_command(vm.name, complete_cmd, debug=True,
                                        ignore_status=False)
-    except error.CmdError, detail:
+    except process.CmdError, detail:
         blockjob_failures.append(str(detail))
 
     # Job info FYI

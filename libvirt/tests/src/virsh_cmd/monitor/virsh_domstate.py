@@ -7,7 +7,8 @@ from aexpect import ShellTimeoutError
 from aexpect import ShellProcessTerminatedError
 
 from autotest.client.shared import error
-from autotest.client.shared import utils
+
+from avocado.utils import process
 
 from virttest import libvirt_vm
 from virttest import remote
@@ -54,7 +55,7 @@ def check_crash_state(cmd_output, crash_action, dump_file=""):
     if cmd_output.strip() == expect_output:
         crash_state = True
     if dump_file:
-        result = utils.run("ls %s" % dump_file, ignore_status=True)
+        result = process.run("ls %s" % dump_file, ignore_status=True, shell=True)
         if result.exit_status == 0:
             logging.debug("Find the auto dump core file:\n%s", result.stdout)
             find_dump_file = True
@@ -102,7 +103,7 @@ def run(test, params, env):
     backup_xml = vmxml.copy()
 
     # Back up qemu.conf
-    utils.run("cp %s %s" % (QEMU_CONF, QEMU_CONF_BK))
+    process.run("cp %s %s" % (QEMU_CONF, QEMU_CONF_BK), shell=True)
 
     dump_path = os.path.join(test.tmpdir, "dump/")
     dump_file = ""
@@ -121,7 +122,7 @@ def run(test, params, env):
             # Config auto_dump_path in qemu.conf
             cmd = "echo auto_dump_path = \\\"%s\\\" >> %s" % (dump_path,
                                                               QEMU_CONF)
-            utils.run(cmd)
+            process.run(cmd, shell=True)
             libvirtd_service.restart()
             if vm_oncrash_action in ['coredump-destroy', 'coredump-restart']:
                 dump_file = dump_path + vm_name + "-*"
@@ -168,7 +169,7 @@ def run(test, params, env):
                 except (ShellTimeoutError, ShellProcessTerminatedError):
                     pass
                 session.close()
-        except error.CmdError, e:
+        except process.CmdError, e:
             raise error.TestError("Guest prepare action error: %s" % e)
 
         if libvirtd == "off":
@@ -190,7 +191,7 @@ def run(test, params, env):
                 status, output = session.cmd_status_output(command,
                                                            internal_timeout=5)
                 session.close()
-            except error.CmdError:
+            except process.CmdError:
                 status = 1
         else:
             result = virsh.domstate(vm_ref, extra, ignore_status=True,
@@ -237,7 +238,7 @@ def run(test, params, env):
         if libvirtd == "off":
             utils_libvirtd.libvirtd_start()
         # Recover VM
-        utils.run("mv -f %s %s" % (QEMU_CONF_BK, QEMU_CONF))
+        process.run("mv -f %s %s" % (QEMU_CONF_BK, QEMU_CONF), shell=True)
         vm.destroy(gracefully=False)
         backup_xml.sync()
         if os.path.exists(dump_path):

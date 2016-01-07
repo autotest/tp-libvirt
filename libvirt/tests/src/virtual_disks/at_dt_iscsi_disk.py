@@ -7,6 +7,8 @@ from aexpect import ShellError
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import virsh
 from virttest.remote import LoginError
 from virttest.virt_vm import VMError
@@ -195,12 +197,12 @@ def run(test, params, env):
 
             try:
                 virsh.snapshot_list(vm_name, **virsh_dargs)
-            except error.CmdError:
+            except process.CmdError:
                 error.TestFail("Failed getting snapshots list for %s", vm_name)
 
             try:
                 virsh.snapshot_info(vm_name, snapshot_name1, **virsh_dargs)
-            except error.CmdError:
+            except process.CmdError:
                 error.TestFail("Failed getting snapshots info for %s", vm_name)
 
             cmd_result = virsh.snapshot_dumpxml(vm_name, snapshot_name1,
