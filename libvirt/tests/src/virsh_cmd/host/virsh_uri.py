@@ -41,16 +41,14 @@ def run(test, params, env):
 
     # Run test case
     logging.info("The command: %s", cmd)
-    try:
-        if remote_ref == "remote":
-            connect_uri = target_uri
-        uri_test = virsh.canonical_uri(option, uri=connect_uri,
-                                       ignore_status=False,
-                                       debug=True)
-        status = 0  # good
-    except error.CmdError:
-        status = 1  # bad
-        uri_test = ''
+    if remote_ref == "remote":
+        connect_uri = target_uri
+    uri_test = virsh.canonical_uri(option, uri=connect_uri,
+                                   ignore_status=True,
+                                   debug=True)
+    status = 0
+    if uri_test == '':
+        status = 1
 
     # Recover libvirtd service start
     if libvirtd == "off":
