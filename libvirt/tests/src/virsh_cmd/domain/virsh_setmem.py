@@ -371,8 +371,11 @@ def run(test, params, env):
                     expected_mem = int(dargs["sizearg"])
                 else:
                     expected_mem = int(dargs["size"])
-            # Should minus unusable memory for inside memory check
-            expected_inside_mem = expected_mem - unusable_mem
+            if memory_change:
+                # Should minus unusable memory for inside memory check
+                expected_inside_mem = expected_mem - unusable_mem
+            else:
+                expected_inside_mem = expected_mem
 
             print_debug_stats(original_inside_mem, original_outside_mem,
                               test_inside_mem, test_outside_mem,
