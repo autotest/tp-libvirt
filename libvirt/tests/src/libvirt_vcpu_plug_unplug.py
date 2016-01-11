@@ -170,8 +170,7 @@ def manipulate_domain(vm_name, vm_operation, recover=False):
     """
     Operate domain to given state or recover it.
     """
-    tmpdir = os.path.join(data_dir.get_root_dir(), 'tmp')
-    save_file = os.path.join(tmpdir, vm_name + ".save")
+    save_file = os.path.join(data_dir.get_tmp_dir(), vm_name + ".save")
     if not recover:
         if vm_operation == "save":
             save_option = ""
