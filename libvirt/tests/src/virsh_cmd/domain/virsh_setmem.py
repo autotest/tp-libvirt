@@ -173,14 +173,14 @@ def run(test, params, env):
 
     def print_debug_stats(original_inside_mem, original_outside_mem,
                           test_inside_mem, test_outside_mem,
-                          expected_mem, expected_inside_mem,
+                          expected_outside_mem, expected_inside_mem,
                           delta_percentage, unusable_mem):
         """
         Print debug message for test
         """
         # Calculate deviation
         inside_deviation = cal_deviation(test_inside_mem, expected_inside_mem)
-        outside_deviation = cal_deviation(test_outside_mem, expected_mem)
+        outside_deviation = cal_deviation(test_outside_mem, expected_outside_mem)
         dbgmsg = ("Unusable memory of VM   : %d KiB\n"
                   "Original inside memory  : %d KiB\n"
                   "Expected inside memory  : %d KiB\n"
@@ -197,7 +197,7 @@ def run(test, params, env):
                       test_inside_mem,
                       inside_deviation,
                       original_outside_mem,
-                      expected_mem,
+                      expected_outside_mem,
                       test_outside_mem,
                       outside_deviation,
                       delta_percentage))
@@ -374,17 +374,19 @@ def run(test, params, env):
             if memory_change:
                 # Should minus unusable memory for inside memory check
                 expected_inside_mem = expected_mem - unusable_mem
+                expected_outside_mem = expected_mem
             else:
                 expected_inside_mem = expected_mem
+                expected_outside_mem = original_outside_mem
 
             print_debug_stats(original_inside_mem, original_outside_mem,
                               test_inside_mem, test_outside_mem,
-                              expected_mem, expected_inside_mem,
+                              expected_outside_mem, expected_inside_mem,
                               delta_percentage, unusable_mem)
 
             # Don't care about memory comparison on error test
             outside_pass = cal_deviation(test_outside_mem,
-                                         expected_mem) <= delta_percentage
+                                         expected_outside_mem) <= delta_percentage
             inside_pass = cal_deviation(test_inside_mem,
                                         expected_inside_mem) <= delta_percentage
             if status is not 0 or not outside_pass or not inside_pass:
