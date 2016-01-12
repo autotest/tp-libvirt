@@ -6,6 +6,7 @@ import re
 import pwd
 import logging
 import shutil
+import time
 
 from autotest.client import utils
 from autotest.client.shared import ssh_key
@@ -15,6 +16,7 @@ from virttest import virsh
 from virttest import utils_v2v
 from virttest import utils_misc
 from virttest import utils_sasl
+from virttest import libvirt_vm
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
@@ -52,13 +54,20 @@ def run(test, params, env):
     vdsm_ovf_output = params.get("vdsm_ovf_output")
     v2v_user = params.get("unprivileged_user", "")
     v2v_timeout = int(params.get("v2v_timeout", 1200))
+    vm_user = params.get("vm_user")
+    vm_pwd = params.get("vm_pwd")
     status_error = "yes" == params.get("status_error", "no")
+    multi_kernel = 'yes' == params.get('multi_kernel', 'no')
+    debug_kernel = 'yes' == params.get('debug_kernel', 'no')
+    check_v2v_out = 'yes' == params.get('check_v2v_out', 'no')
+
     for param in [vm_name, remote_host, esx_ip, vpx_dc, ovirt_engine_url,
                   ovirt_engine_user, ovirt_engine_passwd, output_storage,
                   export_name, storage_name, disk_img, export_domain_uuid,
                   v2v_user]:
         if "EXAMPLE" in param:
-            raise error.TestNAError("Please replace %s with real value" % param)
+            raise error.TestNAError("Please replace %s with real value" %
+                                    param)
 
     su_cmd = "su - %s -c " % v2v_user
     output_uri = params.get("oc_uri", "")
@@ -270,6 +279,153 @@ def run(test, params, env):
         else:
             raise error.TestFail("Disk counts is wrong")
 
+    def install_kernel(session, url=None, debug=False):
+        if debug:
+            if session.cmd_status('yum -y install kernel-debug', timeout=600):
+                raise error.TestFail("Fail on installing debug kernel")
+            else:
+                logging.info('install debug kernel success')
+            return 'kernel-debug'
+
+        # Check if kernel already exists
+        kernels = session.cmd('rpm -q kernel')
+        cmd_get_kernel = "wget %s" % url
+        kernel_fname = url.split('/')[-1]
+        kernel_name = '.'.join(kernel_fname.split('.')[:-1])
+        logging.debug('kernel to install is %s' % kernel_name)
+        if kernel_name in kernels:
+            raise error.TestError('Kernel %s already exists!' % kernel_name)
+        cmd_install = "rpm -ivh %s" % kernel_fname
+
+        # rhel6 need to install kernel-firmware first
+        if not session.cmd_status('cat /boot/grub/grub.conf'):
+            kernel_fm_url = params.get('kernel_fm_url')
+            fm_name = kernel_fm_url.split('/')[-1]
+            cmd_get_kernel_fm = 'wget %s' % kernel_fm_url
+            cmd_install_kernel_fm = 'rpm -Uvh %s' % fm_name
+            params['fm_name'] = '.'.join(fm_name.split('.')[:-1])
+            session.cmd(cmd_get_kernel_fm, timeout=v2v_timeout)
+            session.cmd(cmd_install_kernel_fm, timeout=v2v_timeout)
+
+        session.cmd(cmd_get_kernel, timeout=v2v_timeout)
+        session.cmd(cmd_install, timeout=v2v_timeout)
+        return kernel_name
+
+    def cleanup_kernel(session, kernel, debug=False):
+        if debug:
+            kernel_to_clean = 'kernel-debug'
+        else:
+            kernel_to_clean = kernel
+        logging.info('Removing test kernel')
+        session.cmd('rpm -e %s' % kernel_to_clean)
+        fm = params.get('fm_name')
+        if fm:
+            logging.info('Removing test kernel firmware')
+            session.cmd('rpm -e %s' % fm)
+
+    def set_grub_seq(session, debug=False):
+        if debug:
+            logging.info('installing kernel-debug')
+            params['installed_kernel'] = install_kernel(session, debug=True)
+        elif input_mode == 'libvirt' and hypervisor == 'kvm':
+            logging.info('For kvm: Installing kernel...')
+            kernel1_url = params.get('kernel1_url')
+            params['installed_kernel'] = install_kernel(session, kernel1_url)
+        else:
+            raise error.TestNAError('Not for multi-kernel')
+
+        if not session.cmd_status('cat /boot/grub/menu.lst'):
+            grub = 1
+            out = session.cmd(
+                    "cat /boot/grub/menu.lst |grep 'initrd /initramfs-'"
+            )
+            kernel_lst = re.findall('initrd /initramfs-.*', out)
+            logging.debug(kernel_lst)
+            seq = 1
+
+        else:
+            grub = 2
+            cmd_list_all = 'cat /boot/grub2/grub.cfg |grep menuentry'
+            out = session.cmd(cmd_list_all)
+            kernel_lst = re.findall("menuentry '.*?'", out)
+            logging.debug(kernel_lst)
+            seq = 1
+
+        if debug:
+            logging.info('Setting debug kernel as default')
+            for i in range(len(kernel_lst)):
+                if 'debug' in kernel_lst[i]:
+                    seq = i
+                    break
+
+        if grub == 1:
+            cmd_set_grub = \
+                "sed -i 's/default=./default=%d/' /boot/grub/grub.conf" % seq
+            session.cmd(cmd_set_grub)
+            kernel_to_set = kernel_lst[seq]
+        elif grub == 2:
+            kernel_to_set = kernel_lst[seq].split("'")[1].strip("'")
+            cmd_set_grub = 'grub2-set-default "%s"' % kernel_to_set
+            session.cmd(cmd_set_grub)
+        else:
+            raise error.TestFail("Grub version Unknown")
+
+        return kernel_to_set
+
+    def vm_login(vm):
+        # try to create connection for 30 times
+        retry = 30
+        while retry >= 0:
+            try:
+                session = vm.login(username=vm_user, password=vm_pwd)
+                return session
+            except:
+                logging.info('Retrying...')
+                retry -= 1
+                time.sleep(10)
+        raise error.TestError('Connect to VM failed')
+
+    def check_vmlinuz_initramfs(v2v_result):
+        logging.info('Checking if vmlinuz matches initramfs')
+        kernels = re.search(
+                r'kernel packages in this guest:(.*?)grub kernels in this',
+                v2v_result, flags=re.DOTALL
+        )
+        try:
+            lines = kernels.group(1)
+            kernel_lst = re.findall('\((.*?)\)', lines)
+            for kernel in kernel_lst:
+                vmlinuz = re.search(r'/boot/vmlinuz-(.*?),', kernel).group(1)
+                initramfs = \
+                    re.search(r'/boot/initramfs-(.*?)\.img', kernel).group(1)
+                logging.debug('vmlinuz version is: %s' % vmlinuz)
+                logging.debug('initramfs version is: %s' % initramfs)
+                if vmlinuz != initramfs:
+                    raise error.TestFail("vmlinz not match with initramfs")
+        except Exception, e:
+            raise error.TestError(
+                    "Error on finding installed kernel info \n %s" % str(e)
+            )
+
+    def check_multi_kernel(default_kernel, debug=False):
+        logging.debug('debug kernel?: %s' % debug)
+        vmcheck = params.get("vmcheck")
+        if vmcheck:
+            logging.info('Connecting to converted VM')
+            vmcheck.create_session()
+            current_kernel = vmcheck.session.cmd('uname -r').strip()
+            if vmcheck.session:
+                vmcheck.session.close()
+            logging.debug('Current kernel: %s' % current_kernel)
+            logging.debug('Default kernel: %s' % default_kernel)
+        else:
+            raise error.TestError('vmcheck is missing!')
+        if debug:
+            if 'debug' in current_kernel:
+                raise error.TestFail("Chose debug kernel over non-debug")
+        elif current_kernel not in default_kernel:
+            raise error.TestFail("Chose 1st kernel over default kernel")
+
     def check_result(cmd, result, status_error):
         """
         Check virt-v2v command result
@@ -299,6 +455,8 @@ def run(test, params, env):
             if '-oc' in cmd:
                 expected_uri = re.findall(r"-oc\s(\S+)", cmd)[0]
                 check_connection(output, expected_uri)
+            if multi_kernel and check_v2v_out:
+                check_vmlinuz_initramfs(output)
             if output_mode == "rhev":
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache):
                     raise error.TestFail("Import VM failed")
@@ -306,6 +464,9 @@ def run(test, params, env):
                     params['vmcheck'] = utils_v2v.VMCheck(test, params, env)
                     if attach_disks:
                         check_disks(params.get("ori_disks"))
+                    if multi_kernel and not check_v2v_out:
+                        default_kernel = params.get('defaultkernel')
+                        check_multi_kernel(default_kernel, debug_kernel)
             if output_mode == "libvirt":
                 if "qemu:///session" not in v2v_options:
                     virsh.start(vm_name, debug=True, ignore_status=False)
@@ -333,6 +494,20 @@ def run(test, params, env):
                 params['ori_disks'] = backup_xml.get_disk_count(vm_name)
                 utlv.attach_disks(env.get_vm(vm_name), attach_disk_path,
                                   None, params)
+            # Multiple kernel testing
+            elif multi_kernel:
+                params['installed_kernel'] = ''
+                my_vm = libvirt_vm.VM(vm_name, params, test.bindir,
+                                      env.get("address_cache"))
+                if my_vm.is_dead():
+                    logging.info('VM is dead. Starting it now.')
+                    my_vm.start()
+                session = vm_login(my_vm)
+                params['defaultkernel'] = set_grub_seq(session, debug_kernel)
+                if session:
+                    session.close()
+                # time.sleep(60)
+                my_vm.shutdown()
         elif input_mode == "disk":
             input_option += "-i %s %s" % (input_mode, disk_img)
         elif input_mode in ['libvirtxml', 'ova']:
@@ -469,9 +644,20 @@ def run(test, params, env):
             else:
                 virsh.remove_domain(vm_name)
             cleanup_pool()
+        if multi_kernel and params['installed_kernel']:
+            my_vm = libvirt_vm.VM(vm_name, params, test.bindir,
+                                  env.get("address_cache"))
+            if my_vm.is_dead():
+                my_vm.start()
+            session = vm_login(my_vm)
+            cleanup_kernel(session, params['installed_kernel'])
+            if session:
+                session.close()
+            my_vm.shutdown()
         vmcheck = params.get("vmcheck")
         if vmcheck:
             vmcheck.cleanup()
+            del vmcheck
         if new_v2v_user:
             utils.system("userdel -f %s" % v2v_user)
         if restore_image_owner:
