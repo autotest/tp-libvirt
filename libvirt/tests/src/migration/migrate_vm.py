@@ -1,28 +1,39 @@
+import logging
 import os
 import re
-import time
 import signal
-import logging
-from subprocess import Popen, PIPE
-from virttest import nfs, utils_libvirtd, utils_config, libvirt_vm
-from virttest import libvirt_vm, remote, virsh, data_dir, utils_test
-from virttest import virt_vm, utils_misc, utils_netperf, utils_selinux
-from virttest.utils_test import libvirt
-from autotest.client.shared import error, utils
-from autotest.client import lv_utils
-from virttest.libvirt_xml import vm_xml, capability_xml
-from virttest.libvirt_xml.devices.sound import Sound
-from virttest.libvirt_xml.devices.smartcard import Smartcard
-from virttest.libvirt_xml.devices.watchdog import Watchdog
-from virttest.staging import utils_memory
-from virttest.utils_misc import SELinuxBoolean, get_cpu_vendor
-from virttest.utils_net import IPv6Manager, \
-    check_listening_port_remote_by_service, block_specific_ip_by_time
-from virttest.utils_conn import SSHConnection, TCPConnection, \
-    TLSConnection
-from virttest.libvirt_xml.devices.disk import Disk
-from autotest.client.shared import ssh_key
+import time
+from subprocess import PIPE
+from subprocess import Popen
 
+from autotest.client.shared import error
+from autotest.client.shared import ssh_key
+from autotest.client.shared import utils
+
+from virttest import data_dir
+from virttest import nfs
+from virttest import remote
+from virttest import utils_config
+from virttest import utils_libvirtd
+from virttest import utils_misc
+from virttest import utils_netperf
+from virttest import utils_selinux
+from virttest import utils_test
+from virttest import virsh
+from virttest import virt_vm
+from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.devices.disk import Disk
+from virttest.libvirt_xml.devices.smartcard import Smartcard
+from virttest.libvirt_xml.devices.sound import Sound
+from virttest.libvirt_xml.devices.watchdog import Watchdog
+from virttest.utils_conn import SSHConnection
+from virttest.utils_conn import TCPConnection
+from virttest.utils_conn import TLSConnection
+from virttest.utils_misc import SELinuxBoolean
+from virttest.utils_net import IPv6Manager
+from virttest.utils_net import block_specific_ip_by_time
+from virttest.utils_net import check_listening_port_remote_by_service
+from virttest.utils_test import libvirt
 
 MIGRATE_RET = False
 
