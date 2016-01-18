@@ -96,7 +96,8 @@ def run(test, params, env):
                     expected_events_list.append("'tunable' for %s:"
                                                 "\n\tcputune.emulatorpin: 0")
                 elif event == "setmem":
-                    virsh.setmem(vm_name, 1048576, **virsh_dargs)
+                    mem_size = int(params.get("mem_size", 512000))
+                    virsh.setmem(vm_name, mem_size, **virsh_dargs)
                     expected_events_list.append("'balloon-change' for %s:")
                 elif event == "detach-disk":
                     if not os.path.exists(new_disk):

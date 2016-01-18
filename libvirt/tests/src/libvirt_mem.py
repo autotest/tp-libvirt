@@ -222,6 +222,13 @@ def run(test, params, env):
         if numa_memnode:
             vmxml.numa_memory = {}
             vmxml.numa_memnode = numa_memnode
+        else:
+            try:
+                del vmxml.numa_memory
+                del vmxml.numa_memnode
+            except:
+                # Not exists
+                pass
 
         if numa_cells:
             cells = [ast.literal_eval(x) for x in numa_cells]

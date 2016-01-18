@@ -153,6 +153,18 @@ def run(test, params, env):
         logging.info("Error Test: Expecting an error to occur!")
 
     try:
+        # Delete numa node configuration before setmaxmem operation
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        try:
+            del vmxml.max_mem_rt
+            cpu_xml = vmxml.cpu
+            cpu_xml.remove_numa_cells()
+            vmxml.cpu = cpu_xml
+        except:
+            # The item doesn't exist
+            pass
+        vmxml.sync()
+
         result = virsh.setmaxmem(**dargs)
         status = result.exit_status
 

@@ -73,12 +73,13 @@ def run(test, params, env):
 
         desc_sec = "<description>%s</description>" % snap_desc
         name_sec = "<name>%s</name>" % snap_newname
-        if re.search(r"<description>\S+</description>", pre_xml):
-            pre_xml = re.sub(r"<description>\S+</description>",
-                             desc_sec, pre_xml)
-            pre_xml = re.subn(r"<name>\S+</name>", name_sec, pre_xml, 1)[0]
+        name_pat = "<name>\S+</name>"
+        desc_pat = "<description>.*?</description>"
+        if re.search(r"%s\s+?%s" % (name_pat, desc_pat), pre_xml):
+            pre_xml = re.sub(r"%s\s+?%s" % (name_pat, desc_pat),
+                             name_sec + '\n' + desc_sec, pre_xml)
         else:
-            pre_xml = re.subn(r"<name>\S+</name>", name_sec + '\n  ' +
+            pre_xml = re.subn(r"%s" % name_pat, name_sec + '\n  ' +
                               desc_sec, pre_xml, 1)[0]
         # change to list and remove the description element in list
         pre_xml_list = pre_xml.strip().splitlines()
@@ -139,7 +140,7 @@ def run(test, params, env):
 
         edit_cmd = []
         # Delete description element first then add it back with replacement
-        edit_cmd.append(":g/<description>.*</d")
+        edit_cmd.append(":/<description>.*</d")
         replace_cmd = '%s<\/name>/%s<\/name>' % (pre_name, pre_name)
         replace_cmd += '\\r<description>%s<\/description>' % snap_desc
         replace_cmd = ":%s/" + replace_cmd + "/"
