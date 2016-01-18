@@ -741,6 +741,10 @@ def run(test, params, env):
             usb_devices.update({"hub": addr_dict})
 
         if dom_iothreads:
+            # Delete cputune/iothreadids section, it may have conflict
+            # with domain iothreads
+            del vmxml.cputune
+            del vmxml.iothreadids
             vmxml.iothreads = int(dom_iothreads)
 
         # After compose the disk xml, redefine the VM xml.

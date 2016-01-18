@@ -151,6 +151,8 @@ def check_snapslist(vm_name, options, option_dict, output,
         # Check if the disk file exist when disk-only is given
         if options.find("disk-only") >= 0:
             for disk in xtf.find(fdisks).findall('disk'):
+                if disk.get('snapshot') == 'no':
+                    continue
                 diskpath = disk.find('source').get('file')
                 if os.path.isfile(diskpath):
                     logging.info("disk file %s exist" % diskpath)

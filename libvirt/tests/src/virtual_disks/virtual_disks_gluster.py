@@ -5,7 +5,6 @@ from autotest.client.shared import error
 from autotest.client import utils
 
 from virttest import virsh
-from virttest import data_dir
 from virttest import utils_misc
 from virttest import virt_vm, remote
 from virttest.utils_test import libvirt
@@ -32,28 +31,27 @@ def run(test, params, env):
         """
         Setup glusterfs and prepare disk image.
         """
-        # Get the image path and name from parameters
-        data_path = data_dir.get_data_dir()
-        image_name = params.get("image_name")
-        image_format = params.get("image_format")
-        image_source = os.path.join(data_path,
-                                    image_name + '.' + image_format)
+        # Get the image path
+        image_source = vm.get_first_disk_devices()['source']
 
-        # Setup gluster.
+        # Setup gluster
         host_ip = libvirt.setup_or_cleanup_gluster(True, vol_name,
                                                    brick_path, pool_name)
         logging.debug("host ip: %s ", host_ip)
         image_info = utils_misc.get_image_info(image_source)
+        image_dest = "/mnt/%s" % disk_img
+
         if image_info["format"] == disk_format:
-            disk_cmd = ("cp -f %s /mnt/%s" % (image_source, disk_img))
+            disk_cmd = ("cp -f %s %s" % (image_source, image_dest))
         else:
             # Convert the disk format
-            disk_cmd = ("qemu-img convert -f %s -O %s %s /mnt/%s" %
-                        (image_info["format"], disk_format, image_source, disk_img))
+            disk_cmd = ("qemu-img convert -f %s -O %s %s %s" %
+                        (image_info["format"], disk_format,
+                         image_source, image_dest))
 
         # Mount the gluster disk and create the image.
-        utils.run("mount -t glusterfs %s:%s /mnt;"
-                  " %s; chmod a+rw /mnt/%s; umount /mnt"
+        utils.run("mount -t glusterfs %s:%s /mnt && "
+                  "%s && chmod a+rw /mnt/%s && umount /mnt"
                   % (host_ip, vol_name, disk_cmd, disk_img))
 
         return host_ip
@@ -81,8 +79,9 @@ def run(test, params, env):
         disk_xml.driver = driver_dict
         disk_xml.target = {"dev": "vda", "bus": "virtio"}
         if default_pool:
-            utils.run("mount -t glusterfs %s:%s %s; setsebool virt_use_fusefs on" %
-                      (host_ip, vol_name, default_pool))
+            utils_misc.mount("%s:%s" % (host_ip, vol_name),
+                             default_pool, "glusterfs")
+            utils.run("setsebool virt_use_fusefs on")
             virsh.pool_refresh("default")
             source_dict = {"file": "%s/%s" % (default_pool, disk_img)}
             disk_xml.source = disk_xml.new_disk_source(
@@ -117,7 +116,8 @@ def run(test, params, env):
             vm.wait_for_login()
         # Create swap partition if nessesary.
         if not vm.has_swap():
-            vm.create_swap_partition()
+            swap_path = os.path.join(test.tmpdir, 'swap.img')
+            vm.create_swap_partition(swap_path)
         ret = virsh.dompmsuspend(vm_name, "disk", **virsh_dargs)
         libvirt.check_exit_status(ret)
         # wait for vm to shutdown
@@ -136,6 +136,11 @@ def run(test, params, env):
         #TODO This step may hang for rhel6 guest
         ret = virsh.dompmsuspend(vm_name, "mem", **virsh_dargs)
         libvirt.check_exit_status(ret)
+
+        # Check vm state
+        if not utils_misc.wait_for(lambda: vm.state() == "pmsuspended", 30):
+            raise error.TestFail("vm isn't suspended after S3 operation")
+
         ret = virsh.dompmwakeup(vm_name, **virsh_dargs)
         libvirt.check_exit_status(ret)
         if not vm.is_alive():
@@ -215,6 +220,9 @@ def run(test, params, env):
                                      "in command line" % cmd)
 
     finally:
+        # cleanup swap
+        if pm_enabled:
+            vm.cleanup_swap()
         # Recover VM.
         if vm.is_alive():
             vm.destroy(gracefully=False)
@@ -222,5 +230,6 @@ def run(test, params, env):
         vmxml_backup.sync()
         if utils_misc.is_mounted(mnt_src, default_pool, 'glusterfs'):
             utils.run("umount %s" % default_pool)
+
         if gluster_disk:
             libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)

@@ -87,10 +87,9 @@ def run(test, params, env):
                 Graphics.del_graphic(vm_name)
             Graphics.add_graphic(vm_name, passwd, "spice", True)
         else:
-            if not graphic_count:
-                Graphics.add_graphic(vm_name, passwd, graphic)
-            # Only change graphic type and passwd
-            Graphics.change_graphic_type_passwd(vm_name, graphic, passwd)
+            if graphic_count:
+                Graphics.del_graphic(vm_name)
+            Graphics.add_graphic(vm_name, passwd, graphic)
 
         vm = env.get_vm(vm_name)
         if not vm.is_alive():
@@ -129,8 +128,10 @@ def run(test, params, env):
         # Get active domain xml info
         vmxml_act = vm_xml.VMXML.new_from_dumpxml(vm_name, "--security-info")
         logging.debug("xml is %s", vmxml_act.get_xmltreefile())
-        graphic_act = vmxml_act.devices.by_device_tag('graphics')[0]
-        port = graphic_act.port
+        graphics = vmxml_act.devices.by_device_tag('graphics')
+        for graph in graphics:
+            if graph.type_name == graphic:
+                port = graph.port
 
         # Do judgement for result
         if graphic == "vnc":
