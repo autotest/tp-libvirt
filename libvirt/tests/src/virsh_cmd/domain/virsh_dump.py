@@ -201,10 +201,10 @@ def run(test, params, env):
             try:
                 wait_pid_active(pid, timeout)
             finally:
-                os.kill(child_pid, signal.SIGUSR1)
+                os.kill(child_pid, signal.SIGTERM)
         else:
             check_bypass(dump_file)
-            # Wait for parent process over
+            # Wait for parent process kills us
             while True:
                 time.sleep(1)
 
@@ -278,7 +278,7 @@ def run(test, params, env):
                 raise error.TestFail("The format of dumped file is wrong.")
     finally:
         if child_pid:
-            os.kill(child_pid, signal.SIGUSR1)
+            os.kill(child_pid, signal.SIGTERM)
         if os.path.isfile(dump_file):
             os.remove(dump_file)
         if vm.is_alive():
