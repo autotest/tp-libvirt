@@ -4,6 +4,8 @@ import re
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import data_dir
@@ -187,7 +189,7 @@ def execute_ttcp(vm, params):
     # Check connection first
     try:
         session1.cmd("ping -c 4 %s" % remote_ip)
-    except error.CmdError:
+    except Exception:
         raise error.TestFail("Couldn't connect to %s through %s"
                              % (remote_ip, vm.name))
 
@@ -247,7 +249,7 @@ def cleanup_vm(vm_name=None):
     try:
         if vm_name is not None:
             virsh.undefine(vm_name)
-    except error.CmdError:
+    except process.CmdError:
         pass
 
 
@@ -292,7 +294,7 @@ def test_nic_group(vm, params):
                                 ignore_status=False)
         logging.debug("VMXML with disk boot:\n%s", virsh.dumpxml(vm.name))
         vm.start()
-    except (error.CmdError, virt_vm.VMStartError), detail:
+    except (process.CmdError, virt_vm.VMStartError), detail:
         cleanup_devices(pci_id, device_type)
         raise error.TestFail("New device does not work well: %s" % detail)
 
@@ -368,7 +370,7 @@ def test_fibre_group(vm, params):
                                 ignore_status=False)
         logging.debug("VMXML with disk boot:\n%s", virsh.dumpxml(vm.name))
         vm.start()
-    except (error.CmdError, virt_vm.VMStartError), detail:
+    except (process.CmdError, virt_vm.VMStartError), detail:
         cleanup_devices(pci_id, device_type)
         raise error.TestFail("New device does not work well: %s" % detail)
 
@@ -437,7 +439,7 @@ def test_win_fibre_group(vm, params):
                             flagstr="--config", debug=True,
                             ignore_status=False)
         vm.start()
-    except (error.CmdError, virt_vm.VMStartError), detail:
+    except (process.CmdError, virt_vm.VMStartError), detail:
         cleanup_devices(pci_id, device_type)
         raise error.TestFail("New device does not work well: %s" % detail)
 
@@ -506,7 +508,7 @@ def test_nic_fibre_group(vm, params):
                             flagstr="--config", debug=True,
                             ignore_status=False)
         vm.start()
-    except (error.CmdError, virt_vm.VMStartError), detail:
+    except (process.CmdError, virt_vm.VMStartError), detail:
         cleanup_devices(nic_pci_id, "Ethernet")
         cleanup_devices(fibre_pci_id, "Fibre")
         raise error.TestFail("New device does not work well: %s" % detail)
@@ -596,7 +598,7 @@ def test_nic_single(vm, params):
         cleanup_devices(pci_id, device_type)
         raise error.TestFail("Start vm succesfully after attaching single "
                              "device to iommu group.Not expected.")
-    except (error.CmdError, virt_vm.VMStartError), detail:
+    except (process.CmdError, virt_vm.VMStartError), detail:
         logging.debug("Expected:New device does not work well: %s" % detail)
 
     # Reattaching all devices in iommu group

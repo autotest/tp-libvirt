@@ -7,6 +7,8 @@ import os
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import virt_vm
 from virttest import qemu_storage
 from virttest import data_dir
@@ -77,7 +79,7 @@ def run(test, params, env):
         try:
             cdrom = CdromDisk(cdrom_path, data_dir.get_tmp_dir())
             cdrom.close()
-        except error.CmdError, detail:
+        except process.CmdError, detail:
             raise error.TestNAError("Failed to create cdrom disk: %s" % detail)
 
         cdrom_disk = Disk(type_name="file")

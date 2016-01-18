@@ -2,6 +2,8 @@ import os
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 
@@ -46,7 +48,7 @@ def run(test, params, env):
                 output_target = "Xen doesn't support domblkinfo target!"
             virsh.detach_disk(vm_name, front_dev, debug=True)
             return status_target, output_target, status_source, output_source
-        except (error.CmdError, IOError):
+        except (process.CmdError, IOError):
             return 1, "", 1, ""
 
     def check_disk_info():

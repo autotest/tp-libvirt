@@ -5,6 +5,8 @@ import re
 from autotest.client import os_dep, utils
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import virsh
 from virttest import data_dir
 from virttest.utils_test import libvirt
@@ -25,7 +27,7 @@ def domainsnapshot_validate(vm_name, file=None, **virsh_dargs):
         ss_info = virsh.snapshot_info(vm_name, snapshot_name)
         check_info(ss_info["Name"], snapshot_name, "Incorrect snapshot name")
         check_info(ss_info["Domain"], vm_name, "Incorrect domain name")
-    except error.CmdError, e:
+    except process.CmdError, e:
         error.TestFail(str(e))
     except error.TestFail, e:
         error.TestFail(str(e))
@@ -70,7 +72,7 @@ def storagepool_validate(pool_name, file=None, **virsh_dargs):
 
     try:
         virsh.pool_dumpxml(pool_name, to_file=file)
-    except error.CmdError, e:
+    except process.CmdError, e:
         error.TestFail(str(e))
 
 
@@ -156,7 +158,7 @@ def secret_validate(file=None, **virsh_dargs):
     if uuid:
         try:
             virsh.secret_dumpxml(uuid, to_file=file, **virsh_dargs)
-        except error.CmdError, e:
+        except process.CmdError, e:
             raise error.TestError(str(e))
 
 
@@ -177,7 +179,7 @@ def interface_validate(file=None, **virsh_dargs):
 
     try:
         virsh.iface_dumpxml(iface_name, to_file=file, **virsh_dargs)
-    except error.CmdError, e:
+    except process.CmdError, e:
         raise error.TestError(str(e))
 
 

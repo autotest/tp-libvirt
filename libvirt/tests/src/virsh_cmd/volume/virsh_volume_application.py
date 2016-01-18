@@ -3,6 +3,8 @@ import logging
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import libvirt_storage
 from virttest import virsh
 from virttest import data_dir
@@ -130,7 +132,7 @@ def run(test, params, env):
                 utils_selinux.set_status("permissive")
                 try:
                     unattended_install.run(test, params, env)
-                except error.CmdError, detail:
+                except process.CmdError, detail:
                     raise error.TestFail("Guest install failed:%s" % detail)
             finally:
                 if selinux_mode is not None:

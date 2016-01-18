@@ -4,7 +4,8 @@ import os
 import aexpect
 
 from autotest.client.shared import error
-from autotest.client import utils
+
+from avocado.utils import process
 
 from virttest import libvirt_vm
 from virttest import virsh
@@ -80,7 +81,7 @@ def run(test, params, env):
             virsh.attach_disk(vm_name, dst_image, target, extra=options,
                               ignore_status=False)
         except (remote.LoginError, virt_vm.VMError,
-                aexpect.ShellError, error.CmdError), detail:
+                aexpect.ShellError, process.CmdError), detail:
             raise error.TestFail("Modify guest source failed: %s" % detail)
 
     def modify_network(vm_name, first_nic):
@@ -141,7 +142,7 @@ def run(test, params, env):
                 virsh.undefine(vm_clone_name, ignore_status=False)
             if os.path.exists(clone_image):
                 os.remove(clone_image)
-        except error.CmdError, detail:
+        except process.CmdError, detail:
             raise error.TestFail("Clean clone guest failed!:%s" % detail)
 
     sysprep_type = params.get("sysprep_type", 'clone')
@@ -193,8 +194,8 @@ def run(test, params, env):
         if sysprep_type == "resize":
             img_size = image_info_dict['vsize'] / 1024 / 1024 / 1024
             resize_image = "%s_resize.img" % clone_image
-            utils.run("qemu-img create -f raw %s %dG" % (resize_image,
-                                                         (img_size + 1)))
+            cmd = "qemu-img create -f raw %s %dG" % (resize_image, (img_size + 1))
+            process.run(cmd, shell=True)
             lgf.virt_resize_cmd(clone_image, resize_image, timeout=600,
                                 debug=True)
             modify_source(vm_clone_name, target, resize_image)

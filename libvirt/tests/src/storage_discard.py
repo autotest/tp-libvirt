@@ -6,8 +6,10 @@ import re
 import logging
 import time
 
-from autotest.client import utils, lv_utils
+from autotest.client import lv_utils
 from autotest.client.shared import error
+
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
@@ -35,7 +37,7 @@ def get_disk_capacity(disk_type, imagefile=None, lvname=None):
                     while for block, it's volume space percentage in 'lvs'
     """
     if disk_type == "file":
-        result = utils.run("du -sm %s" % imagefile)
+        result = process.run("du -sm %s" % imagefile, shell=True)
         return result.stdout.split()[0].strip()
     elif disk_type == "block":
         if lvname is None:
@@ -64,7 +66,7 @@ def create_iscsi_device(device_size="2G"):
     if iscsi_device == ():
         raise error.TestFail("No matched iscsi device.")
 
-    check_ret = utils.run("ls %s" % device_name)
+    check_ret = process.run("ls %s" % device_name, shell=True)
     if check_ret.exit_status:
         raise error.TestFail("Can not find provided device:%s" % check_ret)
     return device_name
@@ -208,7 +210,7 @@ def do_fstrim(fstrim_type, vm, status_error=False):
                % vm.name)
         try:
             virsh.command(cmd, debug=True, ignore_status=False)
-        except error.CmdError:
+        except process.CmdError:
             raise error.TestFail("Execute qemu-agent-command failed.")
 
 
@@ -323,6 +325,7 @@ def run(test, params, env):
                 lv_utils.vg_remove("vgthin")
             except error.TestError, detail:
                 logging.debug(str(detail))
-            utils.run("pvremove -f %s" % discard_device, ignore_status=True)
+            process.run("pvremove -f %s" % discard_device, ignore_status=True,
+                        shell=True)
             if create_iscsi:
                 utlv.setup_or_cleanup_iscsi(is_setup=False)

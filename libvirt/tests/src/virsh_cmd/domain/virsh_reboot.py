@@ -5,6 +5,8 @@ import aexpect
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import libvirt_vm
 from virttest import virt_vm
 from virttest import virsh
@@ -80,7 +82,7 @@ def run(test, params, env):
                 status, output = session.cmd_status_output(command,
                                                            internal_timeout=5)
                 session.close()
-            except (remote.LoginError, error.CmdError, aexpect.ShellError), e:
+            except (remote.LoginError, process.CmdError, aexpect.ShellError), e:
                 logging.error("Exception: %s", str(e))
                 status = -1
         if vm_ref != "remote_name":

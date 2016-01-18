@@ -4,8 +4,9 @@ import logging
 
 import aexpect
 
-from autotest.client import utils
 from autotest.client.shared import error
+
+from avocado.utils import process
 
 from virttest import remote
 from virttest import utils_net
@@ -23,7 +24,7 @@ def get_ifstart_mode(iface_name):
     try:
         xml = virsh.iface_dumpxml(iface_name, "--inactive", "", debug=True)
         start_mode = re.findall("start mode='(\S+)'", xml)[0]
-    except (error.CmdError, IndexError):
+    except (process.CmdError, IndexError):
         logging.error("Fail to get start mode for interface %s", iface_name)
     return start_mode
 
@@ -72,7 +73,7 @@ def run(test, params, env):
         new_ifstart_mode = "onboot"
     try:
         # Backup interface script
-        utils.run("cp %s %s" % (iface_script, iface_script_bk))
+        process.run("cp %s %s" % (iface_script, iface_script_bk), shell=True)
 
         # Edit interface
         edit_ifstart_mode(iface_name, old_ifstart_mode, new_ifstart_mode)
@@ -80,7 +81,7 @@ def run(test, params, env):
         # Restart interface
         if iface_is_up:
             net_iface.down()
-        utils.run("ifup %s" % iface_name)
+        process.run("ifup %s" % iface_name, shell=True)
 
         after_edit_mode = get_ifstart_mode(iface_name)
         if not after_edit_mode:
@@ -92,6 +93,6 @@ def run(test, params, env):
                                  % after_edit_mode)
     finally:
         net_iface.down()
-        utils.run("mv %s %s" % (iface_script_bk, iface_script))
+        process.run("mv %s %s" % (iface_script_bk, iface_script), shell=True)
         if iface_is_up:
-            utils.run("ifup %s" % iface_name)
+            process.run("ifup %s" % iface_name, shell=True)

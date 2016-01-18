@@ -2,6 +2,8 @@ import logging
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_libvirtd
@@ -48,7 +50,7 @@ def run(test, params, env):
                                        ignore_status=False,
                                        debug=True)
         status = 0  # good
-    except error.CmdError:
+    except process.CmdError:
         status = 1  # bad
         uri_test = ''
 

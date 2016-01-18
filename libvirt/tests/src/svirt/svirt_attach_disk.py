@@ -1,7 +1,8 @@
 import logging
 
 from autotest.client.shared import error
-from autotest.client import utils
+
+from avocado.utils import process
 
 from virttest import qemu_storage
 from virttest import data_dir
@@ -130,7 +131,8 @@ def run(test, params, env):
             # set host_sestatus as nfs pool will reset it
             utils_selinux.set_status(host_sestatus)
             # set virt_use_nfs
-            result = utils.run("setsebool virt_use_nfs %s" % virt_use_nfs)
+            result = process.run("setsebool virt_use_nfs %s" % virt_use_nfs,
+                                 shell=True)
             if result.exit_status:
                 raise error.TestNAError("Failed to set virt_use_nfs value")
         else:
@@ -195,7 +197,7 @@ def run(test, params, env):
         try:
             virsh.detach_disk(vm_name, target="vdf", extra="--persistent",
                               debug=True)
-        except error.CmdError:
+        except process.CmdError:
             raise error.TestFail("Detach disk 'vdf' from VM %s failed."
                                  % vm.name)
     finally:

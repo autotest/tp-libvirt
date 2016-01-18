@@ -4,8 +4,9 @@ import threading
 import time
 
 from autotest.client.shared import error
-from autotest.client.shared import utils
 from autotest.client.shared import ssh_key
+
+from avocado.utils import process
 
 from virttest import utils_test
 from virttest import virsh
@@ -27,7 +28,7 @@ def run(test, params, env):
         """
         try:
             actual_state = vm.state()
-        except error.CmdError:
+        except process.CmdError:
             return False
         if cmp(actual_state, state) == 0:
             return True
@@ -47,7 +48,7 @@ def run(test, params, env):
                 try:
                     logging.debug(runner.run(check_cmd))
                     continue
-                except error.CmdError, detail:
+                except process.CmdError, detail:
                     logging.debug("Remote checking failed:%s", detail)
                     fail_list.append(disk)
             else:
@@ -65,12 +66,12 @@ def run(test, params, env):
         """
         Show disk by id.
         """
-        output = utils.run("ls /dev/disk/by-id/").stdout
+        output = process.run("ls /dev/disk/by-id/", shell=True).stdout
         for line in output.splitlines():
             disk_ids = line.split()
             for disk_id in disk_ids:
-                disk = os.path.basename(utils.run("readlink %s"
-                                                  % disk_id).stdout)
+                disk = os.path.basename(
+                    process.run("readlink %s" % disk_id, shell=True).stdout)
                 if disk == os.path.basename(device):
                     return disk_id
         return None
@@ -240,7 +241,7 @@ def run(test, params, env):
                                                     params, config=attach_disk_config)
                 if ret.exit_status:
                     raise error.TestFail(ret)
-        except (error.TestFail, error.CmdError), detail:
+        except (error.TestFail, process.CmdError), detail:
             if status_error:
                 logging.debug("Expected failure:%s", detail)
                 return
@@ -309,4 +310,4 @@ def run(test, params, env):
 
         if runner:
             runner.session.close()
-        utils.run("rm -f %s/*vsmtest" % created_img_path)
+        process.run("rm -f %s/*vsmtest" % created_img_path, shell=True)

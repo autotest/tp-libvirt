@@ -1,6 +1,8 @@
 from autotest.client.shared import error
 from autotest.client.shared import ssh_key
 
+from avocado.utils import process
+
 from virttest import libvirt_vm
 from virttest import remote
 from virttest import virsh
@@ -83,7 +85,7 @@ def run(test, params, env):
             status, output = session.cmd_status_output(command,
                                                        internal_timeout=5)
             session.close()
-        except error.CmdError:
+        except process.CmdError:
             status = 1
 
     if libvirtd == "off":

@@ -4,6 +4,8 @@ import logging
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import data_dir
 from virttest import virsh
 from virttest import utils_test
@@ -91,28 +93,28 @@ def run(test, params, env):
 
                         result = virsh.qemu_monitor_command(vm_name, attach_cmd, options=options)
                         if result.exit_status:
-                            raise error.CmdError(result.command, result)
+                            raise process.CmdError(result.command, result)
                     if keyboard:
                         attach_cmd = "device_add"
                         attach_cmd += " usb-kdb,bus=usb1.0,id=kdb"
 
                         result = virsh.qemu_monitor_command(vm_name, attach_cmd, options=options)
                         if result.exit_status:
-                            raise error.CmdError(result.command, result)
+                            raise process.CmdError(result.command, result)
                     if mouse:
                         attach_cmd = "device_add"
                         attach_cmd += " usb-mouse,bus=usb1.0,id=mouse"
 
                         result = virsh.qemu_monitor_command(vm_name, attach_cmd, options=options)
                         if result.exit_status:
-                            raise error.CmdError(result.command, result)
+                            raise process.CmdError(result.command, result)
                     if tablet:
                         attach_cmd = "device_add"
                         attach_cmd += " usb-tablet,bus=usb1.0,id=tablet"
 
                         result = virsh.qemu_monitor_command(vm_name, attach_cmd, options=options)
                         if result.exit_status:
-                            raise error.CmdError(result.command, result)
+                            raise process.CmdError(result.command, result)
                 else:
                     if disk:
                         utils_test.libvirt.create_local_disk("file", path, size="1M")
@@ -128,7 +130,7 @@ def run(test, params, env):
 
                         result = virsh.attach_device(vm_name, disk_xml.xml)
                         if result.exit_status:
-                            raise error.CmdError(result.command, result)
+                            raise process.CmdError(result.command, result)
                     if mouse:
                         mouse_xml = Input("mouse")
                         mouse_xml.input_bus = "usb"
@@ -137,7 +139,7 @@ def run(test, params, env):
 
                         result = virsh.attach_device(vm_name, mouse_xml.xml)
                         if result.exit_status:
-                            raise error.CmdError(result.command, result)
+                            raise process.CmdError(result.command, result)
                     if tablet:
                         tablet_xml = Input("tablet")
                         tablet_xml.input_bus = "usb"
@@ -146,7 +148,7 @@ def run(test, params, env):
 
                         result = virsh.attach_device(vm_name, tablet_xml.xml)
                         if result.exit_status:
-                            raise error.CmdError(result.command, result)
+                            raise process.CmdError(result.command, result)
                     if keyboard:
                         kbd_xml = Input("keyboard")
                         kbd_xml.input_bus = "usb"
@@ -155,7 +157,7 @@ def run(test, params, env):
 
                         result = virsh.attach_device(vm_name, kbd_xml.xml)
                         if result.exit_status:
-                            raise error.CmdError(result.command, result)
+                            raise process.CmdError(result.command, result)
 
                 if attach_type == "qemu_monitor":
                     options = "--hmp"
@@ -165,46 +167,46 @@ def run(test, params, env):
 
                         result = virsh.qemu_monitor_command(vm_name, attach_cmd, options=options)
                         if result.exit_status:
-                            raise error.CmdError(result.command, result)
+                            raise process.CmdError(result.command, result)
                     if mouse:
                         attach_cmd = "device_del"
                         attach_cmd += (" mouse")
 
                         result = virsh.qemu_monitor_command(vm_name, attach_cmd, options=options)
                         if result.exit_status:
-                            raise error.CmdError(result.command, result)
+                            raise process.CmdError(result.command, result)
                     if keyboard:
                         attach_cmd = "device_del"
                         attach_cmd += (" keyboard")
 
                         result = virsh.qemu_monitor_command(vm_name, attach_cmd, options=options)
                         if result.exit_status:
-                            raise error.CmdError(result.command, result)
+                            raise process.CmdError(result.command, result)
                     if tablet:
                         attach_cmd = "device_del"
                         attach_cmd += (" tablet")
 
                         result = virsh.qemu_monitor_command(vm_name, attach_cmd, options=options)
                         if result.exit_status:
-                            raise error.CmdError(result.command, result)
+                            raise process.CmdError(result.command, result)
                 else:
                     if disk:
                         result = virsh.detach_device(vm_name, disk_xml.xml)
                         if result.exit_status:
-                            raise error.CmdError(result.command, result)
+                            raise process.CmdError(result.command, result)
                     if mouse:
                         result = virsh.detach_device(vm_name, mouse_xml.xml)
                         if result.exit_status:
-                            raise error.CmdError(result.command, result)
+                            raise process.CmdError(result.command, result)
                     if keyboard:
                         result = virsh.detach_device(vm_name, kbd_xml.xml)
                         if result.exit_status:
-                            raise error.CmdError(result.command, result)
+                            raise process.CmdError(result.command, result)
                     if tablet:
                         result = virsh.detach_device(vm_name, tablet_xml.xml)
                         if result.exit_status:
-                            raise error.CmdError(result.command, result)
-        except error.CmdError, e:
+                            raise process.CmdError(result.command, result)
+        except process.CmdError, e:
             if not status_error:
                 raise error.TestFail("failed to attach device.\n"
                                      "Detail: %s." % result)

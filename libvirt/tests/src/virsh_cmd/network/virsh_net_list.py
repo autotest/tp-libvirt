@@ -3,6 +3,8 @@ import os
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import virsh
 
 from provider import libvirt_version
@@ -54,7 +56,7 @@ def run(test, params, env):
                 virsh.net_destroy(net_name, ignore_status=False)
             virsh.net_undefine(net_name, ignore_status=False)
             virsh.net_create(tmp_xml, ignore_status=False)
-    except error.CmdError:
+    except process.CmdError:
         raise error.TestFail("Transient network test failed!")
 
     # Prepare network's status for testing.
@@ -62,13 +64,13 @@ def run(test, params, env):
         try:
             if not virsh.net_state_dict()[net_name]['active']:
                 virsh.net_start(net_name, ignore_status=False)
-        except error.CmdError:
+        except process.CmdError:
             raise error.TestFail("Active network test failed!")
     else:
         try:
             if virsh.net_state_dict()[net_name]['active']:
                 virsh.net_destroy(net_name, ignore_status=False)
-        except error.CmdError:
+        except process.CmdError:
             raise error.TestFail("Inactive network test failed!")
 
     virsh_dargs = {'ignore_status': True}
@@ -93,7 +95,7 @@ def run(test, params, env):
                 virsh.net_start(net_name, ignore_status=False)
             elif net_current_status == "inactive" and net_status == "active":
                 virsh.net_destroy(net_name, ignore_status=False)
-    except error.CmdError:
+    except process.CmdError:
         raise error.TestFail("Recover network failed!")
 
     # check result

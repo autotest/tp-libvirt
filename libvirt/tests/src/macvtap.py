@@ -4,6 +4,8 @@ import aexpect
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import remote
 from virttest import utils_net
 from virttest import virsh
@@ -52,7 +54,7 @@ def run(test, params, env):
         origin_status = iface_cls.is_up()
         if not origin_status:
             iface_cls.up()
-    except error.CmdError, detail:
+    except process.CmdError, detail:
         raise error.TestNAError(str(detail))
     br_cls = utils_net.Bridge()
     if eth_card_no in br_cls.list_iface():
@@ -154,7 +156,7 @@ def run(test, params, env):
                                  % (vm1.name, vm2.name))
         try:
             iface_cls.down()
-        except error.CmdError, detail:
+        except process.CmdError, detail:
             raise error.TestNAError(str(detail))
         ping_s, _ = ping(vm2_ip, count=1, timeout=5, session=session)
         if not ping_s:
@@ -199,7 +201,7 @@ def run(test, params, env):
                                  % (vm1.name, vm2.name))
         try:
             iface_cls.down()
-        except error.CmdError, detail:
+        except process.CmdError, detail:
             raise error.TestNAError(str(detail))
         ping_s, _ = ping(remote_ip, count=1, timeout=5, session=session)
         if not ping_s:
