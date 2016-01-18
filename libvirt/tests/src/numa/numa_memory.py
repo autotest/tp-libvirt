@@ -1,5 +1,6 @@
 import os
 import logging
+import shutil
 
 from autotest.client import utils
 from autotest.client.shared import error
@@ -11,6 +12,7 @@ from virttest import utils_misc
 from virttest import utils_test
 from virttest import utils_config
 from virttest import utils_libvirtd
+from virttest import data_dir
 
 
 def run(test, params, env):
@@ -101,7 +103,7 @@ def run(test, params, env):
             numa_memory[mem_param.split('_')[1]] = value
 
     # Prepare libvirtd session with log level as 1
-    config_path = "/var/tmp/virt-test.conf"
+    config_path = os.path.join(data_dir.get_tmp_dir(), "virt-test.conf")
     open(config_path, 'a').close()
     config = utils_config.LibvirtdConfig(config_path)
     config.log_level = 1
@@ -238,7 +240,7 @@ def run(test, params, env):
         if config_path:
             config.restore()
             if os.path.exists(config_path):
-                os.remove(config_path)
+                shutil.rmtree(os.path.dirname(config_path))
         if vm.is_alive():
             vm.destroy(gracefully=False)
         backup_xml.sync()
