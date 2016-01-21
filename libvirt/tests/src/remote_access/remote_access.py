@@ -123,7 +123,6 @@ def run(test, params, env):
 
     test_dict = dict(params)
     vm_name = test_dict.get("main_vm")
-    vm = env.get_vm(vm_name)
     status_error = test_dict.get("status_error", "no")
     allowed_dn_list = params.get("tls_allowed_dn_list")
     if allowed_dn_list:
@@ -138,7 +137,6 @@ def run(test, params, env):
     server_ip = test_dict.get("server_ip")
     server_user = test_dict.get("server_user")
     server_pwd = test_dict.get("server_pwd")
-    client_ip = test_dict.get("client_ip")
     no_any_config = params.get("no_any_config", "no")
     sasl_user_pwd = test_dict.get("sasl_user_pwd")
     sasl_allowed_users = test_dict.get("sasl_allowed_users")
