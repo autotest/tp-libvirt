@@ -131,8 +131,9 @@ def run(test, params, env):
             hp_cl.hugepage_path = m_path
             hp_cl.mount_hugepage_fs()
             mount_path.append(m_path)
-        qemu_conf.hugetlbfs_mount = mount_path
-        libvirtd.restart()
+        if mount_path:
+            qemu_conf.hugetlbfs_mount = mount_path
+            libvirtd.restart()
 
     try:
         # Get host numa node list

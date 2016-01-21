@@ -1,6 +1,5 @@
 import os
 import logging
-import shutil
 
 from autotest.client import utils
 from autotest.client.shared import error
@@ -240,7 +239,7 @@ def run(test, params, env):
         if config_path:
             config.restore()
             if os.path.exists(config_path):
-                shutil.rmtree(os.path.dirname(config_path))
+                os.remove(config_path)
         if vm.is_alive():
             vm.destroy(gracefully=False)
         backup_xml.sync()

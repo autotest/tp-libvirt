@@ -27,11 +27,14 @@ def run(test, params, env):
             # check node distances
             node_num = node_list[cell_num]
             cell_distance = cell_list[cell_num].sibling
-            logging.debug("cell %s distance is %s", node_num, cell_distance)
-            node_distance = numa_info.distances[node_num]
-            for j in range(len(cell_list)):
-                if cell_distance[j]['value'] != node_distance[j]:
-                    raise error.TestFail("cell distance value not expected.")
+            if cell_distance:
+                logging.debug("cell %s distance is %s", node_num,
+                              cell_distance)
+                node_distance = numa_info.distances[node_num]
+                for j in range(len(cell_list)):
+                    if cell_distance[j]['value'] != node_distance[j]:
+                        raise error.TestFail("cell distance value not "
+                                             "expected.")
             # check node cell cpu
             cell_xml = cell_list[cell_num]
             cpu_list_from_xml = cell_xml.cpu
