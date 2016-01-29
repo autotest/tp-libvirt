@@ -7,9 +7,9 @@ from subprocess import PIPE
 from subprocess import Popen
 
 from autotest.client.shared import error
-from autotest.client.shared import ssh_key
 from autotest.client.shared import utils
 
+from virttest import ssh_key
 from virttest import data_dir
 from virttest import nfs
 from virttest import remote
@@ -711,7 +711,6 @@ def run(test, params, env):
     stress_args = test_dict.get("stress_args")
 
     no_swap = "yes" == test_dict.get("no_swap", "no")
-    down_time = test_dict.get("max_down_time")
 
     get_migr_cache = "yes" == test_dict.get("get_migrate_compcache", "no")
     set_migr_cache_size = test_dict.get("set_migrate_compcache_size")
@@ -824,7 +823,7 @@ def run(test, params, env):
     try:
         if iscsi_setup:
             target = libvirt.setup_or_cleanup_iscsi(is_setup=True, is_login=False,
-                                                    emulated_image="emulated_iscsi",
+                                                    emulated_image="emulated-iscsi",
                                                     portal_ip=portal_ip)
             logging.debug("Created iscsi target: %s", target)
             host_ip = None
@@ -930,7 +929,7 @@ def run(test, params, env):
         target_image_source = test_dict.get("target_image_source", disk_source)
         if create_target_image:
             if not target_image_size and image_info_dict:
-                target_image_size = image_info_dict.get('dsize')
+                target_image_size = image_info_dict.get('vsize')
             if not target_image_format and image_info_dict:
                 target_image_format = image_info_dict.get('format')
             if target_image_size and target_image_format:
@@ -1087,7 +1086,7 @@ def run(test, params, env):
             if ssh_recovery == "yes":
                 objs_list.append(ssh_obj)
             # setup test environment
-            ssh_obj.conn_setup()
+            ssh_obj.conn_setup(timeout=60)
 
         # setup TLS
         if transport == "tls" and setup_tls == "yes":
@@ -1354,7 +1353,7 @@ def run(test, params, env):
             cmd = "swapon -s"
             logging.info("Execute command <%s> in the VM", cmd)
             status, output = vm_session.cmd_status_output(cmd, timeout=600)
-            if status or output:
+            if status:
                 raise error.TestFail("Failed to run %s in VM: %s"
                                      % (cmd, output))
             logging.debug(output)
@@ -1476,6 +1475,7 @@ def run(test, params, env):
 
         set_src_pm_suspend_tgt = test_dict.get("set_src_pm_suspend_target")
         set_src_pm_wakeup = "yes" == test_dict.get("set_src_pm_wakeup", "no")
+        state_delay = int(test_dict.get("state_delay", 10))
         if set_src_pm_suspend_tgt:
             tgts = set_src_pm_suspend_tgt.split(",")
             for tgt in tgts:
@@ -1492,6 +1492,7 @@ def run(test, params, env):
                 result = virsh.dompmsuspend(vm_name, tgt, ignore_status=True,
                                             debug=True)
                 libvirt.check_exit_status(result)
+                time.sleep(state_delay)
                 if (tgt == "mem" or tgt == "hybrid") and set_src_pm_wakeup:
                     result = virsh.dompmwakeup(vm_name, ignore_status=True,
                                                debug=True)
@@ -1588,6 +1589,7 @@ def run(test, params, env):
 
             max_down_time = test_dict.get("max_down_time")
             if max_down_time:
+                max_down_time = str(int(float(max_down_time) * 1000))
                 result = virsh.migrate_setmaxdowntime(vm_name, max_down_time)
                 if result.exit_status:
                     logging.error("Set max migration downtime failed.")
@@ -1621,7 +1623,7 @@ def run(test, params, env):
 
         set_tgt_pm_suspend_tgt = test_dict.get("set_tgt_pm_suspend_target")
         set_tgt_pm_wakeup = "yes" == test_dict.get("set_tgt_pm_wakeup", "no")
-        state_delay = int(test_dict.get("target_state_delay", 0))
+        state_delay = int(test_dict.get("state_delay", 10))
         if set_tgt_pm_suspend_tgt:
             tgts = set_tgt_pm_suspend_tgt.split(",")
             for tgt in tgts:
@@ -1631,7 +1633,7 @@ def run(test, params, env):
                 if status:
                     raise error.TestFail("Failed to run '%s' on the remote: %s"
                                          % (cmd, output))
-
+                time.sleep(state_delay)
                 if tgt == "mem" and set_tgt_pm_wakeup:
                     cmd = "virsh dompmwakeup %s" % vm_name
                     status, output = run_remote_cmd(cmd, server_ip, server_user,
@@ -1797,7 +1799,7 @@ def run(test, params, env):
 
         libvirtd = utils_libvirtd.Libvirtd()
         if disk_src_protocol == "gluster":
-            libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
+            libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path, pool_name)
             libvirtd.restart()
 
         if disk_src_protocol == "iscsi":
