@@ -278,6 +278,46 @@ def compute_cpu_baseline(cpu_xml, status_error="no"):
     return output
 
 
+def get_same_processor(server_ip, server_user, server_pwd, verbose):
+    """
+    Return the same processor between local and remote host.
+    Otherwise, raise a TestNAError.
+
+    :param server_ip: the address of remote host
+    :param server_user: the user id to log on remote host
+    :param server_pwd: the password for server_user
+    :param verbose: the flag to control whether or not to log messages
+    """
+    local_processors = utils_misc.get_cpu_processors(verbose=verbose)
+    cmd = "grep processor /proc/cpuinfo"
+    status, output = run_remote_cmd(cmd, server_ip, server_user, server_pwd)
+    if status:
+        raise error.TestFail("Failed to run '%s' on the remote: %s"
+                             % (cmd, output))
+    remote_processors = re.findall('processor\s+: (\d+)', output)
+    if verbose:
+        logging.debug("Local processors: %s", local_processors)
+        logging.debug("Remote processors: %s", remote_processors)
+    if '0' in local_processors and '0' in remote_processors:
+        logging.info("The matched processor is '0'")
+        return '0'
+    matched = False
+    local_processor = ''
+    for local_processor in local_processors:
+        for remote_processor in remote_processors:
+            if local_processor == remote_processor:
+                logging.info("The matched processor is %s", remote_processor)
+                matched = True
+                break
+        else:
+            continue
+        break
+    if not matched:
+        raise error.TestNAError("There is no same processor "
+                                "between local and remote host.")
+    return local_processor
+
+
 def custom_cpu(vm_name, cpu_model, cpu_vendor, cpu_model_fallback="allow",
                cpu_feature_dict={}, cpu_mode="custom", cpu_match="exact"):
     """
@@ -705,7 +745,6 @@ def run(test, params, env):
 
     cpu_set = "yes" == test_dict.get("cpu_set", "no")
     vcpu_num = test_dict.get("vcpu_num", "1")
-    vcpu_cpuset = test_dict.get("vcpu_cpuset")
 
     stress_type = test_dict.get("stress_type")
     stress_args = test_dict.get("stress_args")
@@ -1063,6 +1102,8 @@ def run(test, params, env):
                 logging.debug("The current VM XML:\n%s", vmxml_backup.xmltreefile)
 
         if cpu_set:
+            vcpu_cpuset = get_same_processor(server_ip, server_user, server_pwd,
+                                             verbose=True)
             vcpu_args = ""
             if vcpu_cpuset:
                 vcpu_args += "cpuset='%s'" % vcpu_cpuset
