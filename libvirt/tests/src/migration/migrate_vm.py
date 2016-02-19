@@ -772,8 +772,14 @@ def run(test, params, env):
     ssh_key.setup_ssh_key(server_ip, server_user, server_pwd, 22)
 
     migr_vm_back = "yes" == test_dict.get("migrate_vm_back", "no")
+    remote_known_hosts_obj = None
     if migr_vm_back:
         ssh_key.setup_remote_ssh_key(server_ip, server_user, server_pwd)
+        remote_known_hosts_obj = ssh_key.setup_remote_known_hosts_file(
+                                  client_ip,
+                                  server_ip,
+                                  server_user,
+                                  server_pwd)
 
     # It's used to clean up SSH, TLS and TCP objs later
     objs_list = []
