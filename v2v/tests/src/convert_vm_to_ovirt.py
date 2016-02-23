@@ -84,7 +84,7 @@ def run(test, params, env):
             raise error.TestFail("Convert VM failed")
 
         # Import the VM to oVirt Data Center from export domain
-        if not utils_v2v.import_to_ovirt(params, address_cache):
+        if not utils_v2v.import_vm_to_ovirt(params, address_cache):
             raise error.TestFail("Import VM failed")
     finally:
         if hypervisor == "xen":
