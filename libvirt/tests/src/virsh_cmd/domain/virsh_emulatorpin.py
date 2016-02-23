@@ -218,7 +218,15 @@ def run(test, params, env):
         elif cpulist == "x":
             cpulist = random.choice(utils.cpu_online_map())
         elif cpulist == "x-y":
-            cpulist = "0-%s" % cpu_max
+            # By default, emulator is pined to all cpus, and element
+            # 'cputune/emulatorpin' may not exist in VM's XML.
+            # And libvirt will do nothing if pin emulator to the same
+            # cpus, that means VM's XML still have that element.
+            # So for testing, we should avoid that value(0-$cpu_max).
+            if cpu_max < 2:
+                cpulist = "0-0"
+            else:
+                cpulist = "0-%s" % cpu_max - 1
         elif cpulist == "x,y":
             cpulist = ','.join(random.sample(utils.cpu_online_map(), 2))
         elif cpulist == "x-y,^z":
