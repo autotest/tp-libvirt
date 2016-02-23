@@ -131,6 +131,7 @@ def run(test, params, env):
         graphics = vmxml_act.devices.by_device_tag('graphics')
         for graph in graphics:
             if graph.type_name == graphic:
+                graphic_act = graph
                 port = graph.port
 
         # Do judgement for result
