@@ -79,16 +79,18 @@ def run(test, params, env):
             pre_xml = re.sub(r"%s\s+?%s" % (name_pat, desc_pat),
                              name_sec + '\n' + desc_sec, pre_xml)
         else:
-            pre_xml = re.subn(r"%s" % name_pat, name_sec + '\n  ' +
+            pre_xml = re.subn(r"%s" % name_pat, name_sec + '\n' +
                               desc_sec, pre_xml, 1)[0]
         # change to list and remove the description element in list
         pre_xml_list = pre_xml.strip().splitlines()
         after_xml_list = after_xml.strip().splitlines()
+        pre_list = [pl.strip() for pl in pre_xml_list]
+        after_list = [al.strip() for al in after_xml_list]
         if not snap_desc:
-            for i in pre_xml_list:
+            for i in pre_list:
                 if desc_sec in i:
-                    pre_xml_list.remove(i)
-        if pre_xml_list == after_xml_list:
+                    pre_list.remove(i)
+        if pre_list == after_list:
             logging.info("Succeed to check the xml for description and name")
         else:
             # Print just the differences rather than printing both
@@ -139,8 +141,6 @@ def run(test, params, env):
                                  (pre_name, ret.stderr.strip()))
 
         edit_cmd = []
-        # Delete description element first then add it back with replacement
-        edit_cmd.append(":/<description>.*</d")
         replace_cmd = '%s<\/name>/%s<\/name>' % (pre_name, pre_name)
         replace_cmd += '\\r<description>%s<\/description>' % snap_desc
         replace_cmd = ":%s/" + replace_cmd + "/"
@@ -203,6 +203,5 @@ def run(test, params, env):
                                      "but set is %s" % (snap_cur, check_name))
 
     finally:
-        if snapshot_oldlist is not None:
-            utils_test.libvirt.clean_up_snapshots(vm_name, snapshot_oldlist)
+        utils_test.libvirt.clean_up_snapshots(vm_name, snapshot_oldlist)
         vmxml_backup.sync("--snapshots-metadata")
