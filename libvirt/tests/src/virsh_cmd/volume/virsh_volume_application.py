@@ -41,7 +41,7 @@ def run(test, params, env):
     pool_type = params.get("pool_type")
     pool_name = "test_%s_app" % pool_type
     pool_target = params.get("pool_target")
-    emulated_img = params.get("emulated_img", "emulated_img")
+    emulated_img = params.get("emulated_image", "emulated-image")
     volume_count = int(params.get("volume_count", 1))
     volume_size = params.get("volume_size", "1G")
     emulated_size = "%sG" % (volume_count * int(volume_size[:-1]) + 1)
