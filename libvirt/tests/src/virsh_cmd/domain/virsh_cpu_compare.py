@@ -89,12 +89,16 @@ def run(test, params, env):
     host_cpu_xml = capability_xml.CapabilityXML()
 
     try:
+        # Add cpu element if it not present in VM XML
+        if not vmxml.get('cpu'):
+            new_cpu = vm_xml.VMCPUXML()
+            new_cpu['model'] = host_cpu_xml['model']
+            vmxml['cpu'] = new_cpu
+        # Add cpu model element if it not present in VM XML
+        if not vmxml['cpu'].get('model'):
+            vmxml['cpu']['model'] = host_cpu_xml['model']
         # Prepare VM cpu feature if necessary
         if modify_target in ['feature_name', 'feature_policy', 'delete']:
-            if not vmxml.get('cpu'):
-                new_cpu = vm_xml.VMCPUXML()
-                new_cpu['model'] = "core2duo"
-                vmxml['cpu'] = new_cpu
             if len(vmxml['cpu'].get_feature_list()) == 0:
                 # Add a host feature to VM for testing
                 vmxml_cpu = vmxml['cpu'].copy()
