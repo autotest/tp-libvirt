@@ -85,6 +85,8 @@ def run(test, params, env):
         cellno_list = range(0, host_cells)
     elif cellno == "OUT_OF_RANGE":
         cellno_list.append(host_cells)
+    elif cellno is None:
+        pass
     else:
         cellno_list.append(cellno)
     pagesize = params.get("freepages_page_size")
