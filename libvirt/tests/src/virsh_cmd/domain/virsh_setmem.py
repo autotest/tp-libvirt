@@ -279,7 +279,12 @@ def run(test, params, env):
     if not vm.is_alive():
         vm.start()
     session = vm.wait_for_login()
-    unusable_mem = vm_unusable_mem(session)
+    if session.cmd_status('dmidecode'):
+        # The physical memory size is in vm xml, use it when dmideode not
+        # supported
+        unusable_mem = int(vmxml.max_mem) - vm_usable_mem(session)
+    else:
+        unusable_mem = vm_unusable_mem(session)
     original_outside_mem = vm.get_used_mem()
     original_inside_mem = vm_usable_mem(session)
     session.close()
