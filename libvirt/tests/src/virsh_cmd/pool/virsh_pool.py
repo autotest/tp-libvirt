@@ -122,6 +122,11 @@ def run(test, params, env):
                 "Not find volume '%s' in pool '%s'." %
                 (vol_name, pool_name))
 
+    def is_in_range(actual, expected, error_percent):
+        deviation = 100 - (100 * (float(actual) / float(expected)))
+        logging.debug("Deviation: %0.2f%%", float(deviation))
+        return float(deviation) <= float(error_percent)
+
     def check_pool_info(pool_info, check_point, value):
         """
         Check the pool name, uuid, etc.
@@ -133,11 +138,22 @@ def run(test, params, env):
         """
         if pool_info is None:
             raise error.TestFail("Pool info dictionary is needed.")
-        if pool_info[check_point] == value:
-            logging.debug("Pool '%s' is '%s'.", check_point, value)
+        if check_point in ('Capacity', 'Allocation', 'Available'):
+            # As from bytes to GiB, could cause deviation, and it should not
+            # exceed 1 percent.
+            if is_in_range(float(pool_info[check_point].split()[0]),
+                           float(value.split()[0]), 1):
+                logging.debug("Pool '%s' is '%s'.", check_point, value)
+            else:
+                raise error.TestFail("Pool '%s' isn't '%s'." %
+                                     (check_point, value))
         else:
-            raise error.TestFail("Pool '%s' isn't '%s'." % (check_point,
-                                                            value))
+            if pool_info[check_point] == value:
+                logging.debug("Pool '%s' is '%s'.", check_point, value)
+            else:
+                raise error.TestFail("Pool '%s' isn't '%s'." %
+                                     (check_point, value))
+
     # Stop multipathd to avoid start pool fail(For fs like pool, the new add
     # disk may in use by device-mapper, so start pool will report disk already
     # mounted error).
