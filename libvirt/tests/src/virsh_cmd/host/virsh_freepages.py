@@ -1,10 +1,10 @@
 import logging
 
 from autotest.client.shared import error
-from autotest.client import utils
 
 from virttest import virsh
-from virttest.staging import utils_memory
+from virttest import test_setup
+from virttest import utils_misc
 from virttest.utils_test import libvirt as utlv
 
 
@@ -74,45 +74,48 @@ def run(test, params, env):
     option = params.get("freepages_option", "")
     status_error = "yes" == params.get("status_error", "no")
     cellno = params.get("freepages_cellno")
+    pagesize = params.get("freepages_page_size")
+    huge_pages_num = params.get("huge_pages_num")
+
+    hp_cl = test_setup.HugePageConfig(params)
+    default_hp_size = hp_cl.get_hugepage_size()
+    supported_hp_size = hp_cl.get_multi_supported_hugepage_size()
+
+    host_numa_node = utils_misc.NumaInfo()
+    node_list = host_numa_node.online_nodes
+    logging.debug("host node list is %s", node_list)
+
+    for i in node_list:
+        try:
+            hp_cl.get_node_num_huge_pages(i, default_hp_size)
+        except ValueError, e:
+            logging.warning("%s", e)
+            logging.debug('move node %s out of testing node list', i)
+            node_list.remove(i)
+
     cellno_list = []
-    get_node_num = "numactl -H|awk '/available:/ {print $2}'"
-    host_cells = utils.run(get_node_num).stdout.strip()
-    try:
-        host_cells = int(host_cells)
-    except (TypeError, ValueError), e:
-        raise error.TestError("Fail to get host nodes number: %s" % e)
     if cellno == "AUTO":
-        cellno_list = range(0, host_cells)
+        cellno_list = node_list
     elif cellno == "OUT_OF_RANGE":
-        cellno_list.append(host_cells)
-    elif cellno is None:
-        pass
+        cellno_list.append(max(node_list) + 1)
     else:
         cellno_list.append(cellno)
-    pagesize = params.get("freepages_page_size")
-    default_pagesize = utils.run("getconf PAGE_SIZE").stdout.strip()
-    try:
-        default_pagesize = int(default_pagesize) / 1024
-    except (TypeError, ValueError), e:
-        raise error.TestError("Fail to get default page size: %s" % e)
-    default_huge_pagesize = utils_memory.get_huge_page_size()
+
     pagesize_list = []
     if pagesize == "AUTO":
-        pagesize_list.append(default_pagesize)
-        pagesize_list.append(default_huge_pagesize)
+        pagesize_list = supported_hp_size
     else:
         pagesize_list.append(pagesize)
-    huge_pages = params.get("huge_pages")
-    if huge_pages and not status_error:
+
+    if huge_pages_num and not status_error:
         try:
-            huge_pages = int(huge_pages)
+            huge_pages_num = int(huge_pages_num)
         except (TypeError, ValueError), e:
-            raise error.TestError("Huge page value %s shoule be an integer"
-                                  % huge_pages)
+            raise error.TestError("Huge page value %s shoule be an integer" %
+                                  huge_pages_num)
         # Set huge page for positive test
-        node_list = "0-%s" % (host_cells - 1)
-        utils.run("numactl -m %s echo %s >/proc/sys/vm/nr_hugepages_mempolicy"
-                  % (node_list, huge_pages * host_cells))
+        for i in node_list:
+            hp_cl.set_node_num_huge_pages(huge_pages_num, i, default_hp_size)
 
     # Run test
     for cell in cellno_list:
@@ -124,14 +127,20 @@ def run(test, params, env):
             utlv.check_exit_status(result, status_error)
             expect_result_list = []
             # Check huge pages
-            if not status_error and huge_pages and page == default_huge_pagesize:
+            if (not status_error and
+                    huge_pages_num and
+                    page == str(default_hp_size)):
                 page_k = "%sKiB" % page
-                if cellno is not None:
-                    for i in range(0, host_cells):
-                        node_v = "Node %s" % i
+                node_dict = {page_k: str(huge_pages_num)}
+                if cell is None:
+                    for i in node_list:
+                        tmp_dict = {}
+                        tmp_dict['Node'] = "Node %s" % i
+                        tmp_dict.update(node_dict)
+                        expect_result_list.append(tmp_dict)
                 else:
-                    node_v = "Node %s" % cell
-                    expect_result_list = [{"Node": node_v, page_k: huge_pages}]
+                    expect_result_list = [node_dict]
+
                 if check_freepages(result.stdout.strip(), expect_result_list):
                     logging.info("Huge page freepages check pass")
                 else:
