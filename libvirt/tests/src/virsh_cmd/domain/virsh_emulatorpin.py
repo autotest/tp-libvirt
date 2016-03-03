@@ -226,7 +226,7 @@ def run(test, params, env):
             if cpu_max < 2:
                 cpulist = "0-0"
             else:
-                cpulist = "0-%s" % cpu_max - 1
+                cpulist = "0-%s" % (cpu_max - 1)
         elif cpulist == "x,y":
             cpulist = ','.join(random.sample(utils.cpu_online_map(), 2))
         elif cpulist == "x-y,^z":
