@@ -138,7 +138,8 @@ def run(test, params, env):
         """
         if pool_info is None:
             raise error.TestFail("Pool info dictionary is needed.")
-        if check_point in ('Capacity', 'Allocation', 'Available'):
+        val_tup = ('Capacity', 'Allocation', 'Available')
+        if check_point in val_tup and float(value.split()[0]):
             # As from bytes to GiB, could cause deviation, and it should not
             # exceed 1 percent.
             if is_in_range(float(pool_info[check_point].split()[0]),
