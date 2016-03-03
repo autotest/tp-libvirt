@@ -1,5 +1,8 @@
 import logging
 import os
+import uuid
+
+import aexpect
 
 from autotest.client.shared import error
 
@@ -19,6 +22,13 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     options = params.get("desc_option", "")
     persistent_vm = params.get("persistent_vm", "yes")
+    domain = params.get("domain", "name")
+    if domain == "UUID":
+        vm_name = vm.get_uuid()
+    elif domain == "invalid_domain":
+        vm_name = "domain_" + str(uuid.uuid1())
+    elif domain == "invalid_uuid":
+        vm_name = uuid.uuid1()
 
     def run_cmd(name, options, desc_str, status_error):
         """
@@ -26,11 +36,35 @@ def run(test, params, env):
 
         :return: cmd output
         """
-        cmd_result = virsh.desc(name, options, desc_str, ignore_status=True,
-                                debug=True)
-        output = cmd_result.stdout.strip()
-        err = cmd_result.stderr.strip()
-        status = cmd_result.exit_status
+        if "--edit" not in options:
+            cmd_result = virsh.desc(name, options, desc_str, ignore_status=True,
+                                    debug=True)
+            output = cmd_result.stdout.strip()
+            err = cmd_result.stderr.strip()
+            status = cmd_result.exit_status
+        else:
+            logging.debug("Setting domain desc \"%s\" by --edit", desc_str)
+            session = aexpect.ShellSession("sudo -s")
+            try:
+                session.sendline("virsh -c %s desc %s --edit" %
+                                 (vm.connect_uri, name))
+                session.sendline("dgg")
+                session.sendline("dG")
+                session.sendline(":%s/^$/" + desc_str + "/")
+                session.send('\x1b')
+                session.send('ZZ')
+                match, text = session.read_until_any_line_matches(
+                    [r"Domain description updated successfully"],
+                    timeout=10, internal_timeout=1)
+                session.close()
+                if match == -1:
+                    status = 0
+                    output = "Domain description updated successfully"
+                else:
+                    status = 1
+                    err = "virsh desc --edit fails"
+            except:
+                raise error.TestFail("Fail to create session.")
         if status_error == "no" and status:
             raise error.TestFail(err)
         elif status_error == "yes" and status == 0:
@@ -46,21 +80,39 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy()
 
-    def desc_check(name, desc_str, state_switch):
+    def desc_check(name, desc_str, options):
         """
         Check the domain's description or title
         """
         ret = False
-        if state_switch:
-            vm_state_switch()
-        output = run_cmd(name, "", "", "no")
-        if desc_str == output:
-            logging.debug("Domain desc check successfully.")
+        state_switch = False
+        if options.count("--config") and vm.is_persistent():
+            state_switch = True
+        # If both --live and --config are specified, the --config
+        # option takes precedence on getting the current description
+        # and both live configuration and config are updated while
+        # setting the description.
+        # This situation just happens vm is alive
+        if options.count("--config") and options.count("--live"):
+            # Just test options exclude --config (--live [--title])
+            desc_check(name, desc_str, options.replace("--config", ""))
+            # Just test options exclude --live (--config [--title])
+            desc_check(name, desc_str, options.replace("--live", ""))
             ret = True
         else:
-            logging.error("Domain desc check fail.")
-        if state_switch:
-            vm_state_switch()
+            if state_switch:
+                vm_state_switch()
+            # --new-desc and --edit option should not appear in check
+            if options.count("--edit") or options.count("--new-desc"):
+                output = run_cmd(name, "", "", "no")
+            else:
+                output = run_cmd(name, options, "", "no")
+            if desc_str == output:
+                logging.debug("Domain desc check successfully.")
+                ret = True
+            else:
+                raise error.TestFail("Expect fail, but run successfully.")
+
         return ret
 
     def run_test():
@@ -69,19 +121,21 @@ def run(test, params, env):
         """
         status_error = params.get("status_error", "no")
         desc_str = params.get("desc_str", "")
-        state_switch = False
         # Test 1: get vm desc
-        run_cmd(vm_name, options, "", status_error)
+        if "--edit" not in options:
+            if "--new-desc" in options:
+                run_cmd(vm_name, options, "", "yes")
+            else:
+                run_cmd(vm_name, options, "", status_error)
         # Test 2: set vm desc
-        if options.count("--config") and vm.is_persistent():
-            state_switch = True
         if options.count("--live") and vm.state() == "shut off":
             status_error = "yes"
-        if len(desc_str) == 0:
+        if len(desc_str) == 0 and status_error == "no":
             desc_str = "New Description/title for the %s vm" % vm.state()
             logging.debug("Use the default desc message: %s", desc_str)
         run_cmd(vm_name, options, desc_str, status_error)
-        desc_check(vm_name, desc_str, state_switch)
+        if status_error == "no":
+            desc_check(vm_name, desc_str, options)
 
     # Prepare transient/persistent vm
     original_xml = vm.backup_xml()
@@ -92,13 +146,15 @@ def run(test, params, env):
     try:
         if vm.is_dead():
             vm.start()
+        if domain == "ID":
+            vm_name = vm.get_id()
         run_test()
         # Recvoer the vm and shutoff it
-        if persistent_vm == "yes":
+        if persistent_vm == "yes" and domain != "ID":
             vm.define(original_xml)
             vm.destroy()
             run_test()
     finally:
-        vm.destroy()
+        vm.destroy(False)
         virsh.define(original_xml)
         os.remove(original_xml)
