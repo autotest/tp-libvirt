@@ -14,12 +14,10 @@ from virttest import libvirt_vm
 from virttest import remote
 from virttest import virsh
 from virttest import utils_libvirtd
-from virttest.utils_misc import kill_process_by_pattern
+from virttest import utils_misc
+from virttest import utils_config
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
-
-QEMU_CONF = "/etc/libvirt/qemu.conf"
-QEMU_CONF_BK = "/etc/libvirt/qemu.conf.bk"
 
 
 class ActionError(Exception):
@@ -37,7 +35,7 @@ class ActionError(Exception):
                    " is %s" % self.action)
 
 
-def check_crash_state(cmd_output, crash_action, dump_file=""):
+def check_crash_state(cmd_output, crash_action, vm_name, dump_file=""):
     """
     Check the domain state about crash actions.
     """
@@ -51,6 +49,18 @@ def check_crash_state(cmd_output, crash_action, dump_file=""):
         expect_output = "running (crashed)"
     elif crash_action == "preserve":
         expect_output = "crashed (panicked)"
+    logging.info("Expect state: %s", expect_output)
+
+    def _wait_for_state():
+        cmd_output = virsh.domstate(vm_name, '--reason').stdout.strip()
+        return cmd_output.strip() == expect_output
+
+    # There is a middle state 'crashed (panicked)' for these two actions
+    if crash_action in ['coredump-destroy', 'coredump-restart']:
+        middle_state = 'crashed (panicked)'
+        text = 'VM in middle state: %s' % middle_state
+        if cmd_output.strip() == middle_state:
+            utils_misc.wait_for(_wait_for_state, 60, text=text)
 
     if cmd_output.strip() == expect_output:
         crash_state = True
@@ -59,6 +69,8 @@ def check_crash_state(cmd_output, crash_action, dump_file=""):
         if result.exit_status == 0:
             logging.debug("Find the auto dump core file:\n%s", result.stdout)
             find_dump_file = True
+        else:
+            logging.error("Not find coredump file: %s", dump_file)
         return crash_state and find_dump_file
     return crash_state
 
@@ -103,9 +115,11 @@ def run(test, params, env):
     backup_xml = vmxml.copy()
 
     # Back up qemu.conf
-    process.run("cp %s %s" % (QEMU_CONF, QEMU_CONF_BK), shell=True)
+    qemu_conf = utils_config.LibvirtQemuConfig()
+    libvirtd = utils_libvirtd.Libvirtd()
 
     dump_path = os.path.join(test.tmpdir, "dump/")
+    os.mkdir(dump_path)
     dump_file = ""
     try:
         if vm_action == "crash":
@@ -120,9 +134,7 @@ def run(test, params, env):
                 vmxml.add_device(panic_dev)
             vmxml.sync()
             # Config auto_dump_path in qemu.conf
-            cmd = "echo auto_dump_path = \\\"%s\\\" >> %s" % (dump_path,
-                                                              QEMU_CONF)
-            process.run(cmd, shell=True)
+            qemu_conf.auto_dump_path = dump_path
             libvirtd_service.restart()
             if vm_oncrash_action in ['coredump-destroy', 'coredump-restart']:
                 dump_file = dump_path + vm_name + "-*"
@@ -147,7 +159,7 @@ def run(test, params, env):
                 virsh.start(vm_name, ignore_status=False)
             elif vm_action == "kill":
                 libvirtd_service.stop()
-                kill_process_by_pattern(vm_name)
+                utils_misc.kill_process_by_pattern(vm_name)
                 libvirtd_service.restart()
             elif vm_action == "crash":
                 session = vm.wait_for_login()
@@ -226,7 +238,7 @@ def run(test, params, env):
                         raise ActionError(vm_action)
                 elif vm_action == "crash":
                     if not check_crash_state(output, vm_oncrash_action,
-                                             dump_file):
+                                             vm_name, dump_file):
                         raise ActionError(vm_action)
             if vm_ref == "remote":
                 if not (re.search("running", output) or
@@ -234,11 +246,8 @@ def run(test, params, env):
                         re.search("idle", output)):
                     raise error.TestFail("Run failed with right command")
     finally:
-        # recover libvirtd service start
-        if libvirtd == "off":
-            utils_libvirtd.libvirtd_start()
-        # Recover VM
-        process.run("mv -f %s %s" % (QEMU_CONF_BK, QEMU_CONF), shell=True)
+        qemu_conf.restore()
+        libvirtd.restart()
         vm.destroy(gracefully=False)
         backup_xml.sync()
         if os.path.exists(dump_path):
