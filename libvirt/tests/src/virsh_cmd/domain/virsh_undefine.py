@@ -1,5 +1,6 @@
 import os
 import logging
+import shutil
 
 import aexpect
 
@@ -89,6 +90,17 @@ def run(test, params, env):
     volume = None
     pvtest = None
     status3 = None
+
+    elems = backup_xml.xmltreefile.findall('/devices/disk/source')
+    existing_images = [elem.get('file') for elem in elems]
+
+    # Backup images since remove-all-storage could remove existing libvirt
+    # managed guest images
+    if existing_images and option.count("remove-all-storage"):
+        for img in existing_images:
+            backup_img = img + '.bak'
+            logging.info('Backup %s to %s', img, backup_img)
+            shutil.copyfile(img, backup_img)
 
     try:
         save_file = "/var/lib/libvirt/qemu/save/%s.save" % vm_name
@@ -184,14 +196,10 @@ def run(test, params, env):
             xml_exist = True
 
         # Check if save file exists if use --managed-save
-        save_exist = False
-        if os.path.exists(save_file):
-            save_exist = True
+        save_exist = os.path.exists(save_file)
 
         # Check if save file exists if use --managed-save
-        volume_exist = False
-        if volume and os.path.exists(volume):
-            volume_exist = True
+        volume_exist = volume and os.path.exists(volume)
 
         # Test define with acl control and recover domain.
         if params.get('setup_libvirt_polkit') == 'yes':
@@ -207,6 +215,13 @@ def run(test, params, env):
     finally:
         # Recover main VM.
         backup_xml.sync()
+
+        # Recover existing guest images
+        if existing_images and option.count("remove-all-storage"):
+            for img in existing_images:
+                backup_img = img + '.bak'
+                logging.info('Recover image %s to %s', backup_img, img)
+                shutil.move(backup_img, img)
 
         # Clean up pool
         if pvtest:
