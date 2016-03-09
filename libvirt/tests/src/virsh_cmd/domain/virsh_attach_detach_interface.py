@@ -132,9 +132,11 @@ def run(test, params, env):
     dom_uuid = vm.get_uuid()
     dom_id = vm.get_id()
 
-    # To confirm vm's state
+    # To confirm vm's state and make sure os fully started
     if start_vm == "no" and vm.is_alive():
         vm.destroy()
+    else:
+        vm.wait_for_login().close()
 
     # Test both detach and attach, So collect info
     # both of them for result check.
