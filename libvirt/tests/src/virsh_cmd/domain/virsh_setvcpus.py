@@ -11,6 +11,7 @@ from virttest import remote
 from virttest import virsh
 from virttest import libvirt_vm
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import xcepts
 from virttest.utils_test import libvirt
 
 
@@ -168,6 +169,8 @@ def run(test, params, env):
         # Set maximum vcpus, so we can run all kinds of normal tests without
         # encounter requested vcpus greater than max allowable vcpus error
         vmxml.set_vm_vcpus(vm_name, max_vcpu, current_vcpu)
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        logging.debug("Pre-test xml is %s", vmxml.xmltreefile)
 
         # Get the number of cpus, current value if set, and machine type
         orig_count, orig_current, mtype = get_xmldata(vm_name, tmpxml, options)
@@ -184,10 +187,16 @@ def run(test, params, env):
 
         # Remove vm features
         if remove_vm_feature:
-            vmfeature_xml = vmxml['features']
-            vmfeature_xml.remove_feature(remove_vm_feature)
-            vmxml['features'] = vmfeature_xml
-            vmxml.sync()
+            try:
+                vmfeature_xml = vmxml['features']
+            except xcepts.LibvirtXMLNotFoundError, e:
+                logging.debug("features not found in xml\n%s", e)
+            else:
+                vmfeature_xml.remove_feature(remove_vm_feature)
+                vmxml['features'] = vmfeature_xml
+                vmxml.sync()
+                logging.debug("xml after remove feature is:\n%s",
+                              vmxml.xmltreefile)
 
         # Restart, unless that's not our test
         if not vm.is_alive():
