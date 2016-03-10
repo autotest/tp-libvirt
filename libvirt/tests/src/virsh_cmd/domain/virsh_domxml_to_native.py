@@ -88,6 +88,8 @@ def run(test, params, env):
             # XMLToNative: Don't show -S
             elif re.search("-S", arg):
                 continue
+            elif re.search("socket,id=", arg):
+                continue
             retlist.append(arg)
 
         return retlist
