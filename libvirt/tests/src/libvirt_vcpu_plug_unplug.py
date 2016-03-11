@@ -5,6 +5,8 @@ import logging
 from autotest.client import utils
 from autotest.client.shared import error
 
+from avocado.utils import cpu as cpu_util
+
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_misc
@@ -30,7 +32,6 @@ def check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin, setvcpu_option=""):
     :param setvcpu_option: Option for virsh setvcpus command
     """
     logging.debug("Expect vcpu number: %s", expect_vcpu_num)
-    #if setvcpu_option != "--guest":
     # Check virsh vcpucount output
     vcpucount_option = ""
     if setvcpu_option == "--guest" and vm.state() == "running":
@@ -402,7 +403,9 @@ def run(test, params, env):
         vmxml.sync()
 
         vmxml.set_vm_vcpus(vm_name, int(vcpu_max_num), int(vcpu_current_num))
-        vmxml.set_pm_suspend(vm_name, "yes", "yes")
+        # Do not apply S3/S4 on power
+        if 'power' not in cpu_util.get_cpu_arch():
+            vmxml.set_pm_suspend(vm_name, "yes", "yes")
         vm.start()
 
         # Create swap partition/file if nessesary
