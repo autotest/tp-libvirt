@@ -6,6 +6,7 @@ from autotest.client.shared import error
 
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest.libvirt_xml import capability_xml
 from virttest.staging import utils_memory
 
@@ -34,18 +35,20 @@ def run(test, params, env):
             raise error.TestFail(
                 "Virsh nodeinfo output didn't match CPU model")
 
-        # Check number of CPUs
+        # Check number of CPUs, nodeinfo CPUs represent online threads in the
+        # system, check all online cpus in sysfs
         cpus_nodeinfo = _check_nodeinfo(nodeinfo_output, "CPU(s)", 2)
-        cpus_os = utils.count_cpus()
-        if int(cpus_nodeinfo) != cpus_os:
+        cmd = "cat /sys/devices/system/cpu/cpu*/online | grep 1 | wc -l"
+        cpus_os = utils.run(cmd, ignore_status=True)
+        if cpus_nodeinfo != cpus_os.stdout.strip():
             raise error.TestFail("Virsh nodeinfo output didn't match number of "
                                  "CPU(s)")
 
-        # Check CPU frequency
+        # Check CPU frequency, frequency is under clock for ppc
         cpu_frequency_nodeinfo = _check_nodeinfo(
             nodeinfo_output, 'CPU frequency', 3)
-        cmd = ("cat /proc/cpuinfo | grep 'cpu MHz' | head -n1 | "
-               "awk '{print $4}' | awk -F. '{print $1}'")
+        cmd = ("cat /proc/cpuinfo | grep -E 'cpu MHz|clock' | head -n1 | "
+               "awk -F: '{print $2}' | awk -F. '{print $1}'")
         cmd_result = utils.run(cmd, ignore_status=True)
         cpu_frequency_os = cmd_result.stdout.strip()
         logging.debug("cpu_frequency_nodeinfo=%s cpu_frequency_os=%s",
@@ -74,12 +77,16 @@ def run(test, params, env):
         # Check CPU socket(s)
         cpu_sockets_nodeinfo = int(
             _check_nodeinfo(nodeinfo_output, 'CPU socket(s)', 3))
-        cmd = "grep 'physical id' /proc/cpuinfo | uniq | sort | uniq |wc -l"
+        # CPU socket(s) in virsh nodeinfo is Total sockets in each node, not
+        # total sockets in the system, so get total sockets in one node and
+        # check with it
+        node_info = utils_misc.NumaInfo()
+        node_online_list = node_info.get_online_nodes()
+        cmd = "cat /sys/devices/system/node/node%s" % node_online_list[0]
+        cmd += "/cpu*/topology/physical_package_id | uniq |wc -l"
         cmd_result = utils.run(cmd, ignore_status=True)
-        cpu_NUMA_nodeinfo = _check_nodeinfo(nodeinfo_output, 'NUMA cell(s)', 3)
-        cpu_sockets_os = int(
-            cmd_result.stdout.strip()) / int(cpu_NUMA_nodeinfo)
-        if cpu_sockets_os != cpu_sockets_nodeinfo:
+        total_sockets_in_node = int(cmd_result.stdout.strip())
+        if total_sockets_in_node != cpu_sockets_nodeinfo:
             raise error.TestFail("Virsh nodeinfo output didn't match CPU "
                                  "socket(s) of host OS")
         if cpu_sockets_nodeinfo != int(cpu_topology['sockets']):
@@ -89,7 +96,7 @@ def run(test, params, env):
         # Check Core(s) per socket
         cores_per_socket_nodeinfo = _check_nodeinfo(
             nodeinfo_output, 'Core(s) per socket', 4)
-        cmd = "grep 'cpu cores' /proc/cpuinfo | head -n1 | awk '{print $4}'"
+        cmd = "lscpu | grep 'Core(s) per socket' | head -n1 | awk '{print $4}'"
         cmd_result = utils.run(cmd, ignore_status=True)
         cores_per_socket_os = cmd_result.stdout.strip()
         if not re.match(cores_per_socket_nodeinfo, cores_per_socket_os):
