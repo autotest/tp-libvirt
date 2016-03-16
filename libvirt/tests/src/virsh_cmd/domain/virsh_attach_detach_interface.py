@@ -133,8 +133,9 @@ def run(test, params, env):
     dom_id = vm.get_id()
 
     # To confirm vm's state and make sure os fully started
-    if start_vm == "no" and vm.is_alive():
-        vm.destroy()
+    if start_vm == "no":
+        if vm.is_alive():
+            vm.destroy()
     else:
         vm.wait_for_login().close()
 
