@@ -1,93 +1,134 @@
 import os
 import logging
 
-from autotest.client import utils
-from autotest.client.shared import ssh_key
-from autotest.client.shared import error
+from avocado.core import exceptions
+from avocado.utils import process
 
 from virttest import utils_v2v
+from virttest import virsh
+from virttest import ssh_key
 from virttest import utils_misc
+from virttest import utils_sasl
 
-
-def get_args_dict(params):
-    args_dict = {}
-    keys_list = ['target', 'main_vm', 'ovirt_engine_url', 'ovirt_engine_user',
-                 'ovirt_engine_password', 'hypervisor', 'storage',
-                 'remote_node_user', 'v2v_opts', 'export_name', 'storage_name',
-                 'cluster_name', 'remote_ip']
-
-    if params.get('network'):
-        keys_list.append('network')
-
-    if params.get('bridge'):
-        keys_list.append('bridge')
-
-    hypervisor = params.get('hypervisor')
-    if hypervisor == 'esx':
-        esx_args_list = ['vpx_ip', 'vpx_pwd', 'vpx_pwd_file',
-                         'vpx_dc', 'esx_ip', 'hostname']
-        keys_list += esx_args_list
-
-    if hypervisor == 'xen':
-        xen_args_list = ['xen_ip', 'xen_pwd', 'hostname']
-        keys_list += xen_args_list
-
-    for key in keys_list:
-        val = params.get(key)
-        if val is None:
-            raise KeyError("%s doesn't exist" % key)
-        elif val.count("EXAMPLE"):
-            raise error.TestNAError("Please provide specific value for %s: %s"
-                                    % (key, val))
-        else:
-            args_dict[key] = val
-
-    logging.debug(args_dict)
-    return args_dict
+from provider.v2v_vmcheck_helper import VMChecker
 
 
 def run(test, params, env):
     """
-    Test convert vm to ovirt
+    Convert a remote vm to remote ovirt node.
     """
-    args_dict = get_args_dict(params)
-    hypervisor = args_dict.get('hypervisor')
-    xen_ip = args_dict.get('xen_ip')
-    xen_pwd = args_dict.get('xen_pwd')
-    remote_node_user = args_dict.get('remote_node_user', 'root')
-    vpx_pwd = args_dict.get('vpx_pwd')
-    vpx_pwd_file = args_dict.get('vpx_pwd_file')
+    for v in params.itervalues():
+        if "V2V_EXAMPLE" in v:
+            raise exceptions.TestSkipError("Please set real value for %s" % v)
+
+    vm_name = params.get("main_vm")
+    target = params.get("target")
+    hypervisor = params.get("hypervisor")
+    input_mode = params.get("input_mode")
+    storage = params.get('storage')
+    network = params.get('network')
+    bridge = params.get('bridge')
+    source_user = params.get("username", "root")
+    xen_ip = params.get("xen_ip")
+    xen_pwd = params.get("xen_pwd")
+    vpx_ip = params.get("vpx_ip")
+    vpx_pwd = params.get("vpx_pwd")
+    vpx_pwd_file = params.get("vpx_pwd_file")
+    vpx_dc = params.get("vpx_dc")
+    esx_ip = params.get("esx_ip")
+    hypervisor = params.get("hypervisor")
     address_cache = env.get('address_cache')
-    if hypervisor == 'xen':
+    v2v_opts = params.get("v2v_opts")
+
+    # Prepare step for different hypervisor
+    if hypervisor == "esx":
+        source_ip = vpx_ip
+        source_pwd = vpx_pwd
+        # Create password file to access ESX hypervisor
+        with open(vpx_pwd_file, 'w') as f:
+            f.write(vpx_pwd)
+    elif hypervisor == "xen":
+        source_ip = xen_ip
+        source_pwd = xen_pwd
         # Set up ssh access using ssh-agent and authorized_keys
-        ssh_key.setup_ssh_key(xen_ip, user=remote_node_user,
-                              port=22, password=xen_pwd)
+        ssh_key.setup_ssh_key(source_ip, source_user, source_pwd)
         try:
             utils_misc.add_identities_into_ssh_agent()
         except:
-            utils.run("ssh-agent -k")
-            raise error.TestError("Failed to start 'ssh-agent'")
+            process.run("ssh-agent -k")
+            raise exceptions.TestError("Fail to setup ssh-agent")
+    else:
+        raise exceptions.TestSkipError("Unspported hypervisor: %s" % hypervisor)
 
-    if hypervisor == 'esx':
-        fp = open(vpx_pwd_file, 'w')
-        fp.write(vpx_pwd)
-        fp.close()
+    # Create libvirt URI
+    v2v_uri = utils_v2v.Uri(hypervisor)
+    remote_uri = v2v_uri.get_uri(source_ip, vpx_dc, esx_ip)
+    logging.debug("libvirt URI for converting: %s", remote_uri)
 
+    # Make sure the VM exist before convert
+    v2v_virsh = None
+    close_virsh = False
+    if hypervisor == 'kvm':
+        v2v_virsh = virsh
+    else:
+        virsh_dargs = {'uri': remote_uri, 'remote_ip': source_ip,
+                       'remote_user': source_user, 'remote_pwd': source_pwd,
+                       'debug': True}
+        v2v_virsh = virsh.VirshPersistent(**virsh_dargs)
+        close_virsh = True
     try:
-        # Set libguestfs environment variable
-        os.environ['LIBGUESTFS_BACKEND'] = 'direct'
+        if not v2v_virsh.domain_exists(vm_name):
+            raise exceptions.TestError("VM '%s' not exist" % vm_name)
+    finally:
+        if close_virsh:
+            v2v_virsh.close_session()
 
-        # Run virt-v2v command
-        ret = utils_v2v.v2v_cmd(args_dict)
+    # Create SASL user on the ovirt host
+    user_pwd = "[['%s', '%s']]" % (params.get("sasl_user"),
+                                   params.get("sasl_pwd"))
+    v2v_sasl = utils_sasl.SASL(sasl_user_pwd=user_pwd)
+    v2v_sasl.server_ip = params.get("remote_ip")
+    v2v_sasl.server_user = params.get('remote_user')
+    v2v_sasl.server_pwd = params.get('remote_pwd')
+    v2v_sasl.setup(remote=True)
+
+    # Maintain a single params for v2v to avoid duplicate parameters
+    v2v_params = {'target': target, 'hypervisor': hypervisor,
+                  'main_vm': vm_name, 'input_mode': input_mode,
+                  'network': network, 'bridge': bridge,
+                  'storage': storage, 'hostname': source_ip}
+    if vpx_dc:
+        v2v_params.update({"vpx_dc": vpx_dc})
+    if esx_ip:
+        v2v_params.update({"esx_ip": esx_ip})
+    if v2v_opts:
+        v2v_params.update({"v2v_opts": v2v_opts})
+
+    # Set libguestfs environment variable
+    os.environ['LIBGUESTFS_BACKEND'] = 'direct'
+    try:
+        # Execute virt-v2v command
+        ret = utils_v2v.v2v_cmd(v2v_params)
         logging.debug("virt-v2v verbose messages:\n%s", ret)
         if ret.exit_status != 0:
-            raise error.TestFail("Convert VM failed")
+            raise exceptions.TestFail("Convert VM failed")
 
-        # Import the VM to oVirt Data Center from export domain
+        # Import the VM to oVirt Data Center from export domain, and start it
         if not utils_v2v.import_vm_to_ovirt(params, address_cache):
-            raise error.TestFail("Import VM failed")
+            raise exceptions.TestError("Import VM failed")
+
+        # Check all checkpoints after convert
+        vmchecker = VMChecker(test, params, env)
+        ret = vmchecker.run()
+        vmchecker.cleanup()
+        if ret == 0:
+            logging.info("All checkpoints passed")
+        else:
+            raise exceptions.TestFail("%s checkpoints failed" % ret)
     finally:
-        if hypervisor == "xen":
-            utils.run("ssh-agent -k")
+        if v2v_sasl:
+            v2v_sasl.cleanup()
         if hypervisor == "esx":
-            utils.run("rm -rf %s" % vpx_pwd_file)
+            os.remove(vpx_pwd_file)
+        if hypervisor == "xen":
+            process.run("ssh-agent -k")
