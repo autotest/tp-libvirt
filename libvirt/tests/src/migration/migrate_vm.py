@@ -659,6 +659,7 @@ def run(test, params, env):
     driver = test_dict.get("test_driver", "qemu")
     uri_path = test_dict.get("uri_path", "/system")
     nfs_mount_dir = test_dict.get("nfs_mount_dir", "/var/lib/libvirt/migrate")
+    nfs_mount_src = test_dict.get("nfs_mount_src", "/usr/share/avocado/data/avocado-vt/images")
     setup_ssh = test_dict.get("setup_ssh", "yes")
     setup_tcp = test_dict.get("setup_tcp", "yes")
     setup_tls = test_dict.get("setup_tls", "yes")
@@ -930,6 +931,15 @@ def run(test, params, env):
             if status:
                 raise error.TestFail("Failed to run '%s' on the remote: %s"
                                      % (cmd, output))
+            cmd = "mount | grep -E '.*%s.*%s.*'" % (client_ip + ':' + nfs_mount_src,
+                                                    nfs_mount_dir)
+            status, out = run_remote_cmd(cmd, server_ip, server_user, server_pwd)
+            if not status:
+                logging.warning("The '%s' is mounted unexpectedly. Umount it now."
+                                % nfs_mount_dir)
+                cmd = "umount -l %s" % nfs_mount_dir
+                status, output = run_remote_cmd(cmd, server_ip, server_user, server_pwd)
+                logging.debug("status:%d, output:%s", status, output)
 
         cpu_model = test_dict.get("cpu_model_name")
         cpu_vendor = test_dict.get("cpu_vendor")
