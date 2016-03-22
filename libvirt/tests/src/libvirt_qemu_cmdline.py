@@ -69,11 +69,16 @@ def config_feature_memory_backing(vmxml, **kwargs):
         qemu_flags.append(['mem-merge=off', 'redhat-disable-KSM'])
     if locked:
         qemu_flags.append("mlock=on")
+        memtune_xml = vm_xml.VMMemTuneXML()
+        memtune_xml.hard_limit = vmxml.max_mem * 4
+        vmxml.memtune = memtune_xml
+        vmxml.sync()
     try:
         vm_xml.VMXML.set_memoryBacking_tag(vmxml.vm_name,
                                            hpgs=False,
                                            nosp=no_sharepages,
                                            locked=locked)
+        logging.debug("xml updated to %s", vmxml.xmltreefile)
     except Exception, detail:
         logging.error("Update VM XML fail: %s", detail)
     return qemu_flags
