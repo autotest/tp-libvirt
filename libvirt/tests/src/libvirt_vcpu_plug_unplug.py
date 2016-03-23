@@ -70,7 +70,7 @@ def check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin, setvcpu_option=""):
         i = 3
     else:
         i = 2
-    result = virsh.vcpuinfo(vm.name, ignore_status=True, debue=True)
+    result = virsh.vcpuinfo(vm.name, ignore_status=True, debug=True)
     libvirt.check_exit_status(result)
     output = result.stdout.strip()
     vcpuinfo_num = len(output.split("\n\n"))
@@ -104,7 +104,7 @@ def check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin, setvcpu_option=""):
 
     # check cpu affinity got from vcpupin command output, and vcpupin command
     # output, and vcpupin info(cputune element) in domain xml
-    result = virsh.vcpupin(vm.name, ignore_status=True, debue=True)
+    result = virsh.vcpupin(vm.name, ignore_status=True, debug=True)
     libvirt.check_exit_status(result)
     vcpupin_output = result.stdout.strip().splitlines()[2:]
     if expect_vcpupin:
@@ -163,7 +163,7 @@ def check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin, setvcpu_option=""):
             logging.debug("Find %s CPUs in domian as expected", output)
 
         # Check cpu-stats command, only for running domian
-        result = virsh.cpu_stats(vm.name, "", ignore_status=True, debue=True)
+        result = virsh.cpu_stats(vm.name, "", ignore_status=True, debug=True)
         libvirt.check_exit_status(result)
 
 
@@ -375,15 +375,30 @@ def run(test, params, env):
                                 " on host is %s."
                                 % (pin_cpu_list, host_cpu_count))
 
-    cpu_max = int(host_cpu_count) - 1
+    cpus_list = utils.cpu_online_map()
+    logging.info("Active cpus in host are %s", cpus_list)
+
+    cpu_seq_str = ""
+    for i in range(len(cpus_list) - 1):
+        if int(cpus_list[i]) + 1 == int(cpus_list[i + 1]):
+            cpu_seq_str = "%s-%s" % (cpus_list[i], cpus_list[i + 1])
+            break
+
     if pin_cpu_list == "x":
-        pin_cpu_list = str(cpu_max)
+        pin_cpu_list = cpus_list[-1]
     if pin_cpu_list == "x-y":
-        pin_cpu_list = "0-%s" % cpu_max
+        if cpu_seq_str:
+            pin_cpu_list = cpu_seq_str
+        else:
+            pin_cpu_list = "%s-%s" % (cpus_list[0], cpus_list[0])
     elif pin_cpu_list == "x,y":
-        pin_cpu_list = "0,%s" % cpu_max
+        pin_cpu_list = "%s,%s" % (cpus_list[0], cpus_list[1])
     elif pin_cpu_list == "x-y,^z":
-        pin_cpu_list = "0-%s,^%s" % (cpu_max, cpu_max)
+        if cpu_seq_str:
+            pin_cpu_list = cpu_seq_str + ",^%s" % cpu_seq_str.split('-')[1]
+        else:
+            pin_cpu_list = "%s,%s,^%s" % (cpus_list[0], cpus_list[1],
+                                          cpus_list[0])
     else:
         # Just use the value get from cfg
         pass
@@ -430,7 +445,7 @@ def run(test, params, env):
             # Pin vcpu
             if pin_before_plug:
                 result = virsh.vcpupin(vm_name, pin_vcpu, pin_cpu_list,
-                                       ignore_status=True, debue=True)
+                                       ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
                 expect_vcpupin = {pin_vcpu: pin_cpu_list}
 
@@ -454,7 +469,7 @@ def run(test, params, env):
             # Pin vcpu
             if pin_after_plug:
                 result = virsh.vcpupin(vm_name, pin_vcpu, pin_cpu_list,
-                                       ignore_status=True, debue=True)
+                                       ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
                 expect_vcpupin = {pin_vcpu: pin_cpu_list}
 
@@ -510,7 +525,7 @@ def run(test, params, env):
             # Pin vcpu
             if pin_before_unplug:
                 result = virsh.vcpupin(vm_name, pin_vcpu, pin_cpu_list,
-                                       ignore_status=True, debue=True)
+                                       ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
                 # As the vcpu will unplug later, so set expect_vcpupin to empty
                 expect_vcpupin = {}
@@ -536,7 +551,7 @@ def run(test, params, env):
             # Pin vcpu
             if pin_after_unplug:
                 result = virsh.vcpupin(vm_name, pin_vcpu, pin_cpu_list,
-                                       ignore_status=True, debue=True)
+                                       ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
                 expect_vcpupin = {pin_vcpu: pin_cpu_list}
 
