@@ -155,9 +155,14 @@ def run(test, params, env):
                 used_node += utlv.cpus_parser(i)
         if used_node and not status_error:
             logging.debug("set node list is %s", used_node)
+            used_node = list(set(used_node))
             for i in used_node:
-                if i > max(node_list):
+                if i not in node_list:
                     raise error.TestNAError("%s in nodeset out of range" % i)
+                mem_size = host_numa_node.read_from_node_meminfo(i, 'MemTotal')
+                logging.debug("the memory total in the node %s is %s", i, mem_size)
+                if not int(mem_size):
+                    raise error.TestNAError("node %s memory is empty" % i)
 
         # set hugepage with qemu.conf and mount path
         if default_hp_size == 2048:
@@ -187,23 +192,15 @@ def run(test, params, env):
             for i in h_list:
                 node_val = hp_cl.get_node_num_huge_pages(i['nodenum'],
                                                          i['size'])
-                if i['size'] != "1048576":
+                # set hugpege per node if current value not satisfied
+                # kernel 1G hugepage runtime number update is supported now
+                if int(i['num']) > node_val:
                     node_dict = i.copy()
                     node_dict['num'] = node_val
                     backup_list.append(node_dict)
                     hp_cl.set_node_num_huge_pages(i['num'],
                                                   i['nodenum'],
                                                   i['size'])
-                else:
-                    # kernel 1G hugepage runtime number update not supported
-                    # now, check whether current host setting satisfy
-                    # requirement or not.
-                    if i['num'] < node_val:
-                        raise error.TestNAError("%s size hugepage number %s of"
-                                                " node %s not satisfy for "
-                                                "testing" % (i['size'],
-                                                             node_val,
-                                                             i['nodenum']))
 
         vmxml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
         vmxml.vcpu = vcpu_num
