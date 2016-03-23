@@ -4,6 +4,8 @@ import logging
 from autotest.client import utils
 from autotest.client.shared import error
 
+from avocado.utils import cpu as cpu_util
+
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
@@ -39,10 +41,18 @@ def run(test, params, env):
         # system, check all online cpus in sysfs
         cpus_nodeinfo = _check_nodeinfo(nodeinfo_output, "CPU(s)", 2)
         cmd = "cat /sys/devices/system/cpu/cpu*/online | grep 1 | wc -l"
-        cpus_os = utils.run(cmd, ignore_status=True)
-        if cpus_nodeinfo != cpus_os.stdout.strip():
-            raise error.TestFail("Virsh nodeinfo output didn't match number of "
-                                 "CPU(s)")
+        cpus_online = utils.run(cmd, ignore_status=True)
+        cmd = "cat /sys/devices/system/cpu/cpu*/online | wc -l"
+        cpus_total = utils.run(cmd, ignore_status=True)
+        if cpus_nodeinfo != cpus_online.stdout.strip():
+            if 'power' in cpu_util.get_cpu_arch():
+                if cpus_nodeinfo != cpus_total.stdout.strip():
+                    raise error.TestFail("Virsh nodeinfo output of CPU(s) on"
+                                         " ppc did not match all threads in "
+                                         "the system")
+            else:
+                raise error.TestFail("Virsh nodeinfo output didn't match "
+                                     "number of CPU(s)")
 
         # Check CPU frequency, frequency is under clock for ppc
         cpu_frequency_nodeinfo = _check_nodeinfo(
