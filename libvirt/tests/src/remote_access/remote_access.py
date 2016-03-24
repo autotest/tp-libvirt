@@ -17,6 +17,8 @@ from virttest.utils_net import check_listening_port_remote_by_service
 from virttest.utils_test.libvirt import remotely_control_libvirtd
 from virttest.utils_test.libvirt import connect_libvirtd
 
+from provider import libvirt_version
+
 
 def remote_access(params):
     """
@@ -124,9 +126,17 @@ def run(test, params, env):
     test_dict = dict(params)
     vm_name = test_dict.get("main_vm")
     status_error = test_dict.get("status_error", "no")
-    allowed_dn_list = params.get("tls_allowed_dn_list")
-    if allowed_dn_list:
-        test_dict['tls_allowed_dn_list'] = eval(allowed_dn_list)
+    allowed_dn_str = params.get("tls_allowed_dn_list")
+    if allowed_dn_str:
+        allowed_dn_list = []
+        if not libvirt_version.version_compare(1, 0, 0):
+            # Reverse the order in the dn list to workaround the
+            # feature changes between RHEL 6 and RHEL 7
+            dn_list = allowed_dn_str.split(",")
+            dn_list.reverse()
+            allowed_dn_str = ','.join(dn_list)
+        allowed_dn_list.append(allowed_dn_str)
+        test_dict['tls_allowed_dn_list'] = allowed_dn_list
     transport = test_dict.get("transport")
     plus = test_dict.get("conn_plus", "+")
     config_ipv6 = test_dict.get("config_ipv6", "no")
