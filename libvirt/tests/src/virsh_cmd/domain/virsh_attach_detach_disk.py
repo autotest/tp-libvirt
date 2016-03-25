@@ -132,6 +132,7 @@ def run(test, params, env):
     address = params.get("at_dt_disk_address", "")
     address2 = params.get("at_dt_disk_address2", "")
     cache_options = params.get("cache_options", "")
+    time_sleep = params.get("time_sleep", 3)
     if serial:
         at_options += (" --serial %s" % serial)
     if address2:
@@ -295,6 +296,8 @@ def run(test, params, env):
             logging.error("Audit check failed")
             check_audit_after_cmd = False
 
+    # Need wait a while for xml to sync
+    time.sleep(float(time_sleep))
     # Check disk count after command.
     check_count_after_cmd = True
     disk_count_after_cmd = vm_xml.VMXML.get_disk_count(vm_name)
@@ -361,7 +364,6 @@ def run(test, params, env):
     eject_cdrom = "yes" == params.get("at_dt_disk_eject_cdrom", "no")
     save_vm = "yes" == params.get("at_dt_disk_save_vm", "no")
     save_file = os.path.join(test.tmpdir, "vm.save")
-    time_sleep = params.get("time_sleep")
     try:
         if eject_cdrom:
             eject_params = {'type_name': "file", 'device_type': "cdrom",
@@ -393,6 +395,8 @@ def run(test, params, env):
         # Destroy VM.
         vm.destroy(gracefully=False)
 
+        # Need wait a while for xml to sync
+        time.sleep(float(time_sleep))
         # Check disk count after VM shutdown (with --config).
         check_count_after_shutdown = True
         disk_count_after_shutdown = vm_xml.VMXML.get_disk_count(vm_name)
