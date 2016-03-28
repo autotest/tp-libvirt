@@ -67,7 +67,7 @@ def run(test, params, env):
         if sec_relabel is not None:
             cmd += ",relabel=%s" % sec_relabel
 
-        cmd += "&"
+        cmd += " --noautoconsole --graphics vnc &"
         utils.run(cmd, ignore_status=True)
 
         def _vm_alive():
