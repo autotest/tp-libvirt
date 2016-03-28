@@ -15,6 +15,7 @@ from virttest import virsh
 from virttest import utils_v2v
 from virttest import utils_misc
 from virttest import utils_sasl
+from virttest import libvirt_vm
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
@@ -53,10 +54,11 @@ def run(test, params, env):
     v2v_user = params.get("unprivileged_user", "")
     v2v_timeout = int(params.get("v2v_timeout", 1200))
     status_error = "yes" == params.get("status_error", "no")
-    for param in [vm_name, remote_host, esx_ip, vpx_dc, ovirt_engine_url,
-                  ovirt_engine_user, ovirt_engine_passwd, output_storage,
-                  export_name, storage_name, disk_img, export_domain_uuid,
-                  v2v_user]:
+    checkpoint = params.get("checkpoint")
+    debug_kernel = "debug_kernel" == params.get("checkpoint")
+    for param in [vm_name, ovirt_engine_url, ovirt_engine_user,
+                  ovirt_engine_passwd, output_storage, export_name,
+                  storage_name, export_domain_uuid, v2v_user]:
         if "EXAMPLE" in param:
             raise error.TestNAError("Please replace %s with real value" % param)
 
@@ -70,7 +72,9 @@ def run(test, params, env):
     new_v2v_user = False
     restore_image_owner = False
     address_cache = env.get('address_cache')
-    params['vmcheck'] = None
+    params["vmcheck_flag"] = False
+    multi_kernel_lst = ["multi_kernel", "debug_kernel", "vmlinuz_init"]
+    snapshot_lst = ["multi_kernel", "debug_kernel", "vmlinuz_init"]
 
     def create_pool():
         """
@@ -236,9 +240,10 @@ def run(test, params, env):
         """
         Check disk counts inside the VM
         """
-        vmcheck = params.get("vmcheck")
-        if vmcheck is None:
-            raise error.TestError("VM check object is None")
+        vmcheck_flag = params.get("vmcheck_flag")
+        if not vmcheck_flag:
+            raise error.TestError("No vm to check")
+        vmcheck = utils_v2v.VMCheck(test, params, env)
         # Initialize windows boot up
         os_type = params.get("os_type", "linux")
         if os_type == "windows":
@@ -269,6 +274,109 @@ def run(test, params, env):
             logging.info("Disk counts is expected")
         else:
             raise error.TestFail("Disk counts is wrong")
+
+    def vm_shell(func):
+        """
+        Decorator of shell session
+        """
+        def wrapper(*args, **kwargs):
+            vm = libvirt_vm.VM(vm_name, params, test.bindir,
+                               env.get("address_cache"))
+            if vm.is_dead():
+                logging.info("VM is down. Starting it now.")
+                vm.start()
+            session = vm.wait_for_login()
+            kwargs["session"] = session
+            kwargs["vm"] = vm
+            func(*args, **kwargs)
+            if session:
+                session.close()
+            vm.shutdown()
+        return wrapper
+
+    def install_kernel(session, url=None, kernel_debug=False):
+        """
+        Install kernel to vm
+        """
+        if kernel_debug:
+            if session.cmd_status("yum -y install kernel-debug",
+                                  timeout=v2v_timeout):
+                raise error.TestFail("Fail on installing debug kernel")
+            else:
+                logging.info("install kernel-debug success")
+        else:
+            if not (url and url.endswith(".rpm")):
+                raise error.TestNAError("kernel url doesn't contain rpm")
+            # rhel6 need to install kernel-firmware first
+            if ".el6" in session.cmd("uname -r"):
+                kernel_fm_url = params.get('kernel_fm_url')
+                cmd_install_firmware = "rpm -Uv %s" % kernel_fm_url
+                try:
+                    session.cmd(cmd_install_firmware, timeout=v2v_timeout)
+                except Exception, e:
+                    raise error.TestNAError(str(e))
+            cmd_install_kernel = "rpm -iv %s" % url
+            try:
+                session.cmd(cmd_install_kernel, timeout=v2v_timeout)
+            except Exception, e:
+                raise error.TestError(str(e))
+
+    @vm_shell
+    def multi_kernel(*args, **kwargs):
+        """
+        Make multi-kernel test
+        """
+        session = kwargs["session"]
+        vm = kwargs["vm"]
+        kernel_url = params.get("kernel_url")
+        install_kernel(session, kernel_url, debug_kernel)
+        default_kernel = vm.set_boot_kernel(1, debug_kernel)
+        if not default_kernel:
+            raise error.TestError("Set default kernel failed")
+        params["defaultkernel"] = default_kernel
+
+    def check_vmlinuz_initramfs(v2v_result):
+        """
+        Check if vmlinuz matches initramfs on multi-kernel case
+        """
+        logging.info("Checking if vmlinuz matches initramfs")
+        kernels = re.search(
+                r'kernel packages in this guest:(.*?)grub kernels in this',
+                v2v_result, flags=re.DOTALL)
+        try:
+            lines = kernels.group(1)
+            kernel_lst = re.findall('\((.*?)\)', lines)
+            for kernel in kernel_lst:
+                vmlinuz = re.search(r'/boot/vmlinuz-(.*?),', kernel).group(1)
+                initramfs = \
+                    re.search(r'/boot/initramfs-(.*?)\.img', kernel).group(1)
+                logging.debug("vmlinuz version is: %s" % vmlinuz)
+                logging.debug("initramfs version is: %s" % initramfs)
+                if vmlinuz != initramfs:
+                    raise error.TestFail("vmlinz not match with initramfs")
+        except Exception, e:
+            raise error.TestError("Error on find kernel info \n %s" % str(e))
+
+    def check_multi_kernel(default_kernel, kernel_debug=False):
+        """
+        Check if converted vm use the default kernel
+        """
+        logging.debug("Check debug kernel?: %s" % kernel_debug)
+        vmcheck_flag = params.get("vmcheck_flag")
+        if not vmcheck_flag:
+            raise error.TestError("No vm to check")
+        vmcheck = utils_v2v.VMCheck(test, params, env)
+        vmcheck.create_session()
+        current_kernel = vmcheck.session.cmd('uname -r').strip()
+        if vmcheck.session:
+            vmcheck.session.close()
+        logging.debug("Current kernel: %s" % current_kernel)
+        logging.debug("Default kernel: %s" % default_kernel)
+        if kernel_debug:
+            if '.debug' in current_kernel:
+                raise error.TestFail("Chose debug kernel over non-debug!")
+        elif current_kernel not in default_kernel:
+            raise error.TestFail("Chose first kernel over default kernel!")
 
     def check_result(cmd, result, status_error):
         """
@@ -303,9 +411,16 @@ def run(test, params, env):
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache):
                     raise error.TestFail("Import VM failed")
                 else:
-                    params['vmcheck'] = utils_v2v.VMCheck(test, params, env)
+                    params["vmcheck_flag"] = True
                     if attach_disks:
                         check_disks(params.get("ori_disks"))
+                    if checkpoint:
+                        if checkpoint == "vmlinuz_init":
+                            check_vmlinuz_initramfs(output)
+                        if checkpoint in ["multi_kernel", "debug_kernel"]:
+                            default_kernel = params.get('defaultkernel')
+                            check_multi_kernel(default_kernel, debug_kernel)
+
             if output_mode == "libvirt":
                 if "qemu:///session" not in v2v_options:
                     virsh.start(vm_name, debug=True, ignore_status=False)
@@ -333,6 +448,16 @@ def run(test, params, env):
                 params['ori_disks'] = backup_xml.get_disk_count(vm_name)
                 utlv.attach_disks(env.get_vm(vm_name), attach_disk_path,
                                   None, params)
+            elif checkpoint:
+                # Create snapshot of vm for future revert after test finish
+                if checkpoint in snapshot_lst:
+                    params["snapshot"] = utils_misc.generate_random_string(8)
+                    logging.info("Creating snapshot %s for %s" %
+                                 (params["snapshot"], vm_name))
+                    virsh.snapshot_create_as(vm_name, "--name %s" %
+                                             params["snapshot"])
+                if checkpoint in multi_kernel_lst:
+                    multi_kernel()
         elif input_mode == "disk":
             input_option += "-i %s %s" % (input_mode, disk_img)
         elif input_mode in ['libvirtxml', 'ova']:
@@ -469,8 +594,15 @@ def run(test, params, env):
             else:
                 virsh.remove_domain(vm_name)
             cleanup_pool()
-        vmcheck = params.get("vmcheck")
-        if vmcheck:
+        if checkpoint:
+            if checkpoint in snapshot_lst:
+                logging.info("Reverting VM from snapshot")
+                virsh.snapshot_revert(vm_name, params["snapshot"])
+                logging.info("Deleting snapshot")
+                virsh.snapshot_delete(vm_name, params["snapshot"])
+        vmcheck_flag = params.get("vmcheck_flag")
+        if vmcheck_flag:
+            vmcheck = utils_v2v.VMCheck(test, params, env)
             vmcheck.cleanup()
         if new_v2v_user:
             utils.system("userdel -f %s" % v2v_user)
