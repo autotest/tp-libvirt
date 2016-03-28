@@ -214,13 +214,13 @@ def run(test, params, env):
         Test for qemu-kvm command line options
         """
         cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
-        if test_vhost_net:
-            cmd += " | grep 'vhost=on'"
         ret = utils.run(cmd)
-        if ret.exit_status:
-            raise error.TestFail("Can't parse qemu-kvm command line")
-
         logging.debug("Command line %s", ret.stdout)
+        if test_vhost_net:
+            if not ret.stdout.count("vhost=on") and not rm_vhost_driver:
+                raise error.TestFail("Can't see vhost options in"
+                                     " qemu-kvm command line")
+
         if iface_model == "virtio":
             model_option = "device virtio-net-pci"
         else:
@@ -273,11 +273,11 @@ def run(test, params, env):
             cmd = "lsof %s | grep %s" % (backend["tap"], guest_pid)
             if utils.system(cmd, ignore_status=True):
                 raise error.TestFail("Guest process didn't open backend file"
-                                     % backend["tap"])
+                                     " %s" % backend["tap"])
             cmd = "lsof %s | grep %s" % (backend["vhost"], guest_pid)
             if utils.system(cmd, ignore_status=True):
                 raise error.TestFail("Guest process didn't open backend file"
-                                     % backend["tap"])
+                                     " %s" % backend["tap"])
 
     def get_guest_ip(session, mac):
         """
@@ -390,6 +390,7 @@ def run(test, params, env):
     update_device = "yes" == params.get("update_iface_device", "no")
     additional_guest = "yes" == params.get("additional_guest", "no")
     serial_login = "yes" == params.get("serial_login", "no")
+    rm_vhost_driver = "yes" == params.get("rm_vhost_driver", "no")
     test_option_cmd = "yes" == params.get(
                       "test_iface_option_cmd", "no")
     test_option_xml = "yes" == params.get(
@@ -416,6 +417,9 @@ def run(test, params, env):
                                     " in this libvirt version")
 
     if unprivileged_user:
+        if not libvirt_version.version_compare(1, 1, 1):
+            raise error.TestNAError("qemu-bridge-helper not supported"
+                                    " on this host")
         virsh_dargs["unprivileged_user"] = unprivileged_user
         # Create unprivileged user if needed
         cmd = ("grep {0} /etc/passwd || "
@@ -459,14 +463,24 @@ def run(test, params, env):
             # Edit the interface xml.
             if change_option:
                 modify_iface_xml(update=False)
-            # Check vhost driver.
-            if test_vhost_net:
-                if os.path.exists("/dev/vhost-net"):
-                    cmd = ("modprobe -r {0}; lsmod | "
-                           "grep {0}".format("vhost_net"))
-                    if not utils.system(cmd, ignore_status=True):
-                        raise error.TestError("Can't remove "
-                                              "vhost_net driver")
+
+            if rm_vhost_driver:
+                # Check vhost driver.
+                kvm_version = os.uname()[2]
+                driver_path = ("/lib/modules/%s/kernel/drivers/vhost/"
+                               "vhost_net.ko" % kvm_version)
+                driver_backup = driver_path + ".bak"
+                cmd = ("modprobe -r {0}; lsmod | "
+                       "grep {0}".format("vhost_net"))
+                if not utils.system(cmd, ignore_status=True):
+                    raise error.TestError("Failed to remove vhost_net driver")
+                # Move the vhost_net driver
+                if os.path.exists(driver_path):
+                    os.rename(driver_path, driver_backup)
+            else:
+                # Load vhost_net driver by default
+                cmd = "modprobe vhost_net"
+                utils.system(cmd)
 
             # Attach a interface when vm is shutoff
             if attach_device == 'config':
@@ -510,11 +524,6 @@ def run(test, params, env):
                     session = vm.wait_for_login()
             if start_error:
                 raise error.TestFail("VM started unexpectedly")
-
-            if test_vhost_net:
-                if utils.system("lsmod | grep vhost_net", ignore_status=True):
-                    raise error.TestFail("vhost_net module can't be"
-                                         " loaded automatically")
 
             # Attach a interface when vm is running
             if attach_device == 'live':
@@ -595,6 +604,10 @@ def run(test, params, env):
                 os.rename(backend["tap"], backend_tap)
             if not os.path.exists(backend_vhost):
                 os.rename(backend["vhost"], backend_vhost)
+        if rm_vhost_driver:
+            # Restore vhost_net driver
+            if os.path.exists(driver_backup):
+                os.rename(driver_backup, driver_path)
         if unprivileged_user:
             virsh.remove_domain(vm_name, "--remove-all-storage",
                                 **virsh_dargs)
