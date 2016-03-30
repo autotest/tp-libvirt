@@ -11,6 +11,8 @@ from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
 
+from provider import libvirt_version
+
 
 def run(test, params, env):
     """
@@ -22,19 +24,31 @@ def run(test, params, env):
     """
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     bypass_cache = params.get("auto_dump_bypass_cache", "not_set")
+    panic_model = params.get("panic_model")
+    addr_type = params.get("addr_type")
+    addr_iobase = params.get("addr_iobase")
     vm = env.get_vm(vm_name)
+
+    if panic_model and not libvirt_version.version_compare(1, 3, 1):
+        raise error.TestNAError("panic device model attribute not supported"
+                                " on current libvirt version")
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
 
     config = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
+    dump_path = os.path.join(test.tmpdir, "dump")
     try:
         if not vmxml.xmltreefile.find('devices').findall('panic'):
             # Set panic device
             panic_dev = Panic()
-            panic_dev.addr_type = "isa"
-            panic_dev.addr_iobase = "0x505"
+            if panic_model:
+                panic_dev.model = panic_model
+            if addr_type:
+                panic_dev.addr_type = addr_type
+            if addr_iobase:
+                panic_dev.addr_iobase = addr_iobase
             vmxml.add_device(panic_dev)
         vmxml.on_crash = "coredump-restart"
         vmxml.sync()
@@ -50,8 +64,9 @@ def run(test, params, env):
         else:
             config.auto_dump_bypass_cache = bypass_cache
 
-        dump_path = os.path.join(test.tmpdir, "dump")
         config.auto_dump_path = dump_path
+        if os.path.exists(dump_path):
+            os.rmdir(dump_path)
         os.mkdir(dump_path)
 
         # Restart libvirtd to make change valid.
@@ -103,3 +118,5 @@ def run(test, params, env):
         backup_xml.sync()
         config.restore()
         libvirtd.restart()
+        if os.path.exists(dump_path):
+            os.rmdir(dump_path)
