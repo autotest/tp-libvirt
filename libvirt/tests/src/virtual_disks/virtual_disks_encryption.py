@@ -104,6 +104,8 @@ def run(test, params, env):
                 return False
 
             libvirt.mk_part("/dev/%s" % added_part, size="10M", session=session)
+            # Run partprobe to make the change take effect.
+            utils.run("partprobe", ignore_error=True)
             libvirt.mkfs("/dev/%s1" % added_part, "ext3", session=session)
 
             cmd = ("mount /dev/%s1 /mnt && echo '123' > /mnt/testfile"
