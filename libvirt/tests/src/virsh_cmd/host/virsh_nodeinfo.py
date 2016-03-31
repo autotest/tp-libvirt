@@ -1,3 +1,4 @@
+import os
 import re
 import logging
 
@@ -41,12 +42,19 @@ def run(test, params, env):
         # system, check all online cpus in sysfs
         cpus_nodeinfo = _check_nodeinfo(nodeinfo_output, "CPU(s)", 2)
         cmd = "cat /sys/devices/system/cpu/cpu*/online | grep 1 | wc -l"
-        cpus_online = utils.run(cmd, ignore_status=True)
+        cpus_online = utils.run(cmd, ignore_status=True).stdout.strip()
         cmd = "cat /sys/devices/system/cpu/cpu*/online | wc -l"
-        cpus_total = utils.run(cmd, ignore_status=True)
-        if cpus_nodeinfo != cpus_online.stdout.strip():
+        cpus_total = utils.run(cmd, ignore_status=True).stdout.strip()
+        if not os.path.exists('/sys/devices/system/cpu/cpu0/online'):
+            cpus_online = str(int(cpus_online) + 1)
+            cpus_total = str(int(cpus_total) + 1)
+
+        logging.debug("host online cpus are %s", cpus_online)
+        logging.debug("host total cpus are %s", cpus_total)
+
+        if cpus_nodeinfo != cpus_online:
             if 'power' in cpu_util.get_cpu_arch():
-                if cpus_nodeinfo != cpus_total.stdout.strip():
+                if cpus_nodeinfo != cpus_total:
                     raise error.TestFail("Virsh nodeinfo output of CPU(s) on"
                                          " ppc did not match all threads in "
                                          "the system")
