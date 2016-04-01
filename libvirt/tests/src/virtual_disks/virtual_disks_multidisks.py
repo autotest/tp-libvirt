@@ -134,6 +134,8 @@ def run(test, params, env):
 
             # Format the disk and make file system.
             libvirt.mk_part(device_source)
+            # Run partprobe to make the change take effect.
+            utils.run("partprobe", ignore_status=True)
             libvirt.mkfs("%s1" % device_source, "ext3")
             device_source += "1"
             disk.update({"format": disk_format,
