@@ -14,8 +14,6 @@ from autotest.client.shared import error
 from virttest import virsh
 from virttest import utils_v2v
 from virttest import utils_misc
-from virttest import utils_sasl
-from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
 
@@ -53,10 +51,9 @@ def run(test, params, env):
     v2v_user = params.get("unprivileged_user", "")
     v2v_timeout = int(params.get("v2v_timeout", 1200))
     status_error = "yes" == params.get("status_error", "no")
-    for param in [vm_name, remote_host, esx_ip, vpx_dc, ovirt_engine_url,
-                  ovirt_engine_user, ovirt_engine_passwd, output_storage,
-                  export_name, storage_name, disk_img, export_domain_uuid,
-                  v2v_user]:
+    for param in [vm_name, ovirt_engine_url, ovirt_engine_user,
+                  ovirt_engine_passwd, output_storage, v2v_user,
+                  export_name, storage_name, export_domain_uuid]:
         if "EXAMPLE" in param:
             raise error.TestNAError("Please replace %s with real value" % param)
 
@@ -70,7 +67,7 @@ def run(test, params, env):
     new_v2v_user = False
     restore_image_owner = False
     address_cache = env.get('address_cache')
-    params['vmcheck'] = None
+    params['vmcheck_flag'] = False
 
     def create_pool():
         """
@@ -135,7 +132,6 @@ def run(test, params, env):
         """
         Get the full path of the converted image.
         """
-        img_path = ""
         img_name = vm_name + "-sda"
         if output_mode == "libvirt":
             img_path = virsh.vol_path(img_name, output_storage).stdout.strip()
@@ -145,8 +141,6 @@ def run(test, params, env):
             export_domain_uuid, image_uuid, vol_uuid = get_all_uuids(output)
             img_path = os.path.join(mnt_point, export_domain_uuid, 'images',
                                     image_uuid, vol_uuid)
-        if not img_path or not os.path.isfile(img_path):
-            raise error.TestError("Get image path: '%s' is invalid", img_path)
         return img_path
 
     def check_vmtype(ovf, expected_vmtype):
@@ -171,6 +165,8 @@ def run(test, params, env):
         """
         Verify image file allocation mode and format
         """
+        if not img_path or not os.path.isfile(img_path):
+            raise error.TestError("Image path: '%s' is invalid" % img_path)
         img_info = utils_misc.get_image_info(img_path)
         logging.debug("Image info: %s", img_info)
         if check_point == "allocation":
@@ -232,44 +228,6 @@ def run(test, params, env):
         else:
             raise error.TestFail("Not find message: %s" % init_msg)
 
-    def check_disks(ori_disks):
-        """
-        Check disk counts inside the VM
-        """
-        vmcheck = params.get("vmcheck")
-        if vmcheck is None:
-            raise error.TestError("VM check object is None")
-        # Initialize windows boot up
-        os_type = params.get("os_type", "linux")
-        if os_type == "windows":
-            virsh_session = utils_sasl.VirshSessionSASL(params)
-            virsh_session_id = virsh_session.get_id()
-            vmcheck.virsh_session_id = virsh_session_id
-            vmcheck.init_windows()
-            virsh_session.close()
-        # Creatge VM session
-        vmcheck.create_session()
-        expected_disks = int(params.get("added_disks_count", "1")) - ori_disks
-        logging.debug("Expect %s disks im VM after convert", expected_disks)
-        # Get disk counts
-        disks = 0
-        if os_type == "linux":
-            cmd = "lsblk |grep disk |wc -l"
-            disks = int(vmcheck.session.cmd(cmd).strip())
-        else:
-            cmd = r"echo list disk > C:\list_disk.txt"
-            vmcheck.session.cmd(cmd)
-            cmd = r"diskpart /s C:\list_disk.txt"
-            output = vmcheck.session.cmd(cmd).strip()
-            logging.debug("Disks in VM: %s", output)
-            disks = len(output.splitlines()) - 6
-        logging.debug("Find %s disks in VM after convert", disks)
-        vmcheck.session.close()
-        if disks == expected_disks:
-            logging.info("Disk counts is expected")
-        else:
-            raise error.TestFail("Disk counts is wrong")
-
     def check_result(cmd, result, status_error):
         """
         Check virt-v2v command result
@@ -303,16 +261,12 @@ def run(test, params, env):
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache):
                     raise error.TestFail("Import VM failed")
                 else:
-                    params['vmcheck'] = utils_v2v.VMCheck(test, params, env)
-                    if attach_disks:
-                        check_disks(params.get("ori_disks"))
+                    params['vmcheck_flag'] = True
             if output_mode == "libvirt":
                 if "qemu:///session" not in v2v_options:
                     virsh.start(vm_name, debug=True, ignore_status=False)
 
     backup_xml = None
-    attach_disks = "yes" == params.get("attach_disk_config", "no")
-    attach_disk_path = os.path.join(test.tmpdir, "attach_disks")
     vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
     try:
         # Build input options
@@ -326,13 +280,6 @@ def run(test, params, env):
             # Build network&bridge option to avoid network error
             v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
                                              params.get("output_network"))
-            # Multiple disks testing
-            if attach_disks:
-                backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-                # Get original vm disk counts
-                params['ori_disks'] = backup_xml.get_disk_count(vm_name)
-                utlv.attach_disks(env.get_vm(vm_name), attach_disk_path,
-                                  None, params)
         elif input_mode == "disk":
             input_option += "-i %s %s" % (input_mode, disk_img)
         elif input_mode in ['libvirtxml', 'ova']:
@@ -421,6 +368,7 @@ def run(test, params, env):
 
         # Create password file for access to ESX hypervisor
         if hypervisor == 'esx':
+            os.environ['LIBGUESTFS_BACKEND'] = 'direct'
             vpx_passwd = params.get("vpx_passwd")
             vpx_passwd_file = os.path.join(test.tmpdir, "vpx_passwd")
             logging.info("Building ESX no password interactive verification.")
@@ -469,8 +417,9 @@ def run(test, params, env):
             else:
                 virsh.remove_domain(vm_name)
             cleanup_pool()
-        vmcheck = params.get("vmcheck")
-        if vmcheck:
+        vmcheck_flag = params.get("vmcheck_flag")
+        if vmcheck_flag:
+            vmcheck = utils_v2v.VMCheck(test, params, env)
             vmcheck.cleanup()
         if new_v2v_user:
             utils.system("userdel -f %s" % v2v_user)
@@ -478,5 +427,3 @@ def run(test, params, env):
             os.chown(disk_img, ori_owner, ori_group)
         if backup_xml:
             backup_xml.sync()
-        if os.path.exists(attach_disk_path):
-            shutil.rmtree(attach_disk_path)
