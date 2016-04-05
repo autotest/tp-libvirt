@@ -322,8 +322,11 @@ def run(test, params, env):
         """
         Check multicast ip address on guests
         """
+        username = params.get("username")
+        password = params.get("password")
         src_addr = ast.literal_eval(iface_source)['address']
-        add_session = additional_vm.wait_for_serial_login()
+        add_session = additional_vm.wait_for_serial_login(username=username,
+                                                          password=password)
         vms_sess_dict = {vm_name: session,
                          additional_vm.name: add_session}
 

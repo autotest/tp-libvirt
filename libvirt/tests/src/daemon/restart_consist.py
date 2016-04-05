@@ -28,6 +28,8 @@ def run(test, params, env):
 
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
+    username = params.get("username")
+    password = params.get("password")
 
     # Wait guest agent channel to be connected to avoid XML differ
     try:
@@ -41,7 +43,8 @@ def run(test, params, env):
 
     # Skip the test when serial login is not available
     try:
-        session = vm.wait_for_serial_login(60)
+        session = vm.wait_for_serial_login(60, username=username,
+                                           password=password)
     except remote.LoginError:
         raise error.TestNAError('Serial console might needed to be '
                                 'configured before test.')

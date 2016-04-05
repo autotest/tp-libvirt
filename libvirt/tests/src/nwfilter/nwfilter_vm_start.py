@@ -35,6 +35,8 @@ def run(test, params, env):
     ipset_command = params.get("ipset_command")
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    username = params.get("username")
+    password = params.get("password")
 
     # Prepare vm filterref parameters dict list
     filter_param_list = []
@@ -96,7 +98,7 @@ def run(test, params, env):
         try:
             vm.start()
             if not mount_noexec_tmp:
-                vm.wait_for_serial_login()
+                vm.wait_for_serial_login(username=username, password=password)
             vmxml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
             iface_xml = vmxml.get_devices('interface')[0]
             iface_target = iface_xml.target['dev']
