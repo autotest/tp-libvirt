@@ -491,6 +491,8 @@ TIMEOUT 3"""
     test_ipv4_address = "yes" == params.get("test_ipv4_address", "no")
     test_ipv6_address = "yes" == params.get("test_ipv6_address", "no")
     test_guest_libvirt = "yes" == params.get("test_guest_libvirt", "no")
+    username = params.get("username")
+    password = params.get("password")
 
     # Destroy VM first
     if vm.is_alive():
@@ -665,7 +667,8 @@ TIMEOUT 3"""
 
             else:
                 if serial_login:
-                    session = vm.wait_for_serial_login()
+                    session = vm.wait_for_serial_login(username=username,
+                                                       password=password)
                 else:
                     session = vm.wait_for_login()
 

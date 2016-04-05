@@ -115,6 +115,8 @@ def run(test, params, env):
     check_link_by_update_device = "yes" == params.get(
         "excute_update_device", "no")
     device = "vnet0"
+    username = params.get("username")
+    password = params.get("password")
 
     # Back up xml file.
     vm_xml_file = os.path.join(test.tmpdir, "vm.xml")
@@ -195,7 +197,8 @@ def run(test, params, env):
         if status_error == "no":
             # Serial login the vm to check link status
             # Start vm check the link statue
-            session = vm.wait_for_serial_login()
+            session = vm.wait_for_serial_login(username=username,
+                                               password=password)
             guest_if_name = utils_net.get_linux_ifname(session, mac_address)
 
             # Check link state in guest
