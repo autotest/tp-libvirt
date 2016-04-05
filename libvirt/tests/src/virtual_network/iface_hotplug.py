@@ -24,6 +24,8 @@ def run(test, params, env):
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    if vm.is_alive():
+        vm.wait_for_login()
 
     def create_iface_xml(mac):
         """
@@ -55,6 +57,8 @@ def run(test, params, env):
     stress_test = "yes" == params.get("stress_test")
     restart_libvirtd = "yes" == params.get("restart_libvirtd",
                                            "no")
+    username = params.get("username")
+    password = params.get("password")
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -145,7 +149,8 @@ def run(test, params, env):
             # Start the domain if needed
             if vm.is_dead():
                 vm.start()
-            session = vm.wait_for_serial_login()
+            session = vm.wait_for_serial_login(username=username,
+                                               password=password)
 
             # Check if interface was attached
             for iface in iface_list:
