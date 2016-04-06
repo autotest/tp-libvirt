@@ -4,6 +4,7 @@ import os
 import aexpect
 
 from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import remote
 from virttest import virt_vm
@@ -105,7 +106,7 @@ def run(test, params, env):
 
             libvirt.mk_part("/dev/%s" % added_part, size="10M", session=session)
             # Run partprobe to make the change take effect.
-            utils.run("partprobe", ignore_error=True)
+            process.run("partprobe", ignore_status=True, shell=True)
             libvirt.mkfs("/dev/%s1" % added_part, "ext3", session=session)
 
             cmd = ("mount /dev/%s1 /mnt && echo '123' > /mnt/testfile"
@@ -187,12 +188,13 @@ def run(test, params, env):
         sec_uuid.append(v_xml.encryption.secret["uuid"])
         if not status_error:
             logging.debug("vol info -- format: %s, type: %s, uuid: %s",
-                          v_xml.encryption.format, v_xml.encryption.secret["type"],
+                          v_xml.encryption.format,
+                          v_xml.encryption.secret["type"],
                           v_xml.encryption.secret["uuid"])
             disk_xml.encryption = disk_xml.new_encryption(
                 **{"encryption": v_xml.encryption.format, "secret": {
-                   "type": v_xml.encryption.secret["type"],
-                   "uuid": v_xml.encryption.secret["uuid"]}})
+                    "type": v_xml.encryption.secret["type"],
+                    "uuid": v_xml.encryption.secret["uuid"]}})
 
         # Sync VM xml.
         vmxml.add_device(disk_xml)
