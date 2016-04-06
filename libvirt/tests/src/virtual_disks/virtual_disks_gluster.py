@@ -203,7 +203,7 @@ def run(test, params, env):
             try:
                 vm.prepare_guest_agent()
             except (remote.LoginError, virt_vm.VMError), e:
-                raise error.TestFail("failed to prepare agent")
+                raise error.TestFail("failed to prepare agent: %s" % e)
             # Run dompmsuspend command.
             test_pmsuspend(vm_name)
         if test_qemu_cmd:
