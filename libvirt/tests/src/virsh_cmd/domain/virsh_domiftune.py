@@ -14,7 +14,7 @@ def check_domiftune(params, test_clear):
     and virsh command output.
     :params: the parameter dictionary
     """
-    vm_name = params.get("vms")
+    vm_name = params.get("main_vm")
     vm = params.get("vm")
     interface = params.get("iface_dev")
     options = params.get("options")
@@ -115,7 +115,7 @@ def get_domiftune_parameter(params):
     Get the domiftune parameters
     :params: the parameter dictionary
     """
-    vm_name = params.get("vms")
+    vm_name = params.get("main_vm")
     options = params.get("options")
     interface = params.get("iface_dev")
 
@@ -144,7 +144,7 @@ def set_domiftune_parameter(params):
     Set the domiftune parameters
     :params: the parameter dictionary
     """
-    vm_name = params.get("vms")
+    vm_name = params.get("main_vm")
     inbound = params.get("inbound", "")
     outbound = params.get("outbound", "")
     options = params.get("options", None)
@@ -236,7 +236,7 @@ def run(test, params, env):
     """
 
     # Run test case
-    vm_name = params.get("vms")
+    vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     status_error = params.get("status_error", "no")
     start_vm = params.get("start_vm", "yes")

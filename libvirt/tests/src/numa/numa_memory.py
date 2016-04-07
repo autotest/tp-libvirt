@@ -89,7 +89,7 @@ def run(test, params, env):
     vcpu_cpuset = params.get("vcpu_cpuset")
     bug_url = params.get("bug_url", "")
     status_error = "yes" == params.get("status_error", "no")
-    vm_name = params.get("vms")
+    vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     backup_xml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
 

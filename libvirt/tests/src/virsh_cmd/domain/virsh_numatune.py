@@ -18,7 +18,7 @@ def check_numatune_xml(params):
     Compare mode and nodeset value with guest XML configuration
     :params: the parameter dictionary
     """
-    vm_name = params.get("vms")
+    vm_name = params.get("main_vm")
     mode = params.get("numa_mode", "")
     nodeset = params.get("numa_nodeset", "")
     options = params.get("options", "")
@@ -71,7 +71,7 @@ def get_numa_parameter(params, cgstop):
     :params: the parameter dictionary
     :cgstop: whether cg were stopped prior to get
     """
-    vm_name = params.get("vms")
+    vm_name = params.get("main_vm")
     options = params.get("options", None)
     result = virsh.numatune(vm_name, options=options)
     status = result.exit_status
@@ -103,7 +103,7 @@ def set_numa_parameter(params, cgstop):
     :params: the parameter dictionary
     :cgstop: whether cg were stopped prior to get
     """
-    vm_name = params.get("vms")
+    vm_name = params.get("main_vm")
     mode = params.get("numa_mode")
     nodeset = params.get("numa_nodeset")
     options = params.get("options", None)
@@ -191,7 +191,7 @@ def run(test, params, env):
                                 "install it.")
 
     # Run test case
-    vm_name = params.get("vms")
+    vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     original_vm_xml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     cg = utils_cgroup.CgconfigService()
