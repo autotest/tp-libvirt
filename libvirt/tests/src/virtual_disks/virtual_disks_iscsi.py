@@ -267,13 +267,11 @@ def run(test, params, env):
 
     finally:
         # Delete snapshots.
-        snapshot_lists = virsh.snapshot_list(vm_name)
-        if len(snapshot_lists) > 0:
-            libvirt.clean_up_snapshots(vm_name, snapshot_lists)
-            for snapshot in snapshot_lists:
-                virsh.snapshot_delete(vm_name, snapshot, "--metadata")
+        libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)
 
         # Recover VM.
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
         vmxml_backup.sync("--snapshots-metadata")
 
         # Delete the tmp files.

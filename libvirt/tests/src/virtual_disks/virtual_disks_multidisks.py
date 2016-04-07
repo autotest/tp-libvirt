@@ -274,10 +274,11 @@ def run(test, params, env):
         snapshot1 = "s1"
         snapshot2 = "s2"
         snapshot2_file = os.path.join(test.tmpdir, "s2")
-        ret = virsh.snapshot_create(vm_name, "")
+        ret = virsh.snapshot_create(vm_name, "", **virsh_dargs)
         libvirt.check_exit_status(ret)
 
-        ret = virsh.snapshot_create_as(vm_name, "%s --disk-only" % snapshot1)
+        ret = virsh.snapshot_create_as(vm_name, "%s --disk-only" % snapshot1,
+                                       **virsh_dargs)
         libvirt.check_exit_status(ret)
 
         ret = virsh.snapshot_dumpxml(vm_name, snapshot1)
@@ -289,7 +290,8 @@ def run(test, params, env):
 
         ret = virsh.snapshot_create_as(vm_name,
                                        "%s --memspec file=%s,snapshot=external"
-                                       % (snapshot2, snapshot2_file))
+                                       % (snapshot2, snapshot2_file),
+                                       **virsh_dargs)
         libvirt.check_exit_status(ret)
 
         ret = virsh.dumpxml(vm_name)
@@ -306,11 +308,11 @@ def run(test, params, env):
 
         # Check virsh save command after snapshot.
         save_file = "/tmp/%s.save" % vm_name
-        ret = virsh.save(vm_name, save_file, ignore_status=True)
+        ret = virsh.save(vm_name, save_file, **virsh_dargs)
         libvirt.check_exit_status(ret)
 
         # Check virsh restore command after snapshot.
-        ret = virsh.restore(save_file)
+        ret = virsh.restore(save_file, **virsh_dargs)
         libvirt.check_exit_status(ret)
 
         #Passed all test.
@@ -493,8 +495,7 @@ def run(test, params, env):
         vm.destroy(gracefully=False)
 
     # Back up xml file.
-    vm_xml_file = os.path.join(test.tmpdir, "vm.xml")
-    virsh.dumpxml(vm_name, extra="--inactive", to_file=vm_xml_file)
+    vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     # Get device path.
     device_source_path = ""
@@ -827,7 +828,9 @@ def run(test, params, env):
                 d_target = bootdisk_target
             else:
                 d_target = device_targets[0]
-                cmd += " | grep %s" % (device_source_names[0].replace(',', ',,'))
+                if device_with_source:
+                    cmd += (" | grep %s" %
+                            (device_source_names[0].replace(',', ',,')))
             io = vm_xml.VMXML.get_disk_attr(vm_name, d_target, "driver", "io")
             if io:
                 cmd += " | grep aio=%s" % io
@@ -966,7 +969,7 @@ def run(test, params, env):
                             "drive=drive-%s,id=%s"
                             % (dev_bus, dev_port, dev_id, dev_id))
                 if usb_devices.has_key("input"):
-                    cmd += (" | grep usb-tablet,id=input0,bus=usb.%s,"
+                    cmd += (" | grep usb-tablet,id=input[0-9],bus=usb.%s,"
                             "port=%s" % (usb_devices["input"]["bus"],
                                          usb_devices["input"]["port"]))
                 if usb_devices.has_key("hub"):
@@ -1002,7 +1005,7 @@ def run(test, params, env):
                 if devices[i] == "cdrom":
                     dt_options = "--config"
                 ret = virsh.detach_disk(vm_name, device_targets[i],
-                                        dt_options)
+                                        dt_options, **virsh_dargs)
                 libvirt.check_exit_status(ret)
             # Check disks in VM after hotunplug.
             if check_patitions_hotunplug:
@@ -1016,7 +1019,7 @@ def run(test, params, env):
                     if device_attach_error[i] == "yes":
                         continue
                 ret = virsh.detach_device(vm_name, disks_xml[i].xml,
-                                          flagstr=attach_option)
+                                          flagstr=attach_option, **virsh_dargs)
                 os.remove(disks_xml[i].xml)
                 libvirt.check_exit_status(ret)
 
@@ -1028,19 +1031,12 @@ def run(test, params, env):
 
     finally:
         # Delete snapshots.
-        snapshot_lists = virsh.snapshot_list(vm_name)
-        if len(snapshot_lists) > 0:
-            libvirt.clean_up_snapshots(vm_name, snapshot_lists)
-            for snapshot in snapshot_lists:
-                virsh.snapshot_delete(vm_name, snapshot, "--metadata")
+        libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)
 
         # Recover VM.
         if vm.is_alive():
             vm.destroy(gracefully=False)
-        logging.info("Restoring vm...")
-        virsh.undefine(vm_name)
-        virsh.define(vm_xml_file)
-        os.remove(vm_xml_file)
+        vmxml_backup.sync("--snapshots-metadata")
 
         # Restore qemu_config file.
         qemu_config.restore()
