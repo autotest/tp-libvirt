@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import uuid
+import aexpect
 
 from autotest.client.shared import error
 
@@ -54,7 +55,12 @@ def run(test, params, env):
         """
         # Get link state by ethtool
         cmd = "ethtool %s" % if_name
-        cmd_status, output = session.cmd_status_output(cmd)
+        try:
+            cmd_status, output = session.cmd_status_output(cmd)
+        except aexpect.ShellStatusError, e:
+            logging.debug(e)
+            return False
+
         logging.info("ethtool exit: %s, output: %s",
                      cmd_status, output)
         link_state = re.search("Link detected: ([a-zA-Z]+)",
@@ -217,7 +223,8 @@ def run(test, params, env):
 
             # Set the link up make host connect with vm
             domif_setlink(vm_name[0], device, "up", "")
-            if not guest_if_state(guest_if_name, session):
+            if not utils_misc.wait_for(
+                    lambda: guest_if_state(guest_if_name, session), 5):
                 error_msg = "Link state isn't up in guest"
 
             # Ignore status of this one
