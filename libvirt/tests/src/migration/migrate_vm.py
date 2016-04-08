@@ -38,6 +38,78 @@ from virttest.utils_test import libvirt
 MIGRATE_RET = False
 
 
+def create_destroy_pool_on_remote(action, params):
+    """
+    This is to create or destroy a specified pool on remote host.
+    :param action: "create" or "destory"
+    :param params: a dict for parameters
+
+    :return: True if successful, otherwise False
+    :raise: TestFail: raised if command fails
+    """
+    remote_ip = params.get("migrate_dest_host")
+    remote_user = params.get("migrate_dest_user", "root")
+    remote_pwd = params.get("migrate_dest_pwd")
+
+    virsh_dargs = {'remote_ip': remote_ip, 'remote_user': remote_user,
+                   'remote_pwd': remote_pwd, 'unprivileged_user': None,
+                   'ssh_remote_auth': True}
+
+    new_session = virsh.VirshPersistent(**virsh_dargs)
+
+    pool_name = params.get("target_pool_name", "tmp_pool_1")
+    timeout = params.get("timeout", 60)
+    prompt = params.get("prompt", r"[\#\$]\s*$")
+
+    if action == 'create':
+        pool_type = params.get("target_pool_type", "dir")
+        pool_target = params.get("pool_target")
+        cmd = "mkdir -p %s" % pool_target
+        session = remote.wait_for_login("ssh", remote_ip, 22,
+                                        remote_user, remote_pwd, prompt)
+        status, output = session.cmd_status_output(cmd, timeout)
+        session.close()
+        if status:
+            new_session.close_session()
+            raise error.TestFail("Run command '%s' on remote host '%s'"
+                                 "failed: %s." % (cmd, remote_ip, output))
+        ret = new_session.pool_create_as(pool_name, pool_type, pool_target)
+    else:  # suppose it is to destroy
+        ret = new_session.pool_destroy(pool_name)
+
+    new_session.close_session()
+    return ret
+
+
+def check_output(output_msg, params):
+    """
+    Check if known messages exist in the given output messages.
+
+    :param output_msg: the given output messages
+    :param params: the dictionary including necessary parameters
+
+    :raise TestNAError: raised if the known error is found together
+                        with some conditions satisfied
+    """
+    ERR_MSGDICT = {"Bug 1249587": "error: Operation not supported: " +
+                   "pre-creation of storage targets for incremental " +
+                   "storage migration is not supported",
+                   "ERROR 1": "error: internal error: unable to " +
+                   "execute QEMU command 'migrate': " +
+                   "this feature or command is not currently supported"}
+
+    for (key, value) in ERR_MSGDICT.items():
+        if output_msg.find(value) >= 0:
+            if (key == "ERROR 1" and
+               params.get("support_precreation") is True):
+                logging.debug("The error is not expected: '%s'.", value)
+            else:
+                logging.info("The known error was found: %s --- %s",
+                             key, value)
+                raise error.TestNAError("Known error: %s --- %s in %s",
+                                        key, value, output_msg)
+
+
 def migrate_vm(params):
     """
     Connect libvirt daemon
@@ -58,14 +130,17 @@ def migrate_vm(params):
 
     logging.info("Prepare migrate %s", vm_name)
     global MIGRATE_RET
-    MIGRATE_RET = libvirt.do_migration(vm_name, uri, extra, auth_pwd,
-                                       auth_user, options, virsh_patterns,
-                                       su_user, timeout)
+    MIGRATE_RET, mig_output = libvirt.do_migration(vm_name, uri, extra,
+                                                   auth_pwd, auth_user,
+                                                   options,
+                                                   virsh_patterns,
+                                                   su_user, timeout)
 
     if status_error == "no":
         if MIGRATE_RET:
             logging.info("Get an expected migration result.")
         else:
+            check_output(mig_output, params)
             raise error.TestFail("Can't get an expected migration result!!")
     else:
         if not MIGRATE_RET:
@@ -768,6 +843,10 @@ def run(test, params, env):
     blkdevio_dev = test_dict.get("blkdevio_device")
     blkdevio_options = test_dict.get("blkdevio_options")
 
+    # Pre-creation image parameters
+    target_pool_name = test_dict.get("target_pool_name", "temp_pool_1")
+    target_pool_type = test_dict.get("target_pool_type", "dir")
+
     tc_cmd = test_dict.get("tc_cmd")
 
     ssh_key.setup_ssh_key(server_ip, server_user, server_pwd, 22)
@@ -849,6 +928,9 @@ def run(test, params, env):
     logging.debug("The current VM XML contents: \n%s", curr_vm_xml)
     orig_image_name = os.path.basename(disk_source)
 
+    # Set the pool target using the path of first disk
+    test_dict["pool_target"] = os.path.dirname(disk_source)
+
     iscsi_setup = "yes" == test_dict.get("iscsi_setup", "no")
     disk_format = test_dict.get("disk_format", "qcow2")
 #    primary_target = vm.get_first_disk_devices()["target"]
@@ -865,6 +947,9 @@ def run(test, params, env):
     need_mkswap = False
     LOCAL_SELINUX_ENFORCING = True
     REMOTE_SELINUX_ENFORCING = True
+    create_target_pool = False
+    support_precreation = False
+    pool_created = False
 
     try:
         if iscsi_setup:
@@ -982,24 +1067,6 @@ def run(test, params, env):
         image_info_dict = utils_misc.get_image_info(disk_source)
         logging.debug("disk image info: %s", image_info_dict)
         target_image_source = test_dict.get("target_image_source", disk_source)
-        if create_target_image:
-            if not target_image_size and image_info_dict:
-                target_image_size = image_info_dict.get('vsize')
-            if not target_image_format and image_info_dict:
-                target_image_format = image_info_dict.get('format')
-            if target_image_size and target_image_format:
-                # Make sure the target image path exists
-                cmd = "mkdir -p %s " % os.path.dirname(target_image_source)
-                cmd += "&& qemu-img create -f %s %s %s" % (target_image_format,
-                                                           target_image_source,
-                                                           target_image_size)
-                status, output = run_remote_cmd(cmd, server_ip, server_user, server_pwd)
-                if status:
-                    raise error.TestFail("Failed to run '%s' on the remote: %s"
-                                         % (cmd, output))
-
-                remote_image_list.append(target_image_source)
-
         cmd = test_dict.get("create_another_target_image_cmd")
         if cmd:
             status, output = run_remote_cmd(cmd, server_ip, server_user, server_pwd)
@@ -1013,6 +1080,7 @@ def run(test, params, env):
         gluster_disk = "yes" == test_dict.get("gluster_disk")
         vol_name = test_dict.get("vol_name")
         default_pool = test_dict.get("default_pool", "")
+
         pool_name = test_dict.get("pool_name")
         if pool_name:
             test_dict['brick_path'] = os.path.join(test.virtdir, pool_name)
@@ -1235,16 +1303,6 @@ def run(test, params, env):
             logging.info(out)
             local_image_list.append(new_disk_source)
 
-        if create_disk_tgt_backing_file:
-            cmd = create_disk_src_backing_file + orig_image_name
-            status, output = run_remote_cmd(cmd, server_ip, server_user,
-                                            server_pwd)
-            if status:
-                raise error.TestFail("Failed to run '%s' on the remote: %s"
-                                     % (cmd, output))
-
-            remote_image_list.append(new_disk_source)
-
         if restart_libvirtd_remotely:
             cmd = "service libvirtd restart"
             status, output = run_remote_cmd(cmd, server_ip, server_user,
@@ -1377,6 +1435,51 @@ def run(test, params, env):
                                      % (guest_cmd, output))
             logging.info(output)
 
+        target_image_source = test_dict.get("target_image_source", disk_source)
+        # Do not create target image when qemu supports drive-mirror
+        # and nbd-server, but need create a specific pool.
+        no_create_pool = test_dict.get("no_create_pool", "no")
+        if (utils_misc.is_qemu_capability_supported("drive-mirror") and
+           utils_misc.is_qemu_capability_supported("nbd-server")):
+            support_precreation = True
+            test_dict["support_precreation"] = True
+        if create_target_image:
+            if support_precreation and no_create_pool == "no":
+                create_target_pool = True
+        if create_target_pool:
+            create_target_image = False
+            pool_created = create_destroy_pool_on_remote("create", test_dict)
+            if not pool_created:
+                raise error.TestError("Create pool on remote host '%s' failed." %
+                                      remote_host)
+            remote_image_list.append(target_image_source)
+        if create_target_image:
+            if not target_image_size and image_info_dict:
+                target_image_size = image_info_dict.get('vsize')
+            if not target_image_format and image_info_dict:
+                target_image_format = image_info_dict.get('format')
+            if target_image_size and target_image_format:
+                # Make sure the target image path exists
+                cmd = "mkdir -p %s " % os.path.dirname(target_image_source)
+                cmd += "&& qemu-img create -f %s %s %s" % (target_image_format,
+                                                           target_image_source,
+                                                           target_image_size)
+                status, output = run_remote_cmd(cmd, server_ip,
+                                                server_user, server_pwd)
+                if status:
+                    raise error.TestFail("Failed to run '%s' on the remote: %s"
+                                         % (cmd, output))
+
+                remote_image_list.append(target_image_source)
+        if create_disk_tgt_backing_file:
+            if not support_precreation:
+                cmd = create_disk_src_backing_file + orig_image_name
+                status, output = run_remote_cmd(cmd, server_ip,
+                                                server_user, server_pwd)
+                if status:
+                    raise error.TestFail("Failed to run '%s' on the remote: %s"
+                                         % (cmd, output))
+            remote_image_list.append(new_disk_source)
         if pause_vm:
             if not vm.pause():
                 raise error.TestFail("Guest state should be"
@@ -1678,6 +1781,7 @@ def run(test, params, env):
                     p.kill()
                 except OSError:
                     pass
+
         if run_migr_front:
             migrate_vm(test_dict)
             logging.info("Succeed to migrate %s.", vm_name)
@@ -1717,13 +1821,12 @@ def run(test, params, env):
 #            remote_vm_obj.run_command(vm_ip, run_cmd_in_vm)
 
         cmd = test_dict.get("check_disk_size_cmd")
-        if cmd and check_image_size:
+        if cmd and check_image_size and not support_precreation:
             status, output = run_remote_cmd(cmd, server_ip, server_user,
                                             server_pwd)
             if status:
                 raise error.TestFail("Failed to run '%s' on the remote: %s"
                                      % (cmd, output))
-
             logging.debug("Remote disk image info: %s", output)
 
         cmd = test_dict.get("target_qemu_filter")
@@ -1827,7 +1930,8 @@ def run(test, params, env):
         if local_image_list:
             for img_file in local_image_list:
                 if os.path.exists(img_file):
-                    utils.run("rm -f %s" % img_file, ignore_status=True)
+                    logging.debug("Remove local image file %s.", img_file)
+                    os.remove(img_file)
 
         # Recovery remotely libvirt service
         if stop_libvirtd_remotely:
@@ -1910,6 +2014,11 @@ def run(test, params, env):
                 if status:
                     raise error.TestFail("Failed to run '%s' on the remote: %s"
                                          % (cmd, output))
+        if pool_created:
+            pool_destroyed = create_destroy_pool_on_remote("destroy", test_dict)
+            if not pool_destroyed:
+                raise error.TestError("Destroy pool on remote host '%s' failed."
+                                      % remote_host)
 
         # Stop netserver service and clean up netperf package
         if n_server_c:
