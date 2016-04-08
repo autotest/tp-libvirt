@@ -49,23 +49,31 @@ def run(test, params, env):
         return virsh.domif_getlink(vm, device, options,
                                    ignore_status=True, debug=True)
 
+    def guest_cmd_check(cmd, session, pattern):
+        """
+        Check cmd output with pattern in session
+        """
+        try:
+            cmd_status, output = session.cmd_status_output(cmd, timeout=10)
+            logging.info("exit: %s, output: %s",
+                         cmd_status, output)
+            return re.search(pattern, output)
+        except (aexpect.ShellTimeoutError, aexpect.ShellStatusError), e:
+            logging.debug(e)
+            return re.search(pattern, str(e.__str__))
+
     def guest_if_state(if_name, session):
         """
         Get the domain link state from the guest
         """
         # Get link state by ethtool
         cmd = "ethtool %s" % if_name
-        try:
-            cmd_status, output = session.cmd_status_output(cmd)
-        except aexpect.ShellStatusError, e:
-            logging.debug(e)
+        pattern = "Link detected: ([a-zA-Z]+)"
+        ret = guest_cmd_check(cmd, session, pattern)
+        if ret:
+            return ret.group(1) == "yes"
+        else:
             return False
-
-        logging.info("ethtool exit: %s, output: %s",
-                     cmd_status, output)
-        link_state = re.search("Link detected: ([a-zA-Z]+)",
-                               output).group(1)
-        return link_state == "yes"
 
     def check_update_device(vm, if_name, session):
         """
@@ -228,9 +236,14 @@ def run(test, params, env):
                 error_msg = "Link state isn't up in guest"
 
             # Ignore status of this one
-            cmd_status = session.cmd_status('ifdown %s' % guest_if_name)
-            cmd_status = session.cmd_status('ifup %s' % guest_if_name)
-            if cmd_status != 0:
+            cmd = 'ifdown %s' % guest_if_name
+            pattern = "Device '%s' successfully disconnected" % guest_if_name
+            guest_cmd_check(cmd, session, pattern)
+
+            cmd = 'ifup %s' % guest_if_name
+            pattern = "Determining IP information for %s" % guest_if_name
+            pattern += "|Connection successfully activated"
+            if not guest_cmd_check(cmd, session, pattern):
                 error_msg = ("Could not bring up interface %s inside guest"
                              % guest_if_name)
         else:  # negative test
@@ -249,13 +262,7 @@ def run(test, params, env):
             else:
                 raise error.TestFail("Unexpected return code %d "
                                      "(negative testing)" % status)
-        elif status_error == "no":
-            status = cmd_status
-            if status:
-                raise error.TestFail("Unexpected error (positive testing). "
-                                     "Output: %s" % result.stderr.strip())
-
-        else:
+        elif status_error != "no":
             raise error.TestError("Invalid value for status_error '%s' "
                                   "(must be 'yes' or 'no')" % status_error)
     finally:
