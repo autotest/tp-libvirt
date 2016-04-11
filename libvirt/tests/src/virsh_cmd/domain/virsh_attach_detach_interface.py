@@ -136,7 +136,7 @@ def run(test, params, env):
     if start_vm == "no":
         if vm.is_alive():
             vm.destroy()
-    else:
+    elif start_vm == "yes":
         vm.wait_for_login().close()
 
     # Test both detach and attach, So collect info
