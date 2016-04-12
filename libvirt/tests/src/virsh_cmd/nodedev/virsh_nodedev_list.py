@@ -48,7 +48,8 @@ def get_storage_devices():
                 timeout=5, ignore_status=True).stdout
             # Only disk devices are list, not partition
             dev_type = re.search(r'(?<=E: DEVTYPE=)\S*', info)
-            if dev_type:
+            dev_real_virtual = re.search(r'P: /devices/virtual', info)
+            if dev_type and not dev_real_virtual:
                 if dev_type.group(0) == 'disk':
                     # Get disk serial
                     dev_id = re.search(r'(?<=E: ID_SERIAL=)\S*', info)
@@ -57,6 +58,9 @@ def get_storage_devices():
                         dev_name = 'block_' + device.replace(':', '_')
                         dev_name = re.sub(
                             r'\W', '_', 'block_%s_%s' % (device, serial))
+                        devices.append(dev_name)
+                    else:
+                        dev_name = 'block_' + device.replace(':', '_')
                         devices.append(dev_name)
     except utils_path.CmdNotFoundError:
         logging.warning('udevadm not found! Skipping storage test!')
