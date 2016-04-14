@@ -282,6 +282,14 @@ def run(test, params, env):
                                  blockpull_options, **virsh_dargs)
         status = result.exit_status
 
+        # If pull job aborted as timeout, the exit status is different
+        # on RHEL6(0) and RHEL7(1)
+        if with_timeout and 'Pull aborted' in result.stdout:
+            if libvirt_version.version_compare(1, 1, 1):
+                status_error = True
+            else:
+                status_error = False
+
         # Check status_error
         libvirt.check_exit_status(result, status_error)
 
