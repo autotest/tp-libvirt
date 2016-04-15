@@ -53,7 +53,8 @@ def run(test, params, env):
 
     try:
         utils_selinux.set_context_of_file(image_path, disk_label)
-        cmd = "virt-install --name %s --import --disk path=%s --ram '1024' " % (vm_name, image_path)
+        cmd = "virt-install --name %s --import --disk" % vm_name
+        cmd += " path=%s --ram '1024' " % image_path
         cmd += " --security"
         if sec_type == 'static':
             if sec_label is None:
@@ -67,7 +68,7 @@ def run(test, params, env):
         if sec_relabel is not None:
             cmd += ",relabel=%s" % sec_relabel
 
-        cmd += " --noautoconsole --graphics vnc &"
+        cmd += " --noautoconsole --graphics vnc --video vga &"
         utils.run(cmd, ignore_status=True)
 
         def _vm_alive():
