@@ -5,6 +5,8 @@ import shutil
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
 from virttest import libvirt_vm
 from virttest import utils_libvirtd
 from virttest import virsh
@@ -16,7 +18,7 @@ def do_virsh_connect(uri, options):
     Execute connect command in a virsh session and return the uri
     of this virsh session after connect.
 
-    Raise a error.TestError if execute virsh connect command failed.
+    Raise a process.CmdError if execute virsh connect command failed.
 
     :param uri: argument of virsh connect command.
     :param options: options pass to command connect.
@@ -25,11 +27,7 @@ def do_virsh_connect(uri, options):
 
     """
     virsh_instance = virsh.VirshPersistent()
-    result = virsh_instance.connect(uri, options)
-
-    if result.exit_status:
-        raise error.TestError("Connect to %s Failed.\n %s"
-                              % (uri, result.stdout.rstrip()))
+    virsh_instance.connect(uri, options)
 
     uri_result = virsh_instance.canonical_uri()
     del virsh_instance
@@ -198,7 +196,7 @@ def run(test, params, env):
             if not uri == connect_uri:
                 raise error.TestFail("Command exit normally but the uri is "
                                      "not setted as expected.")
-        except error.TestError, detail:
+        except process.CmdError, detail:
             if status_error == "no":
                 raise error.TestFail("Connect failed in the case expected"
                                      "to success.\n"
