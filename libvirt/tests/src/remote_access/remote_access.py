@@ -35,12 +35,13 @@ def remote_access(params):
     pattern = params.get("filter_pattern", "")
     su_user = params.get("su_user", "")
     virsh_patterns = params.get("patterns_virsh_cmd", ".*Id\s*Name\s*State\s*.*")
+    patterns_extra_dict = params.get("patterns_extra_dict", None)
     log_level = params.get("log_level", "LIBVIRT_DEBUG=3")
 
     status_error = params.get("status_error", "no")
     ret = connect_libvirtd(uri, read_only, virsh_cmd, auth_user,
                            auth_pwd, vm_name, status_error, extra_env,
-                           log_level, su_user, virsh_patterns)
+                           log_level, su_user, virsh_patterns, patterns_extra_dict)
 
     if status_error == "no":
         if ret:
@@ -377,7 +378,8 @@ def run(test, params, env):
 
                 if sasl_allowed_users and sasl_user not in sasl_allowed_users:
                     test_dict["status_error"] = "yes"
-
+                patterns_extra_dict = {"authentication name": sasl_user}
+                test_dict["patterns_extra_dict"] = patterns_extra_dict
                 remote_access(test_dict)
         else:
             remote_access(test_dict)
