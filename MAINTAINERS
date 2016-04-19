@@ -9,29 +9,7 @@ you can look for on github for any pull requests you might want to get approved.
 In general, if you have a question, you should send an email to the Virt Test
 development mailing list and not any specific individual privately.
 
-
-Pull request maintenance - Libvirt subtests
--------------------------------------------
-
-M: Christopher Evich <cevich@redhat.com>
-M: Yu Mingfei <yumingfei@cn.fujitsu.com>
-M: Yang Dongsheng <yangds.fnst@cn.fujitsu.com>
-M: Li Yang <liyang.fnst@cn.fujitsu.com>
-
-
-Pull request maintenance - LVSB subtests
--------------------------------------------
-
-M: Christopher Evich <cevich@redhat.com>
-
-
-Pull request maintenance - Libguestfs
--------------------------------------
-
-M: Yu Mingfei <yumingfei@cn.fujitsu.com>
-
-
-Pull request maintenance - v2v subtests
----------------------------------------
-
-M: Alex Jia <ajia@redhat.com>
+L: Avocado-devel <avocado-devel@redhat.com>
+M: Guannan Wayne Sun <gsun@redhat.com>
+M: Hao Liu <hliu@redhat.com>
+M: Yanbing Du <ydu@redhat.com>
