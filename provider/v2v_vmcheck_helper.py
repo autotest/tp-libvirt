@@ -9,6 +9,7 @@ from avocado.utils import process
 from virttest import utils_v2v
 from virttest import utils_sasl
 from virttest import virsh
+from virttest.libvirt_xml import vm_xml
 
 V2V_7_3_VERSION = 'virt-v2v-1.32.1-1.el7'
 RETRY_TIMES = 10
@@ -300,3 +301,22 @@ class VMChecker(object):
             self.log_err(err_msg)
         else:
             logging.info("PASS")
+
+    def check_graphics(self, param):
+        """
+        Check if graphics attributes value in vm xml match with given param.
+        """
+        logging.info('Check graphics parameters')
+        virsh_instance = virsh.VirshPersistent(session_id=self.virsh_session_id)
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
+                self.vm_name, options='--security-info',
+                virsh_instance=virsh_instance)
+        graphic = vmxml.xmltreefile.find('devices').find('graphics')
+        status = True
+        for key in param:
+            logging.debug('%s = %s' % (key, graphic.get(key)))
+            if graphic.get(key) != param[key]:
+                logging.error('Attribute "%s" match failed' % key)
+                status = False
+        if not status:
+            self.log_err('Graphic parameter check failed')
