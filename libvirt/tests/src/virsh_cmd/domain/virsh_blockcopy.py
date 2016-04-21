@@ -404,7 +404,7 @@ def run(test, params, env):
                                                        is_login=True,
                                                        image_size="1G",
                                                        emulated_image=back_n)
-                emulated_iscsi.append(blkdev_n)
+                emulated_iscsi.append(back_n)
                 cmd = "qemu-img create -f qcow2 %s 1G" % back_path
                 process.run(cmd, shell=True)
                 new_attrs.update({'dev': back_path})
