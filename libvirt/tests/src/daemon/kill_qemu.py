@@ -18,13 +18,18 @@ def run(test, params, env):
     expect_stop = params.get('expect_stop', 'yes') == 'yes'
     vm = env.get_vm(vm_name)
 
-    xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    xml_backup = vmxml.copy()
     try:
         if vm_state == 'running':
             pass
         elif vm_state == 'paused':
             vm.pause()
         elif vm_state == 'pmsuspended':
+            pm_xml = vm_xml.VMPMXML()
+            pm_xml.mem_enabled = 'yes'
+            vmxml.pm = pm_xml
+            vmxml.sync()
             vm.prepare_guest_agent()
             vm.pmsuspend()
         else:
