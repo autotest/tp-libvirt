@@ -1,229 +1,27 @@
 import os
 import re
 import logging
+import time
 
-import aexpect
-
-from autotest.client.shared import error
-from autotest.client.shared import utils
-
-from avocado.utils import path as utils_path
+from avocado.core import exceptions
+from avocado.utils import process
+from avocado.utils import software_manager
+from avocado.utils import service
 
 from virttest import utils_libvirtd
-from virttest import utils_misc
 from virttest import utils_selinux
-from virttest.staging import service
-
-
-class LibvirtdSession(aexpect.Tail):
-
-    """
-    Class to generate a libvirtd process and handler all the logging info.
-    """
-
-    def _output_handler(self, line):
-        """
-        Output handler function triggered when new log line outputted.
-
-        This handler separate handlers for both warnings and errors.
-
-        :param line: Newly added logging line.
-        """
-        # Regex pattern to Match log time string like:
-        # '2014-04-08 06:04:22.443+0000: 15122: '
-        time_pattern = r'[-\d]+ [.:+\d]+ [:\d]+ '
-
-        # Call `debug_func` if it's a debug log
-        debug_pattern = time_pattern + 'debug :'
-        result = re.match(debug_pattern, line)
-        params = self.debug_params + (line,)
-        if self.debug_func and result:
-            self.debug_func(*params)
-
-        # Call `info_func` if it's an info log
-        info_pattern = time_pattern + 'info :'
-        result = re.match(info_pattern, line)
-        params = self.info_params + (line,)
-        if self.info_func and result:
-            self.info_func(*params)
-
-        # Call `warning_func` if it's a warning log
-        warning_pattern = time_pattern + 'warning :'
-        result = re.match(warning_pattern, line)
-        params = self.warning_params + (line,)
-        if self.warning_func and result:
-            self.warning_func(*params)
-
-        # Call `error_func` if it's an error log
-        error_pattern = time_pattern + 'error :'
-        result = re.match(error_pattern, line)
-        params = self.error_params + (line,)
-        if self.error_func and result:
-            self.error_func(*params)
-
-    def _termination_handler(self, status):
-        """
-        Termination handler function triggered when libvirtd exited.
-
-        This handler recover libvirtd service status.
-
-        :param status: Return code of exited libvirtd session.
-        """
-        if self.was_running:
-            logging.debug('Restarting libvirtd service')
-            self.libvirtd.start()
-
-    def _wait_for_start(self, timeout=60):
-        """
-        Wait 'timeout' seconds for libvirt to start.
-
-        :param timeout: Maxinum time for the waiting.
-        """
-        def _check_start():
-            """
-            Check if libvirtd is start by return status of 'virsh list'
-            """
-            virsh_cmd = "virsh list"
-            try:
-                utils.run(virsh_cmd, timeout=2)
-                return True
-            except:
-                return False
-        return utils_misc.wait_for(_check_start, timeout=timeout)
-
-    def __init__(self,
-                 debug_func=None, debug_params=(),
-                 info_func=None, info_params=(),
-                 warning_func=None, warning_params=(),
-                 error_func=None, error_params=(),
-                 ):
-        """
-        Initialize a libvirt daemon process and monitor all the logging info.
-
-        The corresponding callback function will be called if a logging line
-        is found. The status of libvirtd service will be backed up and
-        recovered after termination of this process.
-
-        :param debug_func    : Callback function which will be called if a
-                               debug message if found in libvirtd logging.
-        :param debug_params  : Additional parameters to be passed to
-                               'debug_func'.
-        :param info_func     : Callback function which will be called if a
-                               info message if found in libvirtd logging.
-        :param info_params   : Additional parameters to be passed to
-                               'info_func'.
-        :param warning_func  : Callback function which will be called if a
-                               warning message if found in libvirtd logging.
-        :param warning_params: Additional parameters to be passed to
-                               'warning_func'.
-        :param error_func    : Callback function which will be called if a
-                               error message if found in libvirtd logging.
-        :param error_params  : Additional parameters to be passed to
-                               'error_func'.
-        """
-        self.debug_func = debug_func
-        self.debug_params = debug_params
-        self.info_func = info_func
-        self.info_params = info_params
-        self.warning_func = warning_func
-        self.warning_params = warning_params
-        self.error_func = error_func
-        self.error_params = error_params
-
-        # Libvirtd service status will be backed up at first and
-        # recovered after.
-        self.libvirtd = utils_libvirtd.Libvirtd()
-        self.was_running = self.libvirtd.is_running()
-        if self.was_running:
-            logging.debug('Stopping libvirtd service')
-            self.libvirtd.stop()
-        aexpect.Tail.__init__(
-            self, "LIBVIRT_DEBUG=1 /usr/sbin/libvirtd",
-            output_func=self._output_handler,
-            termination_func=self._termination_handler)
-        self._wait_for_start()
-
-
-def _set_iptables_firewalld(iptables_status, firewalld_status):
-    """
-    Try to set firewalld and iptables services status.
-
-    :param iptables_status: Whether iptables should be set active.
-    :param firewalld_status: Whether firewalld should be set active.
-    :return: A tuple of two boolean stand for the original status of
-             iptables and firewalld.
-    """
-    # pylint: disable=E1103
-    logging.debug("Setting firewalld and iptables services.")
-
-    # Iptables and firewalld are two exclusive services.
-    # It's impossible to start both.
-    if iptables_status and firewalld_status:
-        msg = "Can't active both iptables and firewalld services."
-        raise error.TestNAError(msg)
-
-    # Check the availability of both packages.
-    try:
-        utils_path.find_command('iptables')
-        iptables = service.Factory.create_service('iptables')
-    except utils_path.CmdNotFoundError:
-        msg = "Can't find service iptables."
-        raise error.TestNAError(msg)
-
-    try:
-        utils_path.find_command('firewalld')
-        firewalld = service.Factory.create_service('firewalld')
-    except utils_path.CmdNotFoundError:
-        msg = "Can't find service firewalld."
-        raise error.TestNAError(msg)
-
-    # Back up original services status.
-    old_iptables = iptables.status()
-    old_firewalld = firewalld.status()
-
-    # We should stop services first then start the other after.
-    # Directly start one service will force the other service stop,
-    # which will not be easy to handle.
-    if not iptables_status and iptables.status():
-        utils.run('iptables-save > /tmp/iptables.save')
-        if not iptables.stop():
-            msg = "Can't stop service iptables"
-            raise error.TestError(msg)
-
-    if not firewalld_status and firewalld.status():
-        if not firewalld.stop():
-            msg = ("Service firewalld can't be stopped. "
-                   "Maybe it is masked by default. you can unmask it by "
-                   "running 'systemctl unmask firewalld'.")
-            raise error.TestNAError(msg)
-
-    if iptables_status and not iptables.status():
-        if not iptables.start():
-            msg = "Can't start service iptables"
-            raise error.TestError(msg)
-        utils.run('iptables-restore < /tmp/iptables.save')
-
-    if firewalld_status and not firewalld.status():
-        if not firewalld.start():
-            msg = ("Service firewalld can't be started. "
-                   "Maybe it is masked by default. you can unmask it by "
-                   "running 'systemctl unmask firewalld'.")
-            raise error.TestNAError(msg)
-
-    return old_iptables, old_firewalld
 
 
 def run(test, params, env):
     """
     This case check error messages in libvirtd logging.
 
-    Implemetent test cases:
-    with_iptables:  Simply start libvirtd when using iptables service
-                          as firewall.
-    with_firewalld: Simply start libvirtd when using firewalld service
-                          as firewall.
+    Implemented test cases:
+    with_iptables:  Start libvirtd when using iptables service as firewall.
+    with_firewalld: Start libvirtd when using firewalld service as firewall.
+    no_firewall:    Start libvirtd With both firewall services shut off.
     """
-    def _error_handler(errors, line):
+    def _error_handler(line, errors):
         """
         A callback function called when new error lines appares in libvirtd
         log, then this line is appended to list 'errors'
@@ -233,71 +31,126 @@ def run(test, params, env):
         """
         errors.append(line)
 
-    test_type = params.get('test_type')
+    def _check_errors():
+        """
+        Check for unexpected error messages in libvirtd log.
+        """
+        logging.info('Checking errors in libvirtd log')
+        accepted_error_patterns = [
+            'Cannot access storage file',
+        ]
 
-    old_iptables = None
-    old_firewalld = None
-    iptables = None
-    try:
-        # Setup firewall services according to test type.
-        if test_type == 'with_firewalld':
-            old_iptables, old_firewalld = _set_iptables_firewalld(False, True)
-        elif test_type == 'with_iptables':
-            old_iptables, old_firewalld = _set_iptables_firewalld(True, False)
-        elif test_type == 'stop_iptables':
-            # Use _set_iptables_firewalld(False, False) on rhel6 will got skip
-            # as firewalld not on rhel6, but the new case which came from bug
-            # 716612 is mainly a rhel6 problem and should be tested, so skip
-            # using the  _set_iptables_firewalld function and direct stop
-            # iptables.
-            try:
-                utils_path.find_command('iptables')
-                iptables = service.Factory.create_service('iptables')
-            except utils_path.CmdNotFoundError:
-                msg = "Can't find service iptables."
-                raise error.TestNAError(msg)
+        if (not iptables_service and not firewalld_service and
+                'virt_t' not in libvirt_context):
+            logging.info("virt_t is not in libvirtd process context. "
+                         "Failures for setting iptables rules will be ignored")
+            # libvirtd process started without virt_t will failed to set
+            # iptables rules which is expected here
+            accepted_error_patterns.append(
+                '/sbin/iptables .* unexpected exit status 1')
 
-            utils.run('iptables-save > /tmp/iptables.save')
-            if not iptables.stop():
-                msg = "Can't stop service iptables"
-                raise error.TestError(msg)
+        logging.debug("Accepted errors are: %s", accepted_error_patterns)
 
-        try:
-            errors = []
-            # Run libvirt session and collect errors in log.
-            libvirtd_session = LibvirtdSession(
-                error_func=_error_handler,
-                error_params=(errors,),
-            )
+        if errors:
+            logging.debug("Found errors in libvirt log:")
+            for line in errors:
+                logging.debug(line)
 
-            libvirt_pid = libvirtd_session.get_pid()
-            libvirt_context = utils_selinux.get_context_of_process(libvirt_pid)
-            logging.debug("The libvirtd pid context is: %s" % libvirt_context)
-
-            # Check errors.
-            if errors:
-                logging.debug("Found errors in libvirt log:")
-                for line in errors:
-                    logging.debug(line)
-                if test_type == 'stop_iptables':
-                    for line in errors:
-                        # libvirtd process started without virt_t will failed
-                        # to set iptable rules which is expected here
-                        if ("/sbin/iptables" and
-                                "unexpected exit status 1" not in line):
-                            raise error.TestFail("Found errors other than"
-                                                 " iptables failure in"
-                                                 " libvirt log.")
+            unexpected_errors = []
+            for line in errors:
+                if any([re.search(p, line)
+                        for p in accepted_error_patterns]):
+                    logging.debug('Error "%s" is acceptable', line)
                 else:
-                    raise error.TestFail("Found errors in libvirt log.")
+                    unexpected_errors.append(line)
+            if unexpected_errors:
+                raise exceptions.TestFail(
+                    "Found unexpected errors in libvirt log:\n%s" %
+                    '\n'.join(unexpected_errors))
+
+    iptables_service = params.get('iptables_service', 'off') == 'on'
+    firewalld_service = params.get('firewalld_service', 'off') == 'on'
+
+    # In RHEL7 iptables service is provided by a separated package
+    # In RHEL6 iptables-services and firewalld is not supported
+    # So try to install all required packages but ignore failures
+    logging.info('Preparing firewall related packages')
+    software_mgr = software_manager.SoftwareManager()
+    for pkg in ['iptables', 'iptables-services', 'firewalld']:
+        if not software_mgr.check_installed(pkg):
+            software_mgr.install(pkg)
+
+    # Backup services status
+    service_mgr = service.ServiceManager()
+    logging.info('Backing up firewall services status')
+    backup_iptables_status = service_mgr.status('iptables')
+    backup_firewalld_status = service_mgr.status('firewalld')
+
+    # iptables service should always exists
+    if iptables_service and backup_iptables_status is None:
+        raise exceptions.TestError('iptables service not found')
+    # firewalld service could not exists on many distros
+    if firewalld_service and backup_firewalld_status is None:
+        raise exceptions.TestSkipError('firewalld service not found')
+    try:
+        if iptables_service and firewalld_service:
+            raise exceptions.TestError(
+                'iptables service and firewalld service can not be started at '
+                'the same time')
+
+        # We should stop services first then start the other after.
+        # Directly start one service will force the other service stop,
+        # which will not be easy to handle.
+        # Backup status should be compared with None to make sure that
+        # service exists before action.
+        logging.info('Changing firewall services status')
+        if not iptables_service and backup_iptables_status is not None:
+            process.run('iptables-save > /tmp/iptables.save', shell=True)
+            service_mgr.stop('iptables')
+        if not firewalld_service and backup_firewalld_status is not None:
+            service_mgr.stop('firewalld')
+
+        if iptables_service and backup_iptables_status is not None:
+            service_mgr.start('iptables')
+        if firewalld_service and backup_firewalld_status is not None:
+            service_mgr.start('firewalld')
+        errors = []
+        # Run libvirt session and collect errors in log.
+        libvirtd_session = utils_libvirtd.LibvirtdSession(
+            logging_handler=_error_handler,
+            logging_params=(errors,),
+            logging_pattern=r'[-\d]+ [.:+\d]+ [:\d]+ error :',
+        )
+        try:
+            logging.info('Starting libvirtd session')
+            libvirtd_session.start()
+            time.sleep(3)
+
+            libvirt_pid = libvirtd_session.tail.get_pid()
+            libvirt_context = utils_selinux.get_context_of_process(libvirt_pid)
+            logging.debug(
+                "The libvirtd process context is: %s", libvirt_context)
+
         finally:
-            libvirtd_session.close()
+            libvirtd_session.exit()
+        _check_errors()
     finally:
-        # Recover services status.
-        if test_type in ('with_firewalld', 'with_iptables'):
-            _set_iptables_firewalld(old_iptables, old_firewalld)
-        elif test_type == "stop_iptables" and iptables:
-            iptables.start()
-            utils.run('iptables-restore < /tmp/iptables.save')
+        logging.info('Recovering services status')
+        # If service do not exists, then backup status and current status
+        # will all be none and nothing will be done
+        if service_mgr.status('iptables') != backup_iptables_status:
+            if backup_iptables_status:
+                service_mgr.start('iptables')
+                process.run('iptables-restore < /tmp/iptables.save',
+                            shell=True)
+            else:
+                service_mgr.stop('iptables')
+        if service_mgr.status('firewalld') != backup_firewalld_status:
+            if backup_firewalld_status:
+                service_mgr.start('firewalld')
+            else:
+                service_mgr.stop('firewalld')
+
+        logging.info('Removing backup iptables')
         if os.path.exists("/tmp/iptables.save"):
             os.remove("/tmp/iptables.save")
