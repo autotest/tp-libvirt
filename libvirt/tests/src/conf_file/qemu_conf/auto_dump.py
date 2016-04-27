@@ -1,5 +1,6 @@
 import os
 import logging
+import shutil
 
 from aexpect import ShellTimeoutError
 
@@ -119,4 +120,4 @@ def run(test, params, env):
         config.restore()
         libvirtd.restart()
         if os.path.exists(dump_path):
-            os.rmdir(dump_path)
+            shutil.rmtree(dump_path)
