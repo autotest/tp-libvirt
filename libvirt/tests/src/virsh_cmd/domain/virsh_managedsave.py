@@ -289,7 +289,7 @@ def run(test, params, env):
                 if cpu_topology:
                     cpuxml.topology = cpu_topology
                 vmxml.cpu = cpuxml
-                vmxml["vcpu"] = int(params.get("vcpus_nums"))
+                vmxml.vcpu = int(params.get("vcpus_nums"))
             if dargs.get("sec_driver"):
                 seclabel_dict = {"type": "dynamic", "model": "selinux",
                                  "relabel": "yes"}
