@@ -6,8 +6,7 @@ import logging
 from aexpect import ShellTimeoutError
 from aexpect import ShellProcessTerminatedError
 
-from autotest.client.shared import error
-
+from avocado.core import exceptions
 from avocado.utils import process
 
 from virttest import libvirt_vm
@@ -65,7 +64,8 @@ def check_crash_state(cmd_output, crash_action, vm_name, dump_file=""):
     if cmd_output.strip() == expect_output:
         crash_state = True
     if dump_file:
-        result = process.run("ls %s" % dump_file, ignore_status=True, shell=True)
+        result = process.run("ls %s" % dump_file,
+                             ignore_status=True, shell=True)
         if result.exit_status == 0:
             logging.debug("Find the auto dump core file:\n%s", result.stdout)
             find_dump_file = True
@@ -88,7 +88,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
 
-    libvirtd = params.get("libvirtd", "on")
+    libvirtd_state = params.get("libvirtd", "on")
     vm_ref = params.get("domstate_vm_ref")
     status_error = (params.get("status_error", "no") == "yes")
     extra = params.get("domstate_extra", "")
@@ -143,9 +143,9 @@ def run(test, params, env):
             vmxml_new = vm_xml.VMXML.new_from_dumpxml(vm_name)
             # Skip this test if no panic device find
             if not vmxml_new.xmltreefile.find('devices').findall('panic'):
-                raise error.TestNAError("No 'panic' device in the guest,"
-                                        " maybe your libvirt version doesn't"
-                                        " support it.")
+                raise exceptions.TestSkipError(
+                    "No 'panic' device in the guest. Maybe your libvirt "
+                    "version doesn't support it.")
         try:
             if vm_action == "suspend":
                 virsh.suspend(vm_name, ignore_status=False)
@@ -177,14 +177,16 @@ def run(test, params, env):
                         timeout = 3
                     else:
                         timeout = 60
-                    session.cmd("echo c > /proc/sysrq-trigger", timeout=timeout)
+                    session.cmd("echo c > /proc/sysrq-trigger",
+                                timeout=timeout)
                 except (ShellTimeoutError, ShellProcessTerminatedError):
                     pass
                 session.close()
-        except process.CmdError, e:
-            raise error.TestError("Guest prepare action error: %s" % e)
+        except process.CmdError, detail:
+            raise exceptions.TestError(
+                "Guest prepare action error: %s" % detail)
 
-        if libvirtd == "off":
+        if libvirtd_state == "off":
             libvirtd_service.stop()
 
         if vm_ref == "remote":
@@ -192,7 +194,8 @@ def run(test, params, env):
             local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
             remote_pwd = params.get("remote_pwd", None)
             if remote_ip.count("EXAMPLE.COM") or local_ip.count("EXAMPLE.COM"):
-                raise error.TestNAError("Test 'remote' parameters not setup")
+                raise exceptions.TestSkipError(
+                    "Test 'remote' parameters not setup")
             status = 0
             try:
                 remote_uri = libvirt_vm.complete_uri(local_ip)
@@ -214,10 +217,11 @@ def run(test, params, env):
         # check status_error
         if status_error:
             if not status:
-                raise error.TestFail("Run successfully with wrong command!")
+                raise exceptions.TestFail(
+                    "Run successfully with wrong command!")
         else:
             if status or not output:
-                raise error.TestFail("Run failed with right command")
+                raise exceptions.TestFail("Run failed with right command")
             if extra.count("reason"):
                 if vm_action == "suspend":
                     # If not, will cost long time to destroy vm
@@ -244,7 +248,7 @@ def run(test, params, env):
                 if not (re.search("running", output) or
                         re.search("blocked", output) or
                         re.search("idle", output)):
-                    raise error.TestFail("Run failed with right command")
+                    raise exceptions.TestFail("Run failed with right command")
     finally:
         qemu_conf.restore()
         libvirtd.restart()
