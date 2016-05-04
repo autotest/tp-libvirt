@@ -2,7 +2,8 @@ import os
 import logging
 
 from autotest.client.shared import error
-from autotest.client import utils
+
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_misc
@@ -50,9 +51,10 @@ def run(test, params, env):
                          image_source, image_dest))
 
         # Mount the gluster disk and create the image.
-        utils.run("mount -t glusterfs %s:%s /mnt && "
-                  "%s && chmod a+rw /mnt/%s && umount /mnt"
-                  % (host_ip, vol_name, disk_cmd, disk_img))
+        process.run("mount -t glusterfs %s:%s /mnt && "
+                    "%s && chmod a+rw /mnt/%s && umount /mnt"
+                    % (host_ip, vol_name, disk_cmd, disk_img),
+                    shell=True)
 
         return host_ip
 
@@ -81,7 +83,7 @@ def run(test, params, env):
         if default_pool:
             utils_misc.mount("%s:%s" % (host_ip, vol_name),
                              default_pool, "glusterfs")
-            utils.run("setsebool virt_use_fusefs on")
+            process.run("setsebool virt_use_fusefs on", shell=True)
             virsh.pool_refresh("default")
             source_dict = {"file": "%s/%s" % (default_pool, disk_img)}
             disk_xml.source = disk_xml.new_disk_source(
@@ -122,7 +124,7 @@ def run(test, params, env):
         libvirt.check_exit_status(ret)
         # wait for vm to shutdown
 
-        if not utils_misc.wait_for(lambda: vm.state() == "shut off", 30):
+        if not utils_misc.wait_for(lambda: vm.state() == "shut off", 60):
             raise error.TestFail("vm is still alive after S4 operation")
 
         # Wait for vm and qemu-ga service to start
@@ -138,7 +140,7 @@ def run(test, params, env):
         libvirt.check_exit_status(ret)
 
         # Check vm state
-        if not utils_misc.wait_for(lambda: vm.state() == "pmsuspended", 30):
+        if not utils_misc.wait_for(lambda: vm.state() == "pmsuspended", 60):
             raise error.TestFail("vm isn't suspended after S3 operation")
 
         ret = virsh.dompmwakeup(vm_name, **virsh_dargs)
@@ -215,21 +217,26 @@ def run(test, params, env):
                 cmd += " | grep gluster.*format=%s" % disk_format
             if driver_iothread:
                 cmd += " | grep iothread=iothread%s" % driver_iothread
-            if utils.run(cmd, ignore_status=True).exit_status:
+            if process.run(cmd, ignore_status=True, shell=True).exit_status:
                 raise error.TestFail("Can't see gluster option '%s' "
                                      "in command line" % cmd)
 
     finally:
         # cleanup swap
         if pm_enabled:
-            vm.cleanup_swap()
+            try:
+                if vm.state() == "running":
+                    vm.cleanup_swap()
+            except (remote.LoginError, virt_vm.VMError), e:
+                logging.error("Failed to cleanup swap on guest: %s", e)
         # Recover VM.
         if vm.is_alive():
             vm.destroy(gracefully=False)
         logging.info("Restoring vm...")
         vmxml_backup.sync()
         if utils_misc.is_mounted(mnt_src, default_pool, 'glusterfs'):
-            utils.run("umount %s" % default_pool)
+            process.run("umount %s" % default_pool,
+                        ignore_status=True, shell=True)
 
         if gluster_disk:
             libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
