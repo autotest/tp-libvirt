@@ -100,6 +100,7 @@ def run(test, params, env):
         # Setup iscsi target
         iscsi_target, lun_num = libvirt.setup_or_cleanup_iscsi(is_setup=True,
                                                                is_login=False,
+                                                               image_size='1G',
                                                                chap_user=chap_user,
                                                                chap_passwd=chap_passwd,
                                                                portal_ip=disk_src_host)
@@ -123,8 +124,12 @@ def run(test, params, env):
             cmd_result = virsh.vol_list(disk_src_pool, **virsh_dargs)
             libvirt.check_exit_status(cmd_result)
             try:
-                vol_name = re.findall(r"(\S+)\ +(\S+)[\ +\n]",
-                                      str(cmd_result.stdout))[1][0]
+                vol_name, vol_path = re.findall(r"(\S+)\ +(\S+)[\ +\n]",
+                                                str(cmd_result.stdout))[1]
+                # Snapshot doesn't support raw disk format, create a qcow2 volume
+                # disk for snapshot operation.
+                process.run('qemu-img create -f qcow2 %s %s' % (vol_path, '100M'),
+                            shell=True)
             except IndexError:
                 raise error.TestError("Fail to get volume name")
 
@@ -143,6 +148,7 @@ def run(test, params, env):
         elif disk_type == "volume":
             disk_params_src = {'source_pool': disk_src_pool,
                                'source_volume': vol_name,
+                               'driver_type': 'qcow2',
                                'source_mode': disk_src_mode}
         else:
             error.TestNAError("Unsupport disk type in this test")
@@ -215,7 +221,9 @@ def run(test, params, env):
             cmd_result = virsh.snapshot_current(vm_name, **virsh_dargs)
             libvirt.check_exit_status(cmd_result)
 
-            sn_create_op = "%s --disk_ony %s" % (snapshot_name2, disk_target)
+            snapshot_file = os.path.join(test.tmpdir, snapshot_name2)
+            sn_create_op = ("%s --disk-only --diskspec %s,file=%s"
+                            % (snapshot_name2, disk_target, snapshot_file))
             cmd_result = virsh.snapshot_create_as(vm_name, sn_create_op,
                                                   **virsh_dargs)
 
@@ -224,12 +232,9 @@ def run(test, params, env):
                                                **virsh_dargs)
 
             cmd_result = virsh.snapshot_list(vm_name, **virsh_dargs)
-            libvirt.check_exit_status(cmd_result)
+            if snapshot_name2 not in cmd_result:
+                raise error.TestError("Snapshot %s not found" % snapshot_name2)
 
-            cmd_result = virsh.snapshot_delete(vm_name, snapshot_name2,
-                                               **virsh_dargs)
-            libvirt.check_exit_status(cmd_result)
-            pass
         else:
             logging.error("Unsupport operation %s in this case, so skip it",
                           domain_operation)
@@ -268,6 +273,9 @@ def run(test, params, env):
         find_attach_disk(False)
 
     finally:
+        # Clean up snapshot
+        libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)
+        # Restore vm
         if vm.is_alive():
             vm.destroy()
         vmxml_backup.sync("--snapshots-metadata")
