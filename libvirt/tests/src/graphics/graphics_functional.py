@@ -903,9 +903,10 @@ def setup_networks(params):
     # Setup networks
     for net_type in networks:
         if net_type == 'vnet':
+            net_name = 'virt-test-%s' % net_type
             address = params.get('vnet_address', '192.168.123.1')
             networks[net_type] = LibvirtNetwork(
-                net_type, address=address, persistent=True)
+                net_type, address=address, net_name=net_name, persistent=True)
         elif net_type == 'macvtap':
             iface = params.get('macvtap_device', 'EXAMPLE.MACVTAP.DEVICE')
             if 'EXAMPLE' in iface:
