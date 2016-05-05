@@ -24,7 +24,7 @@ class VMChecker(object):
         self.hypervisor = params.get("hypervisor")
         self.target = params.get('target')
         self.os_type = params.get('os_type')
-        self.os_version = params.get('os_version')
+        self.os_version = params.get('os_version', 'OS_VERSION_V2V_EXAMPLE')
         self.original_vmxml = params.get('original_vmxml')
         self.virsh_session = None
         self.virsh_session_id = None
@@ -70,10 +70,7 @@ class VMChecker(object):
             self.check_windows_vm()
         else:
             logging.warn("Unspported os type: %s", self.os_type)
-        if len(self.errors):
-            return 1
-        else:
-            return 0
+        return len(self.errors)
 
     def compare_version(self, compare_version):
         """
@@ -217,11 +214,14 @@ class VMChecker(object):
         # As VM may not install X server, or X server not start completely,
         # checking xorg log will fail
         vm_xorg_log = self.checker.get_vm_xorg()
-        if expect_video not in vm_xorg_log:
-            err_msg = "Not find %s in Xorg log", expect_video
-            self.log_err(err_msg)
+        if vm_xorg_log:
+            if expect_video not in vm_xorg_log:
+                err_msg = "Not find %s in Xorg log", expect_video
+                self.log_err(err_msg)
+            else:
+                logging.info("PASS")
         else:
-            logging.info("PASS")
+            logging.warning("Xorg log file not exist, skip checkpoint")
 
     def check_windows_vm(self):
         """
