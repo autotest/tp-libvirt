@@ -118,7 +118,7 @@ def get_emulatorpin_parameter(params):
             logging.info("It's an expected : %s", result.stderr)
         else:
             raise error.TestFail("%d not a expected command "
-                                 "return value", status)
+                                 "return value" % status)
     elif status_error == "no":
         if status:
             raise error.TestFail(result.stderr)
@@ -146,18 +146,12 @@ def set_emulatorpin_parameter(params):
     # Check status_error
     status_error = params.get("status_error")
 
-    # Changing affinity for emulator thread dynamically is
-    # not allowed when CPU placement is 'auto'
-    placement = vm_xml.VMXML().new_from_dumpxml(vm_name).placement
-    if placement == "auto":
-        status_error = "yes"
-
     if status_error == "yes":
         if status or not check_emulatorpin(params):
             logging.info("It's an expected : %s", result.stderr)
         else:
             raise error.TestFail("%d not a expected command "
-                                 "return value", status)
+                                 "return value" % status)
     elif status_error == "no":
         if status:
             raise error.TestFail(result.stderr)
