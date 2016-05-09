@@ -6,7 +6,6 @@ import aexpect
 
 from autotest.client.shared import error
 from autotest.client.shared import utils
-from autotest.client import lv_utils
 
 from virttest import virt_vm
 from virttest import virsh
@@ -15,6 +14,7 @@ from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
+from virttest.staging import lv_utils
 
 from provider import libvirt_version
 
@@ -418,6 +418,7 @@ def run(test, params, env):
             if test_logcial_dev:
                 libvirt.delete_local_disk("lvm", vgname=vg_name, lvname=lv_name)
                 lv_utils.vg_remove(vg_name)
+                utils.system("pvremove %s" % device_source, ignore_status=True)
             libvirt.setup_or_cleanup_iscsi(False)
         else:
             libvirt.delete_local_disk("file", device_source)
