@@ -3,9 +3,9 @@ import threading
 import time
 
 from autotest.client.shared import error
-from autotest.client.shared import ssh_key
 
 from virttest import virsh
+from virttest import ssh_key
 
 from provider import libvirt_version
 
@@ -105,7 +105,7 @@ def run(test, params, env):
     domid = vm.get_id()
     if dest_uri.count('///') or dest_uri.count('EXAMPLE'):
         raise error.TestNAError("Set your destination uri first.")
-    if src_uri.count('///') or src_uri.count('EXAMPLE'):
+    if src_uri.count('EXAMPLE'):
         raise error.TestNAError("Set your source uri first.")
     if src_uri == dest_uri:
         raise error.TestNAError("You should not set dest uri same as local.")
