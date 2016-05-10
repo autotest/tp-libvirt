@@ -149,7 +149,7 @@ def run(test, params, env):
 
         if cmd_result.exit_status:
             err = cmd_result.stderr.strip()
-            if re.search("is not supported", err):
+            if re.search("not supported", err):
                 raise error.TestNAError("Skip the test: %s" % err)
             else:
                 raise error.TestFail("Failed to execute "
