@@ -7,6 +7,7 @@ import aexpect
 
 from avocado.utils import process
 from avocado.core import exceptions
+from avocado.utils import path
 
 from virttest import utils_libvirtd
 from virttest import utils_config
@@ -213,7 +214,7 @@ def run(test, params, env):
     mnt_path_name = params.get("mnt_path_name")
     options = params.get("blockcopy_options", "")
     bandwidth = params.get("blockcopy_bandwidth", "")
-    default_timeout = int(params.get("default_timeout", "300"))
+    bandwidth_byte = "yes" == params.get("bandwidth_byte", "no")
     reuse_external = "yes" == params.get("reuse_external", "no")
     persistent_vm = params.get("persistent_vm", "no")
     status_error = "yes" == params.get("status_error", "no")
@@ -241,6 +242,9 @@ def run(test, params, env):
                                        " libvirt version")
     if copy_to_nfs and not libvirt_version.version_compare(1, 1, 1):
         raise exceptions.TestSkipError("Bug will not fix: %s" % bug_url)
+    if bandwidth_byte and not libvirt_version.version_compare(1, 3, 3):
+        raise exceptions.TestSkipError("--bytes option not supported in "
+                                       "current version")
 
     # Check the source disk
     if vm_xml.VMXML.check_disk_exist(vm_name, target):
@@ -282,6 +286,8 @@ def run(test, params, env):
         options += " --blockdev"
     if len(bandwidth):
         options += " --bandwidth %s" % bandwidth
+    if bandwidth_byte:
+        options += " --bytes"
     if with_shallow:
         options += " --shallow"
 
@@ -432,6 +438,7 @@ def run(test, params, env):
     snap_path = ''
     save_path = ''
     emulated_iscsi = []
+    nfs_cleanup = False
     try:
         # Prepare dest_path
         tmp_file = time.strftime("%Y-%m-%d-%H.%M.%S.img")
@@ -455,7 +462,10 @@ def run(test, params, env):
             # after test, such as pool, volume, nfs, iscsi and so on
             # TODO: remove this function in the future
             utl.set_vm_disk(vm, params, tmp_dir, test)
-            emulated_iscsi.append(emu_image)
+            if disk_source_protocol == 'iscsi':
+                emulated_iscsi.append(emu_image)
+            if disk_source_protocol == 'netfs':
+                nfs_cleanup = True
             new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
         if with_shallow:
@@ -503,24 +513,19 @@ def run(test, params, env):
                     raise exceptions.TestFail("Domain xml not expected after"
                                               " blockcopy")
                 if options.count("--bandwidth"):
-                    utl.check_blockjob(vm_name, target, "bandwidth", bandwidth)
-                    if check_state_lock:
-                        # Run blockjob pivot in subprocess as it will hang
-                        # for a while, run blockjob info again to check
-                        # job state
-                        command = "virsh blockjob %s %s --pivot" % (vm_name,
-                                                                    target)
-                        session = aexpect.ShellSession(command)
-                        ret = virsh.blockjob(vm_name, target, "--info")
-                        err_info = "cannot acquire state change lock"
-                        if err_info in ret.stderr:
-                            raise exceptions.TestFail("Hit on bug: %s" % bug_url)
-                        utl.check_exit_status(ret, status_error)
-                        session.close()
+                    if options.count('--bytes'):
+                        bandwidth += 'B'
+                    else:
+                        bandwidth += 'M'
+                    if not utl.check_blockjob(vm_name, target, "bandwidth",
+                                              bandwidth):
+                        raise exceptions.TestFail("Check bandwidth failed")
                 val = options.count("--pivot") + options.count("--finish")
+                # Don't wait for job finish when using --byte option
+                val += options.count('--bytes')
                 if val == 0:
                     try:
-                        finish_job(vm_name, target, default_timeout)
+                        finish_job(vm_name, target, timeout)
                     except JobTimeout, excpt:
                         raise exceptions.TestFail("Run command failed: %s" %
                                                   excpt)
@@ -531,15 +536,28 @@ def run(test, params, env):
                     snap_opt = "--disk-only --atomic --no-metadata "
                     snap_opt += "vda,snapshot=external,file=%s" % snap_path
                     ret = virsh.snapshot_create_as(vm_name, snap_opt,
-                                                   ignore_statues=True,
+                                                   ignore_status=True,
                                                    debug=True)
                     utl.check_exit_status(ret, active_error)
                 if active_save:
                     save_path = "%s/%s.save" % (tmp_dir, vm_name)
                     ret = virsh.save(vm_name, save_path,
-                                     ignore_statues=True,
+                                     ignore_status=True,
                                      debug=True)
                     utl.check_exit_status(ret, active_error)
+                if check_state_lock:
+                    # Run blockjob pivot in subprocess as it will hang
+                    # for a while, run blockjob info again to check
+                    # job state
+                    command = "virsh blockjob %s %s --pivot" % (vm_name,
+                                                                target)
+                    session = aexpect.ShellSession(command)
+                    ret = virsh.blockjob(vm_name, target, "--info")
+                    err_info = "cannot acquire state change lock"
+                    if err_info in ret.stderr:
+                        raise exceptions.TestFail("Hit on bug: %s" % bug_url)
+                    utl.check_exit_status(ret, status_error)
+                    session.close()
             else:
                 raise exceptions.TestFail(cmd_result.stderr)
         else:
@@ -570,6 +588,8 @@ def run(test, params, env):
         # Recover VM may fail unexpectedly, we need using try/except to
         # proceed the following cleanup steps
         try:
+            # Abort exist blockjob to avoid any possible lock error
+            virsh.blockjob(vm_name, target, '--abort', ignore_status=True)
             vm.destroy(gracefully=False)
             # It may take a long time to shutdown the VM which has
             # blockjob running
@@ -594,7 +614,7 @@ def run(test, params, env):
             virsh.pool_destroy(pool_name, ignore_status=True, debug=True)
         # Clean up NFS
         try:
-            if replace_vm_disk and disk_source_protocol == "netfs":
+            if nfs_cleanup:
                 utl.setup_or_cleanup_nfs(is_setup=False)
         except Exception, e:
             logging.error(e)
@@ -602,6 +622,8 @@ def run(test, params, env):
         try:
             for iscsi_n in list(set(emulated_iscsi)):
                 utl.setup_or_cleanup_iscsi(is_setup=False, emulated_image=iscsi_n)
+                # iscsid will be restarted, so give it a break before next loop
+                time.sleep(5)
         except Exception, e:
             logging.error(e)
         if os.path.exists(dest_path):
@@ -610,3 +632,7 @@ def run(test, params, env):
             os.remove(snap_path)
         if os.path.exists(save_path):
             os.remove(save_path)
+        # Restart virtlogd serice to release VM log file lock
+        virtlogd = path.find_command('virtlogd')
+        if virtlogd:
+            process.run('service virtlogd restart')
