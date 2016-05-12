@@ -580,11 +580,6 @@ def run(test, params, env):
                     raise exceptions.TestFail("Expect fail, but run "
                                               "successfully: %s" % bug_url)
     finally:
-        # Restore libvirtd conf and restart libvirtd
-        libvirtd_conf.restore()
-        libvirtd_utl.restart()
-        if libvirtd_log_path and os.path.exists(libvirtd_log_path):
-            os.unlink(libvirtd_log_path)
         # Recover VM may fail unexpectedly, we need using try/except to
         # proceed the following cleanup steps
         try:
@@ -612,6 +607,11 @@ def run(test, params, env):
         # Clean up libvirt pool, which may be created by 'set_vm_disk'
         if disk_type == 'volume':
             virsh.pool_destroy(pool_name, ignore_status=True, debug=True)
+        # Restore libvirtd conf and restart libvirtd
+        libvirtd_conf.restore()
+        libvirtd_utl.restart()
+        if libvirtd_log_path and os.path.exists(libvirtd_log_path):
+            os.unlink(libvirtd_log_path)
         # Clean up NFS
         try:
             if nfs_cleanup:
