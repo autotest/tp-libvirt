@@ -1615,14 +1615,18 @@ def run(test, params, env):
                     check_virsh_command_and_option("domjobinfo", opts)
                     jobinfo = virsh.domjobinfo(args, debug=True,
                                                ignore_status=True).stdout
-                    logging.debug("Local job info: %s", jobinfo)
+                    logging.debug("Local job info:\n%s", jobinfo)
                     cmd = "virsh domjobinfo %s %s" % (vm_name, opts)
                     logging.debug("Get remote job info")
                     status, output = run_remote_cmd(cmd, server_ip, server_user,
                                                     server_pwd)
-                    if status or not re.search(jobinfo, output):
+                    if status:
                         raise error.TestFail("Failed to run '%s' on the remote"
                                              " : %s" % (cmd, output))
+                    elif not re.search(jobinfo, output):
+                        logging.debug("Remote job info:\n%s", output)
+                        raise error.TestFail("The job info on both local "
+                                             "and remote are not matched.")
 
             if block_ip_addr and block_time:
                 block_specific_ip_by_time(block_ip_addr, block_time)
