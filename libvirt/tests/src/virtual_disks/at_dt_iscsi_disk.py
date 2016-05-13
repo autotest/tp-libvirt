@@ -10,6 +10,7 @@ from autotest.client.shared import error
 from avocado.utils import process
 
 from virttest import virsh
+from virttest import utils_misc
 from virttest.remote import LoginError
 from virttest.virt_vm import VMError
 from virttest.utils_test import libvirt
@@ -117,21 +118,33 @@ def run(test, params, env):
             # Create iscsi pool
             cmd_result = virsh.pool_create(poolxml.xml, **virsh_dargs)
             libvirt.check_exit_status(cmd_result)
-            # refresh the pool
-            cmd_result = virsh.pool_refresh(disk_src_pool)
-            libvirt.check_exit_status(cmd_result)
-            # Get volume name
-            cmd_result = virsh.vol_list(disk_src_pool, **virsh_dargs)
-            libvirt.check_exit_status(cmd_result)
-            try:
-                vol_name, vol_path = re.findall(r"(\S+)\ +(\S+)[\ +\n]",
-                                                str(cmd_result.stdout))[1]
-                # Snapshot doesn't support raw disk format, create a qcow2 volume
-                # disk for snapshot operation.
-                process.run('qemu-img create -f qcow2 %s %s' % (vol_path, '100M'),
-                            shell=True)
-            except IndexError:
-                raise error.TestError("Fail to get volume name")
+
+            def get_vol():
+                """Get the volume info"""
+                # Refresh the pool
+                cmd_result = virsh.pool_refresh(disk_src_pool)
+                libvirt.check_exit_status(cmd_result)
+                # Get volume name
+                cmd_result = virsh.vol_list(disk_src_pool, **virsh_dargs)
+                libvirt.check_exit_status(cmd_result)
+                vol_list = []
+                vol_list = re.findall(r"(\S+)\ +(\S+)[\ +\n]",
+                                      str(cmd_result.stdout))
+                if len(vol_list) > 1:
+                    return vol_list[1]
+                else:
+                    return None
+
+            # Wait for a while so that we can get the volume info
+            vol_info = utils_misc.wait_for(get_vol, 10)
+            if vol_info:
+                vol_name, vol_path = vol_info
+            else:
+                raise error.TestError("Failed to get volume info")
+            # Snapshot doesn't support raw disk format, create a qcow2 volume
+            # disk for snapshot operation.
+            process.run('qemu-img create -f qcow2 %s %s' % (vol_path, '100M'),
+                        shell=True)
 
         # Create iscsi network disk XML
         disk_params = {'device_type': disk_device,
