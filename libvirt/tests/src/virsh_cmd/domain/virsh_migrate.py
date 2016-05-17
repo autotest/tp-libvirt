@@ -76,6 +76,43 @@ def run(test, params, env):
         vm.verify_kernel_crash()
         return True
 
+    def create_numa(vcpu, max_mem, max_mem_unit):
+        """
+        creates list of dictionaries of numa
+
+        :param vcpu: vcpus of existing guest
+        :param max_mem: max_memory of existing guest
+        :param max_mem_unit: unit of max_memory
+        :return: numa dictionary list
+        """
+        numa_dict = {}
+        numa_dict_list = []
+        if vcpu == 1:
+            numa_dict['id'] = '0'
+            numa_dict['cpus'] = '0'
+            numa_dict['memory'] = str(max_mem)
+            numa_dict['unit'] = str(max_mem_unit)
+            numa_dict_list.append(numa_dict)
+        else:
+            for index in range(2):
+                numa_dict['id'] = str(index)
+                numa_dict['memory'] = str(max_mem / 2)
+                numa_dict['unit'] = str(max_mem_unit)
+                if vcpu == 2:
+                    numa_dict['cpus'] = "%s" % str(index)
+                else:
+                    if index == 0:
+                        if vcpu == 3:
+                            numa_dict['cpus'] = "%s" % str(index)
+                        if vcpu > 3:
+                            numa_dict['cpus'] = "%s-%s" % (str(index),
+                                                           str(vcpu / 2 - 1))
+                    else:
+                        numa_dict['cpus'] = "%s-%s" % (str(vcpu / 2),
+                                                       str(vcpu - 1))
+                numa_dict_list.append(numa_dict)
+                numa_dict = {}
+        return numa_dict_list
     vm_name = params.get("migrate_main_vm")
     vm = env.get_vm(vm_name)
     vm.verify_alive()
@@ -109,6 +146,7 @@ def run(test, params, env):
     migrate_uri = params.get("virsh_migrate_migrateuri", None)
     shared_storage = params.get("virsh_migrate_shared_storage", None)
     dest_xmlfile = ""
+    enable_numa = "yes" == params.get("virsh_migrate_with_numa", "no")
 
     # Direct migration is supported only for Xen in libvirt
     if options.count("direct") or extra.count("direct"):
@@ -167,6 +205,26 @@ def run(test, params, env):
                                          extra_attach, debug=True)
             if s_attach.exit_status != 0:
                 logging.error("Attach another scsi disk failed.")
+
+        # Get vcpu and memory info of guest for numa related tests
+        if enable_numa:
+            numa_dict_list = []
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+            vcpu = vmxml.vcpu
+            max_mem = vmxml.max_mem
+            max_mem_unit = vmxml.max_mem_unit
+            if vcpu < 1:
+                raise error.TestError("%s not having even 1 vcpu"
+                                      % vm.name)
+            else:
+                numa_dict_list = create_numa(vcpu, max_mem, max_mem_unit)
+            vmxml_cpu = vm_xml.VMCPUXML()
+            vmxml_cpu.xml = "<cpu><numa/></cpu>"
+            logging.debug(vmxml_cpu.numa_cell)
+            vmxml_cpu.numa_cell = numa_dict_list
+            logging.debug(vmxml_cpu.numa_cell)
+            vmxml.cpu = vmxml_cpu
+            vmxml.sync()
 
         vm.start()
         vm.wait_for_login()
