@@ -5,6 +5,7 @@ import logging
 from autotest.client.shared import error
 
 from virttest import virsh
+from virttest import utils_misc
 from virttest.libvirt_xml import VMXML
 from virttest.utils_test import libvirt
 
@@ -165,10 +166,11 @@ def run(test, params, env):
     # to a shutdown vm. Then decide to restart or not
     if vm.is_alive():
         vm.destroy(gracefully=False)
+    # Vm should be in 'shut off' status
+    utils_misc.wait_for(lambda: vm.state() == "shut off", 30)
     create_disk(vm_name, orig_iso, disk_type, target_dev, disk_mode)
     if start_vm:
-        if not vm.is_alive():
-            vm.start()
+        vm.start()
         vm.wait_for_login().close()
         domid = vm.get_id()
     else:
