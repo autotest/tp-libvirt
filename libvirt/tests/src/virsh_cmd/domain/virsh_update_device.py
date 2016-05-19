@@ -6,6 +6,7 @@ from autotest.client.shared import error
 
 from virttest import virsh
 from virttest.libvirt_xml import VMXML
+from virttest.utils_test import libvirt
 
 from provider import libvirt_version
 
@@ -163,10 +164,12 @@ def run(test, params, env):
     # This test needs a cdrom/floppy attached first - attach a cdrom/floppy
     # to a shutdown vm. Then decide to restart or not
     if vm.is_alive():
-        vm.destroy()
+        vm.destroy(gracefully=False)
     create_disk(vm_name, orig_iso, disk_type, target_dev, disk_mode)
     if start_vm:
-        vm.start()
+        if not vm.is_alive():
+            vm.start()
+        vm.wait_for_login().close()
         domid = vm.get_id()
     else:
         domid = "domid invalid; domain is shut-off"
@@ -179,13 +182,18 @@ def run(test, params, env):
     extra = params.get("updatedevice_extra", "")
 
     # OK let's give this a whirl...
+    errmsg = ""
     try:
         if vm_ref == "id":
             vm_ref = domid
             if twice:
                 # Don't pass in any flags
-                virsh.update_device(domainarg=domid, filearg=update_xmlfile,
-                                    ignore_status=True, debug=True)
+                ret = virsh.update_device(domainarg=domid, filearg=update_xmlfile,
+                                          ignore_status=True, debug=True)
+                if not status_error:
+                    status = ret.exit_status
+                    errmsg += ret.stderr
+                    libvirt.check_exit_status(ret)
             if diff_iso:
                 # Swap filename of device backing file in update.xml
                 os.remove(update_xmlfile)
@@ -206,6 +214,8 @@ def run(test, params, env):
                                         ignore_status=True,
                                         debug=True)
         status = cmdresult.exit_status
+        if not status_error:
+            errmsg += cmdresult.stderr
 
         active_vmxml = VMXML.new_from_dumpxml(vm_name)
         inactive_vmxml = VMXML.new_from_dumpxml(vm_name,
@@ -223,13 +233,12 @@ def run(test, params, env):
             os.remove(test_diff_iso)
 
     # Result handling logic set errmsg only on error
-    errmsg = None
     if status_error:
         if status == 0:
-            errmsg = "Run successfully with wrong command!"
+            errmsg += "\nRun successfully with wrong command!\n"
     else:  # Normal test
         if status != 0:
-            errmsg = "Run failed with right command"
+            errmsg += "\nRun failed with right command\n"
         if diff_iso:  # Expect the backing file to have updated
             active_attached = is_attached(active_vmxml.devices, disk_type,
                                           test_diff_iso, target_dev)
@@ -244,42 +253,42 @@ def run(test, params, env):
         # Check behavior of combination before individual!
         if "config" in flag_list and "live" in flag_list:
             if not active_attached:
-                errmsg = ("Active domain XML not updated when "
-                          "--config --live options used")
+                errmsg += ("Active domain XML not updated when "
+                           "--config --live options used\n")
             if not inactive_attached:
-                errmsg = ("Inactive domain XML not updated when "
-                          "--config --live options used")
+                errmsg += ("Inactive domain XML not updated when "
+                           "--config --live options used\n")
 
         elif "live" in flag_list and inactive_attached:
-            errmsg = ("Inactive domain XML updated when "
-                      "--live option used")
+            errmsg += ("Inactive domain XML updated when "
+                       "--live option used\n")
 
         elif "config" in flag_list and active_attached:
-            errmsg = ("Active domain XML updated when "
-                      "--config option used")
+            errmsg += ("Active domain XML updated when "
+                       "--config option used\n")
 
         # persistent option behavior depends on start_vm
         if "persistent" in flag_list:
             if start_vm:
                 if not active_attached or not inactive_attached:
-                    errmsg = ("XML not updated when --persistent "
-                              "option used on active domain")
+                    errmsg += ("XML not updated when --persistent "
+                               "option used on active domain\n")
 
             else:
                 if not inactive_attached:
-                    errmsg = ("XML not updated when --persistent "
-                              "option used on inactive domain")
+                    errmsg += ("XML not updated when --persistent "
+                               "option used on inactive domain\n")
         if len(flag_list) == 0:
             # Not specifying any flag is the same as specifying --current
             if start_vm:
                 if not active_attached:
-                    errmsg = "Active domain XML not updated"
+                    errmsg += "Active domain XML not updated\n"
                 elif inactive_attached:
-                    errmsg = ("Inactive domain XML updated when active "
-                              "requested")
+                    errmsg += ("Inactive domain XML updated when active "
+                               "requested\n")
 
     # Log some debugging info before destroying instances
-    if errmsg is not None:
+    if errmsg and not status_error:
         logging.debug("Active XML:")
         logging.debug(str(active_vmxml))
         logging.debug("Inactive XML:")
@@ -295,5 +304,5 @@ def run(test, params, env):
     del inactive_vmxml
     os.unlink(update_xmlfile)
 
-    if errmsg is not None:
+    if errmsg:
         raise error.TestFail(errmsg)
