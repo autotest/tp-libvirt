@@ -42,7 +42,9 @@ def run(test, params, env):
     debug_kernel = 'debug_kernel' == checkpoint
     multi_kernel_list = ['multi_kernel', 'debug_kernel']
     backup_list = ['virtio_on', 'virtio_off', 'floppy', 'floppy_devmap',
-                   'fstab_cdrom', 'fstab_virtio', 'multi_disks', 'sata_disk']
+                   'fstab_cdrom', 'fstab_virtio', 'multi_disks', 'sata_disk',
+                   'network_virtio', 'network_rtl8139', 'network_e1000',
+                   'multi_netcards']
 
     def vm_shell(func):
         """
@@ -220,6 +222,46 @@ def run(test, params, env):
             disk.remove(disk.find('address'))
             index += 1
         vmxml.sync()
+
+    def change_network_model(model):
+        """
+        Change network model to $model
+        """
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        network_list = vmxml.get_iface_all()
+        for node in network_list.values():
+            if node.get('type') == 'network':
+                node.find('model').set('type', model)
+        vmxml.sync()
+
+    def attach_network_card(model):
+        """
+        Attach network card based on model
+        """
+        if model not in ('e1000', 'virtio', 'rtl8139'):
+            raise exceptions.TestError('Network model not support')
+        options = {'type': 'network', 'source': 'default', 'model': model}
+        line = ''
+        for key in options:
+            line += ' --' + key + ' ' + options[key]
+        line += ' --current'
+        logging.debug(virsh.attach_interface(vm_name, option=line))
+
+    def check_multi_netcards(mac_list, virsh_session_id):
+        """
+        Check if number and type of network cards meet expectation
+        """
+        virsh_instance = virsh.VirshPersistent(session_id=virsh_session_id)
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
+                vm_name, virsh_instance=virsh_instance)
+        iflist = vmxml.get_iface_all()
+        logging.debug('MAC list before v2v: %s' % mac_list)
+        logging.debug('MAC list after  v2v: %s' % iflist.keys())
+        if set(mac_list).difference(iflist.keys()):
+            raise exceptions.TestFail('Missing network interface')
+        for mac in iflist:
+            if iflist[mac].find('model').get('type') != 'virtio':
+                raise exceptions.TestFail('Network not convert to virtio')
 
     @vm_shell
     def insert_floppy_devicemap(**kwargs):
@@ -490,17 +532,27 @@ def run(test, params, env):
                     virsh.start(vm_name, debug=True, ignore_status=False)
                 except Exception, e:
                     raise exceptions.TestFail('Start vm failed: %s' % str(e))
-            if checkpoint:
-                if checkpoint in ['multi_kernel', 'debug_kernel']:
-                    default_kernel = params.get('defaultkernel')
-                    check_boot_kernel(default_kernel, debug_kernel)
-                    if checkpoint == 'multi_kernel':
-                        check_vmlinuz_initramfs(output)
-                elif checkpoint == 'floppy':
-                    check_floppy_exist()
-                elif checkpoint == 'multi_disks':
-                    check_disks()
-                check_v2v_log(output, checkpoint)
+            # Check guest following the checkpoint document after convertion
+            vmchecker = VMChecker(test, params, env)
+            params['vmchecker'] = vmchecker
+            ret = vmchecker.run()
+            if ret == 0:
+                logging.info("All checkpoints passed")
+            else:
+                raise exceptions.TestFail("%s checkpoints failed" % ret)
+            if checkpoint in ['multi_kernel', 'debug_kernel']:
+                default_kernel = params.get('defaultkernel')
+                check_boot_kernel(default_kernel, debug_kernel)
+                if checkpoint == 'multi_kernel':
+                    check_vmlinuz_initramfs(output)
+            elif checkpoint == 'floppy':
+                check_floppy_exist()
+            elif checkpoint == 'multi_disks':
+                check_disks()
+            elif checkpoint == 'multi_netcards':
+                check_multi_netcards(params['mac_address'],
+                                     vmchecker.virsh_session_id)
+            check_v2v_log(output, checkpoint)
 
     try:
         v2v_params = {
@@ -579,23 +631,27 @@ def run(test, params, env):
                 check_boot()
             elif checkpoint == 'unclean_fs':
                 make_unclean_fs()
+            elif checkpoint.startswith('network'):
+                change_network_model(checkpoint[8:])
+            elif checkpoint == 'multi_netcards':
+                attach_network_card('virtio')
+                attach_network_card('e1000')
+                params['mac_address'] = []
+                vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+                network_list = vmxml.get_iface_all()
+                for mac in network_list:
+                    if network_list[mac].get('type') == 'network':
+                        params['mac_address'].append(mac)
+                if len(params['mac_address']) < 2:
+                    raise exceptions.TestError('Not enough network interface')
+                logging.debug('MAC address: %s' % params['mac_address'])
 
         v2v_result = utils_v2v.v2v_cmd(v2v_params)
         check_result(v2v_result, status_error)
-        # Check guest following the checkpoint document after convertion
-        if not status_error:
-            vmchecker = VMChecker(test, params, env)
-            ret = vmchecker.run()
-            if ret == 0:
-                logging.info("All checkpoints passed")
-            else:
-                raise exceptions.TestFail("%s checkpoints failed" % ret)
     finally:
-        if output_mode == 'rhev':
-            vmcheck = utils_v2v.VMCheck(test, params, env)
-            vmcheck.cleanup()
+        if params.get('vmchecker'):
+            params['vmchecker'].cleanup()
         if backup_xml:
             backup_xml.sync()
-        if checkpoint:
-            if checkpoint == 'unclean_fs':
-                cleanup_fs()
+        if checkpoint == 'unclean_fs':
+            cleanup_fs()
