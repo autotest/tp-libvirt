@@ -12,6 +12,7 @@ from virttest import utils_misc
 from virttest import utils_sasl
 from virttest import libvirt_vm
 from virttest import data_dir
+from virttest import utils_selinux
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
@@ -38,13 +39,21 @@ def run(test, params, env):
     address_cache = env.get('address_cache')
     v2v_timeout = int(params.get('v2v_timeout', 1200))
     status_error = 'yes' == params.get('status_error', 'no')
-    checkpoint = params.get('checkpoint')
+    checkpoint = params.get('checkpoint', '')
     debug_kernel = 'debug_kernel' == checkpoint
     multi_kernel_list = ['multi_kernel', 'debug_kernel']
     backup_list = ['virtio_on', 'virtio_off', 'floppy', 'floppy_devmap',
                    'fstab_cdrom', 'fstab_virtio', 'multi_disks', 'sata_disk',
                    'network_virtio', 'network_rtl8139', 'network_e1000',
-                   'multi_netcards']
+                   'multi_netcards', 'spice', 'spice_encrypt']
+    error_list = []
+
+    def log_fail(msg):
+        """
+        Log error and update error list
+        """
+        logging.error(msg)
+        error_list.append(msg)
 
     def vm_shell(func):
         """
@@ -67,15 +76,12 @@ def run(test, params, env):
 
         return wrapper
 
-    def check_disks():
+    def check_disks(vmcheck):
         """
         Check disk counts inside the VM
         """
-        vmcheck = utils_v2v.VMCheck(test, params, env)
         # Initialize windows boot up
         os_type = params.get("os_type", "linux")
-        # Creatge VM session
-        vmcheck.create_session()
         expected_disks = int(params.get("ori_disks", "1"))
         logging.debug("Expect %s disks im VM after convert", expected_disks)
         # Get disk counts
@@ -90,7 +96,6 @@ def run(test, params, env):
             logging.debug("Disks in VM: %s", output)
             disks = len(re.findall('Disk\s\d', output))
         logging.debug("Find %s disks in VM after convert", disks)
-        vmcheck.session.close()
         if disks == expected_disks:
             logging.info("Disk counts is expected")
         else:
@@ -158,15 +163,12 @@ def run(test, params, env):
         except Exception, e:
             raise exceptions.TestError('Error on find kernel info \n %s' % str(e))
 
-    def check_boot_kernel(default_kernel, kernel_debug=False):
+    def check_boot_kernel(vmcheck, default_kernel, kernel_debug=False):
         """
         Check if converted vm use the default kernel
         """
         logging.debug('Check debug kernel: %s' % kernel_debug)
-        vmcheck = utils_v2v.VMCheck(test, params, env)
-        vmcheck.create_session()
         current_kernel = vmcheck.session.cmd('uname -r').strip()
-        vmcheck.session.close()
         logging.debug('Current kernel: %s' % current_kernel)
         logging.debug('Default kernel: %s' % default_kernel)
         if kernel_debug:
@@ -175,15 +177,12 @@ def run(test, params, env):
         elif current_kernel not in default_kernel:
             raise exceptions.TestFail('VM should choose default kernel')
 
-    def check_floppy_exist():
+    def check_floppy_exist(vmcheck):
         """
         Check if floppy exists after convertion
         """
-        vmcheck = utils_v2v.VMCheck(test, params, env)
-        vmcheck.create_session()
         blk = vmcheck.session.cmd('lsblk')
         logging.info(blk)
-        vmcheck.session.close()
         if not re.search('fd0', blk):
             raise exceptions.TestFail('Floppy not found')
 
@@ -303,7 +302,7 @@ def run(test, params, env):
         """
         Specify entry in fstab file
         """
-        type_list = ['cdrom', 'uuid', 'label', 'virtio']
+        type_list = ['cdrom', 'uuid', 'label', 'virtio', 'invalid']
         if type not in type_list:
             raise exceptions.TestError('Not support %s in fstab' % type)
         session = kwargs['session']
@@ -317,6 +316,9 @@ def run(test, params, env):
             ]
             for i in range(len(cmd)):
                 session.cmd(cmd[i])
+        elif type == 'invalid':
+            line = utils_misc.generate_random_string(6)
+            session.cmd('echo "%s" >> /etc/fstab' % line)
         else:
             map = {'uuid': 'UUID', 'label': 'LABEL', 'virtio': '/vd'}
             logging.info(type)
@@ -450,6 +452,19 @@ def run(test, params, env):
         time.sleep(60)
         vm.shutdown()
 
+    @vm_shell
+    def set_selinux(value, **kwargs):
+        """
+        Set selinux stat of guest
+        """
+        session = kwargs['session']
+        current_stat = session.cmd_output('getenforce').strip()
+        logging.debug('Current selinux status: %s', current_stat)
+        if current_stat != value:
+            cmd = "sed -E -i 's/(^SELINUX=).*?/\\1%s/' /etc/selinux/config" % value
+            logging.info('Set selinux stat with command %s', cmd)
+            session.cmd(cmd)
+
     def check_v2v_log(output, check=None):
         """
         Check if error/warning meets expectation
@@ -476,7 +491,8 @@ def run(test, params, env):
                                 'the grub configuration'],
             'no_space': ["virt-v2v: error: not enough free space for "
                          "conversion on filesystem '/'"],
-            'unclean_fs': ['.*Windows Hibernation or Fast Restart.*']
+            'unclean_fs': ['.*Windows Hibernation or Fast Restart.*'],
+            'fstab_invalid': ['libguestfs error: /etc/fstab:.*?: augeas parse failure:']
         }
 
         if check is None or not (check in not_expect_map or check in expect_map):
@@ -536,23 +552,37 @@ def run(test, params, env):
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
             ret = vmchecker.run()
-            if ret == 0:
-                logging.info("All checkpoints passed")
+            if len(ret) == 0:
+                logging.info("All common checkpoints passed")
             else:
                 raise exceptions.TestFail("%s checkpoints failed" % ret)
             if checkpoint in ['multi_kernel', 'debug_kernel']:
                 default_kernel = params.get('defaultkernel')
-                check_boot_kernel(default_kernel, debug_kernel)
+                check_boot_kernel(vmchecker.checker, default_kernel, debug_kernel)
                 if checkpoint == 'multi_kernel':
                     check_vmlinuz_initramfs(output)
             elif checkpoint == 'floppy':
-                check_floppy_exist()
+                check_floppy_exist(vmchecker.checker)
             elif checkpoint == 'multi_disks':
-                check_disks()
+                check_disks(vmchecker.checker)
             elif checkpoint == 'multi_netcards':
                 check_multi_netcards(params['mac_address'],
                                      vmchecker.virsh_session_id)
+            elif checkpoint.startswith('spice'):
+                vmchecker.check_graphics({'type': 'spice'})
+                if checkpoint == 'spice_encrypt':
+                    vmchecker.check_graphics(params[checkpoint])
+            elif checkpoint.startswith('selinux'):
+                status = vmchecker.checker.session.cmd('getenforce').strip().lower()
+                logging.info('Selinux status after v2v:%s', status)
+                if status != checkpoint[8:]:
+                    log_fail('Selinux status not match')
             check_v2v_log(output, checkpoint)
+            # Merge 2 error lists
+            error_list.extend(vmchecker.errors)
+            if len(error_list):
+                raise exceptions.TestFail('%d checkpoints failed: %s',
+                                          len(error_list), error_list)
 
     try:
         v2v_params = {
@@ -576,75 +606,85 @@ def run(test, params, env):
             v2v_params['storage'] = data_dir.get_tmp_dir()
 
         backup_xml = None
-        if checkpoint:
-            if checkpoint in backup_list:
-                backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-            if checkpoint == 'multi_disks':
-                attach_disk_path = os.path.join(test.tmpdir, 'attach_disks')
-                utlv.attach_disks(env.get_vm(vm_name), attach_disk_path,
-                                  None, params)
-                new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-                disk_count = 0
-                for disk in new_xml.get_disk_all().values():
-                    if disk.get('device') == 'disk':
-                        disk_count += 1
-                params['ori_disks'] = disk_count
-            elif checkpoint in multi_kernel_list:
-                multi_kernel()
-            elif checkpoint == 'virtio_on':
+        if checkpoint in backup_list:
+            backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        if checkpoint == 'multi_disks':
+            attach_disk_path = os.path.join(test.tmpdir, 'attach_disks')
+            utlv.attach_disks(env.get_vm(vm_name), attach_disk_path,
+                              None, params)
+            new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            disk_count = 0
+            for disk in new_xml.get_disk_all().values():
+                if disk.get('device') == 'disk':
+                    disk_count += 1
+            params['ori_disks'] = disk_count
+        elif checkpoint in multi_kernel_list:
+            multi_kernel()
+        elif checkpoint == 'virtio_on':
+            change_disk_bus('virtio')
+        elif checkpoint == 'virtio_off':
+            change_disk_bus('ide')
+        elif checkpoint == 'sata_disk':
+            change_disk_bus('sata')
+        elif checkpoint.startswith('floppy'):
+            img_path = data_dir.get_tmp_dir() + '/floppy.img'
+            utlv.create_local_disk('floppy', img_path)
+            attach_removable_media('floppy', img_path, 'fda')
+            if checkpoint == 'floppy_devmap':
+                insert_floppy_devicemap()
+        elif checkpoint.startswith('fstab'):
+            if checkpoint == 'fstab_cdrom':
+                img_path = data_dir.get_tmp_dir() + '/cdrom.iso'
+                utlv.create_local_disk('iso', img_path)
+                attach_removable_media('cdrom', img_path, 'hdc')
+            elif checkpoint == 'fstab_virtio':
                 change_disk_bus('virtio')
-            elif checkpoint == 'virtio_off':
-                change_disk_bus('ide')
-            elif checkpoint == 'sata_disk':
-                change_disk_bus('sata')
-            elif checkpoint.startswith('floppy'):
-                img_path = data_dir.get_tmp_dir() + '/floppy.img'
-                utlv.create_local_disk('floppy', img_path)
-                attach_removable_media('floppy', img_path, 'fda')
-                if checkpoint == 'floppy_devmap':
-                    insert_floppy_devicemap()
-            elif checkpoint.startswith('fstab'):
-                if checkpoint == 'fstab_cdrom':
-                    img_path = data_dir.get_tmp_dir() + '/cdrom.iso'
-                    utlv.create_local_disk('iso', img_path)
-                    attach_removable_media('cdrom', img_path, 'hdc')
-                elif checkpoint == 'fstab_virtio':
-                    change_disk_bus('virtio')
-                specify_fstab_entry(checkpoint[6:])
-            elif checkpoint == 'running':
-                virsh.start(vm_name)
-                logging.info('VM state: %s' %
-                             virsh.domstate(vm_name).stdout.strip())
-            elif checkpoint == 'paused':
-                virsh.start(vm_name, '--paused')
-                logging.info('VM state: %s' %
-                             virsh.domstate(vm_name).stdout.strip())
-            elif checkpoint == 'serial_terminal':
-                grub_serial_terminal()
-                check_boot()
-            elif checkpoint == 'no_space':
-                create_large_file()
-            elif checkpoint == 'corrupt_rpmdb':
-                corrupt_rpmdb()
-            elif checkpoint == 'bogus_kernel':
-                bogus_kernel()
-                check_boot()
-            elif checkpoint == 'unclean_fs':
-                make_unclean_fs()
-            elif checkpoint.startswith('network'):
-                change_network_model(checkpoint[8:])
-            elif checkpoint == 'multi_netcards':
-                attach_network_card('virtio')
-                attach_network_card('e1000')
-                params['mac_address'] = []
-                vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-                network_list = vmxml.get_iface_all()
-                for mac in network_list:
-                    if network_list[mac].get('type') == 'network':
-                        params['mac_address'].append(mac)
-                if len(params['mac_address']) < 2:
-                    raise exceptions.TestError('Not enough network interface')
-                logging.debug('MAC address: %s' % params['mac_address'])
+            specify_fstab_entry(checkpoint[6:])
+        elif checkpoint == 'running':
+            virsh.start(vm_name)
+            logging.info('VM state: %s' %
+                         virsh.domstate(vm_name).stdout.strip())
+        elif checkpoint == 'paused':
+            virsh.start(vm_name, '--paused')
+            logging.info('VM state: %s' %
+                         virsh.domstate(vm_name).stdout.strip())
+        elif checkpoint == 'serial_terminal':
+            grub_serial_terminal()
+            check_boot()
+        elif checkpoint == 'no_space':
+            create_large_file()
+        elif checkpoint == 'corrupt_rpmdb':
+            corrupt_rpmdb()
+        elif checkpoint == 'bogus_kernel':
+            bogus_kernel()
+            check_boot()
+        elif checkpoint == 'unclean_fs':
+            make_unclean_fs()
+        elif checkpoint.startswith('network'):
+            change_network_model(checkpoint[8:])
+        elif checkpoint == 'multi_netcards':
+            attach_network_card('virtio')
+            attach_network_card('e1000')
+            params['mac_address'] = []
+            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            network_list = vmxml.get_iface_all()
+            for mac in network_list:
+                if network_list[mac].get('type') == 'network':
+                    params['mac_address'].append(mac)
+            if len(params['mac_address']) < 2:
+                raise exceptions.TestError('Not enough network interface')
+            logging.debug('MAC address: %s' % params['mac_address'])
+        elif checkpoint.startswith('spice'):
+            vm_xml.VMXML.set_graphics_attr(vm_name, {'type': 'spice'})
+            if checkpoint == 'spice_encrypt':
+                spice_passwd = {'passwd': params.get('spice_passwd', 'redhat')}
+                vm_xml.VMXML.set_graphics_attr(vm_name, spice_passwd)
+                params[checkpoint] = {'passwdValidTo': '1970-01-01T00:00:01'}
+        elif checkpoint == 'host_selinux_on':
+            params['selinux_stat'] = utils_selinux.get_status()
+            utils_selinux.set_status('enforcing')
+        elif checkpoint.startswith('selinux'):
+            set_selinux(checkpoint[8:])
 
         v2v_result = utils_v2v.v2v_cmd(v2v_params)
         check_result(v2v_result, status_error)
@@ -655,3 +695,5 @@ def run(test, params, env):
             backup_xml.sync()
         if checkpoint == 'unclean_fs':
             cleanup_fs()
+        if params.get('selinux_stat') and params['selinux_stat'] != 'disabled':
+            utils_selinux.set_status(params['selinux_stat'])
