@@ -129,7 +129,7 @@ def run(test, params, env):
             if at_mem:
                 assert int(max_mem) + int(tg_size) == xml_max_mem
                 # Bug 1220702, skip the check for current memory
-                #assert int(cur_mem) + int(tg_size) == xml_cur_mem
+                assert int(cur_mem) + int(tg_size) == xml_cur_mem
                 new_max_mem = xml_max_mem
                 new_cur_mem = xml_cur_mem
                 mem_dev = dom_xml.get_devices("memory")
@@ -141,7 +141,7 @@ def run(test, params, env):
             elif dt_mem:
                 assert int(new_max_mem) - int(tg_size) == xml_max_mem
                 # Bug 1220702, skip the check for current memory
-                #assert int(new_cur_mem) - int(tg_size) == xml_cur_mem
+                assert int(new_cur_mem) - int(tg_size) == xml_cur_mem
         except AssertionError:
             utils.log_last_traceback()
             raise error.TestFail("Found unmatched memory setting"
