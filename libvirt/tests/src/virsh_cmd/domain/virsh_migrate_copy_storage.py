@@ -122,7 +122,7 @@ def run(test, params, env):
         if abnormal_type == "occupied_disk":
             occupied_path = rdm.occupy_space(disk_type, file_size,
                                              file_path, vgname, timeout=600)
-        if not abnormal_type == "not_exist_file":
+        if abnormal_type == "not_exist_file":
             for disk, size in all_disks.items():
                 if disk == file_path:
                     rdm.create_image("file", disk, size, None, None)
