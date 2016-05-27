@@ -80,7 +80,7 @@ class VMChecker(object):
         v2v_version = LooseVersion(process.run(cmd).stdout.strip())
         compare_version = LooseVersion(compare_version)
         if v2v_version > compare_version:
-            True
+            return True
         return False
 
     def get_expect_graphic_type(self):
