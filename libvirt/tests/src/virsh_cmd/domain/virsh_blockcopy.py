@@ -632,7 +632,9 @@ def run(test, params, env):
             os.remove(snap_path)
         if os.path.exists(save_path):
             os.remove(save_path)
-        # Restart virtlogd serice to release VM log file lock
-        virtlogd = path.find_command('virtlogd')
-        if virtlogd:
+        # Restart virtlogd service to release VM log file lock
+        try:
+            virtlogd = path.find_command('virtlogd')
             process.run('service virtlogd restart')
+        except path.CmdNotFoundError:
+            pass
