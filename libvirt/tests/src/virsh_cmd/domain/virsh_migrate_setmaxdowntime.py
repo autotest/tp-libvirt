@@ -1,11 +1,20 @@
 import logging
 import threading
 import time
+import os
 
 from autotest.client.shared import error
 
+from avocado.utils import process
+
+from virttest import nfs
 from virttest import virsh
 from virttest import ssh_key
+from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
+from virttest import utils_libvirtd
+from virttest import utils_config
+from virttest.utils_misc import SELinuxBoolean
 
 from provider import libvirt_version
 
@@ -71,6 +80,20 @@ def cleanup_dest(vm, src_uri, dest_uri):
     vm.connect_uri = src_uri
 
 
+def config_libvirt(params):
+    """
+    Configure /etc/libvirt/libvirtd.conf
+    """
+    libvirtd_conf = utils_config.LibvirtdConfig()
+
+    for k, v in params.items():
+        libvirtd_conf[k] = v
+
+    logging.debug("The libvirtd config file content is:\n%s" % libvirtd_conf)
+
+    return libvirtd_conf
+
+
 def run(test, params, env):
     """
     Test virsh migrate-setmaxdowntime command.
@@ -80,16 +103,27 @@ def run(test, params, env):
     3) Cleanup environment(migrated vm on destination)
     4) Check result
     """
-    vm_ref = params.get("setmmdt_vm_ref", "domname")
     dest_uri = params.get(
-        "virsh_migrate_dest_uri", "qemu+ssh://EXAMPLE/system")
+        "virsh_migrate_dest_uri", "qemu+ssh://MIGRATE_EXAMPLE/system")
     src_uri = params.get(
-        "virsh_migrate_src_uri", "qemu+ssh://EXAMPLE/system")
+        "virsh_migrate_src_uri", "qemu+ssh://MIGRATE_EXAMPLE/system")
+    if dest_uri.count('///') or dest_uri.count('MIGRATE_EXAMPLE'):
+        raise error.TestNAError("Set your destination uri first.")
+    if src_uri.count('MIGRATE_EXAMPLE'):
+        raise error.TestNAError("Set your source uri first.")
+    if src_uri == dest_uri:
+        raise error.TestNAError("You should not set dest uri same as local.")
+    vm_ref = params.get("setmmdt_vm_ref", "domname")
     pre_vm_state = params.get("pre_vm_state", "running")
     status_error = "yes" == params.get("status_error", "no")
     do_migrate = "yes" == params.get("do_migrate", "yes")
-    downtime = params.get("migrate_maxdowntime", 1000)
+    migrate_maxdowntime = params.get("migrate_maxdowntime", 1.000)
+    if (migrate_maxdowntime == ""):
+        downtime = ""
+    else:
+        downtime = int(float(migrate_maxdowntime)) * 1000
     extra = params.get("setmmdt_extra")
+
     # A delay between threads
     delay_time = int(params.get("delay_time", 1))
     # timeout of threads
@@ -98,17 +132,44 @@ def run(test, params, env):
     vm_name = params.get("migrate_main_vm")
     vm = env.get_vm(vm_name)
     domuuid = vm.get_uuid()
-    # Confirm vm is running
-    if not vm.is_alive():
-        vm.start()
-    vm.wait_for_login()
-    domid = vm.get_id()
-    if dest_uri.count('///') or dest_uri.count('EXAMPLE'):
-        raise error.TestNAError("Set your destination uri first.")
-    if src_uri.count('EXAMPLE'):
-        raise error.TestNAError("Set your source uri first.")
-    if src_uri == dest_uri:
-        raise error.TestNAError("You should not set dest uri same as local.")
+
+    grep_str_local = params.get("grep_str_from_local_libvirt_log", "")
+
+    # For safety reasons, we'd better back up original guest xml
+    orig_config_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    if not orig_config_xml:
+        raise error.TestError("Backing up xmlfile failed.")
+
+    # Params to configure libvirtd.conf
+    log_file = "/var/log/libvirt/libvirtd.log"
+    log_level = "1"
+    log_filters = '"1:json 1:libvirt 1:qemu 1:monitor 3:remote 4:event"'
+    libvirtd_conf_dict = {"log_level": log_level,
+                          "log_filters": log_filters,
+                          "log_outputs": '"%s:file:%s"' % (log_level, log_file)}
+
+    # Update libvirtd config with new parameters
+    libvirtd = utils_libvirtd.Libvirtd()
+    libvirtd_conf = config_libvirt(libvirtd_conf_dict)
+    libvirtd.restart()
+
+    # Params to update disk using shared storage
+    params["disk_type"] = "file"
+    params["disk_source_protocol"] = "netfs"
+    params["mnt_path_name"] = params.get("nfs_mount_dir")
+
+    # Params to setup SSH connection
+    params["server_ip"] = params.get("migrate_dest_host")
+    params["server_pwd"] = params.get("migrate_dest_pwd")
+    params["client_ip"] = params.get("migrate_source_host")
+    params["client_pwd"] = params.get("migrate_source_pwd")
+    params["nfs_client_ip"] = params.get("migrate_dest_host")
+    params["nfs_server_ip"] = params.get("migrate_source_host")
+
+    # Params to enable SELinux boolean on remote host
+    params["remote_boolean_varible"] = "virt_use_nfs"
+    params["remote_boolean_value"] = "on"
+    params["set_sebool_remote"] = "yes"
 
     remote_host = params.get("migrate_dest_host")
     username = params.get("migrate_dest_user", "root")
@@ -119,21 +180,46 @@ def run(test, params, env):
     setmmdt_dargs = {'debug': True, 'ignore_status': True, 'uri': src_uri}
     migrate_dargs = {'debug': True, 'ignore_status': True}
 
-    # Confirm how to reference a VM.
-    if vm_ref == "domname":
-        vm_ref = vm_name
-    elif vm_ref == "domid":
-        vm_ref = domid
-    elif vm_ref == "domuuid":
-        vm_ref = domuuid
-
-    # Prepare vm state
-    if pre_vm_state == "paused":
-        vm.pause()
-    elif pre_vm_state == "shutoff":
-        vm.destroy()
+    seLinuxBool = None
+    nfs_client = None
+    local_selinux_bak = ""
 
     try:
+        # Update the disk using shared storage
+        libvirt.set_vm_disk(vm, params)
+
+        # Backup the SELinux status on local host for recovering
+        local_selinux_bak = params.get("selinux_status_bak", "")
+
+        # Configure NFS client on remote host
+        nfs_client = nfs.NFSClient(params)
+        nfs_client.setup()
+
+        logging.info("Enable virt NFS SELinux boolean on target host")
+        seLinuxBool = SELinuxBoolean(params)
+        seLinuxBool.setup()
+
+        if not vm.is_alive():
+            vm.start()
+        vm.wait_for_login()
+        domid = vm.get_id()
+
+        # Confirm how to reference a VM.
+        if vm_ref == "domname":
+            vm_ref = vm_name
+        elif vm_ref == "domid":
+            vm_ref = domid
+        elif vm_ref == "domuuid":
+            vm_ref = domuuid
+
+        # Prepare vm state
+        if pre_vm_state == "paused":
+            vm.pause()
+        elif pre_vm_state == "shutoff":
+            vm.destroy(gracefully=False)
+            # Ensure VM in 'shut off' status
+            utils_misc.wait_for(lambda: vm.state() == "shut off", 30)
+
         # Set max migration downtime must be during migration
         # Using threads for synchronization
         threads = []
@@ -153,13 +239,48 @@ def run(test, params, env):
         for thread in threads:
             thread.join(thread_timeout)
 
+        if (status_error is False or do_migrate is False):
+            logging.debug("To match the expected pattern '%s' ...",
+                          grep_str_local)
+            cmd = "grep -E '%s' %s" % (grep_str_local, log_file)
+            cmdResult = process.run(cmd, shell=True, verbose=False)
+            logging.debug(cmdResult)
+
     finally:
         # Clean up.
         if do_migrate:
+            logging.debug("Cleanup VM on remote host...")
             cleanup_dest(vm, src_uri, dest_uri)
 
-        if vm.is_paused():
-            vm.resume()
+        if orig_config_xml:
+            logging.debug("Recover VM XML...")
+            orig_config_xml.sync()
+
+        if seLinuxBool:
+            logging.info("Recover NFS SELinux boolean on remote host...")
+            seLinuxBool.cleanup(True)
+
+        if nfs_client:
+            logging.info("Cleanup NFS client environment...")
+            nfs_client.cleanup()
+
+        logging.info("Remove the NFS image...")
+        source_file = params.get("source_file")
+        libvirt.delete_local_disk("file", path=source_file)
+
+        logging.info("Cleanup NFS server environment...")
+        exp_dir = params.get("export_dir")
+        mount_dir = params.get("mnt_path_name")
+        libvirt.setup_or_cleanup_nfs(False, export_dir=exp_dir,
+                                     mount_dir=mount_dir,
+                                     restore_selinux=local_selinux_bak)
+
+        # Recover libvirtd service configuration on local
+        if libvirtd_conf:
+            logging.debug("Recover local libvirtd configuration...")
+            libvirtd_conf.restore()
+            libvirtd.restart()
+            os.remove(log_file)
 
     # Check results.
     if status_error:
