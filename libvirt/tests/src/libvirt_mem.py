@@ -281,7 +281,7 @@ def run(test, params, env):
     max_mem = params.get("max_mem")
     max_mem_rt = params.get("max_mem_rt")
     max_mem_slots = params.get("max_mem_slots", "16")
-    #cur_mem = params.get("current_mem")
+    cur_mem = params.get("current_mem")
     numa_cells = params.get("numa_cells", "").split()
     set_max_mem = params.get("set_max_mem")
 
