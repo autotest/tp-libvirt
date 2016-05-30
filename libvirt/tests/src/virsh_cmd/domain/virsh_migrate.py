@@ -2,15 +2,23 @@ import logging
 import os
 import re
 import time
-import codecs
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
+from avocado.utils import process
+from avocado.utils import path
+from avocado.core import exceptions
 
+from virttest import nfs
+from virttest import remote
+from virttest import defaults
 from virttest import utils_test
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_misc import SELinuxBoolean
+from virttest.qemu_storage import QemuImg
+from virttest.utils_test import libvirt
+
+from autotest.client.shared import error
 
 
 def run(test, params, env):
@@ -113,6 +121,53 @@ def run(test, params, env):
                 numa_dict_list.append(numa_dict)
                 numa_dict = {}
         return numa_dict_list
+
+    for v in params.itervalues():
+        if isinstance(v, str) and v.count("EXAMPLE"):
+            raise exceptions.TestSkipError("Please set real value for %s" % v)
+
+    # Check the required parameters
+    extra = params.get("virsh_migrate_extra")
+    migrate_uri = params.get("virsh_migrate_migrateuri", None)
+    # Add migrateuri if exists and check for default example
+    if migrate_uri:
+        extra = ("%s --migrateuri=%s" % (extra, migrate_uri))
+
+    graphics_uri = params.get("virsh_migrate_graphics_uri", "")
+    if graphics_uri:
+        extra = "--graphicsuri %s" % graphics_uri
+
+    default_guest_asset = defaults.get_default_guest_os_info()['asset']
+    shared_storage = params.get("nfs_mount_dir")
+    shared_storage += ('/' + default_guest_asset + '.qcow2')
+
+    options = params.get("virsh_migrate_options")
+    # Direct migration is supported only for Xen in libvirt
+    if options.count("direct") or extra.count("direct"):
+        if params.get("driver_type") is not "xen":
+            raise error.TestNAError("Direct migration is supported only for "
+                                    "Xen in libvirt.")
+
+    if (options.count("compressed") and not
+            virsh.has_command_help_match("migrate", "--compressed")):
+        raise error.TestNAError("Do not support compressed option "
+                                "on this version.")
+
+    if (options.count("graphicsuri") and not
+            virsh.has_command_help_match("migrate", "--graphicsuri")):
+        raise error.TestNAError("Do not support 'graphicsuri' option"
+                                "on this version.")
+
+    src_uri = params.get("virsh_migrate_connect_uri")
+    dest_uri = params.get("virsh_migrate_desturi")
+
+    graphics_server = params.get("graphics_server")
+    if graphics_server:
+        try:
+            remote_viewer_executable = path.find_command('remote-viewer')
+        except path.CmdNotFoundError:
+            raise error.TestNAError("No 'remote-viewer' command found.")
+
     vm_name = params.get("migrate_main_vm")
     vm = env.get_vm(vm_name)
     vm.verify_alive()
@@ -120,87 +175,104 @@ def run(test, params, env):
     # For safety reasons, we'd better back up  xmlfile.
     orig_config_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     if not orig_config_xml:
-        logging.error("Backing up xmlfile failed.")
+        raise exceptions.TestError("Backing up xmlfile failed.")
 
-    src_uri = params.get("virsh_migrate_connect_uri")
-    dest_uri = params.get("virsh_migrate_desturi")
-    # Identify easy config. mistakes early
-    warning_text = ("Migration VM %s URI %s appears problematic "
-                    "this may lead to migration problems. "
-                    "Consider specifying vm.connect_uri using "
-                    "fully-qualified network-based style.")
+    vmxml = orig_config_xml.copy()
+    graphic = vmxml.get_device_class('graphics')()
 
-    if src_uri.count('///') or src_uri.count('EXAMPLE'):
-        raise error.TestNAError(warning_text % ('source', src_uri))
+    # Params to update disk using shared storage
+    params["disk_type"] = "file"
+    params["disk_source_protocol"] = "netfs"
+    params["mnt_path_name"] = params.get("nfs_mount_dir")
 
-    if dest_uri.count('///') or dest_uri.count('EXAMPLE'):
-        raise error.TestNAError(warning_text % ('destination', dest_uri))
+    # Params for NFS and SSH setup
+    params["server_ip"] = params.get("migrate_dest_host")
+    params["server_user"] = "root"
+    params["server_pwd"] = params.get("migrate_dest_pwd")
+    params["client_ip"] = params.get("migrate_source_host")
+    params["client_user"] = "root"
+    params["client_pwd"] = params.get("migrate_source_pwd")
+    params["nfs_client_ip"] = params.get("migrate_dest_host")
+    params["nfs_server_ip"] = params.get("migrate_source_host")
+
+    # Params to enable SELinux boolean on remote host
+    params["remote_boolean_varible"] = "virt_use_nfs"
+    params["remote_boolean_value"] = "on"
+    params["set_sebool_remote"] = "yes"
+
+    server_ip = params.get("server_ip")
+    server_user = params.get("server_user", "root")
+    server_pwd = params.get("server_pwd")
+
+    graphics_type = params.get("graphics_type")
+    graphics_port = params.get("graphics_port")
+    graphics_listen = params.get("graphics_listen")
+    graphics_autoport = params.get("graphics_autoport", "yes")
+    graphics_listen_type = params.get("graphics_listen_type")
+    graphics_listen_addr = params.get("graphics_listen_addr")
+
+    # Update graphic XML
+    if graphics_type and graphic.get_type() != graphics_type:
+        graphic.set_type(graphics_type)
+    if graphics_port:
+        graphic.port = graphics_port
+    if graphics_autoport:
+        graphic.autoport = graphics_autoport
+    if graphics_listen:
+        graphic.listen = graphics_listen
+    if graphics_listen_type:
+        graphic.listen_type = graphics_listen_type
+    if graphics_listen_addr:
+        graphic.listen_addr = graphics_listen_addr
 
     vm_ref = params.get("vm_ref", vm.name)
-    options = params.get("virsh_migrate_options")
-    extra = params.get("virsh_migrate_extra")
     delay = int(params.get("virsh_migrate_delay", 10))
+    ping_count = int(params.get("ping_count", 5))
+    ping_timeout = int(params.get("ping_timeout", 10))
     status_error = params.get("status_error", 'no')
     libvirtd_state = params.get("virsh_migrate_libvirtd_state", 'on')
     src_state = params.get("virsh_migrate_src_state", "running")
-    migrate_uri = params.get("virsh_migrate_migrateuri", None)
-    shared_storage = params.get("virsh_migrate_shared_storage", None)
-    dest_xmlfile = ""
     enable_numa = "yes" == params.get("virsh_migrate_with_numa", "no")
-
-    # Direct migration is supported only for Xen in libvirt
-    if options.count("direct") or extra.count("direct"):
-        if params.get("driver_type") is not "xen":
-            raise error.TestNAError("Direct migration is supported only for "
-                                    "Xen in libvirt.")
-
-    if options.count("compressed") and not \
-            virsh.has_command_help_match("migrate", "--compressed"):
-        raise error.TestNAError("Do not support compressed option on this version.")
-
-    # Add migrateuri if exists and check for default example
-    if migrate_uri:
-        if migrate_uri.count("EXAMPLE"):
-            raise error.TestNAError("Set up the migrate_uri.")
-        extra = ("%s --migrateuri=%s" % (extra, migrate_uri))
-
-    # To migrate you need to have a shared disk between hosts
-    if shared_storage.count("EXAMPLE"):
-        raise error.TestError("For migration you need to have a shared "
-                              "storage.")
 
     # Get expected cache state for test
     attach_scsi_disk = "yes" == params.get("attach_scsi_disk", "no")
     disk_cache = params.get("virsh_migrate_disk_cache", "none")
+    params["driver_cache"] = disk_cache
     unsafe_test = False
     if options.count("unsafe") and disk_cache != "none":
         unsafe_test = True
 
+    nfs_client = None
+    seLinuxBool = None
     exception = False
+    remote_viewer_pid = None
+
     try:
         # Change the disk of the vm to shared disk
-        if vm.is_alive():
-            vm.destroy(gracefully=False)
+        libvirt.set_vm_disk(vm, params)
+        # Backup the SELinux status on local host for recovering
+        local_selinux_bak = params.get("selinux_status_bak")
 
-        devices = vm.get_blk_devices()
-        for device in devices:
-            s_detach = virsh.detach_disk(vm_name, device, "--config", debug=True)
-            if not s_detach:
-                logging.error("Detach vda failed before test.")
+        # Configure NFS client on remote host
+        nfs_client = nfs.NFSClient(params)
+        nfs_client.setup()
+
+        logging.info("Enable virt NFS SELinux boolean on target host.")
+        seLinuxBool = SELinuxBoolean(params)
+        seLinuxBool.setup()
 
         subdriver = utils_test.get_image_info(shared_storage)['format']
         extra_attach = ("--config --driver qemu --subdriver %s --cache %s"
                         % (subdriver, disk_cache))
-        s_attach = virsh.attach_disk(vm_name, shared_storage, "vda",
-                                     extra_attach, debug=True)
-        if s_attach.exit_status != 0:
-            logging.error("Attach vda failed before test.")
 
         # Attach a scsi device for special testcases
         if attach_scsi_disk:
             shared_dir = os.path.dirname(shared_storage)
-            scsi_disk = "%s/scsi_test.img" % shared_dir
-            utils.run("qemu-img create -f qcow2 %s 100M" % scsi_disk)
+            # This is a workaround. It does not take effect to specify
+            # this parameter in config file
+            params["image_name"] = "scsi_test"
+            scsi_qemuImg = QemuImg(params, shared_dir, '')
+            scsi_disk, _ = scsi_qemuImg.create(params)
             s_attach = virsh.attach_disk(vm_name, scsi_disk, "sdb",
                                          extra_attach, debug=True)
             if s_attach.exit_status != 0:
@@ -226,17 +298,21 @@ def run(test, params, env):
             vmxml.cpu = vmxml_cpu
             vmxml.sync()
 
-        vm.start()
+        if not vm.is_alive():
+            vm.start()
+
         vm.wait_for_login()
 
         # Confirm VM can be accessed through network.
         time.sleep(delay)
         vm_ip = vm.get_address()
-        s_ping, o_ping = utils_test.ping(vm_ip, count=2, timeout=delay)
+        logging.info("To check VM network connectivity before migrating")
+        s_ping, o_ping = utils_test.ping(vm_ip, count=ping_count,
+                                         timeout=ping_timeout)
         logging.info(o_ping)
         if s_ping != 0:
             raise error.TestError("%s did not respond after %d sec."
-                                  % (vm.name, delay))
+                                  % (vm.name, ping_timeout))
 
         # Prepare for --dname dest_exist_vm
         if extra.count("dest_exist_vm"):
@@ -248,10 +324,10 @@ def run(test, params, env):
             virsh.define(vmxml.xml, uri=dest_uri)
 
         # Prepare for --xml.
-        logging.debug("Preparing new xml file for --xml option.")
-        if options.count("xml") or extra.count("xml"):
-            dest_xmlfile = params.get("virsh_migrate_xml", "")
-            if dest_xmlfile:
+        xml_option = params.get("xml_option", "no")
+        if xml_option == "yes":
+            if not extra.count("--dname") and not extra.count("--xml"):
+                logging.debug("Preparing new xml file for --xml option.")
                 ret_attach = vm.attach_interface("--type bridge --source "
                                                  "virbr0 --target tmp-vnet",
                                                  True, True)
@@ -261,14 +337,16 @@ def run(test, params, env):
                                           % vm.name)
                 ifaces = vm_xml.VMXML.get_net_dev(vm.name)
                 new_nic_mac = vm.get_virsh_mac_address(ifaces.index("tmp-vnet"))
-                vm_xml_new = vm.get_xml()
-                logging.debug("Xml file on source: %s" % vm_xml_new)
-                f = codecs.open(dest_xmlfile, 'wb', encoding='utf-8')
-                f.write(vm_xml_new)
-                f.close()
-                if not os.path.exists(dest_xmlfile):
-                    exception = True
-                    raise error.TestError("Creating %s failed." % dest_xmlfile)
+                vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+                logging.debug("Xml file on source:\n%s" % vm.get_xml())
+                extra = ("%s --xml=%s" % (extra, vmxml.xml))
+            elif extra.count("--dname"):
+                vm_new_name = params.get("vm_new_name")
+                vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+                if vm_new_name:
+                    logging.debug("Preparing change VM XML with a new name")
+                    vmxml.vm_name = vm_new_name
+                extra = ("%s --xml=%s" % (extra, vmxml.xml))
 
         # Turn VM into certain state.
         logging.debug("Turning %s into certain state." % vm.name)
@@ -291,7 +369,51 @@ def run(test, params, env):
             vm.name = vm_ref    # For vm name error testing.
         if unsafe_test:
             options = "--live"
+
+        if graphics_server:
+            cmd = "%s %s" % (remote_viewer_executable, graphics_server)
+            logging.info("Execute command: %s", cmd)
+            ps = process.SubProcess(cmd, shell=True)
+            remote_viewer_pid = ps.start()
+            logging.debug("PID for process '%s': %s",
+                          remote_viewer_executable, remote_viewer_pid)
+
         ret_migrate = do_migration(delay, vm, dest_uri, options, extra)
+
+        dest_state = params.get("virsh_migrate_dest_state", "running")
+        if ret_migrate and dest_state == "running":
+            server_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                   server_user, server_pwd,
+                                                   r"[\#\$]\s*$")
+            logging.info("To check VM network connectivity after migrating")
+            s_ping, o_ping = utils_test.ping(vm_ip, count=ping_count,
+                                             timeout=ping_timeout,
+                                             output_func=logging.debug,
+                                             session=server_session)
+            logging.info(o_ping)
+            if s_ping != 0:
+                server_session.close()
+                raise error.TestError("%s did not respond after %d sec."
+                                      % (vm.name, ping_timeout))
+            server_session.close()
+
+        if graphics_server:
+            logging.info("To check the process running '%s'.",
+                         remote_viewer_executable)
+            if process.pid_exists(int(remote_viewer_pid)) is False:
+                raise error.TestFail("PID '%s' for process '%s'"
+                                     " does not exist"
+                                     % (remote_viewer_pid,
+                                        remote_viewer_executable))
+            else:
+                logging.info("PID '%s' for process '%s' still exists"
+                             " as expected.",
+                             remote_viewer_pid,
+                             remote_viewer_executable)
+            logging.debug("Kill the PID '%s' running '%s'",
+                          remote_viewer_pid,
+                          remote_viewer_executable)
+            process.kill_process_tree(int(remote_viewer_pid))
 
         # Check unsafe result and may do migration again in right mode
         check_unsafe_result = True
@@ -310,10 +432,10 @@ def run(test, params, env):
 
         # Check vm state on destination.
         logging.debug("Checking %s state on %s." % (vm.name, vm.connect_uri))
-        if options.count("dname") or extra.count("dname"):
+        if (options.count("dname") or
+           extra.count("dname") and status_error != 'yes'):
             vm.name = extra.split()[1].strip()
         check_dest_state = True
-        dest_state = params.get("virsh_migrate_dest_state", "running")
         check_dest_state = check_vm_state(vm, dest_state)
         logging.info("Supposed state: %s" % dest_state)
         logging.info("Actual state: %s" % vm.state())
@@ -326,52 +448,39 @@ def run(test, params, env):
             vm.start()
 
         # Checking for --persistent.
-        logging.debug("Checking for --persistent option.")
         check_dest_persistent = True
         if options.count("persistent") or extra.count("persistent"):
+            logging.debug("Checking for --persistent option.")
             if not vm.is_persistent():
                 check_dest_persistent = False
 
         # Checking for --undefinesource.
-        logging.debug("Checking for --undefinesource option.")
         check_src_undefine = True
         if options.count("undefinesource") or extra.count("undefinesource"):
+            logging.debug("Checking for --undefinesource option.")
             logging.info("Verifying <virsh domstate> DOES return an error."
                          "%s should not exist on %s." % (vm_name, src_uri))
             if virsh.domain_exists(vm_name, uri=src_uri):
                 check_src_undefine = False
 
         # Checking for --dname.
-        logging.debug("Checking for --dname option.")
         check_dest_dname = True
-        if options.count("dname") or extra.count("dname"):
+        if (options.count("dname") or extra.count("dname") and
+           status_error != 'yes'):
+            logging.debug("Checking for --dname option.")
             dname = extra.split()[1].strip()
             if not virsh.domain_exists(dname, uri=dest_uri):
                 check_dest_dname = False
 
         # Checking for --xml.
-        logging.debug("Checking for --xml option.")
         check_dest_xml = True
-        if options.count("xml") or extra.count("xml"):
-            if dest_xmlfile:
-                vm_dest_xml = vm.get_xml()
-                logging.info("Xml file on destination: %s" % vm_dest_xml)
-                if not re.search(new_nic_mac, vm_dest_xml):
-                    check_dest_xml = False
-
-        # Repeat the migration from destination to source.
-        if params.get("virsh_migrate_back", "no") == 'yes':
-            back_dest_uri = params.get("virsh_migrate_back_desturi", 'default')
-            back_options = params.get("virsh_migrate_back_options", 'default')
-            back_extra = params.get("virsh_migrate_back_extra", 'default')
-            if back_dest_uri == 'default':
-                back_dest_uri = src_uri
-            if back_options == 'default':
-                back_options = options
-            if back_extra == 'default':
-                back_extra = extra
-            ret_migrate = do_migration(
-                delay, vm, back_dest_uri, back_options, back_extra)
+        if (xml_option == "yes" and not extra.count("--dname") and
+           not extra.count("--xml")):
+            logging.debug("Checking for --xml option.")
+            vm_dest_xml = vm.get_xml()
+            logging.info("Xml file on destination: %s" % vm_dest_xml)
+            if not re.search(new_nic_mac, vm_dest_xml):
+                check_dest_xml = False
 
     except Exception, detail:
         exception = True
@@ -380,7 +489,8 @@ def run(test, params, env):
     # Whatever error occurs, we have to clean up all environment.
     # Make sure vm.connect_uri is the destination uri.
     vm.connect_uri = dest_uri
-    if options.count("dname") or extra.count("dname"):
+    if (options.count("dname") or extra.count("dname") and
+       status_error != 'yes'):
         # Use the VM object to remove
         vm.name = extra.split()[1].strip()
         cleanup_dest(vm, src_uri)
@@ -395,12 +505,28 @@ def run(test, params, env):
     vm.undefine()
     orig_config_xml.define()
 
-    # Cleanup source.
-    if os.path.exists(dest_xmlfile):
-        os.remove(dest_xmlfile)
-
     if attach_scsi_disk:
-        utils.run("rm -f %s" % scsi_disk, ignore_status=True)
+        libvirt.delete_local_disk("file", path=scsi_disk)
+
+    if seLinuxBool:
+        logging.info("Recover virt NFS SELinux boolean on target host...")
+        # keep .ssh/authorized_keys for NFS cleanup later
+        seLinuxBool.cleanup(True)
+
+    if nfs_client:
+        logging.info("Cleanup NFS client environment...")
+        nfs_client.cleanup()
+
+    logging.info("Remove the NFS image...")
+    source_file = params.get("source_file")
+    libvirt.delete_local_disk("file", path=source_file)
+
+    logging.info("Cleanup NFS server environment...")
+    exp_dir = params.get("export_dir")
+    mount_dir = params.get("mnt_path_name")
+    libvirt.setup_or_cleanup_nfs(False, export_dir=exp_dir,
+                                 mount_dir=mount_dir,
+                                 restore_selinux=local_selinux_bak)
 
     if exception:
         raise error.TestError(
