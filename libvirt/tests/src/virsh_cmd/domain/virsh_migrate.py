@@ -14,6 +14,7 @@ from virttest import utils_test
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
+from virttest import utils_misc
 from virttest.utils_misc import SELinuxBoolean
 from virttest.qemu_storage import QemuImg
 from virttest.utils_test import libvirt
@@ -83,6 +84,52 @@ def run(test, params, env):
         # Throws exception if console shows panic message
         vm.verify_kernel_crash()
         return True
+
+    def numa_pin(memory_mode, memnode_mode, numa_dict_list, host_numa_node):
+        """
+        creates dictionary numatune memory
+        creates list of dictionaries for numatune memnode
+
+        :param memory_mode: memory mode of guest numa
+        :param memnode_mode: memory mode list for each specific node
+        :param numa_dict_list: list of guest numa
+        :param host_numa_node: list of host numa
+        :return: list of memnode dictionaries
+        :return: memory dictionary
+        """
+        memory_placement = params.get("memory_placement", "static")
+        memnode_list = []
+        memory = {}
+        memory['mode'] = str(memory_mode)
+        memory['placement'] = str(memory_placement)
+
+        if (len(numa_dict_list) == 1):
+            # 1 guest numa available due to 1 vcpu then pin it
+            # with one host numa
+            memnode_dict = {}
+            memory['nodeset'] = str(host_numa_node[0])
+            memnode_dict['cellid'] = "0"
+            memnode_dict['mode'] = str(memnode_mode[0])
+            memnode_dict['nodeset'] = str(memory['nodeset'])
+            memnode_list.append(memnode_dict)
+
+        else:
+            for index in range(2):
+                memnode_dict = {}
+                memnode_dict['cellid'] = str(index)
+                memnode_dict['mode'] = str(memnode_mode[index])
+                if (len(host_numa_node) == 1):
+                    # Both guest numa pinned to same host numa as 1 hostnuma
+                    # available
+                    memory['nodeset'] = str(host_numa_node[0])
+                    memnode_dict['nodeset'] = str(memory['nodeset'])
+                else:
+                    # Both guest numa pinned to different host numa
+                    memory['nodeset'] = "%s,%s" % (str(host_numa_node[0]),
+                                                   str(host_numa_node[1]))
+                    memnode_dict['nodeset'] = str(host_numa_node[index])
+                memnode_list.append(memnode_dict)
+        return memory, memnode_list
 
     def create_numa(vcpu, max_mem, max_mem_unit):
         """
@@ -233,6 +280,25 @@ def run(test, params, env):
     libvirtd_state = params.get("virsh_migrate_libvirtd_state", 'on')
     src_state = params.get("virsh_migrate_src_state", "running")
     enable_numa = "yes" == params.get("virsh_migrate_with_numa", "no")
+    enable_numa_pin = "yes" == params.get("virsh_migrate_with_numa_pin", "no")
+
+    # To check Unsupported conditions for Numa scenarios
+    if enable_numa_pin:
+        host_numa_node = utils_misc.NumaInfo()
+        host_numa_node_list = host_numa_node.online_nodes
+        memory_mode = params.get("memory_mode", 'strict')
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+        vcpu = vmxml.vcpu
+
+        # To check if Host numa node available
+        if (len(host_numa_node_list) == 0):
+            raise error.TestNAError("No host numa node available to pin")
+
+        # To check preferred memory mode not used for 2 numa nodes
+        # if vcpu > 1, two guest Numa nodes are created in create_numa()
+        if (int(vcpu) > 1) and (memory_mode == "preferred"):
+            raise error.TestNAError("NUMA memory tuning in preferred mode only"
+                                    " supports single node")
 
     # Get expected cache state for test
     attach_scsi_disk = "yes" == params.get("attach_scsi_disk", "no")
@@ -296,6 +362,19 @@ def run(test, params, env):
             vmxml_cpu.numa_cell = numa_dict_list
             logging.debug(vmxml_cpu.numa_cell)
             vmxml.cpu = vmxml_cpu
+            if enable_numa_pin:
+                memnode_mode = []
+                memnode_mode.append(params.get("memnode_mode_1", 'strict'))
+                memnode_mode.append(params.get("memnode_mode_2", 'strict'))
+                memory_dict, memnode_list = numa_pin(memory_mode, memnode_mode,
+                                                     numa_dict_list,
+                                                     host_numa_node_list)
+                logging.debug(memory_dict)
+                logging.debug(memnode_list)
+                if memory_dict:
+                    vmxml.numa_memory = memory_dict
+                if memnode_list:
+                    vmxml.numa_memnode = memnode_list
             vmxml.sync()
 
         if not vm.is_alive():
@@ -336,7 +415,8 @@ def run(test, params, env):
                     raise error.TestError("Attaching nic to %s failed."
                                           % vm.name)
                 ifaces = vm_xml.VMXML.get_net_dev(vm.name)
-                new_nic_mac = vm.get_virsh_mac_address(ifaces.index("tmp-vnet"))
+                new_nic_mac = vm.get_virsh_mac_address(
+                    ifaces.index("tmp-vnet"))
                 vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
                 logging.debug("Xml file on source:\n%s" % vm.get_xml())
                 extra = ("%s --xml=%s" % (extra, vmxml.xml))
@@ -433,7 +513,7 @@ def run(test, params, env):
         # Check vm state on destination.
         logging.debug("Checking %s state on %s." % (vm.name, vm.connect_uri))
         if (options.count("dname") or
-           extra.count("dname") and status_error != 'yes'):
+                extra.count("dname") and status_error != 'yes'):
             vm.name = extra.split()[1].strip()
         check_dest_state = True
         check_dest_state = check_vm_state(vm, dest_state)
@@ -466,7 +546,7 @@ def run(test, params, env):
         # Checking for --dname.
         check_dest_dname = True
         if (options.count("dname") or extra.count("dname") and
-           status_error != 'yes'):
+                status_error != 'yes'):
             logging.debug("Checking for --dname option.")
             dname = extra.split()[1].strip()
             if not virsh.domain_exists(dname, uri=dest_uri):
@@ -475,7 +555,7 @@ def run(test, params, env):
         # Checking for --xml.
         check_dest_xml = True
         if (xml_option == "yes" and not extra.count("--dname") and
-           not extra.count("--xml")):
+                not extra.count("--xml")):
             logging.debug("Checking for --xml option.")
             vm_dest_xml = vm.get_xml()
             logging.info("Xml file on destination: %s" % vm_dest_xml)
@@ -490,7 +570,7 @@ def run(test, params, env):
     # Make sure vm.connect_uri is the destination uri.
     vm.connect_uri = dest_uri
     if (options.count("dname") or extra.count("dname") and
-       status_error != 'yes'):
+            status_error != 'yes'):
         # Use the VM object to remove
         vm.name = extra.split()[1].strip()
         cleanup_dest(vm, src_uri)
