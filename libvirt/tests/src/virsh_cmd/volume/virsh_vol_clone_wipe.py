@@ -78,13 +78,11 @@ def run(test, params, env):
             raise error.TestNAError("API acl test not supported in current"
                                     " libvirt version.")
 
-    del_pool = True
     libv_pvt = libvirt.PoolVolumeTest(test, params)
     try:
         libv_pool = libvirt_storage.StoragePool()
-        while libv_pool.pool_exists(pool_name):
-            logging.debug("Use exist pool '%s'", pool_name)
-            del_pool = False
+        if libv_pool.pool_exists(pool_name):
+            raise error.TestError("Pool '%s' already exist", pool_name)
         else:
             # Create a new pool
             disk_vol = []
@@ -185,13 +183,7 @@ def run(test, params, env):
     finally:
         # Clean up
         try:
-            if del_pool:
-                libv_pvt.cleanup_pool(pool_name, pool_type, pool_target,
-                                      emulated_image)
-            else:
-                # Only delete the volumes
-                libv_vol = libvirt_storage.PoolVolume(pool_name)
-                for vol in [vol_name, new_vol_name]:
-                    libv_vol.delete_volume(vol)
+            libv_pvt.cleanup_pool(pool_name, pool_type, pool_target,
+                                  emulated_image)
         except error.TestFail, detail:
             logging.error(str(detail))
