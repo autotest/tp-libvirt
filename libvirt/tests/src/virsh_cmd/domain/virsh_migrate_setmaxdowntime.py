@@ -14,7 +14,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest import utils_libvirtd
 from virttest import utils_config
-from virttest.utils_misc import SELinuxBoolean
+from virttest import utils_misc
 
 from provider import libvirt_version
 
@@ -196,7 +196,7 @@ def run(test, params, env):
         nfs_client.setup()
 
         logging.info("Enable virt NFS SELinux boolean on target host")
-        seLinuxBool = SELinuxBoolean(params)
+        seLinuxBool = utils_misc.SELinuxBoolean(params)
         seLinuxBool.setup()
 
         if not vm.is_alive():
