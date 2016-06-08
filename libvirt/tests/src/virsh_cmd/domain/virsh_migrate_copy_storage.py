@@ -3,6 +3,7 @@ import logging
 
 from autotest.client import lv_utils
 from autotest.client.shared import error
+from avocado.core import exceptions
 
 from virttest import ssh_key
 from virttest import utils_test
@@ -172,10 +173,12 @@ def run(test, params, env):
 
     # Check if image pre-creation is supported.
     support_precreation = False
-    if qemu_test("drive-mirror") and qemu_test("nbd-server"):
-        support_precreation = True
-        params["support_precreation"] = True
-
+    try:
+        if qemu_test("drive-mirror") and qemu_test("nbd-server"):
+            support_precreation = True
+    except exceptions.TestError, e:
+        logging.debug(e)
+    params["support_precreation"] = support_precreation
     # Abnormal parameters
     migrate_again = "yes" == params.get("migrate_again", "no")
     abnormal_type = params.get("abnormal_type")
@@ -213,7 +216,7 @@ def run(test, params, env):
         if abnormal_type == "occupied_disk":
             occupied_path = rdm.occupy_space(disk_type, file_size,
                                              file_path, vgname, timeout=600)
-        if abnormal_type == "not_exist_file":
+        if abnormal_type != "not_exist_file":
             for disk, size in all_disks.items():
                 if disk == file_path:
                     if support_precreation:
