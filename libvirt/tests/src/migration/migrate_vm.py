@@ -1439,10 +1439,14 @@ def run(test, params, env):
         # Do not create target image when qemu supports drive-mirror
         # and nbd-server, but need create a specific pool.
         no_create_pool = test_dict.get("no_create_pool", "no")
-        if (utils_misc.is_qemu_capability_supported("drive-mirror") and
-           utils_misc.is_qemu_capability_supported("nbd-server")):
-            support_precreation = True
-            test_dict["support_precreation"] = True
+        try:
+            if (utils_misc.is_qemu_capability_supported("drive-mirror") and
+               utils_misc.is_qemu_capability_supported("nbd-server")):
+                support_precreation = True
+        except exceptions.TestError, e:
+            logging.debug(e)
+
+        test_dict["support_precreation"] = support_precreation
         if create_target_image:
             if support_precreation and no_create_pool == "no":
                 create_target_pool = True
