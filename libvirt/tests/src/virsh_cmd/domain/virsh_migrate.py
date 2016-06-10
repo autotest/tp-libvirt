@@ -184,9 +184,12 @@ def run(test, params, env):
     if graphics_uri:
         extra = "--graphicsuri %s" % graphics_uri
 
-    default_guest_asset = defaults.get_default_guest_os_info()['asset']
-    shared_storage = params.get("nfs_mount_dir")
-    shared_storage += ('/' + default_guest_asset + '.qcow2')
+    shared_storage = params.get("migrate_shared_storage", "")
+    # use default image jeos-23-64
+    if shared_storage == "":
+        default_guest_asset = defaults.get_default_guest_os_info()['asset']
+        shared_storage = params.get("nfs_mount_dir")
+        shared_storage += ('/' + default_guest_asset + '.qcow2')
 
     options = params.get("virsh_migrate_options")
     # Direct migration is supported only for Xen in libvirt
