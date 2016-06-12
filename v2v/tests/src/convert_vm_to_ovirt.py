@@ -36,9 +36,9 @@ def run(test, params, env):
     vpx_pwd_file = params.get("vpx_pwd_file")
     vpx_dc = params.get("vpx_dc")
     esx_ip = params.get("esx_ip")
-    hypervisor = params.get("hypervisor")
     address_cache = env.get('address_cache')
     v2v_opts = params.get("v2v_opts")
+    v2v_timeout = params.get('v2v_timeout', 1200)
 
     # Prepare step for different hypervisor
     if hypervisor == "esx":
@@ -57,6 +57,9 @@ def run(test, params, env):
         except:
             process.run("ssh-agent -k")
             raise exceptions.TestError("Fail to setup ssh-agent")
+    elif hypervisor == "kvm":
+        source_ip = None
+        source_pwd = None
     else:
         raise exceptions.TestSkipError("Unspported hypervisor: %s" % hypervisor)
 
@@ -114,7 +117,8 @@ def run(test, params, env):
             raise exceptions.TestFail("Convert VM failed")
 
         # Import the VM to oVirt Data Center from export domain, and start it
-        if not utils_v2v.import_vm_to_ovirt(params, address_cache):
+        if not utils_v2v.import_vm_to_ovirt(params, address_cache,
+                                            timeout=v2v_timeout):
             raise exceptions.TestError("Import VM failed")
 
         # Check all checkpoints after convert
