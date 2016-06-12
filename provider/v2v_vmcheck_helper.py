@@ -37,8 +37,8 @@ class VMChecker(object):
     def cleanup(self):
         self.close_virsh_session()
         try:
-            if self.check.session:
-                self.check.session.close()
+            if self.checker.session:
+                self.checker.session.close()
             self.checker.cleanup()
         except Exception:
             pass
