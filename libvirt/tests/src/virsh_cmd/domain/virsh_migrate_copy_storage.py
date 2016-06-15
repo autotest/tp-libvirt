@@ -84,8 +84,8 @@ def check_output(output_msg, params):
             else:
                 logging.info("The known error was found: %s --- %s",
                              key, value)
-                raise error.TestNAError("Known error: %s --- %s in %s",
-                                        key, value, output_msg)
+                raise error.TestNAError("Known error: %s --- %s in %s" %
+                                        (key, value, output_msg))
 
 
 def copied_migration(vms, params):
