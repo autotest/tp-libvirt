@@ -38,7 +38,7 @@ def run(test, params, env):
     esx_ip = params.get("esx_ip")
     address_cache = env.get('address_cache')
     v2v_opts = params.get("v2v_opts")
-    v2v_timeout = params.get('v2v_timeout', 1200)
+    v2v_timeout = int(params.get('v2v_timeout', 1200))
 
     # Prepare step for different hypervisor
     if hypervisor == "esx":
