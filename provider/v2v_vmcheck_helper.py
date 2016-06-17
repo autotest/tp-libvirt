@@ -1,5 +1,6 @@
 import re
 import logging
+import time
 from distutils.version import LooseVersion
 
 from avocado.utils import process
@@ -70,14 +71,14 @@ class VMChecker(object):
             self.check_windows_vm()
         else:
             logging.warn("Unspported os type: %s", self.os_type)
-        return len(self.errors)
+        return self.errors
 
     def compare_version(self, compare_version):
         """
         Compare virt-v2v version against given version.
         """
-        cmd = 'rpm -q virt-v2v'
-        v2v_version = LooseVersion(process.run(cmd).stdout.strip())
+        cmd = 'rpm -q virt-v2v|grep virt-v2v'
+        v2v_version = LooseVersion(process.run(cmd, shell=True).stdout.strip())
         compare_version = LooseVersion(compare_version)
         if v2v_version > compare_version:
             return True
@@ -230,6 +231,8 @@ class VMChecker(object):
         # Make sure windows boot up successfully first
         self.checker.boot_windows()
         self.checker.create_session()
+        logging.info("Wait 60 seconds for installing drivers")
+        time.sleep(60)
         self.errors = []
         # 1. Check viostor file
         logging.info("Checking windows viostor info")

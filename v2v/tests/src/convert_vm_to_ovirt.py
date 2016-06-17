@@ -124,12 +124,13 @@ def run(test, params, env):
         # Check all checkpoints after convert
         vmchecker = VMChecker(test, params, env)
         ret = vmchecker.run()
-        vmchecker.cleanup()
-        if ret == 0:
+        if len(ret) == 0:
             logging.info("All checkpoints passed")
         else:
-            raise exceptions.TestFail("%s checkpoints failed" % ret)
+            raise exceptions.TestFail("%d checkpoints failed: %s" % (len(ret), ret))
     finally:
+        vmcheck = utils_v2v.VMCheck(test, params, env)
+        vmcheck.cleanup()
         if v2v_sasl:
             v2v_sasl.cleanup()
         if hypervisor == "esx":
