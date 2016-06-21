@@ -90,6 +90,8 @@ def run(test, params, env):
                 continue
             elif re.search("socket,id=", arg):
                 continue
+            elif re.search("secret,id=", arg):
+                continue
             retlist.append(arg)
 
         return retlist
