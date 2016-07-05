@@ -158,6 +158,10 @@ def finish_job(vm_name, target, timeout):
     :param target: Domain disk target dev
     :param timeout: Timeout value of this function
     """
+    # Need blockjob exist
+    if utl.check_blockjob(vm_name, target, 'none', '0'):
+        raise exceptions.TestFail("No blockjob find for '%s'" % target)
+
     job_time = 0
     while job_time < timeout:
         if utl.check_blockjob(vm_name, target, "progress", "100"):
@@ -634,7 +638,7 @@ def run(test, params, env):
             os.remove(save_path)
         # Restart virtlogd service to release VM log file lock
         try:
-            virtlogd = path.find_command('virtlogd')
+            path.find_command('virtlogd')
             process.run('service virtlogd restart')
         except path.CmdNotFoundError:
             pass
