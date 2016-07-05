@@ -52,7 +52,7 @@ def run(test, params, env):
 
         if src_pool_type != dest_pool_type:
             pvt.pre_pool(dest_pool_name, dest_pool_type, dest_pool_target,
-                         dest_emulated_image, image_size="50M",
+                         dest_emulated_image, image_size="100M",
                          pre_disk_vol=["1M"])
 
         # Print current pools for debugging
@@ -60,19 +60,14 @@ def run(test, params, env):
                       libvirt_storage.StoragePool().list_pools())
 
         # Create the src vol
-        vol_size = "1048576"
+        vol_size = "4194304"  # 4M is the minimal size for logical volume
         if src_pool_type in ["dir", "logical", "netfs", "fs"]:
             src_vol_name = "src_vol"
             pvt.pre_vol(vol_name=src_vol_name, vol_format=src_vol_format,
                         capacity=vol_size, allocation=None,
                         pool_name=src_pool_name)
         else:
-            src_pv = libvirt_storage.PoolVolume(src_pool_name)
-            src_vols = src_pv.list_volumes().keys()
-            if src_vols:
-                src_vol_name = src_vols[0]
-            else:
-                raise error.TestFail("No volume in pool: %s" % src_pool_name)
+            src_vol_name = utlv.get_vol_list(src_pool_name).keys()[0]
         # Prepare vol xml file
         dest_vol_name = "dest_vol"
         # According to BZ#1138523, we need inpect the right name

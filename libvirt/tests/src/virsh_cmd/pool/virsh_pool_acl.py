@@ -2,14 +2,14 @@ import re
 import os
 import logging
 
-from autotest.client import utils
+from avocado.utils import process
+
 from autotest.client import lv_utils
 from autotest.client.shared import error
 
 from virttest import libvirt_storage
-from virttest import utils_test
 from virttest import virsh
-from virttest.utils_test import libvirt
+from virttest.utils_test import libvirt as utlv
 
 from provider import libvirt_version
 
@@ -95,7 +95,7 @@ def run(test, params, env):
             result = virsh.pool_list(option, **acl_dargs)
         else:
             result = virsh.pool_list(option, ignore_status=True)
-        libvirt.check_exit_status(result, False)
+        utlv.check_exit_status(result, False)
         output = re.findall(r"(\S+)\ +(\S+)\ +(\S+)[\ +\n]",
                             str(result.stdout))
         for item in output:
@@ -115,9 +115,9 @@ def run(test, params, env):
     try:
         _pool = libvirt_storage.StoragePool()
         # Init a pool for test
-        result = utils_test.libvirt.define_pool(pool_name, pool_type,
-                                                pool_target, cleanup_env)
-        libvirt.check_exit_status(result, src_pool_error)
+        result = utlv.define_pool(pool_name, pool_type, pool_target,
+                                  cleanup_env)
+        utlv.check_exit_status(result, src_pool_error)
         option = "--inactive --type %s" % pool_type
         check_pool_list(pool_name, option)
 
@@ -133,12 +133,12 @@ def run(test, params, env):
             result = virsh.pool_undefine(pool_name, **acl_dargs)
         else:
             result = virsh.pool_undefine(pool_name, ignore_status=True)
-        libvirt.check_exit_status(result, undefine_error)
+        utlv.check_exit_status(result, undefine_error)
         if undefine_error:
             check_pool_list(pool_name, "--all", False)
             # Redo under negative case to keep case continue
             result = virsh.pool_undefine(pool_name, ignore_status=True)
-            libvirt.check_exit_status(result)
+            utlv.check_exit_status(result)
             check_pool_list(pool_name, "--all", True)
         else:
             check_pool_list(pool_name, "--all", True)
@@ -149,11 +149,11 @@ def run(test, params, env):
             result = virsh.pool_define(pool_xml, **acl_dargs)
         else:
             result = virsh.pool_define(pool_xml)
-        libvirt.check_exit_status(result, define_error)
+        utlv.check_exit_status(result, define_error)
         if define_error:
             # Redo under negative case to keep case continue
             result = virsh.pool_define(pool_xml)
-            libvirt.check_exit_status(result)
+            utlv.check_exit_status(result)
 
         # Step (3)
         # Buid pool, this step may fail for 'disk' and 'logical' types pool
@@ -168,12 +168,17 @@ def run(test, params, env):
             else:
                 result = virsh.pool_build(pool_name, option,
                                           ignore_status=True)
-            libvirt.check_exit_status(result, build_error)
+            utlv.check_exit_status(result, build_error)
             if build_error:
                 # Redo under negative case to keep case continue
                 result = virsh.pool_build(pool_name, option,
                                           ignore_status=True)
-                libvirt.check_exit_status(result)
+                utlv.check_exit_status(result)
+
+        # For iSCSI pool, we need discover targets before start the pool
+        if pool_type == 'iscsi':
+            cmd = 'iscsiadm -m discovery -t sendtargets -p 127.0.0.1'
+            process.run(cmd, shell=True)
 
         # Step (4)
         # Pool start
@@ -181,11 +186,11 @@ def run(test, params, env):
             result = virsh.pool_start(pool_name, **acl_dargs)
         else:
             result = virsh.pool_start(pool_name, ignore_status=True)
-        libvirt.check_exit_status(result, start_error)
+        utlv.check_exit_status(result, start_error)
         if start_error:
             # Redo under negative case to keep case continue
             result = virsh.pool_start(pool_name, ignore_status=True)
-            libvirt.check_exit_status(result)
+            utlv.check_exit_status(result)
 
         option = "--persistent --type %s" % pool_type
         check_pool_list(pool_name, option)
@@ -214,14 +219,14 @@ def run(test, params, env):
         # Pool refresh for 'dir' type pool
         # Pool start
         result = virsh.pool_start(pool_name, ignore_status=True)
-        libvirt.check_exit_status(result)
+        utlv.check_exit_status(result)
         if pool_type == "dir":
             os.mknod(vol_path)
             if refresh_acl:
                 result = virsh.pool_refresh(pool_name, **acl_dargs)
             else:
                 result = virsh.pool_refresh(pool_name)
-            libvirt.check_exit_status(result, refresh_error)
+            utlv.check_exit_status(result, refresh_error)
 
         # Step (7)
         # Pool vol-list
@@ -229,7 +234,7 @@ def run(test, params, env):
             result = virsh.vol_list(pool_name, **acl_dargs)
         else:
             result = virsh.vol_list(pool_name)
-        libvirt.check_exit_status(result, vol_list_error)
+        utlv.check_exit_status(result, vol_list_error)
 
         # Step (8)
         # Pool delete for 'dir' type pool
@@ -244,7 +249,7 @@ def run(test, params, env):
                 result = virsh.pool_delete(pool_name, **acl_dargs)
             else:
                 result = virsh.pool_delete(pool_name, ignore_status=True)
-            libvirt.check_exit_status(result, delete_error)
+            utlv.check_exit_status(result, delete_error)
             option = "--inactive --type %s" % pool_type
             check_pool_list(pool_name, option)
             if not delete_error:
@@ -253,7 +258,7 @@ def run(test, params, env):
                                          pool_target)
 
         result = virsh.pool_undefine(pool_name, ignore_status=True)
-        libvirt.check_exit_status(result)
+        utlv.check_exit_status(result)
         check_pool_list(pool_name, "--all", True)
     finally:
         # Clean up
@@ -263,11 +268,11 @@ def run(test, params, env):
             logging.error("Can't delete pool: %s", pool_name)
         if cleanup_env[2]:
             cmd = "pvs |grep %s |awk '{print $1}'" % vg_name
-            pv_name = utils.system_output(cmd)
+            pv_name = process.system_output(cmd, shell=True)
             lv_utils.vg_remove(vg_name)
-            utils.run("pvremove %s" % pv_name)
+            process.run("pvremove %s" % pv_name, shell=True)
         if cleanup_env[1]:
-            utils_test.libvirt.setup_or_cleanup_iscsi(False)
+            utlv.setup_or_cleanup_iscsi(False)
         if cleanup_env[0]:
-            utils_test.libvirt.setup_or_cleanup_nfs(
+            utlv.setup_or_cleanup_nfs(
                 False, restore_selinux=cleanup_env[3])
