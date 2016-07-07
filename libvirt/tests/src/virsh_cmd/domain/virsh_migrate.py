@@ -18,6 +18,8 @@ from virttest import utils_misc
 from virttest.utils_misc import SELinuxBoolean
 from virttest.qemu_storage import QemuImg
 from virttest.utils_test import libvirt
+from virttest import test_setup
+from virttest.staging import utils_memory
 
 from autotest.client.shared import error
 
@@ -169,6 +171,114 @@ def run(test, params, env):
                 numa_dict = {}
         return numa_dict_list
 
+    def enable_hugepage(vmname, no_of_HPs, hp_unit='', hp_node='', pin=False,
+                        node_list=[], host_hp_size=0, numa_pin=False):
+        """
+        creates list of dictionaries of page tag for HP
+
+        :param vmname: name of the guest
+        :param no_of_HPs: Number of hugepages
+        :param hp_unit: unit of HP size
+        :param hp_node: number of numa nodes to be HP pinned
+        :param pin: flag to pin HP with guest numa or not
+        :param node_list: Numa node list
+        :param host_hp_size: size of the HP to pin with guest numa
+        :param numa_pin: flag to numa pin
+        :return: list of page tag dictionary for HP pin
+        """
+        dest_machine = params.get("migrate_dest_host")
+        server_user = params.get("server_user", "root")
+        server_pwd = params.get("server_pwd")
+        command = "cat /proc/meminfo | grep HugePages_Free"
+        server_session = remote.wait_for_login('ssh', dest_machine, '22',
+                                               server_user, server_pwd,
+                                               r"[\#\$]\s*$")
+        cmd_output = server_session.cmd_status_output(command)
+        server_session.close()
+        if (cmd_output[0] == 0):
+            dest_HP_free = cmd_output[1].strip('HugePages_Free:').strip()
+        else:
+            raise error.TestNAError("HP not supported/configured")
+        hp_list = []
+
+        # setting hugepages in destination machine here as remote ssh
+        # configuration is done
+        hugepage_assign(str(no_of_HPs), target_ip=dest_machine,
+                        user=server_user, password=server_pwd)
+        logging.debug("Remote host hugepage config done")
+        if numa_pin:
+            for each_node in node_list:
+                if (each_node['mode'] == 'strict'):
+                    # reset source host hugepages
+                    if int(utils_memory.get_num_huge_pages() > 0):
+                        logging.debug("reset source host hugepages")
+                        hugepage_assign("0")
+                    # reset dest host hugepages
+                    if (int(dest_HP_free) > 0):
+                        logging.debug("reset dest host hugepages")
+                        hugepage_assign("0", target_ip=dest_machine,
+                                        user=server_user, password=server_pwd)
+                    # set source host hugepages for the specific node
+                    logging.debug("set src host hugepages for specific node")
+                    hugepage_assign(str(no_of_HPs), node=each_node['nodeset'],
+                                    hp_size=str(host_hp_size))
+                    # set dest host hugepages for specific node
+                    logging.debug("set dest host hugepages for specific node")
+                    hugepage_assign(str(no_of_HPs), target_ip=dest_machine,
+                                    node=each_node['nodeset'], hp_size=str(
+                                    host_hp_size), user=server_user,
+                                    password=server_pwd)
+        if not pin:
+            vm_xml.VMXML.set_memoryBacking_tag(vmname)
+            logging.debug("Hugepage without pin")
+        else:
+            hp_dict = {}
+            hp_dict['size'] = str(host_hp_size)
+            hp_dict['unit'] = str(hp_unit)
+            if int(hp_node) == 1:
+                hp_dict['nodeset'] = "0"
+                logging.debug("Hugepage with pin to 1 node")
+            else:
+                hp_dict['nodeset'] = "0-1"
+                logging.debug("Hugepage with pin to both nodes")
+            hp_list.append(hp_dict)
+            logging.debug(hp_list)
+        return hp_list
+
+    def hugepage_assign(hp_num, target_ip='', node='', hp_size='', user='',
+                        password=''):
+        """
+        Allocates hugepages for src and dst machines
+
+        :param hp_num: number of hugepages
+        :param target_ip: ip address of destination machine
+        :param node: numa node to which HP have to be allocated
+        :param hp_size: hugepage size
+        :param user: remote machine's username
+        :param password: remote machine's password
+        """
+        command = ""
+        if node == '':
+            if target_ip == '':
+                utils_memory.set_num_huge_pages(int(hp_num))
+            else:
+                command = "echo %s > /proc/sys/vm/nr_hugepages" % (hp_num)
+        else:
+            command = "echo %s > /sys/devices/system/node/node" % (hp_num)
+            command += "%s/hugepages/hugepages-%skB/" % (str(node), hp_size)
+            command += "nr_hugepages"
+        if command != "":
+            if target_ip != "":
+                server_session = remote.wait_for_login('ssh', target_ip, '22',
+                                                       user, password,
+                                                       r"[\#\$]\s*$")
+                cmd_output = server_session.cmd_status_output(command)
+                server_session.close()
+                if (cmd_output[0] != 0):
+                    raise error.TestNAError("HP not supported/configured")
+            else:
+                process.system_output(command, verbose=True, shell=True)
+
     for v in params.itervalues():
         if isinstance(v, str) and v.count("EXAMPLE"):
             raise exceptions.TestSkipError("Please set real value for %s" % v)
@@ -284,6 +394,8 @@ def run(test, params, env):
     src_state = params.get("virsh_migrate_src_state", "running")
     enable_numa = "yes" == params.get("virsh_migrate_with_numa", "no")
     enable_numa_pin = "yes" == params.get("virsh_migrate_with_numa_pin", "no")
+    enable_HP = "yes" == params.get("virsh_migrate_with_HP", "no")
+    enable_HP_pin = "yes" == params.get("virsh_migrate_with_HP_pin", "no")
 
     # To check Unsupported conditions for Numa scenarios
     if enable_numa_pin:
@@ -302,6 +414,23 @@ def run(test, params, env):
         if (int(vcpu) > 1) and (memory_mode == "preferred"):
             raise error.TestNAError("NUMA memory tuning in preferred mode only"
                                     " supports single node")
+
+    # To check if Hugepage supported and configure
+    if enable_HP or enable_HP_pin:
+        try:
+            hp_obj = test_setup.HugePageConfig(params)
+            host_hp_size = hp_obj.get_hugepage_size()
+            # libvirt xml takes HP sizes in KiB
+            default_hp_unit = "KiB"
+            hp_pin_nodes = int(params.get("HP_pin_node_count", "2"))
+            vm_max_mem = vmxml.max_mem
+            no_of_HPs = int(vm_max_mem / host_hp_size) + 1
+            # setting hugepages in source machine
+            if (int(utils_memory.get_num_huge_pages_free()) < no_of_HPs):
+                hugepage_assign(str(no_of_HPs))
+            logging.debug("Hugepage support check done on host")
+        except:
+            raise error.TestNAError("HP not supported/configured")
 
     # Get expected cache state for test
     attach_scsi_disk = "yes" == params.get("attach_scsi_disk", "no")
@@ -367,8 +496,8 @@ def run(test, params, env):
             vmxml.cpu = vmxml_cpu
             if enable_numa_pin:
                 memnode_mode = []
-                memnode_mode.append(params.get("memnode_mode_1", 'strict'))
-                memnode_mode.append(params.get("memnode_mode_2", 'strict'))
+                memnode_mode.append(params.get("memnode_mode_1", 'preferred'))
+                memnode_mode.append(params.get("memnode_mode_2", 'preferred'))
                 memory_dict, memnode_list = numa_pin(memory_mode, memnode_mode,
                                                      numa_dict_list,
                                                      host_numa_node_list)
@@ -378,8 +507,51 @@ def run(test, params, env):
                     vmxml.numa_memory = memory_dict
                 if memnode_list:
                     vmxml.numa_memnode = memnode_list
+
+            # Hugepage enabled guest by pinning to node
+            if enable_HP_pin:
+                # if only 1 numanode created based on vcpu available
+                # check param needs to pin HP to 2 nodes
+                if len(numa_dict_list) == 1:
+                    if (hp_pin_nodes == 2):
+                        hp_pin_nodes = 1
+                if enable_numa_pin:
+                    HP_page_list = enable_hugepage(vm_name, no_of_HPs,
+                                                   hp_unit=default_hp_unit,
+                                                   hp_node=hp_pin_nodes,
+                                                   pin=True,
+                                                   node_list=memnode_list,
+                                                   host_hp_size=host_hp_size,
+                                                   numa_pin=True)
+                else:
+                    HP_page_list = enable_hugepage(vm_name, no_of_HPs,
+                                                   hp_unit=default_hp_unit,
+                                                   hp_node=hp_pin_nodes,
+                                                   host_hp_size=host_hp_size,
+                                                   pin=True)
+                vmxml_mem = vm_xml.VMMemBackingXML()
+                vmxml_hp = vm_xml.VMHugepagesXML()
+                pagexml_list = []
+                for page in range(len(HP_page_list)):
+                    pagexml = vmxml_hp.PageXML()
+                    pagexml.update(HP_page_list[page])
+                    pagexml_list.append(pagexml)
+                vmxml_hp.pages = pagexml_list
+                vmxml_mem.hugepages = vmxml_hp
+                vmxml.mb = vmxml_mem
             vmxml.sync()
 
+        # Hugepage enabled guest without pinning to node
+        if enable_HP:
+            if enable_numa_pin:
+                # HP with Numa pin
+                HP_page_list = enable_hugepage(vm_name, no_of_HPs, pin=False,
+                                               node_list=memnode_list,
+                                               host_hp_size=host_hp_size,
+                                               numa_pin=True)
+            else:
+                # HP without Numa pin
+                HP_page_list = enable_hugepage(vm_name, no_of_HPs)
         if not vm.is_alive():
             vm.start()
 
@@ -588,6 +760,15 @@ def run(test, params, env):
     vm.undefine()
     orig_config_xml.define()
 
+    # cleanup hugepages
+    if enable_HP or enable_HP_pin:
+        logging.info("Cleanup Hugepages")
+        # cleaning source hugepages
+        hugepage_assign("0")
+        # cleaning destination hugepages
+        hugepage_assign(
+            "0", target_ip=server_ip, user=server_user, password=server_pwd)
+
     if attach_scsi_disk:
         libvirt.delete_local_disk("file", path=scsi_disk)
 
@@ -610,7 +791,6 @@ def run(test, params, env):
     libvirt.setup_or_cleanup_nfs(False, export_dir=exp_dir,
                                  mount_dir=mount_dir,
                                  restore_selinux=local_selinux_bak)
-
     if exception:
         raise error.TestError(
             "Error occurred. \n%s: %s" % (detail.__class__, detail))
