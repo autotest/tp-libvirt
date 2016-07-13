@@ -10,6 +10,7 @@ from virttest import virsh
 from virttest import ssh_key
 from virttest import utils_misc
 from virttest.utils_test import libvirt as utlv
+from virttest.libvirt_xml import vm_xml
 
 from provider.v2v_vmcheck_helper import VMChecker
 
@@ -112,17 +113,28 @@ def run(test, params, env):
 
         logging.debug("XML info:\n%s", virsh.dumpxml(vm_name))
         vm = env.create_vm("libvirt", "libvirt", vm_name, params, test.bindir)
+        # Win10 is not supported by some cpu model,
+        # need to modify to 'host-model'
+        if params.get('os_version') == 'win10':
+            logging.info('Set cpu mode to "host-model" for win10')
+            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            cpu_xml = vm_xml.VMCPUXML()
+            cpu_xml.mode = 'host-model'
+            cpu_xml.fallback = 'allow'
+            vmxml['cpu'] = cpu_xml
+            vmxml.sync()
         vm.start()
 
         # Check all checkpoints after convert
         vmchecker = VMChecker(test, params, env)
         ret = vmchecker.run()
-        vmchecker.cleanup()
-        if ret == 0:
+        if len(ret) == 0:
             logging.info("All checkpoints passed")
         else:
-            raise exceptions.TestFail("%s checkpoints failed" % ret)
+            raise exceptions.TestFail("%d checkpoints failed: %s" % (len(ret), ret))
     finally:
+        vmcheck = utils_v2v.VMCheck(test, params, env)
+        vmcheck.cleanup()
         if hypervisor == "esx":
             os.remove(vpx_pwd_file)
         if hypervisor == "xen":
