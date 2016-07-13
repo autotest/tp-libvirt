@@ -230,8 +230,19 @@ class VMChecker(object):
         """
         # Make sure windows boot up successfully first
         self.checker.boot_windows()
+        try:
+            self.checker.create_session()
+        except Exception as detail:
+            logging.error(detail)
+        else:
+            logging.info("Wait 60 seconds for installing drivers")
+            time.sleep(60)
+        finally:
+            logging.info('Reboot windows guest to finish installing drivers')
+            virsh.reboot(self.vm_name, session_id=self.virsh_session_id)
+            time.sleep(10)
         self.checker.create_session()
-        logging.info("Wait 60 seconds for installing drivers")
+        logging.info("Wait 60 seconds for installing drivers after reboot")
         time.sleep(60)
         self.errors = []
         # 1. Check viostor file
