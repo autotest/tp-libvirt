@@ -7,7 +7,7 @@ from autotest.client.shared import error
 
 from avocado.utils import path as utils_path
 
-from virttest.utils_test import libvirt
+from virttest.utils_test import libvirt as utlv
 from virttest import libvirt_storage
 from virttest import virsh
 from virttest import utils_misc
@@ -40,27 +40,10 @@ def run(test, params, env):
     clone_option = params.get("clone_option", "")
     wipe_algorithms = params.get("wipe_algorithms")
 
-    if virsh.has_command_help_match("vol-wipe", "--prealloc-metadata") is None:
+    if virsh.has_command_help_match("vol-clone", "--prealloc-metadata") is None:
         if "prealloc-metadata" in clone_option:
             raise error.TestNAError("Option --prealloc-metadata "
                                     "is not supported.")
-
-    # Using algorithms other than zero need scrub installed.
-    try:
-        utils_path.find_command('scrub')
-    except utils_path.CmdNotFoundError:
-        logging.warning("Can't locate scrub binary, only 'zero' algorithm "
-                        "is used.")
-        valid_algorithms = ["zero"]
-    else:
-        valid_algorithms = ["zero", "nnsa", "dod", "bsi", "gutmann",
-                            "schneier", "pfitzner7", "pfitzner33", "random"]
-
-    # Choose an algorithms randomly
-    if wipe_algorithms:
-        alg = random.choice(wipe_algorithms.split())
-    else:
-        alg = random.choice(valid_algorithms)
 
     clone_status_error = "yes" == params.get("clone_status_error", "no")
     wipe_status_error = "yes" == params.get("wipe_status_error", "no")
@@ -78,35 +61,50 @@ def run(test, params, env):
             raise error.TestNAError("API acl test not supported in current"
                                     " libvirt version.")
 
-    libv_pvt = libvirt.PoolVolumeTest(test, params)
+    # Using algorithms other than zero need scrub installed.
     try:
-        libv_pool = libvirt_storage.StoragePool()
-        if libv_pool.pool_exists(pool_name):
-            raise error.TestError("Pool '%s' already exist", pool_name)
-        else:
-            # Create a new pool
-            disk_vol = []
-            if pool_type == 'disk':
-                disk_vol.append(params.get("pre_vol", '10M'))
-            libv_pvt.pre_pool(pool_name=pool_name,
-                              pool_type=pool_type,
-                              pool_target=pool_target,
-                              emulated_image=emulated_image,
-                              image_size=emulated_image_size,
-                              pre_disk_vol=disk_vol)
-        libv_vol = libvirt_storage.PoolVolume(pool_name)
-        if libv_vol.volume_exists(vol_name):
-            logging.debug("Use exist volume '%s'", vol_name)
-        elif vol_format in ['raw', 'qcow2', 'qed', 'vmdk']:
-            # Create a new volume
-            libv_pvt.pre_vol(vol_name=vol_name,
-                             vol_format=vol_format,
-                             capacity=vol_capability,
-                             allocation=None,
-                             pool_name=pool_name)
+        utils_path.find_command('scrub')
+    except utils_path.CmdNotFoundError:
+        logging.warning("Can't locate scrub binary, only 'zero' algorithm "
+                        "is used.")
+        valid_algorithms = ["zero"]
+    else:
+        valid_algorithms = ["zero", "nnsa", "dod", "bsi", "gutmann",
+                            "schneier", "pfitzner7", "pfitzner33", "random"]
+
+    # Choose an algorithm randomly
+    if wipe_algorithms:
+        alg = random.choice(wipe_algorithms.split())
+    else:
+        alg = random.choice(valid_algorithms)
+
+    libvirt_pvt = utlv.PoolVolumeTest(test, params)
+    libvirt_pool = libvirt_storage.StoragePool()
+    if libvirt_pool.pool_exists(pool_name):
+        raise error.TestError("Pool '%s' already exist", pool_name)
+    try:
+        # Create a new pool
+        disk_vol = []
+        if pool_type == 'disk':
+            disk_vol.append(params.get("pre_vol", '10M'))
+        libvirt_pvt.pre_pool(pool_name=pool_name,
+                             pool_type=pool_type,
+                             pool_target=pool_target,
+                             emulated_image=emulated_image,
+                             image_size=emulated_image_size,
+                             pre_disk_vol=disk_vol)
+
+        libvirt_vol = libvirt_storage.PoolVolume(pool_name)
+        # Create a new volume
+        if vol_format in ['raw', 'qcow2', 'qed', 'vmdk']:
+            libvirt_pvt.pre_vol(vol_name=vol_name,
+                                vol_format=vol_format,
+                                capacity=vol_capability,
+                                allocation=None,
+                                pool_name=pool_name)
         elif vol_format == 'partition':
-            vol_name = libv_vol.list_volumes().keys()[0]
-            logging.debug("Partition %s in disk pool is volume" % vol_name)
+            vol_name = utlv.get_vol_list(pool_name)
+            logging.debug("Find partition %s in disk pool", vol_name)
         elif vol_format == 'sparse':
             # Create a sparse file in pool
             sparse_file = pool_target + '/' + vol_name
@@ -115,9 +113,13 @@ def run(test, params, env):
             utils.run(cmd)
         else:
             raise error.TestError("Unknown volume format %s" % vol_format)
+
         # Refresh the pool
-        virsh.pool_refresh(pool_name)
-        vol_info = libv_vol.volume_info(vol_name)
+        virsh.pool_refresh(pool_name, debug=True)
+        vol_info = libvirt_vol.volume_info(vol_name)
+        if not vol_info:
+            raise error.TestError("Fail to get info of volume %s" % vol_name)
+
         for key in vol_info:
             logging.debug("Original volume info: %s = %s", key, vol_info[key])
 
@@ -126,14 +128,15 @@ def run(test, params, env):
             clone_status_error = True
 
         if pool_type == "disk":
-            new_vol_name = libvirt.new_disk_vol_name(pool_name)
+            new_vol_name = utlv.new_disk_vol_name(pool_name)
             if new_vol_name is None:
                 raise error.TestError("Fail to generate volume name")
             # update polkit rule as the volume name changed
             if setup_libvirt_polkit:
                 vol_pat = r"lookup\('vol_name'\) == ('\S+')"
                 new_value = "lookup('vol_name') == '%s'" % new_vol_name
-                libvirt.update_polkit_rule(params, vol_pat, new_value)
+                utlv.update_polkit_rule(params, vol_pat, new_value)
+
         # Clone volume
         clone_result = virsh.vol_clone(vol_name, new_vol_name, pool_name,
                                        clone_option, debug=True)
@@ -142,7 +145,7 @@ def run(test, params, env):
                 raise error.TestFail("Clone volume fail:\n%s" %
                                      clone_result.stderr.strip())
             else:
-                vol_info = libv_vol.volume_info(new_vol_name)
+                vol_info = libvirt_vol.volume_info(new_vol_name)
                 for key in vol_info:
                     logging.debug("Cloned volume info: %s = %s", key,
                                   vol_info[key])
@@ -153,7 +156,8 @@ def run(test, params, env):
                 wipe_result = virsh.vol_wipe(new_vol_name, pool_name, alg,
                                              unprivileged_user=unpri_user,
                                              uri=uri, debug=True)
-                unsupported_err = ["Unsupported algorithm", "no such pattern sequence"]
+                unsupported_err = ["Unsupported algorithm",
+                                   "no such pattern sequence"]
                 if not wipe_status_error:
                     if wipe_result.exit_status != 0:
                         if any(err in wipe_result.stderr for err in unsupported_err):
@@ -161,7 +165,7 @@ def run(test, params, env):
                         raise error.TestFail("Wipe volume fail:\n%s" %
                                              clone_result.stdout.strip())
                     else:
-                        virsh_vol_info = libv_vol.volume_info(new_vol_name)
+                        virsh_vol_info = libvirt_vol.volume_info(new_vol_name)
                         for key in virsh_vol_info:
                             logging.debug("Wiped volume info(virsh): %s = %s",
                                           key, virsh_vol_info[key])
@@ -183,7 +187,7 @@ def run(test, params, env):
     finally:
         # Clean up
         try:
-            libv_pvt.cleanup_pool(pool_name, pool_type, pool_target,
-                                  emulated_image)
+            libvirt_pvt.cleanup_pool(pool_name, pool_type, pool_target,
+                                     emulated_image)
         except error.TestFail, detail:
             logging.error(str(detail))
