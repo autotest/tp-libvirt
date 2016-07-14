@@ -7,13 +7,13 @@ import pwd
 import logging
 import shutil
 
-from autotest.client import utils
-from autotest.client.shared import ssh_key
-from autotest.client.shared import error
+from avocado.core import exceptions
+from avocado.utils import process
 
-from virttest import virsh
-from virttest import utils_v2v
+from virttest import ssh_key
 from virttest import utils_misc
+from virttest import utils_v2v
+from virttest import virsh
 from virttest.utils_test import libvirt as utlv
 
 
@@ -23,6 +23,10 @@ def run(test, params, env):
     """
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
+    for v in params.itervalues():
+        if "V2V_EXAMPLE" in v:
+            raise exceptions.TestSkipError("Please set real value for %s" % v)
+
     vm_name = params.get("main_vm", "EXAMPLE")
     new_vm_name = params.get("new_vm_name")
     input_mode = params.get("input_mode")
@@ -31,14 +35,8 @@ def run(test, params, env):
     remote_host = params.get("remote_host", "EXAMPLE")
     vpx_dc = params.get("vpx_dc", "EXAMPLE")
     esx_ip = params.get("esx_ip", "EXAMPLE")
-    vpx_passwd = params.get("vpx_passwd", "EXAMPLE")
-    ovirt_engine_url = params.get("ovirt_engine_url", "EXAMPLE")
-    ovirt_engine_user = params.get("ovirt_engine_user", "EXAMPLE")
-    ovirt_engine_passwd = params.get("ovirt_engine_password", "EXAMPLE")
     output_mode = params.get("output_mode")
     output_storage = params.get("output_storage", "default")
-    export_name = params.get("export_name", "EXAMPLE")
-    storage_name = params.get("storage_name", "EXAMPLE")
     disk_img = params.get("input_disk_image", "")
     nfs_storage = params.get("nfs_storage")
     mnt_point = params.get("mount_point")
@@ -51,12 +49,6 @@ def run(test, params, env):
     v2v_user = params.get("unprivileged_user", "")
     v2v_timeout = int(params.get("v2v_timeout", 1200))
     status_error = "yes" == params.get("status_error", "no")
-    for param in [vm_name, ovirt_engine_url, ovirt_engine_user,
-                  ovirt_engine_passwd, output_storage, v2v_user,
-                  export_name, storage_name, export_domain_uuid]:
-        if "EXAMPLE" in param:
-            raise error.TestNAError("Please replace %s with real value" % param)
-
     su_cmd = "su - %s -c " % v2v_user
     output_uri = params.get("oc_uri", "")
     pool_name = params.get("pool_name", "v2v_test")
@@ -68,6 +60,7 @@ def run(test, params, env):
     restore_image_owner = False
     address_cache = env.get('address_cache')
     params['vmcheck_flag'] = False
+    checkpoint = params.get('checkpoint', '')
 
     def create_pool():
         """
@@ -76,10 +69,10 @@ def run(test, params, env):
         if output_uri == "qemu:///session":
             target_path = os.path.join("/home", v2v_user, pool_target)
             cmd = su_cmd + "'mkdir %s'" % target_path
-            utils.system(cmd, verbose=True)
+            process.system(cmd, verbose=True)
             cmd = su_cmd + "'virsh pool-create-as %s dir" % pool_name
             cmd += " --target %s'" % target_path
-            utils.system(cmd, verbose=True)
+            process.system(cmd, verbose=True)
         else:
             pvt.pre_pool(pool_name, pool_type, pool_target, emulated_img)
 
@@ -89,10 +82,10 @@ def run(test, params, env):
         """
         if output_uri == "qemu:///session":
             cmd = su_cmd + "'virsh pool-destroy %s'" % pool_name
-            utils.system(cmd, verbose=True)
+            process.system(cmd, verbose=True)
             target_path = os.path.join("/home", v2v_user, pool_target)
             cmd = su_cmd + "'rm -rf %s'" % target_path
-            utils.system(cmd, verbose=True)
+            process.system(cmd, verbose=True)
         else:
             pvt.cleanup_pool(pool_name, pool_type, pool_target, emulated_img)
 
@@ -102,8 +95,8 @@ def run(test, params, env):
         """
         tmp_target = re.findall(r"qemu-img\sconvert\s.+\s'(\S+)'\n", output)
         if len(tmp_target) < 1:
-            raise error.TestError("Fail to find tmp target file name when"
-                                  " converting vm disk image")
+            raise exceptions.TestError("Fail to find tmp target file name when"
+                                       " converting vm disk image")
         targets = tmp_target[0].split('/')
         return (targets[3], targets[5], targets[6])
 
@@ -117,8 +110,8 @@ def run(test, params, env):
         ovf_content = ""
         if os.path.isdir(export_vm_dir):
             ovf_id = "ovf:id='%s'" % vol_uuid
-            ret = utils.system_output("grep -R \"%s\" %s" % (ovf_id,
-                                                             export_vm_dir))
+            ret = process.system_output("grep -R \"%s\" %s" %
+                                        (ovf_id, export_vm_dir))
             ovf_file = ret.split(":")[0]
             if os.path.isfile(ovf_file):
                 ovf_f = open(ovf_file, "r")
@@ -159,14 +152,14 @@ def run(test, params, env):
             logging.info("Find VmType=%s in ovf file",
                          expected_vmtype)
         else:
-            raise error.TestFail("VmType check failed")
+            raise exceptions.TestFail("VmType check failed")
 
     def check_image(img_path, check_point, expected_value):
         """
         Verify image file allocation mode and format
         """
         if not img_path or not os.path.isfile(img_path):
-            raise error.TestError("Image path: '%s' is invalid" % img_path)
+            raise exceptions.TestError("Image path: '%s' is invalid" % img_path)
         img_info = utils_misc.get_image_info(img_path)
         logging.debug("Image info: %s", img_info)
         if check_point == "allocation":
@@ -174,19 +167,19 @@ def run(test, params, env):
                 if img_info['vsize'] > img_info['dsize']:
                     logging.info("%s is a sparse image", img_path)
                 else:
-                    raise error.TestFail("%s is not a sparse image" % img_path)
+                    raise exceptions.TestFail("%s is not a sparse image" % img_path)
             elif expected_value == "preallocated":
                 if img_info['vsize'] <= img_info['dsize']:
                     logging.info("%s is a preallocated image", img_path)
                 else:
-                    raise error.TestFail("%s is not a preallocated image"
-                                         % img_path)
+                    raise exceptions.TestFail("%s is not a preallocated image"
+                                              % img_path)
         if check_point == "format":
             if expected_value == img_info['format']:
                 logging.info("%s format is %s", img_path, expected_value)
             else:
-                raise error.TestFail("%s format is not %s"
-                                     % (img_path, expected_value))
+                raise exceptions.TestFail("%s format is not %s"
+                                          % (img_path, expected_value))
 
     def check_new_name(output, expected_name):
         """
@@ -206,7 +199,7 @@ def run(test, params, env):
         if found:
             logging.info("Guest name renamed when converting it")
         else:
-            raise error.TestFail("Rename guest failed")
+            raise exceptions.TestFail("Rename guest failed")
 
     def check_nocopy(output):
         """
@@ -216,7 +209,7 @@ def run(test, params, env):
         if not os.path.isfile(img_path):
             logging.info("No image created with --no-copy option")
         else:
-            raise error.TestFail("Find %s" % img_path)
+            raise exceptions.TestFail("Find %s" % img_path)
 
     def check_connection(output, expected_uri):
         """
@@ -226,7 +219,7 @@ def run(test, params, env):
         if init_msg in output:
             logging.info("Find message: %s", init_msg)
         else:
-            raise error.TestFail("Not find message: %s" % init_msg)
+            raise exceptions.TestFail("Not find message: %s" % init_msg)
 
     def check_result(cmd, result, status_error):
         """
@@ -234,8 +227,29 @@ def run(test, params, env):
         """
         utlv.check_exit_status(result, status_error)
         output = result.stdout + result.stderr
-        if not status_error:
-            if output_mode == "rhev":
+        if status_error:
+            if checkpoint == 'length_of_error':
+                log_lines = output.split('\n')
+                v2v_start = False
+                for line in log_lines:
+                    if line.startswith('virt-v2v:'):
+                        v2v_start = True
+                    if line.startswith('libvirt:'):
+                        v2v_start = False
+                    if v2v_start and line > 72:
+                        raise exceptions.TestFail('Error log longer than 72 '
+                                                  'charactors: %s', line)
+            else:
+                error_map = {
+                    'conflict_options': ['option used more than once'],
+                    'xen_no_output_format': ['The input metadata did not define'
+                                             ' the disk format']
+                }
+                if not utils_v2v.check_log(output, error_map[checkpoint]):
+                    raise exceptions.TestFail('Not found error message %s' %
+                                              error_map[checkpoint])
+        else:
+            if output_mode == "rhev" and checkpoint != 'quiet':
                 ovf = get_ovf_content(output)
                 logging.debug("ovf content: %s", ovf)
                 if '--vmtype' in cmd:
@@ -245,7 +259,7 @@ def run(test, params, env):
                 expected_mode = re.findall(r"-oa\s(\w+)", cmd)[0]
                 img_path = get_img_path(output)
                 check_image(img_path, "allocation", expected_mode)
-            if '-of' in cmd and '--no-copy' not in cmd:
+            if '-of' in cmd and '--no-copy' not in cmd and checkpoint != 'quiet':
                 expected_format = re.findall(r"-of\s(\w+)", cmd)[0]
                 img_path = get_img_path(output)
                 check_image(img_path, "format", expected_format)
@@ -259,12 +273,15 @@ def run(test, params, env):
                 check_connection(output, expected_uri)
             if output_mode == "rhev":
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache):
-                    raise error.TestFail("Import VM failed")
+                    raise exceptions.TestFail("Import VM failed")
                 else:
                     params['vmcheck_flag'] = True
             if output_mode == "libvirt":
                 if "qemu:///session" not in v2v_options:
                     virsh.start(vm_name, debug=True, ignore_status=False)
+            if checkpoint == 'quiet':
+                if len(output.strip()) != 0:
+                    raise exceptions.TestFail('Output is not empty in quiet mode')
 
     backup_xml = None
     vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
@@ -283,9 +300,9 @@ def run(test, params, env):
         elif input_mode == "disk":
             input_option += "-i %s %s" % (input_mode, disk_img)
         elif input_mode in ['libvirtxml', 'ova']:
-            raise error.TestNAError("Unsupported input mode: %s" % input_mode)
+            raise exceptions.TestNAError("Unsupported input mode: %s" % input_mode)
         else:
-            raise error.TestError("Unknown input mode %s" % input_mode)
+            raise exceptions.TestError("Unknown input mode %s" % input_mode)
         input_format = params.get("input_format")
         input_allo_mode = params.get("input_allo_mode")
         if input_format:
@@ -312,7 +329,7 @@ def run(test, params, env):
             if not os.path.isdir(mnt_point):
                 os.mkdir(mnt_point)
             if not utils_misc.mount(nfs_storage, mnt_point, "nfs"):
-                raise error.TestError("Mount NFS Failed")
+                raise exceptions.TestError("Mount NFS Failed")
             if output_mode == 'vdsm':
                 v2v_options += " --vdsm-image-uuid %s" % vdsm_image_uuid
                 v2v_options += " --vdsm-vol-uuid %s" % vdsm_vol_uuid
@@ -328,8 +345,13 @@ def run(test, params, env):
                 os.mkdir(vdsm_image_dir)
                 os.mkdir(vdsm_vm_dir)
 
-        # Output more messages
-        v2v_options += " -v -x"
+        # Output more messages except quiet mode
+        if checkpoint == 'quiet':
+            v2v_options += ' -q'
+        elif checkpoint == 'length_of_error':
+            pass
+        else:
+            v2v_options += " -v -x"
 
         # Prepare for libvirt unprivileged user session connection
         if "qemu:///session" in v2v_options:
@@ -337,7 +359,7 @@ def run(test, params, env):
                 pwd.getpwnam(v2v_user)
             except KeyError:
                 # create new user
-                utils.system("useradd %s" % v2v_user, ignore_status=True)
+                process.system("useradd %s" % v2v_user, ignore_status=True)
                 new_v2v_user = True
             user_info = pwd.getpwnam(v2v_user)
             logging.info("Convert to qemu:///session by user '%s'", v2v_user)
@@ -348,7 +370,7 @@ def run(test, params, env):
                 os.chown(disk_img, user_info.pw_uid, user_info.pw_gid)
                 restore_image_owner = True
             else:
-                raise error.TestNAError("Only support convert local disk")
+                raise exceptions.TestNAError("Only support convert local disk")
 
         # Setup ssh-agent access to xen hypervisor
         if hypervisor == 'xen':
@@ -362,7 +384,7 @@ def run(test, params, env):
             # If the input format is not define, we need to either define
             # the original format in the source metadata(xml) or use '-of'
             # to force the output format, see BZ#1141723 for detail.
-            if '-of' not in v2v_options:
+            if '-of' not in v2v_options and checkpoint != 'xen_no_output_format':
                 v2v_options += ' -of %s' % params.get("default_output_format",
                                                       "qcow2")
 
@@ -386,17 +408,17 @@ def run(test, params, env):
                                output_option, v2v_options)
         if v2v_user:
             cmd = su_cmd + "'%s'" % cmd
-        cmd_result = utils.run(cmd, timeout=v2v_timeout, verbose=True,
-                               ignore_status=True)
+        cmd_result = process.run(cmd, timeout=v2v_timeout, verbose=True,
+                                 ignore_status=True)
         if new_vm_name:
             vm_name = new_vm_name
             params['main_vm'] = new_vm_name
         check_result(cmd, cmd_result, status_error)
     finally:
         if hypervisor == "xen":
-            utils.run("ssh-agent -k")
+            process.run("ssh-agent -k")
         if hypervisor == "esx":
-            utils.run("rm -rf %s" % vpx_passwd_file)
+            process.run("rm -rf %s" % vpx_passwd_file)
         for vdsm_dir in [vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir]:
             if os.path.exists(vdsm_dir):
                 shutil.rmtree(vdsm_dir)
@@ -413,7 +435,7 @@ def run(test, params, env):
         if output_mode == "libvirt":
             if "qemu:///session" in v2v_options:
                 cmd = su_cmd + "'virsh undefine %s'" % vm_name
-                utils.system(cmd)
+                process.system(cmd)
             else:
                 virsh.remove_domain(vm_name)
             cleanup_pool()
@@ -422,7 +444,7 @@ def run(test, params, env):
             vmcheck = utils_v2v.VMCheck(test, params, env)
             vmcheck.cleanup()
         if new_v2v_user:
-            utils.system("userdel -f %s" % v2v_user)
+            process.system("userdel -f %s" % v2v_user)
         if restore_image_owner:
             os.chown(disk_img, ori_owner, ori_group)
         if backup_xml:
