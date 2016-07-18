@@ -106,6 +106,9 @@ def run(test, params, env):
         v2v_params.update({"esx_ip": esx_ip})
     if v2v_opts:
         v2v_params.update({"v2v_opts": v2v_opts})
+    output_format = params.get('output_format')
+    if output_format:
+        v2v_params.update({'output_format': 'qcow2'})
 
     # Set libguestfs environment variable
     os.environ['LIBGUESTFS_BACKEND'] = 'direct'
