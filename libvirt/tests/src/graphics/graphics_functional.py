@@ -20,6 +20,8 @@ from virttest import utils_libvirtd
 from virttest.utils_test.libvirt import LibvirtNetwork
 from virttest.libvirt_xml.devices.graphics import Graphics
 
+from provider import libvirt_version
+
 
 class PortAllocator(object):
 
@@ -246,7 +248,7 @@ def qemu_spice_options(libvirt_vm):
             else:
                 spice_dict[key] = value
         else:
-            spice_dict[opt] = True
+            spice_dict[opt] = 'yes'
     for key in spice_dict:
         logging.debug("%s: %s", key, spice_dict[key])
     return spice_dict, plaintext_channels, tls_channels
@@ -279,7 +281,7 @@ def qemu_vnc_options(libvirt_vm):
                 key, value = opt.split('=')
                 vnc_dict[key] = value
             else:
-                vnc_dict[opt] = True
+                vnc_dict[opt] = 'yes'
     for key in vnc_dict:
         logging.debug("%s: %s", key, vnc_dict[key])
     return vnc_dict
@@ -297,7 +299,9 @@ def get_expected_listen_ips(params, networks, expected_result):
         return random.choice(ips)
 
     spice_listen_type = params.get("spice_listen_type", "not_set")
-    if spice_listen_type == 'network':
+    if spice_listen_type == 'none':
+        expected_spice_ips = []
+    elif spice_listen_type == 'network':
         net_type = params.get("spice_network_type", "vnet")
         spice_network = networks[net_type]
         expected_spice_ips = [utils_net.IPAddress(spice_network.ip)]
@@ -322,14 +326,16 @@ def get_expected_listen_ips(params, networks, expected_result):
                 expected_spice_ips = [ip for ip in utils_net.get_all_ips()]
             else:
                 expected_spice_ips = [listen_ip]
-        for ip in expected_spice_ips:
-            logging.debug("Expected SPICE IP: %s", ip)
+    for ip in expected_spice_ips:
+        logging.debug("Expected SPICE IP: %s", ip)
 
     expected_result['spice_ips'] = expected_spice_ips
 
     vnc_listen_type = params.get("vnc_listen_type", "not_set")
     vnc_listen = params.get("vnc_listen", "not_set")
-    if vnc_listen_type == 'network':
+    if vnc_listen_type == 'none':
+        expected_vnc_ips = []
+    elif vnc_listen_type == 'network':
         net_type = params.get("vnc_network_type", "vnet")
         vnc_network = networks[net_type]
         expected_vnc_ips = [utils_net.IPAddress(vnc_network.ip)]
@@ -354,8 +360,8 @@ def get_expected_listen_ips(params, networks, expected_result):
                 expected_vnc_ips = [ip for ip in utils_net.get_all_ips()]
             else:
                 expected_vnc_ips = [listen_ip]
-        for ip in expected_vnc_ips:
-            logging.debug("Expected VNC IP: %s", ip)
+    for ip in expected_vnc_ips:
+        logging.debug("Expected VNC IP: %s", ip)
 
     expected_result['vnc_ips'] = expected_vnc_ips
 
@@ -408,6 +414,8 @@ def get_expected_ports(params, expected_result):
         spice_tls_port = params.get("spice_tlsPort", "not_set")
         spice_autoport = params.get("spice_autoport", "yes")
         default_mode = params.get("defaultMode", "any")
+        spice_listen_type = params.get("spice_listen_type", "not_set")
+        is_negative = params.get("negative_test", "no") == 'yes'
 
         get_expected_channels(params, expected_result)
 
@@ -425,33 +433,40 @@ def get_expected_ports(params, expected_result):
         insecure_autoport = spice_port == '-1' or spice_autoport == 'yes'
         secure_autoport = spice_tls_port == '-1' or spice_autoport == 'yes'
 
-        if insecure_autoport:
-            if plaintext_channels or default_mode == 'any':
-                expected_port = port_allocator.allocate()
-            else:
-                expected_port = 'not_set'
+        if spice_listen_type == 'none':
+            expected_port = '0'
+        elif (not is_negative) and (expected_port != 'not_set' and
+                                    int(expected_port) < -1):
+            expected_port = 'not_set'
+            expected_tls_port = 'not_set'
+        else:
+            if insecure_autoport:
+                if plaintext_channels or default_mode == 'any':
+                    expected_port = port_allocator.allocate()
+                else:
+                    expected_port = 'not_set'
 
-        if secure_autoport:
-            if tls_channels or default_mode == 'any':
-                expected_tls_port = port_allocator.allocate()
-            else:
+            if secure_autoport:
+                if tls_channels or default_mode == 'any':
+                    expected_tls_port = port_allocator.allocate()
+                else:
+                    expected_tls_port = 'not_set'
+
+            if expected_port == expected_tls_port == 'not_set':
+                if insecure_autoport:
+                    expected_port = port_allocator.allocate()
+                if secure_autoport:
+                    expected_tls_port = port_allocator.allocate()
+
+            if expected_tls_port != 'not_set' and int(expected_tls_port) < -1:
                 expected_tls_port = 'not_set'
 
-        if expected_port == expected_tls_port == 'not_set':
-            if insecure_autoport:
-                expected_port = port_allocator.allocate()
-            if secure_autoport:
-                expected_tls_port = port_allocator.allocate()
+            if expected_port != 'not_set' and int(expected_port) < -1:
+                if expected_tls_port != 'not_set':
+                    expected_port = 'not_set'
 
-        if expected_tls_port != 'not_set' and int(expected_tls_port) < -1:
-            expected_tls_port = 'not_set'
-
-        if expected_port != 'not_set' and int(expected_port) < -1:
-            if expected_tls_port != 'not_set':
-                expected_port = 'not_set'
-
-        logging.debug('Expected SPICE port: ' + expected_port)
-        logging.debug('Expected SPICE tls_port: ' + expected_tls_port)
+        logging.debug('Expected SPICE port: %s', expected_port)
+        logging.debug('Expected SPICE tls_port: %s', expected_tls_port)
         expected_result['spice_port'] = expected_port
         expected_result['spice_tls_port'] = expected_tls_port
 
@@ -459,8 +474,11 @@ def get_expected_ports(params, expected_result):
         vnc_port = params.get("vnc_port", "not_set")
         vnc_autoport = params.get("vnc_autoport", "yes")
         auto_unix_socket = params.get("vnc_auto_unix_socket", 'not_set')
+        vnc_listen_type = params.get("vnc_listen_type", "not_set")
 
-        if any([ip not in utils_net.get_all_ips() for ip in expected_vnc_ips]):
+        if vnc_listen_type == 'none':
+            expected_vnc_port = 'not_set'
+        elif any([ip not in utils_net.get_all_ips() for ip in expected_vnc_ips]):
             expected_vnc_port = 'not_set'
             expected_result['vnc_port'] = 'not_set'
         else:
@@ -484,12 +502,14 @@ def get_fail_pattern(params, expected_result):
     """
     spice_xml = params.get("spice_xml", "no") == 'yes'
     vnc_xml = params.get("vnc_xml", "no") == 'yes'
+    is_negative = params.get("negative_test", "no") == 'yes'
 
     fail_patts = []
     if spice_xml:
         spice_prepare_cert = params.get("spice_prepare_cert", "yes")
         spice_tls = params.get("spice_tls", "not_set")
         default_mode = params.get("defaultMode", "any")
+        listen_type = params.get("spice_listen_type", 'not_set')
 
         plaintext_channels = expected_result['plaintext_channels']
         tls_channels = expected_result['tls_channels']
@@ -501,6 +521,7 @@ def get_fail_pattern(params, expected_result):
         if expected_spice_tls_port == 'not_set':
             if tls_channels:
                 tls_fail_patts.append(r'TLS port( is)? not provided')
+                tls_fail_patts.append(r'TLS connection is not available')
         else:
             if spice_tls != '1':
                 tls_fail_patts.append(r'TLS is disabled')
@@ -509,7 +530,7 @@ def get_fail_pattern(params, expected_result):
         if expected_spice_port == 'not_set':
             if plaintext_channels:
                 plaintext_fail_patts.append(r'plain port( is)? not provided')
-
+                plaintext_fail_patts.append(r'plaintext connection is not available')
         if default_mode == 'any':
             if tls_fail_patts and plaintext_fail_patts:
                 fail_patts += tls_fail_patts + plaintext_fail_patts
@@ -530,7 +551,8 @@ def get_fail_pattern(params, expected_result):
             if expected_spice_port != 'not_set':
                 if 0 <= int(expected_spice_port) < 1024:
                     fail_patts.append(r'binding socket to \S* failed')
-                elif int(expected_spice_port) > 65535 or int(expected_spice_port) < -1:
+                elif is_negative and (int(expected_spice_port) > 65535 or
+                                      int(expected_spice_port) < -1):
                     fail_patts.append(r'port is out of range')
                 else:
                     fail_patts.append(r'Failed to reserve port')
@@ -542,21 +564,24 @@ def get_fail_pattern(params, expected_result):
                 spice_fail_patts.append(r'Could not load certificates')
             if 0 <= int(expected_spice_tls_port) < 1024:
                 spice_fail_patts.append(r'binding socket to \S* failed')
-            elif int(expected_spice_tls_port) > 65535 or int(expected_spice_tls_port) < -1:
+            elif is_negative and (int(expected_spice_tls_port) > 65535 or
+                                  int(expected_spice_tls_port) < -1):
                 spice_fail_patts.append(r'port is out of range')
 
         if expected_spice_port != 'not_set' and not fail_patts:
-            if 0 <= int(expected_spice_port) < 1024:
+            if 0 <= int(expected_spice_port) < 1024 and listen_type != 'none':
                 spice_fail_patts.append(r'binding socket to \S* failed')
-            elif int(expected_spice_port) > 65535 or int(expected_spice_port) < -1:
+            elif is_negative and (int(expected_spice_port) > 65535 or
+                                  int(expected_spice_port) < -1):
                 spice_fail_patts.append(r'port is out of range')
         fail_patts += spice_fail_patts
 
         if fail_patts or expected_spice_port == 'not_set':
             fail_patts += tls_fail_patts
 
-        if any([ip not in utils_net.get_all_ips() for ip in expected_spice_ips]):
-            fail_patts.append(r'binding socket to \S* failed')
+        for ip in expected_spice_ips:
+            if ip is not None and ip not in utils_net.get_all_ips():
+                fail_patts.append(r'binding socket to \S* failed')
 
     if vnc_xml:
         vnc_prepare_cert = params.get("vnc_prepare_cert", "yes")
@@ -568,6 +593,7 @@ def get_fail_pattern(params, expected_result):
         vnc_fail_patts = []
         if vnc_tls == '1' and vnc_prepare_cert == 'no':
             vnc_fail_patts.append('Failed to find x509 certificates')
+            vnc_fail_patts.append('Unable to access credentials')
 
         if expected_vnc_port != 'not_set':
             if int(expected_vnc_port) < 5900:
@@ -598,7 +624,9 @@ def get_expected_spice_options(params, networks, expected_result):
     expected_port = expected_result['spice_port']
     expected_tls_port = expected_result['spice_tls_port']
 
-    if listen_type == 'network':
+    if listen_type == 'none':
+        listen_address = None
+    elif listen_type == 'network':
         net_type = params.get("spice_network_type", "vnet")
         listen_address = networks[net_type].ip
     else:
@@ -614,7 +642,7 @@ def get_expected_spice_options(params, networks, expected_result):
 
     expected_opts = {
         'addr': listen_address,
-        'disable-ticketing': True,
+        'disable-ticketing': 'yes',
         'seamless-migration': 'on',
     }
 
@@ -668,8 +696,8 @@ def get_expected_vnc_options(params, networks, expected_result):
 
     if auto_unix_socket == '1':
         listen_address = 'unix'
-        port = ['/var/lib/libvirt/qemu/%s.vnc' % vm_name,
-                '/var/lib/libvirt/qemu/domain-%s/vnc.sock' % vm_name]
+        port = [r'/var/lib/libvirt/qemu/\S+%s.vnc' % vm_name,
+                r'/var/lib/libvirt/qemu/\S+%s/vnc.sock' % vm_name]
     else:
         if expected_port != 'not_set':
             port = str(int(expected_port) - 5900)
@@ -682,7 +710,7 @@ def get_expected_vnc_options(params, networks, expected_result):
     }
 
     if vnc_tls == '1':
-        expected_opts['tls'] = True
+        expected_opts['tls'] = 'yes'
         if tls_x509_verify == '1':
             expected_opts['x509verify'] = x509_dir
         else:
@@ -706,7 +734,6 @@ def get_expected_results(params, networks):
     except ValueError:
         expected_result['fail_patts'] = ['Unable to find an unused port']
     else:
-
         get_fail_pattern(params, expected_result)
         if spice_xml:
             get_expected_spice_options(params, networks, expected_result)
@@ -740,14 +767,15 @@ def compare_opts(opts, exp_opts):
         if type(opts) == dict:
             for key in opts:
                 if isinstance(exp_opts[key], list):
-                    if all(opts[key] != opt for opt in exp_opts[key]):
+                    if not all(re.match(opt, opts[key])
+                               for opt in exp_opts[key] if opt is not None):
                         logging.debug("Key %s expected one in %s, but got %s",
                                       key, exp_opts[key], opts[key])
                         raise error.TestFail(
                             "Expect qemu options is %s, but get %s"
                             % (exp_opts, opts))
                 else:
-                    if opts[key] != exp_opts[key]:
+                    if not re.match(exp_opts[key], opts[key]):
                         logging.debug("Key %s expected %s, but got %s",
                                       key, exp_opts[key], opts[key])
                         raise error.TestFail(
@@ -773,6 +801,7 @@ def check_spice_result(spice_opts,
         expected_result['spice_tls_port']
     ]
     expected_spice_ports = [p for p in expected_spice_ports if p != 'not_set']
+    logging.info('==\n%s', expected_spice_ports)
     check_addr_port(all_ips, expected_spice_ips, expected_spice_ports)
 
 
@@ -951,6 +980,29 @@ def run(test, params, env):
     5) Parse and check result with expected.
     6) Clean up environment.
     """
+
+    # Since 2.0.0, there are some changes for listen type and port
+    # 1. Two new listen types: 'none' and 'socket'(not covered in this test)
+    #    In 'none' listen type, no listen address and port is 0,
+    #    that means we need reset the listen_type for previous versions,
+    #    so we can get the expect result(vm start fail)
+    # 2. Spice port accept negative number less than -1
+    #    If spice port less than -1, the VM can start normally, but both
+    #    listen address and port will be omitted
+    spice_listen_type = params.get('spice_listen_type', 'not_set')
+    vnc_listen_type = params.get('vnc_listen_type', 'not_set')
+    spice_port = params.get('spice_port', 'not_set')
+    spice_tlsPort = params.get('spice_tlsPort', 'not_set')
+    if not libvirt_version.version_compare(2, 0, 0):
+        for listen_type in [spice_listen_type, vnc_listen_type]:
+            if listen_type == 'none':
+                params[listen_type] = 'not_set'
+    else:
+        try:
+            if int(spice_port) < -1:
+                params["negative_test"] = "no"
+        except ValueError:
+            pass
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     spice_xml = params.get("spice_xml", "no") == 'yes'
