@@ -270,6 +270,9 @@ def test_nic_group(vm, params):
     nic_ip = params.get("nic_pci_ip")
     nic_mask = params.get("nic_pci_mask", "255.255.0.0")
     nic_gateway = params.get("nic_pci_gateway")
+    attach_iface = "yes" == params.get("attach_iface", "no")
+    vm_status = params.get("vm_status", "")
+    ext_opt = params.get("attach_options", "")
 
     # Login vm to get interfaces before attaching pci device.
     if vm.is_dead():
@@ -280,20 +283,34 @@ def test_nic_group(vm, params):
                   before_pci_nics)
     logging.debug("Ethernet interfaces before:%s",
                   before_interfaces)
-    vm.destroy()
+    if not vm_status == "running":
+        vm.destroy()
 
     boot_order = int(params.get("boot_order", 0))
     prepare_devices(pci_id, device_type)
     try:
         if boot_order:
             utlv.alter_boot_order(vm.name, pci_id, boot_order)
+        elif attach_iface:
+            options = "hostdev " + pci_id + " " + ext_opt
+            virsh.attach_interface(vm.name, options,
+                                   debug=True, ignore_status=False)
         else:
             xmlfile = utlv.create_hostdev_xml(pci_id)
             virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
                                 flagstr="--config", debug=True,
                                 ignore_status=False)
-        logging.debug("VMXML with disk boot:\n%s", virsh.dumpxml(vm.name))
-        vm.start()
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+        logging.debug("VMXML with disk boot:\n%s", vmxml)
+        iface_list = vmxml.get_iface_all()
+        for node in network_list.values():
+            if node.get('type') == 'hostdev':
+                if "managed" in ext_opt:
+                    if not node.get('managed') == "yes":
+                        raise error.TestFail("Managed option can not"
+                                             " be found in domain xml")
+        if not vm.is_alive():
+            vm.start()
     except (process.CmdError, virt_vm.VMStartError), detail:
         cleanup_devices(pci_id, device_type)
         raise error.TestFail("New device does not work well: %s" % detail)
