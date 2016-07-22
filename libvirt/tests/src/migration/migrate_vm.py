@@ -8,6 +8,7 @@ from subprocess import Popen
 
 from autotest.client.shared import error
 from autotest.client.shared import utils
+from avocado.core import exceptions
 
 from virttest import ssh_key
 from virttest import data_dir
@@ -96,7 +97,26 @@ def check_output(output_msg, params):
                    "storage migration is not supported",
                    "ERROR 1": "error: internal error: unable to " +
                    "execute QEMU command 'migrate': " +
-                   "this feature or command is not currently supported"}
+                   "this feature or command is not currently supported",
+                   "ERROR 2": "error: Cannot access storage file"}
+
+    migrate_disks = "yes" == params.get("migrate_disks")
+    status_error = "yes" == params.get("status_error")
+    if migrate_disks and status_error:
+        logging.debug("To check for migrate-disks...")
+        disk = params.get("attach_A_disk_source")
+        last_msg = "(as uid:107, gid:107): No such file or directory"
+        expect_msg = "%s '%s' %s" % (ERR_MSGDICT["ERROR 2"],
+                                     disk,
+                                     last_msg)
+        if output_msg.find(expect_msg) >= 0:
+            logging.debug("The expected error '%s' was found", expect_msg)
+            return
+        else:
+            raise exceptions.TestFail("The actual output:\n%s\n"
+                                      "The expected error '%s' "
+                                      "was not found",
+                                      output_msg, expect_msg)
 
     for (key, value) in ERR_MSGDICT.items():
         if output_msg.find(value) >= 0:
@@ -144,6 +164,7 @@ def migrate_vm(params):
             raise error.TestFail("Can't get an expected migration result!!")
     else:
         if not MIGRATE_RET:
+            check_output(mig_output, params)
             logging.info("It's an expected error!!")
         else:
             raise error.TestFail("Unexpected return result!!")
@@ -707,6 +728,40 @@ def cleanup(objs_list):
         del obj
 
 
+def check_vm_disk_after_migration(vm, params):
+    cmd = "fdisk -l|grep '^Disk /dev'|cut -d: -f1|cut -d' ' -f2"
+    vm_ip = vm.get_address()
+    vm_pwd = params.get("password", "redhat")
+    tmp_file = "/tmp/fdisk_test_file"
+    mnt_dir = "/tmp/fdisk_test_dir"
+    dd_cmd = "dd if=/dev/zero"
+    dd_cmd = "%s of=%s/test_file bs=1024 count=512 && sync" % (dd_cmd, mnt_dir)
+    remote_vm_obj = utils_test.RemoteVMManager(params)
+    remote_vm_obj.check_network(vm_ip)
+    remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd, timeout=60)
+    cmdres = remote_vm_obj.run_command(vm_ip, cmd, ignore_status=True)
+    if cmdres.exit_status:
+        raise exceptions.TestFail("Command '%s' result: %s\n", cmd, cmdres)
+    disks = cmdres.stdout.split("\n")
+    logging.debug("Get disks in remote VM: %s", disks)
+    for disk in disks:
+        if disk == '' or disk == '/dev/vda' or disk.count('mapper') > 0:
+            logging.debug("No need to check the disk '%s'", disk)
+        else:
+            cmd = "echo -e 'n\np\n\n\n\nw\n' > %s && " % tmp_file
+            cmd = "%s fdisk %s < %s && mkfs.ext3 %s1 && " % (cmd, disk,
+                                                             tmp_file, disk)
+            cmd = "%s mkdir -p %s && mount %s1 %s && %s" % (cmd, mnt_dir,
+                                                            disk, mnt_dir,
+                                                            dd_cmd)
+            # create partition and file system
+            # mount disk and write file in it
+            logging.debug("Execute command on remote VM: %s", cmd)
+            cmdres = remote_vm_obj.run_command(vm_ip, cmd, ignore_status=True)
+            if cmdres.exit_status:
+                raise exceptions.TestFail("Command '%s' result: %s\n", cmd, cmdres)
+
+
 def run(test, params, env):
     """
     Test remote access with TCP, TLS connection
@@ -842,6 +897,9 @@ def run(test, params, env):
     write_iops_sec = test_dict.get("blkdevio_write_iops_sec")
     blkdevio_dev = test_dict.get("blkdevio_device")
     blkdevio_options = test_dict.get("blkdevio_options")
+
+    # For --migrate-disks test
+    migrate_disks = "yes" == test_dict.get("migrate_disks", "no")
 
     # Pre-creation image parameters
     target_pool_name = test_dict.get("target_pool_name", "temp_pool_1")
@@ -1247,6 +1305,18 @@ def run(test, params, env):
         if config_libvirtd == "yes":
             if host_uuid:
                 libvirtd_conf_dict["host_uuid"] = host_uuid
+            # Remove the old log_file if any both on local and remote host
+            if os.path.exists(log_file):
+                logging.debug("To delete local log file '%s'", log_file)
+                os.remove(log_file)
+            cmd = "rm -f %s" % log_file
+            logging.debug("To delete remote log file '%s'", log_file)
+            status, output = run_remote_cmd(cmd, server_ip, server_user,
+                                            server_pwd)
+            if status:
+                raise error.TestFail("Failed to run '%s' on the remote: %s"
+                                     % (cmd, output))
+
             libvirtd_conf = config_libvirt(libvirtd_conf_dict)
 
             if libvirtd_conf:
@@ -1475,6 +1545,42 @@ def run(test, params, env):
                                          % (cmd, output))
 
                 remote_image_list.append(target_image_source)
+        # Below cases are to test option "--migrate-disks" with mix of storage and
+        # nfs setup.
+        # Case 1: --copy-storage-all without --migrate-disks will copy all images to
+        #         remote host.
+        # Check points:
+        # 1. Migration operation succeeds and guest on remote is running
+        # 2. All Disks in guest on remote host can be r/w
+        # 3. Libvirtd.log on remote host should include "nbd-server-add" message for
+        #    all disks
+        # Case 2: --copy-storage-all with --migrate-disks <all non-shared-images> will
+        #         copy images specified in --migrate-disks to remote host.
+        # Check points:
+        # 1. Same with Case 1
+        # 2. Same with Case 1
+        # 3. Libvirtd.log on remote host should include "nbd-server-add" message for
+        #    the disks specified by --migrate-disks
+
+        if migrate_disks:
+            logging.debug("To handle --migrate_disks...")
+            attach_A_disk_source = test_dict.get("attach_A_disk_source")
+            attach_B_disk_source = test_dict.get("attach_B_disk_source")
+            attach_A_disk_target = "vdb"
+            attach_B_disk_target = "vdc"
+            # create local images for disks to attach
+            libvirt.create_local_disk("file", path=attach_A_disk_source, size="0.1",
+                                      disk_format="qcow2")
+            libvirt.create_local_disk("file", path=attach_B_disk_source, size="0.1",
+                                      disk_format="qcow2")
+            test_dict["driver_type"] = "qcow2"
+            libvirt.attach_additional_device(vm.name, attach_A_disk_target,
+                                             attach_A_disk_source, test_dict,
+                                             config=False)
+            libvirt.attach_additional_device(vm.name, attach_B_disk_target,
+                                             attach_B_disk_source, test_dict,
+                                             config=False)
+
         if create_disk_tgt_backing_file:
             if not support_precreation:
                 cmd = create_disk_src_backing_file + orig_image_name
@@ -1788,7 +1894,6 @@ def run(test, params, env):
 
         if run_migr_front:
             migrate_vm(test_dict)
-            logging.info("Succeed to migrate %s.", vm_name)
 
         set_tgt_pm_suspend_tgt = test_dict.get("set_tgt_pm_suspend_target")
         set_tgt_pm_wakeup = "yes" == test_dict.get("set_tgt_pm_wakeup", "no")
@@ -1873,6 +1978,50 @@ def run(test, params, env):
             if status:
                 raise error.TestFail("Failed to run '%s' on the remote: %s"
                                      % (cmd, output))
+        # Check points for --migrate-disk cases.
+        if migrate_disks and status_error == "no":
+            # Check the libvirtd.log
+            grep_from_remote = ".*nbd-server-add.*drive-virtio-disk.*writable.*"
+            virsh_options = test_dict.get("virsh_options", "")
+            cmd = "grep %s %s" % (grep_from_remote, log_file)
+            status, output = run_remote_cmd(cmd, server_ip, server_user,
+                                            server_pwd)
+            if status:
+                raise exceptions.TestFail("Can not find expected log '%s' "
+                                          "on remote host '%s'"
+                                          % (grep_from_remote,
+                                             server_ip))
+            if (re.search(r".*drive-virtio-disk0.*", output) is None or
+               re.search(r".*drive-virtio-disk1.*", output) is None):
+                raise exceptions.TestFail("The actual output:\n%s\n"
+                                          "Can not find 'disk0' or 'disk1' "
+                                          "in the log on remote host '%s'"
+                                          % (output, server_ip))
+            if re.search(r".*drive-virtio-disk2.*", output) is None:
+                if virsh_options.find("--migrate-disks") >= 0:
+                    # This is expected as shared image should not be
+                    # copied when "--migrate-disks --copy-storage-all"
+                    logging.debug("The shared image is not copied when "
+                                  " '--migrate-disks' option")
+                else:
+                    raise exceptions.TestFail("The actual output:\n%s\n"
+                                              "Can not find expected log "
+                                              "'disk2' on remote host '%s'"
+                                              % (output, server_ip))
+            else:
+                if virsh_options.find("--migrate-disks") < 0:
+                    # This is expected as shared image should be
+                    # copied when "--copy-storage-all"
+                    logging.debug("The shared image is copied when "
+                                  "no '--migrate-disks' option")
+                else:
+                    raise exceptions.TestFail("The actual output:\n%s\n"
+                                              "Find unexpected log "
+                                              "'disk2' on remote host '%s'"
+                                              % (output, server_ip))
+            # Check the disks on VM can work correctly.
+            check_vm_disk_after_migration(vm, test_dict)
+
         if migr_vm_back:
             options = test_dict.get("virsh_options", "--verbose --live")
             src_uri = test_dict.get("migration_source_uri")
@@ -1937,6 +2086,19 @@ def run(test, params, env):
                     logging.debug("Remove local image file %s.", img_file)
                     os.remove(img_file)
 
+        if migrate_disks is True:
+            attach_A_disk_source = test_dict.get("attach_A_disk_source")
+            attach_B_disk_source = test_dict.get("attach_B_disk_source")
+            libvirt.delete_local_disk("file", attach_A_disk_source)
+            libvirt.delete_local_disk("file", attach_B_disk_source)
+            if status_error == "no":
+                cmd = "rm -rf %s" % attach_A_disk_source
+                status, output = run_remote_cmd(cmd, server_ip, server_user,
+                                                server_pwd)
+                if status:
+                    raise exceptions.TestFail("Failed to run '%s' "
+                                              "on the remote: %s"
+                                              % (cmd, output))
         # Recovery remotely libvirt service
         if stop_libvirtd_remotely:
             libvirt.remotely_control_libvirtd(server_ip, server_user,
