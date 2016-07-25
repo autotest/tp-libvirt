@@ -80,8 +80,9 @@ def run(test, params, env):
         if vm.is_alive():  # vm.connect_uri was updated
             logging.info("Alive guest found on destination %s." % dest_uri)
         else:
-            logging.error("VM not alive on destination %s" % dest_uri)
-            return False
+            if not options.count("offline"):
+                logging.error("VM not alive on destination %s" % dest_uri)
+                return False
 
         # Throws exception if console shows panic message
         vm.verify_kernel_crash()
