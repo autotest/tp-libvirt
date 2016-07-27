@@ -81,7 +81,7 @@ def run(test, params, env):
     libvirt_pvt = utlv.PoolVolumeTest(test, params)
     libvirt_pool = libvirt_storage.StoragePool()
     if libvirt_pool.pool_exists(pool_name):
-        raise error.TestError("Pool '%s' already exist", pool_name)
+        raise error.TestError("Pool '%s' already exist" % pool_name)
     try:
         # Create a new pool
         disk_vol = []
@@ -103,7 +103,7 @@ def run(test, params, env):
                                 allocation=None,
                                 pool_name=pool_name)
         elif vol_format == 'partition':
-            vol_name = utlv.get_vol_list(pool_name)
+            vol_name = utlv.get_vol_list(pool_name).keys()[0]
             logging.debug("Find partition %s in disk pool", vol_name)
         elif vol_format == 'sparse':
             # Create a sparse file in pool
