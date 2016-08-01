@@ -3,10 +3,11 @@ import logging
 import tempfile
 import re
 
-from autotest.client.shared import error
+from avocado.core import exceptions
 
 from virttest import data_dir
 from virttest import virsh
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):
@@ -24,16 +25,14 @@ def run(test, params, env):
     def get_image_xml():
         # Invoke save-image-dumpxml
         cmd_result = virsh.save_image_dumpxml(vm_save, debug=True)
-        if cmd_result.exit_status:
-            raise error.TestFail("Failed to dump xml from "
-                                 "saved state file:%s" % vm_save)
+        libvirt.check_exit_status(cmd_result)
 
         xml = cmd_result.stdout.strip()
 
         match_string = "<name>%s</name>" % vm_name
         if not re.search(match_string, xml):
-            raise error.TestFail("The xml from saved state file "
-                                 "is invalid")
+            raise exceptions.TestFail("The xml from saved state file "
+                                      "is invalid")
         return xml
 
     def redefine_new_xml():
@@ -42,29 +41,26 @@ def run(test, params, env):
         elif restore_state == "paused":
             option = "--paused"
         else:
-            raise error.TestFail("Unknown save-image-define option")
+            raise exceptions.TestFail("Unknown save-image-define option")
 
         cmd_result = virsh.save_image_define(vm_save, xmlfile, option,
                                              debug=True)
-        if cmd_result.exit_status:
-            raise error.TestFail("Failed to redefine new xml %s for %s" %
-                                 (xmlfile, vm_save))
+        libvirt.check_exit_status(cmd_result)
 
     def vm_state_check():
         cmd_result = virsh.dumpxml(vm_name, debug=True)
-        if cmd_result.exit_status:
-            raise error.TestFail("Failed to dump xml of domain %s" % vm_name)
+        libvirt.check_exit_status(cmd_result)
 
         # The xml should contain the match_string
         xml = cmd_result.stdout.strip()
         match_string = "<boot dev='cdrom'/>"
         if not re.search(match_string, xml):
-            raise error.TestFail("After domain restore, "
-                                 "the xml is not expected")
+            raise exceptions.TestFail("After domain restore, "
+                                      "the xml is not expected")
 
         domstate = virsh.domstate(vm_name, debug=True).stdout.strip()
         if restore_state != domstate:
-            raise error.TestFail("The domain state is not expected")
+            raise exceptions.TestFail("The domain state is not expected")
 
     # MAIN TEST CODE ###
     # Process cartesian parameters
@@ -82,8 +78,7 @@ def run(test, params, env):
 
         # Save the RAM state of a running domain
         cmd_result = virsh.save(vm_name, vm_save, debug=True)
-        if cmd_result.exit_status:
-            raise error.TestFail("Failed to save running domain %s" % vm_name)
+        libvirt.check_exit_status(cmd_result)
 
         xml = get_image_xml()
 
@@ -106,8 +101,7 @@ def run(test, params, env):
 
         # Restore domain
         cmd_result = virsh.restore(vm_save, debug=True)
-        if cmd_result.exit_status:
-            raise error.TestFail("Failed to restore domain %s" % vm_name)
+        libvirt.check_exit_status(cmd_result)
         os.remove(vm_save)
 
         vm_state_check()
