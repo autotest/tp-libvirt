@@ -52,13 +52,17 @@ def run(test, params, env):
         guest_capa = cap_xml.get_guest_capabilities()
         logging.debug(guest_capa)
         try:
-            img = utils_path.find_command("qemu-kvm")
+            if re.search("ppc64le", process.run("arch", shell=True).stdout):
+                img = utils_path.find_command("qemu-system-ppc64le")
+                cmd = img + " --cpu ? | grep ppc"
+            elif re.search("ppc64", process.run("arch", shell=True).stdout):
+                img = utils_path.find_command("qemu-system-ppc64")
+                cmd = img + " --cpu ? | grep ppc"
+            else:
+                img = utils_path.find_command("qemu-kvm")
+                cmd = img + " --cpu ? | grep qemu"
         except utils_path.CmdNotFoundError:
-            raise error.TestNAError("Cannot find qemu-kvm")
-        if re.search("ppc", process.run("arch", shell=True).stdout):
-            cmd = img + " --cpu ? | grep ppc"
-        else:
-            cmd = img + " --cpu ? | grep qemu"
+            raise error.TestNAError("Cannot find KVM on host")
         cmd_result = process.run(cmd, shell=True)
         for guest in cap_xml.xmltreefile.findall('guest'):
             guest_wordsize = guest.find('arch').find('wordsize').text
