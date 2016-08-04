@@ -54,7 +54,11 @@ def run(test, params, env):
         try:
             img = utils_path.find_command("qemu-kvm")
         except utils_path.CmdNotFoundError:
-            raise error.TestNAError("Cannot find qemu-kvm")
+            try:
+                # For Ubuntu /usr/bin/kvm is available instead of qemu-kvm
+                img = utils_path.find_command("kvm")
+            except utils_path.CmdNotFoundError:
+                raise error.TestNAError("Cannot find {qemu-}kvm binary in host")
         if re.search("ppc", process.run("arch", shell=True).stdout):
             cmd = img + " --cpu ? | grep ppc"
         else:
