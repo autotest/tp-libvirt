@@ -117,8 +117,10 @@ def run(test, params, env):
             local_pwd.count("ENTER")):
         raise error.TestNAError("Parameter local_pwd is not configured"
                                 "in remote test.")
+    # In Ubuntu libvirt_lxc available in /usr/lib/libvirt
     if (connect_arg.count("lxc") and
-            (not os.path.exists("/usr/libexec/libvirt_lxc"))):
+            (not (os.path.exists("/usr/libexec/libvirt_lxc") or
+                  os.path.exists("/usr/lib/libvirt/libvirt_lxc")))):
         raise error.TestNAError("Connect test of lxc:/// is not suggested on "
                                 "the host with no lxc driver.")
     if connect_arg.count("xen") and (not os.path.exists("/var/run/xend")):
