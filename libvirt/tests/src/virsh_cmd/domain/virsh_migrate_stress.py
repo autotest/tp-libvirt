@@ -1,6 +1,5 @@
 import os
 import logging
-import time
 
 from autotest.client.shared import utils_memory
 from autotest.client.shared import error
@@ -8,7 +7,6 @@ from autotest.client.shared import ssh_key
 
 from virttest import libvirt_vm
 from virttest import utils_test
-from virttest import remote
 from virttest import data_dir
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml import vm_xml
@@ -26,31 +24,6 @@ def set_cpu_memory(vm_name, cpu, memory):
     logging.debug("VMXML info:\n%s", vmxml.get('xml'))
     vmxml.undefine()
     vmxml.define()
-
-
-def check_dest_vm_network(vm, ip, remote_host, username, password,
-                          shell_prompt):
-    """
-    Ping migrated vms on remote host.
-    """
-    session = remote.remote_login("ssh", remote_host, 22, username,
-                                  password, shell_prompt)
-    # Timeout to wait vm's network
-    logging.debug("verifying VM's IP...")
-    timeout = 60
-    ping_failed = True
-    ping_cmd = "ping -c 4 %s" % ip
-    while timeout > 0:
-        ps, po = session.cmd_status_output(ping_cmd)
-        if ps:
-            time.sleep(5)
-            timeout -= 5
-            continue
-        logging.error(po)
-        ping_failed = False
-        break
-    if ping_failed:
-        raise error.TestFail("Check %s IP failed." % vm.name)
 
 
 def do_stress_migration(vms, srcuri, desturi, stress_type,
@@ -170,8 +143,9 @@ def run(test, params, env):
         # Check network of vms on destination
         if start_migration_vms and migration_type != "cross":
             for vm in vms:
-                check_dest_vm_network(vm, vm_ipaddr[vm.name], remote_host,
-                                      username, password, prompt)
+                utils_test.check_dest_vm_network(vm, vm_ipaddr[vm.name],
+                                                 remote_host,
+                                                 username, password, prompt)
     finally:
         logging.debug("Cleanup vms...")
         for vm_name in vm_names:
