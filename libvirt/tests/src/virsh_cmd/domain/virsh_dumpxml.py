@@ -150,7 +150,10 @@ def run(test, params, env):
         custom_cpu(vm_name, cpu_match)
     elif options_ref.count("security-info"):
         new_xml = backup_xml.copy()
-        vm_xml.VMXML.add_security_info(new_xml, security_pwd)
+        try:
+            vm_xml.VMXML.add_security_info(new_xml, security_pwd)
+        except Exception, info:
+            raise error.TestNAError(info)
     domuuid = vm.get_uuid()
     domid = vm.get_id()
 
