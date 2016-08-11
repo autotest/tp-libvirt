@@ -1,10 +1,11 @@
 import os
 import re
 import logging
-import time
 import string
 
 from avocado.core import exceptions
+from avocado.utils import service
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_v2v
@@ -36,6 +37,7 @@ def run(test, params, env):
     output_storage = params.get('output_storage', 'default')
     bridge = params.get('bridge')
     network = params.get('network')
+    ntp_server = params.get('ntp_server')
     address_cache = env.get('address_cache')
     v2v_timeout = int(params.get('v2v_timeout', 1200))
     status_error = 'yes' == params.get('status_error', 'no')
@@ -45,7 +47,7 @@ def run(test, params, env):
     backup_list = ['virtio_on', 'virtio_off', 'floppy', 'floppy_devmap',
                    'fstab_cdrom', 'fstab_virtio', 'multi_disks', 'sata_disk',
                    'network_virtio', 'network_rtl8139', 'network_e1000',
-                   'multi_netcards', 'spice', 'spice_encrypt']
+                   'multi_netcards', 'spice', 'spice_encrypt', 'blank_2nd_disk']
     error_list = []
 
     def log_fail(msg):
@@ -99,7 +101,7 @@ def run(test, params, env):
         if disks == expected_disks:
             logging.info("Disk counts is expected")
         else:
-            raise exceptions.TestFail("Disk counts is wrong")
+            log_fail("Disk counts is wrong")
 
     def install_kernel(session, url=None, kernel_debug=False):
         """
@@ -107,7 +109,7 @@ def run(test, params, env):
         """
         if kernel_debug:
             if not utils_misc.yum_install(['kernel-debug'], session=session):
-                raise exceptions.TestFail('Fail on installing debug kernel')
+                raise exceptions.TestError('Fail on installing debug kernel')
             else:
                 logging.info('Install kernel-debug success')
         else:
@@ -116,12 +118,12 @@ def run(test, params, env):
             # rhel6 need to install kernel-firmware first
             if '.el6' in session.cmd('uname -r'):
                 kernel_fm_url = params.get('kernel_fm_url')
-                cmd_install_firmware = 'rpm -Uv %s' % kernel_fm_url
+                cmd_install_firmware = 'rpm -Uv %s --force' % kernel_fm_url
                 try:
                     session.cmd(cmd_install_firmware, timeout=v2v_timeout)
                 except Exception, e:
                     raise exceptions.TestError(str(e))
-            cmd_install_kernel = 'rpm -iv %s' % url
+            cmd_install_kernel = 'rpm -iv %s --force' % url
             try:
                 session.cmd(cmd_install_kernel, timeout=v2v_timeout)
             except Exception, e:
@@ -147,10 +149,10 @@ def run(test, params, env):
         """
         logging.info('Checking if vmlinuz matches initramfs')
         kernels = re.search(
-                r'kernel packages in this guest:(.*?)grub kernels in this',
-                v2v_result, flags=re.DOTALL)
+                'kernel packages in this guest:.*?(\(kernel.*?\).*?){2,}',
+                v2v_result, re.DOTALL)
         try:
-            lines = kernels.group(1)
+            lines = kernels.group(0)
             kernel_list = re.findall('\((.*?)\)', lines)
             for kernel in kernel_list:
                 vmlinuz = re.search(r'/boot/vmlinuz-(.*?),', kernel).group(1)
@@ -159,7 +161,7 @@ def run(test, params, env):
                 logging.debug('vmlinuz version is: %s' % vmlinuz)
                 logging.debug('initramfs version is: %s' % initramfs)
                 if vmlinuz != initramfs:
-                    raise exceptions.TestFail('vmlinuz not match with initramfs')
+                    log_fail('vmlinuz not match with initramfs')
         except Exception, e:
             raise exceptions.TestError('Error on find kernel info \n %s' % str(e))
 
@@ -173,9 +175,9 @@ def run(test, params, env):
         logging.debug('Default kernel: %s' % default_kernel)
         if kernel_debug:
             if '.debug' in current_kernel:
-                raise exceptions.TestFail('VM should choose non-debug kernel')
+                log_fail('VM should choose non-debug kernel')
         elif current_kernel not in default_kernel:
-            raise exceptions.TestFail('VM should choose default kernel')
+            log_fail('VM should choose default kernel')
 
     def check_floppy_exist(vmcheck):
         """
@@ -184,10 +186,10 @@ def run(test, params, env):
         blk = vmcheck.session.cmd('lsblk')
         logging.info(blk)
         if not re.search('fd0', blk):
-            raise exceptions.TestFail('Floppy not found')
+            log_fail('Floppy not found')
 
     def attach_removable_media(type, source, dev):
-        bus = {'cdrom': 'ide', 'floppy': 'fdc'}
+        bus = {'cdrom': 'ide', 'floppy': 'fdc', 'disk': 'virtio'}
         args = {'driver': 'qemu', 'subdriver': 'raw', 'sourcetype': 'file',
                 'type': type, 'targetbus': bus[type]}
         if type == 'cdrom':
@@ -257,10 +259,10 @@ def run(test, params, env):
         logging.debug('MAC list before v2v: %s' % mac_list)
         logging.debug('MAC list after  v2v: %s' % iflist.keys())
         if set(mac_list).difference(iflist.keys()):
-            raise exceptions.TestFail('Missing network interface')
+            log_fail('Missing network interface')
         for mac in iflist:
             if iflist[mac].find('model').get('type') != 'virtio':
-                raise exceptions.TestFail('Network not convert to virtio')
+                log_fail('Network not convert to virtio')
 
     @vm_shell
     def insert_floppy_devicemap(**kwargs):
@@ -308,7 +310,11 @@ def run(test, params, env):
         session = kwargs['session']
         # Specify cdrom device
         if type == 'cdrom':
-            line = '/dev/cdrom /media/CDROM auto exec 0 0'
+            line = '/dev/cdrom /media/CDROM auto exec'
+            if 'grub2' in utils_misc.get_bootloader_cfg(session):
+                line += ',nofail'
+            line += ' 0 0'
+            logging.debug('fstab entry is "%s"', line)
             cmd = [
                 'mkdir -p /media/CDROM',
                 'mount /dev/cdrom /media/CDROM',
@@ -385,7 +391,7 @@ def run(test, params, env):
         """
         session = kwargs['session']
         vm = kwargs['vm']
-        grub_file = vm.get_grub_file(session)
+        grub_file = utils_misc.get_bootloader_cfg(session)
         cfg = {
             "file": [grub_file, "/etc/grub.d/40_custom"],
             "search": ["title .*?.img", "menuentry '.*?}"],
@@ -424,33 +430,12 @@ def run(test, params, env):
         """
         session = kwargs['session']
         vm = kwargs['vm']
-        grub_file = vm.get_grub_file(session)
+        grub_file = utils_misc.get_bootloader_cfg(session)
         if 'grub2' in grub_file:
             raise exceptions.TestSkipError('Skip this case on grub2')
         cmd = "sed -i '1iserial -unit=0 -speed=115200\\n"
         cmd += "terminal -timeout=10 serial console' %s" % grub_file
         session.cmd(cmd)
-
-    def make_unclean_fs():
-        """
-        Use force off to make unclean file system of win8
-        """
-        if virsh.start(vm_name, ignore_status=True).exit_status:
-            raise exceptions.TestError('Start vm failed')
-        time.sleep(10)
-        virsh.destroy(vm_name, debug=True)
-
-    def cleanup_fs():
-        """
-        Clean up file system by restart and shutdown normally
-        """
-        vm = libvirt_vm.VM(vm_name, params, test.bindir,
-                           env.get('address_cache'))
-        if vm.is_dead():
-            vm.start()
-        # Sleep 1 minute to wait for guest fully bootup
-        time.sleep(60)
-        vm.shutdown()
 
     @vm_shell
     def set_selinux(value, **kwargs):
@@ -464,6 +449,54 @@ def run(test, params, env):
             cmd = "sed -E -i 's/(^SELINUX=).*?/\\1%s/' /etc/selinux/config" % value
             logging.info('Set selinux stat with command %s', cmd)
             session.cmd(cmd)
+
+    @vm_shell
+    def get_firewalld_status(**kwargs):
+        """
+        Return firewalld service status of vm
+        """
+        session = kwargs['session']
+        firewalld_status = session.cmd('systemctl status firewalld.service|grep Active:',
+                                       ok_status=[0, 3]).strip()
+        logging.info('Status of firewalld: %s', firewalld_status)
+        params[checkpoint] = firewalld_status
+
+    def check_firewalld_status(vmcheck, expect_status):
+        """
+        Check if status of firewalld meets expectation
+        """
+        firewalld_status = vmcheck.session.cmd('systemctl status '
+                                               'firewalld.service|grep Active:',
+                                               ok_status=[0, 3]).strip()
+        logging.info('Status of firewalld after v2v: %s', firewalld_status)
+        if firewalld_status != expect_status:
+            log_fail('Status of firewalld changed after conversion')
+
+    @vm_shell
+    def vm_cmd(cmd_list, **kwargs):
+        """
+        Excecute a list of commands on guest.
+        """
+        session = kwargs['session']
+        for cmd in cmd_list:
+            logging.info('Send command "%s"', cmd)
+            status, output = session.cmd_status_output(cmd)
+            logging.debug('Command output:\n%s', output)
+            if status != 0:
+                raise exceptions.TestError('Command "%s" failed' % cmd)
+        logging.info('All commands executed')
+
+    def check_time_keep(vmcheck):
+        """
+        Check time drift after convertion.
+        """
+        logging.info('Check time drift')
+        output = vmcheck.session.cmd('ntpdate -q %s' % ntp_server)
+        logging.debug(output)
+        drift = abs(float(output.split()[-2]))
+        logging.debug('Time drift is: %f', drift)
+        if drift > 3:
+            log_fail('Time drift exceeds 3 sec')
 
     def check_v2v_log(output, check=None):
         """
@@ -508,7 +541,7 @@ def run(test, params, env):
             if utils_v2v.check_log(output, content_map[check], expect=expect):
                 logging.info('Finish checking v2v log')
             else:
-                raise exceptions.TestFail('Check v2v log failed')
+                log_fail('Check v2v log failed')
 
     def check_boot():
         """
@@ -554,8 +587,6 @@ def run(test, params, env):
             ret = vmchecker.run()
             if len(ret) == 0:
                 logging.info("All common checkpoints passed")
-            else:
-                raise exceptions.TestFail("%s checkpoints failed" % ret)
             if checkpoint in ['multi_kernel', 'debug_kernel']:
                 default_kernel = params.get('defaultkernel')
                 check_boot_kernel(vmchecker.checker, default_kernel, debug_kernel)
@@ -577,12 +608,15 @@ def run(test, params, env):
                 logging.info('Selinux status after v2v:%s', status)
                 if status != checkpoint[8:]:
                     log_fail('Selinux status not match')
+            elif checkpoint == 'guest_firewalld_status':
+                check_firewalld_status(vmchecker.checker, params[checkpoint])
+            elif checkpoint in ['ntpd_on', 'sync_ntp']:
+                check_time_keep(vmchecker.checker)
             check_v2v_log(output, checkpoint)
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
             if len(error_list):
-                raise exceptions.TestFail('%d checkpoints failed: %s',
-                                          len(error_list), error_list)
+                log_fail('%d checkpoints failed: %s' % (len(error_list), error_list))
 
     try:
         v2v_params = {
@@ -604,6 +638,8 @@ def run(test, params, env):
             v2v_sasl.setup(remote=True)
         if output_mode == 'local':
             v2v_params['storage'] = data_dir.get_tmp_dir()
+        # Set libguestfs environment variable
+        os.environ['LIBGUESTFS_BACKEND'] = 'direct'
 
         backup_xml = None
         if checkpoint in backup_list:
@@ -658,8 +694,6 @@ def run(test, params, env):
         elif checkpoint == 'bogus_kernel':
             bogus_kernel()
             check_boot()
-        elif checkpoint == 'unclean_fs':
-            make_unclean_fs()
         elif checkpoint.startswith('network'):
             change_network_model(checkpoint[8:])
         elif checkpoint == 'multi_netcards':
@@ -685,6 +719,37 @@ def run(test, params, env):
             utils_selinux.set_status('enforcing')
         elif checkpoint.startswith('selinux'):
             set_selinux(checkpoint[8:])
+        elif checkpoint.startswith('host_firewalld'):
+            service_mgr = service.ServiceManager()
+            logging.info('Backing up firewall services status')
+            params['bk_firewalld_status'] = service_mgr.status('firewalld')
+            if 'start' in checkpoint:
+                service_mgr.start('firewalld')
+            if 'stop' in checkpoint:
+                service_mgr.stop('firewalld')
+        elif checkpoint == 'guest_firewalld_status':
+            get_firewalld_status()
+        elif checkpoint == 'remove_securetty':
+            logging.info('Remove /etc/securetty file from guest')
+            cmd = ['rm -f /etc/securetty']
+            vm_cmd(cmd)
+        elif checkpoint == 'ntpd_on':
+            logging.info('Set service ntpd on')
+            cmd = ['yum -y install ntp',
+                   'systemctl start ntpd']
+            vm_cmd(cmd)
+        elif checkpoint == 'sync_ntp':
+            logging.info('Sync time with %s', ntp_server)
+            cmd = ['yum -y install ntpdate',
+                   'ntpdate %s' % ntp_server]
+            vm_cmd(cmd)
+        elif checkpoint == 'blank_2nd_disk':
+            disk_path = os.path.join(data_dir.get_tmp_dir(), 'blank.img')
+            logging.info('Create blank disk %s', disk_path)
+            process.run('truncate -s 1G %s' % disk_path)
+            logging.info('Attach blank disk to vm')
+            attach_removable_media('disk', disk_path, 'vdc')
+            logging.debug(virsh.dumpxml(vm_name))
 
         v2v_result = utils_v2v.v2v_cmd(v2v_params)
         check_result(v2v_result, status_error)
@@ -693,7 +758,12 @@ def run(test, params, env):
             params['vmchecker'].cleanup()
         if backup_xml:
             backup_xml.sync()
-        if checkpoint == 'unclean_fs':
-            cleanup_fs()
         if params.get('selinux_stat') and params['selinux_stat'] != 'disabled':
             utils_selinux.set_status(params['selinux_stat'])
+        if 'bk_firewalld_status' in params:
+            service_mgr = service.ServiceManager()
+            if service_mgr.status('firewalld') != params['bk_firewalld_status']:
+                if params['bk_firewalld_status']:
+                    service_mgr.start('firewalld')
+                else:
+                    service_mgr.stop('firewalld')
