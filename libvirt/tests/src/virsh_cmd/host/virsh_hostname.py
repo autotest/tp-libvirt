@@ -14,7 +14,7 @@ def run(test, params, env):
     (3) Call virsh hostname with libvirtd service stop
     """
 
-    hostname_result = utils.run("hostname", ignore_status=True)
+    hostname_result = utils.run("hostname -f", ignore_status=True)
     hostname = hostname_result.stdout.strip()
 
     # Prepare libvirtd service
