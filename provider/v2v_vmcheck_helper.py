@@ -3,6 +3,7 @@ import logging
 import time
 from distutils.version import LooseVersion
 
+from avocado.core import exceptions
 from avocado.utils import process
 
 from virttest import utils_v2v
@@ -10,6 +11,7 @@ from virttest import utils_sasl
 from virttest import virsh
 
 V2V_7_3_VERSION = 'virt-v2v-1.32.1-1.el7'
+RETRY_TIMES = 10
 
 
 class VMChecker(object):
@@ -53,12 +55,21 @@ class VMChecker(object):
             self.virsh_session.close_session()
 
     def setup_session(self):
-        if self.target == "ovirt":
-            self.virsh_session = utils_sasl.VirshSessionSASL(self.params)
-            self.virsh_session_id = self.virsh_session.get_id()
-        else:
-            self.virsh_session = virsh.VirshPersistent()
-            self.virsh_session_id = self.virsh_session.session_id
+        for index in range(RETRY_TIMES):
+            logging.info('Trying %d times', index + 1)
+            try:
+                if self.target == "ovirt":
+                    self.virsh_session = utils_sasl.VirshSessionSASL(self.params)
+                    self.virsh_session_id = self.virsh_session.get_id()
+                else:
+                    self.virsh_session = virsh.VirshPersistent()
+                    self.virsh_session_id = self.virsh_session.session_id
+            except Exception as detail:
+                logging.error(detail)
+            else:
+                break
+        if not self.virsh_session_id:
+            raise exceptions.TestError('Fail to create SASL virsh session')
 
     def log_err(self, msg):
         logging.error(msg)
@@ -230,9 +241,23 @@ class VMChecker(object):
         """
         # Make sure windows boot up successfully first
         self.checker.boot_windows()
-        self.checker.create_session()
+        try:
+            self.checker.create_session()
+        except Exception as detail:
+            raise exceptions.TestError('Failed to connect to windows guest: %s' %
+                                       detail)
         logging.info("Wait 60 seconds for installing drivers")
         time.sleep(60)
+        # Close and re-create session in case connection reset by peer during
+        # sleeping time. Keep trying until the test command runs successfully.
+        for retry in range(RETRY_TIMES):
+            try:
+                self.checker.run_cmd('dir')
+            except:
+                self.checker.session.close()
+                self.checker.create_session()
+            else:
+                break
         self.errors = []
         # 1. Check viostor file
         logging.info("Checking windows viostor info")
