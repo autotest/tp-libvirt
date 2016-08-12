@@ -28,7 +28,15 @@ def run(test, params, env):
     v2v_timeout = int(params.get('v2v_timeout', 1200))
     status_error = 'yes' == params.get('status_error', 'no')
     address_cache = env.get('address_cache')
-    checkpoint = params.get('checkpoint')
+    checkpoint = params.get('checkpoint', '')
+    error_list = []
+
+    def log_fail(msg):
+        """
+        Log error and update error list
+        """
+        logging.error(msg)
+        error_list.append(msg)
 
     def check_device_exist(check, virsh_session_id):
         """
@@ -37,7 +45,7 @@ def run(test, params, env):
         xml = virsh.dumpxml(vm_name, session_id=virsh_session_id).stdout
         if check == 'cdrom':
             if "device='cdrom'" not in xml:
-                raise exceptions.TestFail('CDROM no longer exists')
+                log_fail('CDROM no longer exists')
 
     def check_result(result, status_error):
         """
@@ -49,11 +57,23 @@ def run(test, params, env):
             if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                 timeout=v2v_timeout):
                 raise exceptions.TestFail('Import VM failed')
-            if checkpoint:
-                if checkpoint == 'cdrom':
-                    virsh_session = utils_sasl.VirshSessionSASL(params)
-                    virsh_session_id = virsh_session.get_id()
-                    check_device_exist('cdrom', virsh_session_id)
+            # Check guest following the checkpoint document after convertion
+            logging.info('Checking common checkpoints for v2v')
+            vmchecker = VMChecker(test, params, env)
+            params['vmchecker'] = vmchecker
+            ret = vmchecker.run()
+            if len(ret) == 0:
+                logging.info("All common checkpoints passed")
+            # Check specific checkpoints
+            if checkpoint == 'cdrom':
+                virsh_session = utils_sasl.VirshSessionSASL(params)
+                virsh_session_id = virsh_session.get_id()
+                check_device_exist('cdrom', virsh_session_id)
+            # Merge 2 error lists
+            error_list.extend(vmchecker.errors)
+            if len(error_list):
+                raise exceptions.TestFail('%d checkpoints failed: %s' %
+                                          len(error_list), error_list)
 
     try:
         v2v_params = {
@@ -91,14 +111,6 @@ def run(test, params, env):
         v2v_result = utils_v2v.v2v_cmd(v2v_params)
         check_result(v2v_result, status_error)
 
-        # Check guest following the checkpoint document after convertion
-        if not status_error:
-            vmchecker = VMChecker(test, params, env)
-            ret = vmchecker.run()
-            if ret == 0:
-                logging.info("All checkpoints passed")
-            else:
-                raise exceptions.TestFail("%s checkpoints failed" % ret)
     finally:
-        vmcheck = utils_v2v.VMCheck(test, params, env)
-        vmcheck.cleanup()
+        if params.get('vmchecker'):
+            params['vmchecker'].cleanup()
