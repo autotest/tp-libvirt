@@ -6,6 +6,7 @@ import time
 from subprocess import PIPE
 from subprocess import Popen
 
+from avocado.core import exceptions
 from autotest.client.shared import error
 from autotest.client.shared import utils
 from avocado.core import exceptions
@@ -637,7 +638,7 @@ def run_remote_cmd(command, server_ip, server_user, server_pwd,
     """
     Run command on remote host
     """
-    logging.info("Execute %s on %s", command, server_ip)
+    logging.info("Execute '%s' on %s", command, server_ip)
     session = remote.wait_for_login(client, server_ip, port,
                                     server_user, server_pwd,
                                     prompt)
@@ -760,6 +761,40 @@ def check_vm_disk_after_migration(vm, params):
             cmdres = remote_vm_obj.run_command(vm_ip, cmd, ignore_status=True)
             if cmdres.exit_status:
                 raise exceptions.TestFail("Command '%s' result: %s\n", cmd, cmdres)
+
+
+def check_migration_disk_port(params):
+    """
+    Handle the option '--disks-port'.
+    As the migration thread begins to execute, this function is executed
+    at same time almostly. It will wait for several seconds to make sure
+    the storage migration start actually. Then it checks the port on remote
+    in use is same as that specified by '--disks-port'.
+    """
+    disk_port = params.get("disk_port")
+    server_ip = params.get("server_ip")
+    server_user = params.get("server_user")
+    server_pwd = params.get("server_pwd")
+    client_ip = params.get("client_ip")
+    # Here need to wait for several seconds before checking the port on
+    # remote host because the storage migration needs some time (about 5s)
+    # to start working actually. The whole period for the storage migration
+    # maybe last several minutes (more than 3m). So '30' seconds can be a
+    # choice to wait.
+    time.sleep(30)
+    cmd = "netstat -tunap|grep %s" % disk_port
+    status, output = run_remote_cmd(cmd, server_ip, server_user, server_pwd)
+    if status:
+        raise exceptions.TestFail("Failed to run '%s' on the remote: %s"
+                                  % (cmd, output))
+    pattern1 = r".*:::%s.*LISTEN.*qemu-kvm.*" % disk_port
+    pattern2 = r".*%s:%s.*%s.*ESTABLISHED.*qemu-kvm.*" % (server_ip,
+                                                          disk_port,
+                                                          client_ip)
+    logging.debug("Check the disk port specified is in use")
+    if not re.search(pattern1, output) or not re.search(pattern2, output):
+        raise exceptions.TestFail("Can not find the expected patterns"
+                                  " '%s, %s' in output '%s'")
 
 
 def run(test, params, env):
@@ -904,6 +939,9 @@ def run(test, params, env):
     # Pre-creation image parameters
     target_pool_name = test_dict.get("target_pool_name", "temp_pool_1")
     target_pool_type = test_dict.get("target_pool_type", "dir")
+
+    # disk_ports for storage migration used by nbd
+    disk_port = test_dict.get("disk_port")
 
     tc_cmd = test_dict.get("tc_cmd")
 
@@ -1891,6 +1929,40 @@ def run(test, params, env):
                     p.kill()
                 except OSError:
                     pass
+        # Case for --disk_ports option.
+        # Start the storage migration on a thread
+        # The storage migration needs 3-5s to start. After that, check the port
+        # on remote host during the storage migration.
+        # Check results.
+        #
+        # Check points:
+        # The port should be like below
+        # # netstat -tunap|grep 56789
+        #tcp6       0 0 :::56789           :::*              LISTEN      21266/qemu-kvm
+        #tcp6   23168 0 10.66.4.167:56789  10.66.5.225:41334 ESTABLISHED 21266/qemu-kvm
+
+        if disk_port:
+            # Run migration command on a seperate thread
+            migration_test = libvirt.MigrationTest()
+            options = test_dict.get("virsh_options", "--verbose --live")
+            vms = [vm]
+            func_dict = {"disk_port": disk_port, "server_ip": server_ip,
+                         "server_user": server_user, "server_pwd": server_pwd,
+                         "client_ip": client_ip}
+            migration_test.do_migration(vms, None, uri, 'orderly',
+                                        options,
+                                        thread_timeout=900,
+                                        ignore_status=True,
+                                        func=check_migration_disk_port,
+                                        func_params=func_dict)
+            if migration_test.RET_MIGRATION:
+                utils_test.check_dest_vm_network(vm, vm.get_address(),
+                                                 server_ip, server_user,
+                                                 server_pwd,
+                                                 shell_prompt=r"[\#\$]\s*$")
+            else:
+                check_output(str(migration_test.ret), test_dict)
+                raise exceptions.TestFail("The migration with disks port failed")
 
         if run_migr_front:
             migrate_vm(test_dict)
@@ -2127,6 +2199,7 @@ def run(test, params, env):
                 if status or not re.search(match_string, output):
                     raise error.TestFail("Failed to run '%s' on the remote: %s"
                                          % (cmd, output))
+            vm.connect_uri = "qemu:///system"
 
         libvirtd = utils_libvirtd.Libvirtd()
         if disk_src_protocol == "gluster":
