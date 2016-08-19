@@ -280,6 +280,51 @@ def run(test, params, env):
             else:
                 process.system_output(command, verbose=True, shell=True)
 
+    def check_migration_timeout_suspend(params):
+        """
+        Handle option '--timeout --timeout-suspend'.
+        As the migration thread begins to execute, this function is executed
+        at same time almostly. It will sleep the specified seconds and check
+        the VM state on both hosts. Both should be 'paused'.
+
+        :param params: The parameters used
+
+        :raise: exceptions.TestFail if the VM state is not as expected
+        """
+        timeout = int(params.get("timeout_before_suspend", 5))
+        server_ip = params.get("server_ip")
+        server_user = params.get("server_user", "root")
+        server_pwd = params.get("server_pwd")
+        vm_name = params.get("migrate_main_vm")
+        vm = params.get("vm_migration")
+        logging.debug("Wait for %s seconds as specified by --timeout", timeout)
+        # --timeout <seconds> --timeout-suspend means the vm state will change
+        # to paused when live migration exceeds <seconds>. Here migration
+        # command is executed on a separate thread asynchronously, so there
+        # may need seconds to run the thread and other helper function logic
+        # before virsh migrate command is executed. So a buffer is suggested
+        # to be added to avoid of timing gap. '1' second is a usable choice.
+        time.sleep(timeout + 1)
+        logging.debug("Check vm state on source host after timeout")
+        vm_state = vm.state()
+        if vm_state != "paused":
+            raise exceptions.TestFail("After timeout '%s' seconds, "
+                                      "the vm state on source host should "
+                                      "be 'paused', but %s found",
+                                      timeout, vm_state)
+        logging.debug("Check vm state on target host after timeout")
+        virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
+                       'remote_pwd': server_pwd, 'unprivileged_user': None,
+                       'ssh_remote_auth': True}
+        new_session = virsh.VirshPersistent(**virsh_dargs)
+        vm_state = new_session.domstate(vm_name).stdout.strip()
+        if vm_state != "paused":
+            raise exceptions.TestFail("After timeout '%s' seconds, "
+                                      "the vm state on target host should "
+                                      "be 'paused', but %s found",
+                                      timeout, vm_state)
+        new_session.close_session()
+
     for v in params.itervalues():
         if isinstance(v, str) and v.count("EXAMPLE"):
             raise exceptions.TestSkipError("Please set real value for %s" % v)
@@ -445,6 +490,8 @@ def run(test, params, env):
     seLinuxBool = None
     exception = False
     remote_viewer_pid = None
+    asynch_migration = False
+    ret_migrate = True
 
     try:
         # Change the disk of the vm to shared disk
@@ -634,14 +681,41 @@ def run(test, params, env):
             logging.debug("PID for process '%s': %s",
                           remote_viewer_executable, remote_viewer_pid)
 
-        ret_migrate = do_migration(delay, vm, dest_uri, options, extra)
+        # Case for option '--timeout --timeout-suspend'
+        # 1. Start the guest
+        # 2. Set migration speed to a small value. Ensure the migration duration
+        #    is much larger than the timeout value
+        # 3. Start the migration
+        # 4. When the eclipse time reaches the timeout value, check the guest
+        #    state to be paused on both source host and target host
+        # 5. Wait for the migration done. Check the guest state to be shutoff
+        #    on source host and running on target host
+        if extra.count("--timeout-suspend"):
+            asynch_migration = True
+            speed = int(params.get("migrate_speed", 1))
+            timeout = int(params.get("timeout_before_suspend", 5))
+            logging.debug("Set migration speed to %sM", speed)
+            virsh.migrate_setspeed(vm_name, speed, debug=True)
+            migration_test = libvirt.MigrationTest()
+            migrate_options = "%s %s" % (options, extra)
+            vms = [vm]
+            params["vm_migration"] = vm
+            migration_test.do_migration(vms, None, dest_uri, 'orderly',
+                                        migrate_options, thread_timeout=900,
+                                        ignore_status=True,
+                                        func=check_migration_timeout_suspend,
+                                        func_params=params)
+            ret_migrate = migration_test.RET_MIGRATION
+
+        if not asynch_migration:
+            ret_migrate = do_migration(delay, vm, dest_uri, options, extra)
 
         dest_state = params.get("virsh_migrate_dest_state", "running")
         if ret_migrate and dest_state == "running":
             server_session = remote.wait_for_login('ssh', server_ip, '22',
                                                    server_user, server_pwd,
                                                    r"[\#\$]\s*$")
-            logging.info("To check VM network connectivity after migrating")
+            logging.info("Check VM network connectivity after migrating")
             s_ping, o_ping = utils_test.ping(vm_ip, count=ping_count,
                                              timeout=ping_timeout,
                                              output_func=logging.debug,
@@ -687,7 +761,7 @@ def run(test, params, env):
             utils_libvirtd.libvirtd_start()
 
         # Check vm state on destination.
-        logging.debug("Checking %s state on %s." % (vm.name, vm.connect_uri))
+        logging.debug("Checking %s state on target %s.", vm.name, vm.connect_uri)
         if (options.count("dname") or
                 extra.count("dname") and status_error != 'yes'):
             vm.name = extra.split()[1].strip()
@@ -695,6 +769,15 @@ def run(test, params, env):
         check_dest_state = check_vm_state(vm, dest_state)
         logging.info("Supposed state: %s" % dest_state)
         logging.info("Actual state: %s" % vm.state())
+
+        # Check vm state on source.
+        if extra.count("--timeout-suspend"):
+            logging.debug("Checking '%s' state on source '%s'", vm.name,
+                          src_uri)
+            vm_state = virsh.domstate(vm.name, uri=src_uri).stdout.strip()
+            if vm_state != "shut off":
+                raise exceptions.TestFail("Local vm state should be 'shut off',"
+                                          " but found '%s'" % vm_state)
 
         # Recover VM state.
         logging.debug("Recovering %s state." % vm.name)
