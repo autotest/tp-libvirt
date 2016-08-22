@@ -46,7 +46,15 @@ def run(test, params, env):
                         raise error.TestNAError("nodeset %s out of range" %
                                                 numa_memory['nodeset'])
         # Start numad
-        utils.run("service numad start")
+        try:
+            utils.run("service numad start")
+        except error.CmdError, e:
+            # Bug 1218149 closed as not a bug, workaround this as in bug
+            # comment 12
+            logging.debug("start numad failed with %s", e)
+            logging.debug("remove message queue of id 0 and try again")
+            utils.run("ipcrm msg 0", ignore_status=True)
+            utils.run("service numad start")
 
         # Start vm and do vcpupin
         vmxml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
