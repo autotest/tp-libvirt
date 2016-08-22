@@ -442,6 +442,8 @@ def run(test, params, env):
     enable_numa_pin = "yes" == params.get("virsh_migrate_with_numa_pin", "no")
     enable_HP = "yes" == params.get("virsh_migrate_with_HP", "no")
     enable_HP_pin = "yes" == params.get("virsh_migrate_with_HP_pin", "no")
+    postcopy_cmd = params.get("virsh_postcopy_cmd", "")
+    postcopy_timeout = int(params.get("postcopy_migration_timeout", "180"))
 
     # To check Unsupported conditions for Numa scenarios
     if enable_numa_pin:
@@ -683,8 +685,8 @@ def run(test, params, env):
 
         # Case for option '--timeout --timeout-suspend'
         # 1. Start the guest
-        # 2. Set migration speed to a small value. Ensure the migration duration
-        #    is much larger than the timeout value
+        # 2. Set migration speed to a small value. Ensure the migration
+        #    duration is much larger than the timeout value
         # 3. Start the migration
         # 4. When the eclipse time reaches the timeout value, check the guest
         #    state to be paused on both source host and target host
@@ -706,7 +708,31 @@ def run(test, params, env):
                                         func=check_migration_timeout_suspend,
                                         func_params=params)
             ret_migrate = migration_test.RET_MIGRATION
-
+        if postcopy_cmd != "":
+            asynch_migration = True
+            vms = []
+            vms.append(vm)
+            obj_migration = libvirt.MigrationTest()
+            migrate_options = "%s %s" % (options, extra)
+            cmd = "sleep 5 && virsh %s %s" % (postcopy_cmd, vm_name)
+            logging.info("Starting migration in thread")
+            try:
+                obj_migration.do_migration(vms, src_uri, dest_uri, "orderly",
+                                           options=migrate_options,
+                                           thread_timeout=postcopy_timeout,
+                                           ignore_status=False,
+                                           func=process.run,
+                                           func_params=cmd,
+                                           shell=True)
+            except Exception, info:
+                raise exceptions.TestFail(info)
+            if obj_migration.RET_MIGRATION:
+                utils_test.check_dest_vm_network(vm, vm.get_address(),
+                                                 server_ip, server_user,
+                                                 server_pwd)
+                ret_migrate = True
+            else:
+                ret_migrate = False
         if not asynch_migration:
             ret_migrate = do_migration(delay, vm, dest_uri, options, extra)
 
@@ -761,7 +787,8 @@ def run(test, params, env):
             utils_libvirtd.libvirtd_start()
 
         # Check vm state on destination.
-        logging.debug("Checking %s state on target %s.", vm.name, vm.connect_uri)
+        logging.debug("Checking %s state on target %s.", vm.name,
+                      vm.connect_uri)
         if (options.count("dname") or
                 extra.count("dname") and status_error != 'yes'):
             vm.name = extra.split()[1].strip()
@@ -776,8 +803,8 @@ def run(test, params, env):
                           src_uri)
             vm_state = virsh.domstate(vm.name, uri=src_uri).stdout.strip()
             if vm_state != "shut off":
-                raise exceptions.TestFail("Local vm state should be 'shut off',"
-                                          " but found '%s'" % vm_state)
+                raise exceptions.TestFail("Local vm state should be 'shut off'"
+                                          ", but found '%s'" % vm_state)
 
         # Recover VM state.
         logging.debug("Recovering %s state." % vm.name)
