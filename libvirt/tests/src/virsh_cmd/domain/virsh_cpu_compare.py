@@ -99,12 +99,15 @@ def run(test, params, env):
             vmxml['cpu']['model'] = host_cpu_xml['model']
         # Prepare VM cpu feature if necessary
         if modify_target in ['feature_name', 'feature_policy', 'delete']:
-            if len(vmxml['cpu'].get_feature_list()) == 0:
+            if len(vmxml['cpu'].get_feature_list()) == 0 and host_cpu_xml.get_feature_list():
                 # Add a host feature to VM for testing
                 vmxml_cpu = vmxml['cpu'].copy()
                 vmxml_cpu.add_feature(host_cpu_xml.get_feature_name('-1'))
                 vmxml['cpu'] = vmxml_cpu
                 vmxml.sync()
+            else:
+                raise error.TestNAError("No features present in host "
+                                        "capability XML")
 
         # Prepare temp compare file.
         cpu_compare_xml = get_cpu_xml(target, mode)
