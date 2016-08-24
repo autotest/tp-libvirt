@@ -124,6 +124,8 @@ def check_output(output_msg, params):
             if (key == "ERROR 1" and
                params.get("support_precreation") is True):
                 logging.debug("The error is not expected: '%s'.", value)
+            elif key == "ERROR 2":
+                break
             else:
                 logging.info("The known error was found: %s --- %s",
                              key, value)
@@ -159,16 +161,18 @@ def migrate_vm(params):
 
     if status_error == "no":
         if MIGRATE_RET:
-            logging.info("Get an expected migration result.")
+            logging.info("Get an expected migration result:\n%s" % mig_output)
         else:
             check_output(mig_output, params)
-            raise error.TestFail("Can't get an expected migration result!!")
+            raise error.TestFail("Can't get an expected migration result:\n%s"
+                                 % mig_output)
     else:
         if not MIGRATE_RET:
             check_output(mig_output, params)
-            logging.info("It's an expected error!!")
+            logging.info("It's an expected error:\n%s" % mig_output)
         else:
-            raise error.TestFail("Unexpected return result!!")
+            raise error.TestFail("Unexpected return result:\n%s"
+                                 % mig_output)
 
 
 def check_parameters(params):
