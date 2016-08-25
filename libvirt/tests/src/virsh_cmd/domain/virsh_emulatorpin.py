@@ -9,6 +9,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest import utils_libvirtd, virsh
 from virttest.utils_test.libvirt import cpus_parser
 from virttest.staging import utils_cgroup
+from virttest.virt_vm import VMStartError
 
 
 def get_emulatorpin_from_cgroup(params):
@@ -194,7 +195,13 @@ def run(test, params, env):
         vm.destroy()
         vmxml.placement = emulatorpin_placement
         vmxml.sync()
-        vm.start()
+        try:
+            vm.start()
+        except VMStartError, detail:
+            # Recover the VM and failout early
+            vmxml_backup.sync()
+            logging.debug("Used VM XML:\n %s", vmxml)
+            raise error.TestFail("VM Fails to start: %s", detail)
 
     test_dicts = dict(params)
     test_dicts['vm'] = vm
