@@ -112,7 +112,7 @@ def run(test, params, env):
                                      " changed after attach memory "
                                      "device")
         if detach_device:
-            if new_mem != int(old_mem) - int(tg_size) * no_of_times):
+            if new_mem != int(old_mem) - (int(tg_size) * no_of_times):
                 raise error.TestFail("Total memory on guest couldn't"
                                      " changed after detach memory "
                                      "device")
