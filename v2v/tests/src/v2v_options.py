@@ -6,10 +6,12 @@ import re
 import pwd
 import logging
 import shutil
+import string
 
 from avocado.core import exceptions
 from avocado.utils import process
 
+from virttest import data_dir
 from virttest import ssh_key
 from virttest import utils_misc
 from virttest import utils_v2v
@@ -93,7 +95,7 @@ def run(test, params, env):
         """
         Get export domain uuid, image uuid and vol uuid from command output.
         """
-        tmp_target = re.findall(r"qemu-img\sconvert\s.+\s'(\S+)'\n", output)
+        tmp_target = re.findall(r"qemu-img\s'convert'\s.+\s'(\S+)'\n", output)
         if len(tmp_target) < 1:
             raise exceptions.TestError("Fail to find tmp target file name when"
                                        " converting vm disk image")
@@ -221,6 +223,19 @@ def run(test, params, env):
         else:
             raise exceptions.TestFail("Not find message: %s" % init_msg)
 
+    def check_ovf_snapshot_id(ovf_content):
+        """
+        Check if snapshot id in ovf file consists of '0's
+        """
+        search = re.search("ovf:vm_snapshot_id='(.*?)'", ovf_content)
+        if search:
+            snapshot_id = search.group(1)
+            logging.debug('vm_snapshot_id = %s', snapshot_id)
+            if snapshot_id.count('0') >= 32:
+                raise exceptions.TestFail('vm_snapshot_id consists with "0"')
+        else:
+            raise exceptions.TestFail('Fail to find snapshot_id')
+
     def check_result(cmd, result, status_error):
         """
         Check virt-v2v command result
@@ -236,7 +251,7 @@ def run(test, params, env):
                         v2v_start = True
                     if line.startswith('libvirt:'):
                         v2v_start = False
-                    if v2v_start and line > 72:
+                    if v2v_start and len(line) > 72:
                         raise exceptions.TestFail('Error log longer than 72 '
                                                   'charactors: %s', line)
             else:
@@ -252,6 +267,7 @@ def run(test, params, env):
             if output_mode == "rhev" and checkpoint != 'quiet':
                 ovf = get_ovf_content(output)
                 logging.debug("ovf content: %s", ovf)
+                check_ovf_snapshot_id(ovf)
                 if '--vmtype' in cmd:
                     expected_vmtype = re.findall(r"--vmtype\s(\w+)", cmd)[0]
                     check_vmtype(ovf, expected_vmtype)
@@ -300,7 +316,7 @@ def run(test, params, env):
         elif input_mode == "disk":
             input_option += "-i %s %s" % (input_mode, disk_img)
         elif input_mode in ['libvirtxml', 'ova']:
-            raise exceptions.TestNAError("Unsupported input mode: %s" % input_mode)
+            raise exceptions.TestSkipError("Unsupported input mode: %s" % input_mode)
         else:
             raise exceptions.TestError("Unknown input mode %s" % input_mode)
         input_format = params.get("input_format")
@@ -341,9 +357,9 @@ def run(test, params, env):
                 vdsm_vm_dir = os.path.join(mnt_point, export_domain_uuid,
                                            "master/vms", vdsm_vm_uuid)
                 # For vdsm_domain_dir, just create a dir to test BZ#1176591
-                os.mkdir(vdsm_domain_dir)
-                os.mkdir(vdsm_image_dir)
-                os.mkdir(vdsm_vm_dir)
+                os.makedirs(vdsm_domain_dir)
+                os.makedirs(vdsm_image_dir)
+                os.makedirs(vdsm_vm_dir)
 
         # Output more messages except quiet mode
         if checkpoint == 'quiet':
@@ -364,13 +380,14 @@ def run(test, params, env):
             user_info = pwd.getpwnam(v2v_user)
             logging.info("Convert to qemu:///session by user '%s'", v2v_user)
             if input_mode == "disk":
-                # Change the image owner and group
-                ori_owner = os.stat(disk_img).st_uid
-                ori_group = os.stat(disk_img).st_uid
-                os.chown(disk_img, user_info.pw_uid, user_info.pw_gid)
-                restore_image_owner = True
+                # Copy image from souce and change the image owner and group
+                disk_path = os.path.join(data_dir.get_tmp_dir(), os.path.basename(disk_img))
+                logging.info('Copy image file %s to %s', disk_img, disk_path)
+                shutil.copyfile(disk_img, disk_path)
+                input_option = string.replace(input_option, disk_img, disk_path)
+                os.chown(disk_path, user_info.pw_uid, user_info.pw_gid)
             else:
-                raise exceptions.TestNAError("Only support convert local disk")
+                raise exceptions.TestSkipError("Only support convert local disk")
 
         # Setup ssh-agent access to xen hypervisor
         if hypervisor == 'xen':
@@ -381,6 +398,10 @@ def run(test, params, env):
             ssh_key.setup_ssh_key(remote_host, user=user,
                                   port=22, password=passwd)
             utils_misc.add_identities_into_ssh_agent()
+            # Check if xen guest exists
+            uri = utils_v2v.Uri(hypervisor).get_uri(remote_host)
+            if not virsh.domain_exists(vm_name, uri=uri):
+                logging.error('VM %s not exists', vm_name)
             # If the input format is not define, we need to either define
             # the original format in the source metadata(xml) or use '-of'
             # to force the output format, see BZ#1141723 for detail.
@@ -402,6 +423,9 @@ def run(test, params, env):
         # Create libvirt dir pool
         if output_mode == "libvirt":
             create_pool()
+
+        if hypervisor in ['esx', 'xen'] or input_mode == 'disk':
+            os.environ['LIBGUESTFS_BACKEND'] = 'direct'
 
         # Running virt-v2v command
         cmd = "%s %s %s %s" % (utils_v2v.V2V_EXEC, input_option,
@@ -445,7 +469,5 @@ def run(test, params, env):
             vmcheck.cleanup()
         if new_v2v_user:
             process.system("userdel -f %s" % v2v_user)
-        if restore_image_owner:
-            os.chown(disk_img, ori_owner, ori_group)
         if backup_xml:
             backup_xml.sync()
