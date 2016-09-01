@@ -228,13 +228,25 @@ def run(test, params, env):
 
     try:
         if status_error == "no":
-            if options == "--config" and vm.is_alive():
-                vm.destroy()
-            if vm.is_dead():
-                vm.start()
-            session = vm.wait_for_login()
-            check_media(session, check_file, action, rw_floppy_test)
-            session.close()
+            if 'print-xml' in options:
+                vmxml_new = vm_xml.VMXML.new_from_dumpxml(vm_name)
+                if source in vmxml_new:
+                    raise error.TestFail("Run command with 'print-xml'"
+                                         " option, unexpected device was"
+                                         " found in domain xml")
+            else:
+                if options == "--config" and vm.is_alive():
+                    vm.destroy()
+                if vm.is_dead():
+                    vm.start()
+                if 'block' in options and 'eject' not in action:
+                    vmxml_new = vm_xml.VMXML.new_from_dumpxml(vm_name)
+                    logging.debug("vmxml: %s", vmxml_new)
+                    if not vm_xml.VMXML.check_disk_type(vm_name, source, "block"):
+                        raise error.TestFail("Disk isn't a 'block' device")
+                session = vm.wait_for_login()
+                check_media(session, check_file, action, rw_floppy_test)
+                session.close()
     finally:
         # Clean the iso dir  and clean the device
         update_device(vm_name, "", options, start_vm)
