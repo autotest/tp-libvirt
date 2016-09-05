@@ -1,7 +1,9 @@
 import os
 import logging
 
-from autotest.client.shared import error
+from avocado.utils import process
+from avocado.core import exceptions
+from avocado.utils import path
 
 from virttest import virt_vm
 from virttest import libvirt_xml
@@ -40,7 +42,7 @@ def run(test, params, env):
         for i in left_node:
             left_node_mem_total += int(memory_status[i])
         if left_node_mem_total > used_mem_total:
-            raise error.TestFail("nodes memory usage not expected.")
+            raise exceptions.TestFail("nodes memory usage not expected.")
 
     vm_name = params.get("main_vm")
     options = params.get("options", "live")
@@ -52,7 +54,8 @@ def run(test, params, env):
     node_list = host_numa_node.online_nodes
     logging.debug("host node list is %s", node_list)
     if len(node_list) < 2:
-        raise error.TestNAError("At least 2 numa nodes are needed on host")
+        raise exceptions.TestSkipError("At least 2 numa nodes are needed on"
+                                       " host")
 
     # Prepare numatune memory parameter dict
     mem_tuple = ('memory_mode', 'memory_placement', 'memory_nodeset')
@@ -74,14 +77,22 @@ def run(test, params, env):
 
     try:
         libvirtd.start(arg_str=arg_str)
+        # As libvirtd start as session use root, need stop virtlogd service
+        # and start it as daemon to fix selinux denial
+        try:
+            path.find_command('virtlogd')
+            process.run("service virtlogd stop", ignore_status=True)
+            process.run("virtlogd -d")
+        except path.CmdNotFoundError:
+            pass
 
         if numa_memory.get('nodeset'):
             used_node = utils_test.libvirt.cpus_parser(numa_memory['nodeset'])
             logging.debug("set node list is %s", used_node)
             for i in used_node:
                 if i not in node_list:
-                    raise error.TestNAError("nodeset %s out of range" %
-                                            numa_memory['nodeset'])
+                    raise exceptions.TestSkipError("nodeset %s out of range" %
+                                                   numa_memory['nodeset'])
 
         vmxml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
         vmxml.numa_memory = numa_memory
@@ -92,13 +103,14 @@ def run(test, params, env):
             vm.start()
             vm.wait_for_login()
         except virt_vm.VMStartError, e:
-            raise error.TestFail("Test failed in positive case.\n error: %s" %
-                                 e)
+            raise exceptions.TestFail("Test failed in positive case.\n "
+                                      "error: %s" % e)
 
         # get left used node beside current using
         if numa_memory.get('placement') == 'auto':
             if not numad_log:
-                raise error.TestFail("numad usage not found in libvirtd log")
+                raise exceptions.TestFail("numad usage not found in libvirtd"
+                                          " log")
             logging.debug("numad log list is %s", numad_log)
             numad_ret = numad_log[1].split("numad: ")[-1]
             used_node = utils_test.libvirt.cpus_parser(numad_ret)
@@ -121,8 +133,9 @@ def run(test, params, env):
             del pos_numa_memory['placement']
             logging.debug("Expect numa memory config is %s", pos_numa_memory)
             if pos_numa_memory != numa_memory_new:
-                raise error.TestFail("numa memory config %s not expected after"
-                                     " live update" % numa_memory_new)
+                raise exceptions.TestFail("numa memory config %s not expected"
+                                          " after live update" %
+                                          numa_memory_new)
 
             # Check qemu process numa memory usage
             host_numa_node = utils_misc.NumaInfo()
@@ -139,6 +152,12 @@ def run(test, params, env):
             mem_compare(used_node, left_node_new)
 
     finally:
+        try:
+            path.find_command('virtlogd')
+            process.run('pkill virtlogd', ignore_status=True)
+            process.run('systemctl restart virtlogd.socket', ignore_status=True)
+        except path.CmdNotFoundError:
+            pass
         libvirtd.exit()
         if config_path:
             config.restore()
