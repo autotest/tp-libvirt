@@ -1,8 +1,9 @@
 import os
 import logging
 
-from autotest.client import utils
-from autotest.client.shared import error
+from avocado.utils import process
+from avocado.core import exceptions
+from avocado.utils import path
 
 from virttest import virt_vm
 from virttest import libvirt_xml
@@ -41,7 +42,7 @@ def run(test, params, env):
         for i in left_node:
             left_node_mem_total += int(memory_status[i])
         if left_node_mem_total > used_mem_total:
-            raise error.TestFail("nodes memory usage not expected.")
+            raise exceptions.TestFail("nodes memory usage not expected.")
 
     def format_affinity_str(cpu_list):
         """
@@ -51,7 +52,8 @@ def run(test, params, env):
         :return: cpu affinity string
         """
         cmd = "lscpu | grep '^CPU(s):'"
-        cpu_num = int(utils.run(cmd).stdout.strip().split(':')[1].strip())
+        ret = process.run(cmd, shell=True)
+        cpu_num = int(ret.stdout.split(':')[1].strip())
         cpu_affinity_str = ""
         for i in range(cpu_num):
             if i in cpu_list:
@@ -83,7 +85,7 @@ def run(test, params, env):
         ret = format_affinity_str(cpu_list)
         logging.debug("expect cpu affinity is %s", ret)
         if cpu_affinity != ret:
-            raise error.TestFail("vcpuinfo cpu affinity not expected")
+            raise exceptions.TestFail("vcpuinfo cpu affinity not expected")
 
     vcpu_placement = params.get("vcpu_placement")
     vcpu_cpuset = params.get("vcpu_cpuset")
@@ -113,6 +115,14 @@ def run(test, params, env):
 
     try:
         libvirtd.start(arg_str=arg_str)
+        # As libvirtd start as session use root, need stop virtlogd service
+        # and start it as daemon to fix selinux denial
+        try:
+            path.find_command('virtlogd')
+            process.run("service virtlogd stop", ignore_status=True)
+            process.run("virtlogd -d")
+        except path.CmdNotFoundError:
+            pass
 
         # Get host numa node list
         host_numa_node = utils_misc.NumaInfo()
@@ -133,15 +143,15 @@ def run(test, params, env):
             logging.debug("set node list is %s", used_node)
             if not status_error:
                 if not set(used_node).issubset(node_list):
-                    raise error.TestNAError("nodeset %s out of range" %
-                                            numa_memory['nodeset'])
+                    raise exceptions.TestSkipError("nodeset %s out of range" %
+                                                   numa_memory['nodeset'])
 
         if vcpu_cpuset:
             pre_cpuset = utils_test.libvirt.cpus_parser(vcpu_cpuset)
             logging.debug("Parsed cpuset list is %s", pre_cpuset)
             if not set(pre_cpuset).issubset(cpu_list):
-                raise error.TestNAError("cpuset %s out of range" %
-                                        vcpu_cpuset)
+                raise exceptions.TestSkipError("cpuset %s out of range" %
+                                               vcpu_cpuset)
 
         vmxml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
         vmxml.numa_memory = numa_memory
@@ -170,8 +180,9 @@ def run(test, params, env):
                 pre_numa_memory = numa_memory
 
             if pre_numa_memory != numa_memory_new:
-                raise error.TestFail("memory config %s not expected after "
-                                     "domain start" % numa_memory_new)
+                raise exceptions.TestFail("memory config %s not expected "
+                                          "after domain start" %
+                                          numa_memory_new)
 
             pos_vcpu_placement = vmxml_new.placement
             logging.debug("vcpu placement after domain start is %s",
@@ -181,15 +192,16 @@ def run(test, params, env):
                 logging.debug("vcpu cpuset after vm start is %s", pos_cpuset)
             except libvirt_xml.xcepts.LibvirtXMLNotFoundError:
                 if vcpu_cpuset and vcpu_placement != 'auto':
-                    raise error.TestFail("cpuset not found in domain xml.")
+                    raise exceptions.TestFail("cpuset not found in domain "
+                                              "xml.")
 
         except virt_vm.VMStartError, e:
             # Starting VM failed.
             if status_error:
                 return
             else:
-                raise error.TestFail("Test failed in positive case.\n error:"
-                                     " %s\n%s" % (e, bug_url))
+                raise exceptions.TestFail("Test failed in positive case.\n "
+                                          "error: %s\n%s" % (e, bug_url))
 
         # Check qemu process numa memory usage
         memory_status, qemu_cpu = utils_test.qemu.get_numa_status(
@@ -204,7 +216,7 @@ def run(test, params, env):
                 total_cpu += node_cpu
             for i in total_cpu:
                 if int(i) not in pre_cpuset:
-                    raise error.TestFail("cpu %s is not expected" % i)
+                    raise exceptions.TestFail("cpu %s is not expected" % i)
             cpu_affinity_check(cpuset=pre_cpuset)
         if numa_memory.get('nodeset'):
             # If there are inconsistent node numbers on host,
@@ -217,9 +229,10 @@ def run(test, params, env):
         logging.debug("numad log list is %s", numad_log)
         if vcpu_placement == 'auto' or numa_memory.get('placement') == 'auto':
             if not numad_log:
-                raise error.TestFail("numad usage not found in libvirtd log")
+                raise exceptions.TestFail("numad usage not found in libvirtd "
+                                          "log")
             if numad_log[0].split("numad ")[-1] != numad_cmd_opt:
-                raise error.TestFail("numad command not expected in log")
+                raise exceptions.TestFail("numad command not expected in log")
             numad_ret = numad_log[1].split("numad: ")[-1]
             numad_node = utils_test.libvirt.cpus_parser(numad_ret)
             left_node = [node_list.index(i) for i in node_list if i not in numad_node]
@@ -230,11 +243,17 @@ def run(test, params, env):
             if vcpu_placement == 'auto':
                 for i in left_node:
                     if qemu_cpu[i]:
-                        raise error.TestFail("cpu usage in node %s is not "
-                                             "expected" % i)
+                        raise exceptions.TestFail("cpu usage in node %s is "
+                                                  "not expected" % i)
                 cpu_affinity_check(node=numad_node)
 
     finally:
+        try:
+            path.find_command('virtlogd')
+            process.run('pkill virtlogd', ignore_status=True)
+            process.run('systemctl restart virtlogd.socket', ignore_status=True)
+        except path.CmdNotFoundError:
+            pass
         libvirtd.exit()
         if config_path:
             config.restore()
