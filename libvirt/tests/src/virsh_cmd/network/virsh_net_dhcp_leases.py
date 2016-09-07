@@ -129,7 +129,8 @@ def run(test, params, env):
     # Remove all interfaces of the VM
     if vm.is_alive():
         vm.destroy(gracefully=False)
-    vm.free_mac_address(0)
+    for idx in range(len(vmxml.get_iface_all())):
+        vm.del_nic(idx)
     vmxml.remove_all_device_by_type("interface")
     # Create new network
     if prepare_net:
@@ -152,15 +153,19 @@ def run(test, params, env):
             if filter_by_mac:
                 nic_mac = iface_mac
             op = "--type network --source %s --mac %s" % (net_name, iface_mac)
+            nic_params = {'mac': iface_mac, 'nettype': 'bridge',
+                          'ip_version': 'ipv4'}
             if not hotplug_iface:
                 op += " --config"
                 virsh.attach_interface(vm_name, option=op, debug=True,
                                        ignore_status=False)
+                vm.add_nic(**nic_params)
                 vm.start()
             else:
                 vm.start()
                 virsh.attach_interface(vm_name, option=op, debug=True,
                                        ignore_status=False)
+                vm.add_nic(**nic_params)
             new_interface_ip = get_ip_by_mac(iface_mac, try_dhclint=True)
             # Allocate IP address for the new interface may fail, so only
             # check the result if get new IP address
