@@ -155,7 +155,7 @@ def run(test, params, env):
         ori_size = get_diskmap_size()
 
         # Write date in disk
-        dd_cmd = "dd if=/dev/zero of=/home/test/file bs=1048576 count=5"
+        dd_cmd = "dd if=/dev/zero of=/home/test/file bs=1048576 count=5; sync"
         guest_session.cmd(dd_cmd)
 
         def _full_mapped():
@@ -172,7 +172,7 @@ def run(test, params, env):
         full_size = get_diskmap_size()
 
         # Remove disk content in guest
-        guest_session.cmd("rm -rf /home/test/*")
+        guest_session.cmd("rm -rf /home/test/*; sync")
         guest_session.close()
 
         def _trim_completed():
