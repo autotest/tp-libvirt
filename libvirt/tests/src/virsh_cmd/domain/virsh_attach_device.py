@@ -811,8 +811,8 @@ def run(test, params, env):
                                         free_mac_addresses=False)
         try:
             test_params.main_vm.start()
-        except virt_vm.VMStartError:
-            raise error.TestFail('VM Failed to start for some reason!')
+        except virt_vm.VMStartError as details:
+            raise error.TestFail('VM Failed to start for some reason!: %s' % details)
         # Signal devices reboot is finished
         for test_device in test_devices:
             test_device.booted = True
