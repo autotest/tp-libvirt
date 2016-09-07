@@ -146,10 +146,10 @@ def run(test, params, env):
             """
             map_cmd = "cat /sys/bus/pseudo/drivers/scsi_debug/map"
             diskmap = utils.run(map_cmd).stdout.strip('\n\x00')
-            logging.debug("disk map is %s", diskmap)
             sum = 0
             for i in diskmap.split(","):
                 sum = sum + int(i.split("-")[1]) - int(i.split("-")[0])
+            logging.debug("disk map (size:%d) is %s", sum, diskmap)
             return sum
 
         ori_size = get_diskmap_size()
@@ -193,6 +193,7 @@ def run(test, params, env):
                     return True
 
             empty_size = get_diskmap_size()
+            logging.info("Trimmed disk to %d", empty_size)
 
             if is_fulltrim:
                 return empty_size <= ori_size
@@ -207,7 +208,7 @@ def run(test, params, env):
                 if ori_size < empty_size <= full_size:
                     logging.info("Success to do fstrim partly")
                     return True
-            raise error.TestFail("Fail to do fstrim. (orignal size: %s), "
+            raise error.TestFail("Fail to do fstrim. (original size: %s), "
                                  "(current size: %s), (full size: %s)" %
                                  (ori_size, empty_size, full_size))
         logging.info("Success to do fstrim")
