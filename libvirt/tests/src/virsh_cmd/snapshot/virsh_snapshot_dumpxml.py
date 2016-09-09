@@ -123,8 +123,11 @@ def run(test, params, env):
             vm = env.get_vm(vm_name)
             if vm.is_alive():
                 vm.destroy()
-            vm_xml.VMXML.add_security_info(
-                vm_xml.VMXML.new_from_dumpxml(vm_name), passwd)
+            try:
+                vm_xml.VMXML.add_security_info(
+                    vm_xml.VMXML.new_from_dumpxml(vm_name), passwd)
+            except Exception, info:
+                raise error.TestNAError(info)
             vm.start()
             if secu_opt is not None:
                 opt_dict['passwd'] = passwd
