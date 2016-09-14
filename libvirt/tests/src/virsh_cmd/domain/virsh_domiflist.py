@@ -45,7 +45,7 @@ def run(test, params, env):
                 iface_cmd = {}
         return ifaces_cmd
 
-    def check_output(output, vm):
+    def check_output(ifaces_actual, vm):
         """
         1. Get the interface details of the command output
         2. Get the interface details from xml file
@@ -57,7 +57,6 @@ def run(test, params, env):
             session = vm.wait_for_login()
         except Exception, detail:
             raise error.TestFail("Unable to login to VM:%s" % detail)
-        ifaces_actual = parse_interface_details(output)
         iface_xml = {}
         error_count = 0
         # Check for the interface values
@@ -106,7 +105,7 @@ def run(test, params, env):
         if error_count > 0:
             raise error.TestFail("The test failed, consult previous error logs")
 
-    def add_iface(vm):
+    def add_iface(vm, at_option=""):
         """
         Attach interface for the vm
         """
@@ -116,8 +115,9 @@ def run(test, params, env):
         iface_type = params.get("iface_type", "network")
         iface_model = params.get("iface_model", "virtio")
         iface_mac = utils_net.generate_mac_address_simple()
-        at_options = (" --type %s --source %s --model %s --mac %s --config "
-                      % (iface_type, iface_source, iface_model, iface_mac))
+        at_options = (" --type %s --source %s --model %s --mac %s --config %s"
+                      % (iface_type, iface_source, iface_model,
+                         iface_mac, at_option))
         ret = virsh.attach_interface(vm.name, at_options, ignore_status=True)
         libvirt.check_exit_status(ret)
         if not vm.is_alive():
@@ -128,15 +128,11 @@ def run(test, params, env):
     domid = vm.get_id()
     domuuid = vm.get_uuid()
     attach_iface = "yes" == params.get("attach_iface", "no")
+    attach_option = params.get("attach_option", "")
     additional_options = params.get("domiflist_extra_options", "")
     vm_backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     try:
-        # Attach interface for testing.
-        if attach_iface:
-            add_iface(vm)
-
-        vm.verify_alive()
         # Get the virsh domiflist
         options = params.get("domiflist_domname_options", "id")
         status_error = params.get("status_error", "no")
@@ -148,7 +144,18 @@ def run(test, params, env):
         elif options == "name":
             options = vm_name
 
+        result = virsh.domiflist(vm_name, "", ignore_status=True)
+        libvirt.check_exit_status(result)
+        old_iflist = parse_interface_details(result.stdout)
+        logging.debug("Old interface list: %s", old_iflist)
+        # Attach interface for testing.
+        if attach_iface:
+            add_iface(vm, attach_option)
+
+        vm.verify_alive()
         result = virsh.domiflist(options, additional_options, ignore_status=True)
+        new_iflist = parse_interface_details(result.stdout)
+        logging.debug("New interface list: %s", new_iflist)
 
         if status_error == "yes":
             if result.exit_status == 0:
@@ -156,7 +163,12 @@ def run(test, params, env):
                                      "virsh domiflist %s\nOutput Status:%s\n"
                                      % (options, result.exit_status))
         else:
-            check_output(result.stdout, vm)
+            if 'print-xml' in attach_option:
+                if len(old_iflist) != len(new_iflist):
+                    raise error.TestFail("Interface attached with"
+                                         " '--print-xml' option")
+            else:
+                check_output(new_iflist, vm)
 
     finally:
         # Destroy vm after test.
