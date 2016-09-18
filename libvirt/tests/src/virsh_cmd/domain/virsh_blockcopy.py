@@ -158,12 +158,13 @@ def finish_job(vm_name, target, timeout):
     :param target: Domain disk target dev
     :param timeout: Timeout value of this function
     """
-    # Need blockjob exist
-    if utl.check_blockjob(vm_name, target, 'none', '0'):
-        raise exceptions.TestFail("No blockjob find for '%s'" % target)
-
     job_time = 0
     while job_time < timeout:
+        # As BZ#1359679, blockjob may disappear during the process,
+        # so we need check it all the time
+        if utl.check_blockjob(vm_name, target, 'none', '0'):
+            raise exceptions.TestFail("No blockjob find for '%s'" % target)
+
         if utl.check_blockjob(vm_name, target, "progress", "100"):
             logging.debug("Block job progress up to 100%")
             break
@@ -337,6 +338,7 @@ def run(test, params, env):
         """
         Raise TestFail when blockcopy fail with block-job-complete error or
         blockcopy hang with state change lock.
+        This is a specific bug verify, so ignore status_error here.
         """
         bug_url_ = "https://bugzilla.redhat.com/show_bug.cgi?id=1197592"
         err_msg = "internal error: unable to execute QEMU command"
@@ -349,20 +351,6 @@ def run(test, params, env):
         ret = chk_libvirtd_log(libvirtd_log_path, err_pattern, "error")
         if ret:
             raise exceptions.TestFail("Hit on bug: %s" % bug_url_)
-
-    def _blockcopy_cmd():
-        """
-        Run blockcopy command
-        """
-        cmd_result = virsh.blockcopy(vm_name, target, dest_path,
-                                     options, **extra_dict)
-        _blockjob_and_libvirtd_chk(cmd_result)
-        if cmd_result.exit_status:
-            return False
-        elif "Copy aborted" in cmd_result.stdout:
-            return False
-        else:
-            return cmd_result
 
     def _make_snapshot():
         """
@@ -455,6 +443,8 @@ def run(test, params, env):
                                                        image_size=image_size,
                                                        emulated_image=blkdev_n)
                 emulated_iscsi.append(blkdev_n)
+                # Make sure the new disk show up
+                utils_misc.wait_for(lambda: os.path.exists(dest_path), 5)
             else:
                 if copy_to_nfs:
                     tmp_dir = "%s/%s" % (tmp_dir, mnt_path_name)
@@ -465,11 +455,11 @@ def run(test, params, env):
             # Calling 'set_vm_disk' is bad idea as it left lots of cleanup jobs
             # after test, such as pool, volume, nfs, iscsi and so on
             # TODO: remove this function in the future
-            utl.set_vm_disk(vm, params, tmp_dir, test)
             if disk_source_protocol == 'iscsi':
                 emulated_iscsi.append(emu_image)
             if disk_source_protocol == 'netfs':
                 nfs_cleanup = True
+            utl.set_vm_disk(vm, params, tmp_dir, test)
             new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
         if with_shallow:
@@ -481,7 +471,7 @@ def run(test, params, env):
         elif persistent_vm == "yes" and not vm.is_persistent():
             new_xml.define()
 
-        # Run blockcopy command
+        # Run blockcopy command to create destination file
         if rerun_flag == 1:
             options1 = "--wait %s --finish --verbose" % dest_format
             if with_blockdev:
@@ -493,18 +483,18 @@ def run(test, params, env):
                                          **extra_dict)
             status = cmd_result.exit_status
             if status != 0:
-                raise exceptions.TestFail("Run blockcopy command fail")
+                raise exceptions.TestFail("Run blockcopy command fail: %s" %
+                                          cmd_result.stdout + cmd_result.stderr)
             elif not os.path.exists(dest_path):
                 raise exceptions.TestFail("Cannot find the created copy")
-            cmd_result = utils_misc.wait_for(_blockcopy_cmd, 10)
-            if not cmd_result:
-                raise exceptions.TestFail("Run blockcopy command fail")
-            status = 0
-        else:
-            cmd_result = virsh.blockcopy(vm_name, target, dest_path,
-                                         options, **extra_dict)
-            _blockjob_and_libvirtd_chk(cmd_result)
-            status = cmd_result.exit_status
+
+        # Run the real testing command
+        cmd_result = virsh.blockcopy(vm_name, target, dest_path,
+                                     options, **extra_dict)
+
+        # check BZ#1197592
+        _blockjob_and_libvirtd_chk(cmd_result)
+        status = cmd_result.exit_status
 
         if not libvirtd_utl.is_running():
             raise exceptions.TestFail("Libvirtd service is dead")
@@ -563,7 +553,7 @@ def run(test, params, env):
                     utl.check_exit_status(ret, status_error)
                     session.close()
             else:
-                raise exceptions.TestFail(cmd_result.stderr)
+                raise exceptions.TestFail(cmd_result.stdout + cmd_result.stderr)
         else:
             if status:
                 logging.debug("Expect error: %s", cmd_result.stderr)
@@ -639,6 +629,7 @@ def run(test, params, env):
         # Restart virtlogd service to release VM log file lock
         try:
             path.find_command('virtlogd')
-            process.run('service virtlogd restart')
+            process.run('systemctl reset-failed virtlogd')
+            process.run('systemctl restart virtlogd ')
         except path.CmdNotFoundError:
             pass
