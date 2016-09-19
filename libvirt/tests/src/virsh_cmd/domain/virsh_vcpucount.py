@@ -159,74 +159,75 @@ def run(test, params, env):
     if len(options.split()) > 2:
         raise error.TestNAError("Options exceeds 2 is not supported")
 
-    # Prepare domain
-    reset_domain(vm, pre_vm_state, ("--guest" in options))
-
-    # Perform guest vcpu hotplug
-    for i in range(len(set_option)):
-        # Hotplug domain vcpu
-        result = virsh.setvcpus(vm_name, 2, set_option[i], ignore_status=True,
-                                debug=True)
-        setvcpus_status = result.exit_status
-
-        # Call virsh vcpucount with option
-        result = virsh.vcpucount(vm_name, options, ignore_status=True,
-                                 debug=True)
-        output = result.stdout.strip()
-        vcpucount_status = result.exit_status
-
-        if "--guest" in options:
-            if result.stderr.count("doesn't support option") or \
-               result.stderr.count("command guest-get-vcpus has not been found"):
-                reset_env(vm_name, xml_file)
-                raise error.TestNAError("Option %s is not supported" % options)
-
-        # Reset domain
+    try:
+        # Prepare domain
         reset_domain(vm, pre_vm_state, ("--guest" in options))
 
-        # Check result
-        if status_error == "yes":
-            if vcpucount_status == 0:
-                reset_env(vm_name, xml_file)
-                raise error.TestFail("Run successfully with wrong command!")
-            else:
-                logging.info("Run failed as expected")
-        else:
-            if vcpucount_status != 0:
-                reset_env(vm_name, xml_file)
-                raise error.TestFail("Run command failed with options %s" %
-                                     options)
-            elif setvcpus_status == 0:
-                if pre_vm_state == "shut off":
-                    if i == 0:
-                        expect_out = [4, 2]
-                        chk_output_shutoff(output, expect_out, options)
-                    elif i == 1:
-                        expect_out = [2, 1]
-                        chk_output_shutoff(output, expect_out, options)
-                    else:
-                        reset_env(vm_name, xml_file)
-                        raise error.TestFail("setvcpus should failed")
-                else:
-                    if i == 0:
-                        expect_out = [4, 4, 2, 1, 1]
-                        chk_output_running(output, expect_out, options)
-                    elif i == 1:
-                        expect_out = [2, 4, 1, 1, 1]
-                        chk_output_running(output, expect_out, options)
-                    elif i == 2:
-                        expect_out = [4, 4, 1, 2, 2]
-                        chk_output_running(output, expect_out, options)
-                    else:
-                        expect_out = [4, 4, 1, 1, 2]
-                        chk_output_running(output, expect_out, options)
-            else:
-                if pre_vm_state == "shut off":
-                    expect_out = [4, 1]
-                    chk_output_shutoff(output, expect_out, options)
-                else:
-                    expect_out = [4, 4, 1, 1, 1]
-                    chk_output_running(output, expect_out, options)
+        # Perform guest vcpu hotplug
+        for i in range(len(set_option)):
+            # Hotplug domain vcpu
+            result = virsh.setvcpus(vm_name, 2, set_option[i], ignore_status=True,
+                                    debug=True)
+            setvcpus_status = result.exit_status
 
-    # Recover env
-    reset_env(vm_name, xml_file)
+            # Call virsh vcpucount with option
+            result = virsh.vcpucount(vm_name, options, ignore_status=True,
+                                     debug=True)
+            output = result.stdout.strip()
+            vcpucount_status = result.exit_status
+
+            if "--guest" in options:
+                if result.stderr.count("doesn't support option") or \
+                   result.stderr.count("command guest-get-vcpus has not been found"):
+                    reset_env(vm_name, xml_file)
+                    raise error.TestNAError("Option %s is not supported" % options)
+
+            # Reset domain
+            reset_domain(vm, pre_vm_state, ("--guest" in options))
+
+            # Check result
+            if status_error == "yes":
+                if vcpucount_status == 0:
+                    reset_env(vm_name, xml_file)
+                    raise error.TestFail("Run successfully with wrong command!")
+                else:
+                    logging.info("Run failed as expected")
+            else:
+                if vcpucount_status != 0:
+                    reset_env(vm_name, xml_file)
+                    raise error.TestFail("Run command failed with options %s" %
+                                         options)
+                elif setvcpus_status == 0:
+                    if pre_vm_state == "shut off":
+                        if i == 0:
+                            expect_out = [4, 2]
+                            chk_output_shutoff(output, expect_out, options)
+                        elif i == 1:
+                            expect_out = [2, 1]
+                            chk_output_shutoff(output, expect_out, options)
+                        else:
+                            reset_env(vm_name, xml_file)
+                            raise error.TestFail("setvcpus should failed")
+                    else:
+                        if i == 0:
+                            expect_out = [4, 4, 2, 1, 1]
+                            chk_output_running(output, expect_out, options)
+                        elif i == 1:
+                            expect_out = [2, 4, 1, 1, 1]
+                            chk_output_running(output, expect_out, options)
+                        elif i == 2:
+                            expect_out = [4, 4, 1, 2, 2]
+                            chk_output_running(output, expect_out, options)
+                        else:
+                            expect_out = [4, 4, 1, 1, 2]
+                            chk_output_running(output, expect_out, options)
+                else:
+                    if pre_vm_state == "shut off":
+                        expect_out = [4, 1]
+                        chk_output_shutoff(output, expect_out, options)
+                    else:
+                        expect_out = [4, 4, 1, 1, 1]
+                        chk_output_running(output, expect_out, options)
+    finally:
+        # Recover env
+        reset_env(vm_name, xml_file)
