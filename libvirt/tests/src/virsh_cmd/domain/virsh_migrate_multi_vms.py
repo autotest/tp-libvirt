@@ -2,14 +2,15 @@ import logging
 import threading
 import time
 
-from autotest.client.shared import error
-from autotest.client.shared import ssh_key
-
-from avocado.utils import process
+from avocado.core import exceptions
 
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import remote
+from virttest import utils_test
+from virttest import nfs
+from virttest import ssh_key
+from virttest.libvirt_xml import vm_xml
 
 
 # To get result in thread, using global parameters
@@ -23,35 +24,20 @@ global ret_downtime_tolerable
 ret_migration = True
 ret_jobabort = True
 ret_downtime_tolerable = True
+flag_migration = True
 
 
-def make_migration_options(optionstr="", timeout=60):
+def make_migration_options(method, optionstr="", timeout=60):
     """
     Analyse a string to options for migration.
     They are split by one space.
 
+    :param method: migration method ie using p2p or p2p tunnelled or direct
     :param optionstr: a string contain all options and split by space
     :param timeout: timeout for migration.
     """
     options = ""
-    for option in optionstr.split():
-        if option == "live":
-            options += " --live"
-        elif option == "persistent":
-            options += " --persistent"
-        elif option == "suspend":
-            options += " --suspend"
-        elif option == "change-protection":
-            options += " --change-protection"
-        elif option == "timeout":
-            options += " --timeout %s" % timeout
-        else:
-            logging.debug("Do not support option '%s' yet." % option)
-    return options
-
-
-def make_migration_cmd(vm_name, method, desturi, options=""):
-    migrate_exec = "migrate %s" % vm_name
+    migrate_exec = ""
 
     if method == "p2p":
         migrate_exec += " --p2p"
@@ -63,75 +49,24 @@ def make_migration_cmd(vm_name, method, desturi, options=""):
         # Default method or unknown method
         pass
 
-    if desturi is not None:
-        migrate_exec += " --desturi %s" % desturi
-    return migrate_exec + options
-
-
-class MigrationHelper(object):
-
-    """A class to help migration."""
-
-    def __init__(self, vm_name, test, params, env):
-        self.vm_name = vm_name
-        self.vm = libvirt_vm.VM(vm_name, params, test.bindir,
-                                env.get("address_cache"))
-        self.virsh_instance = None
-        self.migration_cmd = None
-        self.virsh_migrate_timeout = int(params.get("virsh_migrate_timeout", 60))
-        self.vm_ip = None
-
-    def __str__(self):
-        return "Migration VM %s, Command '%s'" % (self.vm_name,
-                                                  self.migration_cmd)
-
-    def set_virsh_instance(self):
-        """
-        Create a virsh instance for migration.
-        TODO: support remote instance VirshConnectBack
-        """
-        # rs_dargs = {'remote_ip': remote_host, 'remote_user': host_user,
-        #            'remote_pwd': host_passwd, 'uri': srcuri}
-        #rvirsh = virsh.VirshConnectBack(**rs_dargs)
-        self.virsh_instance = virsh.VirshPersistent()
-
-    def set_migration_cmd(self, options, method, desturi):
-        """
-        Set command for migration.
-        """
-        self.migration_cmd = make_migration_cmd(
-            self.vm_name, method, desturi,
-            make_migration_options(options, self.virsh_migrate_timeout))
-
-    def cleanup_vm(self, srcuri, desturi):
-        """
-        Cleanup migrated vm on remote host.
-        """
-        self.vm.connect_uri = desturi
-        if self.vm.exists():
-            if self.vm.is_persistent():
-                self.vm.undefine()
-            if self.vm.is_alive():
-                self.vm.destroy()
-        # Set connect uri back to local uri
-        self.vm.connect_uri = srcuri
-
-
-def thread_func_migration(virsh_instance, cmd):
-    """
-    Thread for virsh migrate command.
-
-    :param virsh_instance: A VirshPersistent or VirshConnectBack instance.
-    :param cmd: command to be executed in session
-    """
-    # Judge result for main_func with a global variable.
-    global ret_migration
-    # Migrate the domain.
-    try:
-        virsh_instance.command(cmd, ignore_status=False)
-    except process.CmdError, detail:
-        logging.error("Migration with %s failed:\n%s" % (cmd, detail))
-        ret_migration = False
+    for option in optionstr.split():
+        if option == "live":
+            options += " --live"
+        elif option == "persistent":
+            options += " --persistent"
+        elif option == "suspend":
+            options += " --suspend"
+        elif option == "change-protection":
+            options += " --change-protection"
+        elif option == "timeout":
+            options += " --timeout %s" % timeout
+        elif option == "unsafe":
+            options += " --unsafe"
+        elif option == "auto-converge":
+            options += " --auto-converge"
+        else:
+            logging.debug("Do not support option '%s' yet." % option)
+    return options + migrate_exec
 
 
 def thread_func_ping(lrunner, rrunner, vm_ip, tolerable=5):
@@ -168,59 +103,75 @@ def thread_func_jobabort(vm):
         ret_jobabort = False
 
 
-def multi_migration(helpers, simultaneous=False, jobabort=False,
-                    lrunner=None, rrunner=None, timeout=60):
+def multi_migration(vm, src_uri, dest_uri, options, migrate_type,
+                    migrate_thread_timeout, jobabort=False,
+                    lrunner=None, rrunner=None):
     """
     Migrate multiple vms simultaneously or not.
-    If jobabort is True, run "virsh domjobabort vm_name" during migration.
 
-    :param helper: A MigrationHelper class instance
+    :param vm: list of all vm instances
+    :param src_uri: source ip address for migration
+    :param dest_uri: destination ipaddress for migration
+    :options: options to be passed in migration command
+    :migrate_type: orderly or simultaneous migration type
+    :migrate_thread_timeout: thread timeout for migrating vms
+    :jobabort: If jobabort is True, run "virsh domjobabort vm_name"
+               during migration.
     :param timeout: thread's timeout
+    :lrunner: local session instance
+    :rrunner: remote session instance
     """
-    migration_threads = []
-    for helper in helpers:
-        inst = helper.virsh_instance
-        cmd = helper.migration_cmd
-        migration_threads.append(threading.Thread(
-                                 target=thread_func_migration,
-                                 args=(inst, cmd)))
 
-    if simultaneous:
+    obj_migration = utils_test.libvirt.MigrationTest()
+    if migrate_type.lower() == "simultaneous":
         logging.info("Migrate vms simultaneously.")
-        for migration_thread in migration_threads:
-            migration_thread.start()
-        if jobabort:
-            # Confirm Migration has been executed.
-            time.sleep(1)
-            logging.info("Aborting job during migration.")
-            jobabort_threads = []
-            for helper in helpers:
-                jobabort_thread = threading.Thread(target=thread_func_jobabort,
-                                                   args=(helper.vm,))
-                jobabort_threads.append(jobabort_thread)
-                jobabort_thread.start()
-            for jobabort_thread in jobabort_threads:
-                jobabort_thread.join(timeout)
-        for migration_thread in migration_threads:
-            migration_thread.join(timeout)
-            if migration_thread.isAlive():
-                logging.error("Migrate %s timeout.", migration_thread)
-                ret_migration = False
-    else:
+        try:
+            obj_migration.do_migration(vms=vm, srcuri=src_uri,
+                                       desturi=dest_uri,
+                                       migration_type="simultaneous",
+                                       options=options,
+                                       thread_timeout=migrate_thread_timeout,
+                                       ignore_status=False)
+            if jobabort:
+                # To ensure Migration has been started.
+                time.sleep(5)
+                logging.info("Aborting job during migration.")
+                jobabort_threads = []
+                func = thread_func_jobabort
+                for each_vm in vm:
+                    jobabort_thread = threading.Thread(target=func,
+                                                       args=(each_vm,))
+                    jobabort_threads.append(jobabort_thread)
+                    jobabort_thread.start()
+                for jobabort_thread in jobabort_threads:
+                    jobabort_thread.join(migrate_thread_timeout)
+            ret_migration = True
+
+        except Exception, info:
+            raise exceptions.TestFail(info)
+
+    elif migrate_type.lower() == "orderly":
         logging.info("Migrate vms orderly.")
-        for helper in helpers:
-            inst = helper.virsh_instance
-            cmd = helper.migration_cmd
-            migration_thread = threading.Thread(target=thread_func_migration,
-                                                args=(inst, cmd))
-            ping_thread = threading.Thread(target=thread_func_ping,
-                                           args=(lrunner, rrunner,
-                                                 helper.vm_ip))
-            migration_thread.start()
-            migration_thread.join(timeout)
-            if migration_thread.isAlive():
-                logging.error("Migrate %s timeout.", migration_thread)
-                ret_migration = False
+        try:
+            obj_migration.do_migration(vms=vm, srcuri=src_uri,
+                                       desturi=dest_uri,
+                                       migration_type="orderly",
+                                       options=options,
+                                       thread_timeout=migrate_thread_timeout,
+                                       ignore_status=False)
+            for each_vm in vm:
+                ping_thread = threading.Thread(target=thread_func_ping,
+                                               args=(lrunner, rrunner,
+                                                     each_vm.get_address()))
+                ping_thread.start()
+
+        except Exception, info:
+            raise exceptions.TestFail(info)
+
+    if obj_migration.RET_MIGRATION:
+        ret_migration = True
+    else:
+        ret_migration = False
 
 
 def run(test, params, env):
@@ -229,19 +180,31 @@ def run(test, params, env):
     """
     vm_names = params.get("migrate_vms").split()
     if len(vm_names) < 2:
-        raise error.TestNAError("No multi vms provided.")
+        raise exceptions.TestSkipError("No multi vms provided.")
 
     # Prepare parameters
     method = params.get("virsh_migrate_method")
-    simultaneous = "yes" == params.get("simultaneous_migration", "no")
     jobabort = "yes" == params.get("virsh_migrate_jobabort", "no")
     options = params.get("virsh_migrate_options", "")
     status_error = "yes" == params.get("status_error", "no")
-    #remote_migration = "yes" == params.get("remote_migration", "no")
     remote_host = params.get("remote_host", "DEST_HOSTNAME.EXAMPLE.COM")
     local_host = params.get("local_host", "SOURCE_HOSTNAME.EXAMPLE.COM")
     host_user = params.get("host_user", "root")
     host_passwd = params.get("host_password", "PASSWORD")
+    nfs_shared_disk = params.get("nfs_shared_disk", True)
+    migration_type = params.get("virsh_migration_type", "simultaneous")
+    migrate_timeout = int(params.get("virsh_migrate_thread_timeout", 900))
+    migration_time = int(params.get("virsh_migrate_timeout", 60))
+
+    # Params for NFS and SSH setup
+    params["server_ip"] = params.get("migrate_dest_host")
+    params["server_user"] = "root"
+    params["server_pwd"] = params.get("migrate_dest_pwd")
+    params["client_ip"] = params.get("migrate_source_host")
+    params["client_user"] = "root"
+    params["client_pwd"] = params.get("migrate_source_pwd")
+    params["nfs_client_ip"] = params.get("migrate_dest_host")
+    params["nfs_server_ip"] = params.get("migrate_source_host")
     desturi = libvirt_vm.get_uri_with_transport(transport="ssh",
                                                 dest_ip=remote_host)
     srcuri = libvirt_vm.get_uri_with_transport(transport="ssh",
@@ -249,9 +212,9 @@ def run(test, params, env):
 
     # Don't allow the defaults.
     if srcuri.count('///') or srcuri.count('EXAMPLE'):
-        raise error.TestNAError("The srcuri '%s' is invalid" % srcuri)
+        raise exceptions.TestSkipError("The srcuri '%s' is invalid" % srcuri)
     if desturi.count('///') or desturi.count('EXAMPLE'):
-        raise error.TestNAError("The desturi '%s' is invalid" % desturi)
+        raise exceptions.TestSkipError("The desturi '%s' is invalid" % desturi)
 
     # Config ssh autologin for remote host
     ssh_key.setup_ssh_key(remote_host, host_user, host_passwd, port=22)
@@ -261,39 +224,76 @@ def run(test, params, env):
                                       password=host_passwd)
     remoterunner = remote.RemoteRunner(host=remote_host, username=host_user,
                                        password=host_passwd)
+    # Configure NFS in remote host
+    if nfs_shared_disk:
+        nfs_client = nfs.NFSClient(params)
+        nfs_client.setup()
 
     # Prepare MigrationHelper instance
-    helpers = []
+    vms = []
     for vm_name in vm_names:
-        helper = MigrationHelper(vm_name, test, params, env)
-        helper.set_virsh_instance()
-        helper.set_migration_cmd(options, method, desturi)
-        helpers.append(helper)
-
-    for helper in helpers:
-        vm = helper.vm
-        if vm.is_dead():
-            vm.start()
-        vm.wait_for_login()
-        # Used for checking downtime
-        helper.vm_ip = vm.get_address()
+        vm = env.get_vm(vm_name)
+        vms.append(vm)
 
     try:
-        multi_migration(helpers, simultaneous, jobabort,
-                        lrunner=localrunner, rrunner=remoterunner)
-    finally:
-        for helper in helpers:
-            helper.virsh_instance.close_session()
-            helper.cleanup_vm(srcuri, desturi)
+        option = make_migration_options(method, options, migration_time)
 
-        localrunner.session.close()
-        remoterunner.session.close()
+        # make sure cache=none
+        if "unsafe" not in options:
+            device_target = params.get("virsh_device_target", "sda")
+            for vm in vms:
+                if vm.is_alive():
+                    vm.destroy()
+            for each_vm in vm_names:
+                logging.info("configure cache=none")
+                vmxml = vm_xml.VMXML.new_from_dumpxml(each_vm)
+                device_source = str(vmxml.get_disk_attr(each_vm, device_target,
+                                                        'source', 'file'))
+                ret_detach = virsh.detach_disk(each_vm, device_target,
+                                               "--config")
+                status = ret_detach.exit_status
+                output = ret_detach.stdout.strip()
+                logging.info("Status:%s", status)
+                logging.info("Output:\n%s", output)
+                if not ret_detach:
+                    raise exceptions.TestError("Detach disks fails")
 
-        if not ret_migration:
-            if not status_error:
-                raise error.TestFail("Migration test failed.")
-        if not ret_jobabort:
-            if not status_error:
-                raise error.TestFail("Abort migration failed.")
-        if not ret_downtime_tolerable:
-            raise error.TestFail("Downtime during migration is intolerable.")
+                subdriver = utils_test.get_image_info(device_source)['format']
+                ret_attach = virsh.attach_disk(each_vm, device_source,
+                                               device_target, "--driver qemu "
+                                               "--config --cache none "
+                                               "--subdriver %s" % subdriver)
+                status = ret_attach.exit_status
+                output = ret_attach.stdout.strip()
+                logging.info("Status:%s", status)
+                logging.info("Output:\n%s", output)
+                if not ret_attach:
+                    raise exceptions.TestError("Attach disks fails")
+
+        for vm in vms:
+            if vm.is_dead():
+                vm.start()
+                vm.wait_for_login()
+        multi_migration(vms, srcuri, desturi, option, migration_type,
+                        migrate_timeout, jobabort, lrunner=localrunner,
+                        rrunner=remoterunner)
+    except Exception, info:
+        logging.error("Test failed: %s" % info)
+        flag_migration = False
+
+    # NFS cleanup
+    if nfs_shared_disk:
+        logging.info("NFS cleanup")
+        nfs_client.cleanup(ssh_auto_recover=False)
+
+    localrunner.session.close()
+    remoterunner.session.close()
+
+    if not (ret_migration or flag_migration):
+        if not status_error:
+            raise exceptions.TestFail("Migration test failed")
+    if not ret_jobabort:
+        if not status_error:
+            raise exceptions.TestFail("Abort migration failed")
+    if not ret_downtime_tolerable:
+        raise exceptions.TestFail("Downtime during migration is intolerable")
