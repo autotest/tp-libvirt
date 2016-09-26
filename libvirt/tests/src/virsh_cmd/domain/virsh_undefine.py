@@ -13,6 +13,7 @@ from virttest import virsh
 from virttest import remote
 from virttest import utils_libvirtd
 from virttest import libvirt_storage
+from virttest import ssh_key
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
@@ -39,6 +40,7 @@ def run(test, params, env):
     status_error = ("yes" == params.get("status_error", "no"))
     undefine_twice = ("yes" == params.get("undefine_twice", 'no'))
     local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
+    local_pwd = params.get("local_pwd", "password")
     remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
     remote_user = params.get("remote_user", "user")
     remote_pwd = params.get("remote_pwd", "password")
@@ -160,7 +162,14 @@ def run(test, params, env):
                 raise error.TestNAError("remote_ip and/or local_ip parameters"
                                         " not changed from default values")
             try:
+                local_user = params.get("username", "root")
                 uri = libvirt_vm.complete_uri(local_ip)
+                # setup ssh auto login from remote machine to test machine
+                # for the command to execute remotely
+                ssh_key.setup_remote_ssh_key(remote_ip, remote_user,
+                                             remote_pwd, hostname2=local_ip,
+                                             user2=local_user,
+                                             password2=local_pwd)
                 session = remote.remote_login("ssh", remote_ip, "22",
                                               remote_user, remote_pwd,
                                               remote_prompt)
