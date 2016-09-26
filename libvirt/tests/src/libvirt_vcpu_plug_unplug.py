@@ -122,6 +122,10 @@ def check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin, setvcpu_option=""):
                                                      host_cpu_count))
         # Check
         for vcpu in expect_vcpupin.keys():
+            if int(vcpu) not in range(len(vcpuinfo_affinity)):
+                logging.error('Expect vcpu %s not exist', vcpu)
+                continue
+
             expect_affinity = "".join(libvirt.cpus_string_to_affinity_list(
                 expect_vcpupin[vcpu], host_cpu_count))
             logging.debug("Expect affinity of vcpu %s is: %s", vcpu,
@@ -418,6 +422,7 @@ def run(test, params, env):
         vmxml.sync()
 
         vmxml.set_vm_vcpus(vm_name, int(vcpu_max_num), int(vcpu_current_num))
+
         # Do not apply S3/S4 on power
         if 'power' not in cpu_util.get_cpu_arch():
             vmxml.set_pm_suspend(vm_name, "yes", "yes")
@@ -521,7 +526,21 @@ def run(test, params, env):
                                       setvcpu_option)
 
         # Unplug vcpu
+        # Since QEMU 2.2.0, by default all current vcpus are non-hotpluggable
+        # when VM started , and it required that vcpu 0(id=1) is always
+        # present and non-hotpluggable, which means we can't hotunplug these
+        # vcpus directly. So we can either hotplug more vcpus before we do
+        # hotunplug, or modify the 'hotpluggable' attribute to 'yes' of the
+        # vcpus except vcpu 0, to make sure libvirt can find appropriate
+        # hotpluggable vcpus to reach the desired target vcpu count. For
+        # simple prepare step, here we choose to hotplug more vcpus.
         if vcpu_unplug:
+            if setvcpu_option == "--live":
+                logging.info("Hotplug vcpu to the maximum count to make sure"
+                             " all these new plugged vcpus are hotunpluggable")
+                result = virsh.setvcpus(vm_name, vcpu_max_num, '--live',
+                                        debug=True)
+                libvirt.check_exit_status(result)
             # Pin vcpu
             if pin_before_unplug:
                 result = virsh.vcpupin(vm_name, pin_vcpu, pin_cpu_list,
