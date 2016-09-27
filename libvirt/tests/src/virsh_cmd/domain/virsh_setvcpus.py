@@ -11,7 +11,6 @@ from virttest import remote
 from virttest import virsh
 from virttest import libvirt_vm
 from virttest.libvirt_xml import vm_xml
-from virttest.libvirt_xml import xcepts
 from virttest.utils_test import libvirt
 
 
@@ -132,7 +131,6 @@ def run(test, params, env):
     threads = params.get("topology_threads")
     start_vm_after_set = "yes" == params.get("start_vm_after_set", "no")
     start_vm_expect_fail = "yes" == params.get("start_vm_expect_fail", "no")
-    remove_vm_feature = params.get("remove_vm_feature", "")
 
     # Early death
     if vm_ref == "remote" and (remote_ip.count("EXAMPLE.COM") or
@@ -184,19 +182,6 @@ def run(test, params, env):
                                      'threads': threads}
             vmxml['cpu'] = vmcpu_xml
             vmxml.sync()
-
-        # Remove vm features
-        if remove_vm_feature:
-            try:
-                vmfeature_xml = vmxml['features']
-            except xcepts.LibvirtXMLNotFoundError, e:
-                logging.debug("features not found in xml\n%s", e)
-            else:
-                vmfeature_xml.remove_feature(remove_vm_feature)
-                vmxml['features'] = vmfeature_xml
-                vmxml.sync()
-                logging.debug("xml after remove feature is:\n%s",
-                              vmxml.xmltreefile)
 
         # Restart, unless that's not our test
         if not vm.is_alive():
@@ -275,12 +260,6 @@ def run(test, params, env):
     # check status_error
     if status_error == "yes":
         if setvcpu_exit_status == 0:
-            # RHEL7/Fedora has a bug(BZ#1000354) against qemu-kvm, so throw the
-            # bug info here
-            if remove_vm_feature:
-                logging.error(
-                    "You may encounter bug: "
-                    "https://bugzilla.redhat.com/show_bug.cgi?id=1000354")
             raise error.TestFail("Run successfully with wrong command!")
     else:
         if setvcpu_exit_status != 0:
