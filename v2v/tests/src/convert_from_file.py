@@ -91,9 +91,10 @@ def run(test, params, env):
             # Check guest following the checkpoint document after convertion
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
-            ret = vmchecker.run()
-            if len(ret) == 0:
-                logging.info("All common checkpoints passed")
+            if checkpoint != 'win2008r2_ostk':
+                ret = vmchecker.run()
+                if len(ret) == 0:
+                    logging.info("All common checkpoints passed")
             if checkpoint == 'win2008r2_ostk':
                 check_BSOD()
             # Merge 2 error lists
@@ -128,9 +129,12 @@ def run(test, params, env):
 
         if checkpoint == 'ova_relative_path':
             logging.debug('Current dir: %s', os.getcwd())
-            ova_path = params.get('ova_path')
-            logging.info('Change to dir: %s', ova_path)
-            os.chdir(ova_path)
+            ova_dir = params.get('ova_dir')
+            logging.info('Change to dir: %s', ova_dir)
+            os.chdir(ova_dir)
+
+        # Set libguestfs environment variable
+        os.environ['LIBGUESTFS_BACKEND'] = 'direct'
 
         v2v_result = utils_v2v.v2v_cmd(v2v_params)
 
