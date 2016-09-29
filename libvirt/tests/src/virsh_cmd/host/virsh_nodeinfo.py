@@ -11,6 +11,9 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest.libvirt_xml import capability_xml
+from virttest.staging import utils_memory
+
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -134,9 +137,12 @@ def run(test, params, env):
         memory_size_nodeinfo = int(
             _check_nodeinfo(nodeinfo_output, 'Memory size', 3))
         memory_size_os = 0
-        for i in node_online_list:
-            node_memory = node_info.read_from_node_meminfo(i, 'MemTotal')
-            memory_size_os += int(node_memory)
+        if libvirt_version.version_compare(2, 0, 0):
+            for i in node_online_list:
+                node_memory = node_info.read_from_node_meminfo(i, 'MemTotal')
+                memory_size_os += int(node_memory)
+        else:
+            memory_size_os = utils_memory.memtotal()
         logging.debug('The host total memory from nodes is %s', memory_size_os)
 
         if memory_size_nodeinfo != memory_size_os:
