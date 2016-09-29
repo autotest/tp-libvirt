@@ -60,7 +60,7 @@ def get_xmldata(vm_name, xml_file, options):
     extra_opts = ""
     if "--config" in options:
         extra_opts = "--inactive"
-    vcpus_current = ""
+    vcpus_current = 0
     virsh.dumpxml(vm_name, extra=extra_opts, to_file=xml_file)
     dom = parse(xml_file)
     root = dom.documentElement
@@ -68,11 +68,10 @@ def get_xmldata(vm_name, xml_file, options):
     vcpus_parent = root.getElementsByTagName("vcpu")
     vcpus_count = int(vcpus_parent[0].firstChild.data)
     for n in vcpus_parent:
-        vcpus_current += n.getAttribute("current")
-        if vcpus_current != "":
-            vcpus_current = int(vcpus_current)
-        else:
-            vcpus_current = 0
+        try:
+            vcpus_current += int(n.getAttribute("current"))
+        except ValueError:
+            pass
     # get the machine type
     os_parent = root.getElementsByTagName("os")
     os_machine = ""
