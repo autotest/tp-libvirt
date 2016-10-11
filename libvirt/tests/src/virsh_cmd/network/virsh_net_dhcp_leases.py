@@ -74,7 +74,7 @@ def run(test, params, env):
         Get interface IP address by given MAC addrss. If try_dhclint is
         True, then try to allocate IP addrss for the interface.
         """
-        session = vm.wait_for_login()
+        session = vm.wait_for_login(new_nic_index)
 
         def f():
             return utils_net.get_guest_ip_addr(session, mac_addr)
@@ -126,12 +126,10 @@ def run(test, params, env):
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
-    # Remove all interfaces of the VM
     if vm.is_alive():
         vm.destroy(gracefully=False)
-    for idx in range(len(vmxml.get_iface_all())):
-        vm.del_nic(idx)
-    vmxml.remove_all_device_by_type("interface")
+    # Get the nic index for new attached interface
+    new_nic_index = len(vmxml.get_iface_all())
     # Create new network
     if prepare_net:
         create_network()
