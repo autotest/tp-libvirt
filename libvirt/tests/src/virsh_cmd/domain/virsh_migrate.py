@@ -13,7 +13,10 @@ from virttest import defaults
 from virttest import utils_test
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.devices import memory
+from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
 from virttest import utils_misc
 from virttest.utils_misc import SELinuxBoolean
 from virttest.qemu_storage import QemuImg
@@ -21,6 +24,7 @@ from virttest.utils_test import libvirt
 from virttest import test_setup
 from virttest.staging import utils_memory
 
+from provider import libvirt_version
 from autotest.client.shared import error
 
 
@@ -280,6 +284,36 @@ def run(test, params, env):
             else:
                 process.system_output(command, verbose=True, shell=True)
 
+    def create_mem_hotplug_xml(mem_size, mem_unit, numa_node='',
+                               mem_model='dimm'):
+        """
+        Forms and return memory device xml for hotplugging
+
+        :param mem_size: memory to be hotplugged
+        :param mem_unit: unit for memory size
+        :param numa_node: numa node to which memory is hotplugged
+        :param mem_model: memory model to be hotplugged
+        :return: xml with memory device
+        """
+        mem_xml = memory.Memory()
+        mem_xml.mem_model = mem_model
+        target_xml = memory.Memory.Target()
+        target_xml.size = mem_size
+        target_xml.size_unit = mem_unit
+        if numa_node:
+            target_xml.node = int(numa_node)
+        mem_xml.target = target_xml
+        logging.debug(mem_xml)
+        mem_xml_file = os.path.join(data_dir.get_tmp_dir(),
+                                    'memory_hotplug.xml')
+        try:
+            fp = open(mem_xml_file, 'w')
+        except Exception, info:
+            raise exceptions.TestError(info)
+        fp.write(str(mem_xml))
+        fp.close()
+        return mem_xml_file
+
     def check_migration_timeout_suspend(params):
         """
         Handle option '--timeout --timeout-suspend'.
@@ -444,6 +478,11 @@ def run(test, params, env):
     enable_HP_pin = "yes" == params.get("virsh_migrate_with_HP_pin", "no")
     postcopy_cmd = params.get("virsh_postcopy_cmd", "")
     postcopy_timeout = int(params.get("postcopy_migration_timeout", "180"))
+    mem_hotplug = "yes" == params.get("virsh_migrate_mem_hotplug", "no")
+    # min memory that can be hotplugged 256 MiB - 256 * 1024 = 262144
+    mem_hotplug_size = int(params.get("virsh_migrate_hotplug_mem", "262144"))
+    mem_hotplug_count = int(params.get("virsh_migrate_mem_hotplug_count", "1"))
+    mem_size_unit = params.get("virsh_migrate_hotplug_mem_unit", "KiB")
 
     # To check Unsupported conditions for Numa scenarios
     if enable_numa_pin:
@@ -479,6 +518,52 @@ def run(test, params, env):
             logging.debug("Hugepage support check done on host")
         except:
             raise error.TestNAError("HP not supported/configured")
+
+    # To check mem hotplug should not exceed maxmem
+    if mem_hotplug:
+        # To check memory hotplug is supported by libvirt, memory hotplug
+        # support QEMU/KVM driver was added in 1.2.14 version of libvirt
+        if not libvirt_version.version_compare(1, 2, 14):
+            raise exceptions.TestSkipError("Memory Hotplug is not supported")
+
+        # hotplug memory in KiB
+        vmxml_backup = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        vm_max_dimm_slots = int(params.get("virsh_migrate_max_dimm_slots",
+                                           "32"))
+        vm_hotplug_mem = mem_hotplug_size * mem_hotplug_count
+        vm_current_mem = int(vmxml_backup.current_mem)
+        vm_max_mem = int(vmxml_backup.max_mem)
+        # 256 MiB(min mem that can be hotplugged) * Max no of dimm slots
+        # that can be hotplugged
+        vm_max_mem_rt_limit = 256 * 1024 * vm_max_dimm_slots
+        # configure Maxmem in guest xml for memory hotplug to work
+        try:
+            vm_max_mem_rt = int(vmxml_backup.max_mem_rt)
+            if(vm_max_mem_rt <= vm_max_mem_rt_limit):
+                vmxml_backup.max_mem_rt = (vm_max_mem_rt_limit +
+                                           vm_max_mem)
+                vmxml_backup.max_mem_rt_slots = vm_max_dimm_slots
+                vmxml_backup.max_mem_rt_unit = mem_size_unit
+                vmxml_backup.sync()
+                vm_max_mem_rt = int(vmxml_backup.max_mem_rt)
+        except LibvirtXMLNotFoundError:
+            vmxml_backup.max_mem_rt = (vm_max_mem_rt_limit +
+                                       vm_max_mem)
+            vmxml_backup.max_mem_rt_slots = vm_max_dimm_slots
+            vmxml_backup.max_mem_rt_unit = mem_size_unit
+            vmxml_backup.sync()
+            vm_max_mem_rt = int(vmxml_backup.max_mem_rt)
+        logging.debug("Hotplug mem = %d %s" % (mem_hotplug_size,
+                                               mem_size_unit))
+        logging.debug("Hotplug count = %d" % mem_hotplug_count)
+        logging.debug("Current mem = %d" % vm_current_mem)
+        logging.debug("VM maxmem = %d" % vm_max_mem_rt)
+        if((vm_current_mem + vm_hotplug_mem) > vm_max_mem_rt):
+            raise exceptions.TestSkipError("Cannot hotplug memory more than"
+                                           "max dimm slots supported")
+        if mem_hotplug_count > vm_max_dimm_slots:
+            raise exceptions.TestSkipError("Cannot hotplug memory more than"
+                                           " %d times" % vm_max_dimm_slots)
 
     # Get expected cache state for test
     attach_scsi_disk = "yes" == params.get("attach_scsi_disk", "no")
@@ -606,6 +691,51 @@ def run(test, params, env):
             vm.start()
 
         vm.wait_for_login()
+
+        # Perform memory hotplug after VM is up
+        if mem_hotplug:
+            if enable_numa:
+                numa_node = '0'
+                if mem_hotplug_count == 1:
+                    mem_xml = create_mem_hotplug_xml(mem_hotplug_size,
+                                                     mem_size_unit, numa_node)
+                    logging.info("Trying to hotplug memory")
+                    ret_attach = virsh.attach_device(vm_name, mem_xml,
+                                                     flagstr="--live",
+                                                     debug=True)
+                    if ret_attach.exit_status != 0:
+                        logging.error("Hotplugging memory failed")
+                elif mem_hotplug_count > 1:
+                    for each_count in range(mem_hotplug_count):
+                        mem_xml = create_mem_hotplug_xml(mem_hotplug_size,
+                                                         mem_size_unit,
+                                                         numa_node)
+                        logging.info("Trying to hotplug memory")
+                        ret_attach = virsh.attach_device(vm_name, mem_xml,
+                                                         flagstr="--live",
+                                                         debug=True)
+                        if ret_attach.exit_status != 0:
+                            logging.error("Hotplugging memory failed")
+                        # Hotplug memory to numa node alternatively if
+                        # there are 2 nodes
+                        if len(numa_dict_list) == 2:
+                            if numa_node == '0':
+                                numa_node = '1'
+                            else:
+                                numa_node = '0'
+                # check hotplugged memory is reflected
+                vmxml_backup = vm_xml.VMXML.new_from_dumpxml(vm_name)
+                vm_new_current_mem = int(vmxml_backup.current_mem)
+                logging.debug("Old current memory %d" % vm_current_mem)
+                logging.debug("Hot plug mem %d" % vm_hotplug_mem)
+                logging.debug("New current memory %d" % vm_new_current_mem)
+                logging.debug("old mem + hotplug = %d" % (vm_current_mem +
+                                                          vm_hotplug_mem))
+                if not (vm_new_current_mem == (vm_current_mem +
+                                               vm_hotplug_mem)):
+                    raise exceptions.TestFail("Memory hotplug failed")
+                else:
+                    logging.debug("Memory hotplugged successfully !!!")
 
         # Confirm VM can be accessed through network.
         time.sleep(delay)
@@ -870,6 +1000,12 @@ def run(test, params, env):
     vm.destroy()
     vm.undefine()
     orig_config_xml.define()
+
+    # cleanup xml created during memory hotplug test
+    if mem_hotplug:
+        if os.path.isfile(mem_xml):
+            data_dir.clean_tmp_files()
+            logging.debug("Cleanup mem hotplug xml")
 
     # cleanup hugepages
     if enable_HP or enable_HP_pin:
