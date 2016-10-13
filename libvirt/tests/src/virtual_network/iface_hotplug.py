@@ -133,7 +133,9 @@ def run(test, params, env):
                             raise error.TestFail("Failed to attach-interface")
                     elif stress_test:
                         # Detach the device immediately for stress test
-                        ret = virsh.attach_interface(vm_name, options,
+                        options = ("--type %s --mac %s %s" %
+                                   (iface_type, mac, attach_option))
+                        ret = virsh.detach_interface(vm_name, options,
                                                      ignore_status=True)
                         libvirt.check_exit_status(ret)
                     else:
