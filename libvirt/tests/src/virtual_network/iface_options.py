@@ -383,7 +383,7 @@ def run(test, params, env):
     iface_type = params.get("iface_type", "network")
     iface_source = params.get("iface_source", "{}")
     iface_driver = params.get("iface_driver")
-    iface_model = params.get("iface_model")
+    iface_model = params.get("iface_model", "virtio")
     iface_target = params.get("iface_target")
     iface_backend = params.get("iface_backend", "{}")
     iface_driver_host = params.get("iface_driver_host")
@@ -504,7 +504,7 @@ def run(test, params, env):
                                                 True, timeout=timeout)
                 additional_vm = vm.clone(guest_name)
                 additional_vm.start()
-                #additional_vm.wait_for_login()
+                # additional_vm.wait_for_login()
 
             # Start the VM.
             if unprivileged_user:
