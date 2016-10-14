@@ -39,7 +39,7 @@ def run(test, params, env):
     def check_vcpupin(vm_name, vcpu, cpu_list, pid, vcpu_pid):
         """
         This function checks the actual and the expected affinity of given vcpu
-        and raises error if not matchs
+        and raises error if not matches
 
         :param vm_name: VM Name to operate on
         :param vcpu: vcpu number for which the affinity is required
@@ -86,6 +86,13 @@ def run(test, params, env):
             vm_ref = vm.name
         elif vm_ref == "uuid":
             vm_ref = vm.get_uuid()
+        elif vm_ref == "":
+            # Lets Make sure vcpu no. does not match vmid
+            if virsh.domain_exists(vcpu):
+                logging.debug("Skipping as vcpu matches VM id, will result in "
+                              "positive scenario")
+                return
+
         # Execute virsh vcpupin command.
         cmdResult = virsh.vcpupin(vm_ref, vcpu, cpu_list, options, debug=True)
         if cmdResult.exit_status:
