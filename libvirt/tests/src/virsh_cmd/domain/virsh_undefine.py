@@ -1,6 +1,7 @@
 import os
 import logging
 import shutil
+import time
 
 import aexpect
 
@@ -15,6 +16,7 @@ from virttest import utils_libvirtd
 from virttest import libvirt_storage
 from virttest import ssh_key
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.xcepts import LibvirtXMLError
 from virttest.utils_test import libvirt as utlv
 
 from provider import libvirt_version
@@ -192,6 +194,9 @@ def run(test, params, env):
             except process.CmdError, detail:
                 logging.error("Detail: %s", detail)
 
+        # After vm.destroy, virsh.domain_exists returns True due to
+        # timing issue and tests fails.
+        time.sleep(2)
         # Check if VM exists.
         vm_exist = virsh.domain_exists(vm_name)
 
@@ -223,7 +228,13 @@ def run(test, params, env):
 
     finally:
         # Recover main VM.
-        backup_xml.sync()
+        try:
+            backup_xml.sync()
+        except LibvirtXMLError:
+            # sync() tries to undefines and define the xml to sync
+            # but virsh_undefine test would have undefined already
+            # may lead to error out
+            backup_xml.define()
 
         # Recover existing guest images
         if existing_images and option.count("remove-all-storage"):
