@@ -1,6 +1,5 @@
 import re
 import logging
-
 from autotest.client.shared import error
 
 from virttest import utils_net
@@ -126,10 +125,12 @@ def run(test, params, env):
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
+    nic_back = []
     # Remove all interfaces of the VM
     if vm.is_alive():
         vm.destroy(gracefully=False)
     for idx in range(len(vmxml.get_iface_all())):
+        nic_back.append(vm.virtnet[idx])
         vm.del_nic(idx)
     vmxml.remove_all_device_by_type("interface")
     # Create new network
@@ -163,6 +164,7 @@ def run(test, params, env):
                 vm.start()
             else:
                 vm.start()
+                vm.wait_for_serial_login()
                 virsh.attach_interface(vm_name, option=op, debug=True,
                                        ignore_status=False)
                 vm.add_nic(**nic_params)
@@ -182,5 +184,7 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
         vmxml_backup.sync()
+        for idx in range(len(vmxml_backup.get_iface_all())):
+            vm.add_nic(**nic_back[idx])
         if prepare_net:
             virsh.net_destroy(net_name)
