@@ -12,6 +12,7 @@ from virttest import virt_vm
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest.libvirt_xml.vm_xml import VMXML
+from provider import libvirt_version
 
 
 def check_qemu_grp_user(user):
@@ -276,7 +277,10 @@ def run(test, params, env):
 
             # check vm started with -name $vm_name,process=qemu:$vm_name
             if set_process_name:
-                chk_str = "-name %s,process=qemu:%s" % (vm_name, vm_name)
+                if libvirt_version.version_compare(1, 3, 5):
+                    chk_str = "-name guest=%s,process=qemu:%s" % (vm_name, vm_name)
+                else:
+                    chk_str = "-name %s,process=qemu:%s" % (vm_name, vm_name)
                 cmd = "ps -p %s -o command=" % vm_pid
                 result = utils.run(cmd)
                 if chk_str in result.stdout:
