@@ -103,6 +103,17 @@ def run(test, params, env):
         elif 'DEFAULTKERNEL=kernel-xen' in content:
             log_fail('DEFAULTKERNEL is "kernel-xen"')
 
+    def check_sound_card(vmcheck, check):
+        """
+        Check sound status of vm from xml
+        """
+        xml = virsh.dumpxml(vm_name, session_id=vmcheck.virsh_session_id).stdout
+        logging.debug(xml)
+        if check == 'sound' and '<sound model' in xml:
+            log_fail('Sound card should be removed')
+        if check == 'pcspk' and "<sound model='pcspk'" not in xml:
+            log_fail('Sound card should be "pcspk"')
+
     def check_v2v_log(output, check=None):
         """
         Check if error/warning meets expectation
@@ -190,6 +201,8 @@ def run(test, params, env):
                     vmchecker.check_graphics({'type': 'spice'})
             elif checkpoint == 'pv_with_regular_kernel':
                 check_kernel(vmchecker.checker)
+            elif checkpoint in ['sound', 'pcspk']:
+                check_sound_card(vmchecker.checker, checkpoint)
         check_v2v_log(output, checkpoint)
         # Merge 2 error lists
         if params.get('vmchecker'):
@@ -250,27 +263,29 @@ def run(test, params, env):
         if checkpoint == 'guest_uuid':
             uuid = virsh.domuuid(vm_name, uri=uri).stdout.strip()
             v2v_params['main_vm'] = uuid
-        elif checkpoint == 'xvda_disk':
-            v2v_params['input_mode'] = 'disk'
+        if checkpoint in ['format_convert', 'xvda_disk']:
             # Get remote disk image path
             blklist = virsh.domblklist(vm_name, uri=uri).stdout.split('\n')
             logging.debug('domblklist %s:\n%s', vm_name, blklist)
             for line in blklist:
                 if line.startswith(('hda', 'vda', 'sda')):
-                    remote_disk_image = line.split()[-1]
+                    params['remote_disk_image'] = line.split()[-1]
                     break
             # Local path of disk image
-            input_file = data_dir.get_tmp_dir() + '/%s.img' % vm_name
-            v2v_params.update({'input_file': input_file})
+            params['img_path'] = data_dir.get_tmp_dir() + '/%s.img' % vm_name
+            if checkpoint == 'xvda_disk':
+                v2v_params['input_mode'] = 'disk'
+                v2v_params.update({'input_file': params['img_path']})
             # Copy remote image to local with scp
             remote.scp_from_remote(xen_host, 22, xen_host_user,
-                                   xen_host_passwd, remote_disk_image,
-                                   input_file)
-        elif checkpoint == 'pool_uuid':
+                                   xen_host_passwd,
+                                   params['remote_disk_image'],
+                                   params['img_path'])
+        if checkpoint == 'pool_uuid':
             virsh.pool_start(pool_name)
             pooluuid = virsh.pool_uuid(pool_name).stdout.strip()
             v2v_params['storage'] = pooluuid
-        elif checkpoint.startswith('vnc'):
+        if checkpoint.startswith('vnc'):
             vm_xml.VMXML.set_graphics_attr(vm_name, {'type': 'vnc'},
                                            virsh_instance=virsh_instance)
             if checkpoint == 'vnc_autoport':
@@ -285,25 +300,32 @@ def run(test, params, env):
                         vmxml, params[checkpoint]['passwd'],
                         virsh_instance=virsh_instance)
             logging.debug(virsh_instance.dumpxml(vm_name, extra='--security-info'))
-        elif checkpoint.startswith('libguestfs_backend'):
+        if checkpoint.startswith('libguestfs_backend'):
             value = checkpoint[19:]
             if value == 'empty':
                 value = ''
             logging.info('Set LIBGUESTFS_BACKEND to "%s"', value)
             os.environ['LIBGUESTFS_BACKEND'] = value
-        elif checkpoint == 'same_name':
+        if checkpoint == 'same_name':
             logging.info('Convert guest and rename to %s', new_vm_name)
             v2v_params.update({'new_name': new_vm_name})
-        elif checkpoint == 'no_passwordless_SSH':
+        if checkpoint == 'no_passwordless_SSH':
             logging.info('Unset $SSH_AUTH_SOCK')
             os.unsetenv('SSH_AUTH_SOCK')
-        elif checkpoint == 'xml_without_image':
+        if checkpoint in ['xml_without_image', 'format_convert']:
             xml_file = os.path.join(data_dir.get_tmp_dir(), '%s.xml' % vm_name)
             virsh.dumpxml(vm_name, to_file=xml_file, uri=uri)
             v2v_params['hypervisor'] = 'kvm'
             v2v_params['input_mode'] = 'libvirtxml'
             v2v_params.update({'input_file': xml_file})
-        elif checkpoint == 'ssh_banner':
+            if params.get('img_path'):
+                cmd = "sed -i 's|%s|%s|' %s" % (params['remote_disk_image'],
+                                                params['img_path'], xml_file)
+                process.run(cmd)
+                logging.debug(process.run('cat %s' % xml_file).stdout)
+            if checkpoint == 'format_convert':
+                v2v_params['output_format'] = 'qcow2'
+        if checkpoint == 'ssh_banner':
             session = remote.remote_login("ssh", xen_host, "22", "root",
                                           xen_host_passwd, "#")
             ssh_banner_content = r'"# no default banner path\n' \
