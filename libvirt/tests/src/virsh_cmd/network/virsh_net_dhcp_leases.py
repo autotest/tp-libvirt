@@ -10,7 +10,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import network_xml
 from virttest.utils_test import libvirt as utlv
 
-BUG_URL = "https://bugzilla.redhat.com/show_bug.cgi?id=%s"
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -25,13 +25,21 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     net_name = params.get("net_name", "default")
-    nic_mac = params.get("nic_mac", "")
     net_option = params.get("net_option", "")
     status_error = "yes" == params.get("status_error", "no")
     prepare_net = "yes" == params.get("prepare_net", "yes")
     hotplug_iface = "yes" == params.get("hotplug_interface", "no")
     filter_by_mac = "yes" == params.get("filter_by_mac", "no")
-    exist_bug = params.get("exist_bug")
+    invalid_mac = "yes" == params.get("invalid_mac", "no")
+    # Generate a random string as the MAC address
+    nic_mac = None
+    if invalid_mac:
+        nic_mac = utils_misc.generate_random_string(17)
+
+    # Command won't fail on old libvirt
+    if not libvirt_version.version_compare(1, 3, 1) and invalid_mac:
+        logging.debug("Reset case to positive as BZ#1261432")
+        status_error = False
 
     def create_network():
         """
@@ -69,12 +77,12 @@ def run(test, params, env):
         except:
             raise error.TestError("Fail to parse output: %s" % output)
 
-    def get_ip_by_mac(mac_addr, try_dhclint=False):
+    def get_ip_by_mac(mac_addr, try_dhclint=False, timeout=120):
         """
         Get interface IP address by given MAC addrss. If try_dhclint is
         True, then try to allocate IP addrss for the interface.
         """
-        session = vm.wait_for_login()
+        session = vm.wait_for_login(login_nic_index, timeout=timeout, serial=True)
 
         def f():
             return utils_net.get_guest_ip_addr(session, mac_addr)
@@ -126,12 +134,10 @@ def run(test, params, env):
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
-    # Remove all interfaces of the VM
     if vm.is_alive():
         vm.destroy(gracefully=False)
-    for idx in range(len(vmxml.get_iface_all())):
-        vm.del_nic(idx)
-    vmxml.remove_all_device_by_type("interface")
+    login_nic_index = 0
+    new_nic_index = 0
     # Create new network
     if prepare_net:
         create_network()
@@ -155,18 +161,27 @@ def run(test, params, env):
             op = "--type network --source %s --mac %s" % (net_name, iface_mac)
             nic_params = {'mac': iface_mac, 'nettype': 'bridge',
                           'ip_version': 'ipv4'}
+            login_timeout = 120
             if not hotplug_iface:
                 op += " --config"
                 virsh.attach_interface(vm_name, option=op, debug=True,
                                        ignore_status=False)
                 vm.add_nic(**nic_params)
                 vm.start()
+                new_nic_index = vm.get_nic_index_by_mac(iface_mac)
+                if new_nic_index > 0:
+                    login_nic_index = new_nic_index
             else:
                 vm.start()
+                # wait for VM start before hotplug interface
+                vm.wait_for_serial_login()
                 virsh.attach_interface(vm_name, option=op, debug=True,
                                        ignore_status=False)
                 vm.add_nic(**nic_params)
-            new_interface_ip = get_ip_by_mac(iface_mac, try_dhclint=True)
+                # As VM already started, so the login timeout could be shortened
+                login_timeout = 10
+            new_interface_ip = get_ip_by_mac(iface_mac, try_dhclint=True,
+                                             timeout=login_timeout)
             # Allocate IP address for the new interface may fail, so only
             # check the result if get new IP address
             if new_interface_ip:
@@ -177,8 +192,9 @@ def run(test, params, env):
             lease = get_net_dhcp_leases(result.stdout.strip())
             check_net_lease(lease, expected_find)
     finally:
-        if exist_bug:
-            logging.warn("Case may failed as bug: %s", BUG_URL % exist_bug)
+        # Delete the new attached interface
+        if new_nic_index > 0:
+            vm.del_nic(new_nic_index)
         if vm.is_alive():
             vm.destroy(gracefully=False)
         vmxml_backup.sync()
