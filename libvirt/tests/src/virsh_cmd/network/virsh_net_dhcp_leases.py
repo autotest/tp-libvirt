@@ -10,7 +10,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import network_xml
 from virttest.utils_test import libvirt as utlv
 
-BUG_URL = "https://bugzilla.redhat.com/show_bug.cgi?id=%s"
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -25,13 +25,21 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     net_name = params.get("net_name", "default")
-    nic_mac = params.get("nic_mac", "")
     net_option = params.get("net_option", "")
     status_error = "yes" == params.get("status_error", "no")
     prepare_net = "yes" == params.get("prepare_net", "yes")
     hotplug_iface = "yes" == params.get("hotplug_interface", "no")
     filter_by_mac = "yes" == params.get("filter_by_mac", "no")
-    exist_bug = params.get("exist_bug")
+    invalid_mac = "yes" == params.get("invalid_mac", "no")
+    # Generate a random string as the MAC address
+    nic_mac = None
+    if invalid_mac:
+        nic_mac = utils_misc.generate_random_string(17)
+
+    # Command won't fail on old libvirt
+    if not libvirt_version.version_compare(1, 3, 1) and invalid_mac:
+        logging.debug("Reset case to positive as BZ#1261432")
+        status_error = False
 
     def create_network():
         """
