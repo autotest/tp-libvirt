@@ -134,12 +134,10 @@ def run(test, params, env):
             if test_ovs_port:
                 check_ovs_port(iface_name, bridge_name)
 
-        except virt_vm.VMStartError, details:
+        except virt_vm.VMStartError as details:
             logging.info(str(details))
-            if start_error:
-                pass
-            else:
-                raise error.TestFail('VM Failed to start for some reason!')
+            if not start_error:
+                raise error.TestFail('VM failed to start:\n%s' % details)
 
     finally:
         # Recover VM.

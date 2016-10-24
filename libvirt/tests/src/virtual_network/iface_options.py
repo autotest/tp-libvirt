@@ -591,12 +591,10 @@ def run(test, params, env):
                                           flagstr="", ignore_status=True)
                 libvirt.check_exit_status(ret)
 
-        except virt_vm.VMStartError, e:
+        except virt_vm.VMStartError as e:
             logging.info(str(e))
-            if start_error:
-                pass
-            else:
-                raise error.TestFail('VM Failed to start for some reason!')
+            if not start_error:
+                raise error.TestFail('VM failed to start\n%s' % e)
 
     finally:
         # Recover VM.

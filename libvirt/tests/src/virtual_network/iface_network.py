@@ -770,12 +770,10 @@ TIMEOUT 3"""
                     run_guest_libvirt(session)
 
                 session.close()
-        except virt_vm.VMStartError, details:
+        except virt_vm.VMStartError as details:
             logging.info(str(details))
-            if start_error or restart_error:
-                pass
-            else:
-                raise error.TestFail('VM Failed to start for some reason!')
+            if not (start_error or restart_error):
+                raise error.TestFail('VM failed to start:\n%s' % details)
 
     finally:
         # Recover VM.
