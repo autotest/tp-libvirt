@@ -395,11 +395,10 @@ def run(test, params, env):
         # Destroy VM.
         vm.destroy(gracefully=False)
 
-        # Need wait a while for xml to sync
-        time.sleep(float(time_sleep))
         # Check disk count after VM shutdown (with --config).
         check_count_after_shutdown = True
-        disk_count_after_shutdown = vm_xml.VMXML.get_disk_count(vm_name)
+        inactive_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        disk_count_after_shutdown = len(inactive_vmxml.get_disk_all())
         if test_cmd == "attach-disk":
             if disk_count_after_shutdown == disk_count_before_cmd:
                 check_count_after_shutdown = False
