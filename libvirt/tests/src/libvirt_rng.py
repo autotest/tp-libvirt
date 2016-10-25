@@ -325,14 +325,13 @@ def run(test, params, env):
 
             if test_snapshot:
                 check_snapshot(bgjob)
-        except virt_vm.VMStartError, details:
+        except virt_vm.VMStartError as details:
             logging.info(str(details))
-            if start_error:
-                pass
-            else:
-                raise error.TestFail('VM Failed to start for some reason,'
+            if not start_error:
+                raise error.TestFail('VM failed to start, '
                                      'please refer to https://bugzilla.'
-                                     'redhat.com/show_bug.cgi?id=1220252')
+                                     'redhat.com/show_bug.cgi?id=1220252:'
+                                     '\n%s' % details)
 
     finally:
         # Delete snapshots.

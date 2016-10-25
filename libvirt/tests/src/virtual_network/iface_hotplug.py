@@ -198,9 +198,9 @@ def run(test, params, env):
                             raise error.TestFail("Interface still exist"
                                                  " after detachment")
             session.close()
-        except virt_vm.VMStartError, e:
+        except virt_vm.VMStartError as e:
             logging.info(str(e))
-            raise error.TestFail('VM Failed to start for some reason!')
+            raise error.TestFail('VM failed to start:\n%s' % e)
 
     finally:
         # Recover VM.

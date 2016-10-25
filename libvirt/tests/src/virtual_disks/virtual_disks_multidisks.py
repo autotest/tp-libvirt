@@ -789,15 +789,11 @@ def run(test, params, env):
                     attach_error = "yes" == device_attach_error[i]
                 libvirt.check_exit_status(ret, attach_error)
 
-    except virt_vm.VMStartError:
-        if status_error:
-            pass
-        else:
-            raise error.TestFail('VM Failed to start for some reason!')
+    except virt_vm.VMStartError as details:
+        if not status_error:
+            raise error.TestFail('VM failed to start:\n%s' % details)
     except xcepts.LibvirtXMLError:
-        if define_error:
-            pass
-        else:
+        if not define_error:
             raise error.TestFail("Failed to define VM")
     else:
         # VM is started, perform the tests.
