@@ -67,14 +67,26 @@ def run(test, params, env):
         if src_uri:
             vm.connect_uri = src_uri
 
+    def check_migration_result(migration_res):
+        """
+        Check the migration result.
+
+        :param migration_res: the CmdResult of migration
+
+        :raise: exceptions.TestSkipError when some known messages found
+        """
+        logging.debug("Migration result:\n%s" % migration_res)
+        if migration_res.stderr.find("error: unsupported configuration:") >= 0:
+            raise exceptions.TestSkipError(migration_res.stderr)
+
     def do_migration(delay, vm, dest_uri, options, extra):
         logging.info("Sleeping %d seconds before migration" % delay)
         time.sleep(delay)
         # Migrate the guest.
-        successful = vm.migrate(
-            dest_uri, options, extra, True, True).exit_status
-        logging.info("successful: %d", successful)
-        if int(successful) != 0:
+        migration_res = vm.migrate(dest_uri, options, extra, True, True)
+        logging.info("Migration exit status: %d", migration_res.exit_status)
+        check_migration_result(migration_res)
+        if int(migration_res.exit_status) != 0:
             logging.error("Migration failed for %s." % vm_name)
             return False
 
@@ -575,6 +587,7 @@ def run(test, params, env):
 
     nfs_client = None
     seLinuxBool = None
+    skip_exception = False
     exception = False
     remote_viewer_pid = None
     asynch_migration = False
@@ -978,6 +991,8 @@ def run(test, params, env):
             if not re.search(new_nic_mac, vm_dest_xml):
                 check_dest_xml = False
 
+    except exceptions.TestSkipError, detail:
+        skip_exception = True
     except Exception, detail:
         exception = True
         logging.error("%s: %s" % (detail.__class__, detail))
@@ -1038,6 +1053,8 @@ def run(test, params, env):
     libvirt.setup_or_cleanup_nfs(False, export_dir=exp_dir,
                                  mount_dir=mount_dir,
                                  restore_selinux=local_selinux_bak)
+    if skip_exception:
+        raise exceptions.TestSkipError(detail)
     if exception:
         raise error.TestError(
             "Error occurred. \n%s: %s" % (detail.__class__, detail))
