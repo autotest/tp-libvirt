@@ -45,16 +45,16 @@ def run(test, params, env):
                 iface_cmd = {}
         return ifaces_cmd
 
-    def check_output(ifaces_actual, vm):
+    def check_output(ifaces_actual, vm, login_nic_index=0):
         """
         1. Get the interface details of the command output
         2. Get the interface details from xml file
-        3. Check command output agaist xml and guest output
+        3. Check command output against xml and guest output
         """
         vm_name = vm.name
 
         try:
-            session = vm.wait_for_login()
+            session = vm.wait_for_login(nic_index=login_nic_index)
         except Exception, detail:
             raise error.TestFail("Unable to login to VM:%s" % detail)
         iface_xml = {}
@@ -120,8 +120,12 @@ def run(test, params, env):
                          iface_mac, at_option))
         ret = virsh.attach_interface(vm.name, at_options, ignore_status=True)
         libvirt.check_exit_status(ret)
+        nic_params = {'mac': iface_mac, 'nettype': 'bridge'}
+        vm.add_nic(**nic_params)
         if not vm.is_alive():
             vm.start()
+        # Return the new attached interface index
+        return vm.get_nic_index_by_mac(iface_mac)
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -131,6 +135,8 @@ def run(test, params, env):
     attach_option = params.get("attach_option", "")
     additional_options = params.get("domiflist_extra_options", "")
     vm_backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    login_nic_index = 0
+    new_nic_index = 0
 
     try:
         # Get the virsh domiflist
@@ -150,7 +156,12 @@ def run(test, params, env):
         logging.debug("Old interface list: %s", old_iflist)
         # Attach interface for testing.
         if attach_iface:
-            add_iface(vm, attach_option)
+            new_nic_index = add_iface(vm, attach_option)
+            # Basically, after VM started, the new attached interface will get
+            # IP address, so we should use this interface to login
+            if '--inactive' not in additional_options:
+                if new_nic_index > 0:
+                    login_nic_index = new_nic_index
 
         vm.verify_alive()
         result = virsh.domiflist(options, additional_options, ignore_status=True)
@@ -168,9 +179,12 @@ def run(test, params, env):
                     raise error.TestFail("Interface attached with"
                                          " '--print-xml' option")
             else:
-                check_output(new_iflist, vm)
+                check_output(new_iflist, vm, login_nic_index)
 
     finally:
+        # Delete the new attached interface
+        if new_nic_index > 0:
+            vm.del_nic(new_nic_index)
         # Destroy vm after test.
         if vm.is_alive():
             vm.destroy(gracefully=False)
