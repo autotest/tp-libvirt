@@ -38,7 +38,7 @@ def run(test, params, env):
         os.kill(vm.get_pid(), getattr(signal, sig_name))
 
         stopped = bool(
-            utils_misc.wait_for(lambda: vm.state() == 'shut off', 10))
+            utils_misc.wait_for(lambda: vm.state() == 'shut off', 60))
         if stopped != expect_stop:
             raise error.TestFail('Expected VM stop is "%s", got "%s"'
                                  % (expect_stop, vm.state()))
