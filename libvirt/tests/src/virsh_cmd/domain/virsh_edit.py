@@ -51,26 +51,33 @@ def run(test, params, env):
             original_vcpu = vcpucount_result.stdout.strip()
 
         expected_vcpu = str(int(original_vcpu) + 1)
+        top_mode = {}
         if not status_error == "yes":
             # check if topology is defined and change vcpu accordingly
             try:
                 vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(source)
                 topology = vmxml_backup.get_cpu_topology()
-                sockets = str(int(topology['sockets']) + 1)
                 cores = topology['cores']
                 threads = topology['threads']
-                vmcpu_xml = vm_xml.VMCPUXML()
-                vmcpu_xml['topology'] = {'sockets': sockets, 'cores': cores,
-                                         'threads': threads}
-                vmxml_backup['cpu'] = vmcpu_xml
-                vmxml_backup.sync()
+                sockets = str(topology['sockets'])
+                old_topology = "<topology sockets='%s' cores='%s' threads='%s'\/>" % (
+                    sockets, cores, threads)
+                sockets = str(int(topology['sockets']) + 1)
+                new_topology = "<topology sockets='%s' cores='%s' threads='%s'\/>" % (
+                    sockets, cores, threads)
+                top_mode = {"edit": r":%s /<topology .*\/>/" + new_topology,
+                            "recover": r":%s /<topology .*\/>/" + old_topology}
                 expected_vcpu = str(int(sockets) * int(cores) * int(threads))
             except:
                 expected_vcpu = str(int(original_vcpu) + 1)
         dic_mode = {
             "edit": r":%s /[0-9]*<\/vcpu>/" + expected_vcpu + r"<\/vcpu>",
             "recover": r":%s /[0-9]*<\/vcpu>/" + original_vcpu + r"<\/vcpu>"}
-        status = libvirt.exec_virsh_edit(source, [dic_mode["edit"]])
+        if top_mode:
+            status = libvirt.exec_virsh_edit(source, [top_mode["edit"],
+                                                      dic_mode["edit"]])
+        else:
+            status = libvirt.exec_virsh_edit(source, [dic_mode["edit"]])
         logging.info(status)
         if not status:
             vmxml.sync()
@@ -85,7 +92,11 @@ def run(test, params, env):
         new_vcpus = str(vm_xml.VMXML.new_from_inactive_dumpxml(vm_name).vcpu)
         # Recover cpuinfo
         # Use name rather than source, since source could be domid
-        status = libvirt.exec_virsh_edit(vm_name, [dic_mode["recover"]])
+        if top_mode:
+            status = libvirt.exec_virsh_edit(vm_name, [top_mode["recover"],
+                                                       dic_mode["recover"]])
+        else:
+            status = libvirt.exec_virsh_edit(vm_name, [dic_mode["recover"]])
         vmxml.sync()
         if status and new_vcpus != expected_vcpu:
             return False
