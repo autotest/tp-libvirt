@@ -190,15 +190,15 @@ def migrate_vm(params):
             logging.info("Get an expected migration result:\n%s" % mig_output)
         else:
             check_output(mig_output, params)
-            raise error.TestFail("Can't get an expected migration result:\n%s"
-                                 % mig_output)
+            raise exceptions.TestFail("Can't get an expected migration "
+                                      "result:\n%s" % mig_output)
     else:
         if not MIGRATE_RET:
             check_output(mig_output, params)
             logging.info("It's an expected error:\n%s" % mig_output)
         else:
-            raise error.TestFail("Unexpected return result:\n%s"
-                                 % mig_output)
+            raise exceptions.TestFail("Unexpected return result:\n%s"
+                                      % mig_output)
 
 
 def check_parameters(params):
@@ -875,6 +875,7 @@ def run(test, params, env):
     reboot_vm = "yes" == test_dict.get("reboot_vm", "no")
     abort_job = "yes" == test_dict.get("abort_job", "no")
     ctrl_c = "yes" == test_dict.get("ctrl_c", "no")
+    virsh_options = test_dict.get("virsh_options", "--verbose --live")
     remote_path = test_dict.get("remote_libvirtd_conf",
                                 "/etc/libvirt/libvirtd.conf")
     log_file = test_dict.get("libvirt_log", "/var/log/libvirt/libvirtd.log")
@@ -1571,7 +1572,7 @@ def run(test, params, env):
                 vm_xml_cxt = utils.system_output("virsh dumpxml %s" % vm_name)
                 logging.debug("The VM XML with attached disk: \n%s", vm_xml_cxt)
 
-            attach_disk = True
+                attach_disk = True
 
         start_filter_string = test_dict.get("start_filter_string")
         start_local_vm = True
@@ -1881,8 +1882,7 @@ def run(test, params, env):
                 vm.wait_for_login()
 
         if run_migr_back:
-            options = test_dict.get("virsh_options", "--verbose --live")
-            command = "virsh migrate %s %s %s" % (vm_name, options, uri)
+            command = "virsh migrate %s %s %s" % (vm_name, virsh_options, uri)
             logging.debug("Start migrating: %s", command)
             p = Popen(command, shell=True, stdout=PIPE, stderr=PIPE)
 
@@ -2016,13 +2016,12 @@ def run(test, params, env):
         if disk_port:
             # Run migration command on a seperate thread
             migration_test = libvirt.MigrationTest()
-            options = test_dict.get("virsh_options", "--verbose --live")
             vms = [vm]
             func_dict = {"disk_port": disk_port, "server_ip": server_ip,
                          "server_user": server_user, "server_pwd": server_pwd,
                          "client_ip": client_ip}
             migration_test.do_migration(vms, None, uri, 'orderly',
-                                        options,
+                                        virsh_options,
                                         thread_timeout=900,
                                         ignore_status=True,
                                         func=check_migration_disk_port,
@@ -2209,6 +2208,28 @@ def run(test, params, env):
 #            remote_vm_obj.run_command(vm_ip, run_cmd_in_vm)
 
         cmd = test_dict.get("check_disk_size_cmd")
+        if (virsh_options.find("copy-storage-all") >= 0 and
+           test_dict.get("local_image_format") == "raw"):
+            # Check the image size on target host after migration
+            local_disk_image = test_dict.get("local_disk_image")
+            remote_image_list.append(local_disk_image)
+            remote_runner = remote.RemoteRunner(host=server_ip,
+                                                username=server_user,
+                                                password=server_pwd)
+            cmdResult = remote_runner.run(cmd, ignore_status=True)
+            if cmdResult.exit_status:
+                raise exceptions.TestError("Failed to run '%s' on remote: %s"
+                                           % (cmd, cmdResult))
+            local_disk_size = test_dict.get("local_disk_size")
+            if cmdResult.stdout.strip() != local_disk_size:
+                raise exceptions.TestFail("Image location: %s \n"
+                                          "The image sizes are not equal.\n"
+                                          "Remote size is %s\n"
+                                          "Local size is %s"
+                                          % (local_disk_image,
+                                             cmdResult.stdout.strip(),
+                                             local_disk_size))
+
         if cmd and check_image_size and not support_precreation:
             status, output = run_remote_cmd(cmd, server_ip, server_user,
                                             server_pwd)
@@ -2261,7 +2282,6 @@ def run(test, params, env):
         if migrate_disks and status_error == "no":
             # Check the libvirtd.log
             grep_from_remote = ".*nbd-server-add.*drive-virtio-disk.*writable.*"
-            virsh_options = test_dict.get("virsh_options", "")
             cmd = "grep %s %s" % (grep_from_remote, log_file)
             status, output = run_remote_cmd(cmd, server_ip, server_user,
                                             server_pwd)
@@ -2302,10 +2322,9 @@ def run(test, params, env):
             check_vm_disk_after_migration(vm, test_dict)
 
         if migr_vm_back:
-            options = test_dict.get("virsh_options", "--verbose --live")
             src_uri = test_dict.get("migration_source_uri")
             cmd = "virsh migrate %s %s %s" % (vm_name,
-                                              options, src_uri)
+                                              virsh_options, src_uri)
             logging.debug("Start migrating: %s", cmd)
             status, output = run_remote_cmd(cmd, server_ip, server_user,
                                             server_pwd)
@@ -2399,7 +2418,6 @@ def run(test, params, env):
                     raise exceptions.TestFail("Failed to run '%s' on remote: %s"
                                               % (cmd, output))
 
-            virsh_options = test_dict.get("virsh_options", "--live --verbose")
             if not status and re.search("--persistent", virsh_options):
                 cmd = "virsh undefine %s" % vm_name
                 match_string = "Domain %s has been undefined" % vm_name
