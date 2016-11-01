@@ -65,12 +65,14 @@ def run(test, params, env):
         vm.start()
         vm.wait_for_login()
 
-        host_cpu_count = utils.count_cpus()
-        for i in range(host_cpu_count):
+        # Test vcpupin to the alive cpus list
+        cpus_list = utils.cpu_online_map()
+        logging.info("active cpus in host are %s", cpus_list)
+        for i in cpus_list:
             ret = virsh.vcpupin(vm_name, 0, i, debug=True, ignore_status=True)
             if ret.exit_status:
-                raise error.TestFail("vcpupin failed while numad running, %s"
-                                     % bug_url)
+                logging.error("related bug url: %s", bug_url)
+                raise error.TestFail("vcpupin failed: %s" % ret.stderr)
             virsh.vcpuinfo(vm_name, debug=True)
     finally:
         utils.run("service numad stop")
