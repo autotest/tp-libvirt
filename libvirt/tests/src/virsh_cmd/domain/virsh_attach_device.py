@@ -12,6 +12,7 @@ from string import ascii_lowercase
 from autotest.client.shared import error
 
 from virttest import virt_vm, virsh, remote, utils_misc, data_dir
+from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.staging.backports import itertools
 
@@ -491,6 +492,20 @@ class Controller(AttachDeviceBase):
         controller_device = controllerclass(type_name=self.type,
                                             virsh_instance=self.test_params.virsh)
         controller_device.model = self.model
+
+        if not libvirt_version.version_compare(1, 3, 5):
+            controller_devices = []
+            devices = self.test_params.vmxml.get_devices()
+            try:
+                controller_devices = devices.by_device_tag('controller')
+            except xcepts.LibvirtXMLError:
+                # Handle case without any controller tags
+                pass
+            controller_device.index = str(0)
+            for controller in controller_devices:
+                if controller['type'] == controller_device.type:
+                    controller_device.index = str(int(controller_device.index) + 1)
+
         return controller_device
 
     def function(self, index):
