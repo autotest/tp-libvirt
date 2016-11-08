@@ -60,9 +60,9 @@ def run(test, params, env):
         option_list = options.split(" ")
         for item in option_list:
             if virsh.has_command_help_match(command, item) is None:
-                raise exceptions.TestNAError("The current libvirt version"
-                                             " doesn't support '%s' option"
-                                             % item)
+                raise exceptions.TestSkipError("The current libvirt version"
+                                               " doesn't support '%s' option"
+                                               % item)
         # Set iothreads first
         if iothreadids:
             ids_xml = vm_xml.VMIothreadidsXML()
