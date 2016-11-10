@@ -35,6 +35,7 @@ class VMChecker(object):
         self.setup_session()
         self.checker = utils_v2v.VMCheck(test, params, env)
         self.checker.virsh_session_id = self.virsh_session_id
+        self.virsh_instance = virsh.VirshPersistent(session_id=self.virsh_session_id)
         self.vmxml = virsh.dumpxml(self.vm_name,
                                    session_id=self.virsh_session_id).stdout.strip()
 
@@ -307,10 +308,9 @@ class VMChecker(object):
         Check if graphics attributes value in vm xml match with given param.
         """
         logging.info('Check graphics parameters')
-        virsh_instance = virsh.VirshPersistent(session_id=self.virsh_session_id)
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
                 self.vm_name, options='--security-info',
-                virsh_instance=virsh_instance)
+                virsh_instance=self.virsh_instance)
         graphic = vmxml.xmltreefile.find('devices').find('graphics')
         status = True
         for key in param:

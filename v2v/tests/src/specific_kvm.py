@@ -246,11 +246,10 @@ def run(test, params, env):
         line += ' --current'
         logging.debug(virsh.attach_interface(vm_name, option=line))
 
-    def check_multi_netcards(mac_list, virsh_session_id):
+    def check_multi_netcards(mac_list, virsh_instance):
         """
         Check if number and type of network cards meet expectation
         """
-        virsh_instance = virsh.VirshPersistent(session_id=virsh_session_id)
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
                 vm_name, virsh_instance=virsh_instance)
         iflist = vmxml.get_iface_all()
@@ -567,7 +566,7 @@ def run(test, params, env):
                 check_disks(vmchecker.checker)
             elif checkpoint == 'multi_netcards':
                 check_multi_netcards(params['mac_address'],
-                                     vmchecker.virsh_session_id)
+                                     vmchecker.virsh_instance)
             elif checkpoint.startswith('spice'):
                 vmchecker.check_graphics({'type': 'spice'})
                 if checkpoint == 'spice_encrypt':
