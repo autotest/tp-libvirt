@@ -147,10 +147,14 @@ def run(test, params, env):
             dummy = f.read()
         f.close()
 
-        if os.path.exists(tmp_pipe):
+        try:
             os.unlink(tmp_pipe)
-        if os.path.exists(tmp_file):
+        except OSError as detail:
+            logging.info("Can't remove %s: %s", tmp_pipe, detail)
+        try:
             os.unlink(tmp_file)
+        except OSError as detail:
+            logging.info("Cant' remove %s: %s", tmp_file, detail)
 
     # Recover the environment.
     if pre_vm_state == "suspend":
