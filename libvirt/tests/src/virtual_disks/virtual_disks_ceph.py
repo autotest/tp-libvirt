@@ -3,8 +3,10 @@ import re
 import time
 import logging
 import aexpect
-from autotest.client.shared import error
+
 from avocado.utils import process
+from avocado.core import exceptions
+
 from virttest import virsh
 from virttest import utils_misc
 from virttest import virt_vm, remote
@@ -83,11 +85,11 @@ def run(test, params, env):
                             % (auth_type, auth_user, auth_usage))
             if not sp.define_rbd_pool(pool_name, mon_host,
                                       disk_src_pool, extra=auth_opt):
-                raise error.TestFail("Failed to define storage pool")
+                raise exceptions.TestFail("Failed to define storage pool")
             if not sp.build_pool(pool_name):
-                raise error.TestFail("Failed to build storage pool")
+                raise exceptions.TestFail("Failed to build storage pool")
             if not sp.start_pool(pool_name):
-                raise error.TestFail("Failed to start storage pool")
+                raise exceptions.TestFail("Failed to start storage pool")
 
         # Check pool operation
         ret = virsh.pool_refresh(pool_name, **virsh_dargs)
@@ -97,19 +99,19 @@ def run(test, params, env):
         # pool-info
         pool_info = sp.pool_info(pool_name)
         if pool_info["Autostart"] != 'no':
-            raise error.TestFail("Failed to check pool information")
+            raise exceptions.TestFail("Failed to check pool information")
         # pool-autostart
         if not sp.set_pool_autostart(pool_name):
-            raise error.TestFail("Failed to set pool autostart")
+            raise exceptions.TestFail("Failed to set pool autostart")
         pool_info = sp.pool_info(pool_name)
         if pool_info["Autostart"] != 'yes':
-            raise error.TestFail("Failed to check pool information")
+            raise exceptions.TestFail("Failed to check pool information")
         # pool-autostart --disable
         if not sp.set_pool_autostart(pool_name, "--disable"):
-            raise error.TestFail("Failed to set pool autostart")
+            raise exceptions.TestFail("Failed to set pool autostart")
         # find-storage-pool-sources-as
         ret = virsh.find_storage_pool_sources_as("rbd", mon_host)
-        libvirt.check_result(ret, unsupported_msg)
+        libvirt.check_result(ret, skip_if=unsupported_err)
 
     def create_vol(vol_params):
         """
@@ -132,32 +134,32 @@ def run(test, params, env):
         pv = libvirt_storage.PoolVolume(pool_name)
         # Supported operation
         if vol_name not in pv.list_volumes():
-            raise error.TestFail("Volume %s doesn't exist" % vol_name)
+            raise exceptions.TestFail("Volume %s doesn't exist" % vol_name)
         ret = virsh.vol_dumpxml(vol_name, pool_name)
         libvirt.check_exit_status(ret)
         # vol-info
         if not pv.volume_info(vol_name):
-            raise error.TestFail("Can't see volmue info")
+            raise exceptions.TestFail("Can't see volmue info")
         # vol-key
         ret = virsh.vol_key(vol_name, pool_name)
         libvirt.check_exit_status(ret)
         if "%s/%s" % (disk_src_pool, vol_name) not in ret.stdout:
-            raise error.TestFail("Volume key isn't correct")
+            raise exceptions.TestFail("Volume key isn't correct")
         # vol-path
         ret = virsh.vol_path(vol_name, pool_name)
         libvirt.check_exit_status(ret)
         if "%s/%s" % (disk_src_pool, vol_name) not in ret.stdout:
-            raise error.TestFail("Volume path isn't correct")
+            raise exceptions.TestFail("Volume path isn't correct")
         # vol-pool
         ret = virsh.vol_pool("%s/%s" % (disk_src_pool, vol_name))
         libvirt.check_exit_status(ret)
         if pool_name not in ret.stdout:
-            raise error.TestFail("Volume pool isn't correct")
+            raise exceptions.TestFail("Volume pool isn't correct")
         # vol-name
         ret = virsh.vol_name("%s/%s" % (disk_src_pool, vol_name))
         libvirt.check_exit_status(ret)
         if vol_name not in ret.stdout:
-            raise error.TestFail("Volume name isn't correct")
+            raise exceptions.TestFail("Volume name isn't correct")
         # vol-resize
         ret = virsh.vol_resize(vol_name, "2G", pool_name)
         libvirt.check_exit_status(ret)
@@ -165,31 +167,32 @@ def run(test, params, env):
         # Not supported operation
         # vol-clone
         ret = virsh.vol_clone(vol_name, "atest.vol", pool_name)
-        libvirt.check_result(ret, unsupported_msg)
+        libvirt.check_result(ret, skip_if=unsupported_err)
         # vol-create-from
         volxml = vol_xml.VolXML()
         vol_params.update({"name": "atest.vol"})
         v_xml = volxml.new_vol(**vol_params)
         v_xml.xmltreefile.write()
         ret = virsh.vol_create_from(pool_name, v_xml.xml, vol_name, pool_name)
-        libvirt.check_result(ret, unsupported_msg)
+        libvirt.check_result(ret, skip_if=unsupported_err)
 
         # vol-wipe
         ret = virsh.vol_wipe(vol_name, pool_name)
-        libvirt.check_result(ret, unsupported_msg)
+        libvirt.check_result(ret, skip_if=unsupported_err)
         # vol-upload
         ret = virsh.vol_upload(vol_name, vm.get_first_disk_devices()['source'],
                                "--pool %s" % pool_name)
-        libvirt.check_result(ret, unsupported_msg)
+        libvirt.check_result(ret, skip_if=unsupported_err)
         # vol-download
         ret = virsh.vol_download(vol_name, "atest.vol", "--pool %s" % pool_name)
-        libvirt.check_result(ret, unsupported_msg)
+        libvirt.check_result(ret, skip_if=unsupported_err)
 
     def check_qemu_cmd():
         """
         Check qemu command line options.
         """
         cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
+        process.run(cmd, shell=True)
         if disk_src_name:
             cmd += " | grep file=rbd:%s:" % disk_src_name
             if auth_user and auth_key:
@@ -200,7 +203,7 @@ def run(test, params, env):
             hosts = '\:6789\;'.join(mon_host.split())
             cmd += " | grep 'mon_host=%s'" % hosts
         if driver_iothread:
-            cmd += " | grep iothread=iothread%s" % driver_iothread
+            cmd += " | grep iothread%s" % driver_iothread
         # Run the command
         process.run(cmd, shell=True)
 
@@ -226,7 +229,6 @@ def run(test, params, env):
         snap_name = "s1"
         snap_mem = os.path.join(test.tmpdir, "rbd.mem")
         snap_disk = os.path.join(test.tmpdir, "rbd.disk")
-        expected_fails = []
         xml_snap_exp = ["disk name='vda' snapshot='external' type='file'"]
         xml_dom_exp = ["source file='%s'" % snap_disk,
                        "backingStore type='network' index='1'",
@@ -242,12 +244,8 @@ def run(test, params, env):
         else:
             options = snap_name
 
-        error_msg = params.get("error_msg")
-        if error_msg:
-            expected_fails.append(error_msg)
         ret = virsh.snapshot_create_as(vm_name, options)
-        if ret.exit_status:
-            libvirt.check_result(ret, expected_fails)
+        libvirt.check_result(ret, skip_if=unsupported_err)
 
         # check xml file.
         if not ret.exit_status:
@@ -262,9 +260,9 @@ def run(test, params, env):
                 os.remove(snap_disk)
 
             if not all([x in snap_xml for x in xml_snap_exp]):
-                raise error.TestFail("Failed to check snapshot xml")
+                raise exceptions.TestFail("Failed to check snapshot xml")
             if not all([x in dom_xml for x in xml_dom_exp]):
-                raise error.TestFail("Failed to check domain xml")
+                raise exceptions.TestFail("Failed to check domain xml")
 
     def check_blockcopy(target):
         """
@@ -278,25 +276,18 @@ def run(test, params, env):
 
         # Do blockcopy
         ret = virsh.blockcopy(vm_name, target, blk_file)
-        if ret.exit_status:
-            error_msg = params.get("error_msg")
-            if not error_msg:
-                libvirt.check_exit_status(ret)
-            else:
-                libvirt.check_result(ret, [error_msg])
-            # Passed error check, return
-            return
+        libvirt.check_result(ret, skip_if=unsupported_err)
 
         dom_xml = virsh.dumpxml(vm_name, debug=True).stdout.strip()
         if not dom_xml.count(blk_mirror):
-            raise error.TestFail("Can't see block job in domain xml")
+            raise exceptions.TestFail("Can't see block job in domain xml")
 
         # Abort
         ret = virsh.blockjob(vm_name, target, "--abort")
         libvirt.check_exit_status(ret)
         dom_xml = virsh.dumpxml(vm_name, debug=True).stdout.strip()
         if dom_xml.count(blk_mirror):
-            raise error.TestFail("Failed to abort block job")
+            raise exceptions.TestFail("Failed to abort block job")
         if os.path.exists(blk_file):
             os.remove(blk_file)
 
@@ -318,7 +309,7 @@ def run(test, params, env):
         libvirt.check_exit_status(ret)
         dom_xml = virsh.dumpxml(vm_name, debug=True).stdout.strip()
         if not dom_xml.count("source file='%s'" % blk_file):
-            raise error.TestFail("Failed to pivot block job")
+            raise exceptions.TestFail("Failed to pivot block job")
         # Remove the disk file.
         if os.path.exists(blk_file):
             os.remove(blk_file)
@@ -408,9 +399,6 @@ def run(test, params, env):
     vol_name = params.get("vol_name")
     vol_cap = params.get("vol_cap")
     vol_cap_unit = params.get("vol_cap_unit")
-    start_error_msg = params.get("start_error_msg")
-    attach_error_msg = params.get("attach_error_msg")
-    unsupported_msg = params.get("unsupported_msg")
 
     # Start vm and get all partions in vm.
     if vm.is_dead():
@@ -436,6 +424,21 @@ def run(test, params, env):
     key_file = os.path.join(test.tmpdir, "ceph.key")
     img_file = os.path.join(test.tmpdir,
                             "%s_test.img" % vm_name)
+
+    # Construct a unsupported error message list to skip these kind of tests
+    unsupported_err = []
+    if driver_iothread:
+        unsupported_err.append('IOThreads not supported')
+    if test_snapshot:
+        unsupported_err.append('live disk snapshot not supported')
+        unsupported_err.append('internal snapshot for disk .* unsupported')
+    if test_blockcopy:
+        unsupported_err.append('block copy is not supported')
+    if attach_disk:
+        unsupported_err.append('No such file or directory')
+    if create_volume:
+        unsupported_err.append("backing 'volume' disks isn't yet supported")
+        unsupported_err.append('this function is not supported')
 
     try:
         # Set domain state
@@ -463,7 +466,7 @@ def run(test, params, env):
                                          ret.stdout)[0].lstrip()
                 logging.debug("Secret uuid %s", secret_uuid)
                 if secret_uuid is None:
-                    raise error.TestNAError("Failed to get secret uuid")
+                    raise exceptions.TestError("Failed to get secret uuid")
 
                 # Set secret value
                 auth_key = params.get("auth_key")
@@ -471,12 +474,12 @@ def run(test, params, env):
                                              **virsh_dargs)
                 libvirt.check_exit_status(ret)
 
-            # TODO - Delete the disk if it exists
-            #cmd = ("rbd -m {0} {1} info {2} && rbd -m {0} {1} rm "
-            #       "{2}".format(mon_host, key_opt, disk_src_name))
-            #process.run(cmd, ignore_status=True, shell=True)
+            # Delete the disk if it exists
+            cmd = ("rbd -m {0} {1} info {2} && rbd -m {0} {1} rm "
+                   "{2}".format(mon_host, key_opt, disk_src_name))
+            process.run(cmd, ignore_status=True, shell=True)
         else:
-            raise error.TestNAError("Failed to install ceph-common")
+            raise exceptions.TestError("Failed to install ceph-common")
 
         if disk_src_config:
             config_ceph()
@@ -548,18 +551,15 @@ def run(test, params, env):
             opts = params.get("attach_option", "")
             ret = virsh.attach_device(vm_name, xml_file,
                                       flagstr=opts, debug=True)
-            if attach_error_msg:
-                libvirt.check_result(ret, attach_error_msg)
-            else:
-                libvirt.check_exit_status(ret)
+            libvirt.check_result(ret, skip_if=unsupported_err)
             if additional_guest:
                 ret = virsh.attach_device(guest_name, xml_file,
                                           "", debug=True)
-                libvirt.check_exit_status(ret)
+                libvirt.check_result(ret, skip_if=unsupported_err)
         elif attach_disk:
             ret = virsh.attach_disk(vm_name, disk_path,
                                     targetdev, **virsh_dargs)
-            libvirt.check_exit_status(ret)
+            libvirt.check_result(ret, skip_if=unsupported_err)
         elif not create_volume:
             libvirt.set_vm_disk(vm, params)
 
@@ -571,7 +571,7 @@ def run(test, params, env):
             vm.undefine()
             if virsh.create(vmxml_for_test.xml, **virsh_dargs).exit_status:
                 vmxml_backup.define()
-                raise error.TestFail("Cann't create the domain")
+                raise exceptions.TestFail("Cann't create the domain")
         elif vm.is_dead():
             vm.start()
         # Wait for vm is running
@@ -586,10 +586,10 @@ def run(test, params, env):
         if test_vm_parts:
             if not check_in_vm(vm, targetdev, old_parts,
                                read_only=create_snapshot):
-                raise error.TestFail("Failed to check vm partitions")
+                raise exceptions.TestFail("Failed to check vm partitions")
             if additional_guest:
                 if not check_in_vm(additional_vm, targetdev, old_parts):
-                    raise error.TestFail("Failed to check vm partitions")
+                    raise exceptions.TestFail("Failed to check vm partitions")
         # Save and restore operation
         if test_save_restore:
             check_save_restore()
@@ -600,7 +600,7 @@ def run(test, params, env):
             check_blockcopy(targetdev)
 
         # Detach the device.
-        if attach_device and not attach_error_msg:
+        if attach_device:
             xml_file = libvirt.create_disk_xml(params)
             ret = virsh.detach_device(vm_name, xml_file)
             libvirt.check_exit_status(ret)
@@ -612,20 +612,21 @@ def run(test, params, env):
             libvirt.check_exit_status(ret)
 
         # Check disk in vm after detachment.
-        if (attach_device or attach_disk) and not attach_error_msg:
+        if attach_device or attach_disk:
             session = vm.wait_for_login()
             new_parts = libvirt.get_parts_list(session)
             if len(new_parts) != len(old_parts):
-                raise error.TestFail("Disk still exists in vm"
-                                     " after detachment")
+                raise exceptions.TestFail("Disk still exists in vm"
+                                          " after detachment")
             session.close()
 
     except virt_vm.VMStartError, details:
-        if start_error_msg in str(details):
-            pass
+        for msg in unsupported_err:
+            if msg in str(details):
+                raise exceptions.TestSkipError(detail)
         else:
-            raise error.TestFail("VM failed to start."
-                                 "Error: %s" % str(details))
+            raise exceptions.TestFail("VM failed to start."
+                                      "Error: %s" % str(details))
     finally:
         # Delete snapshots.
         snapshot_lists = virsh.snapshot_list(vm_name)
@@ -647,7 +648,7 @@ def run(test, params, env):
                    " purge {2} && rbd -m {0} {1} rm {2}"
                    "".format(mon_host, key_opt, disk_src_name))
             process.run(cmd, ignore_status=True, shell=True)
-        elif attach_device or attach_disk:
+        else:
             cmd = ("rbd -m {0} {1} info {2} && rbd -m {0} {1} rm {2}"
                    "".format(mon_host, key_opt, disk_src_name))
             process.run(cmd, ignore_status=True, shell=True)
