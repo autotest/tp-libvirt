@@ -77,9 +77,14 @@ def run(test, params, env):
         fail_pat.append('not running')
     elif vm_state == 'shutoff':
         fail_pat.append('not running')
-
+    if agent_error_test:
+        fail_pat.append('not running')
+        fail_pat.append('agent not available')
     if pmsuspend_error_msg:
         fail_pat.append(pmsuspend_error_msg)
+
+    # RHEL6 or older releases
+    unsupported_guest_err = 'suspend mode is not supported by the guest'
 
     try:
         if vm.is_alive():
@@ -135,6 +140,8 @@ def run(test, params, env):
                     raise error.TestFail("Expected failed with %s, but run succeed"
                                          ":\n%s" % (fail_pat, result))
             else:
+                if unsupported_guest_err in result.stderr:
+                    fail_pat.append(unsupported_guest_err)
                 if not fail_pat:
                     raise error.TestFail("Expected success, but run failed:\n%s"
                                          % result)
@@ -145,15 +152,12 @@ def run(test, params, env):
 
             utils_misc.wait_for(lambda: vm.state() == 'pmsuspended', 30)
             if agent_error_test:
-                err_msg = ("Requested operation is not valid:"
-                           " domain is not running")
                 ret = virsh.dompmsuspend(vm_name, "mem", **virsh_dargs)
-                libvirt.check_result(ret, [err_msg])
+                libvirt.check_result(ret, fail_pat)
                 ret = virsh.dompmsuspend(vm_name, "disk", **virsh_dargs)
-                libvirt.check_result(ret, [err_msg])
+                libvirt.check_result(ret, fail_pat)
                 ret = virsh.domtime(vm_name, **virsh_dargs)
-                libvirt.check_result(ret, [err_msg])
-
+                libvirt.check_result(ret, fail_pat)
             if test_managedsave:
                 ret = virsh.managedsave(vm_name, **virsh_dargs)
                 libvirt.check_exit_status(ret)
