@@ -59,7 +59,6 @@ def run(test, params, env):
     emulated_img = params.get("emulated_image_path", "v2v-emulated-img")
     pvt = utlv.PoolVolumeTest(test, params)
     new_v2v_user = False
-    restore_image_owner = False
     address_cache = env.get('address_cache')
     params['vmcheck_flag'] = False
     checkpoint = params.get('checkpoint', '')
@@ -274,7 +273,15 @@ def run(test, params, env):
             if '-oa' in cmd and '--no-copy' not in cmd:
                 expected_mode = re.findall(r"-oa\s(\w+)", cmd)[0]
                 img_path = get_img_path(output)
-                check_image(img_path, "allocation", expected_mode)
+
+                def check_alloc():
+                    try:
+                        check_image(img_path, "allocation", expected_mode)
+                        return True
+                    except exceptions.TestFail:
+                        pass
+                if not utils_misc.wait_for(check_alloc, timeout=600, step=10.0):
+                    raise exceptions.TestFail('Allocation check failed.')
             if '-of' in cmd and '--no-copy' not in cmd and checkpoint != 'quiet':
                 expected_format = re.findall(r"-of\s(\w+)", cmd)[0]
                 img_path = get_img_path(output)
@@ -298,6 +305,15 @@ def run(test, params, env):
             if checkpoint == 'quiet':
                 if len(output.strip()) != 0:
                     raise exceptions.TestFail('Output is not empty in quiet mode')
+            if checkpoint == 'dependency':
+                if 'libguestfs-winsupport' not in output:
+                    raise exceptions.TestFail('libguestfs-winsupport not in dependency')
+                if 'qemu-kvm-rhev' in output:
+                    raise exceptions.TestFail('qemu-kvm-rhev is in dependency')
+                win_img = params.get('win_image')
+                command = 'guestfish -a %s -i'
+                if process.run(command % win_img, ignore_status=True).exit_status == 0:
+                    raise exceptions.TestFail('Command "%s" success' % command % win_img)
 
     backup_xml = None
     vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
@@ -315,7 +331,10 @@ def run(test, params, env):
                                              params.get("output_network"))
         elif input_mode == "disk":
             input_option += "-i %s %s" % (input_mode, disk_img)
-        elif input_mode in ['libvirtxml', 'ova']:
+        elif input_mode == 'libvirtxml':
+            input_xml = params.get('input_xml')
+            input_option += '-i %s %s' % (input_mode, input_xml)
+        elif input_mode in ['ova']:
             raise exceptions.TestSkipError("Unsupported input mode: %s" % input_mode)
         else:
             raise exceptions.TestError("Unknown input mode %s" % input_mode)
@@ -391,7 +410,6 @@ def run(test, params, env):
 
         # Setup ssh-agent access to xen hypervisor
         if hypervisor == 'xen':
-            os.environ['LIBGUESTFS_BACKEND'] = 'direct'
             user = params.get("xen_host_user", "root")
             passwd = params.get("xen_host_passwd", "redhat")
             logging.info("set up ssh-agent access ")
@@ -411,7 +429,6 @@ def run(test, params, env):
 
         # Create password file for access to ESX hypervisor
         if hypervisor == 'esx':
-            os.environ['LIBGUESTFS_BACKEND'] = 'direct'
             vpx_passwd = params.get("vpx_passwd")
             vpx_passwd_file = os.path.join(test.tmpdir, "vpx_passwd")
             logging.info("Building ESX no password interactive verification.")
@@ -424,7 +441,7 @@ def run(test, params, env):
         if output_mode == "libvirt":
             create_pool()
 
-        if hypervisor in ['esx', 'xen'] or input_mode == 'disk':
+        if hypervisor in ['esx', 'xen'] or input_mode in ['disk', 'libvirtxml']:
             os.environ['LIBGUESTFS_BACKEND'] = 'direct'
 
         # Running virt-v2v command
@@ -432,6 +449,9 @@ def run(test, params, env):
                                output_option, v2v_options)
         if v2v_user:
             cmd = su_cmd + "'%s'" % cmd
+
+        if checkpoint == 'dependency':
+            cmd = params.get('check_command')
         cmd_result = process.run(cmd, timeout=v2v_timeout, verbose=True,
                                  ignore_status=True)
         if new_vm_name:
