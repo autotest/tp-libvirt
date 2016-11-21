@@ -128,11 +128,15 @@ def check_disconnect_on_shutdown(command, status_error, login_user, login_passwd
                     logging.debug("Got Shell prompt -- logged in")
                     break
 
-            status, output = session.cmd_status_output(console_cmd)
-
-            raise error.TestError('Do not expect output from shutdown command. '
-                                  'but got:\n%s', output)
+            session.cmd_output(console_cmd)
+            # On newer OS like RHEL7, 'shutdown -h now' will not exit before
+            # machine shutdown. But on RHEL6, 'shutdown -h now' will exit and
+            # allow user to execute another command. This next command will not
+            # exit before machine shutdown.
+            session.cmd_output("echo $?")
             session.close()
+            raise error.TestError('Do not expect any command can be executed '
+                                  'after successfully shutdown')
         except (aexpect.ShellError,
                 aexpect.ExpectError), detail:
             if 'Shell process terminated' not in str(detail):
