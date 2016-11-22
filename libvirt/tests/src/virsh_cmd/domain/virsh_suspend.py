@@ -30,7 +30,12 @@ def run(test, params, env):
         if unprivileged_user.count('EXAMPLE'):
             unprivileged_user = 'testacl'
 
+    no_err_msg = False
     if not libvirt_version.version_compare(1, 1, 1):
+        # Suspend may fail without error message if domain name is ''
+        # on old version libvirt
+        if vm_ref == '':
+            no_err_msg = True
         if params.get('setup_libvirt_polkit') == 'yes':
             raise error.TestNAError("API acl test not supported in current"
                                     " libvirt version.")
@@ -58,7 +63,7 @@ def run(test, params, env):
 
     # Check result
     if status_error == "yes":
-        if not err:
+        if not err and not no_err_msg:
             raise error.TestFail("No error hint to user about bad command!")
         if status == 0:
             raise error.TestFail("Run successfully with wrong command!")
