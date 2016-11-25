@@ -60,10 +60,36 @@ def run(test, params, env):
     username = params.get("username")
     password = params.get("password")
 
+    # stree_test require detach operation
+    stress_test_detach_device = False
+    stress_test_detach_interface = False
+    if stress_test:
+        if attach_device:
+            stress_test_detach_device = True
+        if attach_interface:
+            stress_test_detach_interface = True
+
+    # The following detach-device step also using attach option
+    detach_option = attach_option
+
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     #iface_mac = vm_xml.VMXML.get_first_mac_by_name(vm_name)
     libvirtd = utils_libvirtd.Libvirtd()
+
+    # Check virsh command option
+    check_cmds = []
+    if not status_error:
+        if attach_device and attach_option:
+            check_cmd.append(('attach-device', attach_option))
+        if attach_iface and attach_option:
+            check_cmd.append(('attach-interface', attach_option))
+        if (detach_device or stress_test_detach_device) and detach_option:
+            check_cmd.append(('detach-device', detach_option))
+        if stress_test_detach_interface and detach_option:
+            check_cmd.append(('detach-device', detach_option))
+    for cmd, option in check_cmds:
+        libvirt.virsh_cmd_has_option(cmd, option)
 
     try:
         try:
@@ -100,7 +126,7 @@ def run(test, params, env):
                     elif stress_test:
                         # Detach the device immediately for stress test
                         ret = virsh.detach_device(vm_name, iface_xml_obj.xml,
-                                                  flagstr=attach_option,
+                                                  flagstr=detach_option,
                                                   ignore_status=True)
                         libvirt.check_exit_status(ret)
                     else:
@@ -134,7 +160,7 @@ def run(test, params, env):
                     elif stress_test:
                         # Detach the device immediately for stress test
                         options = ("--type %s --mac %s %s" %
-                                   (iface_type, mac, attach_option))
+                                   (iface_type, mac, detach_option))
                         ret = virsh.detach_interface(vm_name, options,
                                                      ignore_status=True)
                         libvirt.check_exit_status(ret)

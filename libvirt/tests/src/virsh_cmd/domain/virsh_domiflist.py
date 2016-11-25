@@ -137,11 +137,15 @@ def run(test, params, env):
     vm_backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     login_nic_index = 0
     new_nic_index = 0
+    status_error = "yes" == params.get("status_error", "no")
+
+    # Check virsh command option
+    if attach_iface and attach_option and not status_error:
+        libvirt.virsh_cmd_has_option('attach-interface', attach_option)
 
     try:
         # Get the virsh domiflist
         options = params.get("domiflist_domname_options", "id")
-        status_error = params.get("status_error", "no")
 
         if options == "id":
             options = domid
@@ -168,7 +172,7 @@ def run(test, params, env):
         new_iflist = parse_interface_details(result.stdout)
         logging.debug("New interface list: %s", new_iflist)
 
-        if status_error == "yes":
+        if status_error:
             if result.exit_status == 0:
                 raise error.TestFail("Run passed for incorrect command \nCommand: "
                                      "virsh domiflist %s\nOutput Status:%s\n"
