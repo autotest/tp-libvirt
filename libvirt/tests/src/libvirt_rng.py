@@ -184,8 +184,10 @@ def run(test, params, env):
         rng_files = (
             "/sys/devices/virtual/misc/hw_random/rng_available",
             "/sys/devices/virtual/misc/hw_random/rng_current")
-        rng_avail = session.cmd_output("cat %s" % rng_files[0]).strip()
-        rng_currt = session.cmd_output("cat %s" % rng_files[1]).strip()
+        rng_avail = session.cmd_output("cat %s" % rng_files[0],
+                                       timeout=600).strip()
+        rng_currt = session.cmd_output("cat %s" % rng_files[1],
+                                       timeout=600).strip()
         logging.debug("rng avail:%s, current:%s", rng_avail, rng_currt)
         if not rng_currt.count("virtio") or rng_currt not in rng_avail:
             raise error.TestFail("Failed to check rng file on guest")
@@ -193,7 +195,7 @@ def run(test, params, env):
         # Read the random device
         cmd = ("dd if=/dev/hwrng of=rng.test count=100"
                " && rm -f rng.test")
-        ret, output = session.cmd_status_output(cmd, timeout=120)
+        ret, output = session.cmd_status_output(cmd, timeout=600)
         if ret:
             raise error.TestFail("Failed to read the random device")
         rng_rate = params.get("rng_rate")
