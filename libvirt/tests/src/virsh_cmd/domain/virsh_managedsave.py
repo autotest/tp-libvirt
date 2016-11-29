@@ -127,9 +127,10 @@ def run(test, params, env):
         ret = utils.run(cmd, ignore_status=True)
         output = ret.stdout.strip()
         logging.debug("check flags output: %s" % output)
-        lines = re.findall(r"flags:.+%s" % flags, output, re.M)
-        logging.debug("Find lines: %s" % lines)
-        if not lines:
+        lines = re.findall(r"flags:.(\d+)", output, re.M)
+        logging.debug("Find all fdinfo flags: %s" % lines)
+        lines = [int(i, 8) & flags for i in lines]
+        if flags not in lines:
             raise error.TestFail("Checking flags %s failed" % flags)
 
         return ret
@@ -206,7 +207,7 @@ def run(test, params, env):
 
         ret = check_flags_parallel(virsh_cmd_stop, bash_cmd %
                                    (managed_save_file, managed_save_file,
-                                    "1", flags), flags)
+                                    "1"), flags)
         if is_systemd:
             ret = libvirt_guests.raw_status()
         logging.info("status output: %s", ret.stdout)
@@ -224,7 +225,7 @@ def run(test, params, env):
         wait_for_state("shut off")
         check_flags_parallel(virsh_cmd_start, bash_cmd %
                              (managed_save_file, managed_save_file,
-                              "0", flags), flags)
+                              "0"), flags)
         # Wait for VM in running state
         wait_for_state("running")
 
@@ -409,22 +410,22 @@ def run(test, params, env):
         # excuting managedsave command
         bash_cmd = ("let i=1; while((i++<400)); do if [ -e %s ]; then (cat /proc"
                     "/$(lsof -w %s|awk '/libvirt_i/{print $2}')/fdinfo/*%s* |"
-                    "grep 'flags:.*%s') && break; else sleep 0.05; fi; done;")
+                    "grep 'flags:.*') && break; else sleep 0.05; fi; done;")
         # Flags to check bypass cache take effect
-        flags = "014"
+        flags = os.O_DIRECT
         if test_bypass_cache:
             # Drop caches.
             drop_caches()
             virsh_cmd = "virsh managedsave %s %s" % (option, vm_name)
             check_flags_parallel(virsh_cmd, bash_cmd %
                                  (managed_save_file, managed_save_file,
-                                  "1", flags), flags)
+                                  "1"), flags)
             # Wait for VM in shut off state
             wait_for_state("shut off")
             virsh_cmd = "virsh start %s %s" % (option, vm_name)
             check_flags_parallel(virsh_cmd, bash_cmd %
                                  (managed_save_file, managed_save_file,
-                                  "0", flags), flags)
+                                  "0"), flags)
             # Wait for VM in running state
             wait_for_state("running")
         elif test_libvirt_guests:
@@ -469,7 +470,7 @@ def run(test, params, env):
                     virsh_cmd = ("(service libvirtd start)")
                     check_flags_parallel(virsh_cmd, bash_cmd %
                                          (managed_save_file, managed_save_file,
-                                          "0", flags), flags)
+                                          "0"), flags)
                 elif test_loop_cmd:
                     loop_range = params.get("loop_range", "20")
                     vm_managedsave_loop(vm_name, loop_range, libvirtd)
