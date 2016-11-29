@@ -7,6 +7,7 @@ from avocado.utils import process
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import ssh_key
 
 
 def run(test, params, env):
@@ -23,8 +24,15 @@ def run(test, params, env):
                                                               "default"))
 
     option = params.get("virsh_uri_options")
-    target_uri = params.get("target_uri")
+
+    remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
+    remote_pwd = params.get("remote_pwd", None)
+    remote_user = params.get("remote_user", "root")
+
+    # Forming the uri using the api
+    target_uri = libvirt_vm.complete_uri(params.get("remote_ip"))
     remote_ref = params.get("uri_remote_ref", "")
+
     if target_uri:
         if target_uri.count('EXAMPLE.COM'):
             raise error.TestNAError(
@@ -35,7 +43,7 @@ def run(test, params, env):
         cmd = "virsh uri %s" % option
 
     # Prepare libvirtd service
-    check_libvirtd = params.has_key("libvirtd")
+    check_libvirtd = "libvirtd" in params.keys()
     if check_libvirtd:
         libvirtd = params.get("libvirtd")
         if libvirtd == "off":
@@ -43,6 +51,12 @@ def run(test, params, env):
 
     # Run test case
     logging.info("The command: %s", cmd)
+
+    # setup autologin for ssh to remote machine to execute commands
+    config_opt = ["StrictHostKeyChecking=no"]
+    ssh_key.setup_remote_ssh_key(remote_ip, remote_user, remote_pwd,
+                                 config_options=config_opt)
+
     try:
         if remote_ref == "remote":
             connect_uri = target_uri
