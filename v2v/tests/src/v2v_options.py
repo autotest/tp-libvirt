@@ -314,6 +314,9 @@ def run(test, params, env):
                 command = 'guestfish -a %s -i'
                 if process.run(command % win_img, ignore_status=True).exit_status == 0:
                     raise exceptions.TestFail('Command "%s" success' % command % win_img)
+            if checkpoint == 'no_dcpath':
+                if not utils_v2v.check_log(output, ['--dcpath'], expect=False):
+                    raise exceptions.TestFail('"--dcpath" is not removed')
 
     backup_xml = None
     vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
@@ -450,7 +453,7 @@ def run(test, params, env):
         if v2v_user:
             cmd = su_cmd + "'%s'" % cmd
 
-        if checkpoint == 'dependency':
+        if checkpoint in ['dependency', 'no_dcpath']:
             cmd = params.get('check_command')
         cmd_result = process.run(cmd, timeout=v2v_timeout, verbose=True,
                                  ignore_status=True)
