@@ -134,7 +134,7 @@ def run(test, params, env):
     device_type = params.get("change_media_device_type", "cdrom")
     target_device = params.get("change_media_target_device", "hdc")
     source_name = params.get("change_media_source")
-    status_error = params.get("status_error", "no")
+    status_error = "yes" == params.get("status_error", "no")
     check_file = params.get("change_media_check_file")
     update_iso_xml_name = params.get("change_media_update_iso_xml")
     init_iso_name = params.get("change_media_init_iso")
@@ -150,6 +150,10 @@ def run(test, params, env):
     except utils_path.CmdNotFoundError:
         raise error.TestNAError("Command 'mkisofs' is missing. You must "
                                 "install it (try 'genisoimage' package.")
+
+    # Check virsh command option
+    if options and not status_error:
+        libvirt.virsh_cmd_has_option('change-media', attach_option)
 
     # Backup for recovery.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -209,7 +213,7 @@ def run(test, params, env):
     all_options = action + options + " " + source
     result = virsh.change_media(vm_ref, target_device,
                                 all_options, ignore_status=True, debug=True)
-    if status_error == "yes":
+    if status_error:
         if start_vm == "no" and vm.is_dead():
             try:
                 vm.start()
@@ -227,7 +231,7 @@ def run(test, params, env):
     status = result.exit_status
 
     try:
-        if status_error == "no":
+        if not status_error:
             if 'print-xml' in options:
                 vmxml_new = vm_xml.VMXML.new_from_dumpxml(vm_name)
                 if source in vmxml_new:
@@ -254,9 +258,8 @@ def run(test, params, env):
         vmxml_backup.sync()
         utils.safe_rmdir(iso_dir)
 
-    # Check status_error
     # Negative testing
-    if status_error == "yes":
+    if status_error:
         if status:
             logging.info("Expected error (negative testing). Output: %s",
                          result.stderr.strip())
@@ -265,7 +268,7 @@ def run(test, params, env):
                                  "(negative testing)" % status)
 
     # Positive testing
-    elif status_error == "no":
+    else:
         if status:
             if force_SKIP:
                 raise error.TestNAError("SELinux is set to enforcing and has "
@@ -275,7 +278,3 @@ def run(test, params, env):
                                  "Output: %s" % result.stderr.strip())
         else:
             logging.info("Expected success. Output: %s", result.stdout.strip())
-
-    else:
-        raise error.TestError("Invalid value for status_error '%s' "
-                              "(must be 'yes' or 'no')" % status_error)
