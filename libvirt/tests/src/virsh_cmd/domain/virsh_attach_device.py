@@ -509,6 +509,7 @@ class VirtualDiskBasic(AttachDeviceBase):
     devidx = 1  # devnode name index to start at (0 = vda/sda, 1 = vdb/sdb, etc)
     devtype = 'file'
     targetbus = "virtio"
+    test_data_list = []  # list of all created disks
 
     @staticmethod
     def devname_suffix(index):
@@ -594,6 +595,8 @@ class VirtualDiskBasic(AttachDeviceBase):
         dev_name = '/dev/' + self.devname(index)
         # Host image path is static known value
         test_data = self.make_image_file_path(index)
+        if test_data not in self.test_data_list:
+            self.test_data_list.append(test_data)
         byte_size = self.meg * 1024 * 1024
         # Place test data at end of device to also confirm sizing
         offset = byte_size - len(test_data)
@@ -634,11 +637,11 @@ class VirtualDiskBasic(AttachDeviceBase):
             logging.debug("VirtualDiskBasic functional test raised an exception")
             return False
         else:
-            gotit = bool(output.count(test_data))
+            gotit = [data for data in self.test_data_list if output.strip('\n') in data]
             logging.info("Test data detected in device: %s",
                          gotit)
             if not gotit:
-                logging.debug("Expecting: '%s'", test_data)
+                logging.debug("Expecting: '%s' in %s", test_data, self.test_data_list)
                 logging.debug("Received: '%s'", output)
             return gotit
 
