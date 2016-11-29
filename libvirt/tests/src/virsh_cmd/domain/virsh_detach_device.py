@@ -36,7 +36,7 @@ def run(test, params, env):
             f.write(str(0))
             f.close()
         except IOError:
-            logging.error("Image file %s created failed." % device_source)
+            logging.error("Image file %s created failed.", device_source)
 
     def check_vm_partition(vm, device, os_type, target_name):
         """
@@ -162,6 +162,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     if vm.is_alive():
         vm.destroy(gracefully=False)
+
     # Back up xml file.
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     device_source = os.path.join(test.virtdir, device_source_name)
@@ -175,114 +176,117 @@ def run(test, params, env):
     else:
         create_device_file(device_source)
 
-    if vm.is_alive():
-        vm.destroy(gracefully=False)
-
-    # If we are testing cdrom device, we need to detach hdc in VM first.
-    if device == "cdrom":
-        virsh.detach_disk(vm_name, device_target, "--config",
-                          ignore_status=True)
-
-    device_xml = create_device_xml(params, test.virtdir, device_source)
-    if not no_attach:
-        s_attach = virsh.attach_device(vm_name, device_xml,
-                                       flagstr="--config").exit_status
-        if s_attach != 0:
-            logging.error("Attach device failed before testing detach-device")
-
-    vm.start()
-    vm.wait_for_login()
-
-    # Add acpiphp module before testing if VM's os type is rhle5.*
-    if device in ['disk', 'cdrom']:
-        if not acpiphp_module_modprobe(vm, os_type):
-            raise error.TestError("Add acpiphp module failed before test.")
-
-    # Turn VM into certain state.
-    if pre_vm_state == "paused":
-        logging.info("Suspending %s..." % vm_name)
-        if vm.is_alive():
-            vm.pause()
-    elif pre_vm_state == "shut off":
-        logging.info("Shuting down %s..." % vm_name)
+    try:
         if vm.is_alive():
             vm.destroy(gracefully=False)
 
-    # Get disk count before test.
-    if device in ['disk', 'cdrom']:
-        device_count_before_cmd = vm_xml.VMXML.get_disk_count(vm_name)
-    else:
-        vm_cls = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        device_count_before_cmd = len(vm_cls.devices)
+        # If we are testing cdrom device, we need to detach hdc in VM first.
+        if device == "cdrom":
+            virsh.detach_disk(vm_name, device_target, "--config",
+                              ignore_status=True)
 
-    # Test.
-    domid = vm.get_id()
-    domuuid = vm.get_uuid()
+        device_xml = create_device_xml(params, test.virtdir, device_source)
+        if not no_attach:
+            s_attach = virsh.attach_device(vm_name, device_xml,
+                                           flagstr="--config").exit_status
+            if s_attach != 0:
+                logging.error("Attach device failed before testing "
+                              "detach-device")
 
-    # Confirm how to reference a VM.
-    if vm_ref == "name":
-        vm_ref = vm_name
-    elif vm_ref.find("invalid") != -1:
-        vm_ref = params.get(vm_ref)
-    elif vm_ref == "id":
-        vm_ref = domid
-    elif vm_ref == "hex_id":
-        vm_ref = hex(int(domid))
-    elif vm_ref == "uuid":
-        vm_ref = domuuid
-    else:
-        vm_ref = ""
-
-    status = virsh.detach_device(vm_ref, device_xml, flagstr=dt_options,
-                                 debug=True).exit_status
-
-    # Resume guest after command. On newer libvirt this is fixed as it has
-    # been a bug. The change in xml file is done after the guest is resumed.
-    if pre_vm_state == "paused":
-        vm.resume()
-
-    # Check disk count after command.
-    check_count_after_cmd = True
-    if device in ['disk', 'cdrom']:
-        device_count_after_cmd = vm_xml.VMXML.get_disk_count(vm_name)
-    else:
-        vm_cls = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        device_count_after_cmd = len(vm_cls.devices)
-    if device_count_after_cmd < device_count_before_cmd:
-        check_count_after_cmd = False
-
-    # Recover VM state.
-    if pre_vm_state == "shut off" and device in ['disk', 'cdrom']:
         vm.start()
+        vm.wait_for_serial_login()
 
-    # Check in VM after command.
-    check_vm_after_cmd = True
-    if device in ['disk', 'cdrom']:
-        check_vm_after_cmd = check_vm_partition(vm, device, os_type,
-                                                device_target)
+        # Add acpiphp module before testing if VM's os type is rhle5.*
+        if device in ['disk', 'cdrom']:
+            if not acpiphp_module_modprobe(vm, os_type):
+                raise error.TestError("Add acpiphp module failed before test.")
 
-    # Destroy VM.
-    if vm.is_alive():
-        vm.destroy(gracefully=False)
+        # Turn VM into certain state.
+        if pre_vm_state == "paused":
+            logging.info("Suspending %s...", vm_name)
+            if vm.is_alive():
+                vm.pause()
+        elif pre_vm_state == "shut off":
+            logging.info("Shutting down %s...", vm_name)
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
 
-    # Check disk count after VM shutdown (with --config).
-    check_count_after_shutdown = True
-    if device in ['disk', 'cdrom']:
-        device_count_after_shutdown = vm_xml.VMXML.get_disk_count(vm_name)
-    else:
-        vm_cls = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        device_count_after_shutdown = len(vm_cls.devices)
-    if device_count_after_shutdown < device_count_before_cmd:
-        check_count_after_shutdown = False
+        # Get disk count before test.
+        if device in ['disk', 'cdrom']:
+            device_count_before_cmd = vm_xml.VMXML.get_disk_count(vm_name)
+        else:
+            vm_cls = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            device_count_before_cmd = len(vm_cls.devices)
 
-    # Recover VM.
-    if vm.is_alive():
-        vm.destroy(gracefully=False)
-    backup_xml.sync()
-    if test_block_dev:
-        libvirt.setup_or_cleanup_iscsi(False)
-    elif os.path.exists(device_source):
-        os.remove(device_source)
+        # Test.
+        domid = vm.get_id()
+        domuuid = vm.get_uuid()
+
+        # Confirm how to reference a VM.
+        if vm_ref == "name":
+            vm_ref = vm_name
+        elif vm_ref.find("invalid") != -1:
+            vm_ref = params.get(vm_ref)
+        elif vm_ref == "id":
+            vm_ref = domid
+        elif vm_ref == "hex_id":
+            vm_ref = hex(int(domid))
+        elif vm_ref == "uuid":
+            vm_ref = domuuid
+        else:
+            vm_ref = ""
+
+        status = virsh.detach_device(vm_ref, device_xml, flagstr=dt_options,
+                                     debug=True).exit_status
+
+        # Resume guest after command. On newer libvirt this is fixed as it has
+        # been a bug. The change in xml file is done after the guest is
+        # resumed.
+        if pre_vm_state == "paused":
+            vm.resume()
+
+        # Check disk count after command.
+        check_count_after_cmd = True
+        if device in ['disk', 'cdrom']:
+            device_count_after_cmd = vm_xml.VMXML.get_disk_count(vm_name)
+        else:
+            vm_cls = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            device_count_after_cmd = len(vm_cls.devices)
+        if device_count_after_cmd < device_count_before_cmd:
+            check_count_after_cmd = False
+
+        # Recover VM state.
+        if pre_vm_state == "shut off" and device in ['disk', 'cdrom']:
+            vm.start()
+
+        # Check in VM after command.
+        check_vm_after_cmd = True
+        if device in ['disk', 'cdrom']:
+            check_vm_after_cmd = check_vm_partition(vm, device, os_type,
+                                                    device_target)
+
+        # Destroy VM.
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
+
+        # Check disk count after VM shutdown (with --config).
+        check_count_after_shutdown = True
+        if device in ['disk', 'cdrom']:
+            device_count_after_shutdown = vm_xml.VMXML.get_disk_count(vm_name)
+        else:
+            vm_cls = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            device_count_after_shutdown = len(vm_cls.devices)
+        if device_count_after_shutdown < device_count_before_cmd:
+            check_count_after_shutdown = False
+    finally:
+        # Recover VM.
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
+        backup_xml.sync()
+        if test_block_dev:
+            libvirt.setup_or_cleanup_iscsi(False)
+        elif os.path.exists(device_source):
+            os.remove(device_source)
 
     # Check results.
     if status_error:
