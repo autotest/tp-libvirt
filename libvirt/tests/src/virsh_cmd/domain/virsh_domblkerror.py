@@ -31,7 +31,6 @@ def run(test, params, env):
     error_type = params.get("domblkerror_error_type")
     timeout = params.get("domblkerror_timeout", 240)
     mnt_dir = params.get("domblkerror_mnt_dir", "/home/test")
-    tmp_file = params.get("domblkerror_tmp_file", "/tmp/fdisk-cmd")
     export_file = params.get("nfs_export_file", "/etc/exports")
     img_name = params.get("domblkerror_img_name", "libvirt-disk")
     img_size = params.get("domblkerror_img_size")
@@ -128,14 +127,16 @@ def run(test, params, env):
             Create large image in guest
             """
             # create partition and file system
-            session.cmd("echo 'n\np\n\n\n\nw\n' > %s" % tmp_file)
+            session.cmd("parted -s %s mklabel msdos" % new_disk)
+            session.cmd("parted -s %s mkpart primary ext3 '0%%' '100%%'" %
+                        new_disk)
             # mount disk and write file in it
+            session.cmd("mkfs.ext3 %s1" % new_disk)
+            session.cmd("mkdir -p %s && mount %s1 %s" %
+                        (mnt_dir, new_disk, mnt_dir))
+
+            # The following step may cause guest paused before it return
             try:
-                # The following steps may cause guest paused before it return
-                session.cmd("fdisk %s < %s" % (new_disk, tmp_file))
-                session.cmd("mkfs.ext3 %s1" % new_disk)
-                session.cmd("mkdir -p %s && mount %s1 %s" %
-                            (mnt_dir, new_disk, mnt_dir))
                 session.cmd("dd if=/dev/zero of=%s/big_file bs=1024 "
                             "count=51200 && sync" % mnt_dir)
             except Exception, err:
