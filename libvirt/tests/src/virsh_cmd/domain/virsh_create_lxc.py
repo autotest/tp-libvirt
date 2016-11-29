@@ -1,3 +1,4 @@
+import re
 import os
 import logging
 import commands
@@ -10,6 +11,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest import virsh
 from virttest.libvirt_xml.devices.emulator import Emulator
 from virttest.libvirt_xml.devices.console import Console
+from virttest.utils_test import libvirt as utlv
 
 
 def run(test, params, env):
@@ -19,7 +21,7 @@ def run(test, params, env):
     fds_options = params.get("create_lxc_fds_options", "")
     other_options = params.get("create_lxc_other_options", "")
     uri = params.get("connect_uri", "lxc:///")
-    vm_name = params.get("vms")
+    vm_name = params.get("main_vm")
     vcpu = params.get("create_lxc_vcpu", 1)
     max_mem = params.get("create_lxc_maxmem", 500000)
     cur_mem = params.get("create_lxc_curmem", 500000)
@@ -42,7 +44,7 @@ def run(test, params, env):
         vmxml.max_mem = max_mem
         vmxml.current_mem = cur_mem
         vmxml.vcpu = vcpu
-        osxml = vmxml.os
+        osxml = vm_xml.VMOSXML()
         osxml.type = os_type
         osxml.arch = os_arch
         osxml.init = os_init
@@ -59,6 +61,18 @@ def run(test, params, env):
         logging.debug("device is %s", devices)
         vmxml.set_devices(devices)
         return vmxml
+
+    def check_state(expected_state):
+        if get_list_vmname:
+            result = virsh.domstate(get_list_vmname, uri=uri)
+            utlv.check_exit_status(result)
+            vm_state = result.stdout.strip()
+            if vm_state == expected_state:
+                return True
+            else:
+                return False
+        else:
+            return False
 
     fd1 = open(tmpfile1, 'w')
     fd2 = open(tmpfile2, 'w')
@@ -90,16 +104,28 @@ def run(test, params, env):
                 logging.info("Find open file in guest: %s", cmd_output)
 
         session.close()
-        vm = env.get_vm(vm_name)
-        if "--autodestroy" in options:
-            if vm.is_alive():
+
+        list_result = virsh.dom_list()
+        match = re.search(r"lxc_test_vm1", list_result.stdout)
+        if match:
+            get_list_vmname = match.group()
+        else:
+            get_list_vmname = None
+
+        if check_state("running"):
+            if "--autodestroy" in options:
+                virsh.destroy(get_list_vmname)
                 raise error.TestFail("Guest still exist after close session "
                                      "with option --autodestroy")
-            logging.info("Guest already destroyed after session closed")
-        elif not vm.is_alive():
-            raise error.TestFail("Guest is not running after close session!")
+            else:
+                logging.info("Guest still exist after session closed")
+                virsh.destroy(get_list_vmname)
         else:
-            logging.info("Guest still exist after session closed")
+            if "--autodestroy" in options:
+                logging.info("Guest already destroyed after session closed")
+            else:
+                raise error.TestFail("Guest is not running after close "
+                                     "session!")
 
     finally:
         fd1.close()
