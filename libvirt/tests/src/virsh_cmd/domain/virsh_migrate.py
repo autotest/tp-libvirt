@@ -14,6 +14,7 @@ from virttest import utils_test
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import data_dir
+from virttest import libvirt_vm
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
 from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
@@ -371,21 +372,33 @@ def run(test, params, env):
                                       timeout, vm_state)
         new_session.close_session()
 
+    # For negative scenarios, there_desturi_nonexist and there_desturi_missing
+    # let the test takes desturi from variants in cfg and for other scenarios
+    # let us use API to form complete uri
+    extra = params.get("virsh_migrate_extra")
+    migrate_dest_ip = params.get("migrate_dest_host")
+    if "virsh_migrate_desturi" not in params.keys():
+        params["virsh_migrate_desturi"] = libvirt_vm.complete_uri(migrate_dest_ip)
+
+    migrate_uri = params.get("virsh_migrate_migrateuri", None)
+    # Add migrateuri if exists and check for default example
+    if migrate_uri:
+        migrate_port = params.get("migrate_port", "49152")
+        migrate_proto = params.get("migrate_proto")
+        migrate_uri = libvirt_vm.complete_uri(migrate_dest_ip, migrate_proto, migrate_port)
+        extra = ("%s --migrateuri=%s" % (extra, migrate_uri))
+
+    graphics_uri = params.get("virsh_migrate_graphics_uri", None)
+    if graphics_uri:
+        graphics_port = params.get("graphics_port", "5900")
+        graphics_uri = libvirt_vm.complete_uri(migrate_dest_ip, "spice", graphics_port)
+        extra = "--graphicsuri %s" % graphics_uri
+
     for v in params.itervalues():
         if isinstance(v, str) and v.count("EXAMPLE"):
             raise exceptions.TestSkipError("Please set real value for %s" % v)
 
     # Check the required parameters
-    extra = params.get("virsh_migrate_extra")
-    migrate_uri = params.get("virsh_migrate_migrateuri", None)
-    # Add migrateuri if exists and check for default example
-    if migrate_uri:
-        extra = ("%s --migrateuri=%s" % (extra, migrate_uri))
-
-    graphics_uri = params.get("virsh_migrate_graphics_uri", "")
-    if graphics_uri:
-        extra = "--graphicsuri %s" % graphics_uri
-
     shared_storage = params.get("migrate_shared_storage", "")
     # use default image jeos-23-64
     if shared_storage == "":
@@ -438,13 +451,13 @@ def run(test, params, env):
     params["mnt_path_name"] = params.get("nfs_mount_dir")
 
     # Params for NFS and SSH setup
-    params["server_ip"] = params.get("migrate_dest_host")
+    params["server_ip"] = migrate_dest_ip
     params["server_user"] = "root"
     params["server_pwd"] = params.get("migrate_dest_pwd")
     params["client_ip"] = params.get("migrate_source_host")
     params["client_user"] = "root"
     params["client_pwd"] = params.get("migrate_source_pwd")
-    params["nfs_client_ip"] = params.get("migrate_dest_host")
+    params["nfs_client_ip"] = migrate_dest_ip
     params["nfs_server_ip"] = params.get("migrate_source_host")
 
     # Params to enable SELinux boolean on remote host
