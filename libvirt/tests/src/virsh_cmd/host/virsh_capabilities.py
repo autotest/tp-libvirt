@@ -1,10 +1,8 @@
 import logging
-import re
 
 from autotest.client import os_dep
 from autotest.client.shared import error
 
-from avocado.utils import path as utils_path
 from avocado.utils import process
 
 from virttest import libvirt_vm
@@ -27,7 +25,7 @@ def run(test, params, env):
 
         # Check that host has a non-empty UUID tag.
         xml_uuid = cap_xml.uuid
-        logging.debug("Host UUID (capabilities_xml): %s" % xml_uuid)
+        logging.debug("Host UUID (capabilities_xml): %s", xml_uuid)
         if xml_uuid == "":
             raise error.TestFail("The host uuid in capabilities_xml is none!")
 
@@ -36,8 +34,9 @@ def run(test, params, env):
         logging.debug("Host arch (capabilities_xml): %s", xml_arch)
         exp_arch = process.run("arch", shell=True).stdout.strip()
         if cmp(xml_arch, exp_arch) != 0:
-            raise error.TestFail("The host arch in capabilities_xml is expected"
-                                 " to be %s, but get %s" % (exp_arch, xml_arch))
+            raise error.TestFail("The host arch in capabilities_xml is "
+                                 "expected to be %s, but get %s" %
+                                 (exp_arch, xml_arch))
 
         # Check the host cpu count.
         xml_cpu_count = cap_xml.cpu_count
@@ -45,50 +44,46 @@ def run(test, params, env):
         cmd = "grep processor /proc/cpuinfo | wc -l"
         exp_cpu_count = int(process.run(cmd, shell=True).stdout.strip())
         if xml_cpu_count != exp_cpu_count:
-            raise error.TestFail("Host cpus count is expected to be %s, but get "
-                                 "%s" % (exp_cpu_count, xml_cpu_count))
+            raise error.TestFail("Host cpus count is expected to be %s, "
+                                 "but get %s" %
+                                 (exp_cpu_count, xml_cpu_count))
 
         # Check the arch of guest supported.
         guest_capa = cap_xml.get_guest_capabilities()
         logging.debug(guest_capa)
-        try:
-            img = utils_path.find_command("qemu-kvm")
-        except utils_path.CmdNotFoundError:
-            try:
-                # For Ubuntu /usr/bin/kvm is available instead of qemu-kvm
-                img = utils_path.find_command("kvm")
-            except utils_path.CmdNotFoundError:
-                raise error.TestNAError("Cannot find {qemu-}kvm binary in host")
-        if re.search("ppc", process.run("arch", shell=True).stdout):
-            cmd = img + " --cpu ? | grep ppc"
-        else:
-            cmd = img + " --cpu ? | grep qemu"
-        cmd_result = process.run(cmd, shell=True)
-        for guest in cap_xml.xmltreefile.findall('guest'):
-            guest_wordsize = guest.find('arch').find('wordsize').text
-            logging.debug("Arch of guest supported (capabilities_xml):%s",
-                          guest_wordsize)
-            if not re.search(guest_wordsize, cmd_result.stdout.strip()):
-                raise error.TestFail("The capabilities_xml gives an extra arch "
-                                     "of guest to support!")
 
-        # Check the type of hypervisor.
-        first_guest = cap_xml.xmltreefile.findall('guest')[0]
-        first_domain = first_guest.find('arch').findall('domain')[0]
-        guest_domain_type = first_domain.get('type')
-        logging.debug("Hypervisor (capabilities_xml):%s", guest_domain_type)
-        cmd_result = process.run("virsh uri", shell=True)
-        if not re.search(guest_domain_type, cmd_result.stdout.strip()):
-            raise error.TestFail("The capabilities_xml gives an different "
-                                 "hypervisor")
+        # libvirt track wordsize in hardcode struct virArchData
+        wordsize = {}
+        wordsize['64'] = ['alpha', 'aarch64', 'ia64', 'mips64', 'mips64el',
+                          'parisc64', 'ppc64', 'ppc64le', 's390x', 'sh4eb',
+                          'sparc64', 'x86_64']
+        wordsize['32'] = ['armv6l', 'armv7l', 'armv7b', 'cris', 'i686', 'lm32',
+                          'm68k', 'microblaze', 'microblazeel', 'mips',
+                          'mipsel', 'openrisc', 'parisc', 'ppc', 'ppcle',
+                          'ppcemb', 's390', 'sh4', 'sparc', 'unicore32',
+                          'xtensa', 'xtensaeb']
+        uri_type = process.run("virsh uri", shell=True).stdout.split(':')[0]
+        domain_type = "domain_" + uri_type
+        for arch_dict in guest_capa.values():
+            for arch, val_dict in arch_dict.items():
+                # Check wordsize
+                if arch not in wordsize[val_dict['wordsize']]:
+                    raise error.TestFail("'%s' wordsize '%s' in "
+                                         "capabilities_xml not expected" %
+                                         (arch, val_dict['wordsize']))
+                # Check the type of hypervisor
+                if domain_type not in val_dict.keys():
+                    raise error.TestFail("domain type '%s' is not matched"
+                                         " under arch '%s' in "
+                                         "capabilities_xml" %
+                                         (uri_type, arch))
 
         # check power management support.
         try:
             pm_cmd = os_dep.command('pm-is-supported')
             pm_cap_map = {'suspend': 'suspend_mem',
                           'hibernate': 'suspend_disk',
-                          'suspend-hybrid': 'suspend_hybrid',
-                          }
+                          'suspend-hybrid': 'suspend_hybrid'}
             exp_pms = []
             for opt in pm_cap_map:
                 cmd = '%s --%s' % (pm_cmd, opt)
@@ -100,8 +95,8 @@ def run(test, params, env):
                 raise error.TestFail("Expected supported PMs are %s, got %s "
                                      "instead." % (exp_pms, pms))
         except ValueError:
-            logging.debug('Power management checking is skipped, since command '
-                          'pm-is-supported is not found.')
+            logging.debug('Power management checking is skipped, since command'
+                          ' pm-is-supported is not found.')
 
     connect_uri = libvirt_vm.normalize_connect_uri(params.get("connect_uri",
                                                               "default"))
@@ -132,10 +127,11 @@ def run(test, params, env):
         if status == 0:
             if libvirtd == "off":
                 raise error.TestFail("Command 'virsh capabilities' succeeded "
-                                     "with libvirtd service stopped, incorrect")
+                                     "with libvirtd service stopped, "
+                                     "incorrect")
             else:
-                raise error.TestFail("Command 'virsh capabilities %s' succeeded "
-                                     "(incorrect command)" % option)
+                raise error.TestFail("Command 'virsh capabilities %s' "
+                                     "succeeded (incorrect command)" % option)
     elif status_error == "no":
         compare_capabilities_xml(output)
         if status != 0:
