@@ -11,6 +11,7 @@ from virttest import data_dir
 from virttest import virt_vm
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):
@@ -153,7 +154,7 @@ def run(test, params, env):
 
     # Check virsh command option
     if options and not status_error:
-        libvirt.virsh_cmd_has_option('change-media', attach_option)
+        libvirt.virsh_cmd_has_option('change-media', options)
 
     # Backup for recovery.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
