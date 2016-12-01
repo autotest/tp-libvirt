@@ -1778,6 +1778,8 @@ def run(test, params, env):
             elif s_list and s_list[-1] == "host":
                 logging.info("Run '%s %s' in %s", s_list[0],
                              stress_args, s_list[-1])
+                pkg_list = ['stress']
+                libvirt.yum_install(pkg_list)
                 err_msg = utils_test.load_stress(stress_type,
                                                  [vm], test_dict)
                 if len(err_msg):
