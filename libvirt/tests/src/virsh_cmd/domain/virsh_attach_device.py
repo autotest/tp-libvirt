@@ -643,7 +643,9 @@ class VirtualDiskBasic(AttachDeviceBase):
             if not gotit:
                 logging.debug("Expecting: '%s' in %s", test_data, self.test_data_list)
                 logging.debug("Received: '%s'", output)
-            return gotit
+                return False
+            else:
+                return True
 
 
 def operational_action(test_params, test_devices, operational_results):
