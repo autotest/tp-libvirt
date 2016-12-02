@@ -8,6 +8,8 @@ import logging
 import shutil
 import string
 
+import aexpect
+
 from avocado.core import exceptions
 from avocado.utils import process
 
@@ -16,6 +18,7 @@ from virttest import ssh_key
 from virttest import utils_misc
 from virttest import utils_v2v
 from virttest import virsh
+from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
 
@@ -41,6 +44,7 @@ def run(test, params, env):
     output_storage = params.get("output_storage", "default")
     disk_img = params.get("input_disk_image", "")
     nfs_storage = params.get("nfs_storage")
+    no_root = 'yes' == params.get('no_root', 'no')
     mnt_point = params.get("mount_point")
     export_domain_uuid = params.get("export_domain_uuid", "")
     fake_domain_uuid = params.get("fake_domain_uuid")
@@ -63,11 +67,11 @@ def run(test, params, env):
     params['vmcheck_flag'] = False
     checkpoint = params.get('checkpoint', '')
 
-    def create_pool():
+    def create_pool(user_pool=False, pool_name=pool_name, pool_target=pool_target):
         """
         Create libvirt pool as the output storage
         """
-        if output_uri == "qemu:///session":
+        if output_uri == "qemu:///session" or user_pool:
             target_path = os.path.join("/home", v2v_user, pool_target)
             cmd = su_cmd + "'mkdir %s'" % target_path
             process.system(cmd, verbose=True)
@@ -77,11 +81,11 @@ def run(test, params, env):
         else:
             pvt.pre_pool(pool_name, pool_type, pool_target, emulated_img)
 
-    def cleanup_pool():
+    def cleanup_pool(user_pool=False, pool_name=pool_name, pool_target=pool_target):
         """
         Clean up libvirt pool
         """
-        if output_uri == "qemu:///session":
+        if output_uri == "qemu:///session" or user_pool:
             cmd = su_cmd + "'virsh pool-destroy %s'" % pool_name
             process.system(cmd, verbose=True)
             target_path = os.path.join("/home", v2v_user, pool_target)
@@ -235,6 +239,72 @@ def run(test, params, env):
         else:
             raise exceptions.TestFail('Fail to find snapshot_id')
 
+    def check_source(output):
+        """
+        Check if --print-source option print the correct info
+        """
+        # Parse source info
+        source = output.split('\n')[2:]
+        for i in range(len(source)):
+            if source[i].startswith('\t'):
+                source[i-1] += source[i]
+                source[i] = ''
+        source_strip = [x.strip() for x in source if x.strip()]
+        source_info = {}
+        for line in source_strip:
+            source_info[line.split(':')[0]] = line.split(':', 1)[1].strip()
+        logging.debug('Source info to check: %s', source_info)
+        checklist = ['nr vCPUs',  'hypervisor type', 'source name', 'memory',
+                     'display', 'CPU features', 'disks', 'NICs']
+        for key in checklist:
+            if key not in source_info:
+                raise exceptions.TestFail('%s info missing' % key)
+
+        # Check single values
+        fail = []
+        xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        check_map = {}
+        check_map['nr vCPUs'] = xml.vcpu
+        check_map['hypervisor type'] = xml.hypervisor_type
+        check_map['source name'] = xml.vm_name
+        check_map['memory'] = str(int(xml.max_mem) * 1024) + ' (bytes)'
+        check_map['display'] = xml.get_graphics_devices()[0].type_name
+
+        logging.info('KEY:\tSOURCE<-> XML')
+        for key in check_map:
+            logging.info('%-15s:%18s <-> %s', key, source_info[key], check_map[key])
+            if source_info[key] != str(check_map[key]):
+                fail.append(key)
+
+        # Check disk info
+        disk = xml.get_disk_all().values()[0]
+        bus, type = disk.find('target').get('bus'), disk.find('driver').get('type')
+        path = disk.find('source').get('file')
+        disks_info = "%s (%s) [%s]" % (path, type, bus)
+        logging.info('disks:%s<->%s', source_info['disks'], disks_info)
+        if source_info['disks'] != disks_info:
+            fail.append('disks')
+
+        # Check nic info
+        nic = xml.get_iface_all().values()[0]
+        type = nic.get('type')
+        mac = nic.find('mac').get('address')
+        nic_source = nic.find('source')
+        name = nic_source.get(type)
+        nic_info = '%s "%s" mac: %s' % (type, name, mac)
+        logging.info('NICs:%s<->%s', source_info['NICs'], nic_info)
+        if source_info['NICs'].lower() != nic_info.lower():
+            fail.append('NICs')
+
+        # Check cpu features
+        feature_list = xml.features.get_feature_list()
+        logging.info('CPU features:%s<->%s', source_info['CPU features'], feature_list)
+        if sorted(source_info['CPU features'].split(',')) != sorted(feature_list):
+            fail.append('CPU features')
+
+        if fail:
+            raise exceptions.TestFail('Source info not correct for: %s' % fail)
+
     def check_result(cmd, result, status_error):
         """
         Check virt-v2v command result
@@ -253,13 +323,20 @@ def run(test, params, env):
                     if v2v_start and len(line) > 72:
                         raise exceptions.TestFail('Error log longer than 72 '
                                                   'charactors: %s', line)
+            if checkpoint == 'disk_not_exist':
+                vol_list = virsh.vol_list(pool_name)
+                logging.info(vol_list)
+                if vm_name in vol_list.stdout:
+                    raise exceptions.TestFail('Disk exists for vm %s' % vm_name)
             else:
                 error_map = {
                     'conflict_options': ['option used more than once'],
                     'xen_no_output_format': ['The input metadata did not define'
-                                             ' the disk format']
+                                             ' the disk format'],
+                    'in_place': ['virt-v2v: error: --in-place cannot be used in RHEL 7']
                 }
-                if not utils_v2v.check_log(output, error_map[checkpoint]):
+                if error_map.has_key(checkpoint) and not utils_v2v.check_log(
+                        output, error_map[checkpoint]):
                     raise exceptions.TestFail('Not found error message %s' %
                                               error_map[checkpoint])
         else:
@@ -300,7 +377,7 @@ def run(test, params, env):
                 else:
                     params['vmcheck_flag'] = True
             if output_mode == "libvirt":
-                if "qemu:///session" not in v2v_options:
+                if "qemu:///session" not in v2v_options and not no_root:
                     virsh.start(vm_name, debug=True, ignore_status=False)
             if checkpoint == 'quiet':
                 if len(output.strip()) != 0:
@@ -317,10 +394,67 @@ def run(test, params, env):
             if checkpoint == 'no_dcpath':
                 if not utils_v2v.check_log(output, ['--dcpath'], expect=False):
                     raise exceptions.TestFail('"--dcpath" is not removed')
+            if checkpoint == 'debug_overlays':
+                search = re.search('Overlay saved as(.*)', output)
+                if not search:
+                    raise exceptions.TestFail('Not find log of saving overlays')
+                overlay_path = search.group(1).strip()
+                logging.debug('Overlay file location: %s' % overlay_path)
+                if os.path.isfile(overlay_path):
+                    logging.info('Found overlay file: %s' % overlay_path)
+                else:
+                    raise exceptions.TestFail('Overlay file not saved')
+            if checkpoint.startswith('empty_nic_source'):
+                target_str = '%s "eth0" mac: %s' % (params[checkpoint][0], params[checkpoint][1])
+                logging.info('Expect log: %s', target_str)
+                if target_str not in result.stdout.lower():
+                    raise exceptions.TestFail('Expect log not found: %s' % target_str)
+            if checkpoint == 'print_source':
+                check_source(result.stdout)
+            if checkpoint == 'machine_readable':
+                if os.path.exists(params.get('example_file', '')):
+                    expect_output = open(params['example_file']).read().strip()
+                    logging.debug(expect_output)
+                    logging.debug(expect_output == result.stdout.strip())
+                else:
+                    raise exceptions.TestError('No content to compare with')
+            if checkpoint == 'compress':
+                img_path = get_img_path(output)
+                logging.info('Image path: %s', img_path)
+                disk_check = process.run('qemu-img check %s' % img_path).stdout
+                logging.info(disk_check)
+                compress_info = disk_check.split(',')[-1].split('%')[0].strip()
+                compress_rate = float(compress_info)
+                logging.info('%s%% compressed', compress_rate)
+                if compress_rate < 0.1:
+                    raise exceptions.TestFail('Disk image NOT compressed')
+            if checkpoint == 'tail_log':
+                messages = params['tail'].get_output()
+                logging.info('Content of /var/log/messages during conversion:')
+                logging.info(messages)
+                msg_content = params['msg_content']
+                if not utils_v2v.check_log(messages, [msg_content], expect=False):
+                    raise exceptions.TestFail('Found "%s" in /var/log/messages' %
+                                              msg_content)
 
     backup_xml = None
     vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
     try:
+        if checkpoint.startswith('empty_nic_source'):
+            xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            iface = xml.get_devices('interface')[0]
+            disks = xml.get_devices('disk')
+            del iface.source
+            iface.type_name = checkpoint.split('_')[-1]
+            iface.source = {iface.type_name: ''}
+            params[checkpoint] = [iface.type_name, iface.mac_address]
+            logging.debug(iface.source)
+            devices = vm_xml.VMXMLDevices()
+            devices.extend(disks)
+            devices.append(iface)
+            xml.set_devices(devices)
+            logging.info(xml.xmltreefile)
+            params['input_xml'] = xml.xmltreefile.name
         # Build input options
         input_option = ""
         if input_mode is None:
@@ -328,7 +462,11 @@ def run(test, params, env):
         elif input_mode == "libvirt":
             uri_obj = utils_v2v.Uri(hypervisor)
             ic_uri = uri_obj.get_uri(remote_host, vpx_dc, esx_ip)
+            if checkpoint == 'with_ic':
+                ic_uri = 'qemu:///session'
             input_option = "-i %s -ic %s %s" % (input_mode, ic_uri, vm_name)
+            if checkpoint == 'without_ic':
+                input_option = '-i %s %s' % (input_mode, vm_name)
             # Build network&bridge option to avoid network error
             v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
                                              params.get("output_network"))
@@ -341,7 +479,7 @@ def run(test, params, env):
             raise exceptions.TestSkipError("Unsupported input mode: %s" % input_mode)
         else:
             raise exceptions.TestError("Unknown input mode %s" % input_mode)
-        input_format = params.get("input_format")
+        input_format = params.get("input_format", "")
         input_allo_mode = params.get("input_allo_mode")
         if input_format:
             input_option += " -if %s" % input_format
@@ -356,7 +494,7 @@ def run(test, params, env):
         if output_mode:
             output_option = "-o %s -os %s" % (output_mode, output_storage)
         output_format = params.get("output_format")
-        if output_format:
+        if output_format and output_format != input_format:
             output_option += " -of %s" % output_format
         output_allo_mode = params.get("output_allo_mode")
         if output_allo_mode:
@@ -386,13 +524,12 @@ def run(test, params, env):
         # Output more messages except quiet mode
         if checkpoint == 'quiet':
             v2v_options += ' -q'
-        elif checkpoint == 'length_of_error':
-            pass
-        else:
+        elif checkpoint not in ['length_of_error', 'empty_nic_source_network',
+                                'empty_nic_source_bridge']:
             v2v_options += " -v -x"
 
         # Prepare for libvirt unprivileged user session connection
-        if "qemu:///session" in v2v_options:
+        if "qemu:///session" in v2v_options or no_root:
             try:
                 pwd.getpwnam(v2v_user)
             except KeyError:
@@ -408,7 +545,7 @@ def run(test, params, env):
                 shutil.copyfile(disk_img, disk_path)
                 input_option = string.replace(input_option, disk_img, disk_path)
                 os.chown(disk_path, user_info.pw_uid, user_info.pw_gid)
-            else:
+            elif not no_root:
                 raise exceptions.TestSkipError("Only support convert local disk")
 
         # Setup ssh-agent access to xen hypervisor
@@ -447,6 +584,17 @@ def run(test, params, env):
         if hypervisor in ['esx', 'xen'] or input_mode in ['disk', 'libvirtxml']:
             os.environ['LIBGUESTFS_BACKEND'] = 'direct'
 
+        if checkpoint in ['with_ic', 'without_ic']:
+            new_v2v_user = True
+            v2v_options += ' -on %s' % new_vm_name
+            create_pool(user_pool=True, pool_name='src_pool', pool_target='v2v_src_pool')
+            create_pool(user_pool=True)
+            logging.debug(virsh.pool_list(uri='qemu:///session'))
+            sh_install_vm = params.get('sh_install_vm')
+            if not sh_install_vm:
+                raise exceptions.TestError('Source vm installing script missing')
+            process.run('su - %s -c %s' % (v2v_user, sh_install_vm))
+
         # Running virt-v2v command
         cmd = "%s %s %s %s" % (utils_v2v.V2V_EXEC, input_option,
                                output_option, v2v_options)
@@ -455,6 +603,18 @@ def run(test, params, env):
 
         if checkpoint in ['dependency', 'no_dcpath']:
             cmd = params.get('check_command')
+
+        # Set timeout to kill v2v process before conversion succeed
+        if checkpoint == 'disk_not_exist':
+            v2v_timeout = 30
+        # Get tail content of /var/log/messages
+        if checkpoint == 'tail_log':
+            params['tail_log'] = os.path.join(data_dir.get_tmp_dir(), 'tail_log')
+            params['tail'] = aexpect.Tail(
+                    command='tail -f /var/log/messages',
+                    output_func=utils_misc.log_line,
+                    output_params=(params['tail_log'],)
+            )
         cmd_result = process.run(cmd, timeout=v2v_timeout, verbose=True,
                                  ignore_status=True)
         if new_vm_name:
@@ -480,9 +640,15 @@ def run(test, params, env):
                 if os.path.exists(local_file):
                     os.remove(local_file)
         if output_mode == "libvirt":
-            if "qemu:///session" in v2v_options:
+            if "qemu:///session" in v2v_options or no_root:
                 cmd = su_cmd + "'virsh undefine %s'" % vm_name
-                process.system(cmd)
+                try:
+                    process.system(cmd)
+                except:
+                    logging.error('Undefine "%s" failed', vm_name)
+                if no_root:
+                    cleanup_pool(user_pool=True, pool_name='src_pool', pool_target='v2v_src_pool')
+                    cleanup_pool(user_pool=True)
             else:
                 virsh.remove_domain(vm_name)
             cleanup_pool()
