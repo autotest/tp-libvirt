@@ -331,6 +331,7 @@ def run(test, params, env):
             else:
                 error_map = {
                     'conflict_options': ['option used more than once'],
+                    'conflict_options_bn': ['duplicate .+? parameter.  Only one default'],
                     'xen_no_output_format': ['The input metadata did not define'
                                              ' the disk format'],
                     'in_place': ['virt-v2v: error: --in-place cannot be used in RHEL 7']
