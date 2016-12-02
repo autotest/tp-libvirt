@@ -137,7 +137,7 @@ def run(test, params, env):
             qemu_conf.auto_dump_path = dump_path
             libvirtd_service.restart()
             if vm_oncrash_action in ['coredump-destroy', 'coredump-restart']:
-                dump_file = dump_path + vm_name + "-*"
+                dump_file = dump_path + "*" + vm_name + "-*"
             # Start VM and check the panic device
             virsh.start(vm_name, ignore_status=False)
             vmxml_new = vm_xml.VMXML.new_from_dumpxml(vm_name)
