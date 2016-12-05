@@ -81,13 +81,13 @@ def run(test, params, env):
     check_cmds = []
     if not status_error:
         if attach_device and attach_option:
-            check_cmd.append(('attach-device', attach_option))
+            check_cmds.append(('attach-device', attach_option))
         if attach_iface and attach_option:
-            check_cmd.append(('attach-interface', attach_option))
+            check_cmds.append(('attach-interface', attach_option))
         if (detach_device or stress_test_detach_device) and detach_option:
-            check_cmd.append(('detach-device', detach_option))
+            check_cmds.append(('detach-device', detach_option))
         if stress_test_detach_interface and detach_option:
-            check_cmd.append(('detach-device', detach_option))
+            check_cmds.append(('detach-device', detach_option))
     for cmd, option in check_cmds:
         libvirt.virsh_cmd_has_option(cmd, option)
 
