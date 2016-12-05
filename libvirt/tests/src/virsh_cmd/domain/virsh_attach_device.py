@@ -529,12 +529,29 @@ class VirtualDiskBasic(AttachDeviceBase):
         """
         Return disk target name
         """
+        sd_count = 0
+        vd_count = 0
+        hd_count = 0
+
+        devices = self.test_params.vmxml.get_devices()
+        disk_devices = devices.by_device_tag('disk')
+        for disk in disk_devices:
+            if disk.target['dev'].startswith('sd'):
+                sd_count += 1
+            if disk.target['dev'].startswith('vd'):
+                vd_count += 1
+            if disk.target['dev'].startswith('hd'):
+                hd_count += 1
+
         if self.targetbus in ['usb', 'scsi', 'sata']:
             devname_prefix = "sd"
+            self.devidx = sd_count
         elif self.targetbus == "virtio":
             devname_prefix = "vd"
+            self.devidx = vd_count
         elif self.targetbus == "ide":
             devname_prefix = "hd"
+            self.devidx = hd_count
         else:
             raise error.TestNAError("Unsupport bus '%s' in this test" %
                                     self.targetbus)
