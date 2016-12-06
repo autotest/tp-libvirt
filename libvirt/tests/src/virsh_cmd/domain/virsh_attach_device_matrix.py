@@ -4,6 +4,7 @@ import logging
 from avocado.core import exceptions
 from virttest import virsh
 from virttest import data_dir
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
@@ -58,6 +59,9 @@ def run(test, params, env):
         """
         vm_state = pre_vm_state
         active_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        if not attach:
+            utils_misc.wait_for(lambda: not is_attached(active_vmxml.devices,
+                                disk_type, disk_source, disk_target), 20)
         active_attached = is_attached(active_vmxml.devices, disk_type,
                                       disk_source, disk_target)
         if vm_state != "transient":

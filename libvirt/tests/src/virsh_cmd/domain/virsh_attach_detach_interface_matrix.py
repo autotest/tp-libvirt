@@ -74,6 +74,9 @@ def run(test, params, env):
         Check the test result of attach/detach-device command.
         """
         active_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        if not attach:
+            utils_misc.wait_for(lambda: not is_attached(active_vmxml.devices,
+                                iface_type, iface_source, iface_mac), 20)
         active_attached = is_attached(active_vmxml.devices, iface_type,
                                       iface_source, iface_mac)
         if vm_state != "transient":
