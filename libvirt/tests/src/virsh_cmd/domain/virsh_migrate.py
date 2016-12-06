@@ -3,6 +3,7 @@ import os
 import re
 import time
 import platform
+import threading
 
 from avocado.utils import process
 from avocado.utils import path
@@ -15,6 +16,7 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import data_dir
 from virttest import libvirt_vm
+from virttest import utils_package
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
 from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
@@ -34,15 +36,34 @@ def run(test, params, env):
     Test virsh migrate command.
     """
 
-    def check_vm_state(vm, state):
+    def check_vm_state(vm, state, uri=None, ignore_error=True):
         """
         Return True if vm is in the correct state.
+
+        :param vm: The VM to be checked state
+        :param state: The expected VM state
+        :param uri: The URI to connect to the VM
+        :param ignore_error: If False, raise an exception
+                                when state does not match.
+                             If True, do nothing.
+
+        :return: True if vm state is as expected, otherwise, False
+        :raise: test.fail if the VM state is not as expected
         """
-        actual_state = vm.state()
-        if cmp(actual_state, state) == 0:
-            return True
+        actual_state = ""
+        if uri:
+            actual_state = virsh.domstate(vm.name, uri=uri).stdout.strip()
         else:
-            return False
+            actual_state = vm.state()
+        if cmp(actual_state, state) != 0:
+            if not ignore_error:
+                test.fail("The VM state is expected '%s' "
+                          "but '%s' found" % (state, actual_state))
+            else:
+                logging.debug("The VM state is expected '%s', "
+                              "but '%s' found" % (state, actual_state))
+                return False
+        return True
 
     def cleanup_dest(vm, src_uri=""):
         """
@@ -401,23 +422,15 @@ def run(test, params, env):
         except Exception, info:
             test.fail("CPU %s failed - %s" % (operation, info))
 
-    def check_migration_timeout_suspend(params):
+    def check_migration_timeout_suspend(timeout):
         """
         Handle option '--timeout --timeout-suspend'.
         As the migration thread begins to execute, this function is executed
         at same time almostly. It will sleep the specified seconds and check
         the VM state on both hosts. Both should be 'paused'.
 
-        :param params: The parameters used
-
-        :raise: test.fail if the VM state is not as expected
+        :param timeout: The seconds for timeout
         """
-        timeout = int(params.get("timeout_before_suspend", 5))
-        server_ip = params.get("server_ip")
-        server_user = params.get("server_user", "root")
-        server_pwd = params.get("server_pwd")
-        vm_name = params.get("migrate_main_vm")
-        vm = params.get("vm_migration")
         logging.debug("Wait for %s seconds as specified by --timeout", timeout)
         # --timeout <seconds> --timeout-suspend means the vm state will change
         # to paused when live migration exceeds <seconds>. Here migration
@@ -427,22 +440,61 @@ def run(test, params, env):
         # to be added to avoid of timing gap. '1' second is a usable choice.
         time.sleep(timeout + 1)
         logging.debug("Check vm state on source host after timeout")
-        vm_state = vm.state()
-        if vm_state != "paused":
-            test.fail("After timeout '%s' seconds, the vm state on source "
-                      "host should be 'paused', but %s found" %
-                      timeout, vm_state)
+        check_vm_state(vm, 'paused', src_uri, False)
         logging.debug("Check vm state on target host after timeout")
-        virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
-                       'remote_pwd': server_pwd, 'unprivileged_user': None,
-                       'ssh_remote_auth': True}
-        new_session = virsh.VirshPersistent(**virsh_dargs)
-        vm_state = new_session.domstate(vm_name).stdout.strip()
-        if vm_state != "paused":
-            test.fail("After timeout '%s' seconds, the vm state on target "
-                      "host should be 'paused', but %s found" %
-                      timeout, vm_state)
-        new_session.close_session()
+        check_vm_state(vm, 'paused', dest_uri, False)
+
+    def thread_func_stress():
+        """
+        Run stress command within the VM with specified parameters.
+        """
+        stress_args = params.get("stress_args", "--cpu 8 --io 4 "
+                                                "--vm 2 --vm-bytes 128M "
+                                                "--timeout 20s")
+        try:
+            vm_session.cmd('stress %s' % stress_args)
+        except Exception, detail:
+            logging.debug(detail)
+
+    def ensure_migration_start():
+        """
+        Test the VM state on destination to make sure the migration
+        really happen.
+        """
+        migrate_start_timeout = int(params.get("migration_start_timeout", 50))
+        count = 0
+        while (count < migrate_start_timeout):
+            if (virsh.domain_exists(vm.name, uri=dest_uri) and
+               check_vm_state(vm, 'paused', dest_uri, True)):
+                logging.debug("Domain exists with 'paused' state "
+                              "with '%s' after %d seconds", dest_uri, count)
+                break
+            else:
+                logging.debug("Waiting for domain's existence and "
+                              "'paused' state with '%s'", dest_uri)
+                count += 1
+                time.sleep(1)
+        if (count == migrate_start_timeout and
+           not virsh.domain_exists(vm.name, uri=dest_uri)):
+            test.error("Domain is not found with 'paused' state in 50s")
+
+    def run_migration_cmd(cmd):
+        """
+        Check to see the VM on target machine should ran up once
+        migration-postcopy command is executed. To get sufficient time to
+        check this command takes effect, the VM need run with stress.
+
+        :params cmd: The command to be executed while migration
+
+        """
+        stress_thread = threading.Thread(target=thread_func_stress,
+                                         args=())
+        stress_thread.start()
+        ensure_migration_start()
+        process.system_output("virsh %s %s" % (cmd, vm_name))
+        logging.debug("Checking the VM state on target host after "
+                      "executing '%s'", cmd)
+        check_vm_state(vm, 'running', dest_uri, False)
 
     # For negative scenarios, there_desturi_nonexist and there_desturi_missing
     # let the test takes desturi from variants in cfg and for other scenarios
@@ -747,6 +799,12 @@ def run(test, params, env):
     remote_viewer_pid = None
     asynch_migration = False
     ret_migrate = True
+    check_dest_xml = True
+    check_dest_dname = True
+    check_dest_persistent = True
+    check_src_undefine = True
+    check_unsafe_result = True
+    migrate_setup = None
 
     try:
         # Change the disk of the vm to shared disk
@@ -863,7 +921,7 @@ def run(test, params, env):
         if not vm.is_alive():
             vm.start()
 
-        vm.wait_for_login()
+        vm_session = vm.wait_for_login()
 
         # Perform cpu hotplug or hotunplug before migration
         if cpu_hotplug:
@@ -1027,27 +1085,36 @@ def run(test, params, env):
             migration_test = libvirt.MigrationTest()
             migrate_options = "%s %s" % (options, extra)
             vms = [vm]
-            params["vm_migration"] = vm
             migration_test.do_migration(vms, None, dest_uri, 'orderly',
                                         migrate_options, thread_timeout=900,
                                         ignore_status=True,
                                         func=check_migration_timeout_suspend,
-                                        func_params=params)
+                                        func_params=timeout)
             ret_migrate = migration_test.RET_MIGRATION
-        if postcopy_cmd != "":
+        if postcopy_cmd:
             asynch_migration = True
             vms = []
             vms.append(vm)
+            # Load stress in VM
+            pkg_name = 'stress'
+            logging.debug("Check if stress tool is installed")
+            pkg_mgr = utils_package.package_manager(vm_session, pkg_name)
+            if not pkg_mgr.is_installed(pkg_name):
+                logging.debug("Stress tool will be installed")
+                if not pkg_mgr.install():
+                    test.error("Package '%s' installation fails" % pkg_name)
+
+            cmd = params.get("virsh_postcopy_cmd")
             obj_migration = libvirt.MigrationTest()
             migrate_options = "%s %s" % (options, extra)
-            cmd = "sleep 5 && virsh %s %s" % (postcopy_cmd, vm_name)
+
             logging.info("Starting migration in thread")
             try:
                 obj_migration.do_migration(vms, src_uri, dest_uri, "orderly",
                                            options=migrate_options,
                                            thread_timeout=postcopy_timeout,
                                            ignore_status=False,
-                                           func=process.run,
+                                           func=run_migration_cmd,
                                            func_params=cmd,
                                            shell=True)
             except Exception, info:
@@ -1055,7 +1122,8 @@ def run(test, params, env):
             if obj_migration.RET_MIGRATION:
                 utils_test.check_dest_vm_network(vm, vm.get_address(),
                                                  server_ip, server_user,
-                                                 server_pwd)
+                                                 server_pwd,
+                                                 shell_prompt=r"[\#\$]\s*$")
                 ret_migrate = True
             else:
                 ret_migrate = False
@@ -1158,7 +1226,6 @@ def run(test, params, env):
             process.kill_process_tree(int(remote_viewer_pid))
 
         # Check unsafe result and may do migration again in right mode
-        check_unsafe_result = True
         if ret_migrate is False and unsafe_test:
             options = params.get("virsh_migrate_options")
             ret_migrate = do_migration(delay, vm, dest_uri, options, extra)
@@ -1178,9 +1245,9 @@ def run(test, params, env):
         if (options.count("dname") or
                 extra.count("dname") and status_error != 'yes'):
             vm.name = extra.split()[1].strip()
-        check_dest_state = True
-        check_dest_state = check_vm_state(vm, dest_state)
+
         logging.info("Supposed state: %s", dest_state)
+        check_vm_state(vm, dest_state)
         logging.info("Actual state: %s", vm.state())
 
         # Check vm state on source.
@@ -1200,14 +1267,12 @@ def run(test, params, env):
             vm.start()
 
         # Checking for --persistent.
-        check_dest_persistent = True
         if options.count("persistent") or extra.count("persistent"):
             logging.debug("Checking for --persistent option.")
             if not vm.is_persistent():
                 check_dest_persistent = False
 
         # Checking for --undefinesource.
-        check_src_undefine = True
         if options.count("undefinesource") or extra.count("undefinesource"):
             logging.debug("Checking for --undefinesource option.")
             logging.info("Verifying <virsh domstate> DOES return an error."
@@ -1216,7 +1281,6 @@ def run(test, params, env):
                 check_src_undefine = False
 
         # Checking for --dname.
-        check_dest_dname = True
         if (options.count("dname") or extra.count("dname") and
                 status_error != 'yes'):
             logging.debug("Checking for --dname option.")
@@ -1225,7 +1289,6 @@ def run(test, params, env):
                 check_dest_dname = False
 
         # Checking for --xml.
-        check_dest_xml = True
         if (xml_option == "yes" and not extra.count("--dname") and
                 not extra.count("--xml")):
             logging.debug("Checking for --xml option.")
@@ -1314,8 +1377,6 @@ def run(test, params, env):
     else:
         if not ret_migrate:
             test.fail("Migration finished with unexpected status.")
-        if not check_dest_state:
-            test.fail("Wrong VM state on destination.")
         if not check_dest_persistent:
             test.fail("VM is not persistent on destination.")
         if not check_src_undefine:
