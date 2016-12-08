@@ -66,7 +66,7 @@ def run(test, params, env):
     if stress_test:
         if attach_device:
             stress_test_detach_device = True
-        if attach_interface:
+        if attach_iface:
             stress_test_detach_interface = True
 
     # The following detach-device step also using attach option
