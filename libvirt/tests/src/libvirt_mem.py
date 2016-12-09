@@ -67,7 +67,7 @@ def run(test, params, env):
                     % (max_mem_slots, max_mem_rt))
         if tg_size:
             size = int(tg_size) * 1024
-            cmd += (" | grep 'memory-backend-ram,id=memdimm0,size=%s"
+            cmd += (" | grep 'memory-backend-ram,id=memdimm.,size=%s"
                     % size)
             if pg_size:
                 cmd += ",host-nodes=%s" % node_mask
