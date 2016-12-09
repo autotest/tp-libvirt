@@ -1,11 +1,11 @@
 import re
-import os
+import logging
 
-from autotest.client.shared import error
-
-from avocado.utils import process
+from avocado.core import exceptions
 
 from virttest import virsh
+from virttest.utils_test import libvirt
+from virttest.libvirt_xml import network_xml
 
 from provider import libvirt_version
 
@@ -25,16 +25,13 @@ def run(test, params, env):
     option = params.get("net_list_option", "")
     extra = params.get("net_list_extra", "")
     status_error = params.get("status_error", "no")
-    net_name = params.get("net_list_name", "default")
-    persistent = params.get("net_list_persistent", "yes")
-    net_status = params.get("net_list_error", "active")
-    tmp_xml = os.path.join(test.tmpdir, "tmp.xml")
-    net_current_status = "active"
-    autostart_status = "yes"
-    if not virsh.net_state_dict()[net_name]['active']:
-        net_current_status = "inactive"
-    if not virsh.net_state_dict()[net_name]['autostart']:
-        autostart_status = "no"
+    set_status = params.get("set_status", "active")
+    set_persistent = params.get("set_persistent", "persistent")
+    set_autostart = params.get("set_autostart", "autostart")
+    error_msg = params.get("error_msg", "")
+
+    net_name = params.get("net_name", "net-br")
+    net_xml = network_xml.NetworkXML(network_name=net_name)
 
     # acl polkit params
     uri = params.get("virsh_uri")
@@ -45,104 +42,79 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            raise exceptions.TestSkipError("API acl test not supported"
+                                           " in current libvirt version.")
 
-    # Create a transient network.
+    # Record current net_state_dict
+    net_backup = network_xml.NetworkXML.new_all_networks_dict()
+    net_backup_state = virsh.net_state_dict()
+    logging.debug("Backed up network(s): %s", net_backup_state)
+
+    # Check the network name is not duplicated
     try:
-        if persistent == "no":
-            virsh.net_dumpxml(net_name, to_file=tmp_xml, ignore_status=False)
-            if net_current_status == "inactive":
-                virsh.net_destroy(net_name, ignore_status=False)
-            virsh.net_undefine(net_name, ignore_status=False)
-            virsh.net_create(tmp_xml, ignore_status=False)
-    except process.CmdError:
-        raise error.TestFail("Transient network test failed!")
-
-    # Prepare network's status for testing.
-    if net_status == "active":
-        try:
-            if not virsh.net_state_dict()[net_name]['active']:
-                virsh.net_start(net_name, ignore_status=False)
-        except process.CmdError:
-            raise error.TestFail("Active network test failed!")
+        _ = net_backup[net_name]
+    except (KeyError, AttributeError):
+        pass
     else:
-        try:
-            if virsh.net_state_dict()[net_name]['active']:
-                virsh.net_destroy(net_name, ignore_status=False)
-        except process.CmdError:
-            raise error.TestFail("Inactive network test failed!")
+        raise exceptions.TestSkipError("Duplicated network name: '%s'" %
+                                       net_name)
+    # Default the network is persistent, active, autostart
+    # Create a persistent/transient network.
+    if set_persistent == "persistent":
+        net_xml.define()
+        logging.debug("Created persistent network")
+    else:
+        net_xml.create()
+        logging.debug("Created transient network")
 
-    virsh_dargs = {'ignore_status': True}
-    if params.get('setup_libvirt_polkit') == 'yes':
-        virsh_dargs['unprivileged_user'] = unprivileged_user
-        virsh_dargs['uri'] = uri
-    result = virsh.net_list(option, extra, **virsh_dargs)
-    status = result.exit_status
-    output = result.stdout.strip()
+    # Prepare an active/inactive network
+    # For the new defined network, it's inactive by default
+    if set_status == "active" and set_persistent == "persistent":
+        net_xml.start()
 
-    # Recover network
+    # Prepare an autostart/no-autostart network
+    # For the new create network, it's no-autostart by default
+    if set_autostart == "autostart":
+        net_xml.set_autostart(True)
+
     try:
-        if persistent == "no":
-            virsh.net_destroy(net_name, ignore_status=False)
-            virsh.net_define(tmp_xml, ignore_status=False)
-            if net_current_status == "active":
-                virsh.net_start(net_name, ignore_status=False)
-            if autostart_status == "yes":
-                virsh.net_autostart(net_name, ignore_status=False)
-        else:
-            if net_current_status == "active" and net_status == "inactive":
-                virsh.net_start(net_name, ignore_status=False)
-            elif net_current_status == "inactive" and net_status == "active":
-                virsh.net_destroy(net_name, ignore_status=False)
-    except process.CmdError:
-        raise error.TestFail("Recover network failed!")
+        virsh_dargs = {'ignore_status': True}
+        if params.get('setup_libvirt_polkit') == 'yes':
+            virsh_dargs['unprivileged_user'] = unprivileged_user
+            virsh_dargs['uri'] = uri
+        ret = virsh.net_list(option, extra, **virsh_dargs)
+        output = ret.stdout.strip()
 
-    # check result
-    if status_error == "yes":
-        if status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
-    elif status_error == "no":
-        if status != 0:
-            raise error.TestFail("Run failed with right command")
-        if option == "--inactive":
-            if net_status == "active":
+        # Check test results
+        if status_error == "yes":
+            # Check the results with error parameter
+            if error_msg:
+                libvirt.check_result(ret, error_msg)
+            # Check the results with correct option but inconsistent network status
+            else:
+                libvirt.check_exit_status(ret)
                 if re.search(net_name, output):
-                    raise error.TestFail("Found an active network with"
-                                         " --inactive option")
+                    raise exceptions.TestFail("virsh net-list %s get wrong results" %
+                                              option)
+
+        # Check the results with correct option and consistent network status
+        else:
+            libvirt.check_exit_status(ret)
+            if option == "--uuid":
+                uuid = virsh.net_uuid(net_name).stdout.strip()
+                if not re.search(uuid, output):
+                    raise exceptions.TestFail("Failed to find network: '%s' with:"
+                                              "virsh net-list '%s'." % (net_name, option))
             else:
-                if persistent == "yes":
-                    if not re.search(net_name, output):
-                        raise error.TestFail("Found no inactive networks with"
-                                             " --inactive option")
-                else:
-                    # If network is transient, after net-destroy it,
-                    # it will disapear.
-                    if re.search(net_name, output):
-                        raise error.TestFail("Found transient inactive networks"
-                                             " with --inactive option")
-        elif option == "":
-            if net_status == "active":
                 if not re.search(net_name, output):
-                    raise error.TestFail("Can't find active network with no"
-                                         " option")
-            else:
-                if re.search(net_name, output):
-                    raise error.TestFail("Found inactive network with"
-                                         " no option")
-        elif option == "--all":
-            if net_status == "active":
-                if not re.search(net_name, output):
-                    raise error.TestFail("Can't find active network with"
-                                         " --all option")
-            else:
-                if persistent == "yes":
-                    if not re.search(net_name, output):
-                        raise error.TestFail("Can't find inactive network with"
-                                             " --all option")
-                else:
-                    # If network is transient, after net-destroy it,
-                    # it will disapear.
-                    if re.search(net_name, output):
-                        raise error.TestFail("Found transient inactive network"
-                                             " with --all option")
+                    raise exceptions.TestFail("Failed to find network: '%s' with:"
+                                              "virsh net-list '%s'." % (net_name, option))
+    finally:
+        # Recover network
+        try:
+            if set_status == "active":
+                net_xml.del_active()
+            if set_persistent == "persistent":
+                net_xml.del_defined()
+        except Exception:
+            virsh.net_undefine()
