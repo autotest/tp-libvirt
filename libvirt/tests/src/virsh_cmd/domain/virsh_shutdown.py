@@ -1,4 +1,4 @@
-from autotest.client.shared import error
+from avocado.core import exceptions
 
 from avocado.utils import process
 
@@ -6,6 +6,7 @@ from virttest import remote
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import ssh_key
 from virttest.libvirt_xml import vm_xml
 
 from provider import libvirt_version
@@ -43,8 +44,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            raise exceptions.TestSkipError("API acl test not supported in"
+                                           " current libvirt version.")
 
     try:
         # Add or remove qemu-agent from guest before test
@@ -76,13 +77,24 @@ def run(test, params, env):
         else:
             remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
             remote_pwd = params.get("remote_pwd", None)
+            remote_user = params.get("remote_user", "root")
             local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
+            local_pwd = params.get("local_pwd", "password")
+            local_user = params.get("username", "root")
             if remote_ip.count("EXAMPLE.COM") or local_ip.count("EXAMPLE.COM"):
-                raise error.TestNAError(
-                    "Remote test parameters unchanged from default")
+                raise exceptions.TestSkipError("Remote test parameters"
+                                               " unchanged from default")
             status = 0
             try:
                 remote_uri = libvirt_vm.complete_uri(local_ip)
+                # set up auto ssh login from remote machine to
+                # execute commands
+                config_opt = ["StrictHostKeyChecking=no"]
+                ssh_key.setup_remote_ssh_key(remote_ip, remote_user,
+                                             remote_pwd, hostname2=local_ip,
+                                             user2=local_user,
+                                             password2=local_pwd,
+                                             config_options=config_opt)
                 session = remote.remote_login("ssh", remote_ip, "22", "root",
                                               remote_pwd, "#")
                 session.cmd_output('LANG=C')
@@ -100,9 +112,10 @@ def run(test, params, env):
         # check status_error
         if status_error:
             if not status:
-                raise error.TestFail("Run successfully with wrong command!")
+                raise exceptions.TestFail("Run successfully with wrong"
+                                          " command!")
         else:
             if status:
-                raise error.TestFail("Run failed with right command")
+                raise exceptions.TestFail("Run failed with right command")
     finally:
         xml_backup.sync()
