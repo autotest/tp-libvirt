@@ -84,14 +84,16 @@ def run(test, params, env):
     host_numa_node = utils_misc.NumaInfo()
     node_list = host_numa_node.online_nodes
     logging.debug("host node list is %s", node_list)
+    oth_node = []
 
-    for i in node_list:
+    for node in node_list:
         try:
-            hp_cl.get_node_num_huge_pages(i, default_hp_size)
-        except ValueError, e:
-            logging.warning("%s", e)
-            logging.debug('move node %s out of testing node list', i)
-            node_list.remove(i)
+            hp_cl.get_node_num_huge_pages(node, default_hp_size)
+        except ValueError as exc:
+            logging.warning("%s", str(exc))
+            logging.debug('move node %s out of testing node list', node)
+            node_list.remove(node)
+            oth_node.append(node)
 
     cellno_list = []
     if cellno == "AUTO":
@@ -110,8 +112,8 @@ def run(test, params, env):
     if huge_pages_num and not status_error:
         try:
             huge_pages_num = int(huge_pages_num)
-        except (TypeError, ValueError), e:
-            raise error.TestError("Huge page value %s shoule be an integer" %
+        except (TypeError, ValueError):
+            raise error.TestError("Huge page value %s should be an integer" %
                                   huge_pages_num)
         # Set huge page for positive test
         for i in node_list:
@@ -124,6 +126,11 @@ def run(test, params, env):
                                      pagesize=page,
                                      options=option,
                                      debug=True)
+
+            # the node without memory will fail and it is expected
+            if "--all" in option and oth_node and not status_error:
+                status_error = True
+
             utlv.check_exit_status(result, status_error)
             expect_result_list = []
             # Check huge pages
