@@ -243,8 +243,9 @@ def run(test, params, env):
                     # set dest host hugepages for specific node
                     logging.debug("set dest host hugepages for specific node")
                     hugepage_assign(str(no_of_HPs), target_ip=dest_machine,
-                                    node=each_node['nodeset'], hp_size=str(
-                                    host_hp_size), user=server_user,
+                                    node=each_node['nodeset'],
+                                    hp_size=str(host_hp_size),
+                                    user=server_user,
                                     password=server_pwd)
         if not pin:
             vm_xml.VMXML.set_memoryBacking_tag(vmname)
@@ -508,6 +509,7 @@ def run(test, params, env):
     mem_hotplug_size = int(params.get("virsh_migrate_hotplug_mem", "262144"))
     mem_hotplug_count = int(params.get("virsh_migrate_mem_hotplug_count", "1"))
     mem_size_unit = params.get("virsh_migrate_hotplug_mem_unit", "KiB")
+    migrate_there_and_back = "yes" == params.get("virsh_migrate_back", "no")
 
     # To check Unsupported conditions for Numa scenarios
     if enable_numa_pin:
@@ -619,6 +621,12 @@ def run(test, params, env):
         logging.info("Enable virt NFS SELinux boolean on target host.")
         seLinuxBool = SELinuxBoolean(params)
         seLinuxBool.setup()
+
+        # Permit iptables to permit 49152-49216 ports to libvirt for
+        # migration and if arch is ppc with power8 then switch off smt
+        # will be taken care in remote machine for migration to succeed
+        migrate_setup = libvirt.MigrationTest()
+        migrate_setup.migrate_pre_setup(dest_uri, params)
 
         subdriver = utils_test.get_image_info(shared_storage)['format']
         extra_attach = ("--config --driver qemu --subdriver %s --cache %s"
@@ -908,6 +916,52 @@ def run(test, params, env):
                 raise error.TestError("%s did not respond after %d sec."
                                       % (vm.name, ping_timeout))
             server_session.close()
+            logging.debug("Migration from %s to %s success" %
+                          (src_uri, dest_uri))
+            if migrate_there_and_back:
+                # pre migration setup for local machine
+                migrate_setup.migrate_pre_setup(src_uri, params)
+                logging.debug("Migrating back to source from %s to %s" %
+                              (dest_uri, src_uri))
+                params["connect_uri"] = dest_uri
+                if not asynch_migration:
+                    ret_migrate = do_migration(delay, vm, src_uri, options,
+                                               extra)
+                elif extra.count("--timeout-suspend"):
+                    func = check_migration_timeout_suspend
+                    try:
+                        migration_test.do_migration(vms, dest_uri, src_uri,
+                                                    'orderly', migrate_options,
+                                                    thread_timeout=900,
+                                                    ignore_status=True,
+                                                    func=func,
+                                                    func_params=params)
+                    except Exception, info:
+                        raise exceptions.TestFail(info)
+                    ret_migrate = migration_test.RET_MIGRATION
+                elif postcopy_cmd != "":
+                    try:
+                        obj_migration.do_migration(vms, dest_uri, src_uri, "orderly",
+                                                   options=migrate_options,
+                                                   thread_timeout=postcopy_timeout,
+                                                   ignore_status=False,
+                                                   func=process.run,
+                                                   func_params=cmd,
+                                                   shell=True)
+                    except Exception, info:
+                        raise exceptions.TestFail(info)
+                    ret_migrate = obj_migration.RET_MIGRATION
+                logging.info("To check VM network connectivity after "
+                             "migrating back to source")
+                s_ping, o_ping = utils_test.ping(vm_ip, count=ping_count,
+                                                 timeout=ping_timeout)
+                logging.info(o_ping)
+                if s_ping != 0:
+                    raise error.TestError("%s did not respond after %d sec."
+                                          % (vm.name, ping_timeout))
+                # clean up of pre migration setup for local machine
+                migrate_setup.migrate_pre_setup(src_uri, params,
+                                                cleanup=True)
 
         if graphics_server:
             logging.info("To check the process running '%s'.",
@@ -1066,6 +1120,8 @@ def run(test, params, env):
     libvirt.setup_or_cleanup_nfs(False, export_dir=exp_dir,
                                  mount_dir=mount_dir,
                                  restore_selinux=local_selinux_bak)
+    # cleanup pre migration setup for remote machine
+    migrate_setup.migrate_pre_setup(dest_uri, params, cleanup=True)
     if skip_exception:
         raise exceptions.TestSkipError(detail)
     if exception:
