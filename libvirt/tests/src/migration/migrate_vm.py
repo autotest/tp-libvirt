@@ -875,7 +875,7 @@ def run(test, params, env):
     reboot_vm = "yes" == test_dict.get("reboot_vm", "no")
     abort_job = "yes" == test_dict.get("abort_job", "no")
     ctrl_c = "yes" == test_dict.get("ctrl_c", "no")
-    virsh_options = test_dict.get("virsh_options", "--verbose --live")
+    virsh_options = test_dict.get("virsh_options", "--verbose --live --unsafe")
     remote_path = test_dict.get("remote_libvirtd_conf",
                                 "/etc/libvirt/libvirtd.conf")
     log_file = test_dict.get("libvirt_log", "/var/log/libvirt/libvirtd.log")
@@ -968,6 +968,12 @@ def run(test, params, env):
     write_iops_sec = test_dict.get("blkdevio_write_iops_sec")
     blkdevio_dev = test_dict.get("blkdevio_device")
     blkdevio_options = test_dict.get("blkdevio_options")
+
+    # For --postcopy enable
+    postcopy_options = test_dict.get("postcopy_options")
+    if postcopy_options and not virsh_options.count(postcopy_options):
+        virsh_options = "%s %s" % (virsh_options, postcopy_options)
+        test_dict['virsh_options'] = virsh_options
 
     # For --migrate-disks test
     migrate_disks = "yes" == test_dict.get("migrate_disks", "no")
