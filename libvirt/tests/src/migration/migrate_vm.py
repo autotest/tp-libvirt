@@ -865,6 +865,97 @@ def check_iothread_after_migration(vm_name, params, iothread):
         remote_virsh.close_session()
 
 
+def check_domjobinfo_on_complete(test, source_jobinfo, target_jobinfo):
+    """
+    Compare the domjobinfo outputs on source and target hosts.
+    The domjobinfo currently includes below items:
+     Job type
+     Operation
+     Time elapsed
+     Time elapsed w/o network
+     Data processed
+     Data remaining
+     Data total
+     Memory processed
+     Memory remaining
+     Memory total
+     Memory bandwidth
+     Dirty rate
+     Iteration
+     Constant pages
+     Normal pages
+     Normal data
+     Total downtime
+     Downtime w/o network
+     Setup time
+
+    Most fields are required to be same between source and target hosts,
+    except below:
+        Operation
+        Time elapsed
+        Time elapsed w/o network
+
+    :param test: avocado.core.test.Test object
+    :param local_jobinfo: The domjobinfo output on source host
+    :param remote_jobinfo: The domjobinfo output on target host
+    """
+    source_info = read_domjobinfo(test, source_jobinfo)
+    target_info = read_domjobinfo(test, target_jobinfo)
+
+    for key, value in source_info.items():
+        if not target_info.has_key(key):
+            test.fail("The domjobinfo on target host "
+                      "does not has the field: '%s'" % key)
+
+        target_value = target_info[key]
+        if (key == "Time elapsed" or
+           key == "Time elapsed w/o network" or
+           key == "Operation"):
+            continue
+        else:
+            if cmp(value, target_value) != 0:
+                test.fail("The value '%s' for '%s' on source "
+                          "host should be equal to the value "
+                          "'%s' on target host"
+                          % (value, key, target_value))
+
+
+def read_domjobinfo(test, domjobinfo):
+    """
+    Read the domjobinfo into a dict
+
+    :param test: avocado.core.test.Test object
+    :param domjobinfo: The domjobinfo command output
+
+    :return: A dict contains the domjobinfo
+    """
+    jobinfo_dict = {}
+    domjobinfo_list = domjobinfo.splitlines()
+    for item in domjobinfo_list:
+        item = item.strip()
+        if not item or item.count("Job type:"):
+            continue
+        elif item.count("Time elapsed:"):
+            time_elapse = re.findall(r'[0-9]+', item)
+            if len(time_elapse) != 1:
+                test.fail("Invalid item "
+                          "for domjobinfo:%s" % item)
+            jobinfo_dict["Time elapsed"] = time_elapse[0]
+        elif item.count("Time elapsed w/o network:"):
+            time_elapse_wo_net = re.findall(r'[0-9]+', item)
+            if len(time_elapse_wo_net) != 1:
+                test.fail("Invalid item "
+                          "for domjobinfo:%s" % item)
+            jobinfo_dict["Time elapsed w/o network"] = time_elapse_wo_net[0]
+        else:
+            pair = item.split(":")
+            if len(pair) != 2:
+                test.fail("Invalid item "
+                          "for domjobinfo:%s" % item)
+            jobinfo_dict[pair[0]] = pair[1]
+    return jobinfo_dict
+
+
 def run(test, params, env):
     """
     Test remote access with TCP, TLS connection
@@ -1998,10 +2089,8 @@ def run(test, params, env):
                     if status:
                         raise exceptions.TestFail("Failed to run '%s' on remote"
                                                   ": %s" % (cmd, output))
-                    elif not re.search(jobinfo, output):
-                        logging.debug("Remote job info:\n%s", output)
-                        raise exceptions.TestFail("The job info on both local "
-                                                  "and remote are not matched.")
+                    else:
+                        check_domjobinfo_on_complete(test, jobinfo, output)
 
             if block_ip_addr and block_time:
                 block_specific_ip_by_time(block_ip_addr, block_time)
