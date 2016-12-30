@@ -1195,7 +1195,8 @@ def run(test, params, env):
         # Update VM disk source to NFS sharing directory
         logging.debug("Migration mounting point: %s", nfs_mount_dir)
         new_disk_source = test_dict.get("new_disk_source")
-        if nfs_mount_dir and nfs_mount_dir != os.path.dirname(disk_source):
+        if (nfs_mount_dir and not migrate_disks and
+           nfs_mount_dir != os.path.dirname(disk_source)):
             libvirt.update_vm_disk_source(vm_name, nfs_mount_dir, "", source_type)
 
         target_image_path = test_dict.get("target_image_path")
