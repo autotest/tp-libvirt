@@ -89,6 +89,7 @@ def run(test, params, env):
     libvirt_net = utlv.LibvirtNetwork('vnet', **net_kwargs)
     net_info = virsh.net_info(network).stdout.strip()
     bridge = re.search(r'Bridge:\s+(\S+)', net_info).group(1)
+    params['netdst'] = bridge
 
     # Maintain a single params for v2v to avoid duplicate parameters
     v2v_params = {'target': target, 'hypervisor': hypervisor,
