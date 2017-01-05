@@ -1,5 +1,6 @@
 import os
 import logging
+import shutil
 
 from avocado.utils import process
 from avocado.core import exceptions
@@ -114,6 +115,25 @@ def run(test, params, env):
         if check == 'pcspk' and "<sound model='pcspk'" not in xml:
             log_fail('Sound card should be "pcspk"')
 
+    def check_rhsrvany_md5(vmcheck):
+        """
+        Check if MD5 and SHA1 of rhsrvany.exe are correct
+        """
+        logging.info('Check md5 and sha1 of rhsrvany.exe')
+        val_md5, val_sha1 = params.get('val_md5'), params.get('val_sha1')
+        logging.info('Expect MD5=%s, SHA1=%s', val_md5, val_sha1)
+        if not val_md5 or not val_sha1:
+            raise exceptions.TestError('No MD5 or SHA1 value provided')
+        cmd_sha1 = params.get('cmd_sha1')
+        cmd_md5 = cmd_sha1 + ' MD5'
+        sha1 = vmcheck.session.cmd(cmd_sha1).strip().split('\n')[1].replace(' ', '')
+        md5 = vmcheck.session.cmd(cmd_md5).strip().split('\n')[1].replace(' ', '')
+        logging.info('Actual MD5=%s, SHA1=%s', md5, sha1)
+        if sha1 == val_sha1 and md5 == val_md5:
+            logging.info('MD5 and SHA1 are correct')
+        else:
+            log_fail('MD5 or SHA1 of rhsrvany.exe not correct')
+
     def check_v2v_log(output, check=None):
         """
         Check if error/warning meets expectation
@@ -203,10 +223,22 @@ def run(test, params, env):
                 check_kernel(vmchecker.checker)
             elif checkpoint in ['sound', 'pcspk']:
                 check_sound_card(vmchecker.checker, checkpoint)
+            elif checkpoint == 'rhsrvany_md5':
+                check_rhsrvany_md5(vmchecker.checker)
         check_v2v_log(output, checkpoint)
         # Merge 2 error lists
         if params.get('vmchecker'):
             error_list.extend(params['vmchecker'].errors)
+        # Virtio drivers will not be installed without virtio-win setup
+        if checkpoint == 'virtio_win_unset':
+            missing_list = params.get('missing').split(',')
+            expect_errors = ['Not find driver: ' + x for x in missing_list]
+            logging.debug('Expect errors: %s' % expect_errors)
+            logging.debug('Actual errors: %s' % error_list)
+            if set(error_list) == set(expect_errors):
+                error_list[:] = []
+            else:
+                logging.error('Virtio drivers not meet expectation')
         if len(error_list):
             raise exceptions.TestFail('%d checkpoints failed: %s' %
                                       (len(error_list), error_list))
@@ -255,9 +287,10 @@ def run(test, params, env):
         if not virsh.domain_exists(vm_name, uri=uri):
             logging.error('VM %s not exists', vm_name)
 
+        virsh_instance = virsh.VirshPersistent()
+        virsh_instance.set_uri(uri)
+
         if checkpoint in bk_list:
-            virsh_instance = virsh.VirshPersistent()
-            virsh_instance.set_uri(uri)
             bk_xml = vm_xml.VMXML.new_from_inactive_dumpxml(
                     vm_name, virsh_instance=virsh_instance)
         if checkpoint == 'guest_uuid':
@@ -337,6 +370,39 @@ def run(test, params, env):
             logging.info(session.cmd_output('cat /etc/ssh/ssh_banner'))
             logging.info('Restart sshd service on xen host')
             session.cmd('service sshd restart')
+        if checkpoint.startswith('virtio_win'):
+            src_dir = params.get('virtio_win_dir')
+            dest_dir = os.path.join(data_dir.get_tmp_dir(), 'virtio-win')
+            iso_path = os.path.join(dest_dir, 'virtio-win.iso')
+            if not os.path.exists(dest_dir):
+                shutil.copytree(src_dir, dest_dir)
+            virtio_win_env = params.get('virtio_win_env', 'VIRTIO_WIN')
+            process.run('rpm -e virtio-win')
+            if process.run('rpm -q virtio-win', ignore_status=True).exit_status == 0:
+                raise exceptions.TestError('not removed')
+            if checkpoint.endswith('unset'):
+                logging.info('Unset env %s' % virtio_win_env)
+                os.unsetenv(virtio_win_env)
+            if checkpoint.endswith('custom'):
+                logging.info('Set env %s=%s' % (virtio_win_env, dest_dir))
+                os.environ[virtio_win_env] = dest_dir
+            if checkpoint.endswith('iso_mount'):
+                logging.info('Mount iso to /opt')
+                process.run('mount %s /opt' % iso_path)
+                os.environ[virtio_win_env] = '/opt'
+            if checkpoint.endswith('iso_file'):
+                logging.info('Set env %s=%s' % (virtio_win_env, iso_path))
+                os.environ[virtio_win_env] = iso_path
+        if checkpoint == 'cdrom':
+            xml = vm_xml.VMXML.new_from_inactive_dumpxml(
+                    vm_name, virsh_instance=virsh_instance)
+            logging.debug(xml.xmltreefile)
+            disks = xml.get_disk_all()
+            logging.debug('Disks: %r', disks)
+            for disk in disks.values():
+                # Check if vm has cdrom attached
+                if disk.get('device') == 'cdrom' and disk.find('source') is None:
+                    raise exceptions.TestError('No CDROM image attached')
 
         # Check if xen guest exists again
         if not virsh.domain_exists(vm_name, uri=uri):
@@ -364,3 +430,5 @@ def run(test, params, env):
                                           xen_host_passwd, "#")
             session.cmd('rm -f /etc/ssh/ssh_banner')
             session.cmd('service sshd restart')
+        if checkpoint.startswith('virtio_win'):
+            utils_misc.yum_install(['virtio-win'])
