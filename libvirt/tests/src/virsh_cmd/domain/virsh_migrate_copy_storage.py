@@ -39,6 +39,15 @@ def create_destroy_pool_on_remote(action, params):
     prompt = params.get("prompt", r"[\#\$]\s*$")
 
     if action == 'create':
+        # Firstly check if the pool already exists
+        all_pools = new_session.pool_list(option="--all")
+        logging.debug("Pools on remote host:\n%s", all_pools)
+        if all_pools.stdout.find(pool_name) >= 0:
+            logging.debug("The pool %s already exists and skip "
+                          "to create it.", pool_name)
+            new_session.close_session()
+            return True
+
         pool_type = params.get("precreation_pool_type", "dir")
         pool_target = params.get("precreation_pool_target")
         cmd = "mkdir -p %s" % pool_target
