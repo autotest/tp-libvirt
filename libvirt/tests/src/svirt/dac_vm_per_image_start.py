@@ -6,6 +6,8 @@ import logging
 
 from autotest.client.shared import error
 
+from avocado.core import exceptions
+
 from virttest import utils_selinux
 from virttest import virt_vm
 from virttest import utils_config
@@ -100,6 +102,10 @@ def run(test, params, env):
 
     # Set selinux of host.
     backup_sestatus = utils_selinux.get_status()
+    if backup_sestatus == "disabled":
+        raise exceptions.TestSkipError("SELinux is in Disabled "
+                                       "mode. it must be in Enforcing "
+                                       "mode to run this test")
     utils_selinux.set_status(host_sestatus)
 
     qemu_sock_mod = False

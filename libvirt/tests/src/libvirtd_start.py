@@ -127,6 +127,11 @@ def run(test, params, env):
             time.sleep(3)
 
             libvirt_pid = libvirtd_session.tail.get_pid()
+            sestatus = utils_selinux.get_status()
+            if sestatus == "disabled":
+                raise exceptions.TestSkipError("SELinux is in Disabled mode."
+                                               "It must be Enabled to"
+                                               "run this test")
             libvirt_context = utils_selinux.get_context_of_process(libvirt_pid)
             logging.debug(
                 "The libvirtd process context is: %s", libvirt_context)
