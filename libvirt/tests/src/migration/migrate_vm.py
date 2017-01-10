@@ -1895,8 +1895,12 @@ def run(test, params, env):
             if ctrl_c:
                 if p.pid:
                     logging.info("Send SIGINT signal to cancel migration.")
-                    utils_misc.kill_process_tree(p.pid, signal.SIGINT)
-                    logging.info("Succeed to cancel migration: [%s].", p.pid)
+                    if utils_misc.safe_kill(p.pid, signal.SIGINT):
+                        logging.info("Succeed to cancel migration:"
+                                     " [%s].", p.pid)
+                    else:
+                        raise exceptions.TestError("Fail to cancel"
+                                                   " migration: [%s]", p.pid)
                 else:
                     p.kill()
                     raise exceptions.TestFail("Migration process is dead")
