@@ -1,11 +1,11 @@
 import logging
 
-from autotest.client import utils
-from autotest.client import lv_utils
-from autotest.client.shared import error
+from avocado.utils import process
+from avocado.core import exceptions
 
 from virttest import virsh
 from virttest import utils_test
+from virttest.staging import lv_utils
 
 
 def run(test, params, env):
@@ -28,7 +28,7 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
 
     if not source_type:
-        raise error.TestFail("Command requires <type> value")
+        raise exceptions.TestFail("Command requires <type> value")
 
     cleanup_nfs = False
     cleanup_iscsi = False
@@ -46,7 +46,7 @@ def run(test, params, env):
                 iscsi_device = utils_test.libvirt.setup_or_cleanup_iscsi(True)
                 # If we got nothing, force failure
                 if not iscsi_device:
-                    raise error.TestFail("Did not setup an iscsi device")
+                    raise exceptions.TestFail("Did not setup an iscsi device")
                 cleanup_iscsi = True
                 if source_type == "logical":
                     # Create VG by using iscsi device
@@ -55,7 +55,7 @@ def run(test, params, env):
             except Exception, detail:
                 if cleanup_iscsi:
                     utils_test.libvirt.setup_or_cleanup_iscsi(False)
-                raise error.TestFail("iscsi setup failed:\n%s" % detail)
+                raise exceptions.TestFail("iscsi setup failed:\n%s" % detail)
 
     # Run virsh cmd
     options = "%s %s " % (source_host, source_port) + options
@@ -68,23 +68,14 @@ def run(test, params, env):
             ignore_status=True,
             debug=True,
             readonly=ro_flag)
-        output = cmd_result.stdout.strip()
-        err = cmd_result.stderr.strip()
-        status = cmd_result.exit_status
-        if not status_error:
-            if status:
-                raise error.TestFail(err)
-            else:
-                logging.debug("Command outout:\n%s", output)
-        elif status_error and status == 0:
-            raise error.TestFail("Expect fail, but run successfully")
+        utils_test.libvirt.check_exit_status(cmd_result, status_error)
     finally:
         # Clean up
         if cleanup_logical:
             cmd = "pvs |grep %s |awk '{print $1}'" % vg_name
-            pv_name = utils.system_output(cmd)
+            pv_name = process.system_output(cmd)
             lv_utils.vg_remove(vg_name)
-            utils.run("pvremove %s" % pv_name)
+            process.run("pvremove %s" % pv_name)
         if cleanup_iscsi:
             utils_test.libvirt.setup_or_cleanup_iscsi(False)
         if cleanup_nfs:

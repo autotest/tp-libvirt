@@ -1,12 +1,12 @@
 import logging
 
-from autotest.client import utils
-from autotest.client import lv_utils
-from autotest.client.shared import error
+from avocado.utils import process
+from avocado.core import exceptions
 
 from virttest import xml_utils
 from virttest import utils_test
 from virttest import virsh
+from virttest.staging import lv_utils
 
 from provider import libvirt_version
 
@@ -37,11 +37,11 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            raise exceptions.TestSkipError("API acl test not supported in "
+                                           "current libvirt version.")
 
     if not source_type:
-        raise error.TestFail("Command requires <type> value")
+        raise exceptions.TestFail("Command requires <type> value")
 
     cleanup_nfs = False
     cleanup_iscsi = False
@@ -59,7 +59,7 @@ def run(test, params, env):
             iscsi_device = utils_test.libvirt.setup_or_cleanup_iscsi(True)
             # If we got nothing, force failure
             if not iscsi_device:
-                raise error.TestFail("Did not setup an iscsi device")
+                raise exceptions.TestFail("Did not setup an iscsi device")
             cleanup_iscsi = True
             if source_type == "logical":
                 # Create vg by using iscsi device
@@ -67,7 +67,7 @@ def run(test, params, env):
                     lv_utils.vg_create(vg_name, iscsi_device)
                 except Exception, detail:
                     utils_test.libvirt.setup_or_cleanup_iscsi(False)
-                    raise error.TestFail("vg_create failed: %s" % detail)
+                    raise exceptions.TestFail("vg_create failed: %s" % detail)
                 cleanup_logical = True
 
     # Prepare srcSpec xml
@@ -85,7 +85,7 @@ def run(test, params, env):
 
     if params.get('setup_libvirt_polkit') == 'yes':
         cmd = "chmod 666 %s" % srcSpec.name
-        utils.system(cmd)
+        process.run(cmd)
 
     if ro_flag:
         logging.debug("Readonly mode test")
@@ -100,23 +100,14 @@ def run(test, params, env):
             unprivileged_user=unprivileged_user,
             uri=uri,
             readonly=ro_flag)
-        output = cmd_result.stdout.strip()
-        err = cmd_result.stderr.strip()
-        status = cmd_result.exit_status
-        if not status_error:
-            if status:
-                raise error.TestFail(err)
-            else:
-                logging.debug("Command output:\n%s", output)
-        elif status_error and status == 0:
-            raise error.TestFail("Expect fail, but run successfully")
+        utils_test.libvirt.check_exit_status(cmd_result, status_error)
     finally:
         # Clean up
         if cleanup_logical:
             cmd = "pvs |grep %s |awk '{print $1}'" % vg_name
-            pv_name = utils.system_output(cmd)
+            pv_name = process.system_output(cmd)
             lv_utils.vg_remove(vg_name)
-            utils.run("pvremove %s" % pv_name)
+            process.run("pvremove %s" % pv_name)
         if cleanup_iscsi:
             utils_test.libvirt.setup_or_cleanup_iscsi(False)
         if cleanup_nfs:
