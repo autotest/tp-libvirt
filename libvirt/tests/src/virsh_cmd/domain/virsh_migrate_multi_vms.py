@@ -1,15 +1,18 @@
 import logging
 import threading
 import time
+import os
 
 from avocado.core import exceptions
 
+from virttest import data_dir
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import remote
 from virttest import utils_test
 from virttest import nfs
 from virttest import ssh_key
+from virttest import utils_net
 from virttest.libvirt_xml import vm_xml
 
 
@@ -20,11 +23,15 @@ global ret_migration
 global ret_jobabort
 # If downtime is tolerable
 global ret_downtime_tolerable
+# List of vms static ip address list
+global vm_ip_check_list
+
 # True means command executed successfully
 ret_migration = True
 ret_jobabort = True
 ret_downtime_tolerable = True
 flag_migration = True
+vm_ip_check_list = []
 
 
 def make_migration_options(method, optionstr="", timeout=60):
@@ -174,6 +181,222 @@ def multi_migration(vm, src_uri, dest_uri, options, migrate_type,
         ret_migration = False
 
 
+def cleanup_dest(vm, src_uri, dest_uri):
+    """
+    Clean up the destination host environment
+    when doing the uni-direction migration.
+
+    :param src_uri: uri with source ip address for cleanup
+    :param dest_uri: uri with destination ipaddress for cleanup
+    """
+    logging.info("Cleaning up VMs on %s" % dest_uri)
+    try:
+        if virsh.domain_exists(vm.name, uri=dest_uri):
+            vm_state = vm.state()
+            if vm_state == "paused":
+                vm.resume()
+            elif vm_state == "shut off":
+                vm.start()
+            vm.destroy(gracefully=False)
+            if vm.is_persistent():
+                vm.undefine()
+    except Exception, detail:
+        logging.error("Cleaning up destination failed.\n%s" % detail)
+    if src_uri:
+        vm.connect_uri = src_uri
+
+
+def vepa_test(macvtap_vm):
+    """
+    vepa mode ping test, check guest can ping remote
+    guest with macvtap configured
+
+    :param macvtap_vm: VM object
+    """
+    global vm_ip_check_list
+    session = macvtap_vm.wait_for_login()
+    for each_macvtap_ip in vm_ip_check_list:
+        ret, out = utils_test.ping(each_macvtap_ip, count=5, timeout=5,
+                                   session=session)
+        if ret:
+            raise exceptions.TestFail("From %s failed to ping-%s: %s" %
+                                      (macvtap_vm.name, each_macvtap_ip, out))
+
+
+def get_static_ip_for_vm(params):
+    """
+    Generate static ipaddress
+
+    :param params: Test params dict
+    :return: static ipaddress of type string
+    """
+    global vm_ip_check_list
+    vm_ip_static = params.get("vm_static_ip", "10.10.0.2")
+    if vm_ip_static not in vm_ip_check_list:
+        vm_ip_check_list.append(vm_ip_static)
+    else:
+        while vm_ip_static in vm_ip_check_list:
+            ip_element = int(vm_ip_static.split('.')[-1])
+            if (int(ip_element) + 1 >= 255) or (int(ip_element) <= 1):
+                vm_ip_static = '.'.join(x.split('.')[0:3]) + ".%s" % str(2)
+                continue
+            vm_ip_static = ('.'.join(vm_ip_static.split('.')[0:3]) + ".%s"
+                            % str(int(vm_ip_static.split('.')[-1]) + 1))
+        vm_ip_check_list.append(vm_ip_static)
+    return vm_ip_static
+
+
+def get_persistent_file_content(mac, iface):
+    """
+    Forms udev rule with mac address and interface name
+
+    :param mac: mac address of the interface
+    :param iface: interface name
+    :return: udev rule of type string
+    """
+    persistent_net_file_content = 'SUBSYSTEM=="net", '
+    persistent_net_file_content += 'ACTION=="add", '
+    persistent_net_file_content += 'DRIVERS=="?*", '
+    persistent_net_file_content += 'ATTR{address}=="%s", ' % mac
+    persistent_net_file_content += 'ATTR{dev_id}=="0x0", '
+    persistent_net_file_content += 'ATTR{type}=="1", '
+    persistent_net_file_content += 'KERNEL=="eth*", '
+    persistent_net_file_content += 'NAME="%s"' % iface
+    return persistent_net_file_content
+
+
+def update_network_script(local_path, network_script):
+    """
+    Writes the network script to file in local path
+
+    :param local_path: absolute path of local file
+    :param network_script: config parameter of type list
+    :return updated file path
+    """
+    try:
+        with open(local_path, "a") as myfile:
+            for each_line in network_script:
+                myfile.write("\n%s" % each_line)
+            myfile.write("\n")
+        myfile.close()
+        return local_path
+    except (OSError, IOError, FileNotFoundError) as info:
+        raise exceptions.TestError("Failed during n/w script update: %s"
+                                   % info)
+
+
+def macvtap_config(vm, vmxml, host_iface_name, params):
+    """
+    Performs network configurations for attaching macvtap interface to vm
+
+    :param vm: VM object
+    :param vmxml: guest xml
+    :param host_iface_name: Host's base interface name
+    :param params: Test params dict
+    :return: base network script to backup & macvtap network script to cleanup
+    """
+    logging.debug("Performing macvtap configurations to %s", vm.name)
+    cleanup_macvtap_file = ""
+    cleanup_base_file = ""
+    persistent_net_file = params.get("udev_rule_file",
+                                     "EXAMPLE.YOUR.RULE.FILE.PATH")
+    passwd = params.get("password", "EXAMPLE.VM.PASSWORD")
+    vm_iface = params.get("guest_iface_name", "eth2")
+    iface_mode = params.get("mode", "vepa")
+    iface_model = params.get("model", "virtio")
+    try:
+        if vm.is_dead():
+            vm.start()
+        vm_session = vm.wait_for_login()
+        # mac address of base interface
+        mac = vmxml.get_devices(device_type="interface")[0].mac_address
+        logging.debug("mac address of base interface - %s", mac)
+
+        # attach macvtap interface
+        interface_class = vm_xml.VMXML.get_device_class('interface')
+        interface = interface_class(type_name="direct")
+        interface.source = dict(dev=host_iface_name, mode=iface_mode)
+        interface.model = iface_model
+        interface.xmltreefile.write()
+        virsh.attach_device(vm.name, interface.xml, flagstr="--config")
+        os.remove(interface.xml)
+        vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
+
+        # mac address of macvtap interface
+        new_mac = vmxml_backup.get_devices(device_type="interface")[-1]
+        new_mac = new_mac.mac_address
+        logging.debug("mac address of macvtap interface - %s", new_mac)
+
+        # network script for base interface
+        network_script = utils_net.get_vm_network_script(vm, vm_iface, mac,
+                                                         'dhcp',
+                                                         '255.255.255.0')
+        logging.debug("Network script for base interface - %s", network_script)
+
+        static_ip = get_static_ip_for_vm(params)
+        # Making interface name unique
+        macvtap_iface = "%s%s" % (vm_iface, static_ip.split('.')[-1])
+        # network script for macvtap interface
+        macvtap_script = utils_net.get_vm_network_script(vm, macvtap_iface,
+                                                         new_mac,
+                                                         'static',
+                                                         '255.255.255.0',
+                                                         ip_addr=static_ip)
+        logging.debug("Network script of macvtap interface - %s",
+                      macvtap_script)
+
+        # Network script file path for base and macvtap interfaces
+        base_path = utils_net.get_vm_network_cfg_file(vm, vm_iface).strip()
+        logging.debug("Base network path for %s = %s", vm.name, base_path)
+        macvtap_path = utils_net.get_vm_network_cfg_file(vm,
+                                                         macvtap_iface).strip()
+        logging.debug("macvtap network path for %s = %s", vm.name,
+                      macvtap_path)
+
+        local_path = os.path.join(data_dir.get_tmp_dir(), "%s_base" % vm.name)
+        if "ubuntu" in vm.get_distro().lower():
+            cleanup_base_file = "%s_backup" % local_path
+            remote.scp_from_remote(vm.get_address(), 22, 'root', passwd,
+                                   base_path, cleanup_base_file)
+        else:
+            cleanup_base_file = str(base_path)
+            cleanup_macvtap_file = str(macvtap_path)
+
+        # change base interface network script file with user defined iface
+        # name to ensure base network remains up after attaching macvtap
+        # interface and reboot
+        remote.scp_from_remote(vm.get_address(), 22, 'root', passwd,
+                               base_path, local_path)
+        local_path = update_network_script(local_path, network_script)
+        remote.scp_to_remote(vm.get_address(), 22, 'root', passwd,
+                             local_path, base_path)
+
+        # change user defined macvtap interface
+        local_path = os.path.join(data_dir.get_tmp_dir(),
+                                  "%s_macvtap" % vm.name)
+        remote.scp_from_remote(vm.get_address(), 22, 'root', passwd,
+                               macvtap_path, local_path)
+        local_path = update_network_script(local_path, macvtap_script)
+        remote.scp_to_remote(vm.get_address(), 22, 'root', passwd, local_path,
+                             macvtap_path)
+
+        # Have udev rule to ensure user defined interface names are assigned
+        # to respective interfaces when vm boots.
+        # udev rule for base interface
+        base_persistent = get_persistent_file_content(mac, vm_iface)
+        # udev rule for macvtap interface
+        mac_persistent = get_persistent_file_content(new_mac, macvtap_iface)
+        vm_session.cmd("echo \'%s\n%s\' > %s " % (base_persistent,
+                                                  mac_persistent,
+                                                  persistent_net_file))
+        cat_out = vm_session.cmd("cat %s" % persistent_net_file)
+        logging.debug("persistent file output - %s", cat_out)
+        return cleanup_base_file, cleanup_macvtap_file
+    except Exception, info:
+        raise exceptions.TestError("Failed to configure guest n/w: %s"
+                                   % info)
+
+
 def run(test, params, env):
     """
     Test migration of multi vms.
@@ -195,6 +418,8 @@ def run(test, params, env):
     migration_type = params.get("virsh_migration_type", "simultaneous")
     migrate_timeout = int(params.get("virsh_migrate_thread_timeout", 900))
     migration_time = int(params.get("virsh_migrate_timeout", 60))
+    login_timeout = int(params.get("virsh_vm_login_timeout", 300))
+    macvtap = "yes" == params.get("virsh_migration_with_macvtap", "no")
 
     # Params for NFS and SSH setup
     params["server_ip"] = params.get("migrate_dest_host")
@@ -209,7 +434,26 @@ def run(test, params, env):
                                                 dest_ip=remote_host)
     srcuri = libvirt_vm.get_uri_with_transport(transport="ssh",
                                                dest_ip=local_host)
-
+    # Params for macvtap test
+    if macvtap:
+        # checks if interface name from params available in host, else returns
+        # actual base interface
+        iface_name = params.get("host_iface_name", None)
+        iface_name = utils_net.get_macvtap_base_iface(base_interface=iface_name)
+        persistent_net_file = params.get("udev_rule_file",
+                                         "EXAMPLE.YOUR.RULE.FILE.PATH")
+        passwd = params.get("password", "EXAMPLE.VM.PASSWORD")
+        session = remote.remote_login("ssh", remote_host, "22", host_user,
+                                      host_passwd, r"[\#\$]\s*$")
+        # Get interface list of remote machine
+        phy_iface, virt_iface = utils_net.get_sorted_net_if(session=session)
+        if iface_name not in phy_iface:
+            raise exceptions.TestSkipError("Migration can happen only if "
+                                           "source and destination machines "
+                                           "have same macvtap interface name")
+        else:
+            logging.debug("Interfaces are available on source and destination"
+                          " - %s", iface_name)
     # Don't allow the defaults.
     if srcuri.count('///') or srcuri.count('EXAMPLE'):
         raise exceptions.TestSkipError("The srcuri '%s' is invalid" % srcuri)
@@ -231,11 +475,24 @@ def run(test, params, env):
 
     # Prepare MigrationHelper instance
     vms = []
-    for vm_name in vm_names:
-        vm = env.get_vm(vm_name)
-        vms.append(vm)
-
+    vmxml = {}
+    # variables used to cleanup macvtap config
+    if macvtap:
+        net = {}
+        cleanup = {}
+        macvtap_vm = env.get_vm(vm_names[0])
     try:
+        for vm_name in vm_names:
+            vm = env.get_vm(vm_name)
+            vms.append(vm)
+            # Backing up guest xml
+            vmxml[vm_name] = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            if macvtap:
+                # make sure default interface doesn't gets affected
+                net[vm_name], cleanup[vm_name] = macvtap_config(vm,
+                                                                vmxml[vm_name],
+                                                                iface_name,
+                                                                params)
         option = make_migration_options(method, options, migration_time)
 
         # make sure cache=none
@@ -246,9 +503,11 @@ def run(test, params, env):
                     vm.destroy()
             for each_vm in vm_names:
                 logging.info("configure cache=none")
-                vmxml = vm_xml.VMXML.new_from_dumpxml(each_vm)
-                device_source = str(vmxml.get_disk_attr(each_vm, device_target,
-                                                        'source', 'file'))
+                # vmxml = vm_xml.VMXML.new_from_dumpxml(each_vm)
+                device_source = str(vmxml[each_vm].get_disk_attr(each_vm,
+                                                                 device_target,
+                                                                 'source',
+                                                                 'file'))
                 ret_detach = virsh.detach_disk(each_vm, device_target,
                                                "--config")
                 status = ret_detach.exit_status
@@ -269,31 +528,83 @@ def run(test, params, env):
                 logging.info("Output:\n%s", output)
                 if not ret_attach:
                     raise exceptions.TestError("Attach disks fails")
-
         for vm in vms:
             if vm.is_dead():
                 vm.start()
-                vm.wait_for_login()
+                vm.wait_for_login(timeout=login_timeout)
+        # Perform ping test with macvtap configured IPs before and after
+        # migration
+        if macvtap:
+            # keep 1 vm in source to test the macvtap network connectivity
+            # as we cannot reach macvtap IP of migrated vms in destination
+            # from source host IP in vepa mode
+            macvtap_vm = vms.pop(0)
+            logging.debug("Macvtap ping test before migration")
+            vepa_test(macvtap_vm)
+
         multi_migration(vms, srcuri, desturi, option, migration_type,
                         migrate_timeout, jobabort, lrunner=localrunner,
                         rrunner=remoterunner)
+        if macvtap:
+            logging.debug("Macvtap ping test after migration")
+            vepa_test(macvtap_vm)
+            # inserting back for cleanup
+            vms.insert(0, macvtap_vm)
     except Exception, info:
         logging.error("Test failed: %s" % info)
         flag_migration = False
+        # if migration fails
+        if macvtap and (macvtap_vm not in vms):
+            # inserting back for cleanup
+            vms.insert(0, macvtap_vm)
 
-    # NFS cleanup
-    if nfs_shared_disk:
-        logging.info("NFS cleanup")
-        nfs_client.cleanup(ssh_auto_recover=False)
+    finally:
+        # NFS cleanup
+        if nfs_shared_disk:
+            logging.info("NFS cleanup")
+            nfs_client.cleanup(ssh_auto_recover=False)
 
-    localrunner.session.close()
-    remoterunner.session.close()
+        localrunner.session.close()
+        remoterunner.session.close()
 
-    if not (ret_migration or flag_migration):
-        if not status_error:
-            raise exceptions.TestFail("Migration test failed")
-    if not ret_jobabort:
-        if not status_error:
-            raise exceptions.TestFail("Abort migration failed")
-    if not ret_downtime_tolerable:
-        raise exceptions.TestFail("Downtime during migration is intolerable")
+        # clean up vmxml
+        for vm in vms:
+            vmxml[vm.name].sync()
+            if vm.is_alive():
+                vm.destroy()
+            vm.start()
+            # macvtap cleanup
+            if macvtap:
+                session = vm.wait_for_login()
+                try:
+                    # copy back the base network script file
+                    if "ubuntu" in vm.get_distro().lower():
+                        vm_iface = params.get("guest_iface_name", "eth2")
+                        vm_file = utils_net.get_vm_network_cfg_file(vm,
+                                                                    vm_iface)
+                        remote.scp_to_remote(vm.get_address(), 22, 'root',
+                                             passwd, net[vm.name],
+                                             vm_file.strip())
+                    elif net[vm.name]:
+                        session.cmd("rm -f %s" % net[vm.name])
+                    # clean up udev rule
+                    session.cmd("rm -f  %s" % (persistent_net_file))
+                    # clean up macvtap network script file
+                    if cleanup[vm.name]:
+                        session.cmd("rm -f  %s" % (cleanup[vm.name]))
+                # VM didn't configured with macvtap
+                finally:
+                    vm.destroy()
+                    # clean vm in destination
+                    cleanup_dest(vm, srcuri, desturi)
+        # clean up temporary files created
+        data_dir.clean_tmp_files()
+        if not ret_migration or not flag_migration:
+            if not status_error:
+                raise exceptions.TestFail("Migration test failed")
+        if not ret_jobabort:
+            if not status_error:
+                raise exceptions.TestFail("Abort migration failed")
+        if not ret_downtime_tolerable:
+            raise exceptions.TestFail("Downtime during migration is "
+                                      "intolerable")
