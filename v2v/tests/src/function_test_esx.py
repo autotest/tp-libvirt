@@ -2,7 +2,6 @@ import os
 import logging
 import re
 
-from avocado.core import exceptions
 from avocado.utils import process
 
 from virttest import virsh
@@ -20,11 +19,11 @@ def run(test, params, env):
     """
     for v in params.itervalues():
         if "V2V_EXAMPLE" in v:
-            raise exceptions.TestSkipError("Please set real value for %s" % v)
+            test.skip("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
-    remote_host = params.get('remote_host')
-    esx_ip = params.get('esx_ip')
+    vpx_hostname = params.get('vpx_hostname')
+    esx_ip = params.get('esx_hostname')
     vpx_dc = params.get('vpx_dc')
     vm_name = params.get('main_vm')
     output_mode = params.get('output_mode')
@@ -37,6 +36,7 @@ def run(test, params, env):
     address_cache = env.get('address_cache')
     checkpoint = params.get('checkpoint', '')
     error_list = []
+    remote_host = vpx_hostname
 
     def log_fail(msg):
         """
@@ -61,7 +61,7 @@ def run(test, params, env):
         pkgs = vmcheck.session.cmd('rpm -qa').strip()
         removed_pkgs = params.get('removed_pkgs').strip().split(',')
         if not removed_pkgs:
-            raise exceptions.TestError('Missing param "removed_pkgs"')
+            test.error('Missing param "removed_pkgs"')
         for pkg in removed_pkgs:
             if pkg in pkgs:
                 log_fail('Package "%s" not removed' % pkg)
@@ -71,28 +71,20 @@ def run(test, params, env):
         if not re.search('alias\s+eth0\s+virtio_net', content):
             log_fail('Not found "alias eth0 virtio_net')
 
-    def check_v2v_log(output, check=None):
+    def check_device_map(vmcheck):
         """
-        Check if error/warning meets expectation
+        Check if the content of device.map meets expectation.
         """
-        # Fail if NOT found error message
-        expect_map = {
-            'GPO_AV': [
-                'virt-v2v: warning: this guest has Windows Group Policy Objects',
-                'virt-v2v: warning: this guest has Anti-Virus \(AV\) software'
-            ],
-            'no_ovmf': [
-                'virt-v2v: error: cannot find firmware for UEFI guests',
-                'You probably need to install OVMF\, or AAVMF'
-            ]
-        }
-        if check not in expect_map:
-            logging.info('Skip checking v2v log')
+        logging.info(vmcheck.session.cmd('fdisk -l').strip())
+        device_map = params.get('device_map_path')
+        content = vmcheck.session.cmd('cat %s' % device_map)
+        logging.debug('Content of device.map:\n%s', content)
+        logging.info('Found device: %d', content.count('/dev/'))
+        logging.info('Found virtio device: %d', content.count('/dev/vd'))
+        if content.count('/dev/') != content.count('/dev/vd'):
+            log_fail('Content of device.map not correct')
         else:
-            for msg in expect_map[check]:
-                if not utils_v2v.check_log(output, [msg]):
-                    log_fail('Not found log:"%s"' % msg)
-            logging.info('Finish checking v2v log')
+            logging.info('device.map has been remaped to "/dev/vd*"')
 
     def check_result(result, status_error):
         """
@@ -107,7 +99,7 @@ def run(test, params, env):
             if output_mode == 'rhev':
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                     timeout=v2v_timeout):
-                    raise exceptions.TestFail('Import VM failed')
+                    test.fail('Import VM failed')
             elif output_mode == 'libvirt':
                 virsh.start(vm_name)
             # Check guest following the checkpoint document after convertion
@@ -125,20 +117,15 @@ def run(test, params, env):
                 check_device_exist('cdrom', virsh_session_id)
             if checkpoint == 'vmtools':
                 check_vmtools(vmchecker.checker)
-            if checkpoint == 'GPO_AV':
-                msg_list = [
-                    'virt-v2v: warning: this guest has Windows Group Policy Objects',
-                    'virt-v2v: warning: this guest has Anti-Virus \(AV\) software'
-                ]
-                for msg in msg_list:
-                    if not utils_v2v.check_log(output, [msg]):
-                        log_fail('Not found error message:"%s"' % msg)
+            if checkpoint == 'device_map':
+                check_device_map(vmchecker.checker)
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
-        check_v2v_log(output, checkpoint)
+        log_check = utils_v2v.check_log(params, output)
+        if log_check:
+            log_fail(log_check)
         if len(error_list):
-            raise exceptions.TestFail('%d checkpoints failed: %s' %
-                                      (len(error_list), error_list))
+            test.fail('%d checkpoints failed: %s' % (len(error_list), error_list))
 
     try:
         v2v_params = {
@@ -152,6 +139,8 @@ def run(test, params, env):
         }
 
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
+        v2v_uri = utils_v2v.Uri('esx')
+        remote_uri = v2v_uri.get_uri(remote_host, vpx_dc, esx_ip)
 
         # Create password file for access to ESX hypervisor
         vpx_passwd = params.get("vpx_password")
@@ -187,10 +176,26 @@ def run(test, params, env):
             url = params.get('ovmf_url')
             if url and url.endswith('.rpm'):
                 process.run('rpm -iv %s' % url)
+        if checkpoint == 'root_ask':
+            v2v_params['v2v_opts'] += ' --root ask'
+            v2v_params['custom_inputs'] = params.get('choice', '1')
+        if checkpoint.startswith('root_') and checkpoint != 'root_ask':
+            root_option = params.get('root_option')
+            v2v_params['v2v_opts'] += ' --root %s' % root_option
+        if checkpoint == 'copy_to_local':
+            esx_password = params.get('esx_password')
+            esx_passwd_file = os.path.join(data_dir.get_tmp_dir(), "esx_passwd")
+            logging.info('Prepare esx password file')
+            with open(esx_passwd_file, 'w') as pwd_f:
+                pwd_f.write(esx_password)
+            esx_uri = 'esx://root@%s/?no_verify=1' % esx_ip
+            copy_cmd = 'virt-v2v-copy-to-local -ic %s %s --password-file %s' %\
+                       (esx_uri, vm_name, esx_passwd_file)
+            process.run(copy_cmd)
+            v2v_params['input_mode'] = 'libvirtxml'
+            v2v_params['input_file'] = '%s.xml' % vm_name
 
         if checkpoint == 'empty_cdrom':
-            v2v_uri = utils_v2v.Uri('esx')
-            remote_uri = v2v_uri.get_uri(remote_host, vpx_dc, esx_ip)
             virsh_dargs = {'uri': remote_uri, 'remote_ip': remote_host,
                            'remote_user': 'root', 'remote_pwd': vpx_passwd,
                            'debug': True}
