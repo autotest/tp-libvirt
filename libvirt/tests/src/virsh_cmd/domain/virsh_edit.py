@@ -1,6 +1,9 @@
 import logging
+import subprocess
+import re
 
-from autotest.client.shared import error
+from avocado.core import exceptions
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
@@ -31,6 +34,37 @@ def run(test, params, env):
     extra_option = params.get("edit_extra_param", "")
     status_error = params.get("status_error")
     edit_element = params.get("edit_element", "vcpu")
+    bashrc_file = params.get("bashrc_file", "/root/.bashrc")
+    editor_cfg = params.get("editor_cfg_str", "export EDITOR=vi")
+
+    # check for vi as editor in bashrc to support regex used in
+    # this tests for editing vmxml
+    logging.debug("checking the default editor")
+    try:
+        check_flag = False
+        cmd_output = process.system_output("cat %s" % bashrc_file,
+                                           shell=True).strip().split('\n')
+        for each_cfg in cmd_output:
+            if editor_cfg in each_cfg.strip():
+                if not re.search("^#", each_cfg.strip()):
+                    check_flag = True
+                    logging.debug("vi is already configured as editor")
+                    break
+        if not check_flag:
+            logging.debug("configuring vi as default editor")
+            with open(bashrc_file, "a") as myfile:
+                myfile.write("\n%s\n" % editor_cfg)
+            myfile.close()
+            subprocess.check_output(['bash', '-c', "source %s" % bashrc_file])
+    except process.CmdError:
+        logging.debug("%s file doesn't exist" % bashrc_file)
+        try:
+            process.system("echo %s > %s" % (editor_cfg,
+                                             bashrc_file), shell=True)
+            subprocess.check_output(['bash', '-c', "source %s" % bashrc_file])
+        except Exception, info:
+            raise exceptions.TestSkipError("Test requires vi editor as "
+                                           "default - %s" % info)
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     libvirtd = utils_libvirtd.Libvirtd()
@@ -242,14 +276,14 @@ def run(test, params, env):
         elif edit_element == "rng":
             status = edit_rng(vm_name)
         else:
-            raise error.TestNAError("No edit method for %s" % edit_element)
+            raise exceptions.TestSkipError("No edit method for %s" % edit_element)
         # check status_error
         if status_error == "yes":
             if status:
-                raise error.TestFail("Run successfully with wrong command!")
+                raise exceptions.TestFail("Run successfully with wrong command!")
         elif status_error == "no":
             if not status:
-                raise error.TestFail("Run failed with right command")
+                raise exceptions.TestFail("Run failed with right command")
     finally:
         # recover libvirtd service start
         if libvirtd_stat == "off":
