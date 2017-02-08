@@ -1,20 +1,25 @@
 import os
 import logging
 
-from autotest.client.shared import utils_memory
-from autotest.client.shared import error
-from autotest.client.shared import ssh_key
+from avocado.core import exceptions
 
+from virttest import ssh_key
 from virttest import libvirt_vm
 from virttest import utils_test
 from virttest import data_dir
+from virttest import nfs
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml import vm_xml
+from virttest.staging import utils_memory
 
 
 def set_cpu_memory(vm_name, cpu, memory):
     """
     Change vms' cpu and memory.
+
+    :param vm_name: VM Name
+    :param cpu: No of vcpus to be configured
+    :param memory: Memory for VM to be configured
     """
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vmxml.vcpu = cpu
@@ -22,8 +27,7 @@ def set_cpu_memory(vm_name, cpu, memory):
     vmxml.max_mem = memory
     vmxml.current_mem = memory
     logging.debug("VMXML info:\n%s", vmxml.get('xml'))
-    vmxml.undefine()
-    vmxml.define()
+    vmxml.sync()
 
 
 def do_stress_migration(vms, srcuri, desturi, stress_type,
@@ -32,6 +36,14 @@ def do_stress_migration(vms, srcuri, desturi, stress_type,
     Migrate vms with stress.
 
     :param vms: migrated vms.
+    :param srcuri: connect uri for source machine
+    :param desturi: connect uri for destination machine
+    :param stress_type: type of stress test in VM
+    :param migration_type: type of migration to be performed
+    :param params: Test dict params
+    :param thread_timeout: default timeout for migration thread
+
+    :raise: exceptions.TestFail if migration fails
     """
     fail_info = utils_test.load_stress(stress_type, vms, params)
 
@@ -56,7 +68,8 @@ def do_stress_migration(vms, srcuri, desturi, stress_type,
     logging.debug("Starting migration...")
     migrate_options = ("--live --unsafe %s --timeout %s"
                        % (options, params.get("virsh_migrate_timeout", 60)))
-    migtest.do_migration(vms, srcuri, desturi, migration_type, options=migrate_options,
+    migtest.do_migration(vms, srcuri, desturi, migration_type,
+                         options=migrate_options,
                          thread_timeout=thread_timeout)
 
     # vms will be shutdown, so no need to do this cleanup
@@ -65,7 +78,7 @@ def do_stress_migration(vms, srcuri, desturi, stress_type,
         utils_test.unload_stress(stress_type, vms)
 
     if not migtest.RET_MIGRATION:
-        raise error.TestFail()
+        raise exceptions.TestFail()
 
 
 def run(test, params, env):
@@ -74,15 +87,32 @@ def run(test, params, env):
     """
     vm_names = params.get("migration_vms").split()
     if len(vm_names) < 2:
-        raise error.TestNAError("Provide enough vms for migration first.")
+        raise exceptions.TestSkipError("Provide enough vms for migration")
 
-    src_uri = params.get("migrate_src_uri", "qemu+ssh://EXAMPLE/system")
+    src_uri = libvirt_vm.complete_uri(params.get("migrate_source_host",
+                                                 "EXAMPLE"))
     if src_uri.count('///') or src_uri.count('EXAMPLE'):
-        raise error.TestNAError("The src_uri '%s' is invalid" % src_uri)
+        raise exceptions.TestSkipError("The src_uri '%s' is invalid" % src_uri)
 
-    dest_uri = params.get("migrate_dest_uri", "qemu+ssh://EXAMPLE/system")
+    dest_uri = libvirt_vm.complete_uri(params.get("migrate_dest_host",
+                                                  "EXAMPLE"))
     if dest_uri.count('///') or dest_uri.count('EXAMPLE'):
-        raise error.TestNAError("The dest_uri '%s' is invalid" % dest_uri)
+        raise exceptions.TestSkipError("The dest_uri '%s' is invalid" %
+                                       dest_uri)
+
+    # Params for NFS and SSH setup
+    params["server_ip"] = params.get("migrate_dest_host")
+    params["server_user"] = "root"
+    params["server_pwd"] = params.get("migrate_dest_pwd")
+    params["client_ip"] = params.get("migrate_source_host")
+    params["client_user"] = "root"
+    params["client_pwd"] = params.get("migrate_source_pwd")
+    params["nfs_client_ip"] = params.get("migrate_dest_host")
+    params["nfs_server_ip"] = params.get("migrate_source_host")
+
+    # Configure NFS client on remote host
+    nfs_client = nfs.NFSClient(params)
+    nfs_client.setup()
 
     # Migrated vms' instance
     vms = []
@@ -154,4 +184,8 @@ def run(test, params, env):
             utlv.MigrationTest().cleanup_dest_vm(vm, None, dest_uri)
             if vm.is_alive():
                 vm.destroy(gracefully=False)
+
+        if nfs_client:
+            logging.info("Cleanup NFS client environment...")
+            nfs_client.cleanup()
         env.clean_objects()
