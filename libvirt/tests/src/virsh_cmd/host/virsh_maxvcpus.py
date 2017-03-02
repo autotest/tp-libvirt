@@ -1,10 +1,12 @@
 import logging
 
-from autotest.client.shared import error
+from avocado.core import exceptions
 
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_conn
+from virttest.libvirt_xml import capability_xml
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -34,13 +36,13 @@ def run(test, params, env):
     if (connect_arg == "transport" and
             transport_type == "remote" and
             local_ip.count("ENTER")):
-        raise error.TestNAError("Parameter local_ip is not configured"
-                                "in remote test.")
+        raise exceptions.TestSkipError("Parameter local_ip is not configured "
+                                       "in remote test.")
     if (connect_arg == "transport" and
             transport_type == "remote" and
             local_pwd.count("ENTER")):
-        raise error.TestNAError("Parameter local_pwd is not configured"
-                                "in remote test.")
+        raise exceptions.TestSkipError("Parameter local_pwd is not configured "
+                                       "in remote test.")
 
     if connect_arg == "transport":
         canonical_uri_type = virsh.driver()
@@ -62,6 +64,27 @@ def run(test, params, env):
     else:
         connect_uri = connect_arg
 
+    if libvirt_version.version_compare(2, 3, 0):
+        try:
+            maxvcpus = None
+            # make sure we take maxvcpus from right host, helps incase remote
+            virsh_dargs = {'uri': connect_uri}
+            virsh_instance = virsh.Virsh(virsh_dargs)
+            try:
+                capa = capability_xml.CapabilityXML(virsh_instance)
+                host_arch = capa.arch
+                maxvcpus = capa.get_guest_capabilities()['hvm'][host_arch]['maxcpus']
+            except:
+                raise exceptions.TestFail("Failed to get maxvcpus from "
+                                          "capabilities xml\n%s" % capa)
+            if not maxvcpus:
+                raise exceptions.TestFail("Failed to get guest section for "
+                                          "host arch: %s from capabilities "
+                                          "xml\n%s" % (host_arch, capa))
+        except Exception, details:
+            raise exceptions.TestFail("Failed get the virsh instance with uri: "
+                                      "%s\n Details: %s" % (connect_uri, details))
+
     # Run test case
     result = virsh.maxvcpus(option, uri=connect_uri, ignore_status=True,
                             debug=True)
@@ -72,21 +95,31 @@ def run(test, params, env):
     # Check status_error
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successed with unsupported option!")
+            raise exceptions.TestFail("Run successed with unsupported option!")
         else:
             logging.info("Run failed with unsupported option %s " % option)
     elif status_error == "no":
         if status == 0:
-            if "kqemu" in option:
-                if not maxvcpus_test == '1':
-                    raise error.TestFail("Command output %s is not expected "
-                                         "for %s " % (maxvcpus_test, option))
-            elif option == 'qemu' or option == '--type qemu' or option == '':
-                if not maxvcpus_test == '16':
-                    raise error.TestFail("Command output %s is not expected "
-                                         "for %s " % (maxvcpus_test, option))
+            if not libvirt_version.version_compare(2, 3, 0):
+                if "kqemu" in option:
+                    if not maxvcpus_test == '1':
+                        raise exceptions.TestFail("Command output %s is not "
+                                                  "expected for %s " % (maxvcpus_test, option))
+                elif option in ['qemu', '--type qemu', '']:
+                    if not maxvcpus_test == '16':
+                        raise exceptions.TestFail("Command output %s is not "
+                                                  "expected for %s " % (maxvcpus_test, option))
+                else:
+                    # No check with other types
+                    pass
             else:
-                # No check with other types
-                pass
+                # It covers all possible combinations
+                if option in ['qemu', 'kvm', '']:
+                    if not maxvcpus_test == maxvcpus:
+                        raise exceptions.TestFail("Command output %s is not "
+                                                  "expected for %s " % (maxvcpus_test, option))
+                else:
+                    # No check with other types
+                    pass
         else:
-            raise error.TestFail("Run command failed")
+            raise exceptions.TestFail("Run command failed")
