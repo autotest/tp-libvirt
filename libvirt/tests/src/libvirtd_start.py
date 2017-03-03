@@ -38,6 +38,8 @@ def run(test, params, env):
         logging.info('Checking errors in libvirtd log')
         accepted_error_patterns = [
             'Cannot access storage file',
+            'Failed to autostart storage pool',
+            'cannot open directory',
         ]
 
         if (not iptables_service and not firewalld_service and
@@ -86,9 +88,9 @@ def run(test, params, env):
     backup_iptables_status = service_mgr.status('iptables')
     backup_firewalld_status = service_mgr.status('firewalld')
 
-    # iptables service should always exists
+    # iptables-service got deprecated in newer distros
     if iptables_service and backup_iptables_status is None:
-        raise exceptions.TestError('iptables service not found')
+        raise exceptions.TestSkipError('iptables service not found')
     # firewalld service could not exists on many distros
     if firewalld_service and backup_firewalld_status is None:
         raise exceptions.TestSkipError('firewalld service not found')
@@ -127,6 +129,11 @@ def run(test, params, env):
             time.sleep(3)
 
             libvirt_pid = libvirtd_session.tail.get_pid()
+            sestatus = utils_selinux.get_status()
+            if sestatus == "disabled":
+                raise exceptions.TestSkipError("SELinux is in Disabled mode."
+                                               "It must be in enforcing mode "
+                                               "for test execution")
             libvirt_context = utils_selinux.get_context_of_process(libvirt_pid)
             logging.debug(
                 "The libvirtd process context is: %s", libvirt_context)
