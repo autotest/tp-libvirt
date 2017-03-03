@@ -2,6 +2,7 @@ import grp
 import stat
 import logging
 import os
+import platform
 
 from autotest.client.shared import error
 
@@ -134,6 +135,11 @@ def run(test, params, env):
     rw_perms = params.get('unix_sock_rw_perms', '0777')
     path = params.get('unix_sock_dir', '/var/run/libvirt')
     expected_result = params.get('expected_result', 'success')
+    # In Ubuntu there is no group called "nobody", "nogroup" instead.
+    if group == 'nobody':
+        distro = platform.dist()
+        if 'Ubuntu' in distro:
+            group = 'nogroup'
     try:
         # Change params in libvirtd.conf
         config.unix_sock_group = group
