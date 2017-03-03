@@ -4,7 +4,8 @@ from autotest.client.shared import error
 from avocado.utils import process
 
 from virttest import libvirt_vm
-from virttest import libvirt_xml
+from virttest.libvirt_xml import NetworkXML
+from virttest.libvirt_xml import LibvirtXMLError
 from virttest import virsh
 from virttest import xml_utils
 
@@ -38,7 +39,7 @@ def do_low_level_test(virsh_dargs, test_xml, options_ref, extra):
 
 def do_high_level_test(virsh_dargs, test_xml, net_name, net_uuid, bridge):
 
-    test_netxml = libvirt_xml.NetworkXML(virsh.Virsh(**virsh_dargs))
+    test_netxml = NetworkXML(virsh.Virsh(**virsh_dargs))
     test_netxml.xml = test_xml.name
 
     # modify XML if called for
@@ -62,9 +63,10 @@ def do_high_level_test(virsh_dargs, test_xml, net_name, net_uuid, bridge):
     try:
         test_netxml.create()
         return test_netxml.defined
-    except (IOError, process.CmdError), cmd_excpt:
+    except (IOError, process.CmdError, LibvirtXMLError), cmd_excpt:
         # CmdError catches failing virsh commands
         # IOError catches corrupt XML data
+        # Invalid XML lead to LibvirtXMLError
         logging.debug("Exception-thrown: " + str(cmd_excpt))
         return False
 
@@ -99,7 +101,7 @@ def run(test, params, env):
     vrsh = virsh.VirshPersistent(**virsh_dargs)
 
     # Prepare environment and record current net_state_dict
-    backup = libvirt_xml.NetworkXML.new_all_networks_dict(vrsh)
+    backup = NetworkXML.new_all_networks_dict(vrsh)
     backup_state = vrsh.net_state_dict()
     logging.debug("Backed up network(s): %s", backup_state)
 
@@ -153,7 +155,7 @@ def run(test, params, env):
         del test_xml
 
         # Recover environment
-        leftovers = libvirt_xml.NetworkXML.new_all_networks_dict(vrsh)
+        leftovers = NetworkXML.new_all_networks_dict(vrsh)
         for netxml in leftovers.values():
             netxml.orbital_nuclear_strike()
 
