@@ -1,10 +1,8 @@
 import os
-import logging
 
 from autotest.client import os_dep
 from autotest.client import utils
 from autotest.client.shared import error
-from avocado.utils import software_manager
 
 from virttest import virsh
 from virttest import data_dir
@@ -15,13 +13,6 @@ def run(test, params, env):
     Test for virt-top, it is a top like tool for virtual
     machine.
     """
-    # Install virt-top package if missing.
-    software_mgr = software_manager.SoftwareManager()
-    for pkg in ['virt-top']:
-        if not software_mgr.check_installed(pkg):
-            logging.info('Installing virt-top package:')
-            software_mgr.install(pkg)
-
     # Get the full path of virt-top command.
     try:
         VIRT_TOP = os_dep.command("virt-top")
