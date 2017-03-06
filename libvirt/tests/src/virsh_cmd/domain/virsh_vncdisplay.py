@@ -28,17 +28,6 @@ def run(test, params, env):
     vm_ref = params.get("vncdisplay_vm_ref")
     status_error = params.get("status_error", "no")
     extra = params.get("vncdisplay_extra", "")
-    xml_bak = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    is_alive = vm.is_alive()
-    vmxml = xml_bak.copy()
-    if not len(vmxml.get_graphics_devices("vnc")) and vm.is_qemu():
-        graphic = vmxml.get_device_class('graphics')()
-        graphic.add_graphic(vm_name, graphic="vnc")
-
-    if is_alive and vm.is_dead():
-        vm.start()
-    domid = vm.get_id()
-    domuuid = vm.get_uuid()
 
     def remote_case(params, vm_name):
         """
@@ -66,21 +55,34 @@ def run(test, params, env):
             output = "remote test failed"
         return status, output
 
-    if vm_ref == "id":
-        vm_ref = domid
-    elif vm_ref == "hex_id":
-        vm_ref = hex(int(domid))
-    elif vm_ref.find("invalid") != -1:
-        vm_ref = params.get(vm_ref)
-    elif vm_ref == "name":
-        vm_ref = "%s %s" % (vm_name, extra)
-    elif vm_ref == "uuid":
-        vm_ref = domuuid
-
-    if libvirtd == "off":
-        utils_libvirtd.libvirtd_stop()
+    xml_bak = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    is_alive = vm.is_alive()
+    vmxml = xml_bak.copy()
 
     try:
+        if not len(vmxml.get_graphics_devices("vnc")) and vm.is_qemu():
+            graphic = vmxml.get_device_class('graphics')()
+            graphic.add_graphic(vm_name, graphic="vnc")
+
+        if is_alive and vm.is_dead():
+            vm.start()
+        domid = vm.get_id()
+        domuuid = vm.get_uuid()
+
+        if vm_ref == "id":
+            vm_ref = domid
+        elif vm_ref == "hex_id":
+            vm_ref = hex(int(domid))
+        elif vm_ref.find("invalid") != -1:
+            vm_ref = params.get(vm_ref)
+        elif vm_ref == "name":
+            vm_ref = "%s %s" % (vm_name, extra)
+        elif vm_ref == "uuid":
+            vm_ref = domuuid
+
+        if libvirtd == "off":
+            utils_libvirtd.libvirtd_stop()
+
         if vm_ref == "remote":
             status, output = remote_case(params, vm_name)
         else:
