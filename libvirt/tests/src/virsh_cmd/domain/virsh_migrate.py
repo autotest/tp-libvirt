@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import time
+import platform
 
 from avocado.utils import process
 from avocado.utils import path
@@ -616,9 +617,10 @@ def run(test, params, env):
         nfs_client = nfs.NFSClient(params)
         nfs_client.setup()
 
-        logging.info("Enable virt NFS SELinux boolean on target host.")
-        seLinuxBool = SELinuxBoolean(params)
-        seLinuxBool.setup()
+        if "Ubuntu" not in platform.dist():
+            logging.info("Enable virt NFS SELinux boolean on target host.")
+            seLinuxBool = SELinuxBoolean(params)
+            seLinuxBool.setup()
 
         subdriver = utils_test.get_image_info(shared_storage)['format']
         extra_attach = ("--config --driver qemu --subdriver %s --cache %s"
