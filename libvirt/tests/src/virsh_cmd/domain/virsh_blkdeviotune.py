@@ -21,7 +21,10 @@ def check_blkdeviotune(params):
     cmd_output = result.stdout.strip().splitlines()
     for l in cmd_output:
         k, v = l.split(':')
-        dicts[k.strip()] = int(v.strip())
+        if v.strip().isdigit():
+            dicts[k.strip()] = int(v.strip())
+        else:
+            dicts[k.strip()] = v.strip()
 
     logging.debug("The arguments are from test input %s", dicts)
 
