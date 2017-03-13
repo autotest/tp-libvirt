@@ -2,8 +2,8 @@ import grp
 import stat
 import logging
 import os
-
-from autotest.client.shared import error
+from avocado.utils import distro
+from avocado.core import exceptions
 
 from virttest import virsh
 from virttest import data_dir
@@ -129,18 +129,22 @@ def run(test, params, env):
 
     config = utils_config.LibvirtdConfig()
     libvirtd = utils_libvirtd.Libvirtd()
-    group = params.get('unix_sock_group', 'root')
     ro_perms = params.get('unix_sock_ro_perms', '0777')
     rw_perms = params.get('unix_sock_rw_perms', '0777')
     path = params.get('unix_sock_dir', '/var/run/libvirt')
     expected_result = params.get('expected_result', 'success')
+    # In Ubuntu there is no group called "nobody", "nogroup" instead.
+    distro_details = distro.detect()
+    if distro_details.name == 'Ubuntu':
+        group = params.get('unix_sock_group', 'nogroup')
+    else:
+        group = params.get('unix_sock_group', 'nobody')
     try:
         # Change params in libvirtd.conf
         config.unix_sock_group = group
         config.unix_sock_ro_perms = ro_perms
         config.unix_sock_rw_perms = rw_perms
         config.unix_sock_dir = path
-
         # Restart libvirtd to make change valid.
         if path == '/var/run/libvirt':
             restarted = libvirtd.restart()
@@ -152,18 +156,18 @@ def run(test, params, env):
 
         if not restarted:
             if expected_result != 'unbootable':
-                raise error.TestFail('Libvirtd is expected to be started.')
+                raise exceptions.TestFail('Libvirtd is expected to be started.')
             return
 
         if expected_result == 'unbootable':
-            raise error.TestFail('Libvirtd is not expected to be started.')
+            raise exceptions.TestFail('Libvirtd is not expected to be started.')
 
         if check_all_unix_sock(group, ro_perms, rw_perms, path):
             if expected_result == 'fail':
-                raise error.TestFail('Expected fail, but check passed.')
+                raise exceptions.TestFail('Expected fail, but check passed.')
         else:
             if expected_result == 'success':
-                raise error.TestFail('Expected success, but check failed.')
+                raise exceptions.TestFail('Expected success, but check failed.')
     finally:
         config.restore()
         libvirtd.restart()
