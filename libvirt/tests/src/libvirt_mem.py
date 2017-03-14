@@ -99,14 +99,23 @@ def run(test, params, env):
         session.cmd(cmd)
         # Wait a while for new memory to be detected.
         utils_misc.wait_for(
-            lambda: get_vm_memtotal(session) != int(old_mem), 5)
+            lambda: get_vm_memtotal(session) != int(old_mem), 20, first=15.0)
         new_mem = get_vm_memtotal(session)
         session.close()
         logging.debug("Memtotal on guest: %s", new_mem)
-        if new_mem != int(old_mem) + int(tg_size):
-            raise error.TestFail("Total memory on guest couldn't"
-                                 " changed after attach memory "
-                                 "device")
+        no_of_times = 1
+        if at_times:
+            no_of_times = int(at_times)
+        if attach_device:
+            if new_mem != int(old_mem) + (int(tg_size) * no_of_times):
+                raise error.TestFail("Total memory on guest couldn't"
+                                     " changed after attach memory "
+                                     "device")
+        if detach_device:
+            if new_mem != int(old_mem) - (int(tg_size) * no_of_times):
+                raise error.TestFail("Total memory on guest couldn't"
+                                     " changed after detach memory "
+                                     "device")
 
     def check_dom_xml(at_mem=False, dt_mem=False):
         """
@@ -127,19 +136,34 @@ def run(test, params, env):
 
             # Check attached/detached memory
             if at_mem:
-                assert int(max_mem) + int(tg_size) == xml_max_mem
+                if at_times:
+                    assert int(max_mem) + (int(tg_size) * \
+                                          int(at_times)) == xml_max_mem
+                else:
+                    assert int(max_mem) + int(tg_size) == xml_max_mem
                 # Bug 1220702, skip the check for current memory
-                assert int(cur_mem) + int(tg_size) == xml_cur_mem
+                if at_times:
+                    assert int(cur_mem) + (int(tg_size) * \
+                                           int(at_times)) == xml_cur_mem
+                else:
+                    assert int(cur_mem) + int(tg_size) == xml_cur_mem
                 new_max_mem = xml_max_mem
                 new_cur_mem = xml_cur_mem
                 mem_dev = dom_xml.get_devices("memory")
-                if len(mem_dev) != 1:
+                memory_devices = 1
+                if at_times:
+                    memory_devices = int(at_times)
+                if len(mem_dev) != memory_devices:
                     raise error.TestFail("Found wrong number of"
                                          " memory device")
                 assert int(tg_size) == int(mem_dev[0].target.size)
                 assert int(tg_node) == int(mem_dev[0].target.node)
             elif dt_mem:
-                assert int(new_max_mem) - int(tg_size) == xml_max_mem
+                if at_times:
+                    assert int(max_mem) - (int(tg_size) * \
+                                           int(at_times)) == xml_max_mem
+                else:
+                    assert int(max_mem) - int(tg_size) == xml_max_mem
                 # Bug 1220702, skip the check for current memory
                 assert int(new_cur_mem) - int(tg_size) == xml_cur_mem
         except AssertionError:
@@ -173,7 +197,9 @@ def run(test, params, env):
             tg_xml = memory.Memory.Target()
             tg_xml.size = int(tg_size)
             tg_xml.size_unit = tg_sizeunit
-            tg_xml.node = int(tg_node)
+            # There is support for non-numa node
+            if numa_cells:
+                tg_xml.node = int(tg_node)
             mem_xml.target = tg_xml
         if pg_size:
             src_xml = memory.Memory.Source()
@@ -297,6 +323,7 @@ def run(test, params, env):
                   for x in params.get("huge_pages", "").split()]
     numa_memnode = [ast.literal_eval(x)
                     for x in params.get("numa_memnode", "").split()]
+    at_times = int(params.get("attach_times", 1))
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -417,11 +444,12 @@ def run(test, params, env):
         if detach_device:
             if not dev_xml:
                 dev_xml = create_mem_xml()
-            ret = virsh.detach_device(vm_name, dev_xml.xml,
-                                      flagstr=attach_option)
-            libvirt.check_exit_status(ret, detach_error)
-            if test_dom_xml:
-                check_dom_xml(dt_mem=detach_device)
+            for x in xrange(at_times):
+                ret = virsh.detach_device(vm_name, dev_xml.xml,
+                                          flagstr=attach_option)
+                libvirt.check_exit_status(ret, detach_error)
+                if test_dom_xml:
+                    check_dom_xml(dt_mem=detach_device)
 
     finally:
         # Delete snapshots.
