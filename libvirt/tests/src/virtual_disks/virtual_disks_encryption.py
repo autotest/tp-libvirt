@@ -1,9 +1,11 @@
 import logging
 import os
+import re
+import base64
 
 import aexpect
 
-from autotest.client.shared import error
+from avocado.core import exceptions
 from avocado.utils import process
 
 from virttest import remote
@@ -13,6 +15,7 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import vol_xml
 from virttest.libvirt_xml import pool_xml
+from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml.devices.disk import Disk
 
 
@@ -54,21 +57,53 @@ def run(test, params, env):
         ret = virsh.pool_start(p_name, **virsh_dargs)
         libvirt.check_exit_status(ret)
 
-    def create_vol(p_name, p_format, vol_params):
+    def create_vol(p_name, target_encrypt_params, vol_params):
         """
         Create volume.
 
         :param p_name. Pool name.
+        :param target_encrypt_params encrypt parameters in dict.
         :param vol_params. Volume parameters dict.
         :return: True if create successfully.
         """
         volxml = vol_xml.VolXML()
         v_xml = volxml.new_vol(**vol_params)
-        v_xml.encryption = volxml.new_encryption(
-            **{"format": p_format})
+        v_xml.encryption = volxml.new_encryption(**target_encrypt_params)
         v_xml.xmltreefile.write()
+
         ret = virsh.vol_create(p_name, v_xml.xml, **virsh_dargs)
         libvirt.check_exit_status(ret)
+
+    def create_secret(vol_path):
+        """
+        Create secret.
+
+        :param vol_path. volume path.
+        :return: secret id if create successfully.
+        """
+        sec_xml = secret_xml.SecretXML("no", "yes")
+        sec_xml.description = "volume secret"
+
+        sec_xml.usage = 'volume'
+        sec_xml.volume = vol_path
+        sec_xml.xmltreefile.write()
+
+        ret = virsh.secret_define(sec_xml.xml)
+        libvirt.check_exit_status(ret)
+        # Get secret uuid.
+        try:
+            encryption_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
+                                         ret.stdout)[0].lstrip()
+        except IndexError, e:
+            raise exceptions.TestError("Fail to get newly created secret uuid")
+        logging.debug("Secret uuid %s", encryption_uuid)
+
+        # Set secret value.
+        secret_string = base64.b64encode(secret_password_no_encoded)
+        ret = virsh.secret_set_value(encryption_uuid, secret_string,
+                                     **virsh_dargs)
+        libvirt.check_exit_status(ret)
+        return encryption_uuid
 
     def check_in_vm(vm, target, old_parts):
         """
@@ -82,8 +117,8 @@ def run(test, params, env):
             rpm_stat = session.cmd_status("rpm -q parted || "
                                           "yum install -y parted", 300)
             if rpm_stat != 0:
-                raise error.TestFail("Failed to query/install parted, make sure"
-                                     " that you have usable repo in guest")
+                raise exceptions.TestFail("Failed to query/install parted, make sure"
+                                          " that you have usable repo in guest")
 
             new_parts = libvirt.get_parts_list(session)
             added_parts = list(set(new_parts).difference(set(old_parts)))
@@ -141,6 +176,9 @@ def run(test, params, env):
     volume_target_label = params.get("target_label")
 
     status_error = "yes" == params.get("status_error")
+    secret_type = params.get("secret_type", "passphrase")
+    secret_password_no_encoded = params.get("secret_password_no_encoded", "redhat")
+    virt_disk_qcow2_format = "yes" == params.get("virt_disk_qcow2_format")
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -155,18 +193,36 @@ def run(test, params, env):
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-
+    sec_encryption_uuid = None
     try:
         # Prepare the disk.
-        sec_uuid = []
+        sec_uuids = []
         create_pool(pool_name, pool_type, pool_target)
         vol_params = {"name": volume_name, "capacity": int(volume_cap),
                       "allocation": int(volume_alloc), "format":
                       volume_target_format, "path": volume_target_path,
                       "label": volume_target_label,
                       "capacity_unit": volume_cap_unit}
-        create_vol(pool_name, volume_target_encypt, vol_params)
-
+        vol_encryption_params = {}
+        vol_encryption_params.update({"format": volume_target_encypt})
+        # For any disk format other than qcow2, it need create secret firstly.
+        if not virt_disk_qcow2_format:
+            # create secret.
+            sec_encryption_uuid = create_secret(volume_target_path)
+            sec_uuids.append(sec_encryption_uuid)
+            vol_encryption_params.update({"secret": {"type": secret_type, "uuid": sec_encryption_uuid}})
+        try:
+            # If Libvirt version is lower than 2.5.0
+            # Creating luks encryption volume is not supported,so skip it.
+            create_vol(pool_name, vol_encryption_params, vol_params)
+        except AssertionError, info:
+            err_msgs = ("create: invalid option")
+            if str(info).count(err_msgs):
+                raise exceptions.TestSkipError("Creating luks encryption volume "
+                                               "is not supported on this libvirt version")
+            else:
+                raise exceptions.TestError("Failed to create volume."
+                                           "Error: %s" % str(info))
         # Add disk xml.
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
 
@@ -185,7 +241,8 @@ def run(test, params, env):
         disk_xml.target = {"dev": device_target, "bus": device_bus}
 
         v_xml = vol_xml.VolXML.new_from_vol_dumpxml(volume_name, pool_name)
-        sec_uuid.append(v_xml.encryption.secret["uuid"])
+
+        sec_uuids.append(v_xml.encryption.secret["uuid"])
         if not status_error:
             logging.debug("vol info -- format: %s, type: %s, uuid: %s",
                           v_xml.encryption.format,
@@ -195,7 +252,6 @@ def run(test, params, env):
                 **{"encryption": v_xml.encryption.format, "secret": {
                     "type": v_xml.encryption.secret["type"],
                     "uuid": v_xml.encryption.secret["uuid"]}})
-
         # Sync VM xml.
         vmxml.add_device(disk_xml)
         vmxml.sync()
@@ -204,19 +260,24 @@ def run(test, params, env):
             # Start the VM and check status.
             vm.start()
             if status_error:
-                raise error.TestFail("VM started unexpectedly.")
+                raise exceptions.TestFail("VM started unexpectedly.")
 
             if not check_in_vm(vm, device_target, old_parts):
-                raise error.TestFail("Check encryption disk in VM failed")
+                raise exceptions.TestFail("Check encryption disk in VM failed")
         except virt_vm.VMStartError, e:
             if status_error:
                 logging.debug("VM failed to start as expected."
-                              "Error: %s" % str(e))
+                              "Error: %s", str(e))
                 pass
             else:
-                raise error.TestFail("VM failed to start."
-                                     "Error: %s" % str(e))
-
+                # Libvirt2.5.0 onward,AES-CBC encrypted qcow2 images is longer supported.
+                err_msgs = ("AES-CBC encrypted qcow2 images is"
+                            " no longer supported in system emulators")
+                if str(e).count(err_msgs):
+                    exceptions.TestSkipError(err_msgs)
+                else:
+                    raise exceptions.TestFail("VM failed to start."
+                                              "Error: %s" % str(e))
     finally:
         # Recover VM.
         if vm.is_alive():
@@ -225,8 +286,8 @@ def run(test, params, env):
         vmxml_backup.sync()
 
         # Clean up pool, vol
-        for i in sec_uuid:
-            virsh.secret_undefine(i, **virsh_dargs)
+        for sec_uuid in set(sec_uuids):
+            virsh.secret_undefine(sec_uuid, **virsh_dargs)
             virsh.vol_delete(volume_name, pool_name, **virsh_dargs)
         if virsh.pool_state_dict().has_key(pool_name):
             virsh.pool_destroy(pool_name, **virsh_dargs)
