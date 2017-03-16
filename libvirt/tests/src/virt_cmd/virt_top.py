@@ -1,8 +1,10 @@
 import os
+import logging
 
-from autotest.client import os_dep
-from autotest.client import utils
-from autotest.client.shared import error
+from avocado.utils import path
+from avocado.utils import process
+from avocado.core import exceptions
+from avocado.utils import software_manager
 
 from virttest import virsh
 from virttest import data_dir
@@ -13,11 +15,17 @@ def run(test, params, env):
     Test for virt-top, it is a top like tool for virtual
     machine.
     """
+    # Install virt-top package if missing.
+    software_mgr = software_manager.SoftwareManager()
+    if not software_mgr.check_installed('virt-top'):
+        logging.info('Installing virt-top package:')
+        software_mgr.install('virt-top')
+
     # Get the full path of virt-top command.
     try:
-        VIRT_TOP = os_dep.command("virt-top")
-    except ValueError:
-        raise error.TestNAError("No virt-top command found.")
+        VIRT_TOP = path.find_command("virt-top")
+    except path.CmdNotFoundError, info:
+        raise exceptions.TestSkipError("No virt-top command found - %s" % info)
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     output = params.get("output_file", "output")
@@ -27,7 +35,7 @@ def run(test, params, env):
 
     id_result = virsh.domid(vm_name)
     if id_result.exit_status:
-        raise error.TestNAError("Get domid failed.")
+        raise exceptions.TestError("Get domid failed.")
     domid = id_result.stdout.strip()
 
     if "--stream" in options:
@@ -36,7 +44,7 @@ def run(test, params, env):
         cmd = "%s %s" % (VIRT_TOP, options)
     # Add a timeout command to end it automatically.
     cmd = "timeout 10 %s" % cmd
-    cmd_result = utils.run(cmd, ignore_status=True)
+    cmd_result = process.run(cmd, ignore_status=True, shell=True)
 
     if not status_error:
         # Read and analyse the output of virt-top.
@@ -54,9 +62,9 @@ def run(test, params, env):
             else:
                 continue
         if not success:
-            raise error.TestFail("Command virt-top exit successfully, but "
-                                 "domid is expected")
+            raise exceptions.TestFail("Command virt-top exit successfully, but"
+                                      "domid is expected")
     else:
         if cmd_result.exit_status != 2:
-            raise error.TestFail("Command virt-top exit successfully with"
-                                 "invalid option:%s\n", cmd_result.stdout)
+            raise exceptions.TestFail("Command virt-top exit successfully with"
+                                      "invalid option:%s" % cmd_result.stdout)
