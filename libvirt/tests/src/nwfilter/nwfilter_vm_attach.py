@@ -1,8 +1,7 @@
 import re
 import logging
 
-from autotest.client.shared import utils
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import libvirt_xml
@@ -51,7 +50,7 @@ def run(test, params, env):
         new_iface.target = {'dev': iface_target}
         new_filterref = new_iface.new_filterref(**filterref_dict)
         new_iface.filterref = new_filterref
-        logging.debug("new interface xml is: %s" % new_iface)
+        logging.debug("new interface xml is: %s", new_iface)
 
         # Attach interface to vm
         ret = virsh.attach_device(vm_name, new_iface.xml,
@@ -68,23 +67,22 @@ def run(test, params, env):
             utlv.check_exit_status(ret, status_error)
 
         if not libvirtd.is_running():
-            raise error.TestFail("libvirtd not running after attach "
-                                 "interface.")
+            test.fail("libvirtd not running after attach interface.")
 
         # Check iptables or ebtables on host
         if check_cmd:
             if "DEVNAME" in check_cmd:
                 check_cmd = check_cmd.replace("DEVNAME", iface_target)
             ret = utils_misc.wait_for(lambda: not
-                                      utils.system(check_cmd,
-                                                   ignore_status=True),
+                                      process.system(check_cmd,
+                                                     ignore_status=True),
                                       timeout=30)
             if not ret:
-                raise error.TestFail("Rum command '%s' failed" % check_cmd)
-            out = utils.system_output(check_cmd, ignore_status=False)
+                test.fail("Rum command '%s' failed" % check_cmd)
+            out = process.system_output(check_cmd)
             if expect_match and not re.search(expect_match, out):
-                raise error.TestFail("'%s' not found in output: %s"
-                                     % (expect_match, out))
+                test.fail("'%s' not found in output: %s" %
+                          (expect_match, out))
 
     finally:
         if attach_twice_invalid:

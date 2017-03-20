@@ -2,8 +2,6 @@ import time
 import threading
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import utils_libvirtd
@@ -28,7 +26,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
 
     if not libvirt_version.version_compare(1, 2, 6):
-        raise error.TestNAError("Bug %s not fixed on current build" % bug_url)
+        test.skip("Bug %s not fixed on current build" % bug_url)
 
     vm = env.get_vm(vm_name)
     # Prepare vm filterref parameters dict list
@@ -41,11 +39,11 @@ def run(test, params, env):
     filterxml = backup_filter.new_from_filter_dumpxml(filter_name)
     libvirtd = utils_libvirtd.LibvirtdSession()
 
-    def nwfilter_sync_loop(filter_name, filerxml):
+    def nwfilter_sync_loop(filter_name, filterxml):
         """
         Undefine filter and redefine filter from xml in loop
         """
-        for i in range(2400):
+        for _ in range(2400):
             virsh.nwfilter_undefine(filter_name, ignore_status=True)
             time.sleep(0.1)
             virsh.nwfilter_define(filterxml.xml, ignore_status=True)
@@ -54,7 +52,7 @@ def run(test, params, env):
         """
         Start and destroy vm in loop
         """
-        for i in range(2400):
+        for _ in range(2400):
             vm.start()
             time.sleep(0.1)
             vm.destroy(gracefully=False)
@@ -69,7 +67,7 @@ def run(test, params, env):
         new_iface.xml = iface_xml.xml
         new_filterref = new_iface.new_filterref(**filterref_dict)
         new_iface.filterref = new_filterref
-        logging.debug("new interface xml is: %s" % new_iface)
+        logging.debug("new interface xml is: %s", new_iface)
         vmxml.add_device(new_iface)
         vmxml.sync()
 
@@ -88,7 +86,7 @@ def run(test, params, env):
         filter_thread.join()
         vm_thread.join()
         if ret:
-            raise error.TestFail("Libvirtd hang, %s" % bug_url)
+            test.fail("Libvirtd hang, %s" % bug_url)
 
     finally:
         libvirtd.exit()

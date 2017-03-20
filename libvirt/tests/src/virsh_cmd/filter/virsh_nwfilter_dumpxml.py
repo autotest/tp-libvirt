@@ -1,9 +1,8 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import libvirt_xml
+from virttest.utils_test import libvirt as utlv
 
 from provider import libvirt_version
 
@@ -19,8 +18,8 @@ def check_list(uuid, name):
     cmd_result = virsh.nwfilter_list(options="",
                                      ignore_status=True, debug=True)
     output = cmd_result.stdout.strip().split('\n')
-    for i in range(2, len(output)):
-        if output[i].split() == [uuid, name]:
+    for line in output[2:]:
+        if line.split() == [uuid, name]:
             return True
     return False
 
@@ -36,7 +35,7 @@ def run(test, params, env):
     # Prepare parameters
     filter_name = params.get("dumpxml_filter_name", "")
     options_ref = params.get("dumpxml_options_ref", "")
-    status_error = params.get("status_error", "no")
+    status_error = "yes" == params.get("status_error", "no")
 
     # acl polkit params
     uri = params.get("virsh_uri")
@@ -47,8 +46,7 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.skip("API acl test not supported in current libvirt version.")
 
     virsh_dargs = {'ignore_status': True, 'debug': True}
     if params.get('setup_libvirt_polkit') == 'yes':
@@ -59,41 +57,24 @@ def run(test, params, env):
     cmd_result = virsh.nwfilter_dumpxml(filter_name, options=options_ref,
                                         **virsh_dargs)
     output = cmd_result.stdout.strip()
-    status = cmd_result.exit_status
+    utlv.check_exit_status(cmd_result, status_error)
 
-    # Check result
-    if status_error == "yes":
-        if status == 0:
-            raise error.TestFail("Run successfully with wrong command.")
-    elif status_error == "no":
-        if status:
-            raise error.TestFail("Run failed with right command.")
-        # Get uuid and name from output xml and compare with nwfilter-list
-        # output
+    if not status_error:
         new_filter = libvirt_xml.NwfilterXML()
         new_filter['xml'] = output
         uuid = new_filter.uuid
         name = new_filter.filter_name
         if check_list(uuid, name):
-            logging.debug("The filter with uuid %s and name %s" % (uuid, name) +
-                          " from nwfilter-dumpxml was found in"
-                          " nwfilter-list output")
+            logging.debug("The filter with uuid %s and name %s was found",
+                          uuid, name)
         else:
-            raise error.TestFail("The uuid %s with name %s from" % (uuid, name) +
-                                 " nwfilter-dumpxml did not match with"
-                                 " nwfilter-list output")
+            test.fail("The uuid %s with name %s did not match" % (uuid, name))
 
         # Run command second time with uuid
         cmd_result = virsh.nwfilter_dumpxml(uuid, options=options_ref,
                                             **virsh_dargs)
         output1 = cmd_result.stdout.strip()
-        status1 = cmd_result.exit_status
-        if status_error == "yes":
-            if status1 == 0:
-                raise error.TestFail("Run successfully with wrong command.")
-        elif status_error == "no":
-            if status1:
-                raise error.TestFail("Run failed with right command.")
+        utlv.check_exit_status(cmd_result, status_error)
         if output1 != output:
-            raise error.TestFail("nwfilter dumpxml output was different" +
-                                 " between using filter uuid and name")
+            test.fail("nwfilter dumpxml output was different between using "
+                      "filter uuid and name")
