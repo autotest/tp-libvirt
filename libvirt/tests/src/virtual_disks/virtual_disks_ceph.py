@@ -9,6 +9,7 @@ from avocado.core import exceptions
 
 from virttest import virsh
 from virttest import utils_misc
+from virttest import utils_package
 from virttest import virt_vm, remote
 from virttest import utils_libguestfs
 from virttest import libvirt_storage
@@ -445,7 +446,7 @@ def run(test, params, env):
         libvirt.set_domain_state(vm, pre_vm_state)
 
         # Install ceph-common package which include rbd command
-        if utils_misc.yum_install(["ceph-common"]):
+        if utils_package.package_install(["ceph-common"]):
             if client_name and client_key:
                 with open(key_file, 'w') as f:
                     f.write("[%s]\n\tkey = %s\n" %

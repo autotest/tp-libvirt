@@ -6,7 +6,7 @@ import logging
 from autotest.client.shared import error
 from autotest.client import utils
 from virttest import virt_vm, virsh
-from virttest import utils_misc
+from virttest import utils_package
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import rng
@@ -244,7 +244,7 @@ def run(test, params, env):
 
     # Try to install rng-tools on host, it can speed up random rate
     # if installation failed, ignore the error and continue the test
-    if utils_misc.yum_install(["rng-tools"], timeout=300):
+    if utils_package.package_install(["rng-tools"]):
         rngd_conf = "/etc/sysconfig/rngd"
         rngd_srv = "/usr/lib/systemd/system/rngd.service"
         if os.path.exists(rngd_conf):

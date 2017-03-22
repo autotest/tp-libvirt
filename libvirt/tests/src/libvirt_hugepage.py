@@ -12,6 +12,7 @@ from virttest import utils_libvirtd
 from virttest import remote
 from virttest import utils_misc
 from virttest import utils_test
+from virttest import utils_package
 from virttest.remote import LoginError
 from virttest.virt_vm import VMError
 from virttest.libvirt_xml import vm_xml
@@ -150,7 +151,7 @@ def run(test, params, env):
                                      'root', params.get('password'),
                                      stress_path, "/tmp/")
                 # Try to install gcc on guest first
-                utils_misc.yum_install(["gcc"], session, 360)
+                utils_package.package_install(["gcc"], session, 360)
                 # increasing workload
                 session.cmd("gcc %s -o %s" % (stress_path, target_path))
                 session.cmd("%s &" % target_path)
@@ -162,7 +163,7 @@ def run(test, params, env):
                 control_path = os.path.join(test.virtdir, "control",
                                             unixbench_control_file)
                 # unixbench test need 'patch' and 'perl' commands installed
-                utils_misc.yum_install(["patch", "perl"], session, 360)
+                utils_package.package_install(["patch", "perl"], session, 360)
                 command = utils_test.run_autotest(vm, session, control_path,
                                                   None, None, params,
                                                   copy_only=True)
