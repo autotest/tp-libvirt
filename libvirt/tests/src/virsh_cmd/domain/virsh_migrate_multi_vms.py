@@ -217,7 +217,8 @@ def run(test, params, env):
         raise exceptions.TestSkipError("The desturi '%s' is invalid" % desturi)
 
     # Config ssh autologin for remote host
-    ssh_key.setup_ssh_key(remote_host, host_user, host_passwd, port=22)
+    ssh_key.setup_remote_ssh_key(remote_host, host_user, host_passwd, port=22,
+                                 public_key="rsa")
 
     # Prepare local session and remote session
     localrunner = remote.RemoteRunner(host=remote_host, username=host_user,
