@@ -124,7 +124,8 @@ def run(test, params, env):
     for i in range(2):
         vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[i])
         vms_backup.append(vmxml_backup)
-
+    # Initialize VM list
+    vms_list = []
     try:
         # Create disk images if needed.
         disks = []
@@ -163,7 +164,6 @@ def run(test, params, env):
             disks.append({"source": disk_source})
 
         # Compose the new domain xml
-        vms_list = []
         for i in range(2):
             vm = env.get_vm(vm_names[i])
             # Destroy domain first.
