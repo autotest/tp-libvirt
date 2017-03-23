@@ -280,7 +280,7 @@ class VMChecker(object):
             expect_adapter = 'QXL'
         if self.os_version in ['win2003', 'win2008']:
             expect_adapter = 'Standard VGA Graphics Adapter'
-        if self.os_version in ['win8', 'win8.1', 'win10', 'win2012', 'win2012r2']:
+        if self.os_version in ['win8', 'win8.1', 'win10', 'win2012', 'win2012r2', 'win2016']:
             expect_adapter = 'Basic Display Driver'
         expect_drivers.append(expect_adapter)
         for driver in expect_drivers:
