@@ -5,8 +5,8 @@ import base64
 
 import aexpect
 
-from autotest.client.shared import error
-from autotest.client import utils
+from avocado.core import exceptions
+from avocado.utils import process
 
 from virttest import remote
 from virttest import virt_vm
@@ -15,6 +15,7 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml.devices.disk import Disk
+from virttest.libvirt_xml.devices.controller import Controller
 
 
 def run(test, params, env):
@@ -89,7 +90,8 @@ def run(test, params, env):
             elif target.startswith("hd"):
                 if added_parts[0].startswith("sd"):
                     added_part = added_parts[0]
-
+            elif target.startswith("sd"):
+                added_part = added_parts[0]
             if not added_part:
                 logging.error("Cann't see added partition in VM")
                 return False
@@ -116,9 +118,9 @@ def run(test, params, env):
         if driver_iothread:
             cmd += " | grep iothread=iothread%s" % driver_iothread
 
-        if utils.run(cmd, ignore_status=True).exit_status:
-            raise error.TestFail("Can't see disk option '%s' "
-                                 "in command line" % cmd)
+        if process.system(cmd, ignore_status=True, shell=True):
+            raise exceptions.TestFail("Can't see disk option '%s' "
+                                      "in command line" % cmd)
 
     # Disk specific attributes.
     device = params.get("virt_disk_device", "disk")
@@ -126,6 +128,13 @@ def run(test, params, env):
     device_format = params.get("virt_disk_device_format", "raw")
     device_type = params.get("virt_disk_device_type", "file")
     device_bus = params.get("virt_disk_device_bus", "virtio")
+
+    # Controller specific attributes.
+    cntlr_type = params.get('controller_type', None)
+    cntlr_model = params.get('controller_model', None)
+    cntlr_index = params.get('controller_index', None)
+    controller_addr_options = params.get('controller_addr_options', None)
+
     driver_iothread = params.get("driver_iothread")
 
     # iscsi options.
@@ -180,7 +189,7 @@ def run(test, params, env):
                                      ret.stdout)[0].lstrip()
             logging.debug("Secret uuid %s", secret_uuid)
             if secret_uuid == "":
-                raise error.TestNAError("Failed to get secret uuid")
+                raise exceptions.TestError("Failed to get secret uuid")
 
             # Set secret value
             secret_string = base64.b64encode(chap_passwd)
@@ -200,7 +209,7 @@ def run(test, params, env):
         if device_format == "qcow2":
             cmd = ("qemu-img create -f qcow2 iscsi://%s:%s/%s/%s %s"
                    % (iscsi_host, iscsi_port, iscsi_target, lun_num, emulated_size))
-            utils.run(cmd)
+            process.run(cmd, shell=True)
 
         # Add disk xml.
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
@@ -213,11 +222,15 @@ def run(test, params, env):
                "hosts": [{"name": iscsi_host, "port": iscsi_port}]})
         disk_xml.target = {"dev": device_target, "bus": device_bus}
         driver_dict = {"name": "qemu", "type": device_format}
-        if driver_iothread:
+
+        # For lun type device, iothread attribute need to be set in controller.
+        if driver_iothread and device != "lun":
             driver_dict.update({"iothread": driver_iothread})
             vmxml.iothreads = int(driver_iothread)
-        disk_xml.driver = driver_dict
+        elif driver_iothread:
+            vmxml.iothreads = int(driver_iothread)
 
+        disk_xml.driver = driver_dict
         # Check if we want to use a faked uuid.
         if not uuid:
             uuid = secret_uuid
@@ -234,13 +247,38 @@ def run(test, params, env):
             disk_xml.auth = disk_xml.new_auth(**auth_dict)
         # Sync VM xml.
         vmxml.add_device(disk_xml)
+
+        # After virtio 1.0 is enabled, lun type device need use virtio-scsi
+        # instead of virtio, so addtional controller is needed.
+        # Add controller.
+        if device == "lun":
+            ctrl = Controller(type_name=cntlr_type)
+            if cntlr_model is not None:
+                ctrl.model = cntlr_model
+            if cntlr_index is not None:
+                ctrl.index = cntlr_index
+            ctrl_addr_dict = {}
+            for addr_option in controller_addr_options.split(','):
+                if addr_option != "":
+                    addr_part = addr_option.split('=')
+                    ctrl_addr_dict.update({addr_part[0].strip(): addr_part[1].strip()})
+            ctrl.address = ctrl.new_controller_address(attrs=ctrl_addr_dict)
+
+            # If driver_iothread is true, need add iothread attribute in controller.
+            if driver_iothread:
+                ctrl_driver_dict = {}
+                ctrl_driver_dict.update({"iothread": driver_iothread})
+                ctrl.driver = ctrl_driver_dict
+            logging.debug("Controller XML is:%s", ctrl)
+            vmxml.add_device(ctrl)
+
         vmxml.sync()
 
         try:
             # Start the VM and check status.
             vm.start()
             if status_error:
-                raise error.TestFail("VM started unexpectedly.")
+                raise exceptions.TestFail("VM started unexpectedly.")
 
             # Check Qemu command line
             if test_qemu_cmd:
@@ -251,12 +289,13 @@ def run(test, params, env):
                 if re.search(uuid, str(e)):
                     pass
             else:
-                raise error.TestFail("VM failed to start")
+                raise exceptions.TestFail("VM failed to start."
+                                          "Error: %s" % str(e))
         else:
             # Check partitions in VM.
             if check_partitions:
                 if not check_in_vm(device_target, old_parts):
-                    raise error.TestFail("Check disk partitions in VM failed")
+                    raise exceptions.TestFail("Check disk partitions in VM failed")
             # Test domain save/restore/snapshot.
             if test_save_snapshot:
                 save_file = os.path.join(test.tmpdir, "%.save" % vm_name)
