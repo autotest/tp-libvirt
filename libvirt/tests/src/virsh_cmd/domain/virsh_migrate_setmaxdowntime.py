@@ -50,6 +50,9 @@ def thread_func_live_migration(vm, dest_uri, dargs):
     debug = dargs.get("debug", "False")
     ignore_status = dargs.get("ignore_status", "False")
     options = "--live --unsafe"
+    postcopy_options = dargs.get("postcopy_options")
+    if postcopy_options:
+        options = "%s %s" % (options, postcopy_options)
     extra = dargs.get("extra")
     global ret_migration
     result = vm.migrate(dest_uri, options, extra, ignore_status, debug)
@@ -124,6 +127,9 @@ def run(test, params, env):
         downtime = int(float(migrate_maxdowntime)) * 1000
     extra = params.get("setmmdt_extra")
 
+    # For --postcopy enable
+    postcopy_options = params.get("postcopy_options", "")
+
     # A delay between threads
     delay_time = int(params.get("delay_time", 1))
     # timeout of threads
@@ -178,7 +184,8 @@ def run(test, params, env):
     ssh_key.setup_ssh_key(remote_host, username, password, port=22)
 
     setmmdt_dargs = {'debug': True, 'ignore_status': True, 'uri': src_uri}
-    migrate_dargs = {'debug': True, 'ignore_status': True}
+    migrate_dargs = {'debug': True, 'ignore_status': True,
+                     'postcopy_options': postcopy_options}
 
     seLinuxBool = None
     nfs_client = None
