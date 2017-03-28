@@ -431,7 +431,6 @@ def run(test, params, env):
         unsupported_err.append('IOThreads not supported')
     if test_snapshot:
         unsupported_err.append('live disk snapshot not supported')
-        unsupported_err.append('internal snapshot for disk .* unsupported')
     if test_blockcopy:
         unsupported_err.append('block copy is not supported')
     if attach_disk:
