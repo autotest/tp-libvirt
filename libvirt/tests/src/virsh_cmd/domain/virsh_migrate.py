@@ -2,10 +2,10 @@ import logging
 import os
 import re
 import time
+import platform
 
 from avocado.utils import process
 from avocado.utils import path
-from avocado.core import exceptions
 
 from virttest import nfs
 from virttest import remote
@@ -23,10 +23,10 @@ from virttest.utils_misc import SELinuxBoolean
 from virttest.qemu_storage import QemuImg
 from virttest.utils_test import libvirt
 from virttest import test_setup
+from virttest import ssh_key
 from virttest.staging import utils_memory
 
 from provider import libvirt_version
-from autotest.client.shared import error
 
 
 def run(test, params, env):
@@ -49,7 +49,7 @@ def run(test, params, env):
         Clean up the destination host environment
         when doing the uni-direction migration.
         """
-        logging.info("Cleaning up VMs on %s" % vm.connect_uri)
+        logging.info("Cleaning up VMs on %s", vm.connect_uri)
         try:
             if virsh.domain_exists(vm.name, uri=vm.connect_uri):
                 vm_state = vm.state()
@@ -63,7 +63,7 @@ def run(test, params, env):
                     vm.undefine()
 
         except Exception, detail:
-            logging.error("Cleaning up destination failed.\n%s" % detail)
+            logging.error("Cleaning up destination failed.\n%s", detail)
 
         if src_uri:
             vm.connect_uri = src_uri
@@ -74,31 +74,31 @@ def run(test, params, env):
 
         :param migration_res: the CmdResult of migration
 
-        :raise: exceptions.TestSkipError when some known messages found
+        :raise: test.cancel when some known messages found
         """
-        logging.debug("Migration result:\n%s" % migration_res)
+        logging.debug("Migration result:\n%s", migration_res)
         if migration_res.stderr.find("error: unsupported configuration:") >= 0:
-            raise exceptions.TestSkipError(migration_res.stderr)
+            test.cancel(migration_res.stderr)
 
     def do_migration(delay, vm, dest_uri, options, extra):
-        logging.info("Sleeping %d seconds before migration" % delay)
+        logging.info("Sleeping %d seconds before migration", delay)
         time.sleep(delay)
         # Migrate the guest.
         migration_res = vm.migrate(dest_uri, options, extra, True, True)
         logging.info("Migration exit status: %d", migration_res.exit_status)
         check_migration_result(migration_res)
         if int(migration_res.exit_status) != 0:
-            logging.error("Migration failed for %s." % vm_name)
+            logging.error("Migration failed for %s.", vm_name)
             return False
 
         if options.count("dname") or extra.count("dname"):
             vm.name = extra.split()[1].strip()
 
         if vm.is_alive():  # vm.connect_uri was updated
-            logging.info("Alive guest found on destination %s." % dest_uri)
+            logging.info("Alive guest found on destination %s.", dest_uri)
         else:
             if not options.count("offline"):
-                logging.error("VM not alive on destination %s" % dest_uri)
+                logging.error("VM not alive on destination %s", dest_uri)
                 return False
 
         # Throws exception if console shows panic message
@@ -216,7 +216,7 @@ def run(test, params, env):
         if (cmd_output[0] == 0):
             dest_HP_free = cmd_output[1].strip('HugePages_Free:').strip()
         else:
-            raise error.TestNAError("HP not supported/configured")
+            test.cancel("HP not supported/configured")
         hp_list = []
 
         # setting hugepages in destination machine here as remote ssh
@@ -294,7 +294,7 @@ def run(test, params, env):
                 cmd_output = server_session.cmd_status_output(command)
                 server_session.close()
                 if (cmd_output[0] != 0):
-                    raise error.TestNAError("HP not supported/configured")
+                    test.cancel("HP not supported/configured")
             else:
                 process.system_output(command, verbose=True, shell=True)
 
@@ -323,10 +323,81 @@ def run(test, params, env):
         try:
             fp = open(mem_xml_file, 'w')
         except Exception, info:
-            raise exceptions.TestError(info)
+            test.error(info)
         fp.write(str(mem_xml))
         fp.close()
         return mem_xml_file
+
+    def cpu_hotplug_hotunplug(vm, vm_addr, cpu_count, operation,
+                              uri=None, params=None):
+        """
+        Performs CPU Hotplug or Hotunplug based on the cpu_count given.
+
+        :param vm: VM object
+        :param vm_addr: IP address of VM
+        :param cpu_count: No of CPUs to be hotplugged or hotunplugged
+        :param operation: operation to be performed, ie hotplug or hotunplug
+        :param uri: virsh connect uri if operation to be performed remotely
+        :param params: Test dict params
+
+        :raise test.fail if hotplug or hotunplug doesn't work
+        """
+        if params:
+            remote_user = params.get("remote_user", "root")
+            remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
+            remote_pwd = params.get("remote_pwd", None)
+            session = remote.remote_login("ssh", remote_ip, "22", remote_user,
+                                          remote_pwd, r"[\#\$]\s*$")
+        else:
+            session = vm.wait_for_login()
+        status = virsh.setvcpus(vm.name, cpu_count, extra="--live", debug=True,
+                                uri=uri)
+        if status.exit_status:
+            test.fail("CPU Hotplug failed - %s" % status.stderr.strip())
+        logging.debug("Checking CPU %s gets reflected in xml", operation)
+        try:
+            guest_xml = vm_xml.VMXML.new_from_dumpxml(vm.name, uri=uri)
+            vcpu_list = guest_xml.vcpus.vcpu
+            enabled_cpus_count = 0
+            for each_vcpu in vcpu_list:
+                if(str(each_vcpu["enabled"]).strip().lower() == "yes"):
+                    enabled_cpus_count += 1
+            logging.debug("%s CPUs - %s", operation, cpu_count)
+            logging.debug("CPUs present in guest xml- %s", enabled_cpus_count)
+            if (enabled_cpus_count != cpu_count):
+                test.fail("CPU %s failed as cpus is not "
+                          "reflected in guest xml" % operation)
+
+            logging.debug("Checking CPU number gets reflected from inside "
+                          "guest")
+            cmd = "lscpu | grep \"^CPU(s):\""
+            if params:
+                guest_user = params.get("username", "root")
+                ssh_cmd = "ssh %s@%s" % (guest_user, vm_addr)
+                ssh_cmd += " -o StrictHostKeyChecking=no"
+                cmd = "%s '%s'" % (ssh_cmd, cmd)
+            # vcpu count gets reflected step by step gradually, so we check
+            # vcpu and compare with previous count by taking 5 seconds, if
+            # there is no change in vpcu count we break the loop.
+            prev_output = -1
+            while True:
+                ret, output = session.cmd_status_output(cmd)
+                if ret:
+                    test.fail("CPU %s failed - %s" % (operation, output))
+                output = output.split(":")[-1].strip()
+
+                if int(prev_output) == int(output):
+                    break
+                prev_output = output
+                time.sleep(5)
+            logging.debug("CPUs available from inside guest after %s - %s",
+                          operation, output)
+            if int(output) != cpu_count:
+                test.fail("CPU %s failed as cpus are not "
+                          "reflected from inside guest" % operation)
+            logging.debug("CPU %s successful !!!", operation)
+        except Exception, info:
+            test.fail("CPU %s failed - %s" % (operation, info))
 
     def check_migration_timeout_suspend(params):
         """
@@ -337,7 +408,7 @@ def run(test, params, env):
 
         :param params: The parameters used
 
-        :raise: exceptions.TestFail if the VM state is not as expected
+        :raise: test.fail if the VM state is not as expected
         """
         timeout = int(params.get("timeout_before_suspend", 5))
         server_ip = params.get("server_ip")
@@ -356,10 +427,9 @@ def run(test, params, env):
         logging.debug("Check vm state on source host after timeout")
         vm_state = vm.state()
         if vm_state != "paused":
-            raise exceptions.TestFail("After timeout '%s' seconds, "
-                                      "the vm state on source host should "
-                                      "be 'paused', but %s found",
-                                      timeout, vm_state)
+            test.fail("After timeout '%s' seconds, the vm state on source "
+                      "host should be 'paused', but %s found" %
+                      timeout, vm_state)
         logging.debug("Check vm state on target host after timeout")
         virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                        'remote_pwd': server_pwd, 'unprivileged_user': None,
@@ -367,10 +437,9 @@ def run(test, params, env):
         new_session = virsh.VirshPersistent(**virsh_dargs)
         vm_state = new_session.domstate(vm_name).stdout.strip()
         if vm_state != "paused":
-            raise exceptions.TestFail("After timeout '%s' seconds, "
-                                      "the vm state on target host should "
-                                      "be 'paused', but %s found",
-                                      timeout, vm_state)
+            test.fail("After timeout '%s' seconds, the vm state on target "
+                      "host should be 'paused', but %s found" %
+                      timeout, vm_state)
         new_session.close_session()
 
     # For negative scenarios, there_desturi_nonexist and there_desturi_missing
@@ -386,18 +455,20 @@ def run(test, params, env):
     if migrate_uri:
         migrate_port = params.get("migrate_port", "49152")
         migrate_proto = params.get("migrate_proto")
-        migrate_uri = libvirt_vm.complete_uri(migrate_dest_ip, migrate_proto, migrate_port)
+        migrate_uri = libvirt_vm.complete_uri(migrate_dest_ip, migrate_proto,
+                                              migrate_port)
         extra = ("%s --migrateuri=%s" % (extra, migrate_uri))
 
     graphics_uri = params.get("virsh_migrate_graphics_uri", None)
     if graphics_uri:
         graphics_port = params.get("graphics_port", "5900")
-        graphics_uri = libvirt_vm.complete_uri(migrate_dest_ip, "spice", graphics_port)
+        graphics_uri = libvirt_vm.complete_uri(migrate_dest_ip, "spice",
+                                               graphics_port)
         extra = "--graphicsuri %s" % graphics_uri
 
     for v in params.itervalues():
         if isinstance(v, str) and v.count("EXAMPLE"):
-            raise exceptions.TestSkipError("Please set real value for %s" % v)
+            test.cancel("Please set real value for %s" % v)
 
     # Check the required parameters
     shared_storage = params.get("migrate_shared_storage", "")
@@ -411,23 +482,16 @@ def run(test, params, env):
     # Direct migration is supported only for Xen in libvirt
     if options.count("direct") or extra.count("direct"):
         if params.get("driver_type") is not "xen":
-            raise error.TestNAError("Direct migration is supported only for "
-                                    "Xen in libvirt.")
+            test.cancel("Direct migration is supported only for Xen in "
+                        "libvirt")
 
     if (options.count("compressed") and not
             virsh.has_command_help_match("migrate", "--compressed")):
-        raise error.TestNAError("Do not support compressed option "
-                                "on this version.")
+        test.cancel("Do not support compressed option on this version.")
 
     if (options.count("graphicsuri") and not
             virsh.has_command_help_match("migrate", "--graphicsuri")):
-        raise error.TestNAError("Do not support 'graphicsuri' option"
-                                "on this version.")
-
-    # For --postcopy enable
-    postcopy_options = params.get("postcopy_options")
-    if postcopy_options and not options.count(postcopy_options):
-        options = "%s %s" % (options, postcopy_options)
+        test.cancel("Do not support 'graphicsuri' option on this version.")
 
     src_uri = params.get("virsh_migrate_connect_uri")
     dest_uri = params.get("virsh_migrate_desturi")
@@ -437,7 +501,7 @@ def run(test, params, env):
         try:
             remote_viewer_executable = path.find_command('remote-viewer')
         except path.CmdNotFoundError:
-            raise error.TestNAError("No 'remote-viewer' command found.")
+            test.cancel("No 'remote-viewer' command found.")
 
     vm_name = params.get("migrate_main_vm")
     vm = env.get_vm(vm_name)
@@ -446,7 +510,7 @@ def run(test, params, env):
     # For safety reasons, we'd better back up  xmlfile.
     orig_config_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     if not orig_config_xml:
-        raise exceptions.TestError("Backing up xmlfile failed.")
+        test.error("Backing up xmlfile failed.")
 
     vmxml = orig_config_xml.copy()
     graphic = vmxml.get_device_class('graphics')()
@@ -515,6 +579,52 @@ def run(test, params, env):
     mem_hotplug_count = int(params.get("virsh_migrate_mem_hotplug_count", "1"))
     mem_size_unit = params.get("virsh_migrate_hotplug_mem_unit", "KiB")
     migrate_there_and_back = "yes" == params.get("virsh_migrate_back", "no")
+    cpu_hotplug = "yes" == params.get("virsh_migrate_cpu_hotplug", "no")
+    cpu_hotunplug = "yes" == params.get("virsh_migrate_cpu_hotunplug", "no")
+    hotplug_before_migrate = "yes" == params.get("virsh_hotplug_cpu_before",
+                                                 "no")
+    hotunplug_before_migrate = "yes" == params.get("virsh_hotunplug_cpu_"
+                                                   "before", "no")
+    hotplug_after_migrate = "yes" == params.get("virsh_hotplug_cpu_after",
+                                                "no")
+    hotunplug_after_migrate = "yes" == params.get("virsh_hotunplug_cpu_after",
+                                                  "no")
+
+    # Configurations for cpu hotplug and cpu hotunplug
+    if cpu_hotplug:
+        # To check cpu hotplug is supported or not
+        if not virsh.has_command_help_match("setvcpus", "--live"):
+            test.cancel("The current libvirt doesn't support '--live' option "
+                        "for setvcpus")
+        # Ensure rtas_errd service runs inside guest for PowerPC
+        if "ppc64" in platform.machine().lower():
+            session = vm.wait_for_login()
+            cmd = "service rtas_errd start"
+            ret, output = session.cmd_status_output(cmd)
+            if ret:
+                test.cancel("cpu hotplug doesn't work: %s" % output)
+            else:
+                cmd = "service rtas_errd status | grep \"Active:\" | "
+                cmd += "awk '{print $3}'"
+                ret, output = session.cmd_status_output(cmd)
+                if "running" not in output.strip().lower():
+                    test.cancel("cpu hotplug can't work if rtas_errd service "
+                                "is %s" % output)
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+        current_vcpus = int(params.get("virsh_migrate_vcpus_current", "8"))
+        # if guest topology defined, then configure accordingly
+        if vmxml.get_cpu_topology():
+            vcpu_sockets = params.get("cpu_topology_sockets", "1")
+            vcpu_cores = params.get("cpu_topology_cores", "8")
+            vcpu_threads = params.get("cpu_topology_threads", "8")
+            max_vcpus = (int(vcpu_sockets) * int(vcpu_cores) *
+                         int(vcpu_threads))
+            vm_xml.VMXML.set_vm_vcpus(vm_name, max_vcpus, current=current_vcpus,
+                                      sockets=vcpu_sockets, cores=vcpu_cores,
+                                      threads=vcpu_threads)
+        else:
+            max_vcpus = int(params.get("virsh_migrate_vcpus", "64"))
+            vm_xml.set_vm_vcpus(vm_name, max_vcpus, current=current_vcpus)
 
     # To check Unsupported conditions for Numa scenarios
     if enable_numa_pin:
@@ -526,13 +636,13 @@ def run(test, params, env):
 
         # To check if Host numa node available
         if (len(host_numa_node_list) == 0):
-            raise error.TestNAError("No host numa node available to pin")
+            test.cancel("No host numa node available to pin")
 
         # To check preferred memory mode not used for 2 numa nodes
         # if vcpu > 1, two guest Numa nodes are created in create_numa()
         if (int(vcpu) > 1) and (memory_mode == "preferred"):
-            raise error.TestNAError("NUMA memory tuning in preferred mode only"
-                                    " supports single node")
+            test.cancel("NUMA memory tuning in preferred mode only supports "
+                        "single node")
 
     # To check if Hugepage supported and configure
     if enable_HP or enable_HP_pin:
@@ -549,14 +659,14 @@ def run(test, params, env):
                 hugepage_assign(str(no_of_HPs))
             logging.debug("Hugepage support check done on host")
         except:
-            raise error.TestNAError("HP not supported/configured")
+            test.cancel("HP not supported/configured")
 
     # To check mem hotplug should not exceed maxmem
     if mem_hotplug:
         # To check memory hotplug is supported by libvirt, memory hotplug
         # support QEMU/KVM driver was added in 1.2.14 version of libvirt
         if not libvirt_version.version_compare(1, 2, 14):
-            raise exceptions.TestSkipError("Memory Hotplug is not supported")
+            test.cancel("Memory Hotplug is not supported")
 
         # hotplug memory in KiB
         vmxml_backup = vm_xml.VMXML.new_from_dumpxml(vm_name)
@@ -585,17 +695,17 @@ def run(test, params, env):
             vmxml_backup.max_mem_rt_unit = mem_size_unit
             vmxml_backup.sync()
             vm_max_mem_rt = int(vmxml_backup.max_mem_rt)
-        logging.debug("Hotplug mem = %d %s" % (mem_hotplug_size,
-                                               mem_size_unit))
-        logging.debug("Hotplug count = %d" % mem_hotplug_count)
-        logging.debug("Current mem = %d" % vm_current_mem)
-        logging.debug("VM maxmem = %d" % vm_max_mem_rt)
+        logging.debug("Hotplug mem = %d %s", (mem_hotplug_size,
+                                              mem_size_unit))
+        logging.debug("Hotplug count = %d", mem_hotplug_count)
+        logging.debug("Current mem = %d", vm_current_mem)
+        logging.debug("VM maxmem = %d", vm_max_mem_rt)
         if((vm_current_mem + vm_hotplug_mem) > vm_max_mem_rt):
-            raise exceptions.TestSkipError("Cannot hotplug memory more than"
-                                           "max dimm slots supported")
+            test.cancel("Cannot hotplug memory more than max dimm slots "
+                        "supported")
         if mem_hotplug_count > vm_max_dimm_slots:
-            raise exceptions.TestSkipError("Cannot hotplug memory more than"
-                                           " %d times" % vm_max_dimm_slots)
+            test.cancel("Cannot hotplug memory more than %d times" %
+                        vm_max_dimm_slots)
 
     # Get expected cache state for test
     attach_scsi_disk = "yes" == params.get("attach_scsi_disk", "no")
@@ -658,8 +768,7 @@ def run(test, params, env):
             max_mem = vmxml.max_mem
             max_mem_unit = vmxml.max_mem_unit
             if vcpu < 1:
-                raise error.TestError("%s not having even 1 vcpu"
-                                      % vm.name)
+                test.error("%s not having even 1 vcpu" % vm.name)
             else:
                 numa_dict_list = create_numa(vcpu, max_mem, max_mem_unit)
             vmxml_cpu = vm_xml.VMCPUXML()
@@ -731,6 +840,30 @@ def run(test, params, env):
 
         vm.wait_for_login()
 
+        # Perform cpu hotplug or hotunplug before migration
+        if cpu_hotplug:
+            if hotplug_after_migrate or hotunplug_after_migrate:
+                config_opt = ["StrictHostKeyChecking=no"]
+                guest_user = params.get("username", "root")
+                guest_ip = vm.get_address()
+                guest_pwd = params.get("password", "password")
+                # Configure ssh key between destination machine and VM
+                # before migration, so that commands can be executed from
+                # destination machine to VM after migration for validation
+                ssh_key.setup_remote_ssh_key(server_ip, server_user,
+                                             server_pwd, hostname2=guest_ip,
+                                             user2=guest_user,
+                                             password2=guest_pwd,
+                                             config_options=config_opt,
+                                             public_key="rsa")
+            if hotplug_before_migrate:
+                logging.debug("Performing CPU Hotplug before migration")
+                cpu_hotplug_hotunplug(vm, guest_ip, max_vcpus, "Hotplug")
+            if cpu_hotunplug:
+                if hotunplug_before_migrate:
+                    logging.debug("Performing CPU Hot Unplug before migration")
+                    cpu_hotplug_hotunplug(vm, guest_ip, current_vcpus, "Hotunplug")
+
         # Perform memory hotplug after VM is up
         if mem_hotplug:
             if enable_numa:
@@ -765,14 +898,14 @@ def run(test, params, env):
                 # check hotplugged memory is reflected
                 vmxml_backup = vm_xml.VMXML.new_from_dumpxml(vm_name)
                 vm_new_current_mem = int(vmxml_backup.current_mem)
-                logging.debug("Old current memory %d" % vm_current_mem)
-                logging.debug("Hot plug mem %d" % vm_hotplug_mem)
-                logging.debug("New current memory %d" % vm_new_current_mem)
-                logging.debug("old mem + hotplug = %d" % (vm_current_mem +
-                                                          vm_hotplug_mem))
+                logging.debug("Old current memory %d", vm_current_mem)
+                logging.debug("Hot plug mem %d", vm_hotplug_mem)
+                logging.debug("New current memory %d", vm_new_current_mem)
+                logging.debug("old mem + hotplug = %d", (vm_current_mem +
+                                                         vm_hotplug_mem))
                 if not (vm_new_current_mem == (vm_current_mem +
                                                vm_hotplug_mem)):
-                    raise exceptions.TestFail("Memory hotplug failed")
+                    test.fail("Memory hotplug failed")
                 else:
                     logging.debug("Memory hotplugged successfully !!!")
 
@@ -784,8 +917,8 @@ def run(test, params, env):
                                          timeout=ping_timeout)
         logging.info(o_ping)
         if s_ping != 0:
-            raise error.TestError("%s did not respond after %d sec."
-                                  % (vm.name, ping_timeout))
+            test.error("%s did not respond after %d sec." % (vm.name,
+                                                             ping_timeout))
 
         # Prepare for --dname dest_exist_vm
         if extra.count("dest_exist_vm"):
@@ -806,13 +939,12 @@ def run(test, params, env):
                                                  True, True)
                 if not ret_attach:
                     exception = True
-                    raise error.TestError("Attaching nic to %s failed."
-                                          % vm.name)
+                    test.error("Attaching nic to %s failed." % vm.name)
                 ifaces = vm_xml.VMXML.get_net_dev(vm.name)
                 new_nic_mac = vm.get_virsh_mac_address(
                     ifaces.index("tmp-vnet"))
                 vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
-                logging.debug("Xml file on source:\n%s" % vm.get_xml())
+                logging.debug("Xml file on source:\n%s", vm.get_xml())
                 extra = ("%s --xml=%s" % (extra, vmxml.xml))
             elif extra.count("--dname"):
                 vm_new_name = params.get("vm_new_name")
@@ -823,7 +955,7 @@ def run(test, params, env):
                 extra = ("%s --xml=%s" % (extra, vmxml.xml))
 
         # Turn VM into certain state.
-        logging.debug("Turning %s into certain state." % vm.name)
+        logging.debug("Turning %s into certain state.", vm.name)
         if src_state == "paused":
             if vm.is_alive():
                 vm.pause()
@@ -894,7 +1026,7 @@ def run(test, params, env):
                                            func_params=cmd,
                                            shell=True)
             except Exception, info:
-                raise exceptions.TestFail(info)
+                test.fail(info)
             if obj_migration.RET_MIGRATION:
                 utils_test.check_dest_vm_network(vm, vm.get_address(),
                                                  server_ip, server_user,
@@ -918,8 +1050,8 @@ def run(test, params, env):
             logging.info(o_ping)
             if s_ping != 0:
                 server_session.close()
-                raise error.TestError("%s did not respond after %d sec."
-                                      % (vm.name, ping_timeout))
+                test.error("%s did not respond after %d sec." % (vm.name,
+                                                                 ping_timeout))
             server_session.close()
             logging.debug("Migration from %s to %s success" %
                           (src_uri, dest_uri))
@@ -942,7 +1074,7 @@ def run(test, params, env):
                                                     func=func,
                                                     func_params=params)
                     except Exception, info:
-                        raise exceptions.TestFail(info)
+                        test.fail(info)
                     ret_migrate = migration_test.RET_MIGRATION
                 elif postcopy_cmd != "":
                     try:
@@ -954,7 +1086,7 @@ def run(test, params, env):
                                                    func_params=cmd,
                                                    shell=True)
                     except Exception, info:
-                        raise exceptions.TestFail(info)
+                        test.fail(info)
                     ret_migrate = obj_migration.RET_MIGRATION
                 logging.info("To check VM network connectivity after "
                              "migrating back to source")
@@ -962,28 +1094,42 @@ def run(test, params, env):
                                                  timeout=ping_timeout)
                 logging.info(o_ping)
                 if s_ping != 0:
-                    raise error.TestError("%s did not respond after %d sec."
-                                          % (vm.name, ping_timeout))
+                    test.error("%s did not respond after %d sec." %
+                               (vm.name, ping_timeout))
                 # clean up of pre migration setup for local machine
                 migrate_setup.migrate_pre_setup(src_uri, params,
                                                 cleanup=True)
+
+            # Perform CPU hotplug or CPU hotunplug after migration
+            if cpu_hotplug:
+                uri = dest_uri
+                session = remote.wait_for_login('ssh', server_ip, '22',
+                                                server_user, server_pwd,
+                                                r"[\#\$]\s*$")
+                if migrate_there_and_back:
+                    uri = src_uri
+                if hotplug_after_migrate:
+                    logging.debug("Performing CPU Hotplug after migration")
+                    cpu_hotplug_hotunplug(vm, vm_ip, max_vcpus, "Hotplug",
+                                          uri=uri, params=params)
+                if cpu_hotunplug:
+                    if hotunplug_after_migrate:
+                        logging.debug("Performing CPU Hot Unplug after migration")
+                        cpu_hotplug_hotunplug(vm, vm_ip, current_vcpus,
+                                              "Hotunplug", uri=uri, params=params)
 
         if graphics_server:
             logging.info("To check the process running '%s'.",
                          remote_viewer_executable)
             if process.pid_exists(int(remote_viewer_pid)) is False:
-                raise error.TestFail("PID '%s' for process '%s'"
-                                     " does not exist"
-                                     % (remote_viewer_pid,
-                                        remote_viewer_executable))
+                test.fail("PID '%s' for process '%s' does not exist"
+                          % (remote_viewer_pid, remote_viewer_executable))
             else:
                 logging.info("PID '%s' for process '%s' still exists"
-                             " as expected.",
-                             remote_viewer_pid,
+                             " as expected.", remote_viewer_pid,
                              remote_viewer_executable)
             logging.debug("Kill the PID '%s' running '%s'",
-                          remote_viewer_pid,
-                          remote_viewer_executable)
+                          remote_viewer_pid, remote_viewer_executable)
             process.kill_process_tree(int(remote_viewer_pid))
 
         # Check unsafe result and may do migration again in right mode
@@ -1009,8 +1155,8 @@ def run(test, params, env):
             vm.name = extra.split()[1].strip()
         check_dest_state = True
         check_dest_state = check_vm_state(vm, dest_state)
-        logging.info("Supposed state: %s" % dest_state)
-        logging.info("Actual state: %s" % vm.state())
+        logging.info("Supposed state: %s", dest_state)
+        logging.info("Actual state: %s", vm.state())
 
         # Check vm state on source.
         if extra.count("--timeout-suspend"):
@@ -1018,11 +1164,11 @@ def run(test, params, env):
                           src_uri)
             vm_state = virsh.domstate(vm.name, uri=src_uri).stdout.strip()
             if vm_state != "shut off":
-                raise exceptions.TestFail("Local vm state should be 'shut off'"
-                                          ", but found '%s'" % vm_state)
+                test.fail("Local vm state should be 'shut off'"
+                          ", but found '%s'" % vm_state)
 
         # Recover VM state.
-        logging.debug("Recovering %s state." % vm.name)
+        logging.debug("Recovering %s state.", vm.name)
         if src_state == "paused":
             vm.resume()
         elif src_state == "shut off":
@@ -1040,7 +1186,7 @@ def run(test, params, env):
         if options.count("undefinesource") or extra.count("undefinesource"):
             logging.debug("Checking for --undefinesource option.")
             logging.info("Verifying <virsh domstate> DOES return an error."
-                         "%s should not exist on %s." % (vm_name, src_uri))
+                         "%s should not exist on %s.", vm_name, src_uri)
             if virsh.domain_exists(vm_name, uri=src_uri):
                 check_src_undefine = False
 
@@ -1059,15 +1205,15 @@ def run(test, params, env):
                 not extra.count("--xml")):
             logging.debug("Checking for --xml option.")
             vm_dest_xml = vm.get_xml()
-            logging.info("Xml file on destination: %s" % vm_dest_xml)
+            logging.info("Xml file on destination: %s", vm_dest_xml)
             if not re.search(new_nic_mac, vm_dest_xml):
                 check_dest_xml = False
 
-    except exceptions.TestSkipError, detail:
+    except test.cancel, detail:
         skip_exception = True
     except Exception, detail:
         exception = True
-        logging.error("%s: %s" % (detail.__class__, detail))
+        logging.error("%s: %s", detail.__class__, detail)
 
     # Whatever error occurs, we have to clean up all environment.
     # Make sure vm.connect_uri is the destination uri.
@@ -1128,27 +1274,26 @@ def run(test, params, env):
     # cleanup pre migration setup for remote machine
     migrate_setup.migrate_pre_setup(dest_uri, params, cleanup=True)
     if skip_exception:
-        raise exceptions.TestSkipError(detail)
+        test.cancel(detail)
     if exception:
-        raise error.TestError(
-            "Error occurred. \n%s: %s" % (detail.__class__, detail))
+        test.error("Error occurred. \n%s: %s" % (detail.__class__, detail))
 
     # Check test result.
     if status_error == 'yes':
         if ret_migrate:
-            raise error.TestFail("Migration finished with unexpected status.")
+            test.fail("Migration finished with unexpected status.")
     else:
         if not ret_migrate:
-            raise error.TestFail("Migration finished with unexpected status.")
+            test.fail("Migration finished with unexpected status.")
         if not check_dest_state:
-            raise error.TestFail("Wrong VM state on destination.")
+            test.fail("Wrong VM state on destination.")
         if not check_dest_persistent:
-            raise error.TestFail("VM is not persistent on destination.")
+            test.fail("VM is not persistent on destination.")
         if not check_src_undefine:
-            raise error.TestFail("VM is not undefined on source.")
+            test.fail("VM is not undefined on source.")
         if not check_dest_dname:
-            raise error.TestFail("Wrong VM name %s on destination." % dname)
+            test.fail("Wrong VM name %s on destination." % dname)
         if not check_dest_xml:
-            raise error.TestFail("Wrong xml configuration on destination.")
+            test.fail("Wrong xml configuration on destination.")
         if not check_unsafe_result:
-            raise error.TestFail("Migration finished in unsafe mode.")
+            test.fail("Migration finished in unsafe mode.")
