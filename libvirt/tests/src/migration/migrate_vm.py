@@ -3,10 +3,11 @@ import os
 import re
 import signal
 import time
+import aexpect
+
 from subprocess import PIPE
 from subprocess import Popen
 
-from autotest.client.shared import utils
 from avocado.core import exceptions
 from avocado.utils import process
 
@@ -259,7 +260,7 @@ def add_disk_xml(device_type, source_file,
     if image_size:
         cmd = "qemu-img create %s %s" % (source_file, image_size)
         logging.info("Prepare to run %s", cmd)
-        utils.run(cmd)
+        process.run(cmd, shell=True)
     disk_class = vm_xml.VMXML.get_device_class('disk')
     disk = disk_class(type_name=disk_type)
     disk.device = device_type
@@ -318,8 +319,8 @@ def prepare_gluster_disk(params):
                     (image_info["format"], disk_format, image_source, disk_img))
 
     # Mount the gluster disk and create the image.
-    utils.run("mount -t glusterfs %s:%s /mnt; %s; umount /mnt"
-              % (host_ip, vol_name, disk_cmd))
+    process.run("mount -t glusterfs %s:%s /mnt; %s; umount /mnt"
+                % (host_ip, vol_name, disk_cmd), shell=True)
 
     return host_ip
 
@@ -374,7 +375,7 @@ def get_cpu_xml_from_virsh_caps(runner=None):
     cmd = "virsh capabilities | awk '/<cpu>/,/<\/cpu>/'"
     out = ""
     if not runner:
-        out = utils.system_output(cmd)
+        out = process.system_output(cmd, shell=True)
     else:
         out = runner(cmd)
 
@@ -479,7 +480,7 @@ def delete_video_device(vm_name):
     for graphic in graphics:
         vmxml.del_device(graphic)
     vmxml.sync()
-    vm_xml_cxt = utils.system_output("virsh dumpxml %s" % vm_name)
+    vm_xml_cxt = process.system_output("virsh dumpxml %s" % vm_name, shell=True)
     logging.debug("The VM XML after deleting video device: \n%s", vm_xml_cxt)
 
 
@@ -830,6 +831,40 @@ def check_migration_disk_port(params):
                                   " '%s, %s' in output '%s'")
 
 
+def update_disk_driver_with_iothread(vm_name, iothread):
+    """ Update disk driver with iothread."""
+    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    # Delete cputune/iothreadids section, it may have conflicts
+    # with domain iothreads.
+    del vmxml.cputune
+    del vmxml.iothreadids
+    devices = vmxml.devices
+    disk_index = devices.index(devices.by_device_tag('disk')[0])
+    disks = devices[disk_index]
+    disk_driver = disks.get_driver()
+    disk_driver["iothread"] = iothread
+    disks.set_driver(disk_driver)
+    devices[disk_index] = disks
+    vmxml.devices = devices
+    vmxml.iothreads = int(iothread)
+    # SYNC VM XML change.
+    vmxml.sync()
+
+
+def check_iothread_after_migration(vm_name, params, iothread):
+    """ Check iothread by qemu-monitor-command on remote host."""
+    remote_virsh = virsh.VirshPersistent(**params)
+    try:
+        ret = remote_virsh.qemu_monitor_command(vm_name,
+                                                '{"execute": "query-iothreads"}',
+                                                "--pretty")
+        libvirt.check_exit_status(ret)
+        if ret.stdout.strip().count("thread-id") != int(iothread):
+            raise exceptions.TestFail("Failed to check domain iothreads")
+    finally:
+        remote_virsh.close_session()
+
+
 def run(test, params, env):
     """
     Test remote access with TCP, TLS connection
@@ -919,6 +954,9 @@ def run(test, params, env):
     restart_vm = "yes" == test_dict.get("restart_vm", "no")
     diff_cpu_vendor = "yes" == test_dict.get("diff_cpu_vendor", "no")
 
+    # Get iothread parameters.
+    driver_iothread = test_dict.get("driver_iothread")
+
     nbd_port = test_dict.get("nbd_port")
     target_image_size = test_dict.get("target_image_size")
     target_image_format = test_dict.get("target_image_format")
@@ -1002,7 +1040,7 @@ def run(test, params, env):
     os_ver_cmd = "cat /etc/redhat-release"
 
     if os_ver_from:
-        curr_os_ver = utils.system_output(os_ver_cmd)
+        curr_os_ver = process.system_output(os_ver_cmd, shell=True)
         if os_ver_from not in curr_os_ver:
             raise exceptions.TestSkipError("The current OS is %s"
                                            % curr_os_ver)
@@ -1076,7 +1114,7 @@ def run(test, params, env):
     first_disk = vm.get_first_disk_devices()
     disk_source = first_disk['source']
     logging.debug("disk source: %s", disk_source)
-    curr_vm_xml = utils.system_output('cat %s' % vmxml_backup.xml)
+    curr_vm_xml = process.system_output('cat %s' % vmxml_backup.xml, shell=True)
     logging.debug("The current VM XML contents: \n%s", curr_vm_xml)
     orig_image_name = os.path.basename(disk_source)
 
@@ -1123,7 +1161,7 @@ def run(test, params, env):
                            target, transport=iscsi_transport)
 
             vmxml_iscsi = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-            curr_vm_xml = utils.system_output('cat %s' % vmxml_iscsi.xml)
+            curr_vm_xml = process.system_output('cat %s' % vmxml_iscsi.xml, shell=True)
             logging.debug("The current VM XML contents: \n%s", curr_vm_xml)
 
         del_vm_video_dev = "yes" == test_dict.get("del_vm_video_dev", "no")
@@ -1144,14 +1182,14 @@ def run(test, params, env):
         if watchdog_model:
             prepare_guest_watchdog(vm_name, vm, watchdog_model, watchdog_action,
                                    watchdog_module_args)
-            curr_vm_xml = utils.system_output('cat %s' % vmxml_backup.xml)
+            curr_vm_xml = process.system_output('cat %s' % vmxml_backup.xml, shell=True)
             logging.debug("The current VM XML contents: \n%s", curr_vm_xml)
 
         smartcard_mode = test_dict.get("smartcard_mode")
         smartcard_type = test_dict.get("smartcard_type")
         if smartcard_mode and smartcard_type:
             add_smartcard_device(vm_name, smartcard_type, smartcard_mode)
-            curr_vm_xml = utils.system_output('cat %s' % vmxml_backup.xml)
+            curr_vm_xml = process.system_output('cat %s' % vmxml_backup.xml, shell=True)
             logging.debug("The current VM XML contents: \n%s", curr_vm_xml)
 
         pm_mem_enabled = test_dict.get("pm_mem_enabled", "no")
@@ -1169,7 +1207,7 @@ def run(test, params, env):
         if nfs_mount_dir:
             cmd = "mkdir -p %s" % nfs_mount_dir
             logging.debug("Make sure %s exists both local and remote", nfs_mount_dir)
-            output = utils.system_output(cmd)
+            output = process.system_output(cmd, shell=True)
             if output:
                 raise exceptions.TestFail("Failed to run '%s' on the local : %s"
                                           % (cmd, output))
@@ -1211,7 +1249,7 @@ def run(test, params, env):
             libvirt.update_vm_disk_source(vm_name, target_image_path,
                                           target_image_name, source_type)
 
-        vm_xml_cxt = utils.system_output("virsh dumpxml %s" % vm_name)
+        vm_xml_cxt = process.system_output("virsh dumpxml %s" % vm_name, shell=True)
         logging.debug("The VM XML with new disk source: \n%s", vm_xml_cxt)
 
         # Prepare to update VM first disk driver cache
@@ -1264,7 +1302,7 @@ def run(test, params, env):
             build_disk_xml(vm_name, disk_format, host_ip, disk_src_protocol,
                            vol_name, disk_img, gluster_transport)
 
-            vm_xml_cxt = utils.system_output("virsh dumpxml %s" % vm_name)
+            vm_xml_cxt = process.system_output("virsh dumpxml %s" % vm_name, shell=True)
             logging.debug("The VM XML with gluster disk source: \n%s", vm_xml_cxt)
 
         # generate remote IP
@@ -1316,11 +1354,11 @@ def run(test, params, env):
                 fp.write("\n")
                 fp.write(remote_cpu_xml)
                 fp.close()
-                cpu_xml_cxt = utils.system_output("cat %s" % cpu_xml)
+                cpu_xml_cxt = process.system_output("cat %s" % cpu_xml, shell=True)
                 logging.debug("The CPU XML contents: \n%s", cpu_xml_cxt)
                 cmd = "sed -i '/<vendor>.*<\/vendor>/d' %s" % cpu_xml
-                utils.system(cmd)
-                cpu_xml_cxt = utils.system_output("cat %s" % cpu_xml)
+                process.system(cmd, shell=True)
+                cpu_xml_cxt = process.system_output("cat %s" % cpu_xml, shell=True)
                 logging.debug("The current CPU XML contents: \n%s", cpu_xml_cxt)
                 output = compute_cpu_baseline(cpu_xml, status_error)
                 logging.debug("The baseline CPU XML: \n%s", output)
@@ -1329,16 +1367,16 @@ def run(test, params, env):
                 fp = open(vm_new_xml, "w+")
                 fp.write(str(vmxml_backup))
                 fp.close()
-                vm_new_xml_cxt = utils.system_output("cat %s" % vm_new_xml)
+                vm_new_xml_cxt = process.system_output("cat %s" % vm_new_xml, shell=True)
                 logging.debug("The current VM XML contents: \n%s", vm_new_xml_cxt)
                 cpuxml = output
                 cmd = 'sed -i "/<\/features>/ a\%s" %s' % (cpuxml, vm_new_xml)
                 logging.debug("The command: %s", cmd)
-                utils.system(cmd)
-                vm_new_xml_cxt = utils.system_output("cat %s" % vm_new_xml)
+                process.system(cmd, shell=True)
+                vm_new_xml_cxt = process.system_output("cat %s" % vm_new_xml, shell=True)
                 logging.debug("The new VM XML contents: \n%s", vm_new_xml_cxt)
                 virsh.define(vm_new_xml)
-                vm_xml_cxt = utils.system_output("virsh dumpxml %s" % vm_name)
+                vm_xml_cxt = process.system_output("virsh dumpxml %s" % vm_name, shell=True)
                 logging.debug("The current VM XML contents: \n%s", vm_xml_cxt)
             finally:
                 logging.info("Recovery VM XML configration")
@@ -1356,7 +1394,7 @@ def run(test, params, env):
             update_cmd += vcpu_args + ">" + vcpu_num + r"<\/vcpu>"
             edit_cmd.append(update_cmd)
             libvirt.exec_virsh_edit(vm_name, edit_cmd)
-            vm_xml_cxt = utils.system_output("virsh dumpxml %s" % vm_name)
+            vm_xml_cxt = process.system_output("virsh dumpxml %s" % vm_name, shell=True)
             logging.debug("The current VM XML contents: \n%s", vm_xml_cxt)
 
         # setup IPv6
@@ -1405,7 +1443,7 @@ def run(test, params, env):
 
         # add a user
         if adduser_cmd:
-            utils.system(adduser_cmd, ignore_status=True)
+            process.system(adduser_cmd, ignore_status=True, shell=True)
 
         # update libvirtd config with new host_uuid
         if config_libvirtd == "yes":
@@ -1456,7 +1494,7 @@ def run(test, params, env):
         if mb_enable:
             logging.info("Add memoryBacking into VM XML")
             vm_xml.VMXML.set_memoryBacking_tag(vm_name)
-            vm_xml_cxt = utils.system_output("virsh dumpxml %s" % vm_name)
+            vm_xml_cxt = process.system_output("virsh dumpxml %s" % vm_name, shell=True)
             logging.debug("The current VM XML: \n%s", vm_xml_cxt)
 
         if config_remote_hugepages:
@@ -1474,7 +1512,7 @@ def run(test, params, env):
 
         if create_disk_src_backing_file:
             cmd = create_disk_src_backing_file + orig_image_name
-            out = utils.system_output(cmd, ignore_status=True)
+            out = process.system_output(cmd, ignore_status=True, shell=True)
             if not out:
                 raise exceptions.TestFail("Failed to create backing file: %s"
                                           % cmd)
@@ -1499,8 +1537,12 @@ def run(test, params, env):
 
         if memtune_options:
             virsh.memtune_set(vm_name, memtune_options)
-            vm_xml_cxt = utils.system_output("virsh dumpxml %s" % vm_name)
+            vm_xml_cxt = process.system_output("virsh dumpxml %s" % vm_name, shell=True)
             logging.debug("The VM XML with memory tune: \n%s", vm_xml_cxt)
+
+        # Update disk driver with iothread attribute.
+        if driver_iothread:
+            update_disk_driver_with_iothread(vm_name, driver_iothread)
 
         check_image_size = "yes" == test_dict.get("check_image_size", "no")
         local_image_source = test_dict.get("local_image_source")
@@ -1541,9 +1583,9 @@ def run(test, params, env):
                     virsh_dargs = {'debug': True, 'ignore_status': True}
                     virsh.attach_device(domainarg=vm_name, filearg=disk_xml,
                                         flagstr="--config", **virsh_dargs)
-                    utils.run("rm -f %s" % disk_xml, ignore_status=True)
+                    process.run("rm -f %s" % disk_xml, ignore_status=True, shell=True)
 
-                vm_xml_cxt = utils.system_output("virsh dumpxml %s" % vm_name)
+                vm_xml_cxt = process.system_output("virsh dumpxml %s" % vm_name, shell=True)
                 logging.debug("The VM XML with attached disk: \n%s", vm_xml_cxt)
 
         if local_image and not os.path.exists(local_image):
@@ -1554,14 +1596,14 @@ def run(test, params, env):
                                                          local_image,
                                                          disk_size)
             logging.info("Create image for disk: %s", image_cmd)
-            utils.run(image_cmd)
+            process.run(image_cmd, shell=True)
             local_image_list.append(local_image)
 
             setup_loop_cmd = test_dict.get("setup_loop_dev_cmd")
             mk_loop_fmt = test_dict.get("mk_loop_dev_format_cmd")
             if setup_loop_cmd and mk_loop_fmt:
-                utils.system_output(setup_loop_cmd, ignore_status=False)
-                utils.system_output(mk_loop_fmt, ignore_status=False)
+                process.system_output(setup_loop_cmd, ignore_status=False, shell=True)
+                process.system_output(mk_loop_fmt, ignore_status=False, shell=True)
 
                 status, output = run_remote_cmd(setup_loop_cmd, server_ip,
                                                 server_user, server_pwd)
@@ -1576,7 +1618,7 @@ def run(test, params, env):
                 if c_attach.exit_status != 0:
                     logging.error("Attach disk failed before test.")
 
-                vm_xml_cxt = utils.system_output("virsh dumpxml %s" % vm_name)
+                vm_xml_cxt = process.system_output("virsh dumpxml %s" % vm_name, shell=True)
                 logging.debug("The VM XML with attached disk: \n%s", vm_xml_cxt)
 
                 attach_disk = True
@@ -1855,7 +1897,7 @@ def run(test, params, env):
                         logging.error("Command output %s" %
                                       ret.stdout.strip())
                         raise exceptions.TestFail("Failed to attach-interface")
-            vm_xml_cxt = utils.system_output("virsh dumpxml %s" % vm_name)
+            vm_xml_cxt = process.system_output("virsh dumpxml %s" % vm_name, shell=True)
             logging.debug("The VM XML with attached interface: \n%s",
                           vm_xml_cxt)
 
@@ -1999,7 +2041,7 @@ def run(test, params, env):
 
             if kill_cmd:
                 logging.info("Execute %s on the host", kill_cmd)
-                utils.system(kill_cmd)
+                process.system(kill_cmd, shell=True)
 
             wait_for_mgr_cmpl = test_dict.get("wait_for_migration_complete", "no")
             if wait_for_mgr_cmpl == "yes":
@@ -2277,10 +2319,14 @@ def run(test, params, env):
                 raise exceptions.TestFail("Failed to run '%s' on remote: %s"
                                           % (cmd, output))
 
+        # Check iothread after migration.
+        if driver_iothread:
+            check_iothread_after_migration(vm_name, remote_virsh_dargs, driver_iothread)
+
         grep_str_local = test_dict.get("grep_str_from_local_libvirt_log")
         if config_libvirtd == "yes" and grep_str_local:
             cmd = "grep -E '%s' %s" % (grep_str_local, log_file)
-            logging.debug("Execute command %s: %s", cmd, utils.system_output(cmd))
+            logging.debug("Execute command %s: %s", cmd, process.system_output(cmd), shell=True)
 
         grep_str_remote = test_dict.get("grep_str_from_remote_libvirt_log")
         if grep_str_remote:
@@ -2374,7 +2420,7 @@ def run(test, params, env):
 
         # Delete all rules in chain or all chains
         if add_iptables_rules:
-            utils.run("iptables -F", ignore_status=True)
+            process.run("iptables -F", ignore_status=True, shell=True)
 
         # Restore libvirtd conf and restart libvirtd
         if libvirtd_conf:
@@ -2391,7 +2437,7 @@ def run(test, params, env):
                                               status_error='no')
 
         if deluser_cmd:
-            utils.run(deluser_cmd, ignore_status=True)
+            process.run(deluser_cmd, ignore_status=True, shell=True)
 
         if local_image_list:
             for img_file in local_image_list:
