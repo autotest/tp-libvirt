@@ -1,9 +1,10 @@
 import logging
 import time
 
-from autotest.client.shared import error
+from avocado.core import exceptions
 
 from virttest import virsh
+from virttest import utils_package
 
 from provider import libvirt_version
 
@@ -18,8 +19,8 @@ def run(test, params, env):
     """
 
     if not virsh.has_help_command('send-key'):
-        raise error.TestNAError("This version of libvirt does not support "
-                                "the send-key test")
+        raise exceptions.TestSkipError("This version of libvirt does not "
+                                       "support the send-key test")
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     status_error = ("yes" == params.get("status_error", "no"))
@@ -38,8 +39,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            raise exceptions.TestSkipError("API acl test not supported in "
+                                           "current libvirt version.")
 
     def send_line(send_str):
         """
@@ -58,20 +59,17 @@ def run(test, params, env):
     if sysrq_test:
         # Is 'rsyslog' installed on guest? It'll be what writes out
         # to /var/log/messages
-        rpm_stat = session.cmd_status("rpm -q rsyslog")
-        if rpm_stat != 0:
-            logging.debug("rsyslog not found in guest installing")
-            stat_install = session.cmd_status("yum install -y rsyslog", 300)
-            if stat_install != 0:
-                raise error.TestFail("Fail to install rsyslog, make"
-                                     "sure that you have usable repo in guest")
+        if not utils_package.package_install("rsyslog", session):
+            raise exceptions.TestFail("Fail to install rsyslog, make sure"
+                                      " that you have usable repo in "
+                                      "guest")
 
         # clear messages, restart rsyslog, and make sure it's running
         session.cmd("echo '' > /var/log/messages")
         session.cmd("service rsyslog restart")
         ps_stat = session.cmd_status("ps aux |grep rsyslog")
         if ps_stat != 0:
-            raise error.TestFail("rsyslog is not running in guest")
+            raise exceptions.TestFail("rsyslog is not running in guest")
 
         # enable sysrq
         session.cmd("echo 1 > /proc/sys/kernel/sysrq")
@@ -89,7 +87,7 @@ def run(test, params, env):
             time.sleep(1)
             timeout = timeout - 1
         if timeout < 0:
-            raise error.TestFail("Can not wait for tty1 started in 60s")
+            raise exceptions.TestFail("Can not wait for tty1 started in 60s")
 
         # send user and passwd to guest to login
         send_line(username)
@@ -107,10 +105,10 @@ def run(test, params, env):
                              "%s.", output.stderr)
                 return
             else:
-                raise error.TestFail("Failed to send key to guest, Error:%s." %
-                                     output.stderr)
+                raise exceptions.TestFail("Failed to send key to guest, Error:"
+                                          "%s." % output.stderr)
         elif status_error:
-            raise error.TestFail("Expect fail, but succeed indeed.")
+            raise exceptions.TestFail("Expect fail, but succeed indeed.")
 
         if create_file is not None:
             # check if created file exist
@@ -119,8 +117,8 @@ def run(test, params, env):
             if sec_status == 0:
                 logging.info("Succeed to create file with send key")
             else:
-                raise error.TestFail("Fail to create file with send key, "
-                                     "Error:%s" % sec_output)
+                raise exceptions.TestFail("Fail to create file with send key, "
+                                          "Error:%s" % sec_output)
         elif sysrq_test:
             # check /var/log/message info according to different key
 
@@ -156,13 +154,14 @@ def run(test, params, env):
                     timeout = timeout - 1
 
             if get_status != 0:
-                raise error.TestFail("SysRq does not take effect in guest, "
-                                     "options is %s" % options)
+                raise exceptions.TestFail("SysRq does not take effect in "
+                                          "guest, options is %s" % options)
             else:
                 logging.info("Succeed to send SysRq command")
         else:
-            raise error.TestFail("Test cfg file invalid: either sysrq_params "
-                                 "or create_file_name must be defined")
+            raise exceptions.TestFail("Test cfg file invalid: either "
+                                      "sysrq_params or create_file_name must "
+                                      "be defined")
 
     finally:
         if create_file is not None:

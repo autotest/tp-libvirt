@@ -14,6 +14,7 @@ from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_net
 from virttest import utils_misc
+from virttest import utils_package
 from virttest import utils_libguestfs
 from virttest import utils_libvirtd
 from virttest.utils_test import libvirt
@@ -349,7 +350,7 @@ def run(test, params, env):
         logging.debug("Found ips on guest: %s", vms_ip_dict)
 
         # Run omping server on host
-        if not utils_misc.yum_install(["omping"]):
+        if not utils_package.package_install(["omping"]):
             raise error.TestError("Failed to install omping"
                                   " on host")
         cmd = ("iptables -F;omping -m %s %s" %
@@ -361,7 +362,7 @@ def run(test, params, env):
         # Run omping client on guests
         for vms in vms_sess_dict.keys():
             # omping should be installed first
-            if not utils_misc.yum_install(["omping"], vms_sess_dict[vms]):
+            if not utils_package.package_install(["omping"], vms_sess_dict[vms]):
                 raise error.TestError("Failed to install omping"
                                       " on guest")
             cmd = ("iptables -F; omping -c 5 -T 5 -m %s %s" %

@@ -10,6 +10,7 @@ from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_net
 from virttest import utils_misc
+from virttest import utils_package
 from virttest import utils_libguestfs
 from virttest.utils_test import libvirt
 from virttest.utils_test.__init__ import ping
@@ -38,7 +39,7 @@ def run(test, params, env):
         pkg_list = ["syslinux", "tftp-server",
                     "tftp", "ipxe-roms-qemu", "wget"]
         # Try to install required packages
-        if not utils_misc.yum_install(pkg_list):
+        if not utils_package.package_install(pkg_list):
             raise error.TestError("Failed ot install "
                                   "required packages")
         boot_initrd = params.get("boot_initrd", "EXAMPLE_INITRD")
@@ -309,7 +310,7 @@ TIMEOUT 3"""
         Check dns resolving on guest
         """
         # Check if bind-utils is installed
-        if not utils_misc.yum_install(['bind-utils'], session):
+        if not utils_package.package_install(['bind-utils'], session):
             raise error.TestError("Failed to install bind-utils"
                                   " on guest")
         # Run host command to check if hostname can be resolved
@@ -420,7 +421,7 @@ TIMEOUT 3"""
         Check guest libvirt network
         """
         # Try to install required packages
-        if not utils_misc.yum_install(['libvirt'], session):
+        if not utils_package.package_install(['libvirt'], session):
             raise error.TestError("Failed ot install libvirt"
                                   " package on guest")
         result = True
@@ -441,7 +442,7 @@ TIMEOUT 3"""
             if not status or not output.count("already in use"):
                 result = False
                 logging.error("Failed to see network messges on guest")
-        if session.cmd_status("yum -y remove libvirt*"):
+        if not utils_package.package_remove("libvirt*", session):
             logging.error("Failed to remove libvirt packages on guest")
 
         if not result:
