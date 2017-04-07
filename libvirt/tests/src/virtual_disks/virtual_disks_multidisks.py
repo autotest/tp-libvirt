@@ -2,7 +2,6 @@ import os
 import re
 import json
 import logging
-
 import aexpect
 
 from avocado.utils import process
@@ -21,6 +20,7 @@ from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.input import Input
 from virttest.libvirt_xml.devices.hub import Hub
 from virttest.libvirt_xml.devices.controller import Controller
+from virttest.libvirt_xml.devices.address import Address
 
 from provider import libvirt_version
 
@@ -81,7 +81,7 @@ def run(test, params, env):
             if disk_type in ["file", "floppy"]:
                 cmd = ("mkfs.ext3 -F %s && setsebool virt_use_nfs true"
                        % device_source)
-                if process.run(cmd, ignore_status=True, shell=True).exit_status:
+                if process.system(cmd, ignore_status=True, shell=True):
                     raise exceptions.TestSkipError("Format disk failed")
 
         nfs_params = {"nfs_mount_dir": mount_dir, "nfs_mount_options": "ro",
@@ -285,7 +285,7 @@ def run(test, params, env):
         libvirt.check_exit_status(ret)
 
         cmd = "echo \"%s\" | grep %s.%s" % (ret.stdout, disk_name, snapshot1)
-        if process.run(cmd, ignore_status=True, shell=True).exit_status:
+        if process.system(cmd, ignore_status=True, shell=True):
             raise exceptions.TestError("Check snapshot disk failed")
 
         ret = virsh.snapshot_create_as(vm_name,
@@ -299,7 +299,7 @@ def run(test, params, env):
 
         cmd = ("echo \"%s\" | grep -A 16 %s.%s | grep \"boot order='%s'\""
                % (ret.stdout, disk_name, snapshot2, bootorder))
-        if process.run(cmd, ignore_status=True, shell=True).exit_status:
+        if process.system(cmd, ignore_status=True, shell=True):
             raise exceptions.TestError("Check snapshot disk with bootorder failed")
 
         snap_lists = virsh.snapshot_list(vm_name)
@@ -364,14 +364,14 @@ def run(test, params, env):
             cmd = ("ls /dev/%s && mkfs.ext3 -F /dev/%s && mount /dev/%s"
                    " /mnt && ls /mnt && touch /mnt/test && umount /mnt"
                    % (device_targets[0], device_targets[0], device_targets[0]))
-            s, o = session.cmd_status_output(cmd)
-            if s:
+            status, output = session.cmd_status_output(cmd)
+            if status:
                 session.close()
                 raise exceptions.TestError("Failed to read/write disk in VM:"
-                                           " %s" % o)
+                                           " %s" % output)
             session.close()
-        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
-            raise exceptions.TestError(str(e))
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), detail:
+            raise exceptions.TestError(str(detail))
 
     def check_dom_iothread():
         """
@@ -385,6 +385,18 @@ def run(test, params, env):
         iothreads_ret = json.loads(ret.stdout)
         if len(iothreads_ret['return']) != int(dom_iothreads):
             raise exceptions.TestFail("Failed to check domain iothreads")
+
+    def get_device_addr(device_type, elem_type):
+        """Get the address of testing input or hub from VM XML as a dict."""
+        cur_vm_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        addr = None
+        for elem in cur_vm_xml.xmltreefile.findall('/devices/%s' % device_type):
+            if (elem.get('type') == elem_type):
+                addr_elem = elem.find('./address')
+                if addr_elem is not None:
+                    addr = Address.new_from_element(addr_elem).attrs
+                    break
+        return addr
 
     status_error = "yes" == params.get("status_error", "no")
     define_error = "yes" == params.get("define_error", "no")
@@ -419,8 +431,6 @@ def run(test, params, env):
     snapshot_option = params.get("snapshot_option", "")
     snapshot_error = "yes" == params.get("snapshot_error", "no")
     add_usb_device = "yes" == params.get("add_usb_device", "no")
-    input_usb_address = params.get("input_usb_address", "")
-    hub_usb_address = params.get("hub_usb_address", "")
     hotplug = "yes" == params.get(
         "virt_disk_device_hotplug", "no")
     device_at_dt_disk = "yes" == params.get("virt_disk_at_dt_disk", "no")
@@ -549,10 +559,9 @@ def run(test, params, env):
             # mount the disk and then create the image.
             if test_file_img_on_disk:
                 mount_path = "/tmp/diskimg"
-                if process.run("mkdir -p %s && mount %s %s"
-                               % (mount_path, disks[i]["source"],
-                                  mount_path), ignore_status=True,
-                               shell=True).exit_status:
+                if process.system("mkdir -p %s && mount %s %s"
+                                  % (mount_path, disks[i]["source"],
+                                     mount_path), ignore_status=True, shell=True):
                     raise exceptions.TestSkipError("Prepare disk failed")
                 disk_path = "%s/%s.qcow2" % (mount_path, device_source_names[i])
                 disk_source = libvirt.create_local_disk("file", disk_path, "1",
@@ -705,6 +714,11 @@ def run(test, params, env):
                 if input.type_name == "tablet":
                     vmxml.del_device(input)
 
+            hubs = vmxml.get_devices(device_type="hub")
+            for hub in hubs:
+                if hub.type_name == "usb":
+                    vmxml.del_device(hub)
+
             # Add new usb controllers.
             usb_controller1 = Controller("controller")
             usb_controller1.type = "usb"
@@ -719,30 +733,12 @@ def run(test, params, env):
 
             input_obj = Input("tablet")
             input_obj.input_bus = "usb"
-            addr_dict = {}
-            if input_usb_address != "":
-                for addr_option in input_usb_address.split(','):
-                    if addr_option != "":
-                        d = addr_option.split('=')
-                        addr_dict.update({d[0].strip(): d[1].strip()})
-            if addr_dict:
-                input_obj.address = input_obj.new_input_address(
-                    **{"attrs": addr_dict})
             vmxml.add_device(input_obj)
-            usb_devices.update({"input": addr_dict})
+            usb_devices.update({"input": None})
 
             hub_obj = Hub("usb")
-            addr_dict = {}
-            if hub_usb_address != "":
-                for addr_option in hub_usb_address.split(','):
-                    if addr_option != "":
-                        d = addr_option.split('=')
-                        addr_dict.update({d[0].strip(): d[1].strip()})
-            if addr_dict:
-                hub_obj.address = hub_obj.new_hub_address(
-                    **{"attrs": addr_dict})
             vmxml.add_device(hub_obj)
-            usb_devices.update({"hub": addr_dict})
+            usb_devices.update({"hub": None})
 
         if dom_iothreads:
             # Delete cputune/iothreadids section, it may have conflict
@@ -750,10 +746,7 @@ def run(test, params, env):
             del vmxml.cputune
             del vmxml.iothreadids
             vmxml.iothreads = int(dom_iothreads)
-
-        # After compose the disk xml, redefine the VM xml.
         vmxml.sync()
-
         # Test snapshot before vm start.
         if test_disk_snapshot:
             if snapshot_before_start:
@@ -793,9 +786,9 @@ def run(test, params, env):
     except virt_vm.VMStartError as details:
         if not status_error:
             raise exceptions.TestFail('VM failed to start:\n%s' % details)
-    except xcepts.LibvirtXMLError as details:
+    except xcepts.LibvirtXMLError as xml_error:
         if not define_error:
-            raise exceptions.TestFail(details)
+            raise exceptions.TestFail("Failed to define VM:\n%s" % xml_error)
     else:
         # VM is started, perform the tests.
         if test_slots_order:
@@ -888,7 +881,7 @@ def run(test, params, env):
             if iface_event_idx != "":
                 cmd += " | grep virtio-net-pci,event_idx=%s" % iface_event_idx
 
-            if process.run(cmd, ignore_status=True, shell=True).exit_status:
+            if process.system(cmd, ignore_status=True, shell=True):
                 raise exceptions.TestFail("Check disk driver option failed")
 
         if test_disk_snapshot:
@@ -936,10 +929,8 @@ def run(test, params, env):
                                                     "alias", "name")
             if device_bus[0] == "ide":
                 check_cmd = "/usr/libexec/qemu-kvm -device ? 2>&1 |grep -E 'ide-cd|ide-hd'"
-                if process.run(check_cmd, ignore_status=True,
-                               shell=True).exit_status:
-                    raise exceptions.TestSkipError("ide-cd/ide-hd not supported"
-                                                   " by this qemu-kvm")
+                if process.system(check_cmd, ignore_status=True, shell=True):
+                    raise exceptions.TestSkipError("ide-cd/ide-hd not supported by this qemu-kvm")
 
                 if devices[0] == "cdrom":
                     device_option = "ide-cd"
@@ -968,15 +959,17 @@ def run(test, params, env):
                             "drive=drive-%s,id=%s"
                             % (dev_bus, dev_port, dev_id, dev_id))
                 if usb_devices.has_key("input"):
+                    input_addr = get_device_addr('input', 'tablet')
                     cmd += (" | grep usb-tablet,id=input[0-9],bus=usb.%s,"
-                            "port=%s" % (usb_devices["input"]["bus"],
-                                         usb_devices["input"]["port"]))
+                            "port=%s" % (input_addr["bus"],
+                                         input_addr["port"]))
                 if usb_devices.has_key("hub"):
+                    hub_addr = get_device_addr('hub', 'usb')
                     cmd += (" | grep usb-hub,id=hub0,bus=usb.%s,"
-                            "port=%s" % (usb_devices["hub"]["bus"],
-                                         usb_devices["hub"]["port"]))
+                            "port=%s" % (hub_addr["bus"],
+                                         hub_addr["port"]))
 
-            if process.run(cmd, ignore_status=True, shell=True).exit_status:
+            if process.system(cmd, ignore_status=True, shell=True):
                 raise exceptions.TestFail("Cann't see disk option"
                                           " in command line")
 
@@ -1045,8 +1038,7 @@ def run(test, params, env):
             os.remove(img["source"])
             if os.path.exists(img["path"]):
                 process.run("umount %s && rmdir %s"
-                            % (img["path"], img["path"]), ignore_status=True,
-                            shell=True)
+                            % (img["path"], img["path"]), ignore_status=True, shell=True)
 
         for img in disks:
             if img.has_key("disk_dev"):
