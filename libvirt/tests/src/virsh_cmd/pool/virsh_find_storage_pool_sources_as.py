@@ -73,7 +73,7 @@ def run(test, params, env):
         # Clean up
         if cleanup_logical:
             cmd = "pvs |grep %s |awk '{print $1}'" % vg_name
-            pv_name = process.system_output(cmd)
+            pv_name = process.system_output(cmd, shell=True)
             lv_utils.vg_remove(vg_name)
             process.run("pvremove %s" % pv_name)
         if cleanup_iscsi:
