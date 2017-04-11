@@ -166,7 +166,7 @@ def run(test, params, env):
     # Run Testcase
     pvt = utlv.PoolVolumeTest(test, params)
     emulated_image = "emulated-image"
-    kwargs = {'image_size': '1G', 'pre_disk_vol': ['1M'],
+    kwargs = {'image_size': '1G', 'pre_disk_vol': ['100M'],
               'source_name': source_name, 'source_path': source_path,
               'source_format': source_format, 'persistent': True,
               'ip_protocal': ip_protocal}
@@ -199,13 +199,15 @@ def run(test, params, env):
         utlv.check_exit_status(result, status_error)
 
         # Step (6)
-        # Buid pool, this step may fail for 'disk' and 'logical' types pool
-        if pool_type not in ["disk", "logical"]:
-            option = ""
-        # Options --overwrite and --no-overwrite can only be used to
-        # build a filesystem pool, but it will fail for now
-            # if pool_type == "fs":
-            #    option = '--overwrite'
+        # Buid pool
+        # '--overwrite/--no-overwrite' just for fs/disk/logiacl type pool
+        # disk/fs pool: as prepare step already make label and create filesystem
+        #               for the disk, use '--overwrite' is necessary
+        # logical_pool: build pool will fail if VG already exist, BZ#1373711
+        if pool_type != "logical":
+            option = ''
+            if pool_type in ['disk', 'fs']:
+                option = '--overwrite'
             result = virsh.pool_build(pool_name, option, ignore_status=True)
             utlv.check_exit_status(result)
 

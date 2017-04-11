@@ -112,11 +112,12 @@ def run(test, params, env):
             raise error.TestFail("Expect pool '%s' doesn't exist." % pool_name)
 
     # Run Testcase
+    kwargs = {'source_format': params.get('pool_source_format', 'ext4')}
     try:
         _pool = libvirt_storage.StoragePool()
         # Init a pool for test
         result = utlv.define_pool(pool_name, pool_type, pool_target,
-                                  cleanup_env)
+                                  cleanup_env, **kwargs)
         utlv.check_exit_status(result, src_pool_error)
         option = "--inactive --type %s" % pool_type
         check_pool_list(pool_name, option)
@@ -156,24 +157,27 @@ def run(test, params, env):
             utlv.check_exit_status(result)
 
         # Step (3)
-        # Buid pool, this step may fail for 'disk' and 'logical' types pool
-        if pool_type not in ["disk", "logical"]:
-            option = ""
-        # Options --overwrite and --no-overwrite can only be used to
-        # build a filesystem pool, but it will fail for now
-            # if pool_type == "fs":
-            #    option = '--overwrite'
+        # '--overwrite/--no-overwrite' just for fs/disk/logiacl type pool
+        # disk/fs pool: as prepare step already make label and create filesystem
+        #               for the disk, use '--overwrite' is necessary
+        # logical_pool: build pool will fail if VG already exist, BZ#1373711
+        if pool_type != "logical":
+            option = ''
+            if pool_type in ['disk', 'fs']:
+                option = '--overwrite'
+            result = virsh.pool_build(pool_name, option, ignore_status=True)
+            utlv.check_exit_status(result)
             if build_acl:
                 result = virsh.pool_build(pool_name, option, **acl_dargs)
             else:
                 result = virsh.pool_build(pool_name, option,
                                           ignore_status=True)
             utlv.check_exit_status(result, build_error)
-            if build_error:
-                # Redo under negative case to keep case continue
-                result = virsh.pool_build(pool_name, option,
-                                          ignore_status=True)
-                utlv.check_exit_status(result)
+        if build_error:
+            # Redo under negative case to keep case continue
+            result = virsh.pool_build(pool_name, option,
+                                      ignore_status=True)
+            utlv.check_exit_status(result)
 
         # For iSCSI pool, we need discover targets before start the pool
         if pool_type == 'iscsi':
