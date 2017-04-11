@@ -2,7 +2,6 @@ import os
 import logging
 import time
 
-from avocado.core import exceptions
 from avocado.utils import process
 
 from virttest import virsh
@@ -21,9 +20,9 @@ def run(test, params, env):
     """
     for v in params.itervalues():
         if "V2V_EXAMPLE" in v:
-            raise exceptions.TestSkipError("Please set real value for %s" % v)
+            test.skip("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
-        raise ValueError('Missing command: virt-v2v')
+        test.error('Missing command: virt-v2v')
     vm_name = params.get('main_vm', 'EXAMPLE')
     new_vm_name = params.get('new_name')
     target = params.get('target')
@@ -37,6 +36,7 @@ def run(test, params, env):
     address_cache = env.get('address_cache')
     v2v_timeout = int(params.get('v2v_timeout', 1200))
     status_error = 'yes' == params.get('status_error', 'no')
+    skip_check = 'yes' == params.get('skip_check', 'no')
     pool_name = params.get('pool_name', 'v2v_test')
     pool_type = params.get('pool_type', 'dir')
     pool_target = params.get('pool_target_path', 'v2v_pool')
@@ -59,7 +59,7 @@ def run(test, params, env):
         match_img = params.get('image_to_match')
         screenshot = '%s/BSOD_screenshot.ppm' % data_dir.get_tmp_dir()
         if match_img is None:
-            raise exceptions.TestError('No BSOD screenshot to match!')
+            test.error('No BSOD screenshot to match!')
         cmd_man_page = 'man virt-v2v|grep -i "Boot failure: 0x0000007B"'
         if process.run(cmd_man_page, shell=True).exit_status != 0:
             log_fail('Man page not contain boot failure msg')
@@ -78,30 +78,35 @@ def run(test, params, env):
         """
         libvirt.check_exit_status(result, status_error)
         output = result.stdout + result.stderr
-        if not status_error:
+        if skip_check:
+            logging.info('Skip checking vm after conversion')
+        elif not status_error:
             if output_mode == 'rhev':
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                     timeout=v2v_timeout):
-                    raise exceptions.TestFail('Import VM failed')
+                    test.fail('Import VM failed')
             if output_mode == 'libvirt':
                 try:
                     virsh.start(vm_name, debug=True, ignore_status=False)
                 except Exception, e:
-                    raise exceptions.TestFail('Start vm failed: %s' % str(e))
+                    test.fail('Start vm failed: %s' % str(e))
             # Check guest following the checkpoint document after convertion
-            vmchecker = VMChecker(test, params, env)
-            params['vmchecker'] = vmchecker
-            if checkpoint != 'win2008r2_ostk':
-                ret = vmchecker.run()
-                if len(ret) == 0:
-                    logging.info("All common checkpoints passed")
-            if checkpoint == 'win2008r2_ostk':
-                check_BSOD()
-            # Merge 2 error lists
-            error_list.extend(vmchecker.errors)
-            if len(error_list):
-                raise exceptions.TestFail('%d checkpoints failed: %s',
-                                          (len(error_list), error_list))
+            if params.get('skip_vm_check') != 'yes':
+                vmchecker = VMChecker(test, params, env)
+                params['vmchecker'] = vmchecker
+                if checkpoint != 'win2008r2_ostk':
+                    ret = vmchecker.run()
+                    if len(ret) == 0:
+                        logging.info("All common checkpoints passed")
+                if checkpoint == 'win2008r2_ostk':
+                    check_BSOD()
+                # Merge 2 error lists
+                error_list.extend(vmchecker.errors)
+        log_check = utils_v2v.check_log(params, output)
+        if log_check:
+            log_fail(log_check)
+        if len(error_list):
+            test.fail('%d checkpoints failed: %s' % (len(error_list), error_list))
 
     try:
         v2v_params = {
@@ -135,6 +140,9 @@ def run(test, params, env):
 
         # Set libguestfs environment variable
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
+        if checkpoint == 'permission':
+            os.environ['LIBGUESTFS_BACKEND'] = ''
+        process.run('echo $LIBGUESTFS_BACKEND', shell=True)
 
         v2v_result = utils_v2v.v2v_cmd(v2v_params)
 
