@@ -100,7 +100,10 @@ def run(test, params, env):
         """
         libvirt.check_exit_status(result, status_error)
         output = result.stdout + result.stderr
-        if not status_error:
+        if checkpoint == 'empty_cdrom':
+            if status_error:
+                log_fail('Virsh dumpxml failed for empty cdrom image')
+        elif not status_error:
             if output_mode == 'rhev':
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                     timeout=v2v_timeout):
@@ -185,7 +188,16 @@ def run(test, params, env):
             if url and url.endswith('.rpm'):
                 process.run('rpm -iv %s' % url)
 
-        v2v_result = utils_v2v.v2v_cmd(v2v_params)
+        if checkpoint == 'empty_cdrom':
+            v2v_uri = utils_v2v.Uri('esx')
+            remote_uri = v2v_uri.get_uri(remote_host, vpx_dc, esx_ip)
+            virsh_dargs = {'uri': remote_uri, 'remote_ip': remote_host,
+                           'remote_user': 'root', 'remote_pwd': vpx_passwd,
+                           'debug': True}
+            remote_virsh = virsh.VirshPersistent(**virsh_dargs)
+            v2v_result = remote_virsh.dumpxml(vm_name)
+        else:
+            v2v_result = utils_v2v.v2v_cmd(v2v_params)
         if v2v_params.has_key('new_name'):
             params['main_vm'] = v2v_params['new_name']
         check_result(v2v_result, status_error)
