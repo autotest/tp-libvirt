@@ -356,7 +356,9 @@ def run(test, params, env):
             test.fail("CPU Hotplug failed - %s" % status.stderr.strip())
         logging.debug("Checking CPU %s gets reflected in xml", operation)
         try:
-            guest_xml = vm_xml.VMXML.new_from_dumpxml(vm.name, uri=uri)
+            virsh_inst = virsh.Virsh(uri=uri)
+            guest_xml = vm_xml.VMXML.new_from_dumpxml(vm.name,
+                                                      virsh_instance=virsh_inst)
             vcpu_list = guest_xml.vcpus.vcpu
             enabled_cpus_count = 0
             for each_vcpu in vcpu_list:
