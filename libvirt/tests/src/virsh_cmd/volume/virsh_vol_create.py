@@ -1,5 +1,7 @@
 import os
 import logging
+import re
+import base64
 
 from autotest.client.shared import error
 
@@ -10,6 +12,7 @@ from virttest import libvirt_storage
 from virttest import libvirt_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.staging import service
+from virttest.libvirt_xml import secret_xml
 
 from provider import libvirt_version
 
@@ -52,6 +55,8 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     by_xml = "yes" == params.get("create_vol_by_xml", "yes")
     incomplete_target = "yes" == params.get("incomplete_target", "no")
+    luks_encrypted = "luks" == params.get("encryption_method")
+    encryption_secret_type = params.get("encryption_secret_type", "passphrase")
 
     if not libvirt_version.version_compare(1, 0, 0):
         if "--prealloc-metadata" in extra_option:
@@ -95,6 +100,36 @@ def run(test, params, env):
             else:
                 vol_arg[key[4:]] = params[key]
     vol_arg['lazy_refcounts'] = lazy_refcounts
+
+    def create_luks_secret(vol_path):
+        """
+        Create secret for luks encryption
+        :param vol_path. volume path.
+        :return: secret id if create successfully.
+        """
+        sec_xml = secret_xml.SecretXML("no", "yes")
+        sec_xml.description = "volume secret"
+
+        sec_xml.usage = 'volume'
+        sec_xml.volume = vol_path
+        sec_xml.xmltreefile.write()
+
+        ret = virsh.secret_define(sec_xml.xml)
+        utlv.check_exit_status(ret)
+        # Get secret uuid.
+        try:
+            encryption_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
+                                         ret.stdout)[0].lstrip()
+        except IndexError, e:
+            raise exceptions.TestError("Fail to get newly created secret uuid")
+        logging.debug("Secret uuid %s", encryption_uuid)
+
+        # Set secret value.
+        secret_string = base64.b64encode('redhat')
+        ret = virsh.secret_set_value(encryption_uuid, secret_string)
+        utlv.check_exit_status(ret)
+
+        return encryption_uuid
 
     def post_process_vol(ori_vol_path):
         """
@@ -189,6 +224,7 @@ def run(test, params, env):
     fmt_err_list = [fmt_err0, fmt_err1, fmt_err2]
     skip_msg = "Volume format '%s' is not supported by qemu-img" % vol_format
     vol_path_list = []
+    secret_uuids = []
     try:
         # Create the src pool
         src_pool_name = "virt-%s-pool" % src_pool_type
@@ -217,6 +253,17 @@ def run(test, params, env):
                 vol_arg['name'] = vol_name
                 volxml = libvirt_xml.VolXML()
                 newvol = volxml.new_vol(**vol_arg)
+                if luks_encrypted:
+                    # For luks encrypted disk, add related xml in newvol
+                    luks_encryption_params = {}
+                    luks_encryption_params.update({"format": "luks"})
+                    luks_secret_uuid = create_luks_secret(os.path.join(src_pool_target,
+                                                          vol_name))
+                    secret_uuids.append(luks_secret_uuid)
+                    luks_encryption_params.update({"secret": {"type": encryption_secret_type,
+                                                              "uuid": luks_secret_uuid}})
+                    newvol.encryption = volxml.new_encryption(**luks_encryption_params)
+
                 vol_xml = newvol['xml']
                 if params.get('setup_libvirt_polkit') == 'yes':
                     process.run("chmod 666 %s" % vol_xml, ignore_status=True,
@@ -278,6 +325,8 @@ def run(test, params, env):
         try:
             pvt.cleanup_pool(src_pool_name, src_pool_type, src_pool_target,
                              src_emulated_image)
+            for secret_uuid in set(secret_uuids):
+                virsh.secret_undefine(secret_uuid)
         except error.TestFail, detail:
             logging.error(str(detail))
         if multipathd_status:
