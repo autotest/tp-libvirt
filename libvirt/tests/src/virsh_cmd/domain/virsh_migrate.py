@@ -630,6 +630,13 @@ def run(test, params, env):
     if enable_numa_pin:
         host_numa_node = utils_misc.NumaInfo()
         host_numa_node_list = host_numa_node.online_nodes
+        for each_node in host_numa_node_list:
+            free_mem = host_numa_node.read_from_node_meminfo(each_node,
+                                                             'MemFree')
+            if (int(free_mem) < int(vmxml.max_mem)):
+                logging.debug("Host Numa node: %s doesnt have enough "
+                              "memory", each_node)
+                host_numa_node_list.remove(each_node)
         memory_mode = params.get("memory_mode", 'strict')
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
         vcpu = vmxml.vcpu
