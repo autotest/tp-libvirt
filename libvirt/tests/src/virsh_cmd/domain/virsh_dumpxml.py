@@ -1,11 +1,10 @@
 import re
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import capability_xml
+from virttest.utils_test import libvirt as utlv
 
 from provider import libvirt_version
 
@@ -51,6 +50,7 @@ def run(test, params, env):
         vmcpu_xml.add_feature('ia64', 'optional')
         vmcpu_xml.add_feature('vme', 'require')
         vmxml['cpu'] = vmcpu_xml
+        logging.debug('Custom VM CPU: %s', vmcpu_xml.xmltreefile)
         vmxml.sync()
 
     def check_cpu(xml, cpu_match):
@@ -60,7 +60,9 @@ def run(test, params, env):
         Note, function custom_cpu() hard code these features and policy,
         so after run virsh dumpxml --update-cpu:
         1. For match='minimum', all host support features will added,
-           and match='exact'
+           and match change to 'exact'. Since libvirt-3.0, cpu update is
+           reworked, and the custom CPU with minimum match is converted
+           similarly to host-model.
         2. policy='optional' features(support by host) will update to
            policy='require'
         3. policy='optional' features(unsupport by host) will update to
@@ -107,30 +109,39 @@ def run(test, params, env):
             if f_policy == "require":
                 require_count += 1
         # Check
+        expect_model = 'Penryn'
+        expect_vendor = 'Intel'
         if cpu_match == "minimum":
+            # libvirt commit 3b6be3c0 change the behavior of update-cpu
+            if libvirt_version.version_compare(3, 0, 0):
+                expect_model = host_capa.model
+                expect_vendor = host_capa.vendor
             expect_match = "exact"
             # For different host, the support require features are different,
             # so just check the actual require features greater than the
             # expect number
             if require_count < expect_require_features:
-                logging.error("Find %d require features, but expect >=%s",
+                logging.error("Found %d require features, but expect >=%s",
                               require_count, expect_require_features)
                 check_pass = False
         else:
             expect_match = cpu_match
             if require_count != expect_require_features:
-                logging.error("Find %d require features, but expect %s",
+                logging.error("Found %d require features, but expect %s",
                               require_count, expect_require_features)
                 check_pass = False
+        logging.debug("Expect 'match' value is: %s", expect_match)
         match = vmcpu_xml['match']
         if match != expect_match:
             logging.error("CPU match '%s' is not expected", match)
             check_pass = False
-        if vmcpu_xml['model'] != 'Penryn':
+        logging.debug("Expect 'model' value is: %s", expect_model)
+        if vmcpu_xml['model'] != expect_model:
             logging.error("CPU model %s is not expected", vmcpu_xml['model'])
             check_pass = False
-        if vmcpu_xml['vendor'] != "Intel":
-            logging.error("CPU vendor %s is not expected", vmcpu_xml['vendor'])
+        logging.debug("Expect 'vendor' value is: %s", expect_vendor)
+        if vmcpu_xml['vendor'] != expect_vendor:
+            logging.error("CPU vendor '%s' is not expected", vmcpu_xml['vendor'])
             check_pass = False
         return check_pass
 
@@ -143,8 +154,20 @@ def run(test, params, env):
     options_suffix = params.get("dumpxml_options_suffix", "")
     vm_state = params.get("dumpxml_vm_state", "running")
     security_pwd = params.get("dumpxml_security_pwd", "123456")
-    status_error = params.get("status_error", "no")
+    status_error = "yes" == params.get("status_error", "no")
     cpu_match = params.get("cpu_match", "minimum")
+
+    # acl polkit params
+    setup_libvirt_polkit = "yes" == params.get('setup_libvirt_polkit')
+    if not libvirt_version.version_compare(1, 1, 1):
+        if setup_libvirt_polkit:
+            test.skip("API acl test not supported in current libvirt version")
+    uri = params.get("virsh_uri")
+    unprivileged_user = params.get('unprivileged_user')
+    if unprivileged_user and setup_libvirt_polkit:
+        if unprivileged_user.count('EXAMPLE'):
+            unprivileged_user = 'testacl'
+
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     if options_ref.count("update-cpu"):
         custom_cpu(vm_name, cpu_match)
@@ -153,21 +176,9 @@ def run(test, params, env):
         try:
             vm_xml.VMXML.add_security_info(new_xml, security_pwd)
         except Exception, info:
-            raise error.TestNAError(info)
+            test.skip(info)
     domuuid = vm.get_uuid()
     domid = vm.get_id()
-
-    # acl polkit params
-    uri = params.get("virsh_uri")
-    unprivileged_user = params.get('unprivileged_user')
-    if unprivileged_user:
-        if unprivileged_user.count('EXAMPLE'):
-            unprivileged_user = 'testacl'
-
-    if not libvirt_version.version_compare(1, 1, 1):
-        if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
 
     # Prepare vm state for test
     if vm_state == "shutoff" and vm.is_alive():
@@ -189,54 +200,31 @@ def run(test, params, env):
         options_ref = "%s %s" % (options_ref, options_suffix)
 
     # Run command
-    logging.info("Command:virsh dumpxml %s", vm_ref)
     try:
-        try:
-            if params.get('setup_libvirt_polkit') == 'yes':
-                cmd_result = virsh.dumpxml(vm_ref, extra=options_ref,
-                                           uri=uri,
-                                           unprivileged_user=unprivileged_user)
-            else:
-                cmd_result = virsh.dumpxml(vm_ref, extra=options_ref)
-            output = cmd_result.stdout.strip()
-            if cmd_result.exit_status:
-                raise error.TestFail("dumpxml %s failed.\n"
-                                     "Detail: %s.\n" % (vm_ref, cmd_result))
-            status = 0
-        except error.TestFail, detail:
-            status = 1
-            output = detail
-        logging.debug("virsh dumpxml result:\n%s", output)
-
-        # Recover vm state
-        if vm_state == "paused":
-            vm.resume()
+        cmd_result = virsh.dumpxml(vm_ref, extra=options_ref,
+                                   uri=uri,
+                                   unprivileged_user=unprivileged_user,
+                                   debug=True)
+        utlv.check_exit_status(cmd_result, status_error)
+        output = cmd_result.stdout.strip()
 
         # Check result
-        if status_error == "yes":
-            if status == 0:
-                raise error.TestFail("Run successfully with wrong command.")
-        elif status_error == "no":
-            if status:
-                raise error.TestFail("Run failed with right command.")
+        if not status_error:
+            if (options_ref.count("inactive") and
+                    is_dumpxml_of_running_vm(output, domid)):
+                test.fail("Found domain id in XML when run virsh dumpxml"
+                          " with --inactive option")
+            elif options_ref.count("update-cpu"):
+                if not check_cpu(output, cpu_match):
+                    test.fail("update-cpu option check failed")
+            elif options_ref.count("security-info"):
+                if not output.count("passwd='%s'" % security_pwd):
+                    test.fail("No security info found")
             else:
-                # validate dumpxml file
-                # Since validate LibvirtXML functions are been working by
-                # cevich, reserving it here. :)
-                if options_ref.count("inactive"):
-                    if is_dumpxml_of_running_vm(output, domid):
-                        raise error.TestFail("Got dumpxml for active vm "
-                                             "with --inactive option!")
-                elif options_ref.count("update-cpu"):
-                    if not check_cpu(output, cpu_match):
-                        raise error.TestFail("update-cpu option check fail")
-                elif options_ref.count("security-info"):
-                    if not output.count("passwd='%s'" % security_pwd):
-                        raise error.TestFail("No more cpu info outputed!")
-                else:
-                    if (vm_state == "shutoff" and
-                            is_dumpxml_of_running_vm(output, domid)):
-                        raise error.TestFail("Got dumpxml for active vm "
-                                             "when vm is shutoff.")
+                if (vm_state == "shutoff" and
+                        is_dumpxml_of_running_vm(output, domid)):
+                    test.fail("Found domain id in XML when run virsh dumpxml"
+                              " for a shutoff VM")
+
     finally:
         backup_xml.sync()
