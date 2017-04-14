@@ -4,10 +4,7 @@ import re
 
 import aexpect
 
-from autotest.client.shared import error
-
 from virttest import data_dir
-from virttest import remote
 from virttest import virsh
 
 
@@ -31,7 +28,7 @@ def run(test, params, env):
         elif restore_state == "paused":
             option = "--paused"
         else:
-            raise error.TestFail("Unknown save-image-define option")
+            test.fail("Unknown save-image-define option")
 
         session = aexpect.ShellSession("sudo -s")
         try:
@@ -44,29 +41,29 @@ def run(test, params, env):
             session.sendline(edit_cmd)
             session.send('\x1b')
             session.send('ZZ')
-            remote.handle_prompts(session, None, None, r"[\#\$]\s*$")
+            session.read_until_last_line_matches(
+                    patterns=['edited', 'not changed'],
+                    timeout=5,
+                    print_func=logging.debug)
+        except (aexpect.ShellError, aexpect.ExpectError,
+                aexpect.ShellTimeoutError), details:
             session.close()
-        except (aexpect.ShellError, aexpect.ExpectError), details:
-            log = session.get_output()
-            session.close()
-            raise error.TestFail("Failed to do save-image-edit: %s\n%s"
-                                 % (details, log))
+            test.error("Failed to do save-image-edit: %s" % details)
 
     def vm_state_check():
         cmd_result = virsh.dumpxml(vm_name, debug=True)
         if cmd_result.exit_status:
-            raise error.TestFail("Failed to dump xml of domain %s" % vm_name)
+            test.fail("Failed to dump xml of domain %s" % vm_name)
 
         # The xml should contain the match_string
         xml = cmd_result.stdout.strip()
         match_string = "<boot dev='cdrom'/>"
         if not re.search(match_string, xml):
-            raise error.TestFail("After domain restore, "
-                                 "the xml is not expected")
+            test.fail("After domain restore the xml is not expected")
 
         domstate = virsh.domstate(vm_name, debug=True).stdout.strip()
         if restore_state != domstate:
-            raise error.TestFail("The domain state is not expected")
+            test.fail("The domain state is not expected")
 
     # MAIN TEST CODE ###
     # Process cartesian parameters
@@ -86,7 +83,7 @@ def run(test, params, env):
         # Save the RAM state of a running domain
         cmd_result = virsh.save(vm_name, vm_save, debug=True)
         if cmd_result.exit_status:
-            raise error.TestFail("Failed to save running domain %s" % vm_name)
+            test.fail("Failed to save running domain %s" % vm_name)
 
         # Edit the xml in the saved state file
         edit_image_xml()
@@ -94,7 +91,7 @@ def run(test, params, env):
         # Restore domain
         cmd_result = virsh.restore(vm_save, debug=True)
         if cmd_result.exit_status:
-            raise error.TestFail("Failed to restore domain %s" % vm_name)
+            test.fail("Failed to restore domain %s" % vm_name)
         os.remove(vm_save)
 
         vm_state_check()
