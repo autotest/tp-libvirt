@@ -9,20 +9,40 @@ from virttest import data_dir
 
 def prepare_image(params):
     """
-    (1) Create a image
-    (2) Create file system on the image
+    (1) Check image exits
+    (2) Create a image
+    (3) Create file system on the image
     """
-    params["image_path"] = utils_test.libguestfs.preprocess_image(params)
+    image_path = params.get("image_full_path")
+    partition_type = params.get("partition_type")
+    if params["gf_create_img_force"] == "no" and os.path.exists(image_path):
+        params["image_path"] = image_path
+        # get mount_point
+        if partition_type == 'lvm':
+            pv_name = params.get("pv_name", "/dev/sdb")
+            vg_name = params.get("vg_name", "vol_test")
+            lv_name = params.get("lv_name", "vol_file")
+            mount_point = "/dev/%s/%s" % (vg_name, lv_name)
+        elif partition_type == "physical":
+            logging.info("create physical partition...")
+            pv_name = params.get("pv_name", "/dev/sdb")
+            mount_point = pv_name + "1"
+        params["mount_point"] = mount_point
 
-    if not params.get("image_path"):
-        raise error.TestFail("Image could not be created for some reason.")
+        logging.debug("Skip preparing image, " + image_path + " exists")
+    else:
 
-    gf = utils_test.libguestfs.GuestfishTools(params)
-    status, output = gf.create_fs()
-    if status is False:
+        params["image_path"] = utils_test.libguestfs.preprocess_image(params)
+
+        if not params.get("image_path"):
+            raise error.TestFail("Image could not be created for some reason.")
+
+        gf = utils_test.libguestfs.GuestfishTools(params)
+        status, output = gf.create_fs()
+        if status is False:
+            gf.close_session()
+            raise error.TestFail(output)
         gf.close_session()
-        raise error.TestFail(output)
-    gf.close_session()
 
 
 def test_mount(vm, params):
@@ -399,22 +419,7 @@ def run(test, params, env):
             image_name_with_fs_pt = image_name + '.' + fs_type + '.' + partition_type
             params['image_name'] = image_name_with_fs_pt
             image_path = image_dir + '/' + image_name_with_fs_pt + '.' + image_format
+            params['image_full_path'] = image_path
 
-            if params["gf_create_img_force"] == "no" and os.path.exists(image_path):
-                params["image_path"] = image_path
-                # get mount_point
-                if partition_type == 'lvm':
-                    pv_name = params.get("pv_name", "/dev/sdb")
-                    vg_name = params.get("vg_name", "vol_test")
-                    lv_name = params.get("lv_name", "vol_file")
-                    mount_point = "/dev/%s/%s" % (vg_name, lv_name)
-                elif partition_type == "physical":
-                    logging.info("create physical partition...")
-                    pv_name = params.get("pv_name", "/dev/sdb")
-                    mount_point = pv_name + "1"
-                params["mount_point"] = mount_point
-
-                logging.debug("Skip preparing image, " + image_path + " exists")
-            else:
-                prepare_image(params)
+            prepare_image(params)
             testcase(vm, params)
