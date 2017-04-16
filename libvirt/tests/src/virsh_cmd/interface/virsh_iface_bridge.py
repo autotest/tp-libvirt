@@ -116,11 +116,22 @@ def run(test, params, env):
                 if "no-start" in bridge_option:
                     list_option = "--inactive"
                 if libvirt.check_iface(bridge_name, "exists", list_option):
-                    # Unbridge
-                    result = virsh.iface_unbridge(bridge_name, unbridge_option)
+                    # iface-unbridge requests Destroy and Undefine the bridge device,
+                    # since we otherwise can't safely define the unattached device.
+                    # refer to the patch 1ae8eed in libvirt source for more details.
+                    # so unbridge the inactive iface will encounter error as follow,
+                    # error:
+                    # Requested operation is not valid: interface is not running
+                    if libvirt.check_iface(bridge_name, "state", "--all"):
+                        result = virsh.iface_unbridge(bridge_name, unbridge_option)
+                    else:
+                        # Just undefine it if iface state is inactive
+                        virsh_dargs = {'debug': True}
+                        result = virsh.iface_undefine(bridge_name, **virsh_dargs)
                     libvirt.check_exit_status(result, unbridge_status_error)
-                    if not unbridge_status_error:
-                        unbridge_check()
+                    if (not unbridge_status_error and
+                            libvirt.check_iface(bridge_name, "exists", "--all")):
+                        raise error.TestFail("%s is still present." % bridge_name)
                 else:
                     raise error.TestFail("%s is not present." % bridge_name)
         else:
