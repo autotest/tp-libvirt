@@ -67,8 +67,10 @@ def run(test, params, env):
         if not vm.is_alive():
             vm.start()
         session = vm.wait_for_login()
-        output = session.cmd_output("ifconfig -a|grep Ethernet")
-        nic_list_before = output.splitlines()
+        output = session.cmd_output("ifconfig -a -s")
+        nic_list_before = []
+        for line in output.splitlines()[1:]:
+            nic_list_before.append(line.split()[0])
 
         if sriov:
             # set the parameter max_vfs of igb module to 7. Then we can use
@@ -102,7 +104,7 @@ def run(test, params, env):
             # Find the network name (ethX) is using this pci device.
             network_service = service.Factory.create_service("network")
             network_service.restart()
-            result = virsh.nodedev_list("net")
+            result = virsh.nodedev_list(cap="net")
             nodedev_nets = result.stdout.strip().splitlines()
             device = None
             for nodedev in nodedev_nets:
@@ -136,12 +138,14 @@ def run(test, params, env):
         vm.start()
         session = vm.wait_for_login()
         if device_type == "NIC":
-            output = session.cmd_output("ifconfig -a|grep Ethernet")
-            nic_list_after = output.splitlines()
-            if nic_list_after == nic_list_before:
+            output = session.cmd_output("ifconfig -a -s")
+            nic_list_after = []
+            for line in output.splitlines()[1:]:
+                nic_list_after.append(line.split()[0])
+            if set(nic_list_after) == set(nic_list_before):
                 raise error.TestFail(
                     "No Ethernet found for the pci device in guest.")
-            nic_name = (list(set(nic_list_after) - set(nic_list_before)))[0].split()[0]
+            nic_name = (list(set(nic_list_after) - set(nic_list_before)))[0]
             try:
                 session.cmd("ifconfig %s %s" % (nic_name, net_ip))
                 session.cmd("ping -c 4 %s" % server_ip)
