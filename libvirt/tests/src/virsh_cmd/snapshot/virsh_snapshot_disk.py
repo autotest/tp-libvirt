@@ -12,6 +12,7 @@ from virttest import data_dir
 from virttest import libvirt_xml
 from virttest import libvirt_storage
 from virttest import utils_libvirtd
+from virttest import utils_selinux
 from virttest.utils_test import libvirt as utlv
 
 from provider import libvirt_version
@@ -58,6 +59,9 @@ def run(test, params, env):
     options = params.get("snapshot_options", "")
     export_options = params.get("export_options", "rw,no_root_squash,fsid=0")
 
+    # Set selinux of host.
+    backup_sestatus = utils_selinux.get_status()
+    utils_selinux.set_status("permissive")
     # Set volume xml attribute dictionary, extract all params start with 'vol_'
     # which are for setting volume xml, except 'lazy_refcounts'.
     vol_arg = {}
@@ -446,3 +450,5 @@ def run(test, params, env):
             except error.TestFail, detail:
                 libvirtd.restart()
                 logging.error(str(detail))
+        # restore the selinux
+        utils_selinux.set_status(backup_sestatus)
