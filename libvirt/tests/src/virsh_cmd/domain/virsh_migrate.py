@@ -466,17 +466,28 @@ def run(test, params, env):
                                                graphics_port)
         extra = "--graphicsuri %s" % graphics_uri
 
+    # Check the required parameters
+    nfs_mount_path = params.get("nfs_mount_dir")
+    shared_storage = params.get("migrate_shared_storage", "")
+    if shared_storage == "" or "EXAMPLE" in shared_storage:
+        # retrieve shared storage image path from existing params
+        try:
+            image = params.get("image_name").split("/")[-1]
+            image_format = params.get("image_format")
+            image = "%s.%s" % (image, image_format)
+            params["migrate_shared_storage"] = shared_storage = os.path.join(nfs_mount_path,
+                                                                             image)
+            logging.debug("shared storage image location: %s", shared_storage)
+        except IndexError:
+            # use default image jeos-23-64
+            default_guest_asset = defaults.get_default_guest_os_info()['asset']
+            default_guest_asset = "%s.qcow2" % default_guest_asset
+            params["migrate_shared_storage"] = shared_storage = os.path.join(nfs_mount_path,
+                                                                             (default_guest_asset))
+
     for v in params.itervalues():
         if isinstance(v, str) and v.count("EXAMPLE"):
             test.cancel("Please set real value for %s" % v)
-
-    # Check the required parameters
-    shared_storage = params.get("migrate_shared_storage", "")
-    # use default image jeos-23-64
-    if shared_storage == "":
-        default_guest_asset = defaults.get_default_guest_os_info()['asset']
-        shared_storage = params.get("nfs_mount_dir")
-        shared_storage += ('/' + default_guest_asset + '.qcow2')
 
     options = params.get("virsh_migrate_options")
     # Direct migration is supported only for Xen in libvirt
@@ -518,7 +529,7 @@ def run(test, params, env):
     # Params to update disk using shared storage
     params["disk_type"] = "file"
     params["disk_source_protocol"] = "netfs"
-    params["mnt_path_name"] = params.get("nfs_mount_dir")
+    params["mnt_path_name"] = nfs_mount_path
 
     # Params for NFS and SSH setup
     params["server_ip"] = migrate_dest_ip
