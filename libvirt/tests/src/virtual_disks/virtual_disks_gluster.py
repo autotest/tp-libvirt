@@ -1,8 +1,6 @@
 import os
 import logging
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import virsh
@@ -91,11 +89,15 @@ def run(test, params, env):
         else:
             source_dict = {"protocol": "gluster",
                            "name": "%s/%s" % (vol_name, disk_img)}
-            host_dict = {"name": host_ip, "port": "24007"}
+            host_dict = [{"name": host_ip, "port": "24007"}]
+            # If mutiple_hosts is True, attempt to add multiple hosts.
+            if multiple_hosts:
+                host_dict.append({"name": params.get("dummy_host1"), "port": "24007"})
+                host_dict.append({"name": params.get("dummy_host2"), "port": "24007"})
             if transport:
-                host_dict.update({"transport": transport})
+                host_dict.append({"transport": transport})
             disk_xml.source = disk_xml.new_disk_source(
-                **{"attrs": source_dict, "hosts": [host_dict]})
+                **{"attrs": source_dict, "hosts": host_dict})
         # set domain options
         if dom_iothreads:
             try:
@@ -125,15 +127,15 @@ def run(test, params, env):
         # wait for vm to shutdown
 
         if not utils_misc.wait_for(lambda: vm.state() == "shut off", 60):
-            raise error.TestFail("vm is still alive after S4 operation")
+            test.fail("vm is still alive after S4 operation")
 
         # Wait for vm and qemu-ga service to start
         vm.start()
         # Prepare guest agent and start guest
         try:
             vm.prepare_guest_agent()
-        except (remote.LoginError, virt_vm.VMError), e:
-            raise error.TestFail("failed to prepare agent")
+        except (remote.LoginError, virt_vm.VMError), detail:
+            test.fail("failed to prepare agent:\n%s" % detail)
 
         #TODO This step may hang for rhel6 guest
         ret = virsh.dompmsuspend(vm_name, "mem", **virsh_dargs)
@@ -141,12 +143,12 @@ def run(test, params, env):
 
         # Check vm state
         if not utils_misc.wait_for(lambda: vm.state() == "pmsuspended", 60):
-            raise error.TestFail("vm isn't suspended after S3 operation")
+            test.fail("vm isn't suspended after S3 operation")
 
         ret = virsh.dompmwakeup(vm_name, **virsh_dargs)
         libvirt.check_exit_status(ret)
         if not vm.is_alive():
-            raise error.TestFail("vm is not alive after dompmwakeup")
+            test.fail("vm is not alive after dompmwakeup")
 
     # Disk specific attributes.
     pm_enabled = "yes" == params.get("pm_enabled", "no")
@@ -160,6 +162,9 @@ def run(test, params, env):
     dom_iothreads = params.get("dom_iothreads")
     brick_path = os.path.join(test.virtdir, pool_name)
     test_qemu_cmd = "yes" == params.get("test_qemu_cmd", "no")
+
+    # Gluster server multiple hosts flag.
+    multiple_hosts = "yes" == params.get("multiple_hosts", "no")
 
     pre_vm_state = params.get("pre_vm_state", "running")
 
@@ -197,15 +202,15 @@ def run(test, params, env):
             vm.undefine()
             if virsh.create(vmxml_for_test.xml, **virsh_dargs).exit_status:
                 vmxml_backup.define()
-                raise error.TestNAError("Cann't create the domain")
+                test.skip("can't create the domain")
 
         # Run the tests.
         if pm_enabled:
             # Makesure the guest agent is started
             try:
                 vm.prepare_guest_agent()
-            except (remote.LoginError, virt_vm.VMError), e:
-                raise error.TestFail("failed to prepare agent: %s" % e)
+            except (remote.LoginError, virt_vm.VMError), detail:
+                test.fail("failed to prepare agent: %s" % detail)
             # Run dompmsuspend command.
             test_pmsuspend(vm_name)
         if test_qemu_cmd:
@@ -218,8 +223,8 @@ def run(test, params, env):
             if driver_iothread:
                 cmd += " | grep iothread=iothread%s" % driver_iothread
             if process.run(cmd, ignore_status=True, shell=True).exit_status:
-                raise error.TestFail("Can't see gluster option '%s' "
-                                     "in command line" % cmd)
+                test.fail("Can't see gluster option '%s' "
+                          "in command line" % cmd)
 
     finally:
         # cleanup swap
