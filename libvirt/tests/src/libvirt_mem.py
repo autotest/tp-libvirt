@@ -162,10 +162,10 @@ def run(test, params, env):
                 assert int(tg_node) == int(mem_dev[0].target.node)
             elif dt_mem:
                 if at_times:
-                    assert int(max_mem) - (int(tg_size) *
-                                           at_times) == xml_max_mem
+                    assert int(new_max_mem) - (int(tg_size) *
+                                               at_times) == xml_max_mem
                 else:
-                    assert int(max_mem) - int(tg_size) == xml_max_mem
+                    assert int(new_max_mem) - int(tg_size) == xml_max_mem
                 # Bug 1220702, skip the check for current memory
                 assert int(new_cur_mem) - int(tg_size) == xml_cur_mem
         except AssertionError:
