@@ -3,8 +3,6 @@ import logging
 from aexpect import ShellTimeoutError
 from aexpect import ShellProcessTerminatedError
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
@@ -57,8 +55,8 @@ def prepare_vm_state(vm, vm_state):
             except (ShellTimeoutError, ShellProcessTerminatedError):
                 pass
             session.close()
-        except Exception, e:
-            logging.error("Crash domain failed: %s", e)
+        except Exception, info:
+            logging.error("Crash domain failed: %s", info)
     else:
         logging.error("Unknown state for this test")
 
@@ -176,9 +174,8 @@ def run(test, params, env):
                     vmxml_new = vm_xml.VMXML.new_from_dumpxml(vm.name)
                     # Skip this test if no panic device find
                     if not vmxml_new.xmltreefile.find('devices').findall('panic'):
-                        raise error.TestNAError("No 'panic' device in the guest,"
-                                                " maybe your libvirt version"
-                                                " doesn't support it.")
+                        test.cancel("No 'panic' device in the guest, maybe "
+                                    "your libvirt version doesn't support it.")
                 prepare_vm_state(vm, vm_state)
         if enforce_command:
             domstats_option += " --enforce"
@@ -194,15 +191,15 @@ def run(test, params, env):
         if status_error:
             if not status:
                 if "unsupported flags" in result.stderr:
-                    raise error.TestNAError(result.stderr)
-                raise error.TestFail("Run successfully with wrong command!")
+                    test.cancel(result.stderr)
+                test.fail("Run successfully with wrong command!")
         else:
             if status:
-                raise error.TestFail("Run failed with right command")
+                test.fail("Run failed with right command")
             else:
                 for vm in vms:
                     if not check_output(output, vm, vm_state, domstats_option):
-                        raise error.TestFail("Check command output failed")
+                        test.fail("Check command output failed")
     finally:
         try:
             for vm in vms:
