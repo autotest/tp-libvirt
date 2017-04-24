@@ -108,7 +108,7 @@ def check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin, setvcpu_option=""):
     libvirt.check_exit_status(result)
     vcpupin_output = result.stdout.strip().splitlines()[2:]
     if expect_vcpupin:
-        host_cpu_count = utils.count_cpus()
+        host_cpu_count = os.sysconf('SC_NPROCESSORS_CONF')
         xml_affinity_list = []
         xml_affinity = {}
         try:
@@ -362,7 +362,9 @@ def run(test, params, env):
     pin_vcpu = params.get("pin_vcpu")
     pin_cpu_list = params.get("pin_cpu_list", "x")
     check_after_plug_fail = "yes" == params.get("check_after_plug_fail", "no")
-
+    sockets = int(params.get("sockets", "0"))
+    cores = int(params.get("cores", "0"))
+    threads = int(params.get("threads", "0"))
     # Init expect vcpu count values
     expect_vcpu_num = [vcpu_max_num, vcpu_max_num, vcpu_current_num,
                        vcpu_current_num, vcpu_current_num]
@@ -372,7 +374,7 @@ def run(test, params, env):
     expect_vcpupin = {}
 
     # Init cpu-list for vcpupin
-    host_cpu_count = utils.count_cpus()
+    host_cpu_count = os.sysconf('SC_NPROCESSORS_CONF')
     if (int(host_cpu_count) < 2) and (not pin_cpu_list == "x"):
         raise error.TestNAError("We need more cpus on host in this case for"
                                 " the cpu-list=%s. But current number of cpu"
@@ -421,8 +423,13 @@ def run(test, params, env):
             vmxml.remove_agent_channels()
         vmxml.sync()
 
-        vmxml.set_vm_vcpus(vm_name, int(vcpu_max_num), int(vcpu_current_num))
-
+        topology = vmxml.get_cpu_topology()
+        if all([topology, sockets, cores, threads]):
+            vmxml.set_vm_vcpus(vm_name, int(vcpu_max_num),
+                               int(vcpu_current_num), sockets, cores, threads)
+        else:
+            vmxml.set_vm_vcpus(vm_name, int(vcpu_max_num),
+                               int(vcpu_current_num))
         # Do not apply S3/S4 on power
         if 'power' not in cpu_util.get_cpu_arch():
             vmxml.set_pm_suspend(vm_name, "yes", "yes")
