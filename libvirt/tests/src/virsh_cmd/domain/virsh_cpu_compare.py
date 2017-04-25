@@ -1,7 +1,6 @@
 import os
 import logging
-
-from autotest.client.shared import error
+import platform
 
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -41,11 +40,14 @@ def run(test, params, env):
             try:
                 libvirtxml = vmxml['cpu']
             except LibvirtXMLNotFoundError:
-                raise error.TestNAError("No <cpu> element in domain XML")
+                test.cancel("No <cpu> element in domain XML")
 
         if mode == "modify":
             if modify_target == "mode":
                 libvirtxml['mode'] = modify_value
+                # Power CPU model names are in lowercases for compatibility mode
+                if "ppc" in platform.machine() and modify_value == "host-model":
+                    libvirtxml['model'] = libvirtxml['model'].lower()
             elif modify_target == "model":
                 libvirtxml['model'] = modify_value
             elif modify_target == "vendor":
@@ -106,8 +108,8 @@ def run(test, params, env):
                 vmxml['cpu'] = vmxml_cpu
                 vmxml.sync()
             else:
-                raise error.TestNAError("No features present in host "
-                                        "capability XML")
+                test.cancel("No features present in host "
+                            "capability XML")
 
         # Prepare temp compare file.
         cpu_compare_xml = get_cpu_xml(target, mode)
@@ -157,15 +159,15 @@ def run(test, params, env):
                 else:
                     msg_patterns = "identical"
             else:
-                raise error.TestNAError("Unsupport modify target %s in this "
-                                        "test" % mode)
+                test.cancel("Unsupport modify target %s in this "
+                            "test" % mode)
         elif mode == "clear":
             msg_patterns = "empty"
         elif mode == "invalid_test":
             msg_patterns = ""
         else:
-            raise error.TestNAError("Unsupport modify mode %s in this "
-                                    "test" % mode)
+            test.cancel("Unsupport modify mode %s in this "
+                        "test" % mode)
         status_error = params.get("status_error", "")
         if status_error == "yes":
             expected_status = 1
@@ -194,8 +196,8 @@ def run(test, params, env):
         # Check result
         logging.debug("Expect command exit status: %s", expected_status)
         if result.exit_status != expected_status:
-            raise error.TestFail("Exit status %s is not expected"
-                                 % result.exit_status)
+            test.fail("Exit status %s is not expected"
+                      % result.exit_status)
         if msg_patterns:
             logging.debug("Expect key word in comand output: %s", msg_patterns)
             if result.stdout.strip():
@@ -203,7 +205,7 @@ def run(test, params, env):
             else:
                 output = result.stderr.strip()
             if not output.count(msg_patterns):
-                raise error.TestFail("Not find expect key word in command output")
+                test.fail("Not find expect key word in command output")
 
         # Check VM for cpu 'mode' related cases
         if check_vm_ps:
@@ -212,7 +214,7 @@ def run(test, params, env):
             virsh.start(vm_name, ignore_status=True, debug=True)
             vm_pid = vm.get_pid()
             if vm_pid is None:
-                raise error.TestError("Could not get VM pid")
+                test.error("Could not get VM pid")
             with open("/proc/%d/cmdline" % vm_pid) as vm_cmdline_file:
                 vm_cmdline = vm_cmdline_file.read()
             vm_features_str = ""
@@ -233,7 +235,7 @@ def run(test, params, env):
                 host_features.append(check_vm_ps_value)
             for feature in vm_features:
                 if feature not in host_features:
-                    raise error.TestFail("Not find %s in host capability"
-                                         % feature)
+                    test.fail("Not find %s in host capability"
+                              % feature)
     finally:
         vmxml_backup.sync()
