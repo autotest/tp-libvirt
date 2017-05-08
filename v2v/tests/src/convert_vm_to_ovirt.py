@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 
 from avocado.core import exceptions
 from avocado.utils import process
@@ -114,9 +115,9 @@ def run(test, params, env):
     os.environ['LIBGUESTFS_BACKEND'] = 'direct'
     try:
         # Execute virt-v2v command
-        ret = utils_v2v.v2v_cmd(v2v_params)
-        logging.debug("virt-v2v verbose messages:\n%s", ret)
-        if ret.exit_status != 0:
+        v2v_ret = utils_v2v.v2v_cmd(v2v_params)
+        logging.debug("virt-v2v verbose messages:\n%s", v2v_ret)
+        if v2v_ret.exit_status != 0:
             raise exceptions.TestFail("Convert VM failed")
 
         # Import the VM to oVirt Data Center from export domain, and start it
@@ -127,6 +128,26 @@ def run(test, params, env):
         # Check all checkpoints after convert
         vmchecker = VMChecker(test, params, env)
         ret = vmchecker.run()
+
+        # Other checks
+        err_list = []
+        os_list = ['win8', 'win8.1', 'win10', 'win2012', 'win2012r2']
+        win_version = ['6.2', '6.3', '10.0', '6.2', '6.3']
+        os_map = dict(zip(os_list, win_version))
+        vm_arch = params.get('vm_arch')
+        os_ver = params.get('os_version')
+
+        if params.get('os_version') in os_list:
+            qxl_warn = 'virt-v2v: warning: there is no QXL driver for this ' \
+                       'version of Windows \(%s[.\s]*?%s\)' %\
+                       (os_map[os_ver], vm_arch)
+            if re.search(qxl_warn, v2v_ret.stdout):
+                logging.debug('Found QXL warning')
+            else:
+                err_list.append('Not find QXL warning')
+
+        ret.extend(err_list)
+
         if len(ret) == 0:
             logging.info("All checkpoints passed")
         else:
