@@ -1,17 +1,13 @@
 import re
 import os
 import logging
-from xml.dom.minidom import parse
-
-from autotest.client.shared import error
 
 from avocado.utils import process
-
 from virttest import remote
 from virttest import virsh
 from virttest import libvirt_vm
 from virttest.libvirt_xml import vm_xml
-from virttest.utils_test import libvirt
+from virttest import utils_hotplug
 
 
 def remote_test(remote_ip, local_ip, remote_pwd, remote_prompt,
@@ -28,9 +24,6 @@ def remote_test(remote_ip, local_ip, remote_pwd, remote_prompt,
                                       "root", remote_pwd, remote_prompt)
         session.cmd_output('LANG=C')
         command = "virsh -c %s setvcpus %s 1 --live" % (remote_uri, vm_name)
-        if virsh.has_command_help_match("setvcpus", "--live") is None:
-            raise error.TestNAError("The current libvirt doesn't support"
-                                    " '--live' option for setvcpus")
         status, output = session.cmd_status_output(command, internal_timeout=5)
         session.close()
         if status != 0:
@@ -39,47 +32,6 @@ def remote_test(remote_ip, local_ip, remote_pwd, remote_prompt,
         status = 1
         err = "remote test failed"
     return status, status_error, err
-
-
-def get_xmldata(vm_name, xml_file, options):
-    """
-    Get some values out of the guests xml
-    Returns:
-        count => Number of vCPUs set for the guest
-        current => If there is a 'current' value set
-                   in the xml indicating the ability
-                   to add vCPUs. If 'current' is not
-                   set, then return 0 for this value.
-        os_machine => Name of the <os> <type machine=''>
-                      to be used to determine if we can
-                      support hotplug
-    """
-    # Grab a dump of the guest - if we're using the --config,
-    # then get an --inactive dump.
-    extra_opts = ""
-    if "--config" in options:
-        extra_opts = "--inactive"
-    vcpus_current = 0
-    virsh.dumpxml(vm_name, extra=extra_opts, to_file=xml_file)
-    dom = parse(xml_file)
-    root = dom.documentElement
-    # get the vcpu value
-    vcpus_parent = root.getElementsByTagName("vcpu")
-    vcpus_count = int(vcpus_parent[0].firstChild.data)
-    for n in vcpus_parent:
-        try:
-            vcpus_current += int(n.getAttribute("current"))
-        except ValueError:
-            pass
-    # get the machine type
-    os_parent = root.getElementsByTagName("os")
-    os_machine = ""
-    for os_elem in os_parent:
-        for node in os_elem.childNodes:
-            if node.nodeName == "type":
-                os_machine = node.getAttribute("machine")
-    dom.unlink()
-    return vcpus_count, vcpus_current, os_machine
 
 
 def run(test, params, env):
@@ -99,42 +51,73 @@ def run(test, params, env):
     command = params.get("setvcpus_command", "setvcpus")
     options = params.get("setvcpus_options")
     vm_ref = params.get("setvcpus_vm_ref", "name")
-    count = params.get("setvcpus_count", "")
+    status_error = (params.get("status_error", "no") == "yes")
     convert_err = "Can't convert {0} to integer type"
     try:
+        current_vcpu = int(params.get("setvcpus_current", "1"))
+    except ValueError:
+        test.error(convert_err.format(current_vcpu))
+    try:
+        max_vcpu = int(params.get("setvcpus_max", "4"))
+    except ValueError:
+        test.error(convert_err.format(max_vcpu))
+    try:
+        count = params.get("setvcpus_count", "")
+        if count:
+            count = eval(count)
         count = int(count)
     except ValueError:
         # 'count' may not invalid number in negative tests
         logging.debug(convert_err.format(count))
-    current_vcpu = int(params.get("setvcpus_current", "1"))
-    try:
-        current_vcpu = int(current_vcpu)
-    except ValueError:
-        raise error.TestError(convert_err.format(current_vcpu))
-    max_vcpu = int(params.get("setvcpus_max", "4"))
-    try:
-        max_vcpu = int(max_vcpu)
-    except ValueError:
-        raise error.TestError(convert_err.format(max_vcpu))
+
     extra_param = params.get("setvcpus_extra_param")
     count_option = "%s %s" % (count, extra_param)
-    status_error = params.get("status_error")
     remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
     local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
     remote_pwd = params.get("remote_pwd", "")
     remote_prompt = params.get("remote_prompt", "#")
     tmpxml = os.path.join(test.tmpdir, 'tmp.xml')
-    set_topology = "yes" == params.get("set_topology", "no")
-    sockets = params.get("topology_sockets")
-    cores = params.get("topology_cores")
-    threads = params.get("topology_threads")
-    start_vm_after_set = "yes" == params.get("start_vm_after_set", "no")
-    start_vm_expect_fail = "yes" == params.get("start_vm_expect_fail", "no")
+    set_topology = (params.get("set_topology", "no") == "yes")
+    sockets = params.get("sockets")
+    cores = params.get("cores")
+    threads = params.get("threads")
 
-    # Early death
+    # Early death 1.1
     if vm_ref == "remote" and (remote_ip.count("EXAMPLE.COM") or
                                local_ip.count("EXAMPLE.COM")):
-        raise error.TestNAError("remote/local ip parameters not set.")
+        test.cancel("remote/local ip parameters not set.")
+
+    # Early death 1.2
+    option_list = options.split(" ")
+    for item in option_list:
+        if virsh.has_command_help_match(command, item) is None:
+            test.cancel("The current libvirt version"
+                        " doesn't support '%s' option" % item)
+
+    # Init expect vcpu count values
+    exp_vcpu = {'max_config': max_vcpu, 'max_live': max_vcpu,
+                'cur_config': current_vcpu, 'cur_live': current_vcpu,
+                'guest_live': current_vcpu}
+
+    def set_expected(vm, options):
+        """
+        Set the expected vcpu numbers
+
+        :param vm: vm object
+        :param options: setvcpus options
+        """
+        if ("config" in options) or ("current" in options and vm.is_dead()):
+            if "maximum" in options:
+                exp_vcpu["max_config"] = count
+            else:
+                exp_vcpu['cur_config'] = count
+        if ("live" in options) or ("current" in options and vm.is_alive()):
+            exp_vcpu['cur_live'] = count
+            exp_vcpu['guest_live'] = count
+        if options == '':
+            # when none given it defaults to live
+            exp_vcpu['cur_live'] = count
+            exp_vcpu['guest_live'] = count
 
     # Save original configuration
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -158,36 +141,37 @@ def run(test, params, env):
     # the machine this could result in a newer qemu still using 1.4 or earlier
     # for the machine type.
     #
-
     try:
-        if vm.is_alive():
-            vm.destroy()
-
         # Set maximum vcpus, so we can run all kinds of normal tests without
         # encounter requested vcpus greater than max allowable vcpus error
-        vmxml.set_vm_vcpus(vm_name, max_vcpu, current_vcpu)
+        topology = vmxml.get_cpu_topology()
+        if all([topology, sockets, cores, threads]) or set_topology:
+            vmxml.set_vm_vcpus(vm_name, max_vcpu, current_vcpu,
+                               sockets, cores, threads, True)
+        else:
+            vmxml.set_vm_vcpus(vm_name, max_vcpu, current_vcpu)
+
+        if topology and ("config" and "maximum" in options) and not status_error:
+            # https://bugzilla.redhat.com/show_bug.cgi?id=1426220
+            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            del vmxml.cpu
+            vmxml.sync()
+
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         logging.debug("Pre-test xml is %s", vmxml.xmltreefile)
 
         # Get the number of cpus, current value if set, and machine type
-        orig_count, orig_current, mtype = get_xmldata(vm_name, tmpxml, options)
+        cpu_xml_data = utils_hotplug.get_cpu_xmldata(vm, options)
         logging.debug("Before run setvcpus: cpu_count=%d, cpu_current=%d,"
-                      " mtype=%s", orig_count, orig_current, mtype)
-
-        # Set cpu topology
-        if set_topology:
-            vmcpu_xml = vm_xml.VMCPUXML()
-            vmcpu_xml['topology'] = {'sockets': sockets, 'cores': cores,
-                                     'threads': threads}
-            vmxml['cpu'] = vmcpu_xml
-            vmxml.sync()
+                      " mtype=%s", cpu_xml_data['vcpu'],
+                      cpu_xml_data['current_vcpu'], cpu_xml_data['mtype'])
 
         # Restart, unless that's not our test
         if not vm.is_alive():
             vm.start()
         vm.wait_for_login()
 
-        if orig_count == 1 and count == 1:
+        if cpu_xml_data['vcpu'] == 1 and count == 1:
             logging.debug("Original vCPU count is 1, just checking if setvcpus "
                           "can still set current.")
 
@@ -224,30 +208,20 @@ def run(test, params, env):
             else:
                 dom_option = vm_ref
 
-            option_list = options.split(" ")
-            for item in option_list:
-                if virsh.has_command_help_match(command, item) is None:
-                    raise error.TestNAError("The current libvirt version"
-                                            " doesn't support '%s' option"
-                                            % item)
             status = virsh.setvcpus(dom_option, count_option, options,
                                     ignore_status=True, debug=True)
+            if not status_error:
+                set_expected(vm, options)
+                result = utils_hotplug.check_vcpu_value(vm, exp_vcpu,
+                                                        option=options)
             setvcpu_exit_status = status.exit_status
             setvcpu_exit_stderr = status.stderr.strip()
 
-            # Start VM after set vcpu
-            if start_vm_after_set:
-                if vm.is_alive():
-                    logging.debug("VM already started")
-                else:
-                    result = virsh.start(vm_name, ignore_status=True,
-                                         debug=True)
-                    libvirt.check_exit_status(result, start_vm_expect_fail)
-
     finally:
-        new_count, new_current, mtype = get_xmldata(vm_name, tmpxml, options)
+        cpu_xml_data = utils_hotplug.get_cpu_xmldata(vm, options)
         logging.debug("After run setvcpus: cpu_count=%d, cpu_current=%d,"
-                      " mtype=%s", new_count, new_current, mtype)
+                      " mtype=%s", cpu_xml_data['vcpu'],
+                      cpu_xml_data['current_vcpu'], cpu_xml_data['mtype'])
 
         # Cleanup
         if pre_vm_state == "paused":
@@ -257,9 +231,9 @@ def run(test, params, env):
             os.remove(tmpxml)
 
     # check status_error
-    if status_error == "yes":
+    if status_error:
         if setvcpu_exit_status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
     else:
         if setvcpu_exit_status != 0:
             # setvcpu/hotplug is only available as of qemu 1.5 and it's still
@@ -277,27 +251,20 @@ def run(test, params, env):
             # by a dash, such as "pc-i440fx-1.5" or "pc-q35-1.5".
             if re.search("unable to execute QEMU command 'cpu-add'",
                          setvcpu_exit_stderr):
-                raise error.TestNAError("guest <os> machine property '%s' "
-                                        "may be too old to allow hotplug."
-                                        % mtype)
+                test.cancel("guest <os> machine property '%s' "
+                            "may be too old to allow hotplug." % cpu_xml_data['mtype'])
 
             # A qemu older than 1.5 or an unplug for 1.6 will result in
             # the following failure.  In general, any time libvirt determines
             # it cannot support adding or removing a vCPU...
             if re.search("cannot change vcpu count of this domain",
                          setvcpu_exit_stderr):
-                raise error.TestNAError("virsh setvcpu hotplug unsupported, "
-                                        " mtype=%s" % mtype)
+                test.cancel("virsh setvcpu hotplug unsupported, "
+                            " mtype=%s" % cpu_xml_data['mtype'])
 
             # Otherwise, it seems we have a real error
-            raise error.TestFail("Run failed with right command mtype=%s"
-                                 " stderr=%s" % (mtype, setvcpu_exit_stderr))
+            test.fail("Run failed with right command mtype=%s"
+                      " stderr=%s" % (cpu_xml_data['mtype'], setvcpu_exit_stderr))
         else:
-            if "--maximum" in options:
-                if new_count != count:
-                    raise error.TestFail("Changing guest maximum vcpus failed"
-                                         " while virsh command return 0")
-            else:
-                if new_current != count:
-                    raise error.TestFail("Changing guest current vcpus failed"
-                                         " while virsh command return 0")
+            if not result:
+                test.fail("Test Failed")
