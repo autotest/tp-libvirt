@@ -3,14 +3,12 @@ import time
 import shutil
 import os
 
-from autotest.client import utils
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
-from virttest import utils_test
 from virttest import utils_misc
-from virttest import utils_selinux
+from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.staging.service import Factory
@@ -24,8 +22,8 @@ def run(test, params, env):
     """
 
     if not virsh.has_help_command('domblkerror'):
-        raise error.TestNAError("This version of libvirt does not support "
-                                "domblkerror test")
+        test.cancel("This version of libvirt does not support domblkerror "
+                    "test")
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     error_type = params.get("domblkerror_error_type")
@@ -52,8 +50,9 @@ def run(test, params, env):
         if not os.path.exists(img_dir):
             os.mkdir(img_dir)
         # Generate attached disk
-        utils.run("qemu-img create %s %s" %
-                  (os.path.join(img_dir, img_name), img_size))
+        process.run("qemu-img create %s %s" %
+                    (os.path.join(img_dir, img_name), img_size),
+                    shell=True, verbose=True)
 
         # Get unspecified error
         if error_type == "unspecified error":
@@ -63,12 +62,15 @@ def run(test, params, env):
             if not os.path.exists(nfs_dir):
                 os.mkdir(nfs_dir)
             mount_opt = "rw,no_root_squash,async"
-            res = utils_test.libvirt.setup_or_cleanup_nfs(
-                is_setup=True, mount_dir=nfs_dir, is_mount=False,
-                export_options=mount_opt, export_dir=img_dir)
+            res = libvirt.setup_or_cleanup_nfs(is_setup=True,
+                                               mount_dir=nfs_dir,
+                                               is_mount=False,
+                                               export_options=mount_opt,
+                                               export_dir=img_dir)
             selinux_bak = res["selinux_status_bak"]
-            utils.run("mount -o nolock,soft,timeo=1,retrans=1,retry=0 "
-                      "127.0.0.1:%s %s" % (img_dir, nfs_dir))
+            process.run("mount -o nolock,soft,timeo=1,retrans=1,retry=0 "
+                        "127.0.0.1:%s %s" % (img_dir, nfs_dir), shell=True,
+                        verbose=True)
             img_path = os.path.join(nfs_dir, img_name)
             nfs_service = Factory.create_service("nfs")
 
@@ -81,7 +83,7 @@ def run(test, params, env):
             # guest paused
 
             pool_target = os.path.join(tmp_dir, pool_name)
-            _pool_vol = utils_test.libvirt.PoolVolumeTest(test, params)
+            _pool_vol = libvirt.PoolVolumeTest(test, params)
             _pool_vol.pre_pool(pool_name, "fs", pool_target, img_name,
                                image_size=img_size)
             _pool_vol.pre_vol(vol_name, "raw", "100M", "0", pool_name)
@@ -107,17 +109,19 @@ def run(test, params, env):
         session = vm.wait_for_login()
         # Get disk list before operation
         get_disks_cmd = "fdisk -l|grep '^Disk /dev'|cut -d: -f1|cut -d' ' -f2"
-        bef_list = session.cmd_output(get_disks_cmd).split("\n")
+        bef_list = str(session.cmd_output(get_disks_cmd)).strip().split("\n")
+        logging.debug("disk_list_debug = %s", bef_list)
 
         # Attach disk to guest
         ret = virsh.attach_device(domain_opt=vm_name,
                                   file_opt=img_disk.xml)
         if ret.exit_status != 0:
-            raise error.TestFail("Fail to attach device %s" % ret.stderr)
+            test.fail("Fail to attach device %s" % ret.stderr)
         time.sleep(2)
         logging.debug("domain xml is %s", virsh.dumpxml(vm_name))
         # get disk list after attach
-        aft_list = session.cmd_output(get_disks_cmd).split("\n")
+        aft_list = str(session.cmd_output(get_disks_cmd)).strip().split("\n")
+        logging.debug("disk list after attaching - %s", aft_list)
         # Find new disk after attach
         new_disk = "".join(list(set(bef_list) ^ set(aft_list)))
         logging.debug("new disk is %s", new_disk)
@@ -140,7 +144,7 @@ def run(test, params, env):
                 session.cmd("dd if=/dev/zero of=%s/big_file bs=1024 "
                             "count=51200 && sync" % mnt_dir)
             except Exception, err:
-                logging.debug("Expected Fail %s" % err)
+                logging.debug("Expected Fail %s", err)
             session.close()
 
         create_large_image()
@@ -157,8 +161,7 @@ def run(test, params, env):
             return (vm.state() == "paused")
 
         if not utils_misc.wait_for(_check_state, timeout):
-            raise error.TestFail("Guest does not paused, it is %s now" %
-                                 vm.state())
+            test.fail("Guest does not paused, it is %s now" % vm.state())
         else:
             logging.info("Now domain state changed to paused status")
             output = virsh.domblkerror(vm_name)
@@ -167,11 +170,10 @@ def run(test, params, env):
                 if output.stdout.strip() == expect_result:
                     logging.info("Get expect result: %s", expect_result)
                 else:
-                    raise error.TestFail("Failed to get expect result, get %s"
-                                         % output.stdout.strip())
+                    test.fail("Failed to get expect result, get %s" %
+                              output.stdout.strip())
             else:
-                raise error.TestFail("Fail to get domblkerror info:%s" %
-                                     output.stderr)
+                test.fail("Fail to get domblkerror info:%s" % output.stderr)
     finally:
         logging.info("Do clean steps")
         if error_type == "unspecified error":
@@ -179,8 +181,8 @@ def run(test, params, env):
             vm.destroy()
             if os.path.isfile("%s.bak" % export_file):
                 shutil.move("%s.bak" % export_file, export_file)
-            utils.run("umount %s" % nfs_dir)
-            utils_selinux.set_status(selinux_bak)
+            res = libvirt.setup_or_cleanup_nfs(is_setup=False,
+                                               restore_selinux=selinux_bak)
         elif error_type == "no space":
             vm.destroy()
             _pool_vol.cleanup_pool(pool_name, "fs", pool_target, img_name)
