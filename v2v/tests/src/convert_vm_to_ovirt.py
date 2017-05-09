@@ -29,13 +29,13 @@ def run(test, params, env):
     network = params.get('network')
     bridge = params.get('bridge')
     source_user = params.get("username", "root")
-    xen_ip = params.get("xen_ip")
+    xen_ip = params.get("xen_hostname")
     xen_pwd = params.get("xen_pwd")
-    vpx_ip = params.get("vpx_ip")
+    vpx_ip = params.get("vpx_hostname")
     vpx_pwd = params.get("vpx_pwd")
-    vpx_pwd_file = params.get("vpx_pwd_file")
+    vpx_passwd_file = params.get("vpx_passwd_file")
     vpx_dc = params.get("vpx_dc")
-    esx_ip = params.get("esx_ip")
+    esx_ip = params.get("esx_hostname")
     address_cache = env.get('address_cache')
     v2v_opts = params.get("v2v_opts")
     v2v_timeout = int(params.get('v2v_timeout', 1200))
@@ -45,7 +45,7 @@ def run(test, params, env):
         source_ip = vpx_ip
         source_pwd = vpx_pwd
         # Create password file to access ESX hypervisor
-        with open(vpx_pwd_file, 'w') as f:
+        with open(vpx_passwd_file, 'w') as f:
             f.write(vpx_pwd)
     elif hypervisor == "xen":
         source_ip = xen_ip
@@ -137,6 +137,6 @@ def run(test, params, env):
         if v2v_sasl:
             v2v_sasl.cleanup()
         if hypervisor == "esx":
-            os.remove(vpx_pwd_file)
+            os.remove(vpx_passwd_file)
         if hypervisor == "xen":
             process.run("ssh-agent -k")

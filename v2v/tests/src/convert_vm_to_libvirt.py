@@ -25,13 +25,13 @@ def run(test, params, env):
 
     vm_name = params.get("main_vm")
     source_user = params.get("username", "root")
-    xen_ip = params.get("xen_ip")
+    xen_ip = params.get("xen_hostname")
     xen_pwd = params.get("xen_pwd")
-    vpx_ip = params.get("vpx_ip")
+    vpx_ip = params.get("vpx_hostname")
     vpx_pwd = params.get("vpx_pwd")
     vpx_pwd_file = params.get("vpx_passwd_file")
     vpx_dc = params.get("vpx_dc")
-    esx_ip = params.get("esx_ip")
+    esx_ip = params.get("esx_hostname")
     hypervisor = params.get("hypervisor")
     input_mode = params.get("input_mode")
     target = params.get("target")
@@ -76,9 +76,9 @@ def run(test, params, env):
     # Prepare libvirt storage pool
     pool_type = params.get("pool_type")
     pool_name = params.get("pool_name")
-    target_path = params.get("target_path")
+    pool_target = params.get("pool_target")
     libvirt_pool = utlv.PoolVolumeTest(test, params)
-    libvirt_pool.pre_pool(pool_name, pool_type, target_path, '')
+    libvirt_pool.pre_pool(pool_name, pool_type, pool_target, '')
 
     # Preapre libvirt virtual network
     network = params.get("network")
@@ -144,7 +144,7 @@ def run(test, params, env):
         virsh.remove_domain(vm_name)
         # Clean libvirt pool
         if libvirt_pool:
-            libvirt_pool.cleanup_pool(pool_name, pool_type, target_path, '')
+            libvirt_pool.cleanup_pool(pool_name, pool_type, pool_target, '')
         # Clean libvirt network
         if libvirt_net:
             libvirt_net.cleanup()
