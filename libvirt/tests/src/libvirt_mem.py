@@ -164,10 +164,12 @@ def run(test, params, env):
                 if at_times:
                     assert int(new_max_mem) - (int(tg_size) *
                                                at_times) == xml_max_mem
+                    assert int(new_cur_mem) - (int(tg_size) *
+                                               at_times) == xml_cur_mem
                 else:
                     assert int(new_max_mem) - int(tg_size) == xml_max_mem
-                # Bug 1220702, skip the check for current memory
-                assert int(new_cur_mem) - int(tg_size) == xml_cur_mem
+                    # Bug 1220702, skip the check for current memory
+                    assert int(new_cur_mem) - int(tg_size) == xml_cur_mem
         except AssertionError:
             utils.log_last_traceback()
             raise exceptions.TestFail("Found unmatched memory setting"
@@ -453,8 +455,8 @@ def run(test, params, env):
                 ret = virsh.detach_device(vm_name, dev_xml.xml,
                                           flagstr=attach_option)
                 libvirt.check_exit_status(ret, detach_error)
-                if test_dom_xml:
-                    check_dom_xml(dt_mem=detach_device)
+            if test_dom_xml:
+                check_dom_xml(dt_mem=detach_device)
 
     finally:
         # Delete snapshots.
