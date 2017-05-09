@@ -95,7 +95,7 @@ def run(test, params, env):
                 host_dict.append({"name": params.get("dummy_host1"), "port": "24007"})
                 host_dict.append({"name": params.get("dummy_host2"), "port": "24007"})
             if transport:
-                host_dict.append({"transport": transport})
+                host_dict[0]['transport'] = transport
             disk_xml.source = disk_xml.new_disk_source(
                 **{"attrs": source_dict, "hosts": host_dict})
         # set domain options
