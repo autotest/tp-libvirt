@@ -133,6 +133,7 @@ def run(test, params, env):
             logging.debug("iscsi dev name: %s", device_source)
 
             # Format the disk and make file system.
+            libvirt.mk_label(device_source)
             libvirt.mk_part(device_source)
             # Run partprobe to make the change take effect.
             process.run("partprobe", ignore_status=True, shell=True)
