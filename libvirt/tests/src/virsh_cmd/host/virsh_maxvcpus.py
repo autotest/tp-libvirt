@@ -6,7 +6,9 @@ from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_conn
 from virttest.libvirt_xml import capability_xml
+from virttest.libvirt_xml import domcapability_xml as domcap
 from provider import libvirt_version
+import platform
 
 
 def run(test, params, env):
@@ -74,6 +76,7 @@ def run(test, params, env):
                 capa = capability_xml.CapabilityXML(virsh_instance)
                 host_arch = capa.arch
                 maxvcpus = capa.get_guest_capabilities()['hvm'][host_arch]['maxcpus']
+                logging.debug("maxvcpus calculate is %s", maxvcpus)
             except:
                 raise exceptions.TestFail("Failed to get maxvcpus from "
                                           "capabilities xml\n%s" % capa)
@@ -84,6 +87,12 @@ def run(test, params, env):
         except Exception, details:
             raise exceptions.TestFail("Failed get the virsh instance with uri: "
                                       "%s\n Details: %s" % (connect_uri, details))
+
+    is_arm = "aarch" in platform.machine()
+    if is_arm:
+        for gic_enum in domcap.DomCapabilityXML()['features']['gic_enums']:
+            if gic_enum['name'] == "version":
+                gic_version = gic_enum['values'][0].get_value()
 
     # Run test case
     result = virsh.maxvcpus(option, uri=connect_uri, ignore_status=True,
@@ -115,7 +124,11 @@ def run(test, params, env):
             else:
                 # It covers all possible combinations
                 if option in ['qemu', 'kvm', '']:
-                    if not maxvcpus_test == maxvcpus:
+                    if (is_arm and gic_version == '2' and option in ['kvm', '']):
+                        if not maxvcpus_test == '8':
+                            raise exceptions.TestFail("Command output %s is not "
+                                                      "expected for %s " % (maxvcpus_test, option))
+                    elif not maxvcpus_test == maxvcpus:
                         raise exceptions.TestFail("Command output %s is not "
                                                   "expected for %s " % (maxvcpus_test, option))
                 else:
