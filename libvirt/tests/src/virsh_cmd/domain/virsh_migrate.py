@@ -642,7 +642,7 @@ def run(test, params, env):
                                       threads=vcpu_threads)
         else:
             max_vcpus = int(params.get("virsh_migrate_vcpus", "64"))
-            vm_xml.set_vm_vcpus(vm_name, max_vcpus, current=current_vcpus)
+            vm_xml.VMXML.set_vm_vcpus(vm_name, max_vcpus, current=current_vcpus)
 
     # To check Unsupported conditions for Numa scenarios
     if enable_numa_pin:
