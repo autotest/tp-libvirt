@@ -87,7 +87,7 @@ def run(test, params, env):
         try:
             # output format 1: Tue 01 Mar 2016 01:53:46 PM CST
             # Remove timezone info from output
-            new_str = re.sub(r'\S+$', '', time_str)
+            new_str = re.sub(r'\s+\S+$', '', time_str)
             times['local_hw'] = datetime.datetime.strptime(
                 new_str, r"%a %d %b %Y %I:%M:%S %p")
         except ValueError:
