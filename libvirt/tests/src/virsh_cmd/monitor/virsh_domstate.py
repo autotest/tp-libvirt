@@ -6,7 +6,6 @@ import logging
 from aexpect import ShellTimeoutError
 from aexpect import ShellProcessTerminatedError
 
-from avocado.core import exceptions
 from avocado.utils import process
 
 from virttest import libvirt_vm
@@ -18,20 +17,7 @@ from virttest import utils_config
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
 
-
-class ActionError(Exception):
-
-    """
-    Error in vm action.
-    """
-
-    def __init__(self, action):
-        Exception.__init__(self)
-        self.action = action
-
-    def __str__(self):
-        return str("Get wrong info when guest action"
-                   " is %s" % self.action)
+find_dump_file = False
 
 
 def check_crash_state(cmd_output, crash_action, vm_name, dump_file=""):
@@ -40,7 +26,7 @@ def check_crash_state(cmd_output, crash_action, vm_name, dump_file=""):
     """
     expect_output = ""
     crash_state = False
-    find_dump_file = False
+    global find_dump_file
 
     if crash_action in ["destroy", "coredump-destroy"]:
         expect_output = "shut off (crashed)"
@@ -48,7 +34,7 @@ def check_crash_state(cmd_output, crash_action, vm_name, dump_file=""):
         expect_output = "running (crashed)"
     elif crash_action == "preserve":
         expect_output = "crashed (panicked)"
-    logging.info("Expect state: %s", expect_output)
+    logging.info("Expected state: %s", expect_output)
 
     def _wait_for_state():
         cmd_output = virsh.domstate(vm_name, '--reason').stdout.strip()
@@ -61,6 +47,7 @@ def check_crash_state(cmd_output, crash_action, vm_name, dump_file=""):
         if cmd_output.strip() == middle_state:
             utils_misc.wait_for(_wait_for_state, 60, text=text)
 
+    logging.debug("Actual state: %s", cmd_output.strip())
     if cmd_output.strip() == expect_output:
         crash_state = True
     if dump_file:
@@ -71,7 +58,6 @@ def check_crash_state(cmd_output, crash_action, vm_name, dump_file=""):
             find_dump_file = True
         else:
             logging.error("Not find coredump file: %s", dump_file)
-        return crash_state and find_dump_file
     return crash_state
 
 
@@ -119,6 +105,7 @@ def run(test, params, env):
     libvirtd = utils_libvirtd.Libvirtd()
 
     dump_path = os.path.join(test.tmpdir, "dump/")
+    logging.debug("dump_path: %s", dump_path)
     os.mkdir(dump_path)
     dump_file = ""
     try:
@@ -143,9 +130,8 @@ def run(test, params, env):
             vmxml_new = vm_xml.VMXML.new_from_dumpxml(vm_name)
             # Skip this test if no panic device find
             if not vmxml_new.xmltreefile.find('devices').findall('panic'):
-                raise exceptions.TestSkipError(
-                    "No 'panic' device in the guest. Maybe your libvirt "
-                    "version doesn't support it.")
+                test.cancel("No 'panic' device in the guest. Maybe your "
+                            "libvirt version doesn't support it.")
         try:
             if vm_action == "suspend":
                 virsh.suspend(vm_name, ignore_status=False)
@@ -183,8 +169,7 @@ def run(test, params, env):
                     pass
                 session.close()
         except process.CmdError, detail:
-            raise exceptions.TestError(
-                "Guest prepare action error: %s" % detail)
+            test.error("Guest prepare action error: %s" % detail)
 
         if libvirtd_state == "off":
             libvirtd_service.stop()
@@ -194,8 +179,7 @@ def run(test, params, env):
             local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
             remote_pwd = params.get("remote_pwd", None)
             if remote_ip.count("EXAMPLE.COM") or local_ip.count("EXAMPLE.COM"):
-                raise exceptions.TestSkipError(
-                    "Test 'remote' parameters not setup")
+                test.cancel("Test 'remote' parameters not setup")
             status = 0
             try:
                 remote_uri = libvirt_vm.complete_uri(local_ip)
@@ -217,38 +201,44 @@ def run(test, params, env):
         # check status_error
         if status_error:
             if not status:
-                raise exceptions.TestFail(
-                    "Run successfully with wrong command!")
+                test.fail("Run successfully with wrong command!")
         else:
             if status or not output:
-                raise exceptions.TestFail("Run failed with right command")
+                test.fail("Run failed with right command")
             if extra.count("reason"):
+                err_msg = ("virsh domstate for action %s doesn't return state "
+                           "as expected" % vm_action)
                 if vm_action == "suspend":
                     # If not, will cost long time to destroy vm
                     virsh.destroy(vm_name)
                     if not output.count("user"):
-                        raise ActionError(vm_action)
+                        test.fail(err_msg)
                 elif vm_action == "resume":
                     if not output.count("unpaused"):
-                        raise ActionError(vm_action)
+                        test.fail(err_msg)
                 elif vm_action == "destroy":
                     if not output.count("destroyed"):
-                        raise ActionError(vm_action)
+                        test.fail(err_msg)
                 elif vm_action == "start":
                     if not output.count("booted"):
-                        raise ActionError(vm_action)
+                        test.fail(err_msg)
                 elif vm_action == "kill":
                     if not output.count("crashed"):
-                        raise ActionError(vm_action)
+                        test.fail(err_msg)
                 elif vm_action == "crash":
                     if not check_crash_state(output, vm_oncrash_action,
                                              vm_name, dump_file):
-                        raise ActionError(vm_action)
+                        test.fail(err_msg)
+                    if vm_oncrash_action in ['coredump-destroy',
+                                             'coredump-restart']:
+                        if not find_dump_file:
+                            test.fail("Core dump file is not created in dump "
+                                      "path: %s" % dump_path)
             if vm_ref == "remote":
                 if not (re.search("running", output) or
                         re.search("blocked", output) or
                         re.search("idle", output)):
-                    raise exceptions.TestFail("Run failed with right command")
+                    test.fail("Run failed with right command")
     finally:
         qemu_conf.restore()
         libvirtd.restart()
