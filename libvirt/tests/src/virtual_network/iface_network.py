@@ -510,6 +510,13 @@ TIMEOUT 3"""
             raise error.TestNAError("Not supported Qos"
                                     " options 'floor'")
 
+    # Enabling IPv6 forwarding with RA routes without accept_ra set to 2
+    # is likely to cause routes loss
+    sysctl_cmd = 'sysctl net.ipv6.conf.all.accept_ra'
+    original_accept_ra = utils.run(sysctl_cmd + ' -n').stdout
+    if test_ipv6_address and original_accept_ra != '2':
+        utils.run(sysctl_cmd + '=2')
+
     # Build the xml and run test.
     try:
         if test_dnsmasq:
@@ -790,3 +797,6 @@ TIMEOUT 3"""
             virsh.net_destroy(net_name)
             virsh.net_undefine(net_name)
         vmxml_backup.sync()
+
+        if test_ipv6_address and original_accept_ra != '2':
+            utils.run(sysctl_cmd + "=%s" % original_accept_ra)
