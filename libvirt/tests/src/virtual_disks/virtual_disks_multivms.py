@@ -142,6 +142,7 @@ def run(test, params, env):
                 is_setup=True, is_login=True, image_size=image_size)
             logging.debug("iscsi dev name: %s", disk_source)
             # Format the disk and make the file system.
+            libvirt.mk_label(disk_source)
             libvirt.mk_part(disk_source, size="10M")
             libvirt.mkfs("%s1" % disk_source, "ext3")
             disk_source += "1"

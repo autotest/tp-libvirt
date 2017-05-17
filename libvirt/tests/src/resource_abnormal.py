@@ -182,6 +182,7 @@ class Virt_clone(object):
                 self.iscsi_dev.cleanup()
                 raise error.TestNAError("Cannot get iscsi device on this"
                                         " host:%s\n" % detail)
+            libvirt.mk_label(device_source)
             libvirt.mk_part(device_source, iscsi_size)
             self.mount_dir = os.path.join(test.virtdir,
                                           params.get('mount_dir'))
