@@ -1,11 +1,11 @@
 import os
 import logging
 import shutil
+import platform
 
 from aexpect import ShellTimeoutError
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
+from avocado.utils import process
 
 from virttest import utils_config
 from virttest import utils_libvirtd
@@ -31,8 +31,8 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
 
     if panic_model and not libvirt_version.version_compare(1, 3, 1):
-        raise error.TestNAError("panic device model attribute not supported"
-                                " on current libvirt version")
+        test.cancel("panic device model attribute not supported"
+                    "on current libvirt version")
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
@@ -56,8 +56,8 @@ def run(test, params, env):
 
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         if not vmxml.xmltreefile.find('devices').findall('panic'):
-            raise error.TestNAError("No 'panic' device in the guest, maybe "
-                                    "your libvirt version doesn't support it")
+            test.cancel("No 'panic' device in the guest, maybe "
+                        "your libvirt version doesn't support it")
 
         # Setup qemu.conf
         if bypass_cache == 'not_set':
@@ -90,7 +90,7 @@ def run(test, params, env):
             pass
         session.close()
 
-        iohelper_pid = utils.run('pgrep -f %s' % dump_path).stdout.strip()
+        iohelper_pid = process.run('pgrep -f %s' % dump_path).stdout.strip()
         logging.error('%s', iohelper_pid)
 
         # Get file open flags containing bypass cache information.
@@ -106,15 +106,30 @@ def run(test, params, env):
         logging.debug(cmdline.split())
 
         # Kill core dump process to speed up test
-        utils.run('kill %s' % iohelper_pid)
+        process.run('kill %s' % iohelper_pid)
 
-        # Check if bypass cache flag set or unset accordingly.
-        if (flags & 040000) and bypass_cache != '1':
-            raise error.TestFail('auto_dump_bypass_cache is %s but flags '
-                                 'is %o' % (bypass_cache, flags))
-        if not (flags & 040000) and bypass_cache == '1':
-            raise error.TestFail('auto_dump_bypass_cache is %s but flags '
-                                 'is %o' % (bypass_cache, flags))
+        arch = platform.machine()
+
+        if arch == 'x86_64':
+                # Check if bypass cache flag set or unset accordingly.
+            if (flags & 040000) and bypass_cache != '1':
+                test.fail('auto_dump_bypass_cache is %s but flags '
+                          'is %o' % (bypass_cache, flags))
+            if not (flags & 040000) and bypass_cache == '1':
+                test.fail('auto_dump_bypass_cache is %s but flags '
+                          'is %o' % (bypass_cache, flags))
+        elif arch == 'ppc64le':
+            # Check if bypass cache flag set or unset accordingly.
+            if (flags & 0400000) and bypass_cache != '1':
+                test.fail('auto_dump_bypass_cache is %s but flags '
+                          'is %o' % (bypass_cache, flags))
+            if not (flags & 0400000) and bypass_cache == '1':
+                test.fail('auto_dump_bypass_cache is %s but flags '
+                          'is %o' % (bypass_cache, flags))
+        else:
+            test.cancel("Unknown Arch. Do the necessary changes to"
+                        "support")
+
     finally:
         backup_xml.sync()
         config.restore()
