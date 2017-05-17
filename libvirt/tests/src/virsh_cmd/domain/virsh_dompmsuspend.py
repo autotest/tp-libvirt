@@ -1,8 +1,7 @@
 import logging
 import os
 
-from autotest.client.shared import error
-
+from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
@@ -45,8 +44,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     # A backup of original vm
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -104,7 +103,13 @@ def run(test, params, env):
             vmxml.pm = pm_xml
         vmxml.sync()
 
-        vm.prepare_guest_agent()
+        try:
+            vm.prepare_guest_agent()
+        except virt_vm.VMStartError, info:
+            if "not supported" in str(info).lower():
+                test.cancel(info)
+            else:
+                test.error(info)
         # Selinux should be enforcing
         vm.setenforce(1)
 
@@ -137,18 +142,17 @@ def run(test, params, env):
                                         unprivileged_user=unprivileged_user)
             if result.exit_status == 0:
                 if fail_pat:
-                    raise error.TestFail("Expected failed with %s, but run succeed"
-                                         ":\n%s" % (fail_pat, result))
+                    test.fail("Expected failed with %s, but run succeed:\n%s" %
+                              (fail_pat, result))
             else:
                 if unsupported_guest_err in result.stderr:
                     fail_pat.append(unsupported_guest_err)
                 if not fail_pat:
-                    raise error.TestFail("Expected success, but run failed:\n%s"
-                                         % result)
+                    test.fail("Expected success, but run failed:\n%s" % result)
                 #if not any_pattern_match(fail_pat, result.stderr):
                 if not any(p in result.stderr for p in fail_pat):
-                    raise error.TestFail("Expected failed with one of %s, but "
-                                         "failed with:\n%s" % (fail_pat, result))
+                    test.fail("Expected failed with one of %s, but "
+                              "failed with:\n%s" % (fail_pat, result))
 
             utils_misc.wait_for(lambda: vm.state() == 'pmsuspended', 30)
             if agent_error_test:
@@ -167,19 +171,19 @@ def run(test, params, env):
                 ret = virsh.start(vm_name)
                 libvirt.check_exit_status(ret)
                 if not vm.is_paused():
-                    raise error.TestFail("Vm status is not paused before pm wakeup")
+                    test.fail("Vm status is not paused before pm wakeup")
                 if params.get('setup_libvirt_polkit') == 'yes':
                     ret = virsh.dompmwakeup(vm_name, **virsh_dargs_copy)
                 else:
                     ret = virsh.dompmwakeup(vm_name, **virsh_dargs)
                 libvirt.check_exit_status(ret)
                 if not vm.is_paused():
-                    raise error.TestFail("Vm status is not paused after pm wakeup")
+                    test.fail("Vm status is not paused after pm wakeup")
                 ret = virsh.resume(vm_name, **virsh_dargs)
                 libvirt.check_exit_status(ret)
                 sess = vm.wait_for_login()
                 if sess.cmd_status("ls pmtest && rm -f pmtest"):
-                    raise error.TestFail("Check managed save failed on guest")
+                    test.fail("Check managed save failed on guest")
                 sess.close()
             if test_save_restore:
                 # Run a series of operations to check libvirtd status.
@@ -204,16 +208,16 @@ def run(test, params, env):
                 ret = virsh.destroy(vm_name, **virsh_dargs)
                 libvirt.check_exit_status(ret)
                 if not libvirtd.is_running():
-                    raise error.TestFail("libvirtd crashed")
+                    test.fail("libvirtd crashed")
             if test_suspend_resume:
                 ret = virsh.suspend(vm_name)
                 libvirt.check_exit_status(ret, expect_error=True)
                 if vm.state() != 'pmsuspended':
-                    raise error.TestFail("VM state should be pmsuspended")
+                    test.fail("VM state should be pmsuspended")
                 ret = virsh.resume(vm_name)
                 libvirt.check_exit_status(ret, expect_error=True)
                 if vm.state() != 'pmsuspended':
-                    raise error.TestFail("VM state should be pmsuspended")
+                    test.fail("VM state should be pmsuspended")
         finally:
             libvirtd.restart()
             # Remove the tmp file
