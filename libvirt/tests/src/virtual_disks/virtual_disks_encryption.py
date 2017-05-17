@@ -5,7 +5,6 @@ import base64
 
 import aexpect
 
-from avocado.core import exceptions
 from avocado.utils import process
 
 from virttest import remote
@@ -95,7 +94,7 @@ def run(test, params, env):
             encryption_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
                                          ret.stdout)[0].lstrip()
         except IndexError, e:
-            raise exceptions.TestError("Fail to get newly created secret uuid")
+            test.error("Fail to get newly created secret uuid")
         logging.debug("Secret uuid %s", encryption_uuid)
 
         # Set secret value.
@@ -117,8 +116,8 @@ def run(test, params, env):
             rpm_stat = session.cmd_status("rpm -q parted || "
                                           "yum install -y parted", 300)
             if rpm_stat != 0:
-                raise exceptions.TestFail("Failed to query/install parted, make sure"
-                                          " that you have usable repo in guest")
+                raise test.fail("Failed to query/install parted, make sure"
+                                " that you have usable repo in guest")
 
             new_parts = libvirt.get_parts_list(session)
             added_parts = list(set(new_parts).difference(set(old_parts)))
@@ -136,7 +135,7 @@ def run(test, params, env):
                     added_part = added_parts[0]
 
             if not added_part:
-                logging.error("Cann't see added partition in VM")
+                logging.error("Can't see added partition in VM")
                 return False
 
             device_source = os.path.join(os.sep, 'dev', added_part)
@@ -177,6 +176,7 @@ def run(test, params, env):
     volume_target_encypt = params.get("target_encypt", "")
     volume_target_label = params.get("target_label")
 
+    hotplug = "yes" == params.get("virt_disk_device_hotplug")
     status_error = "yes" == params.get("status_error")
     secret_type = params.get("secret_type", "passphrase")
     secret_password_no_encoded = params.get("secret_password_no_encoded", "redhat")
@@ -220,11 +220,11 @@ def run(test, params, env):
         except AssertionError, info:
             err_msgs = ("create: invalid option")
             if str(info).count(err_msgs):
-                raise exceptions.TestSkipError("Creating luks encryption volume "
-                                               "is not supported on this libvirt version")
+                test.error("Creating luks encryption volume "
+                           "is not supported on this libvirt version")
             else:
-                raise exceptions.TestError("Failed to create volume."
-                                           "Error: %s" % str(info))
+                test.error("Failed to create volume."
+                           "Error: %s" % str(info))
         # Add disk xml.
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
 
@@ -254,32 +254,58 @@ def run(test, params, env):
                 **{"encryption": v_xml.encryption.format, "secret": {
                     "type": v_xml.encryption.secret["type"],
                     "uuid": v_xml.encryption.secret["uuid"]}})
-        # Sync VM xml.
-        vmxml.add_device(disk_xml)
-        vmxml.sync()
+        logging.debug("disk xml is:\n%s" % disk_xml)
+        if not hotplug:
+            # Sync VM xml.
+            vmxml.add_device(disk_xml)
+            vmxml.sync()
 
         try:
-            # Start the VM and check status.
+            # Start the VM and do disk hotplug if required,
+            # then check disk status in vm.
+            # Note that LUKS encrypted virtual disk without <encryption>
+            # can be normally started or attached since qemu will just treat
+            # it as RAW, so we don't test LUKS with status_error=TRUE.
             vm.start()
             if status_error:
-                raise exceptions.TestFail("VM started unexpectedly.")
-
-            if not check_in_vm(vm, device_target, old_parts):
-                raise exceptions.TestFail("Check encryption disk in VM failed")
+                if hotplug:
+                    logging.debug("attaching disk, expecting error...")
+                    result = virsh.attach_device(vm_name, disk_xml.xml)
+                    libvirt.check_exit_status(result, status_error)
+                else:
+                    test.fail("VM started unexpectedly.")
+            else:
+                if hotplug:
+                    result = virsh.attach_device(vm_name, disk_xml.xml,
+                                                 debug=True)
+                    libvirt.check_exit_status(result)
+                    if not check_in_vm(vm, device_target, old_parts):
+                        test.fail("Check encryption disk in VM failed")
+                    result = virsh.detach_device(vm_name, disk_xml.xml,
+                                                 debug=True)
+                    libvirt.check_exit_status(result)
+                else:
+                    if not check_in_vm(vm, device_target, old_parts):
+                        test.fail("Check encryption disk in VM failed")
         except virt_vm.VMStartError, e:
             if status_error:
-                logging.debug("VM failed to start as expected."
+                if hotplug:
+                    test.fail("In hotplug scenario, VM should "
+                              "start successfully but not."
                               "Error: %s", str(e))
-                pass
+                else:
+                    logging.debug("VM failed to start as expected."
+                                  "Error: %s", str(e))
             else:
-                # Libvirt2.5.0 onward,AES-CBC encrypted qcow2 images is longer supported.
+                # Libvirt2.5.0 onward,AES-CBC encrypted qcow2 images is no
+                # longer supported.
                 err_msgs = ("AES-CBC encrypted qcow2 images is"
                             " no longer supported in system emulators")
                 if str(e).count(err_msgs):
-                    exceptions.TestSkipError(err_msgs)
+                    test.cancel(err_msgs)
                 else:
-                    raise exceptions.TestFail("VM failed to start."
-                                              "Error: %s" % str(e))
+                    test.fail("VM failed to start."
+                              "Error: %s" % str(e))
     finally:
         # Recover VM.
         if vm.is_alive():
