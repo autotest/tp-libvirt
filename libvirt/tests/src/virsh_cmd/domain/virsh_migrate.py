@@ -508,7 +508,7 @@ def run(test, params, env):
 
     # For --postcopy enable
     postcopy_options = params.get("postcopy_options")
-    if postcopy_options and not options.count(postcopy_options):
+    if postcopy_options:
         options = "%s %s" % (options, postcopy_options)
 
     src_uri = params.get("virsh_migrate_connect_uri")
