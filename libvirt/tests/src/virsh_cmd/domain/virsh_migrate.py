@@ -6,6 +6,7 @@ import platform
 
 from avocado.utils import process
 from avocado.utils import path
+from avocado.core import exceptions
 
 from virttest import nfs
 from virttest import remote
@@ -1234,7 +1235,7 @@ def run(test, params, env):
             if not re.search(new_nic_mac, vm_dest_xml):
                 check_dest_xml = False
 
-    except test.cancel, detail:
+    except exceptions.TestSkipError, detail:
         skip_exception = True
     except Exception, detail:
         exception = True
