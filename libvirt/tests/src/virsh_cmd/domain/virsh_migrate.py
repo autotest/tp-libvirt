@@ -14,6 +14,7 @@ from virttest import defaults
 from virttest import utils_test
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import utils_config
 from virttest import data_dir
 from virttest import libvirt_vm
 from virttest import utils_package
@@ -35,18 +36,15 @@ def run(test, params, env):
     """
     Test virsh migrate command.
     """
-
     def check_vm_state(vm, state, uri=None, ignore_error=True):
         """
         Return True if vm is in the correct state.
-
         :param vm: The VM to be checked state
         :param state: The expected VM state
         :param uri: The URI to connect to the VM
         :param ignore_error: If False, raise an exception
                                 when state does not match.
                              If True, do nothing.
-
         :return: True if vm state is as expected, otherwise, False
         :raise: test.fail if the VM state is not as expected
         """
@@ -487,14 +485,128 @@ def run(test, params, env):
         :params cmd: The command to be executed while migration
 
         """
-        stress_thread = threading.Thread(target=thread_func_stress,
-                                         args=())
-        stress_thread.start()
+        #stress_thread = threading.Thread(target=thread_func_stress,
+        #                                 args=())
+        #stress_thread.start()
         ensure_migration_start()
         process.system_output("virsh %s %s" % (cmd, vm_name))
         logging.debug("Checking the VM state on target host after "
                       "executing '%s'", cmd)
         check_vm_state(vm, 'running', dest_uri, False)
+
+    def load_stress(vm_session):
+        """
+        Check and install stress tool in VM and then run stress tool.
+        :param vm_session: The session to VM
+
+        Returns:
+        """
+        pkg_name = 'stress'
+        logging.debug("Check if stress tool is installed")
+        pkg_mgr = utils_package.package_manager(vm_session, pkg_name)
+        if not pkg_mgr.is_installed(pkg_name):
+            logging.debug("Stress tool will be installed")
+            if not pkg_mgr.install():
+                test.error("Package '%s' installation fails" % pkg_name)
+
+        stress_thread = threading.Thread(target=thread_func_stress,
+                                         args=())
+        stress_thread.start()
+
+    def config_libvirt(params):
+        """
+        Configure /etc/libvirt/libvirtd.conf on local and remote host
+
+        :param params: The parameters used to configure libvirtd.conf
+
+        :return: utils_config.LibvirtdConfig object
+        """
+        # Handle local libvirtd
+        libvirtd_conf = None
+        if params and isinstance(params, dict):
+            libvirtd_conf = utils_config.LibvirtdConfig()
+            for k, v in params.items():
+                libvirtd_conf[k] = v
+            logging.debug("The libvirtd config file is updated with:\n %s"
+                          % params)
+
+            libvirtd = utils_libvirtd.Libvirtd()
+            libvirtd.restart()
+        # Handle remote libvirtd
+        if libvirtd_conf is None:
+            return None
+        local_path = libvirtd_conf.conf_path
+        remote.scp_to_remote(server_ip, '22', server_user, server_pwd,
+                             local_path, local_path, limit="",
+                             log_filename=None, timeout=600, interface=None)
+        libvirt.remotely_control_libvirtd(server_ip, server_user,
+                                          server_pwd, action='restart',
+                                          status_error='no')
+        return libvirtd_conf
+
+    def check_converge(params):
+        """
+        Handle option '--auto-converge --auto-converge-initial
+        --auto-converge-increment '.
+
+        'Auto converge throttle' in domjobinfo should start with
+        the initial value and increase with correct increment
+        and max value is 99.
+
+        :param params: The parameters used
+
+        :raise: exceptions.TestFail when unexpected or no throttle
+                       is found
+        """
+        initial = int(params.get("converge_initial", 30))
+        increment = int(params.get("converge_increment", 15))
+        max_converge = int(params.get("max_converge", 99))
+        allow_throttle_list = []
+        counter = 0
+        allow_throttle = initial
+        while allow_throttle < 100:
+            allow_throttle = initial + counter * increment
+            if allow_throttle < 100:
+                allow_throttle_list.append(allow_throttle)
+                counter += 1
+        allow_throttle_list.append(max_converge)
+        logging.debug("The allowed 'Auto converge throttle' value "
+                      "is %s", allow_throttle_list)
+
+        # Ensure the migration job is started
+        ensure_migration_start()
+
+        throttle = None
+        jobtype = "None"
+
+        while throttle < 100:
+            cmd_result = virsh.domjobinfo(vm_name, debug=True,
+                                          ignore_status=True)
+            if cmd_result.exit_status:
+                logging.debug(cmd_result.stderr)
+                break
+            jobinfo = cmd_result.stdout
+            for line in jobinfo.splitlines():
+                key = line.split(':')[0]
+                if key.count("Job type"):
+                    jobtype = line.split(':')[-1].strip()
+                elif key.count("Auto converge throttle"):
+                    throttle = int(line.split(':')[-1].strip())
+                    logging.debug("Auto converge throttle:%s", str(throttle))
+            if throttle and throttle not in allow_throttle_list:
+                raise test.fail("Invalid auto converge throttle "
+                                "value '%s'" % throttle)
+            if throttle == 99:
+                logging.debug("'Auto converge throttle' reaches maximum "
+                              "allowed value 99")
+                break
+            if jobtype == "None" or jobtype == "Completed":
+                logging.debug("Jobtype:%s", jobtype)
+                if throttle is None:
+                    raise test.fail("'Auto converge throttle' is "
+                                    "not found in the domjobinfo")
+                break
+            time.sleep(1)
 
     # For negative scenarios, there_desturi_nonexist and there_desturi_missing
     # let the test takes desturi from variants in cfg and for other scenarios
@@ -696,6 +808,16 @@ def run(test, params, env):
             max_vcpus = int(params.get("virsh_migrate_vcpus", "64"))
             vm_xml.VMXML.set_vm_vcpus(vm_name, max_vcpus, current=current_vcpus)
 
+    # Configure libvirtd.log
+    config_libvirtd = "yes" == params.get("config_libvirtd", "no")
+
+    libvirtd_conf_dict = {}
+
+    # To set required libvirtd configures for --auto-converge test
+    if extra.count("--auto-converge"):
+        libvirtd_conf_dict['keepalive_interval'] = -1
+        libvirtd_conf_dict['log_level'] = 1
+        libvirtd_conf_dict['log_outputs'] = '"1:file:/tmp/libvirtd.log"'
     # To check Unsupported conditions for Numa scenarios
     if enable_numa_pin:
         host_numa_node = utils_misc.NumaInfo()
@@ -795,6 +917,7 @@ def run(test, params, env):
     nfs_client = None
     seLinuxBool = None
     skip_exception = False
+    fail_exception = False
     exception = False
     remote_viewer_pid = None
     asynch_migration = False
@@ -805,6 +928,8 @@ def run(test, params, env):
     check_src_undefine = True
     check_unsafe_result = True
     migrate_setup = None
+    libvirtd_conf = None
+    vm_session = None
 
     try:
         # Change the disk of the vm to shared disk
@@ -918,6 +1043,10 @@ def run(test, params, env):
             else:
                 # HP without Numa pin
                 HP_page_list = enable_hugepage(vm_name, no_of_HPs)
+        if config_libvirtd:
+            logging.debug("Configure the libvirtd")
+            libvirtd_conf = config_libvirt(libvirtd_conf_dict)
+
         if not vm.is_alive():
             vm.start()
 
@@ -1091,19 +1220,31 @@ def run(test, params, env):
                                         func=check_migration_timeout_suspend,
                                         func_params=timeout)
             ret_migrate = migration_test.RET_MIGRATION
+
+        if extra.count("--auto-converge"):
+            asynch_migration = True
+            # Load and run stress in VM
+            if vm_session is None:
+                vm_session = vm.wait_for_login()
+            load_stress(vm_session)
+            # Disable keepalive on both hosts
+            migration_test = libvirt.MigrationTest()
+            migrate_options = "%s %s" % (options, extra)
+            vms = [vm]
+            migration_test.do_migration(vms, None, dest_uri, 'orderly',
+                                        migrate_options,
+                                        virsh_opt=' -k0',
+                                        thread_timeout=900,
+                                        ignore_status=True,
+                                        func=check_converge,
+                                        func_params=params)
+            ret_migrate = migration_test.RET_MIGRATION
         if postcopy_cmd:
             asynch_migration = True
             vms = []
             vms.append(vm)
             # Load stress in VM
-            pkg_name = 'stress'
-            logging.debug("Check if stress tool is installed")
-            pkg_mgr = utils_package.package_manager(vm_session, pkg_name)
-            if not pkg_mgr.is_installed(pkg_name):
-                logging.debug("Stress tool will be installed")
-                if not pkg_mgr.install():
-                    test.error("Package '%s' installation fails" % pkg_name)
-
+            load_stress(vm_session)
             cmd = params.get("virsh_postcopy_cmd")
             obj_migration = libvirt.MigrationTest()
             migrate_options = "%s %s" % (options, extra)
@@ -1299,6 +1440,8 @@ def run(test, params, env):
 
     except test.cancel, detail:
         skip_exception = True
+    except test.fail, detail:
+        fail_exception = True
     except Exception, detail:
         exception = True
         logging.error("%s: %s", detail.__class__, detail)
@@ -1321,6 +1464,20 @@ def run(test, params, env):
     vm.destroy()
     vm.undefine()
     orig_config_xml.define()
+
+    if config_libvirtd:
+        logging.debug("Now restore the libvirtd configration")
+        libvirtd_conf.restore()
+        libvirtd = utils_libvirtd.Libvirtd()
+        libvirtd.restart()
+
+        local_path = libvirtd_conf.conf_path
+        remote.scp_to_remote(server_ip, '22', server_user, server_pwd,
+                             local_path, local_path, limit="",
+                             log_filename=None, timeout=600, interface=None)
+        libvirt.remotely_control_libvirtd(server_ip, server_user,
+                                          server_pwd, action='restart',
+                                          status_error='no')
 
     # cleanup xml created during memory hotplug test
     if mem_hotplug:
@@ -1367,6 +1524,9 @@ def run(test, params, env):
 
     if skip_exception:
         test.cancel(detail)
+    if fail_exception:
+        test.fail(detail)
+
     if exception:
         test.error("Error occurred. \n%s: %s" % (detail.__class__, detail))
 
