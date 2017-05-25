@@ -1,10 +1,11 @@
 import re
 import os
+import sys
 import ast
 import logging
 
-from autotest.client.shared import error
-from autotest.client import utils
+from avocado.utils import process
+from avocado.utils import stacktrace
 
 from virttest import virt_vm
 from virttest import virsh
@@ -40,19 +41,16 @@ def run(test, params, env):
                     "tftp", "ipxe-roms-qemu", "wget"]
         # Try to install required packages
         if not utils_package.package_install(pkg_list):
-            raise error.TestError("Failed ot install "
-                                  "required packages")
+            test.error("Failed ot install required packages")
         boot_initrd = params.get("boot_initrd", "EXAMPLE_INITRD")
         boot_vmlinuz = params.get("boot_vmlinuz", "EXAMPLE_VMLINUZ")
         if boot_initrd.count("EXAMPLE") or boot_vmlinuz.count("EXAMPLE"):
-            raise error.TestNAError("Please provide initrd/vmlinuz URL")
+            test.cancel("Please provide initrd/vmlinuz URL")
         # Download pxe boot images
-        utils.run("wget %s -O %s/initrd.img"
-                  % (boot_initrd, tftp_root))
-        utils.run("wget %s -O %s/vmlinuz"
-                  % (boot_vmlinuz, tftp_root))
-        utils.run("cp -f /usr/share/syslinux/pxelinux.0 {0};"
-                  " mkdir -m 777 -p {0}/pxelinux.cfg".format(tftp_root))
+        process.system("wget %s -O %s/initrd.img" % (boot_initrd, tftp_root))
+        process.system("wget %s -O %s/vmlinuz" % (boot_vmlinuz, tftp_root))
+        process.system("cp -f /usr/share/syslinux/pxelinux.0 {0};"
+                       " mkdir -m 777 -p {0}/pxelinux.cfg".format(tftp_root))
         pxe_file = "%s/pxelinux.cfg/default" % tftp_root
         boot_txt = """
 DISPLAY boot.txt
@@ -129,7 +127,7 @@ TIMEOUT 3"""
         """
         conf_file = "/var/lib/libvirt/dnsmasq/default.conf"
         if not os.path.exists(conf_file):
-            raise error.TestNAError("Can't find default.conf file")
+            test.cancel("Can't find default.conf file")
 
         configs = ""
         with open(conf_file) as f:
@@ -142,12 +140,10 @@ TIMEOUT 3"""
 
         if not configs.count(config):
             if exists:
-                raise error.TestFail("Can't find %s=%s in configuration"
-                                     " file" % (key, value))
+                test.fail("Can't find %s=%s in configuration file" % (key, value))
         else:
             if not exists:
-                raise error.TestFail("Found %s=%s in configuration"
-                                     " file" % (key, value))
+                test.fail("Found %s=%s in configuration file" % (key, value))
 
     def run_dnsmasq_addnhosts_test(hostip, hostnames):
         """
@@ -160,8 +156,7 @@ TIMEOUT 3"""
             configs = f.read()
         logging.debug("configs in file %s: %s", conf_file, configs)
         if not re.search(r"%s.*%s" % (hostip, hosts_re), configs, re.M):
-            raise error.TestFail("Can't find '%s' in configuration"
-                                 " file" % hostip)
+            test.fail("Can't find '%s' in configuration file" % hostip)
 
     def run_dnsmasq_host_test(iface_mac, guest_ip, guest_name):
         """
@@ -174,22 +169,20 @@ TIMEOUT 3"""
             configs = f.read()
         logging.debug("configs in file %s: %s", conf_file, configs)
         if not configs.count(config):
-            raise error.TestFail("Can't find host configuration"
-                                 " in file %s" % conf_file)
+            test.fail("Can't find host configuration in file %s" % conf_file)
 
     def check_class_rules(ifname, rule_id, bandwidth):
         """
         Check bandwidth settings via 'tc class' output
         """
         cmd = "tc class show dev %s" % ifname
-        class_output = utils.run(cmd).stdout
+        class_output = process.system_output(cmd)
         logging.debug("Bandwidth class output: %s", class_output)
         class_pattern = (r"class htb %s.*rate (\d+)Kbit ceil"
                          " (\d+)Kbit burst (\d+)(K?M?)b.*" % rule_id)
         se = re.search(class_pattern, class_output, re.M)
         if not se:
-            raise error.TestFail("Can't find outbound setting"
-                                 " for htb %s" % rule_id)
+            test.fail("Can't find outbound setting for htb %s" % rule_id)
         logging.debug("bandwidth from tc output:%s" % str(se.groups()))
         ceil = None
         if bandwidth.has_key("floor"):
@@ -212,15 +205,14 @@ TIMEOUT 3"""
         Check bandwidth settings via 'tc filter' output
         """
         cmd = "tc -d filter show dev %s parent ffff:" % ifname
-        filter_output = utils.run(cmd).stdout
+        filter_output = process.system_output(cmd)
         logging.debug("Bandwidth filter output: %s", filter_output)
         if not filter_output.count("filter protocol all pref"):
-            raise error.TestFail("Can't find 'protocol all' settings"
-                                 " in filter rules")
+            test.fail("Can't find 'protocol all' settings in filter rules")
         filter_pattern = ".*police.*rate (\d+)Kbit burst (\d+)(K?M?)b.*"
         se = re.search(r"%s" % filter_pattern, filter_output, re.M)
         if not se:
-            raise error.TestFail("Can't find any filter policy")
+            test.fail("Can't find any filter policy")
         logging.debug("bandwidth from tc output:%s" % str(se.groups()))
         logging.debug("bandwidth from setting:%s" % str(bandwidth))
         if bandwidth.has_key("average"):
@@ -243,7 +235,7 @@ TIMEOUT 3"""
                 cmd = "ip route list %s" % addr
                 if route.has_key("family") and route["family"] == "ipv6":
                     cmd = "ip -6 route list %s" % addr
-                output = utils.run(cmd).stdout
+                output = process.system_output(cmd)
                 match_obj = re.search(r"via (\S+).*metric (\d+)", output)
                 if match_obj:
                     via_addr = match_obj.group(1)
@@ -271,10 +263,10 @@ TIMEOUT 3"""
             if check_net and net_inbound:
                 # Check qdisc rules
                 cmd = "tc -d qdisc show dev %s" % net_bridge_name
-                qdisc_output = utils.run(cmd).stdout
+                qdisc_output = process.system_output(cmd)
                 logging.debug("Bandwidth qdisc output: %s", qdisc_output)
                 if not qdisc_output.count("qdisc ingress ffff:"):
-                    raise error.TestFail("Can't find ingress setting")
+                    test.fail("Can't find ingress setting")
                 check_class_rules(net_bridge_name, "1:1",
                                   {"average": net_inbound["average"],
                                    "peak": net_inbound["peak"]})
@@ -292,8 +284,7 @@ TIMEOUT 3"""
                                    'burst': iface_inbound['burst']})
                 if iface_inbound.has_key("floor"):
                     if not libvirt_version.version_compare(1, 0, 1):
-                        raise error.TestNAError("Not supported Qos"
-                                                " options 'floor'")
+                        test.cancel("Not supported Qos options 'floor'")
 
                     check_class_rules(net_bridge_name, "1:3",
                                       {'floor': iface_inbound["floor"]})
@@ -302,8 +293,8 @@ TIMEOUT 3"""
             if check_iface and iface_outbound:
                 check_filter_rules(iface_name, iface_outbound)
         except AssertionError:
-            utils.log_last_traceback()
-            raise error.TestFail("Failed to check network bandwidth")
+            stacktrace.log_exc_info(sys.exc_info())
+            test.fail("Failed to check network bandwidth")
 
     def check_name_ip(session):
         """
@@ -311,16 +302,14 @@ TIMEOUT 3"""
         """
         # Check if bind-utils is installed
         if not utils_package.package_install(['bind-utils'], session):
-            raise error.TestError("Failed to install bind-utils"
-                                  " on guest")
+            test.error("Failed to install bind-utils on guest")
         # Run host command to check if hostname can be resolved
         if not guest_ipv4 and not guest_ipv6:
-            raise error.TestFail("No ip address found from parameters")
+            test.fail("No ip address found from parameters")
         guest_ip = guest_ipv4 if guest_ipv4 else guest_ipv6
         cmd = "host %s | grep %s" % (guest_name, guest_ip)
         if session.cmd_status(cmd):
-            raise error.TestFail("Can't resolve name %s on guest" %
-                                 guest_name)
+            test.fail("Can't resolve name %s on guest" % guest_name)
 
     def check_ipt_rules(check_ipv4=True, check_ipv6=False):
         """
@@ -363,11 +352,11 @@ TIMEOUT 3"""
                           % (net_ipv4, br_name, net_dev_out))]
                 ipv4_rules.extend(rules)
 
-            output = utils.run("iptables-save").stdout.strip()
+            output = process.system_output('iptables-save')
             logging.debug("iptables: %s", output)
             for ipt in ipv4_rules:
                 if not re.findall(r"%s" % ipt, output, re.M):
-                    raise error.TestFail("Can't find iptable rule:\n%s" % ipt)
+                    test.fail("Can't find iptable rule:\n%s" % ipt)
         if check_ipv6:
             ipv6_rules = list(ipt_rules)
             if (net_ipv6 and net_forward.has_key("mode") and
@@ -377,11 +366,11 @@ TIMEOUT 3"""
                          ("FORWARD -s %s -i %s%s -j ACCEPT"
                           % (net_ipv6, br_name, net_dev_out))]
                 ipv6_rules.extend(rules)
-            output = utils.run("ip6tables-save").stdout.strip()
+            output = process.system_output("ip6tables-save")
             logging.debug("iptables: %s", output)
             for ipt in ipv6_rules:
                 if not output.count(ipt):
-                    raise error.TestFail("Can't find ipbtable rule:\n%s" % ipt)
+                    test.fail("Can't find ipbtable rule:\n%s" % ipt)
 
     def run_ip_test(session, ip_ver):
         """
@@ -403,18 +392,17 @@ TIMEOUT 3"""
         vm_ip = get_ip_func()
         logging.debug("Guest has ip: %s", vm_ip)
         if not vm_ip:
-            raise error.TestFail("Can't find ip address on guest")
+            test.fail("Can't find ip address on guest")
         ip_gateway = net_ip_address
         if ip_ver == "ipv6":
             ip_gateway = net_ipv6_address
             # Cleanup ip6talbes on host for ping6 test
-            utils.run("ip6tables -F")
+            process.system("ip6tables -F")
         if ip_gateway and not routes:
             ping_s, _ = ping(dest=ip_gateway, count=5,
                              timeout=10, session=session)
             if ping_s:
-                raise error.TestFail("Failed to ping gateway address: %s"
-                                     % ip_gateway)
+                test.fail("Failed to ping gateway address: %s" % ip_gateway)
 
     def run_guest_libvirt(session):
         """
@@ -422,31 +410,24 @@ TIMEOUT 3"""
         """
         # Try to install required packages
         if not utils_package.package_install(['libvirt'], session):
-            raise error.TestError("Failed ot install libvirt"
-                                  " package on guest")
-        result = True
+            test.error("Failed ot install libvirt package on guest")
         # Try to load tun module first
         session.cmd("lsmod | grep tun || modprobe  tun")
         # Check network state on guest
         cmd = ("service libvirtd restart; virsh net-info default"
-               " | grep 'Active:.*no'")
+               " | grep 'Active:.*yes'")
         if session.cmd_status(cmd):
-            result = False
-            logging.error("Default network isn't in inactive state")
-        # Try to start default network on guest, check error messages
-        if result:
-            cmd = "virsh net-start default"
+            test.fail("'default' network isn't in active state")
+        # Try to destroy&start default network on guest
+        for opt in ['net-destroy', 'net-start']:
+            cmd = "virsh %s default" % opt
             status, output = session.cmd_status_output(cmd)
-            logging.debug("Run command on guest exit %s, output %s"
-                          % (status, output))
-            if not status or not output.count("already in use"):
-                result = False
-                logging.error("Failed to see network messges on guest")
+            logging.debug("Run %s on guest exit %s, output %s"
+                          % (cmd, status, output))
+            if status:
+                test.fail(output)
         if not utils_package.package_remove("libvirt*", session):
-            logging.error("Failed to remove libvirt packages on guest")
-
-        if not result:
-            raise error.TestFail("Check libvirt network on guest failed")
+            test.error("Failed to remove libvirt packages on guest")
 
     start_error = "yes" == params.get("start_error", "no")
     define_error = "yes" == params.get("define_error", "no")
@@ -507,8 +488,14 @@ TIMEOUT 3"""
     vms_list = []
     if "floor" in ast.literal_eval(iface_bandwidth_inbound):
         if not libvirt_version.version_compare(1, 0, 1):
-            raise error.TestNAError("Not supported Qos"
-                                    " options 'floor'")
+            test.cancel("Not supported Qos options 'floor'")
+
+    # Enabling IPv6 forwarding with RA routes without accept_ra set to 2
+    # is likely to cause routes loss
+    sysctl_cmd = 'sysctl net.ipv6.conf.all.accept_ra'
+    original_accept_ra = process.system_output(sysctl_cmd + ' -n')
+    if test_ipv6_address and original_accept_ra != '2':
+        process.system(sysctl_cmd + '=2')
 
     # Build the xml and run test.
     try:
@@ -563,7 +550,7 @@ TIMEOUT 3"""
                 if define_error:
                     pass
                 else:
-                    raise error.TestFail("Failed to define network")
+                    test.fail("Failed to define network")
         # Edit the interface xml.
         if change_iface_option:
             modify_iface_xml()
@@ -580,7 +567,7 @@ TIMEOUT 3"""
                 if ret.exit_status:
                     logging.error("Command output %s" %
                                   ret.stdout.strip())
-                    raise error.TestFail("Failed to attach-interface")
+                    test.fail("Failed to attach-interface")
 
         if multiple_guests:
             # Clone more vms for testing
@@ -595,7 +582,7 @@ TIMEOUT 3"""
             bridge = ast.literal_eval(net_bridge)
             br_if = utils_net.Interface(bridge['name'])
             if not br_if.is_up():
-                raise error.TestFail("Bridge interface isn't up")
+                test.fail("Bridge interface isn't up")
         if test_dnsmasq:
             # Check the settings in dnsmasq config file
             if net_dns_forward == "no":
@@ -612,18 +599,17 @@ TIMEOUT 3"""
                         br_delay = float(bridge['delay'])
                         cmd = ("brctl showstp %s | grep 'bridge forward delay'"
                                % bridge['name'])
-                        out = utils.run(cmd, ignore_status=False).stdout.strip()
+                        out = process.system_output(
+                            cmd, shell=True, ignore_status=False)
                         logging.debug("brctl showstp output: %s", out)
                         pattern = (r"\s*forward delay\s+(\d+.\d+)\s+bridge"
                                    " forward delay\s+(\d+.\d+)")
                         match_obj = re.search(pattern, out, re.M)
                         if not match_obj or len(match_obj.groups()) != 2:
-                            raise error.TestFail("Can't see forward delay"
-                                                 " messages from command")
+                            test.fail("Can't see forward delay messages from command")
                         elif (float(match_obj.groups()[0]) != br_delay or
                                 float(match_obj.groups()[1]) != br_delay):
-                            raise error.TestFail("Foward delay setting"
-                                                 " can't take effect")
+                            test.fail("Foward delay setting can't take effect")
             if dhcp_start_ipv4 and dhcp_end_ipv4:
                 run_dnsmasq_default_test("dhcp-range", "%s,%s"
                                          % (dhcp_start_ipv4, dhcp_end_ipv4))
@@ -657,7 +643,7 @@ TIMEOUT 3"""
             # Start the VM.
             vm.start()
             if start_error:
-                raise error.TestFail("VM started unexpectedly")
+                test.fail("VM started unexpectedly")
             if pxe_boot:
                 # Just check network boot messages here
                 vm.serial_console.read_until_output_matches(
@@ -679,10 +665,9 @@ TIMEOUT 3"""
                     vm_ip = utils_net.get_guest_ip_addr(session, iface_mac)
                     logging.debug("Guest has ip: %s", vm_ip)
                     if not vm_ip and dhcp_range:
-                        raise error.TestFail("Guest has invalid ip address")
+                        test.fail("Guest has invalid ip address")
                     elif vm_ip and not dhcp_range:
-                        raise error.TestFail("Guest has ip address: %s"
-                                             % vm_ip)
+                        test.fail("Guest has ip address: %s" % vm_ip)
                     dhcp_range = dhcp_range - 1
                     for vms in vms_list:
                         # Start other VMs.
@@ -694,19 +679,18 @@ TIMEOUT 3"""
                         vms_ip = utils_net.get_guest_ip_addr(sess,
                                                              vms_mac)
                         if not vms_ip and dhcp_range:
-                            raise error.TestFail("Guest has invalid ip address")
+                            test.fail("Guest has invalid ip address")
                         elif vms_ip and not dhcp_range:
                             # Get IP address on guest should return Null
                             # if it exceeds the dhcp range
-                            raise error.TestFail("Guest has ip address: %s"
-                                                 % vms_ip)
+                            test.fail("Guest has ip address: %s" % vms_ip)
                         dhcp_range = dhcp_range - 1
                         if vms_ip:
                             ping_s, _ = ping(dest=vm_ip, count=5,
                                              timeout=10, session=sess)
                             if ping_s:
-                                raise error.TestFail("Failed to ping, src: %s, "
-                                                     "dst: %s" % (vms_ip, vm_ip))
+                                test.fail("Failed to ping, src: %s, "
+                                          "dst: %s" % (vms_ip, vm_ip))
                         sess.close()
 
                 # Check dnsmasq settings if take affect in guest
@@ -759,7 +743,7 @@ TIMEOUT 3"""
                     # Should fail to start vm
                     vm.start()
                     if restart_error:
-                        raise error.TestFail("VM started unexpectedly")
+                        test.fail("VM started unexpectedly")
                 if test_ipv6_address:
                     check_ipt_rules(check_ipv6=True)
                     run_ip_test(session, "ipv6")
@@ -774,7 +758,7 @@ TIMEOUT 3"""
         except virt_vm.VMStartError as details:
             logging.info(str(details))
             if not (start_error or restart_error):
-                raise error.TestFail('VM failed to start:\n%s' % details)
+                test.fail('VM failed to start:\n%s' % details)
 
     finally:
         # Recover VM.
@@ -790,3 +774,6 @@ TIMEOUT 3"""
             virsh.net_destroy(net_name)
             virsh.net_undefine(net_name)
         vmxml_backup.sync()
+
+        if test_ipv6_address and original_accept_ra != '2':
+            process.system(sysctl_cmd + "=%s" % original_accept_ra)
