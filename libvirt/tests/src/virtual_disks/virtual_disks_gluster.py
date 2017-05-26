@@ -60,12 +60,6 @@ def run(test, params, env):
         """
         Try to rebuild disk xml
         """
-        # Delete existed disks first.
-        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        disks_dev = vmxml.get_devices(device_type="disk")
-        for disk in disks_dev:
-            vmxml.del_device(disk)
-
         if default_pool:
             disk_xml = Disk(type_name="file")
         else:
@@ -77,12 +71,11 @@ def run(test, params, env):
         if driver_iothread:
             driver_dict.update({"iothread": driver_iothread})
         disk_xml.driver = driver_dict
-        disk_xml.target = {"dev": "vda", "bus": "virtio"}
+        disk_xml.target = {"dev": "vdb", "bus": "virtio"}
         if default_pool:
             utils_misc.mount("%s:%s" % (host_ip, vol_name),
                              default_pool, "glusterfs")
             process.run("setsebool virt_use_fusefs on", shell=True)
-            virsh.pool_refresh("default")
             source_dict = {"file": "%s/%s" % (default_pool, disk_img)}
             disk_xml.source = disk_xml.new_disk_source(
                 **{"attrs": source_dict})
@@ -98,18 +91,7 @@ def run(test, params, env):
                 host_dict[0]['transport'] = transport
             disk_xml.source = disk_xml.new_disk_source(
                 **{"attrs": source_dict, "hosts": host_dict})
-        # set domain options
-        if dom_iothreads:
-            try:
-                vmxml.iothreads = int(dom_iothreads)
-            except ValueError:
-                # 'iothreads' may not invalid number in negative tests
-                logging.debug("Can't convert '%s' to integer type"
-                              % dom_iothreads)
-
-        # Add the new disk xml.
-        vmxml.add_device(disk_xml)
-        vmxml.sync()
+        return disk_xml
 
     def test_pmsuspend(vm_name):
         """
@@ -152,7 +134,7 @@ def run(test, params, env):
 
     # Disk specific attributes.
     pm_enabled = "yes" == params.get("pm_enabled", "no")
-    gluster_disk = "yes" == params.get("gluster_disk")
+    gluster_disk = "yes" == params.get("gluster_disk", "no")
     disk_format = params.get("disk_format", "qcow2")
     vol_name = params.get("vol_name")
     transport = params.get("transport", "")
@@ -174,6 +156,7 @@ def run(test, params, env):
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vmxml = vmxml_backup.copy()
     mnt_src = ""
     try:
         # Build new vm xml.
@@ -189,7 +172,41 @@ def run(test, params, env):
             disk_img = "gluster.%s" % disk_format
             host_ip = prepare_gluster_disk(disk_img, disk_format)
             mnt_src = "%s:%s" % (host_ip, vol_name)
-            build_disk_xml(disk_img, disk_format, host_ip)
+            global custom_disk
+            custom_disk = build_disk_xml(disk_img, disk_format, host_ip)
+
+        start_vm = "yes" == params.get("start_vm", "yes")
+
+        # set domain options
+        if dom_iothreads:
+            try:
+                vmxml.iothreads = int(dom_iothreads)
+                vmxml.sync()
+            except ValueError:
+                # 'iothreads' may not invalid number in negative tests
+                logging.debug("Can't convert '%s' to integer type",
+                              dom_iothreads)
+        if default_pool:
+            disks_dev = vmxml.get_devices(device_type="disk")
+            for disk in disks_dev:
+                vmxml.del_device(disk)
+            vmxml.sync()
+
+        # If hot plug, start VM first, otherwise stop VM if running.
+        if start_vm:
+            if vm.is_dead():
+                vm.start()
+        else:
+            if not vm.is_dead():
+                vm.destroy()
+
+        # If gluster_disk is True, use attach_device.
+        attach_option = params.get("attach_option", "")
+        if gluster_disk:
+            cmd_result = virsh.attach_device(domainarg=vm_name, filearg=custom_disk.xml,
+                                             flagstr=attach_option,
+                                             dargs=virsh_dargs, debug=True)
+            libvirt.check_exit_status(cmd_result)
 
         # Turn VM into certain state.
         if pre_vm_state == "running":
@@ -225,15 +242,14 @@ def run(test, params, env):
             if process.run(cmd, ignore_status=True, shell=True).exit_status:
                 test.fail("Can't see gluster option '%s' "
                           "in command line" % cmd)
+        # Detach hot plugged device.
+        if start_vm and not default_pool:
+            if gluster_disk:
+                ret = virsh.detach_device(vm_name, custom_disk.xml,
+                                          flagstr=attach_option, dargs=virsh_dargs)
+                libvirt.check_exit_status(ret)
 
     finally:
-        # cleanup swap
-        if pm_enabled:
-            try:
-                if vm.state() == "running":
-                    vm.cleanup_swap()
-            except (remote.LoginError, virt_vm.VMError), e:
-                logging.error("Failed to cleanup swap on guest: %s", e)
         # Recover VM.
         if vm.is_alive():
             vm.destroy(gracefully=False)
