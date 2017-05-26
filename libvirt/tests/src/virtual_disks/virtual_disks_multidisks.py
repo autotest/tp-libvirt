@@ -399,6 +399,33 @@ def run(test, params, env):
                     break
         return addr
 
+    def create_addtional_disk(disk_type, disk_path, disk_format, disk_device_type,
+                              disk_device, disk_target, disk_bus):
+        """
+        Create another disk for a given path,customize some attributes.
+        :param disk_type: the type of disk.
+        :param disk_path: the path of disk.
+        :param disk_format: the format to disk image.
+        :param disk_device_type: the disk device type.
+        :param disk_device: the device of disk.
+        :param disk_target: the target of disk.
+        :param disk_bus: the target bus of disk.
+        :return: disk object if created successfully.
+        """
+        disk_source = libvirt.create_local_disk(disk_type, disk_path, '10', disk_format)
+        disks_img.append({"format": disk_format,
+                         "source": disk_path, "path": disk_path})
+        custom_disk = Disk(type_name=disk_device_type)
+        custom_disk.device = disk_device
+        source_dict = {'file': disk_source}
+        custom_disk.source = custom_disk.new_disk_source(
+            **{"attrs": source_dict})
+        target_dict = {"dev": disk_target, "bus": disk_bus}
+        custom_disk.target = target_dict
+        driver_dict = {"name": "qemu", 'type': disk_format}
+        custom_disk.driver = driver_dict
+        return custom_disk
+
     status_error = "yes" == params.get("status_error", "no")
     define_error = "yes" == params.get("define_error", "no")
     dom_iothreads = params.get("dom_iothreads")
@@ -439,6 +466,8 @@ def run(test, params, env):
         "virt_disk_with_source", "yes")
     virtio_scsi_controller = "yes" == params.get(
         "virtio_scsi_controller", "no")
+    virt_disk_with_duplicate_scsi_controller_index = "yes" == params.get(
+        "virt_disk_with_duplicate_scsi_controller_index", "no")
     virtio_scsi_controller_driver = params.get(
         "virtio_scsi_controller_driver", "")
     source_path = "yes" == params.get(
@@ -701,6 +730,27 @@ def run(test, params, env):
             vmxml.del_controller("scsi")
             vmxml.add_device(scsi_controller)
 
+        # Create second disk,and attach to VM with the same index controller.
+        if virt_disk_with_duplicate_scsi_controller_index:
+            global custom_disk_xml
+            disk_path = params.get("virt_disk_path", "")
+            custom_disk_xml = create_addtional_disk('file', disk_path, device_formats[0], device_types[0],
+                                                    devices[0], 'sdb',
+                                                    device_bus[0])
+            addr_dict = {'type': 'drive', 'controller': '0', 'bus': '0', 'target': '0', 'unit': '0'}
+            custom_disk_xml.address = custom_disk_xml.new_disk_address(**{"attrs": addr_dict})
+            disks_img.append({"format": "qcow2",
+                             "source": disk_path, "path": disk_path})
+            # For cold plug,it expect attach succeed,but throw error: unsupported configuration:
+            # Found duplicate drive address for disk when redefining this VM.
+            if not hotplug:
+                vmxml.sync()
+                attach_option = '--config'
+                ret = virsh.attach_device(vm_name, custom_disk_xml.xml,
+                                          flagstr=attach_option, debug=True)
+                libvirt.check_exit_status(ret)
+                vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+
         # Test usb devices.
         usb_devices = {}
         if add_usb_device:
@@ -782,6 +832,15 @@ def run(test, params, env):
                 attach_error = False
                 if len(device_attach_error) > i:
                     attach_error = "yes" == device_attach_error[i]
+                libvirt.check_exit_status(ret, attach_error)
+
+            # If hotplug one disk with same controller index, it expect throw
+            # internal error: unable to execute QEMU command '__com.redhat_drive_add': Duplicate ID '.
+            if virt_disk_with_duplicate_scsi_controller_index:
+                attach_option = '--live'
+                attach_error = True
+                ret = virsh.attach_device(vm_name, custom_disk_xml.xml,
+                                          flagstr=attach_option, debug=True)
                 libvirt.check_exit_status(ret, attach_error)
 
     except virt_vm.VMStartError as details:
@@ -1024,7 +1083,8 @@ def run(test, params, env):
 
     finally:
         # Delete snapshots.
-        libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)
+        if virsh.domain_exists(vm_name):
+            libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)
 
         # Recover VM.
         if vm.is_alive():
