@@ -13,6 +13,7 @@ from virttest.libvirt_xml import vm_xml
 
 V2V_7_3_VERSION = 'virt-v2v-1.32.1-1.el7'
 RETRY_TIMES = 10
+WAIT_FOR_DRIVERS = 120
 
 
 class VMChecker(object):
@@ -248,8 +249,8 @@ class VMChecker(object):
         except Exception as detail:
             raise exceptions.TestError('Failed to connect to windows guest: %s' %
                                        detail)
-        logging.info("Wait 60 seconds for installing drivers")
-        time.sleep(60)
+        logging.info("Wait %d seconds for installing drivers", WAIT_FOR_DRIVERS)
+        time.sleep(WAIT_FOR_DRIVERS)
         # Close and re-create session in case connection reset by peer during
         # sleeping time. Keep trying until the test command runs successfully.
         for retry in range(RETRY_TIMES):
