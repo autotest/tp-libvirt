@@ -139,7 +139,7 @@ def run(test, params, env):
                 return False
 
             device_source = os.path.join(os.sep, 'dev', added_part)
-            libvirt.mk_label(device_source)
+            libvirt.mk_label(device_source, session=session)
             libvirt.mk_part(device_source, size="10M", session=session)
             # Run partprobe to make the change take effect.
             process.run("partprobe", ignore_status=True, shell=True)
