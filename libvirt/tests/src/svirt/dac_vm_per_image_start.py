@@ -100,6 +100,8 @@ def run(test, params, env):
 
     # Set selinux of host.
     backup_sestatus = utils_selinux.get_status()
+    if backup_sestatus == "disabled":
+        raise error.TestNAError("SKIP: SELinux is set to enforcing")
     utils_selinux.set_status(host_sestatus)
 
     qemu_sock_mod = False
