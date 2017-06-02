@@ -5,7 +5,6 @@ import logging
 import aexpect
 
 from avocado.utils import process
-from avocado.core import exceptions
 
 from virttest import virt_vm
 from virttest import virsh
@@ -82,7 +81,7 @@ def run(test, params, env):
                 cmd = ("mkfs.ext3 -F %s && setsebool virt_use_nfs true"
                        % device_source)
                 if process.system(cmd, ignore_status=True, shell=True):
-                    raise exceptions.TestSkipError("Format disk failed")
+                    test.skip("Format disk failed")
 
         nfs_params = {"nfs_mount_dir": mount_dir, "nfs_mount_options": "ro",
                       "nfs_mount_src": mount_src, "setup_local_nfs": "yes",
@@ -115,7 +114,7 @@ def run(test, params, env):
                 disk.update({"format": "scsi",
                              "source": disk_source})
             else:
-                raise exceptions.TestSkipError("Get scsi disk failed")
+                test.skip("Get scsi disk failed")
 
         elif disk_format in ["iso", "floppy"]:
             disk_path = libvirt.create_local_disk(disk_format, path)
@@ -287,7 +286,7 @@ def run(test, params, env):
 
         cmd = "echo \"%s\" | grep %s.%s" % (ret.stdout, disk_name, snapshot1)
         if process.system(cmd, ignore_status=True, shell=True):
-            raise exceptions.TestError("Check snapshot disk failed")
+            test.skip("Check snapshot disk failed")
 
         ret = virsh.snapshot_create_as(vm_name,
                                        "%s --memspec file=%s,snapshot=external"
@@ -301,11 +300,11 @@ def run(test, params, env):
         cmd = ("echo \"%s\" | grep -A 16 %s.%s | grep \"boot order='%s'\""
                % (ret.stdout, disk_name, snapshot2, bootorder))
         if process.system(cmd, ignore_status=True, shell=True):
-            raise exceptions.TestError("Check snapshot disk with bootorder failed")
+            test.error("Check snapshot disk with bootorder failed")
 
         snap_lists = virsh.snapshot_list(vm_name)
         if snapshot1 not in snap_lists or snapshot2 not in snap_lists:
-            raise exceptions.TestError("Check snapshot list failed")
+            test.error("Check snapshot list failed")
 
         # Check virsh save command after snapshot.
         save_file = "/tmp/%s.save" % vm_name
@@ -368,11 +367,11 @@ def run(test, params, env):
             status, output = session.cmd_status_output(cmd)
             if status:
                 session.close()
-                raise exceptions.TestError("Failed to read/write disk in VM:"
-                                           " %s" % output)
+                test.error("Failed to read/write disk in VM:"
+                           " %s" % output)
             session.close()
         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), detail:
-            raise exceptions.TestError(str(detail))
+            test.error(str(detail))
 
     def check_dom_iothread():
         """
@@ -385,7 +384,7 @@ def run(test, params, env):
         logging.debug("Domain iothreads: %s", ret.stdout)
         iothreads_ret = json.loads(ret.stdout)
         if len(iothreads_ret['return']) != int(dom_iothreads):
-            raise exceptions.TestFail("Failed to check domain iothreads")
+            test.fail("Failed to check domain iothreads")
 
     def get_device_addr(device_type, elem_type):
         """Get the address of testing input or hub from VM XML as a dict."""
@@ -412,6 +411,7 @@ def run(test, params, env):
         :param disk_bus: the target bus of disk.
         :return: disk object if created successfully.
         """
+
         disk_source = libvirt.create_local_disk(disk_type, disk_path, '10', disk_format)
         disks_img.append({"format": disk_format,
                          "source": disk_path, "path": disk_path})
@@ -506,11 +506,15 @@ def run(test, params, env):
         "test_bus_option_cmd", "no")
     snapshot_before_start = "yes" == params.get(
         "snapshot_before_start", "no")
+    disk_cdrom_update_boot_order = "yes" == params.get(
+        "disk_cdrom_update_boot_order", "no")
+    disk_floppy_update_boot_order = "yes" == params.get(
+        "disk_floppy_update_boot_order", "no")
 
     if dom_iothreads:
         if not libvirt_version.version_compare(1, 2, 8):
-            raise exceptions.TestSkipError("iothreads not supported for"
-                                           " this libvirt version")
+            test.skip("iothreads not supported for"
+                      " this libvirt version")
 
     if test_block_size:
         logical_block_size = params.get("logical_block_size")
@@ -575,7 +579,7 @@ def run(test, params, env):
                     libvirt.setup_or_cleanup_iscsi(is_setup=False)
                 if img["format"] not in ["dir", "scsi"]:
                     os.remove(img["source"])
-        raise exceptions.TestSkipError("Creating disk failed")
+        test.skip("Creating disk failed")
 
     # Build disks xml.
     disks_xml = []
@@ -592,7 +596,7 @@ def run(test, params, env):
                 if process.system("mkdir -p %s && mount %s %s"
                                   % (mount_path, disks[i]["source"],
                                      mount_path), ignore_status=True, shell=True):
-                    raise exceptions.TestSkipError("Prepare disk failed")
+                    test.skip("Prepare disk failed")
                 disk_path = "%s/%s.qcow2" % (mount_path, device_source_names[i])
                 disk_source = libvirt.create_local_disk("file", disk_path, "1",
                                                         disk_format="qcow2")
@@ -808,7 +812,45 @@ def run(test, params, env):
         # Start the VM.
         vm.start()
         if status_error:
-            raise exceptions.TestFail("VM started unexpectedly")
+            test.fail("VM started unexpectedly")
+
+        def test_device_update_boot_order(disk_type, disk_path, error_msg):
+            """
+            Wrap device update boot order steps here.
+            Firstly,create another disk for a given path.
+            Update previous disk with newly created disk and modified boot order.
+            Eject disk finally.
+            :param disk_type: the type of disk.
+            :param disk_path: the path of disk.
+            :param error_msg: the expected error message.
+            """
+
+            addtional_disk = create_addtional_disk(disk_type, disk_path, device_formats[0], device_types[0],
+                                                   devices[0], device_targets[0],
+                                                   device_bus[0])
+            addtional_disk.boot = '2'
+            addtional_disk.readonly = 'True'
+            # Update disk cdrom/floppy with modified boot order,it expect fail.
+            ret = virsh.update_device(vm_name, addtional_disk.xml, debug=True)
+            if ret.exit_status == 0 or not ret.stderr.count("Operation not supported: " +
+                                                            "cannot modify field 'boot order' of the disk"):
+                test.fail(error_msg)
+            # Force eject cdrom or floppy, it expect succeed.
+            eject_disk = Disk(type_name='block')
+            eject_disk.target = {"dev": device_targets[0], "bus": device_bus[0]}
+            eject_disk.device = devices[0]
+            ret = virsh.update_device(vm_name, eject_disk.xml, flagstr='--force', debug=True)
+            libvirt.check_exit_status(ret)
+
+        if disk_cdrom_update_boot_order:
+            check_patitions = False
+            disk_path = params.get('iso_path', "")
+            test_device_update_boot_order("iso", disk_path, 'cdrom update error happen...')
+
+        if disk_floppy_update_boot_order:
+            check_patitions = False
+            disk_path = params.get('floppy_path', "")
+            test_device_update_boot_order("floppy", disk_path, 'floppy update error happen...')
 
         # Hotplug the disks.
         if device_at_dt_disk:
@@ -845,31 +887,31 @@ def run(test, params, env):
 
     except virt_vm.VMStartError as details:
         if not status_error:
-            raise exceptions.TestFail('VM failed to start:\n%s' % details)
+            test.fail('VM failed to start:\n%s' % details)
     except xcepts.LibvirtXMLError as xml_error:
         if not define_error:
-            raise exceptions.TestFail("Failed to define VM:\n%s" % xml_error)
+            test.fail("Failed to define VM:\n%s" % xml_error)
     else:
         # VM is started, perform the tests.
         if test_slots_order:
             if not check_disk_order(device_targets):
-                raise exceptions.TestFail("Disks slots order error in domain xml")
+                test.fail("Disks slots order error in domain xml")
 
         if test_disks_format:
             if not check_disk_format(device_targets, device_formats):
-                raise exceptions.TestFail("Disks type error in VM xml")
+                test.fail("Disks type error in VM xml")
 
         if test_boot_console:
             # Check if disks bootorder is as expected.
             expected_order = params.get("expected_order").split(',')
             if not check_boot_console(expected_order):
-                raise exceptions.TestFail("Test VM bootorder failed")
+                test.fail("Test VM bootorder failed")
 
         if test_block_size:
             # Check disk block size in VM.
             if not check_vm_block_size(device_targets,
                                        logical_block_size, physical_block_size):
-                raise exceptions.TestFail("Test disk block size in VM failed")
+                test.fail("Test disk block size in VM failed")
 
         if test_disk_option_cmd:
             # Check if disk options take affect in qemu commmand line.
@@ -942,7 +984,7 @@ def run(test, params, env):
                 cmd += " | grep virtio-net-pci,event_idx=%s" % iface_event_idx
 
             if process.system(cmd, ignore_status=True, shell=True):
-                raise exceptions.TestFail("Check disk driver option failed")
+                test.fail("Check disk driver option failed")
 
         if test_disk_snapshot:
             ret = virsh.snapshot_create_as(vm_name, "s1 %s" % snapshot_option)
@@ -956,7 +998,7 @@ def run(test, params, env):
                         continue
                 if device_bootorder[i] != vm_xml.VMXML.get_disk_attr(
                         vm_name, device_targets[i], "boot", "order"):
-                    raise exceptions.TestFail("Check bootorder failed")
+                    test.fail("Check bootorder failed")
 
         # Check disk bootorder with snapshot.
         if test_disk_bootorder_snapshot:
@@ -966,7 +1008,7 @@ def run(test, params, env):
         # Check disk readonly option.
         if test_disk_readonly:
             if not check_readonly(device_targets):
-                raise exceptions.TestFail("Checking disk readonly option failed")
+                test.fail("Checking disk readonly option failed")
 
         # Check disk bus device option in qemu command line.
         if test_bus_device_option:
@@ -990,7 +1032,7 @@ def run(test, params, env):
             if device_bus[0] == "ide":
                 check_cmd = "/usr/libexec/qemu-kvm -device ? 2>&1 |grep -E 'ide-cd|ide-hd'"
                 if process.system(check_cmd, ignore_status=True, shell=True):
-                    raise exceptions.TestSkipError("ide-cd/ide-hd not supported by this qemu-kvm")
+                    test.skip("ide-cd/ide-hd not supported by this qemu-kvm")
 
                 if devices[0] == "cdrom":
                     device_option = "ide-cd"
@@ -1030,8 +1072,8 @@ def run(test, params, env):
                                          hub_addr["port"]))
 
             if process.system(cmd, ignore_status=True, shell=True):
-                raise exceptions.TestFail("Cann't see disk option"
-                                          " in command line")
+                test.fail("Cann't see disk option"
+                          " in command line")
 
         if dom_iothreads:
             check_dom_iothread()
@@ -1040,7 +1082,7 @@ def run(test, params, env):
         if check_patitions:
             if not check_vm_partitions(devices,
                                        device_targets):
-                raise exceptions.TestFail("Cann't see device in VM")
+                test.fail("Cann't see device in VM")
 
         # Check disk save and restore.
         if test_disk_save_restore:
@@ -1063,7 +1105,7 @@ def run(test, params, env):
             if check_patitions_hotunplug:
                 if not check_vm_partitions(devices,
                                            device_targets, False):
-                    raise exceptions.TestFail("See device in VM after hotunplug")
+                    test.fail("See device in VM after hotunplug")
 
         elif hotplug:
             for i in range(len(disks_xml)):
@@ -1079,7 +1121,7 @@ def run(test, params, env):
             if check_patitions_hotunplug:
                 if not check_vm_partitions(devices,
                                            device_targets, False):
-                    raise exceptions.TestFail("See device in VM after hotunplug")
+                    test.fail("See device in VM after hotunplug")
 
     finally:
         # Delete snapshots.
