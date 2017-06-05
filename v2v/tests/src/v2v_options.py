@@ -30,7 +30,7 @@ def run(test, params, env):
         raise ValueError('Missing command: virt-v2v')
     for v in params.itervalues():
         if "V2V_EXAMPLE" in v:
-            raise exceptions.TestSkipError("Please set real value for %s" % v)
+            test.skip("Please set real value for %s" % v)
 
     vm_name = params.get("main_vm", "EXAMPLE")
     new_vm_name = params.get("new_vm_name")
@@ -100,8 +100,8 @@ def run(test, params, env):
         """
         tmp_target = re.findall(r"qemu-img\s'convert'\s.+\s'(\S+)'\n", output)
         if len(tmp_target) < 1:
-            raise exceptions.TestError("Fail to find tmp target file name when"
-                                       " converting vm disk image")
+            test.error("Fail to find tmp target file name when converting vm"
+                       " disk image")
         targets = tmp_target[0].split('/')
         return (targets[3], targets[5], targets[6])
 
@@ -157,14 +157,14 @@ def run(test, params, env):
             logging.info("Find VmType=%s in ovf file",
                          expected_vmtype)
         else:
-            raise exceptions.TestFail("VmType check failed")
+            test.fail("VmType check failed")
 
     def check_image(img_path, check_point, expected_value):
         """
         Verify image file allocation mode and format
         """
         if not img_path or not os.path.isfile(img_path):
-            raise exceptions.TestError("Image path: '%s' is invalid" % img_path)
+            test.error("Image path: '%s' is invalid" % img_path)
         img_info = utils_misc.get_image_info(img_path)
         logging.debug("Image info: %s", img_info)
         if check_point == "allocation":
@@ -172,19 +172,17 @@ def run(test, params, env):
                 if img_info['vsize'] > img_info['dsize']:
                     logging.info("%s is a sparse image", img_path)
                 else:
-                    raise exceptions.TestFail("%s is not a sparse image" % img_path)
+                    test.fail("%s is not a sparse image" % img_path)
             elif expected_value == "preallocated":
                 if img_info['vsize'] <= img_info['dsize']:
                     logging.info("%s is a preallocated image", img_path)
                 else:
-                    raise exceptions.TestFail("%s is not a preallocated image"
-                                              % img_path)
+                    test.fail("%s is not a preallocated image" % img_path)
         if check_point == "format":
             if expected_value == img_info['format']:
                 logging.info("%s format is %s", img_path, expected_value)
             else:
-                raise exceptions.TestFail("%s format is not %s"
-                                          % (img_path, expected_value))
+                test.fail("%s format is not %s" % (img_path, expected_value))
 
     def check_new_name(output, expected_name):
         """
@@ -204,7 +202,7 @@ def run(test, params, env):
         if found:
             logging.info("Guest name renamed when converting it")
         else:
-            raise exceptions.TestFail("Rename guest failed")
+            test.fail("Rename guest failed")
 
     def check_nocopy(output):
         """
@@ -214,7 +212,7 @@ def run(test, params, env):
         if not os.path.isfile(img_path):
             logging.info("No image created with --no-copy option")
         else:
-            raise exceptions.TestFail("Find %s" % img_path)
+            test.fail("Find %s" % img_path)
 
     def check_connection(output, expected_uri):
         """
@@ -224,7 +222,7 @@ def run(test, params, env):
         if init_msg in output:
             logging.info("Find message: %s", init_msg)
         else:
-            raise exceptions.TestFail("Not find message: %s" % init_msg)
+            test.fail("Not find message: %s" % init_msg)
 
     def check_ovf_snapshot_id(ovf_content):
         """
@@ -235,9 +233,9 @@ def run(test, params, env):
             snapshot_id = search.group(1)
             logging.debug('vm_snapshot_id = %s', snapshot_id)
             if snapshot_id.count('0') >= 32:
-                raise exceptions.TestFail('vm_snapshot_id consists with "0"')
+                test.fail('vm_snapshot_id consists with "0"')
         else:
-            raise exceptions.TestFail('Fail to find snapshot_id')
+            test.fail('Fail to find snapshot_id')
 
     def check_source(output):
         """
@@ -258,7 +256,7 @@ def run(test, params, env):
                      'display', 'CPU features', 'disks', 'NICs']
         for key in checklist:
             if key not in source_info:
-                raise exceptions.TestFail('%s info missing' % key)
+                test.fail('%s info missing' % key)
 
         # Check single values
         fail = []
@@ -303,7 +301,39 @@ def run(test, params, env):
             fail.append('CPU features')
 
         if fail:
-            raise exceptions.TestFail('Source info not correct for: %s' % fail)
+            test.fail('Source info not correct for: %s' % fail)
+
+    def check_man_page(in_man, not_in_man):
+        """
+        Check if content of man page or help info meets expectation
+        """
+        man_page = process.run('man virt-v2v').stdout.strip()
+        if in_man:
+            logging.info('Checking man page of virt-v2v for "%s"', in_man)
+            if in_man not in man_page:
+                test.fail('"%s" not in man page' % in_man)
+        if not_in_man:
+            logging.info('Checking man page of virt-v2v for "%s"', not_in_man)
+            if not_in_man in man_page:
+                test.fail('"%s" not removed from man page' % not_in_man)
+
+    def check_v2v_log(output, check=None):
+        """
+        Check if error/warning meets expectation
+        """
+        expect_msg = params.get('expect_msg')
+        if not expect_msg:
+            logging.info('No need to check v2v log')
+        else:
+            expect = expect_msg == 'yes'
+            if params.get('msg_content'):
+                msg_list = params['msg_content'].split('%')
+                if utils_v2v.check_log(output, msg_list, expect=expect):
+                    logging.info('Finish checking v2v log')
+                else:
+                    test.fail('Check v2v log failed')
+            else:
+                test.error('No error message to compare with')
 
     def check_result(cmd, result, status_error):
         """
@@ -321,13 +351,13 @@ def run(test, params, env):
                     if line.startswith('libvirt:'):
                         v2v_start = False
                     if v2v_start and len(line) > 72:
-                        raise exceptions.TestFail('Error log longer than 72 '
-                                                  'charactors: %s', line)
+                        test.fail('Error log longer than 72 charactors: %s' %
+                                  line)
             if checkpoint == 'disk_not_exist':
                 vol_list = virsh.vol_list(pool_name)
                 logging.info(vol_list)
                 if vm_name in vol_list.stdout:
-                    raise exceptions.TestFail('Disk exists for vm %s' % vm_name)
+                    test.fail('Disk exists for vm %s' % vm_name)
             else:
                 error_map = {
                     'conflict_options': ['option used more than once'],
@@ -338,8 +368,7 @@ def run(test, params, env):
                 }
                 if error_map.has_key(checkpoint) and not utils_v2v.check_log(
                         output, error_map[checkpoint]):
-                    raise exceptions.TestFail('Not found error message %s' %
-                                              error_map[checkpoint])
+                    test.fail('Not found error message %s' % error_map[checkpoint])
         else:
             if output_mode == "rhev" and checkpoint != 'quiet':
                 ovf = get_ovf_content(output)
@@ -359,7 +388,7 @@ def run(test, params, env):
                     except exceptions.TestFail:
                         pass
                 if not utils_misc.wait_for(check_alloc, timeout=600, step=10.0):
-                    raise exceptions.TestFail('Allocation check failed.')
+                    test.fail('Allocation check failed.')
             if '-of' in cmd and '--no-copy' not in cmd and checkpoint != 'quiet':
                 expected_format = re.findall(r"-of\s(\w+)", cmd)[0]
                 img_path = get_img_path(output)
@@ -374,7 +403,7 @@ def run(test, params, env):
                 check_connection(output, expected_uri)
             if output_mode == "rhev":
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache):
-                    raise exceptions.TestFail("Import VM failed")
+                    test.fail("Import VM failed")
                 else:
                     params['vmcheck_flag'] = True
             if output_mode == "libvirt":
@@ -382,34 +411,38 @@ def run(test, params, env):
                     virsh.start(vm_name, debug=True, ignore_status=False)
             if checkpoint == 'quiet':
                 if len(output.strip()) != 0:
-                    raise exceptions.TestFail('Output is not empty in quiet mode')
+                    test.fail('Output is not empty in quiet mode')
             if checkpoint == 'dependency':
                 if 'libguestfs-winsupport' not in output:
-                    raise exceptions.TestFail('libguestfs-winsupport not in dependency')
+                    test.fail('libguestfs-winsupport not in dependency')
+                if 'VMF' not in output:
+                    test.fail('OVMF/AAVMF not in dependency')
                 if 'qemu-kvm-rhev' in output:
-                    raise exceptions.TestFail('qemu-kvm-rhev is in dependency')
+                    test.fail('qemu-kvm-rhev is in dependency')
+                if 'libX11' in output:
+                    test.fail('libX11 is in dependency')
                 win_img = params.get('win_image')
                 command = 'guestfish -a %s -i'
                 if process.run(command % win_img, ignore_status=True).exit_status == 0:
-                    raise exceptions.TestFail('Command "%s" success' % command % win_img)
+                    test.fail('Command "%s" success' % command % win_img)
             if checkpoint == 'no_dcpath':
                 if not utils_v2v.check_log(output, ['--dcpath'], expect=False):
-                    raise exceptions.TestFail('"--dcpath" is not removed')
+                    test.fail('"--dcpath" is not removed')
             if checkpoint == 'debug_overlays':
                 search = re.search('Overlay saved as(.*)', output)
                 if not search:
-                    raise exceptions.TestFail('Not find log of saving overlays')
+                    test.fail('Not find log of saving overlays')
                 overlay_path = search.group(1).strip()
                 logging.debug('Overlay file location: %s' % overlay_path)
                 if os.path.isfile(overlay_path):
                     logging.info('Found overlay file: %s' % overlay_path)
                 else:
-                    raise exceptions.TestFail('Overlay file not saved')
+                    test.fail('Overlay file not saved')
             if checkpoint.startswith('empty_nic_source'):
                 target_str = '%s "eth0" mac: %s' % (params[checkpoint][0], params[checkpoint][1])
                 logging.info('Expect log: %s', target_str)
                 if target_str not in result.stdout.lower():
-                    raise exceptions.TestFail('Expect log not found: %s' % target_str)
+                    test.fail('Expect log not found: %s' % target_str)
             if checkpoint == 'print_source':
                 check_source(result.stdout)
             if checkpoint == 'machine_readable':
@@ -418,7 +451,7 @@ def run(test, params, env):
                     logging.debug(expect_output)
                     logging.debug(expect_output == result.stdout.strip())
                 else:
-                    raise exceptions.TestError('No content to compare with')
+                    test.error('No content to compare with')
             if checkpoint == 'compress':
                 img_path = get_img_path(output)
                 logging.info('Image path: %s', img_path)
@@ -428,15 +461,17 @@ def run(test, params, env):
                 compress_rate = float(compress_info)
                 logging.info('%s%% compressed', compress_rate)
                 if compress_rate < 0.1:
-                    raise exceptions.TestFail('Disk image NOT compressed')
+                    test.fail('Disk image NOT compressed')
             if checkpoint == 'tail_log':
                 messages = params['tail'].get_output()
                 logging.info('Content of /var/log/messages during conversion:')
                 logging.info(messages)
                 msg_content = params['msg_content']
                 if not utils_v2v.check_log(messages, [msg_content], expect=False):
-                    raise exceptions.TestFail('Found "%s" in /var/log/messages' %
-                                              msg_content)
+                    test.fail('Found "%s" in /var/log/messages' %
+                              msg_content)
+        check_v2v_log(output, checkpoint)
+        check_man_page(params.get('in_man'), params.get('not_in_man'))
 
     backup_xml = None
     vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
@@ -477,9 +512,9 @@ def run(test, params, env):
             input_xml = params.get('input_xml')
             input_option += '-i %s %s' % (input_mode, input_xml)
         elif input_mode in ['ova']:
-            raise exceptions.TestSkipError("Unsupported input mode: %s" % input_mode)
+            test.skip("Unsupported input mode: %s" % input_mode)
         else:
-            raise exceptions.TestError("Unknown input mode %s" % input_mode)
+            test.error("Unknown input mode %s" % input_mode)
         input_format = params.get("input_format", "")
         input_allo_mode = params.get("input_allo_mode")
         if input_format:
@@ -506,7 +541,7 @@ def run(test, params, env):
             if not os.path.isdir(mnt_point):
                 os.mkdir(mnt_point)
             if not utils_misc.mount(nfs_storage, mnt_point, "nfs"):
-                raise exceptions.TestError("Mount NFS Failed")
+                test.error("Mount NFS Failed")
             if output_mode == 'vdsm':
                 v2v_options += " --vdsm-image-uuid %s" % vdsm_image_uuid
                 v2v_options += " --vdsm-vol-uuid %s" % vdsm_vol_uuid
@@ -547,7 +582,7 @@ def run(test, params, env):
                 input_option = string.replace(input_option, disk_img, disk_path)
                 os.chown(disk_path, user_info.pw_uid, user_info.pw_gid)
             elif not no_root:
-                raise exceptions.TestSkipError("Only support convert local disk")
+                test.skip("Only support convert local disk")
 
         # Setup ssh-agent access to xen hypervisor
         if hypervisor == 'xen':
@@ -593,7 +628,7 @@ def run(test, params, env):
             logging.debug(virsh.pool_list(uri='qemu:///session'))
             sh_install_vm = params.get('sh_install_vm')
             if not sh_install_vm:
-                raise exceptions.TestError('Source vm installing script missing')
+                test.error('Source vm installing script missing')
             process.run('su - %s -c %s' % (v2v_user, sh_install_vm))
 
         # Running virt-v2v command
