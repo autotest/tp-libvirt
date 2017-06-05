@@ -2326,7 +2326,7 @@ def run(test, params, env):
         grep_str_local = test_dict.get("grep_str_from_local_libvirt_log")
         if config_libvirtd == "yes" and grep_str_local:
             cmd = "grep -E '%s' %s" % (grep_str_local, log_file)
-            logging.debug("Execute command %s: %s", cmd, process.system_output(cmd), shell=True)
+            logging.debug("Execute command %s: %s", cmd, process.system_output(cmd, shell=True))
 
         grep_str_remote = test_dict.get("grep_str_from_remote_libvirt_log")
         if grep_str_remote:
