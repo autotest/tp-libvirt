@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import utils_config
 from virttest import utils_libvirtd
 
@@ -28,11 +26,12 @@ def run(test, params, env):
         CapPrm: 0000001fffffffff
         CapEff: 0000001fffffffff
         CapBnd: 0000001fffffffff
+        CapAmb: 0000000000000000
 
         :param vm: A libvirt_vm.VM class instance.
         :return :  A dict using set_name as keys and integer converted from
                    hex cap_str as values.
-        :raise TestNAError: If can not get capabilities from proc.
+        :raise cancel: If can not get capabilities from proc.
         """
         if vm.is_dead():
             vm.start()
@@ -48,11 +47,11 @@ def run(test, params, env):
         finally:
             proc_stat_fp.close()
 
-        if len(caps) == 4:
+        if len(caps) == 5:
             return caps
         else:
-            raise error.TestNAError('Host do not support capabilities or '
-                                    'an error has occured.')
+            test.cancel('Host do not support capabilities or '
+                        'an error has occured.')
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     expected_result = params.get("expected_result", "name_not_set")
@@ -84,14 +83,14 @@ def run(test, params, env):
         # Restart libvirtd to make change valid.
         if not libvirtd.restart():
             if expected_result != 'unbootable':
-                raise error.TestFail('Libvirtd is expected to be started '
-                                     'with clear_emulator_capabilities = '
-                                     '%s' % clear_emulator_capabilities)
+                test.fail('Libvirtd is expected to be started '
+                          'with clear_emulator_capabilities = '
+                          '%s' % clear_emulator_capabilities)
             return
         if expected_result == 'unbootable':
-            raise error.TestFail('Libvirtd is not expected to be started '
-                                 'with clear_emulator_capabilities = '
-                                 '%s' % clear_emulator_capabilities)
+            test.fail('Libvirtd is not expected to be started '
+                      'with clear_emulator_capabilities = '
+                      '%s' % clear_emulator_capabilities)
 
         # Restart VM to create a new qemu process.
         if vm.is_alive():
@@ -108,12 +107,12 @@ def run(test, params, env):
         eff_caps = new_qemu_caps['CapEff']
         if eff_caps == 0:
             if expected_result != 'dropped':
-                raise error.TestFail(
+                test.fail(
                     'Qemu process capabilities is not expected to be dropped, '
                     'but CapEff == %s found' % hex(eff_caps))
         else:
             if expected_result == 'dropped':
-                raise error.TestFail(
+                test.fail(
                     'Qemu process capabilities is expected to be dropped, '
                     'but CapEff == %s found' % hex(eff_caps))
     finally:
