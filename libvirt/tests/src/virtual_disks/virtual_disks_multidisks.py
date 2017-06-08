@@ -1057,9 +1057,13 @@ def run(test, params, env):
                 dev_id = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
                                                     "alias", "name")
                 if devices[0] == "disk":
-                    cmd += (" | grep usb-storage,bus=usb%s.0,port=%s,"
+                    # For dev_bus ==0,it hardcode bus=usb.0,other than usb%s.0.
+                    usb_bus_str = "usb%s.0" % dev_id
+                    if dev_bus == 0:
+                        usb_bus_str = "usb.0"
+                    cmd += (" | grep usb-storage,bus=%s,port=%s,"
                             "drive=drive-%s,id=%s"
-                            % (dev_bus, dev_port, dev_id, dev_id))
+                            % (dev_bus, dev_port, usb_bus_str, dev_id))
                 if usb_devices.has_key("input"):
                     input_addr = get_device_addr('input', 'tablet')
                     cmd += (" | grep usb-tablet,id=input[0-9],bus=usb.%s,"
