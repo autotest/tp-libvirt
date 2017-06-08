@@ -42,7 +42,7 @@ def run(test, params, env):
 
     src_pool_type = params.get("src_pool_type")
     src_pool_target = params.get("src_pool_target")
-    src_pool_format = params.get("src_pool_format", "")
+    src_pool_format = params.get("src_pool_format", "ext4")
     pool_vol_num = int(params.get("src_pool_vol_num", '1'))
     src_emulated_image = params.get("src_emulated_image")
     extra_option = params.get("extra_option", "")
