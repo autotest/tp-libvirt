@@ -758,9 +758,10 @@ def run(test, params, env):
         nfs_client = nfs.NFSClient(params)
         nfs_client.setup()
 
-        logging.info("Enable virt NFS SELinux boolean on target host.")
-        seLinuxBool = SELinuxBoolean(params)
-        seLinuxBool.setup()
+        if "Ubuntu" not in platform.dist():
+            logging.info("Enable virt NFS SELinux boolean on target host.")
+            seLinuxBool = SELinuxBoolean(params)
+            seLinuxBool.setup()
 
         # Permit iptables to permit 49152-49216 ports to libvirt for
         # migration and if arch is ppc with power8 then switch off smt
