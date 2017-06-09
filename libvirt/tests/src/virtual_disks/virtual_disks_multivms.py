@@ -343,10 +343,10 @@ def run(test, params, env):
                             logging.error(str(e))
                             raise error.TestFail("Test disk shareable: login failed")
                 session.close()
-            except virt_vm.VMStartError:
+            except virt_vm.VMStartError, start_error:
                 if vms_list[i]['status']:
-                    raise error.TestFail('VM Failed to start'
-                                         ' for some reason!')
+                    raise error.TestFail("VM failed to start."
+                                         "Error: %s" % str(start_error))
     finally:
         # Stop VMs.
         for i in range(len(vms_list)):
