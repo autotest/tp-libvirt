@@ -16,6 +16,7 @@ from virttest import utils_libvirtd
 from virttest import data_dir
 from virttest import libvirt_vm
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml.devices import memory
 from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
 from virttest import utils_misc
@@ -25,8 +26,17 @@ from virttest.utils_test import libvirt
 from virttest import test_setup
 from virttest import ssh_key
 from virttest.staging import utils_memory
+from virttest.utils_iptables import Iptables
+from virttest import utils_package
+from virttest import utils_config
+from virttest import iscsi
 
 from provider import libvirt_version
+
+# secret uuid generated during iscsi hotplug testcases to be cleaned up
+# finally
+src_uuid = ""
+dest_uuid = ""
 
 
 def run(test, params, env):
@@ -320,12 +330,7 @@ def run(test, params, env):
         logging.debug(mem_xml)
         mem_xml_file = os.path.join(data_dir.get_tmp_dir(),
                                     'memory_hotplug.xml')
-        try:
-            fp = open(mem_xml_file, 'w')
-        except Exception, info:
-            test.error(info)
-        fp.write(str(mem_xml))
-        fp.close()
+        xml_to_file(mem_xml, mem_xml_file)
         return mem_xml_file
 
     def cpu_hotplug_hotunplug(vm, vm_addr, cpu_count, operation,
@@ -343,11 +348,7 @@ def run(test, params, env):
         :raise test.fail if hotplug or hotunplug doesn't work
         """
         if params:
-            remote_user = params.get("remote_user", "root")
-            remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
-            remote_pwd = params.get("remote_pwd", None)
-            session = remote.remote_login("ssh", remote_ip, "22", remote_user,
-                                          remote_pwd, r"[\#\$]\s*$")
+            session = create_session_with_remote(params)
         else:
             session = vm.wait_for_login()
         status = virsh.setvcpus(vm.name, cpu_count, extra="--live", debug=True,
@@ -400,6 +401,266 @@ def run(test, params, env):
             logging.debug("CPU %s successful !!!", operation)
         except Exception, info:
             test.fail("CPU %s failed - %s" % (operation, info))
+
+    def check_usable_target(vm, bus="virtio"):
+        """
+        checks the existing target from partition list and returns usable target
+
+        :param vm: VM Object
+        :param bus: type of disk device
+        """
+        if bus.lower() == "virtio":
+            target = "vd%s"
+        session = vm.wait_for_login()
+        targets = [target % num for num in range(97, 123)]
+        exist_targets = libvirt.get_parts_list(session)
+        session.close()
+        for each_target in targets:
+            if each_target not in exist_targets:
+                return each_target
+
+    # Configure ssh key between destination machine and VM
+    # before migration, so that commands can be executed from
+    # destination machine to VM after migration for validation
+    def pwdless_ssh_remote_host_and_guest(params, vm):
+        """
+        Configure passwordless ssh between remote host and guest
+
+        :param params: Test dict params
+        :param vm: VM object
+        """
+
+        config_opt = ["StrictHostKeyChecking=no"]
+        guest_user = params.get("username", "root")
+        guest_ip = vm.get_address()
+        guest_pwd = params.get("password", "password")
+        server_ip = params.get("migrate_dest_host")
+        server_pwd = params.get("migrate_dest_pwd")
+        server_user = params.get("server_user", "root")
+        ssh_key.setup_remote_ssh_key(server_ip, server_user,
+                                     server_pwd, hostname2=guest_ip,
+                                     user2=guest_user,
+                                     password2=guest_pwd,
+                                     config_options=config_opt,
+                                     public_key="rsa")
+
+    def xml_to_file(xml, file_path):
+        """
+        Writes xml attributes to the file
+
+        :param xml: xml attribute content
+        :param file_path: file to which xml content to be written
+
+        :raise: test.error() if fails to open the file_path
+        """
+        try:
+            fp = open(file_path, 'w')
+        except Exception, info:
+            test.error(info)
+        fp.write(str(xml))
+        fp.close()
+
+    def create_secret_disk_xml(target_name, usage_type, ephemeral="no",
+                               private="yes", passphrase=None, uri=None):
+        """
+        Creates secret xml, defines it, set secret with uuid returns uuid
+
+        :param target_name: disk target exposed to guest in /dev
+        :param usage_type: secret usage type, iscsi, ceph etc
+        :param ephemeral: yes, for secret to be stored persistently, no for not
+        :param private: yes, to reveal secret to libvirt caller, no for not
+        :param passphrase: passphrase to set secret with uuid
+        :param uri: connect uri
+
+        :return: uuid generated by defining secret xml
+        :raise: test.error() if secret failed to define or failed to set
+        """
+        secret_attr = secret_xml.SecretXML()
+        secret_attr.set_secret_ephemeral(ephemeral)
+        secret_attr.set_secret_private(private)
+        secret_attr.set_target(target_name)
+        secret_attr.set_usage(usage_type)
+        xml_file = os.path.join(data_dir.get_data_dir(), "secret.xml")
+        xml_to_file(secret_attr, xml_file)
+        virsh_output = virsh.secret_define(xml_file, uri=uri)
+        if virsh_output.exit_status:
+            test.error("secret xml failed to define: %s" % virsh_output.stdout)
+        secret_uuid = virsh_output.stdout.split("Secret")[-1]
+        secret_uuid = secret_uuid.split("created")[0].strip()
+        if passphrase:
+            secret = process.system_output("printf %s | base64" % passphrase,
+                                           shell=True)
+            if virsh.secret_set_value(secret_uuid, secret,
+                                      uri=uri).exit_status:
+                test.error("Failed to perform secret-set-value with "
+                           "passphrase")
+        return secret_uuid
+
+    def create_iscsi_disk_xml(disk_target, params, port="3260", uri=None):
+        """
+        Creates iscsi disk xml from params and returns the xml file
+
+        :param disk_target: disk target exposed to guest in /dev
+        :param params: Test dict params
+        :param port: iscsi port to communicate
+        :param uri: connect uri
+
+        :return: iscsi disk xml file
+        """
+
+        global src_uuid
+        global dest_uuid
+
+        auth_pass = params.get("iscsi_auth_password", "password")
+        secret_target = params.get("secret_usage", "libvirtiscsi")
+
+        # create secret xml and set secret with respective uuid
+        if not dest_uuid:
+            src_uuid = create_secret_disk_xml(secret_target, "iscsi",
+                                              passphrase=auth_pass,
+                                              uri=uri)
+
+        # create secret xml and set secret with respective uuid in destination
+        if not iscsi_hotplug_after_migrate or not iscsi_hotunplug_after_migrate:
+            dest_uri = params.get("virsh_migrate_desturi")
+            dest_uuid = create_secret_disk_xml(secret_target, "iscsi",
+                                               passphrase=auth_pass,
+                                               uri=dest_uri)
+        # create iscsi disk xml
+        iscsi_disk = libvirt.create_disk_xml(params)
+        iscsi_xml_file = os.path.join(data_dir.get_data_dir(), "iscsi_disk.xml")
+        xml_to_file(iscsi_disk, iscsi_xml_file)
+        return iscsi_xml_file
+
+    def create_session_with_remote(params):
+        """
+        Creates remote ssh session to remote host and returns the session obj
+
+        :param params: Test dict params
+
+        :return: ssh session object
+        """
+        remote_ip = params.get("migrate_dest_host")
+        remote_pwd = params.get("migrate_dest_pwd")
+        remote_user = params.get("server_user", "root")
+        return remote.remote_login("ssh", remote_ip, "22",
+                                   remote_user, remote_pwd,
+                                   r"[\#\$]\s*$")
+
+    # After migration, guest is not accessible from source host with VM
+    # object or using ssh as it will have private ip with in remote host,
+    # Before migration configure passwordless ssh between remote host and
+    # guest to use ssh commands after migration between remote host and
+    # guest from source host for our validation
+    def check_disk_after_migration(target_dev, created_file, check_sum,
+                                   guest_ip=None, vm=None, params=None,
+                                   hotunplug=False):
+        """
+        This method checks the hotplug/hotunplug disk in guest
+
+        :param target_dev: disk to check available for guest in /dev
+        :param created_file: path for file created inside guest in disk
+        :param check_sum: md5sum of the created file
+        :param guest_ip: IPaddress of guest
+        :param vm: VM Object of guest if not migrated yet
+        :param params: Test dict params if guest migrated
+        :param hotunplug: if True checks hotunplugged disk
+
+        :raise: test.fail() if file doesn't exist or corrupted for hotplug
+        :raise: test.fail() if disk still exist after hotunplug
+        """
+        ssh_cmd = "%s"
+        cmd = "cat /proc/partitions | awk '{print $4}'"
+        if not vm:
+            guest_user = params.get("username", "root")
+            ssh_cmd = "ssh %s@%s" % (guest_user, guest_ip)
+            ssh_cmd += " -o StrictHostKeyChecking=no '%s'"
+            session = create_session_with_remote(params)
+        else:
+            session = vm.wait_for_login()
+        cmd = ssh_cmd % (cmd)
+        status, output = session.cmd_status_output(cmd)
+        if status:
+            session.close()
+            test.fail("Failed to get disk info from guest: %s" % output)
+        exist_parts = output.strip().split()
+        if hotunplug:
+            if target_dev in exist_parts:
+                session.close()
+                test.fail("%s exist even after iscsi hotunplug" % target_dev)
+        else:
+            if target_dev not in exist_parts:
+                test.fail("%s doesn't exist after iscsi hotplug" % target_dev)
+            cmd = "md5sum %s" % created_file
+            cmd = ssh_cmd % (cmd)
+            status, output = session.cmd_status_output(cmd)
+            if status:
+                session.close()
+                test.fail("Created file doesn't exist: %s" % output)
+            actual_checksum = output.split()[0].strip()
+            if actual_checksum != check_sum.strip():
+                logging.debug("checksum before migration: %s" % check_sum)
+                logging.debug("checksum after migration: %s" %
+                              actual_checksum)
+                test.fail("checksum failed for created file")
+        if session:
+            session.close()
+
+    def create_file_with_hotplug_disk(target_dev, params=None, vm=None,
+                                      guest_ip=None):
+        """
+        Makes filesystem on the target disk exposed to guest, mount it,
+        creates a file, get checksum of created file for future validation.
+
+        :param target_dev: disk to check available for guest in /dev
+        :param params: Test dict params if guest migrated
+        :param vm: VM Object of guest if not migrated yet
+        :param guest_ip: ipaddress of guest
+
+        :raise: test.error() if failed to create directory inside guest
+        :raise: test.fail() if failed to create filesystem, mount, file.
+
+        :return: file path, md5sum of the file created
+        """
+        ssh_cmd = "%s"
+        if not vm:
+            guest_user = params.get("username", "root")
+            ssh_cmd = "ssh %s@%s" % (guest_user, guest_ip)
+            ssh_cmd += " -o StrictHostKeyChecking=no '%s'"
+            session = create_session_with_remote(params)
+        else:
+            session = vm.wait_for_login()
+        cmd = "mkfs.ext4 -F /dev/%s" % target_dev
+        cmd = ssh_cmd % cmd
+        status, output = session.cmd_status_output(cmd)
+        if status:
+            session.close()
+            test.fail("Failed create Filesystem in disk: %s" % output)
+        cmd = "mkdir -p /mnt/%s" % (target_dev)
+        cmd = ssh_cmd % cmd
+        if session.cmd_status(cmd):
+            session.close()
+            test.error("Failed to create directory in guest")
+        cmd = "mount /dev/%s /mnt/%s" % (target_dev, target_dev)
+        cmd = ssh_cmd % cmd
+        status, output = session.cmd_status_output(cmd)
+        if status:
+            session.close()
+            test.fail("Failed to mount the disk in guest: %s" % output)
+        file_path = "/mnt/%s/test.txt" % target_dev
+        cmd = "touch %s && echo 'test' > %s" % (file_path, file_path)
+        cmd = ssh_cmd % cmd
+        status, output = session.cmd_status_output(cmd)
+        if status:
+            session.close()
+            test.fail("Failed to create file in disk: %s" % output)
+        cmd = "md5sum %s" % file_path
+        cmd = ssh_cmd % cmd
+        status, output = session.cmd_status_output(cmd)
+        session.close()
+        if status:
+            test.fail("Failed to create file in disk: %s" % output)
+        return file_path, output.split()[0].strip()
 
     def check_migration_timeout_suspend(params):
         """
@@ -597,6 +858,9 @@ def run(test, params, env):
     mem_hotplug_count = int(params.get("virsh_migrate_mem_hotplug_count", "1"))
     mem_size_unit = params.get("virsh_migrate_hotplug_mem_unit", "KiB")
     migrate_there_and_back = "yes" == params.get("virsh_migrate_back", "no")
+    secret_target = params.get("secret_target", "libvirtiscsi")
+    secret_usage = params.get("secret_usage", "iscsi")
+    # Params required for cpu hotplug/hotunplug
     cpu_hotplug = "yes" == params.get("virsh_migrate_cpu_hotplug", "no")
     cpu_hotunplug = "yes" == params.get("virsh_migrate_cpu_hotunplug", "no")
     hotplug_before_migrate = "yes" == params.get("virsh_hotplug_cpu_before",
@@ -607,6 +871,66 @@ def run(test, params, env):
                                                 "no")
     hotunplug_after_migrate = "yes" == params.get("virsh_hotunplug_cpu_after",
                                                   "no")
+    # Params required for iscsi hotplug/hotunplug
+    iscsi_hotplug = "yes" == params.get("virsh_migrate_iscsi_hotplug", "no")
+    iscsi_hotunplug = "yes" == params.get("virsh_migrate_iscsi_hotunplug",
+                                          "no")
+    iscsi_hotplug_before_migrate = "yes" == params.get("virsh_hotplug_iscsi_"
+                                                       "before", "no")
+    iscsi_hotunplug_before_migrate = "yes" == params.get("virsh_hotunplug_"
+                                                         "iscsi_before", "no")
+    iscsi_hotplug_after_migrate = "yes" == params.get("virsh_hotplug_iscsi_"
+                                                      "after", "no")
+    iscsi_hotunplug_after_migrate = "yes" == params.get("virsh_hotunplug_"
+                                                        "iscsi_after", "no")
+    hostname = process.system_output("hostname -f", shell=True).strip()
+    params["source_host_name"] = params.get("source_host_name", hostname)
+    params["target_dev"] = check_usable_target(vm)
+
+    # Configurations for iscsi to be setup in host machine
+    if iscsi_hotplug:
+        iscsi_disk_xml = ""
+        disk_target = params.get("target_dev")
+        if "ubuntu" in platform.platform().lower():
+            iscsi_package = ["tgt", "open-iscsi"]
+        else:
+            iscsi_package = ["scsi-target-utils", "iscsi-initiator-utils"]
+
+        # Install linux iscsi target and initiator software
+        package_mgr = utils_package.package_manager(None, iscsi_package)
+        if(not package_mgr.check_installed(iscsi_package) and
+           not package_mgr.install()):
+            test.cancel("Packages %s required for configuring iscsi target" %
+                        iscsi_package)
+
+        # configure username and password for the client to give access
+        iscsi_username = params.get("auth_user", "avocadokvm")
+        iscsi_password = params.get("iscsi_auth_password", "password")
+        iscsid_config = params.get("iscsi_config", "/etc/iscsi/iscsid.conf")
+        try:
+            iscsi_config = utils_config.SectionlessConfig(iscsid_config)
+            iscsi_config["node.session.auth.username"] = iscsi_username
+            iscsi_config["node.session.auth.password"] = iscsi_password
+            iscsi_config["discovery.sendtargets.auth.username"] = iscsi_username
+            iscsi_config["discovery.sendtargets.auth.password"] = iscsi_password
+            iscsi.restart_iscsid()
+        except Exception, info:
+            iscsi_config.restore()
+            test.error("iscsi configuration for username/password failed")
+
+        # setup emulated iscsi target in source host
+        itarget, iluns = libvirt.setup_or_cleanup_iscsi(is_setup=True,
+                                                        is_login=False,
+                                                        chap_user=iscsi_username,
+                                                        chap_passwd=iscsi_password,
+                                                        restart_tgtd="yes")
+        params['target'] = itarget
+        logging.debug("emulated iscsi setup successful:\nTarget - %s\n"
+                      "Luns - %s", itarget, iluns)
+
+        # enable rule in iptables for iscsi
+        iptable_rule = ["INPUT -m state --state NEW -p tcp --dport 3260 -j ACCEPT"]
+        Iptables.setup_or_cleanup_iptables_rules(iptable_rule)
 
     # Configurations for cpu hotplug and cpu hotunplug
     if cpu_hotplug:
@@ -683,8 +1007,8 @@ def run(test, params, env):
             if (int(utils_memory.get_num_huge_pages_free()) < no_of_HPs):
                 hugepage_assign(str(no_of_HPs))
             logging.debug("Hugepage support check done on host")
-        except:
-            test.cancel("HP not supported/configured")
+        except Exception, info:
+            test.cancel("HP not supported/configured: %s" % info)
 
     # To check mem hotplug should not exceed maxmem
     if mem_hotplug:
@@ -720,8 +1044,8 @@ def run(test, params, env):
             vmxml_backup.max_mem_rt_unit = mem_size_unit
             vmxml_backup.sync()
             vm_max_mem_rt = int(vmxml_backup.max_mem_rt)
-        logging.debug("Hotplug mem = %d %s", (mem_hotplug_size,
-                                              mem_size_unit))
+        logging.debug("Hotplug mem = %d %s", mem_hotplug_size,
+                      mem_size_unit)
         logging.debug("Hotplug count = %d", mem_hotplug_count)
         logging.debug("Current mem = %d", vm_current_mem)
         logging.debug("VM maxmem = %d", vm_max_mem_rt)
@@ -865,22 +1189,48 @@ def run(test, params, env):
 
         vm.wait_for_login()
 
+        # Perform iscsi hotplug/hotunplug before migration
+        if iscsi_hotplug:
+            vm_session = vm.wait_for_login()
+            # passwordless ssh is not required between remote host and guest
+            # if it is there and back migration as guest will be back to source
+            if iscsi_hotplug_after_migrate or iscsi_hotunplug_after_migrate:
+                if not migrate_there_and_back:
+                    pwdless_ssh_remote_host_and_guest(params, vm)
+            # create iscsi disk xml, hotplug it, checks libvirt return status
+            # validate whether disk is usable from inside guest
+            if iscsi_hotplug_before_migrate:
+                iscsi_disk_xml = create_iscsi_disk_xml(disk_target, params,
+                                                       port="3260")
+                virsh_output = virsh.attach_device(vm_name, iscsi_disk_xml,
+                                                   flagstr="--live",
+                                                   debug=True)
+                libvirt.check_exit_status(virsh_output)
+                f_path, f_sum = create_file_with_hotplug_disk(disk_target, vm=vm)
+                logging.debug("Iscsi Hotunplug before migration is "
+                              "successful!!!")
+            # hotunplug already created iscsi disk xml, checks libvirt return
+            # status validate whether guest couldn't list the hotunplugged disk
+            if iscsi_hotunplug_before_migrate:
+                virsh_output = virsh.detach_device(vm_name, iscsi_disk_xml,
+                                                   flagstr="--live",
+                                                   debug=True)
+                libvirt.check_exit_status(virsh_output)
+                if disk_target in libvirt.get_parts_list(vm_session):
+                    vm_session.close()
+                    test.fail("Hotunplugged iscsi disk before migration "
+                              "still exist inside guest")
+                logging.debug("Iscsi Hotunplug before migration is "
+                              "successful!!!")
+            if vm_session:
+                vm_session.close()
+
         # Perform cpu hotplug or hotunplug before migration
         if cpu_hotplug:
+            guest_ip = vm.get_address()
             if hotplug_after_migrate or hotunplug_after_migrate:
-                config_opt = ["StrictHostKeyChecking=no"]
-                guest_user = params.get("username", "root")
-                guest_ip = vm.get_address()
-                guest_pwd = params.get("password", "password")
-                # Configure ssh key between destination machine and VM
-                # before migration, so that commands can be executed from
-                # destination machine to VM after migration for validation
-                ssh_key.setup_remote_ssh_key(server_ip, server_user,
-                                             server_pwd, hostname2=guest_ip,
-                                             user2=guest_user,
-                                             password2=guest_pwd,
-                                             config_options=config_opt,
-                                             public_key="rsa")
+                if not migrate_there_and_back:
+                    pwdless_ssh_remote_host_and_guest(params, vm)
             if hotplug_before_migrate:
                 logging.debug("Performing CPU Hotplug before migration")
                 cpu_hotplug_hotunplug(vm, guest_ip, max_vcpus, "Hotplug")
@@ -1125,6 +1475,62 @@ def run(test, params, env):
                 migrate_setup.migrate_pre_setup(src_uri, params,
                                                 cleanup=True)
 
+            # Perform iscsi hotplug/hotunplug after migration
+            if iscsi_hotplug:
+                # if iscsi disk is hotplugged in source host before migration
+                # but not hotunplugged in source host, then validate whether
+                # hotplugged disk is still available for guest from remote
+                # host after migration and file created is available with
+                # proper checksum
+                if(iscsi_hotplug_before_migrate and not
+                   iscsi_hotunplug_before_migrate):
+                    check_disk_after_migration(disk_target, f_path, f_sum,
+                                               guest_ip=vm_ip,
+                                               params=params)
+                # for there and back migration use source uri to connect
+                if migrate_there_and_back:
+                    uri = src_uri
+                if iscsi_hotplug_after_migrate:
+                    if not iscsi_disk_xml:
+                        iscsi_xml_file = create_iscsi_disk_xml(disk_target,
+                                                               params,
+                                                               port="3260",
+                                                               uri=uri)
+                    virsh_output = virsh.attach_device(vm_name, iscsi_disk_xml,
+                                                       flagstr="--live",
+                                                       debug=True, uri=uri)
+                    libvirt.check_exit_status(virsh_output)
+                    # for there and back migration use vm object as guest will
+                    # be available in source, else connect to remote host and
+                    # then ssh to guest
+                    if migrate_there_and_back:
+                        f_path, f_sum = create_file_with_hotplug_disk(disk_target, vm=vm)
+                    else:
+                        f_path, f_sum = create_file_with_hotplug_disk(disk_target,
+                                                                      params=params,
+                                                                      guest_ip=vm_ip)
+                    logging.debug("Iscsi Hotplug after migration is "
+                                  "successful!!!")
+                if iscsi_hotunplug_after_migrate:
+                    virsh_output = virsh.detach_device(vm_name, iscsi_disk_xml,
+                                                       flagstr="--live",
+                                                       debug=True, uri=uri)
+                    libvirt.check_exit_status(virsh_output)
+                    if migrate_there_and_back:
+                        vm_session = vm.wait_for_login()
+                        if disk_target in libvirt.get_parts_list(vm_session):
+                            vm_session.close()
+                            test.fail("Hotunplugged iscsi disk after migration "
+                                      "still exist inside guest")
+                        vm_session.close()
+                    else:
+                        check_disk_after_migration(disk_target, f_path, f_sum,
+                                                   guest_ip=vm_ip,
+                                                   params=params,
+                                                   hotunplug=True)
+                    logging.debug("Iscsi Hotunplug after migration is "
+                                  "successful!!!")
+
             # Perform CPU hotplug or CPU hotunplug after migration
             if cpu_hotplug:
                 uri = dest_uri
@@ -1141,7 +1547,8 @@ def run(test, params, env):
                     if hotunplug_after_migrate:
                         logging.debug("Performing CPU Hot Unplug after migration")
                         cpu_hotplug_hotunplug(vm, vm_ip, current_vcpus,
-                                              "Hotunplug", uri=uri, params=params)
+                                              "Hotunplug", uri=uri,
+                                              params=params)
 
         if graphics_server:
             logging.info("To check the process running '%s'.",
@@ -1258,6 +1665,27 @@ def run(test, params, env):
     vm.destroy()
     vm.undefine()
     orig_config_xml.define()
+
+    # cleanup target, images, xml, iptables created during iscsi hotplug test
+    if iscsi_hotplug:
+        libvirt.setup_or_cleanup_iscsi(is_setup=False, is_login=False,
+                                       chap_user=iscsi_username,
+                                       chap_passwd=iscsi_password,
+                                       restart_tgtd="yes")
+        if os.path.isfile(iscsi_xml_file):
+            logging.debug("Cleanup iscsi hotplug xml")
+            os.remove(iscsi_xml_file)
+        if iptable_rule:
+            Iptables.setup_or_cleanup_iptables_rules(iptable_rule,
+                                                     cleanup=True)
+        if src_uuid:
+            uri = None
+            if iscsi_hotplug_after_migrate and not iscsi_hotplug_before_migrate:
+                if not migrate_there_and_back:
+                    uri = dest_uri
+            virsh.secret_undefine(src_uuid, uri=uri)
+        if dest_uuid:
+            virsh.secret_undefine(dest_uuid, uri=dest_uri)
 
     # cleanup xml created during memory hotplug test
     if mem_hotplug:
