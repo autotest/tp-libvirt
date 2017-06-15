@@ -168,7 +168,7 @@ def run(test, params, env):
     virsh.dumpxml(vm_name, extra="--inactive", to_file=xml_file)
     pre_vm_state = params.get("vcpucount_pre_vm_state")
     options = params.get("vcpucount_options")
-    status_error = params.get("status_error")
+    status_error = "yes" == params.get("status_error", "no")
     maxvcpu = int(params.get("vcpucount_maxvcpu", "4"))
     curvcpu = int(params.get("vcpucount_current", "1"))
     sockets = int(params.get("sockets", "1"))
@@ -184,11 +184,11 @@ def run(test, params, env):
 
     # 1.2 Check for all options
     option_list = options.split(" ")
-    for item in option_list:
-        if virsh.has_command_help_match("vcpucount", item) is None:
-            test.cancel("The current libvirt "
-                        "version doesn't support "
-                        "'%s' option" % item)
+    if not status_error:
+        for item in option_list:
+            if virsh.has_command_help_match("vcpucount", item) is None:
+                test.cancel("The current libvirt version doesn't support "
+                            "'%s' option" % item)
     # 1.3 Check for vcpu values
     if (sockets and cores and threads):
         if int(maxvcpu) != int(sockets) * int(cores) * int(threads):
@@ -227,7 +227,7 @@ def run(test, params, env):
                          sockets, cores, threads, ("--guest" in options))
 
             # Check result
-            if status_error == "yes":
+            if status_error:
                 if vcpucount_status == 0:
                     reset_env(vm_name, xml_file)
                     test.fail("Run successfully with wrong command!")
