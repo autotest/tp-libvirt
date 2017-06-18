@@ -42,6 +42,7 @@ def del_topology(vm, vm_state):
     if not vm_state == "shut off":
         vm.destroy()
         vm.start()
+        vm.wait_for_login()
 
 
 def chk_output_running(output, expect_out, options, test):
@@ -219,7 +220,6 @@ def run(test, params, env):
             if "--guest" in options:
                 if result.stderr.count("doesn't support option") or \
                    result.stderr.count("command guest-get-vcpus has not been found"):
-                    reset_env(vm_name, xml_file)
                     test.fail("Option %s is not supported" % options)
 
             # Reset domain
@@ -229,13 +229,11 @@ def run(test, params, env):
             # Check result
             if status_error:
                 if vcpucount_status == 0:
-                    reset_env(vm_name, xml_file)
                     test.fail("Run successfully with wrong command!")
                 else:
                     logging.info("Run failed as expected")
             else:
                 if vcpucount_status != 0:
-                    reset_env(vm_name, xml_file)
                     test.fail("Run command failed with options %s" %
                               options)
                 elif setvcpus_status == 0:
@@ -247,7 +245,6 @@ def run(test, params, env):
                             expect_out = [livevcpu, curvcpu]
                             chk_output_shutoff(output, expect_out, options, test)
                         else:
-                            reset_env(vm_name, xml_file)
                             test.fail("setvcpus should failed")
                     else:
                         if idx == 0:
