@@ -150,8 +150,9 @@ def run(test, params, env):
         create_large_image()
         if error_type == "unspecified error":
             # umount nfs to trigger error after create large image
-            nfs_service.stop()
-            logging.debug("nfs status is %s", nfs_service.status())
+            if nfs_service is not None:
+                nfs_service.stop()
+                logging.debug("nfs status is %s", nfs_service.status())
 
         # wait and check the guest status with timeout
         def _check_state():
@@ -177,7 +178,8 @@ def run(test, params, env):
     finally:
         logging.info("Do clean steps")
         if error_type == "unspecified error":
-            nfs_service.start()
+            if nfs_service is not None:
+                nfs_service.start()
             vm.destroy()
             if os.path.isfile("%s.bak" % export_file):
                 shutil.move("%s.bak" % export_file, export_file)
