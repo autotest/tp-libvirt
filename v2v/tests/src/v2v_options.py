@@ -307,7 +307,7 @@ def run(test, params, env):
         """
         Check if content of man page or help info meets expectation
         """
-        man_page = process.run('man virt-v2v').stdout.strip()
+        man_page = process.run('man virt-v2v', verbose=False).stdout.strip()
         if in_man:
             logging.info('Checking man page of virt-v2v for "%s"', in_man)
             if in_man not in man_page:
@@ -316,24 +316,6 @@ def run(test, params, env):
             logging.info('Checking man page of virt-v2v for "%s"', not_in_man)
             if not_in_man in man_page:
                 test.fail('"%s" not removed from man page' % not_in_man)
-
-    def check_v2v_log(output, check=None):
-        """
-        Check if error/warning meets expectation
-        """
-        expect_msg = params.get('expect_msg')
-        if not expect_msg:
-            logging.info('No need to check v2v log')
-        else:
-            expect = expect_msg == 'yes'
-            if params.get('msg_content'):
-                msg_list = params['msg_content'].split('%')
-                if utils_v2v.check_log(output, msg_list, expect=expect):
-                    logging.info('Finish checking v2v log')
-                else:
-                    test.fail('Check v2v log failed')
-            else:
-                test.error('No error message to compare with')
 
     def check_result(cmd, result, status_error):
         """
@@ -358,17 +340,6 @@ def run(test, params, env):
                 logging.info(vol_list)
                 if vm_name in vol_list.stdout:
                     test.fail('Disk exists for vm %s' % vm_name)
-            else:
-                error_map = {
-                    'conflict_options': ['option used more than once'],
-                    'conflict_options_bn': ['duplicate .+? parameter.  Only one default'],
-                    'xen_no_output_format': ['The input metadata did not define'
-                                             ' the disk format'],
-                    'in_place': ['virt-v2v: error: --in-place cannot be used in RHEL 7']
-                }
-                if error_map.has_key(checkpoint) and not utils_v2v.check_log(
-                        output, error_map[checkpoint]):
-                    test.fail('Not found error message %s' % error_map[checkpoint])
         else:
             if output_mode == "rhev" and checkpoint != 'quiet':
                 ovf = get_ovf_content(output)
@@ -426,7 +397,7 @@ def run(test, params, env):
                 if process.run(command % win_img, ignore_status=True).exit_status == 0:
                     test.fail('Command "%s" success' % command % win_img)
             if checkpoint == 'no_dcpath':
-                if not utils_v2v.check_log(output, ['--dcpath'], expect=False):
+                if '--dcpath' in output:
                     test.fail('"--dcpath" is not removed')
             if checkpoint == 'debug_overlays':
                 search = re.search('Overlay saved as(.*)', output)
@@ -449,7 +420,8 @@ def run(test, params, env):
                 if os.path.exists(params.get('example_file', '')):
                     expect_output = open(params['example_file']).read().strip()
                     logging.debug(expect_output)
-                    logging.debug(expect_output == result.stdout.strip())
+                    if expect_output != result.stdout.strip():
+                        test.fail('machine readable content not correct')
                 else:
                     test.error('No content to compare with')
             if checkpoint == 'compress':
@@ -467,10 +439,11 @@ def run(test, params, env):
                 logging.info('Content of /var/log/messages during conversion:')
                 logging.info(messages)
                 msg_content = params['msg_content']
-                if not utils_v2v.check_log(messages, [msg_content], expect=False):
-                    test.fail('Found "%s" in /var/log/messages' %
-                              msg_content)
-        check_v2v_log(output, checkpoint)
+                if msg_content in messages:
+                    test.fail('Found "%s" in /var/log/messages' % msg_content)
+        log_check = utils_v2v.check_log(params, output)
+        if log_check:
+            test.fail(log_check)
         check_man_page(params.get('in_man'), params.get('not_in_man'))
 
     backup_xml = None
@@ -617,8 +590,8 @@ def run(test, params, env):
         if output_mode == "libvirt":
             create_pool()
 
-        if hypervisor in ['esx', 'xen'] or input_mode in ['disk', 'libvirtxml']:
-            os.environ['LIBGUESTFS_BACKEND'] = 'direct'
+        # Work around till bug fixed
+        os.environ['LIBGUESTFS_BACKEND'] = 'direct'
 
         if checkpoint in ['with_ic', 'without_ic']:
             new_v2v_user = True
@@ -637,7 +610,7 @@ def run(test, params, env):
         if v2v_user:
             cmd = su_cmd + "'%s'" % cmd
 
-        if checkpoint in ['dependency', 'no_dcpath']:
+        if params.get('cmd_free') == 'yes':
             cmd = params.get('check_command')
 
         # Set timeout to kill v2v process before conversion succeed
