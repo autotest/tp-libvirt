@@ -42,9 +42,10 @@ def del_topology(vm, vm_state):
     if not vm_state == "shut off":
         vm.destroy()
         vm.start()
+        vm.wait_for_login()
 
 
-def chk_output_running(output, expect_out, options):
+def chk_output_running(output, expect_out, options, test):
     """
     Check vcpucount when domain is running
 
@@ -56,14 +57,14 @@ def chk_output_running(output, expect_out, options):
         out = output.split('\n')
         for i in range(4):
             if int(out[i].split()[-1]) != expect_out[i]:
-                raise error.TestFail("Output is not expected")
+                test.fail("Output is not expected")
     elif "--config" in options:
         if "--active" in options:
             if int(output) != expect_out[2]:
-                raise error.TestFail("Output is not expected")
+                test.fail("Output is not expected")
         elif "--maximum" in options:
             if int(output) != expect_out[0]:
-                raise error.TestFail("Output is not expected")
+                test.fail("Output is not expected")
         elif "--current" in options:
             pass
         elif "--live" in options:
@@ -71,30 +72,30 @@ def chk_output_running(output, expect_out, options):
         elif options == "--config":
             pass
         else:
-            raise error.TestFail("Options %s should failed" % options)
+            test.fail("Options %s should failed" % options)
     elif "--live" or "--current" in options:
         if "--active" in options:
             if int(output) != expect_out[3]:
-                raise error.TestFail("Output is not expected")
+                test.fail("Output is not expected")
         elif "--maximum" in options:
             if int(output) != expect_out[1]:
-                raise error.TestFail("Output is not expected")
+                test.fail("Output is not expected")
         elif "--guest" in options:
             pass
         elif options == "--live" or options == "--current":
             pass
         else:
-            raise error.TestFail("Options %s should failed" % options)
+            test.fail("Options %s should failed" % options)
     elif options == "--active":
         pass
     elif options == "--guest":
         if int(output) != expect_out[4]:
-            raise error.TestFail("Output is not expected")
+            test.fail("Output is not expected")
     else:
-        raise error.TestFail("Options %s should failed" % options)
+        test.fail("Options %s should failed" % options)
 
 
-def chk_output_shutoff(output, expect_out, options):
+def chk_output_shutoff(output, expect_out, options, test):
     """
     Check vcpucount when domain is shut off
 
@@ -106,20 +107,20 @@ def chk_output_shutoff(output, expect_out, options):
         out = output.split('\n')
         for i in range(2):
             if int(out[i].split()[-1]) != expect_out[i]:
-                raise error.TestFail("Output is not expected")
+                test.fail("Output is not expected")
     elif "--config" or "--current" in options:
         if "--active" in options:
             if int(output) != expect_out[1]:
-                raise error.TestFail("Output is not expected")
+                test.fail("Output is not expected")
         elif "--maximum" in options:
             if int(output) != expect_out[0]:
-                raise error.TestFail("Output is not expected")
+                test.fail("Output is not expected")
         elif options == "--config" or options == "--current":
             pass
         else:
-            raise error.TestFail("Options %s should failed" % options)
+            test.fail("Options %s should failed" % options)
     else:
-        raise error.TestFail("Options %s should failed" % options)
+        test.fail("Options %s should failed" % options)
 
 
 def reset_env(vm_name, xml_file):
@@ -168,7 +169,7 @@ def run(test, params, env):
     virsh.dumpxml(vm_name, extra="--inactive", to_file=xml_file)
     pre_vm_state = params.get("vcpucount_pre_vm_state")
     options = params.get("vcpucount_options")
-    status_error = params.get("status_error")
+    status_error = "yes" == params.get("status_error", "no")
     maxvcpu = int(params.get("vcpucount_maxvcpu", "4"))
     curvcpu = int(params.get("vcpucount_current", "1"))
     sockets = int(params.get("sockets", "1"))
@@ -184,11 +185,11 @@ def run(test, params, env):
 
     # 1.2 Check for all options
     option_list = options.split(" ")
-    for item in option_list:
-        if virsh.has_command_help_match("vcpucount", item) is None:
-            test.cancel("The current libvirt "
-                        "version doesn't support "
-                        "'%s' option" % item)
+    if not status_error:
+        for item in option_list:
+            if virsh.has_command_help_match("vcpucount", item) is None:
+                test.cancel("The current libvirt version doesn't support "
+                            "'%s' option" % item)
     # 1.3 Check for vcpu values
     if (sockets and cores and threads):
         if int(maxvcpu) != int(sockets) * int(cores) * int(threads):
@@ -219,7 +220,6 @@ def run(test, params, env):
             if "--guest" in options:
                 if result.stderr.count("doesn't support option") or \
                    result.stderr.count("command guest-get-vcpus has not been found"):
-                    reset_env(vm_name, xml_file)
                     test.fail("Option %s is not supported" % options)
 
             # Reset domain
@@ -227,53 +227,50 @@ def run(test, params, env):
                          sockets, cores, threads, ("--guest" in options))
 
             # Check result
-            if status_error == "yes":
+            if status_error:
                 if vcpucount_status == 0:
-                    reset_env(vm_name, xml_file)
                     test.fail("Run successfully with wrong command!")
                 else:
                     logging.info("Run failed as expected")
             else:
                 if vcpucount_status != 0:
-                    reset_env(vm_name, xml_file)
                     test.fail("Run command failed with options %s" %
                               options)
                 elif setvcpus_status == 0:
                     if pre_vm_state == "shut off":
                         if idx == 0:
                             expect_out = [maxvcpu, livevcpu]
-                            chk_output_shutoff(output, expect_out, options)
+                            chk_output_shutoff(output, expect_out, options, test)
                         elif idx == 1:
                             expect_out = [livevcpu, curvcpu]
-                            chk_output_shutoff(output, expect_out, options)
+                            chk_output_shutoff(output, expect_out, options, test)
                         else:
-                            reset_env(vm_name, xml_file)
                             test.fail("setvcpus should failed")
                     else:
                         if idx == 0:
                             expect_out = [maxvcpu, maxvcpu, livevcpu,
                                           curvcpu, curvcpu]
-                            chk_output_running(output, expect_out, options)
+                            chk_output_running(output, expect_out, options, test)
                         elif idx == 1:
                             expect_out = [livevcpu, maxvcpu, curvcpu,
                                           curvcpu, curvcpu]
-                            chk_output_running(output, expect_out, options)
+                            chk_output_running(output, expect_out, options, test)
                         elif idx == 2:
                             expect_out = [maxvcpu, maxvcpu, curvcpu,
                                           livevcpu, livevcpu]
-                            chk_output_running(output, expect_out, options)
+                            chk_output_running(output, expect_out, options, test)
                         else:
                             expect_out = [maxvcpu, maxvcpu, curvcpu,
                                           curvcpu, livevcpu]
-                            chk_output_running(output, expect_out, options)
+                            chk_output_running(output, expect_out, options, test)
                 else:
                     if pre_vm_state == "shut off":
                         expect_out = [maxvcpu, curvcpu]
-                        chk_output_shutoff(output, expect_out, options)
+                        chk_output_shutoff(output, expect_out, options, test)
                     else:
                         expect_out = [
                             maxvcpu, maxvcpu, curvcpu, curvcpu, curvcpu]
-                        chk_output_running(output, expect_out, options)
+                        chk_output_running(output, expect_out, options, test)
     finally:
         # Recover env
         reset_env(vm_name, xml_file)
