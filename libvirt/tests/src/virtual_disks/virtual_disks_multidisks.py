@@ -743,8 +743,6 @@ def run(test, params, env):
                                                     device_bus[0])
             addr_dict = {'type': 'drive', 'controller': '0', 'bus': '0', 'target': '0', 'unit': '0'}
             custom_disk_xml.address = custom_disk_xml.new_disk_address(**{"attrs": addr_dict})
-            disks_img.append({"format": "qcow2",
-                             "source": disk_path, "path": disk_path})
             # For cold plug,it expect attach succeed,but throw error: unsupported configuration:
             # Found duplicate drive address for disk when redefining this VM.
             if not hotplug:
