@@ -140,7 +140,7 @@ def run(test, params, env):
             device_source += "1"
             disk.update({"format": disk_format,
                          "source": device_source})
-        elif disk_format in ["raw", "qcow2"]:
+        elif disk_format in ["raw", "qcow2", "vhdx"]:
             disk_size = params.get("virt_disk_device_size", "1")
             device_source = libvirt.create_local_disk(
                 "file", path, disk_size, disk_format=disk_format)
