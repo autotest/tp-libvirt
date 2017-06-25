@@ -1,4 +1,3 @@
-from avocado.core import exceptions
 from virttest import virt_admin
 from virttest import utils_libvirtd
 
@@ -17,6 +16,7 @@ def run(test, params, env):
     min_workers = params.get("min_workers")
     max_workers = params.get("max_workers")
     nworkers = params.get("nworkers")
+    is_positive = params.get("is_positive")
 
     libvirtd = utils_libvirtd.Libvirtd()
     vp = virt_admin.VirtadminPersistent()
@@ -37,26 +37,36 @@ def run(test, params, env):
         return out_dict
 
     try:
-        if "min-workers" in options_ref:
-            if int(min_workers) < int(nworkers):
-                result = vp.srv_threadpool_set(server_name, min_workers=min_workers,
-                                               ignore_status=True, debug=True)
-        if "max-workers" in options_ref:
-            if int(max_workers) > int(nworkers):
-                result = vp.srv_threadpool_set(server_name, max_workers=max_workers,
-                                               ignore_status=True, debug=True)
+        if is_positive == "yes":
+            if "min-workers" in options_ref:
+                if int(min_workers) < int(nworkers):
+                    result = vp.srv_threadpool_set(server_name, min_workers=min_workers,
+                                                   ignore_status=True, debug=True)
+            if "max-workers" in options_ref:
+                if int(max_workers) > int(nworkers):
+                    result = vp.srv_threadpool_set(server_name, max_workers=max_workers,
+                                                   ignore_status=True, debug=True)
 
-        outdict = threadpool_info(server_name)
-        if result.exit_status:
-            raise exceptions.TestFail("This operation should success "
-                                      "but failed! output:\n%s" % result)
-        if "min-workers" in options_ref:
-            if outdict["minWorkers"] != min_workers:
-                raise exceptions.TestFail("minWorkers set by server-threadpool-set "
-                                          "is not correct!")
-        elif "max-workers" in options_ref:
-            if outdict["maxWorkers"] != max_workers:
-                raise exceptions.TestFail("maxWorkers set by server-threadpool-set "
-                                          "is not correct!")
+            outdict = threadpool_info(server_name)
+            if result.exit_status:
+                test.fail("This operation should success "
+                          "but failed! output:\n%s" % result)
+            if "min-workers" in options_ref:
+                if outdict["minWorkers"] != min_workers:
+                    test.fail("minWorkers set by server-threadpool-set "
+                              "is not correct!")
+            elif "max-workers" in options_ref:
+                if outdict["maxWorkers"] != max_workers:
+                    test.fail("maxWorkers set by server-threadpool-set "
+                              "is not correct!")
+        else:
+            if "min_workers" in options_ref:
+                if int(min_workers) > int(max_workers):
+                    result = vp.srv_threadpool_set(server_name, min_workers=min_workers,
+                                                   ignore_status=True, debug=True)
+
+                if not result.exit_status:
+                    test.fail("This operation should fail but succeeded!")
+
     finally:
         libvirtd.restart()
