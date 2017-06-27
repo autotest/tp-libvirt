@@ -4,10 +4,12 @@ import re
 
 from avocado.utils import process
 
-from virttest import virsh
-from virttest import utils_v2v
-from virttest import utils_sasl
 from virttest import data_dir
+from virttest import utils_misc
+from virttest import utils_package
+from virttest import utils_sasl
+from virttest import utils_v2v
+from virttest import virsh
 from virttest.utils_test import libvirt
 
 from provider.v2v_vmcheck_helper import VMChecker
@@ -65,11 +67,20 @@ def run(test, params, env):
         for pkg in removed_pkgs:
             if pkg in pkgs:
                 log_fail('Package "%s" not removed' % pkg)
-        # Check /etc/modprobe.conf
+
+    def check_modprobe(vmcheck):
+        """
+        Check whether content of /etc/modprobe.conf meets expectation
+        """
         content = vmcheck.session.cmd('cat /etc/modprobe.conf').strip()
         logging.debug(content)
-        if not re.search('alias\s+eth0\s+virtio_net', content):
-            log_fail('Not found "alias eth0 virtio_net')
+        cfg_content = params.get('cfg_content')
+        if not cfg_content:
+            test.error('Missing content for search')
+        logging.info('Search "%s" in /etc/modprobe.conf', cfg_content)
+        pattern = '\s+'.join(cfg_content.split())
+        if not re.search(pattern, content):
+            log_fail('Not found "%s"' % cfg_content)
 
     def check_device_map(vmcheck):
         """
@@ -85,6 +96,15 @@ def run(test, params, env):
             log_fail('Content of device.map not correct')
         else:
             logging.info('device.map has been remaped to "/dev/vd*"')
+
+    def check_snapshot_file(vmcheck):
+        """
+        Check if the removed file exists after conversion
+        """
+        removed_file = params.get('removed_file')
+        logging.debug(vmcheck.session.cmd('test -f %s' % removed_file).stderr)
+        if vmcheck.session.cmd('test -f %s' % removed_file).stderr == 0:
+            log_fail('Removed file "%s" exists after conversion')
 
     def check_result(result, status_error):
         """
@@ -117,8 +137,12 @@ def run(test, params, env):
                 check_device_exist('cdrom', virsh_session_id)
             if checkpoint == 'vmtools':
                 check_vmtools(vmchecker.checker)
+            if checkpoint == 'modprobe':
+                check_modprobe(vmchecker.checker)
             if checkpoint == 'device_map':
                 check_device_map(vmchecker.checker)
+            if checkpoint == 'snapshot':
+                check_snapshot_file(vmchecker.checker)
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
         log_check = utils_v2v.check_log(params, output)
@@ -131,6 +155,7 @@ def run(test, params, env):
         v2v_params = {
             'hostname': remote_host, 'hypervisor': 'esx', 'main_vm': vm_name,
             'vpx_dc': vpx_dc, 'esx_ip': esx_ip,
+            'new_name': vm_name + utils_misc.generate_random_string(4),
             'v2v_opts': '-v -x', 'input_mode': 'libvirt',
             'storage': params.get('output_storage', 'default'),
             'network': params.get('network'),
@@ -152,11 +177,9 @@ def run(test, params, env):
 
         if params.get('output_format'):
             v2v_params.update({'output_format': params['output_format']})
-        if params.get('new_name'):
-            v2v_params.update({'new_name': params['new_name']})
         # Rename guest with special name while converting to rhev
         if '#' in vm_name and output_mode == 'rhev':
-            v2v_params.update({'new_name': vm_name.replace('#', '_')})
+            v2v_params['new_name'] = v2v_params['new_name'].replace('#', '_')
 
         # Create SASL user on the ovirt host
         if output_mode == 'rhev':
@@ -173,9 +196,7 @@ def run(test, params, env):
             pvt.pre_pool(pool_name, pool_type, pool_target, '')
 
         if checkpoint == 'ovmf':
-            url = params.get('ovmf_url')
-            if url and url.endswith('.rpm'):
-                process.run('rpm -iv %s' % url)
+            utils_package.package_install('OVMF')
         if checkpoint == 'root_ask':
             v2v_params['v2v_opts'] += ' --root ask'
             v2v_params['custom_inputs'] = params.get('choice', '1')
@@ -194,6 +215,13 @@ def run(test, params, env):
             process.run(copy_cmd)
             v2v_params['input_mode'] = 'libvirtxml'
             v2v_params['input_file'] = '%s.xml' % vm_name
+        if checkpoint == 'with_proxy':
+            http_proxy = params.get('esx_http_proxy')
+            https_proxy = params.get('esx_https_proxy')
+            logging.info('Set http_proxy=%s, https_proxy=%s',
+                         http_proxy, https_proxy)
+            os.environ['http_proxy'] = http_proxy
+            os.environ['https_proxy'] = https_proxy
 
         if checkpoint == 'empty_cdrom':
             virsh_dargs = {'uri': remote_uri, 'remote_ip': remote_host,
@@ -212,5 +240,7 @@ def run(test, params, env):
             params['vmchecker'].cleanup()
         if output_mode == 'libvirt':
             pvt.cleanup_pool(pool_name, pool_type, pool_target, '')
-        if checkpoint == 'ovmf':
-            process.run('rpm -q OVMF&&rpm -e OVMF', shell=True)
+        if checkpoint == 'with_proxy':
+            logging.info('Unset http_proxy&https_proxy')
+            os.environ.pop('http_proxy')
+            os.environ.pop('https_proxy')
