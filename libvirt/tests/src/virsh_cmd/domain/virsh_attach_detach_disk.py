@@ -118,6 +118,7 @@ def run(test, params, env):
     device_source_name = params.get("at_dt_disk_device_source", "attach.img")
     device_source_format = params.get("at_dt_disk_device_source_format", "raw")
     device_target = params.get("at_dt_disk_device_target", "vdd")
+    device_disk_bus = params.get("at_dt_disk_bus_type", "virtio")
     source_path = "yes" == params.get("at_dt_disk_device_source_path", "yes")
     create_img = "yes" == params.get("at_dt_disk_create_image", "yes")
     test_twice = "yes" == params.get("at_dt_disk_test_twice", "no")
@@ -367,7 +368,7 @@ def run(test, params, env):
     try:
         if eject_cdrom:
             eject_params = {'type_name': "file", 'device_type': "cdrom",
-                            'target_dev': "hdc", 'target_bus': "ide"}
+                            'target_dev': device_target, 'target_bus': device_disk_bus}
             eject_xml = libvirt.create_disk_xml(eject_params)
             logging.debug("Eject CDROM by XML: %s", open(eject_xml).read())
             # Run command tiwce to make sure cdrom tray open first #BZ892289
