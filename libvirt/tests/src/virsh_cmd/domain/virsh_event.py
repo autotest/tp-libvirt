@@ -21,8 +21,7 @@ def run(test, params, env):
     3. Catch the return of virsh event and qemu-monitor-event, and check it.
     """
 
-    vm_name = params.get("main_vm")
-    vm = env.get_vm(vm_name)
+    vms = env.get_all_vms()
 
     event_name = params.get("event_name")
     event_all_option = "yes" == params.get("event_all_option", "no")
@@ -42,35 +41,43 @@ def run(test, params, env):
         events_list = []
     virsh_dargs = {'debug': True, 'ignore_status': True}
     virsh_session = aexpect.ShellSession(virsh.VIRSH_EXEC)
-    if vm.is_alive():
-        vm.destroy()
-    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
-    vmxml_backup = vmxml.copy()
+    for dom in vms:
+        if dom.is_alive():
+            dom.destroy()
 
-    def trigger_events(events_list=[]):
+    vmxml_backup = []
+    for dom in vms:
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(dom.name)
+        vmxml_backup.append(vmxml.copy())
+
+    def trigger_events(dom, events_list=[]):
         """
         Trigger various events in events_list
+
+        :param dom: the vm objects corresponding to the domain
+        :return: the expected output that virsh event command prints out
         """
         expected_events_list = []
         tmpdir = data_dir.get_tmp_dir()
-        save_path = os.path.join(tmpdir, "vm_event.save")
-        new_disk = os.path.join(tmpdir, "new_disk.img")
+        save_path = os.path.join(tmpdir, "%s_event.save" % dom.name)
+        new_disk = os.path.join(tmpdir, "%s_new_disk.img" % dom.name)
+        print dom.name
         try:
             for event in events_list:
                 if event in ['start', 'restore']:
-                    if vm.is_alive():
-                        vm.destroy()
+                    if dom.is_alive():
+                        dom.destroy()
                 else:
-                    if not vm.is_alive():
-                        vm.start()
-                        vm.wait_for_login().close()
+                    if not dom.is_alive():
+                        dom.start()
+                        dom.wait_for_login().close()
                 if event == "start":
-                    virsh.start(vm_name, **virsh_dargs)
+                    virsh.start(dom.name, **virsh_dargs)
                     expected_events_list.append("'lifecycle' for %s:"
                                                 " Started Booted")
-                    vm.wait_for_login().close()
+                    dom.wait_for_login().close()
                 elif event == "save":
-                    virsh.save(vm_name, save_path, **virsh_dargs)
+                    virsh.save(dom.name, save_path, **virsh_dargs)
                     expected_events_list.append("'lifecycle' for %s:"
                                                 " Stopped Saved")
                 elif event == "restore":
@@ -81,30 +88,30 @@ def run(test, params, env):
                         expected_events_list.append("'lifecycle' for %s:"
                                                     " Started Restored")
                 elif event == "destroy":
-                    virsh.destroy(vm_name, **virsh_dargs)
+                    virsh.destroy(dom.name, **virsh_dargs)
                     expected_events_list.append("'lifecycle' for %s:"
                                                 " Stopped Destroyed")
                 elif event == "reset":
-                    virsh.reset(vm_name, **virsh_dargs)
+                    virsh.reset(dom.name, **virsh_dargs)
                     expected_events_list.append("'reboot' for %s")
                 elif event == "vcpupin":
-                    virsh.vcpupin(vm_name, '0', '0', **virsh_dargs)
+                    virsh.vcpupin(dom.name, '0', '0', **virsh_dargs)
                     expected_events_list.append("'tunable' for %s:"
                                                 "\n\tcputune.vcpupin0: 0")
                 elif event == "emulatorpin":
-                    virsh.emulatorpin(vm_name, '0', **virsh_dargs)
+                    virsh.emulatorpin(dom.name, '0', **virsh_dargs)
                     expected_events_list.append("'tunable' for %s:"
                                                 "\n\tcputune.emulatorpin: 0")
                 elif event == "setmem":
                     mem_size = int(params.get("mem_size", 512000))
-                    virsh.setmem(vm_name, mem_size, **virsh_dargs)
+                    virsh.setmem(dom.name, mem_size, **virsh_dargs)
                     expected_events_list.append("'balloon-change' for %s:")
                 elif event == "detach-disk":
                     if not os.path.exists(new_disk):
                         open(new_disk, 'a').close()
                     # Attach disk firstly, this event will not be catched
-                    virsh.attach_disk(vm_name, new_disk, 'vdb', **virsh_dargs)
-                    virsh.detach_disk(vm_name, 'vdb', **virsh_dargs)
+                    virsh.attach_disk(dom.name, new_disk, 'vdb', **virsh_dargs)
+                    virsh.detach_disk(dom.name, 'vdb', **virsh_dargs)
                     expected_events_list.append("'device-removed' for %s:"
                                                 " virtio-disk1")
                 else:
@@ -116,7 +123,7 @@ def run(test, params, env):
                 os.unlink(save_path)
             if os.path.exists(new_disk):
                 os.unlink(new_disk)
-            return expected_events_list
+        return [(dom.name, event) for event in expected_events_list]
 
     def check_output(output, expected_events_list):
         """
@@ -132,11 +139,11 @@ def run(test, params, env):
             events received: 1
 
             virsh #
-         : expected_events_list: A list of expected events
+        :param expected_events_list: A list of expected events
         """
         logging.debug("Actual events: %s", output)
-        for event in expected_events_list:
-            event_str = "event " + event % ("domain " + vm_name)
+        for dom_name, event in expected_events_list:
+            event_str = "event " + event % ("domain %s" % dom_name)
             logging.debug("Expected event: %s", event_str)
             if event_str in output:
                 continue
@@ -160,34 +167,34 @@ def run(test, params, env):
             event_option += " --loop"
 
         if not status_error and not event_list_option:
-            event_cmd += " --domain %s %s" % (vm_name, event_option)
+            event_cmd += " %s" % event_option
             if event_name and not qemu_monitor_test:
                 event_cmd += " --event %s" % event_name
             if event_timeout:
                 event_cmd += " --timeout %s" % event_timeout
-                if not status_error:
-                    event_timeout = int(event_timeout)
             # Run the command in a new virsh session, then waiting for
             # various events
             logging.info("Sending '%s' to virsh shell", event_cmd)
             virsh_session.sendline(event_cmd)
         elif qemu_monitor_test:
-            result = virsh.qemu_monitor_event(domain=vm_name, event=event_name,
+            result = virsh.qemu_monitor_event(event=event_name,
                                               event_timeout=event_timeout,
                                               options=event_option, **virsh_dargs)
             utlv.check_exit_status(result, status_error)
         else:
-            result = virsh.event(domain=vm_name, event=event_name,
+            result = virsh.event(event=event_name,
                                  event_timeout=event_timeout,
                                  options=event_option, **virsh_dargs)
             utlv.check_exit_status(result, status_error)
 
         if not status_error:
             if not event_list_option:
-                expected_events_list = trigger_events(events_list)
+                expected_events_list = []
+                for dom in vms:
+                    expected_events_list.extend(trigger_events(dom, events_list))
                 if event_timeout:
                     # Make sure net-event will timeout on time
-                    time.sleep(event_timeout)
+                    time.sleep(int(event_timeout))
                 elif event_loop:
                     virsh_session.send_ctrl("^C")
                 ret_output = virsh_session.get_stripped_output()
@@ -196,7 +203,9 @@ def run(test, params, env):
                     expected_events_list = []
                 check_output(ret_output, expected_events_list)
     finally:
+        for dom in vms:
+            if dom.is_alive():
+                dom.destroy()
         virsh_session.close()
-        if vm.is_alive():
-            vm.destroy()
-        vmxml_backup.sync()
+        for xml in vmxml_backup:
+            xml.sync()
