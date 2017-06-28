@@ -198,7 +198,7 @@ def run(test, params, env):
 
         # Shutdown VM.
         if not vm.shutdown():
-            vm.destroy()
+            vm.destroy(gracefully=True)
 
         # Check VM shutdown log is written into log file correctly.
         check_info_in_vm_log_file(vm_name, matchedMsg="shutting down")
