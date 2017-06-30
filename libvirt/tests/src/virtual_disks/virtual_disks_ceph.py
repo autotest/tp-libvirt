@@ -85,11 +85,11 @@ def run(test, params, env):
                             % (auth_type, auth_user, auth_usage))
             if not sp.define_rbd_pool(pool_name, mon_host,
                                       disk_src_pool, extra=auth_opt):
-                raise test.fail("Failed to define storage pool")
+                test.fail("Failed to define storage pool")
             if not sp.build_pool(pool_name):
-                raise test.fail("Failed to build storage pool")
+                test.fail("Failed to build storage pool")
             if not sp.start_pool(pool_name):
-                raise test.fail("Failed to start storage pool")
+                test.fail("Failed to start storage pool")
 
         # Check pool operation
         ret = virsh.pool_refresh(pool_name, **virsh_dargs)
@@ -99,23 +99,24 @@ def run(test, params, env):
         # pool-info
         pool_info = sp.pool_info(pool_name)
         if pool_info["Autostart"] != 'no':
-            raise test.fail("Failed to check pool information")
+            test.fail("Failed to check pool information")
         # pool-autostart
         if not sp.set_pool_autostart(pool_name):
-            raise test.fail("Failed to set pool autostart")
+            test.fail("Failed to set pool autostart")
         pool_info = sp.pool_info(pool_name)
         if pool_info["Autostart"] != 'yes':
-            raise test.fail("Failed to check pool information")
+            test.fail("Failed to check pool information")
         # pool-autostart --disable
         if not sp.set_pool_autostart(pool_name, "--disable"):
-            raise test.fail("Failed to set pool autostart")
+            test.fail("Failed to set pool autostart")
         # If port is not pre-configured, port value should not be hardcoded in pool information.
         if "yes" == params.get("rbd_port", "no"):
             if 'port' in virsh.pool_dumpxml(pool_name):
-                raise test.fail("port attribute should not be in pool information")
+                test.fail("port attribute should not be in pool information")
         # find-storage-pool-sources-as
-        ret = virsh.find_storage_pool_sources_as("rbd", mon_host)
-        libvirt.check_result(ret, skip_if=unsupported_err)
+        if "yes" == params.get("find_storage_pool_sources_as", "no"):
+            ret = virsh.find_storage_pool_sources_as("rbd", mon_host)
+            libvirt.check_result(ret, skip_if=unsupported_err)
 
     def create_vol(vol_params):
         """
@@ -133,48 +134,48 @@ def run(test, params, env):
 
     def check_vol(vol_params):
         """
-        Check volume infomation.
+        Check volume information.
         """
         pv = libvirt_storage.PoolVolume(pool_name)
         # Supported operation
         if vol_name not in pv.list_volumes():
-            raise test.fail("Volume %s doesn't exist" % vol_name)
+            test.fail("Volume %s doesn't exist" % vol_name)
         ret = virsh.vol_dumpxml(vol_name, pool_name)
         libvirt.check_exit_status(ret)
         # vol-info
         if not pv.volume_info(vol_name):
-            raise test.fail("Can't see volmue info")
+            test.fail("Can't see volume info")
         # vol-key
         ret = virsh.vol_key(vol_name, pool_name)
         libvirt.check_exit_status(ret)
         if "%s/%s" % (disk_src_pool, vol_name) not in ret.stdout:
-            raise test.fail("Volume key isn't correct")
+            test.fail("Volume key isn't correct")
         # vol-path
         ret = virsh.vol_path(vol_name, pool_name)
         libvirt.check_exit_status(ret)
         if "%s/%s" % (disk_src_pool, vol_name) not in ret.stdout:
-            raise test.fail("Volume path isn't correct")
+            test.fail("Volume path isn't correct")
         # vol-pool
         ret = virsh.vol_pool("%s/%s" % (disk_src_pool, vol_name))
         libvirt.check_exit_status(ret)
         if pool_name not in ret.stdout:
-            raise test.fail("Volume pool isn't correct")
+            test.fail("Volume pool isn't correct")
         # vol-name
         ret = virsh.vol_name("%s/%s" % (disk_src_pool, vol_name))
         libvirt.check_exit_status(ret)
         if vol_name not in ret.stdout:
-            raise test.fail("Volume name isn't correct")
+            test.fail("Volume name isn't correct")
         # vol-resize
         ret = virsh.vol_resize(vol_name, "2G", pool_name)
         libvirt.check_exit_status(ret)
 
         # Not supported operation
         # vol-clone
-        ret = virsh.vol_clone(vol_name, "atest.vol", pool_name)
+        ret = virsh.vol_clone(vol_name, cloned_vol_name, pool_name)
         libvirt.check_result(ret, skip_if=unsupported_err)
         # vol-create-from
         volxml = vol_xml.VolXML()
-        vol_params.update({"name": "atest.vol"})
+        vol_params.update({"name": "%s" % create_from_cloned_volume})
         v_xml = volxml.new_vol(**vol_params)
         v_xml.xmltreefile.write()
         ret = virsh.vol_create_from(pool_name, v_xml.xml, vol_name, pool_name)
@@ -188,7 +189,7 @@ def run(test, params, env):
                                "--pool %s" % pool_name)
         libvirt.check_result(ret, skip_if=unsupported_err)
         # vol-download
-        ret = virsh.vol_download(vol_name, "atest.vol", "--pool %s" % pool_name)
+        ret = virsh.vol_download(vol_name, cloned_vol_name, "--pool %s" % pool_name)
         libvirt.check_result(ret, skip_if=unsupported_err)
 
     def check_qemu_cmd():
@@ -249,7 +250,10 @@ def run(test, params, env):
             options = snap_name
 
         ret = virsh.snapshot_create_as(vm_name, options)
-        libvirt.check_result(ret, skip_if=unsupported_err)
+        if test_disk_internal_snapshot:
+            libvirt.check_result(ret, expected_fails=unsupported_err)
+        else:
+            libvirt.check_result(ret, skip_if=unsupported_err)
 
         # check xml file.
         if not ret.exit_status:
@@ -264,9 +268,9 @@ def run(test, params, env):
                 os.remove(snap_disk)
 
             if not all([x in snap_xml for x in xml_snap_exp]):
-                raise test.fail("Failed to check snapshot xml")
+                test.fail("Failed to check snapshot xml")
             if not all([x in dom_xml for x in xml_dom_exp]):
-                raise test.fail("Failed to check domain xml")
+                test.fail("Failed to check domain xml")
 
     def check_blockcopy(target):
         """
@@ -284,14 +288,14 @@ def run(test, params, env):
 
         dom_xml = virsh.dumpxml(vm_name, debug=True).stdout.strip()
         if not dom_xml.count(blk_mirror):
-            raise test.fail("Can't see block job in domain xml")
+            test.fail("Can't see block job in domain xml")
 
         # Abort
         ret = virsh.blockjob(vm_name, target, "--abort")
         libvirt.check_exit_status(ret)
         dom_xml = virsh.dumpxml(vm_name, debug=True).stdout.strip()
         if dom_xml.count(blk_mirror):
-            raise test.fail("Failed to abort block job")
+            test.fail("Failed to abort block job")
         if os.path.exists(blk_file):
             os.remove(blk_file)
 
@@ -313,7 +317,7 @@ def run(test, params, env):
         libvirt.check_exit_status(ret)
         dom_xml = virsh.dumpxml(vm_name, debug=True).stdout.strip()
         if not dom_xml.count("source file='%s'" % blk_file):
-            raise test.fail("Failed to pivot block job")
+            test.fail("Failed to pivot block job")
         # Remove the disk file.
         if os.path.exists(blk_file):
             os.remove(blk_file)
@@ -370,6 +374,40 @@ def run(test, params, env):
             logging.error(str(e))
             return False
 
+    def clean_up_volume_snapshots():
+        """
+        Get all snapshots for rbd_vol.img volume,unprotect and then clean up them.
+        """
+        cmd = ("rbd -m {0} {1} info {2}"
+               "".format(mon_host, key_opt, os.path.join(disk_src_pool, vol_name)))
+        if process.run(cmd, ignore_status=True, shell=True).exit_status:
+            return
+        # Get snapshot list.
+        cmd = ("rbd -m {0} {1} snap"
+               " list {2}"
+               "".format(mon_host, key_opt, os.path.join(disk_src_pool, vol_name)))
+        snaps_out = process.run(cmd, ignore_status=True, shell=True).stdout
+        snap_names = []
+        if snaps_out:
+            for line in snaps_out.rsplit("\n"):
+                if line.startswith("SNAPID") or line == "":
+                    continue
+                snap_line = line.rsplit()
+                if len(snap_line) == 4:
+                    snap_names.append(snap_line[1])
+            logging.debug("Find snapshots: %s", snap_names)
+            # Unprotect snapshot first,otherwise it will fail to purge volume
+            for snap_name in snap_names:
+                cmd = ("rbd -m {0} {1} snap"
+                       " unprotect {2}@{3}"
+                       "".format(mon_host, key_opt, os.path.join(disk_src_pool, vol_name), snap_name))
+                process.run(cmd, ignore_status=True, shell=True)
+        # Purge volume,and then delete volume.
+        cmd = ("rbd -m {0} {1} info {2} && rbd -m {0} {1} snap"
+               " purge {2} && rbd -m {0} {1} rm {2}"
+               "".format(mon_host, key_opt, os.path.join(disk_src_pool, vol_name)))
+        process.run(cmd, ignore_status=True, shell=True)
+
     mon_host = params.get("mon_host")
     disk_src_name = params.get("disk_source_name")
     disk_src_config = params.get("disk_source_config")
@@ -400,10 +438,14 @@ def run(test, params, env):
     pool_name = params.get("pool_name")
     pool_type = params.get("pool_type")
     vol_name = params.get("vol_name")
+    cloned_vol_name = params.get("cloned_volume")
+    create_from_cloned_volume = params.get("create_from_cloned_volume")
     vol_cap = params.get("vol_cap")
     vol_cap_unit = params.get("vol_cap_unit")
     start_vm = "yes" == params.get("start_vm", "no")
     test_disk_readonly = "yes" == params.get("test_disk_readonly", "no")
+    test_disk_internal_snapshot = "yes" == params.get("test_disk_internal_snapshot", "no")
+    test_json_pseudo_protocol = "yes" == params.get("json_pseudo_protocol", "no")
 
     # Start vm and get all partions in vm.
     if vm.is_dead():
@@ -429,7 +471,8 @@ def run(test, params, env):
     key_file = os.path.join(test.tmpdir, "ceph.key")
     img_file = os.path.join(test.tmpdir,
                             "%s_test.img" % vm_name)
-
+    front_end_img_file = os.path.join(test.tmpdir,
+                                      "%s_frontend_test.img" % vm_name)
     # Construct a unsupported error message list to skip these kind of tests
     unsupported_err = []
     if driver_iothread:
@@ -438,6 +481,9 @@ def run(test, params, env):
         unsupported_err.append('live disk snapshot not supported')
     if test_disk_readonly:
         unsupported_err.append('Unable to read from monitor: Connection reset by peer')
+    if test_disk_internal_snapshot:
+        unsupported_err.append('unsupported configuration: internal snapshot for disk ' +
+                               'vdb unsupported for storage type raw')
     if test_blockcopy:
         unsupported_err.append('block copy is not supported')
     if attach_disk:
@@ -469,7 +515,7 @@ def run(test, params, env):
                                          ret.stdout)[0].lstrip()
                 logging.debug("Secret uuid %s", secret_uuid)
                 if secret_uuid is None:
-                    raise test.error("Failed to get secret uuid")
+                    test.error("Failed to get secret uuid")
 
                 # Set secret value
                 auth_key = params.get("auth_key")
@@ -482,7 +528,7 @@ def run(test, params, env):
                    "{2}".format(mon_host, key_opt, disk_src_name))
             process.run(cmd, ignore_status=True, shell=True)
         else:
-            raise test.error("Failed to install ceph-common")
+            test.error("Failed to install ceph-common")
 
         if disk_src_config:
             config_ceph()
@@ -516,7 +562,7 @@ def run(test, params, env):
 
         elif create_volume:
             vol_params = {"name": vol_name, "capacity": int(vol_cap),
-                          "capacity_unit": vol_cap_unit, "format": "unknow"}
+                          "capacity_unit": vol_cap_unit, "format": disk_format}
 
             create_pool()
             create_vol(vol_params)
@@ -536,6 +582,15 @@ def run(test, params, env):
                 snap_cmd = ("rbd -m %s %s snap create %s@%s" %
                             (mon_host, key_opt, disk_src_name, snap_name))
                 process.run(snap_cmd, ignore_status=False, shell=True)
+            if test_json_pseudo_protocol:
+                # Create one frontend image with the rbd backing file.
+                json_str = ('json:{"file.driver":"rbd",'
+                            '"file.filename":"rbd:%s:mon_host=%s"}'
+                            % (disk_src_name, mon_host))
+                disk_cmd = ("qemu-img create -f qcow2 -b '%s' %s" %
+                            (json_str, front_end_img_file))
+                disk_path = front_end_img_file
+                process.run(disk_cmd, ignore_status=False, shell=True)
         # If hot plug, start VM first, otherwise stop VM if running.
         if start_vm:
             if vm.is_dead():
@@ -545,6 +600,7 @@ def run(test, params, env):
                 vm.destroy()
         if attach_device:
             if create_volume:
+                params.update({"source_pool": pool_name})
                 params.update({"type_name": "volume"})
                 # No need auth options for volume
                 if "auth_user" in params:
@@ -578,6 +634,12 @@ def run(test, params, env):
             ret = virsh.attach_device(vm_name, xml_file,
                                       flagstr=opts, debug=True)
             libvirt.check_result(ret, skip_if=unsupported_err)
+        elif test_disk_internal_snapshot:
+            xml_file = libvirt.create_disk_xml(params)
+            opts = params.get("attach_option", "")
+            ret = virsh.attach_device(vm_name, xml_file,
+                                      flagstr=opts, debug=True)
+            libvirt.check_result(ret, skip_if=unsupported_err)
         elif not create_volume:
             libvirt.set_vm_disk(vm, params)
         if test_blockcopy:
@@ -588,7 +650,7 @@ def run(test, params, env):
             vm.undefine()
             if virsh.create(vmxml_for_test.xml, **virsh_dargs).exit_status:
                 vmxml_backup.define()
-                raise test.fail("Can't create the domain")
+                test.fail("Can't create the domain")
         elif vm.is_dead():
             vm.start()
         # Wait for vm is running
@@ -603,10 +665,10 @@ def run(test, params, env):
         if test_vm_parts:
             if not check_in_vm(vm, targetdev, old_parts,
                                read_only=create_snapshot):
-                raise test.fail("Failed to check vm partitions")
+                test.fail("Failed to check vm partitions")
             if additional_guest:
                 if not check_in_vm(additional_vm, targetdev, old_parts):
-                    raise test.fail("Failed to check vm partitions")
+                    test.fail("Failed to check vm partitions")
         # Save and restore operation
         if test_save_restore:
             check_save_restore()
@@ -618,6 +680,9 @@ def run(test, params, env):
         if test_disk_readonly:
             snap_option = params.get("snapshot_option", "")
             check_snapshot(snap_option, 'vdb')
+        if test_disk_internal_snapshot:
+            snap_option = params.get("snapshot_option", "")
+            check_snapshot(snap_option, targetdev)
         # Detach the device.
         if attach_device:
             xml_file = libvirt.create_disk_xml(params)
@@ -635,17 +700,17 @@ def run(test, params, env):
             session = vm.wait_for_login()
             new_parts = libvirt.get_parts_list(session)
             if len(new_parts) != len(old_parts):
-                raise test.fail("Disk still exists in vm"
-                                " after detachment")
+                test.fail("Disk still exists in vm"
+                          " after detachment")
             session.close()
 
     except virt_vm.VMStartError, details:
         for msg in unsupported_err:
             if msg in str(details):
-                raise test.skip(details)
+                test.skip(details)
         else:
-            raise test.fail("VM failed to start."
-                            "Error: %s" % str(details))
+            test.fail("VM failed to start."
+                      "Error: %s" % str(details))
     finally:
         # Delete snapshots.
         snapshot_lists = virsh.snapshot_list(vm_name)
@@ -667,6 +732,14 @@ def run(test, params, env):
                    " purge {2} && rbd -m {0} {1} rm {2}"
                    "".format(mon_host, key_opt, disk_src_name))
             process.run(cmd, ignore_status=True, shell=True)
+        elif create_volume:
+            cmd = ("rbd -m {0} {1} info {2} && rbd -m {0} {1} rm {2}"
+                   "".format(mon_host, key_opt, os.path.join(disk_src_pool, cloned_vol_name)))
+            process.run(cmd, ignore_status=True, shell=True)
+            cmd = ("rbd -m {0} {1} info {2} && rbd -m {0} {1} rm {2}"
+                   "".format(mon_host, key_opt, os.path.join(disk_src_pool, create_from_cloned_volume)))
+            process.run(cmd, ignore_status=True, shell=True)
+            clean_up_volume_snapshots()
         else:
             cmd = ("rbd -m {0} {1} info {2} && rbd -m {0} {1} rm {2}"
                    "".format(mon_host, key_opt, disk_src_name))
