@@ -1056,12 +1056,12 @@ def run(test, params, env):
                                                     "alias", "name")
                 if devices[0] == "disk":
                     # For dev_bus ==0,it hardcode bus=usb.0,other than usb%s.0.
-                    usb_bus_str = "usb%s.0" % dev_id
+                    usb_bus_str = "usb%s.0" % dev_bus
                     if dev_bus == 0:
                         usb_bus_str = "usb.0"
                     cmd += (" | grep usb-storage,bus=%s,port=%s,"
                             "drive=drive-%s,id=%s"
-                            % (dev_bus, dev_port, usb_bus_str, dev_id))
+                            % (usb_bus_str, dev_port, dev_id, dev_id))
                 if usb_devices.has_key("input"):
                     input_addr = get_device_addr('input', 'tablet')
                     cmd += (" | grep usb-tablet,id=input[0-9],bus=usb.%s,"
