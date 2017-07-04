@@ -515,7 +515,7 @@ def run(test, params, env):
                 session = aexpect.ShellSession(cmd)
                 session.sendline()
                 remote.handle_prompts(session, params.get("username"),
-                                      params.get("password"), "[\#\$]", 30)
+                                      params.get("password"), r"[\#\$]\s*$", 30)
                 # Get ip address on guest
                 if not get_guest_ip(session, iface_mac):
                     raise error.TestError("Can't get ip address on guest")
