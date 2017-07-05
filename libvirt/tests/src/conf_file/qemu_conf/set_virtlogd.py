@@ -152,9 +152,11 @@ def run(test, params, env):
         if expected_result == 'unbootable':
             test.fail('Libvirtd is not expected to be started '
                       'with stdio_handler=%s' % stdio_handler)
-        # Stop VM if VM is already started.
-        if vm.is_alive():
-            vm.destroy()
+
+        # Stop all VMs if VMs are already started.
+        for tmp_vm in env.get_all_vms():
+            if tmp_vm.is_alive():
+                tmp_vm.destroy(gracefully=False)
 
         # Remove VM previous log file.
         clean_up_vm_log_file(vm_name)
