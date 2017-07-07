@@ -708,6 +708,8 @@ def run(test, params, env):
 
             if bootdisk_snapshot != "":
                 disk.snapshot = bootdisk_snapshot
+                if device_readonly:
+                    disk.readonly = True
 
             disk.target = {"dev": bootdisk_target, "bus": bootdisk_bus}
             device_source = disk.source.attrs["file"]
@@ -958,6 +960,8 @@ def run(test, params, env):
 
             num_queues = ""
             ioeventfd = ""
+            cmd_per_lun = ""
+            max_sectors = ""
             if virtio_scsi_controller_driver != "":
                 for driver_option in virtio_scsi_controller_driver.split(','):
                     if driver_option != "":
@@ -966,11 +970,18 @@ def run(test, params, env):
                             num_queues = d[1].strip()
                         elif d[0].strip() == "ioeventfd":
                             ioeventfd = d[1].strip()
+                        elif d[0].strip() == "cmd_per_lun":
+                            cmd_per_lun = d[1].strip()
+                        elif d[0].strip() == "max_sectors":
+                            max_sectors = d[1].strip()
             if num_queues != "":
                 cmd += " | grep num_queues=%s" % num_queues
             if ioeventfd:
                 cmd += " | grep ioeventfd=%s" % ioeventfd
-
+            if cmd_per_lun:
+                cmd += " | grep cmd_per_lun=%s" % cmd_per_lun
+            if max_sectors:
+                cmd += " | grep max_sectors=%s" % max_sectors
             iface_event_idx = ""
             if iface_driver != "":
                 for driver_option in iface_driver.split(','):
@@ -985,7 +996,7 @@ def run(test, params, env):
                 test.fail("Check disk driver option failed")
 
         if test_disk_snapshot:
-            ret = virsh.snapshot_create_as(vm_name, "s1 %s" % snapshot_option)
+            ret = virsh.snapshot_create_as(vm_name, "s1 %s" % snapshot_option, debug=True)
             libvirt.check_exit_status(ret, snapshot_error)
 
         # Check the disk bootorder.
