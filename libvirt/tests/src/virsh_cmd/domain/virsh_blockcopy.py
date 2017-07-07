@@ -232,6 +232,7 @@ def run(test, params, env):
     setup_libvirt_polkit = "yes" == params.get('setup_libvirt_polkit')
     bug_url = params.get("bug_url", "")
     timeout = int(params.get("timeout", 1200))
+    relative_path = params.get("relative_path")
     rerun_flag = 0
     blkdev_n = None
     back_n = 'blockdev-backing-iscsi'
@@ -250,6 +251,8 @@ def run(test, params, env):
     if bandwidth_byte and not libvirt_version.version_compare(1, 3, 3):
         raise exceptions.TestSkipError("--bytes option not supported in "
                                        "current version")
+    if relative_path == "yes" and not libvirt_version.version_compare(3, 0, 0):
+        test.cancel("Forbid using relative path or file name only is added since libvirt-3.0.0")
 
     # Check the source disk
     if vm_xml.VMXML.check_disk_exist(vm_name, target):
