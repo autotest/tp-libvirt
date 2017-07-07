@@ -60,7 +60,9 @@ def run(test, params, env):
                       libvirt_storage.StoragePool().list_pools())
 
         # Create the src vol
-        vol_size = "4194304"  # 4M is the minimal size for logical volume
+        # 8M is the minimal size for logical volume(PPC)
+        # 4M is the minimal size for logical volume(x86)
+        vol_size = params.get("image_volume_size", "16777216")
         if src_pool_type in ["dir", "logical", "netfs", "fs"]:
             src_vol_name = "src_vol"
             pvt.pre_vol(vol_name=src_vol_name, vol_format=src_vol_format,
