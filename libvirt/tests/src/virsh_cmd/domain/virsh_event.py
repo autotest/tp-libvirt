@@ -21,7 +21,12 @@ def run(test, params, env):
     3. Catch the return of virsh event and qemu-monitor-event, and check it.
     """
 
-    vms = env.get_all_vms()
+    vms = []
+    if params.get("multi_vms") == "yes":
+        vms = env.get_all_vms()
+    else:
+        vm_name = params.get("main_vm")
+        vms.append(env.get_vm(vm_name))
 
     event_name = params.get("event_name")
     event_all_option = "yes" == params.get("event_all_option", "no")
