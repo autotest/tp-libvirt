@@ -530,7 +530,7 @@ def run(test, params, env):
         if add_disk_driver:
             # Ignore errors here
             session.cmd("dracut --force --add-drivers '%s'"
-                        % add_disk_driver)
+                        % add_disk_driver, timeout=360)
         session.close()
         vm.shutdown()
 
