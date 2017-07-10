@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 
 from autotest.client.shared import error
@@ -78,7 +79,7 @@ def run(test, params, env):
             vm = env.get_vm(vm_name)
             session = vm.wait_for_login()
             virsh.attach_disk(vm_name, volumes.values()[volume_count - 1],
-                              disk_target)
+                              disk_target, extra="--subdriver raw")
             vm_attach_device = "/dev/%s" % disk_target
             if session.cmd_status("which parted"):
                 # No parted command, check device only
@@ -87,6 +88,7 @@ def run(test, params, env):
                                          % vm_attach_device)
                 return
             # Test if attached disk can be used normally
+            time.sleep(10)  # Need seconds for the new disk to be recognized
             utlv.mk_part(vm_attach_device, session=session)
             session.cmd("mkfs.ext4 %s1" % vm_attach_device)
             session.cmd("mount %s1 /mnt" % vm_attach_device)
