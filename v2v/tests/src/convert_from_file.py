@@ -91,9 +91,9 @@ def run(test, params, env):
                 except Exception, e:
                     test.fail('Start vm failed: %s' % str(e))
             # Check guest following the checkpoint document after convertion
+            vmchecker = VMChecker(test, params, env)
+            params['vmchecker'] = vmchecker
             if params.get('skip_vm_check') != 'yes':
-                vmchecker = VMChecker(test, params, env)
-                params['vmchecker'] = vmchecker
                 if checkpoint != 'win2008r2_ostk':
                     ret = vmchecker.run()
                     if len(ret) == 0:
