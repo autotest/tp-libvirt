@@ -41,7 +41,6 @@ def run(test, params, env):
         vmcpu_xml = vm_xml.VMCPUXML()
         vmcpu_xml['match'] = cpu_match
         vmcpu_xml['model'] = "Penryn"
-        vmcpu_xml['vendor'] = "Intel"
         vmcpu_xml.add_feature('xtpr', 'optional')
         vmcpu_xml.add_feature('tm2', 'disable')
         vmcpu_xml.add_feature('est', 'force')
@@ -110,12 +109,10 @@ def run(test, params, env):
                 require_count += 1
         # Check
         expect_model = 'Penryn'
-        expect_vendor = 'Intel'
         if cpu_match == "minimum":
             # libvirt commit 3b6be3c0 change the behavior of update-cpu
             if libvirt_version.version_compare(3, 0, 0):
                 expect_model = host_capa.model
-                expect_vendor = host_capa.vendor
             expect_match = "exact"
             # For different host, the support require features are different,
             # so just check the actual require features greater than the
@@ -138,10 +135,6 @@ def run(test, params, env):
         logging.debug("Expect 'model' value is: %s", expect_model)
         if vmcpu_xml['model'] != expect_model:
             logging.error("CPU model %s is not expected", vmcpu_xml['model'])
-            check_pass = False
-        logging.debug("Expect 'vendor' value is: %s", expect_vendor)
-        if vmcpu_xml['vendor'] != expect_vendor:
-            logging.error("CPU vendor '%s' is not expected", vmcpu_xml['vendor'])
             check_pass = False
         return check_pass
 
