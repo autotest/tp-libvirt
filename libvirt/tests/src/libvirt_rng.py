@@ -3,7 +3,7 @@ import os
 import ast
 import shutil
 import logging
-from autotest.client.shared import error
+from avocado.utils import process
 from autotest.client import utils
 from virttest import virt_vm, virsh
 from virttest import utils_package
@@ -69,7 +69,7 @@ def run(test, params, env):
                                       str(rng_xml), re.M
                                       )[0].replace("/", "\/"))])
             if not status:
-                raise error.TestFail("Failed to edit vm xml")
+                test.fail("Failed to edit vm xml")
 
     def check_qemu_cmd(dparams):
         """
@@ -101,9 +101,9 @@ def run(test, params, env):
             rate = ast.literal_eval(rng_rate)
             cmd += (" | grep 'max-bytes=%s,period=%s'"
                     % (rate['bytes'], rate['period']))
-        if utils.run(cmd, ignore_status=True).exit_status:
-            raise error.TestFail("Cann't see rng option"
-                                 " in command line")
+        if process.run(cmd, ignore_status=True, shell=True).exit_status:
+            test.fail("Cann't see rng option"
+                      " in command line")
 
     def check_host():
         """
@@ -111,12 +111,12 @@ def run(test, params, env):
         """
         backend_dev = params.get("backend_dev")
         if backend_dev:
-            cmd = "lsof %s" % backend_dev
-            ret = utils.run(cmd, ignore_status=True)
+            cmd = "lsof |grep %s" % backend_dev
+            ret = process.run(cmd, ignore_status=True, shell=True)
             if ret.exit_status or not ret.stdout.count("qemu"):
-                raise error.TestFail("Failed to check random device"
-                                     " on host, command output: %s",
-                                     ret.stdout)
+                test.fail("Failed to check random device"
+                          " on host, command output: %s" %
+                          ret.stdout)
 
     def check_snapshot(bgjob=None):
         """
@@ -130,8 +130,8 @@ def run(test, params, env):
         libvirt.check_exit_status(ret)
         snap_lists = virsh.snapshot_list(vm_name)
         if snapshot_name not in snap_lists:
-            raise error.TestFail("Snapshot %s doesn't exist"
-                                 % snapshot_name)
+            test.fail("Snapshot %s doesn't exist"
+                      % snapshot_name)
 
         if snapshot_vm_running:
             options = "--force"
@@ -142,7 +142,7 @@ def run(test, params, env):
         libvirt.check_exit_status(ret)
         ret = virsh.dumpxml(vm_name)
         if ret.stdout.count("<rng model="):
-            raise error.TestFail("Found rng device in xml")
+            test.fail("Found rng device in xml")
 
         if snapshot_with_rng:
             if vm.is_alive():
@@ -166,16 +166,16 @@ def run(test, params, env):
                                        % snapshot_name2)
         if ret.exit_status:
             if ret.stderr.count(err_msgs):
-                raise error.TestNAError(err_msgs)
+                test.skip(err_msgs)
             else:
-                raise error.TestFail("Failed to create external snapshot")
+                test.fail("Failed to create external snapshot")
         snap_lists = virsh.snapshot_list(vm_name)
         if snapshot_name2 not in snap_lists:
-            raise error.TestFail("Failed to check snapshot list")
+            test.fail("Failed to check snapshot list")
 
         ret = virsh.domblklist(vm_name)
         if not ret.stdout.count(snapshot_name2):
-            raise error.TestFail("Failed to find snapshot disk")
+            test.fail("Failed to find snapshot disk")
 
     def check_guest(session):
         """
@@ -190,14 +190,14 @@ def run(test, params, env):
                                        timeout=600).strip()
         logging.debug("rng avail:%s, current:%s", rng_avail, rng_currt)
         if not rng_currt.count("virtio") or rng_currt not in rng_avail:
-            raise error.TestFail("Failed to check rng file on guest")
+            test.fail("Failed to check rng file on guest")
 
         # Read the random device
         cmd = ("dd if=/dev/hwrng of=rng.test count=100"
                " && rm -f rng.test")
         ret, output = session.cmd_status_output(cmd, timeout=600)
         if ret:
-            raise error.TestFail("Failed to read the random device")
+            test.fail("Failed to read the random device")
         rng_rate = params.get("rng_rate")
         if rng_rate:
             rate_bytes, rate_period = ast.literal_eval(rng_rate).values()
@@ -205,24 +205,24 @@ def run(test, params, env):
             ret = re.search(r"(\d+) bytes.*copied, (\d+.\d+) s",
                             output, re.M)
             if not ret:
-                raise error.TestFail("Can't find rate from output")
+                test.fail("Can't find rate from output")
             rate_real = float(ret.group(1)) / float(ret.group(2))
             logging.debug("Find rate: %s, config rate: %s",
                           rate_real, rate_conf)
             if rate_real > rate_conf * 1.2:
-                raise error.TestFail("The rate of reading exceed"
-                                     " the limitation of configuration")
+                test.fail("The rate of reading exceed"
+                          " the limitation of configuration")
         if device_num > 1:
             rng_dev = rng_avail.split()
             if len(rng_dev) != device_num:
-                raise error.TestNAError("Multiple virtio-rng devices are not"
-                                        " supported on this guest kernel. "
-                                        "Bug: https://bugzilla.redhat.com/"
-                                        "show_bug.cgi?id=915335")
+                test.skip("Multiple virtio-rng devices are not"
+                          " supported on this guest kernel. "
+                          "Bug: https://bugzilla.redhat.com/"
+                          "show_bug.cgi?id=915335")
             session.cmd("echo -n %s > %s" % (rng_dev[1], rng_files[1]))
             # Read the random device
             if session.cmd_status(cmd, timeout=120):
-                raise error.TestFail("Failed to read the random device")
+                test.fail("Failed to read the random device")
 
     start_error = "yes" == params.get("start_error", "no")
 
@@ -237,8 +237,8 @@ def run(test, params, env):
     device_num = int(params.get("device_num", 1))
 
     if device_num > 1 and not libvirt_version.version_compare(1, 2, 7):
-        raise error.TestNAError("Multiple virtio-rng devices not "
-                                "supported on this libvirt version")
+        test.skip("Multiple virtio-rng devices not "
+                  "supported on this libvirt version")
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
@@ -256,11 +256,11 @@ def run(test, params, env):
             rngd_srv_conf = "/etc/systemd/system/rngd.service"
             if not os.path.exists(rngd_srv_conf):
                 shutil.copy(rngd_srv, rngd_srv_conf)
-            utils.run("sed -i -e 's#^ExecStart=.*#ExecStart=/sbin/rngd"
-                      " -f -r /dev/urandom -o /dev/random#' %s"
-                      % rngd_srv_conf)
-            utils.run('systemctl daemon-reload')
-        utils.run("service rngd start")
+            process.run("sed -i -e 's#^ExecStart=.*#ExecStart=/sbin/rngd"
+                        " -f -r /dev/urandom -o /dev/random#' %s"
+                        % rngd_srv_conf, shell=True)
+            process.run('systemctl daemon-reload')
+        process.run("service rngd start")
 
     # Build the xml and run test.
     try:
@@ -310,7 +310,7 @@ def run(test, params, env):
             # Start the VM.
             vm.start()
             if start_error:
-                raise error.TestFail("VM started unexpectedly")
+                test.fail("VM started unexpectedly")
 
             if test_qemu_cmd:
                 if device_num > 1:
@@ -330,10 +330,10 @@ def run(test, params, env):
         except virt_vm.VMStartError as details:
             logging.info(str(details))
             if not start_error:
-                raise error.TestFail('VM failed to start, '
-                                     'please refer to https://bugzilla.'
-                                     'redhat.com/show_bug.cgi?id=1220252:'
-                                     '\n%s' % details)
+                test.fail('VM failed to start, '
+                          'please refer to https://bugzilla.'
+                          'redhat.com/show_bug.cgi?id=1220252:'
+                          '\n%s' % details)
 
     finally:
         # Delete snapshots.
