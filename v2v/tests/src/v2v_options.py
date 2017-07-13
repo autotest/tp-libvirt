@@ -21,6 +21,8 @@ from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
+from provider.v2v_vmcheck_helper import VMChecker
+
 
 def run(test, params, env):
     """
@@ -43,9 +45,9 @@ def run(test, params, env):
     output_mode = params.get("output_mode")
     output_storage = params.get("output_storage", "default")
     disk_img = params.get("input_disk_image", "")
-    nfs_storage = params.get("nfs_storage")
+    nfs_storage = params.get("storage")
     no_root = 'yes' == params.get('no_root', 'no')
-    mnt_point = params.get("mount_point")
+    mnt_point = params.get("mnt_point")
     export_domain_uuid = params.get("export_domain_uuid", "")
     fake_domain_uuid = params.get("fake_domain_uuid")
     vdsm_image_uuid = params.get("vdsm_image_uuid")
@@ -279,8 +281,12 @@ def run(test, params, env):
         bus, type = disk.find('target').get('bus'), disk.find('driver').get('type')
         path = disk.find('source').get('file')
         disks_info = "%s (%s) [%s]" % (path, type, bus)
+        source_disks = source_info['disks'].split()
+        source_disks_path = source_disks[0]
+        source_disks_type = source_disks[1].strip('()')
+        source_disks_bus = source_disks[2].strip('[]')
         logging.info('disks:%s<->%s', source_info['disks'], disks_info)
-        if source_info['disks'] != disks_info:
+        if source_disks_path != path or source_disks_type != type or bus not in source_disks_bus:
             fail.append('disks')
 
         # Check nic info
@@ -291,7 +297,7 @@ def run(test, params, env):
         name = nic_source.get(type)
         nic_info = '%s "%s" mac: %s' % (type, name, mac)
         logging.info('NICs:%s<->%s', source_info['NICs'], nic_info)
-        if source_info['NICs'].lower() != nic_info.lower():
+        if nic_info.lower() not in source_info['NICs'].lower():
             fail.append('NICs')
 
         # Check cpu features
@@ -380,6 +386,13 @@ def run(test, params, env):
             if output_mode == "libvirt":
                 if "qemu:///session" not in v2v_options and not no_root:
                     virsh.start(vm_name, debug=True, ignore_status=False)
+            if checkpoint == 'vmx':
+                vmchecker = VMChecker(test, params, env)
+                params['vmchecker'] = vmchecker
+                params['vmcheck_flag'] = True
+                ret = vmchecker.run()
+                if len(ret) == 0:
+                    logging.info("All common checkpoints passed")
             if checkpoint == 'quiet':
                 if len(output.strip()) != 0:
                     test.fail('Output is not empty in quiet mode')
@@ -502,6 +515,8 @@ def run(test, params, env):
         output_option = ""
         if output_mode:
             output_option = "-o %s -os %s" % (output_mode, output_storage)
+            if checkpoint == 'rhv':
+                output_option = output_option.replace('rhev', 'rhv')
         output_format = params.get("output_format")
         if output_format and output_format != input_format:
             output_option += " -of %s" % output_format
@@ -604,6 +619,18 @@ def run(test, params, env):
                 test.error('Source vm installing script missing')
             process.run('su - %s -c %s' % (v2v_user, sh_install_vm))
 
+        if checkpoint == 'vmx':
+            mount_point = params.get('mount_point')
+            if not os.path.isdir(mount_point):
+                os.mkdir(mount_point)
+            nfs_vmx = params.get('nfs_vmx')
+            if not utils_misc.mount(nfs_vmx, mount_point, 'nfs', verbose=True):
+                test.error('Mount nfs for vmx failed')
+            vmx = params.get('vmx')
+            input_option = '-i vmx %s' % vmx
+            v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
+                                             params.get("output_network"))
+
         # Running virt-v2v command
         cmd = "%s %s %s %s" % (utils_v2v.V2V_EXEC, input_option,
                                output_option, v2v_options)
@@ -669,3 +696,6 @@ def run(test, params, env):
             process.system("userdel -f %s" % v2v_user)
         if backup_xml:
             backup_xml.sync()
+        if checkpoint == 'vmx':
+            utils_misc.umount(params['nfs_vmx'], params['mount_point'], 'nfs')
+            os.rmdir(params['mount_point'])
