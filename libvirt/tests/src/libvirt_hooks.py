@@ -398,6 +398,8 @@ def run(test, params, env):
     finally:
         # Recover VM.
         logging.info("Restoring vm...")
+        if test_managedsave:
+            virsh.managedsave_remove(vm_name)
         if vm.is_alive():
             vm.destroy(gracefully=False)
         if os.path.exists(hook_file):
