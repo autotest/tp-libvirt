@@ -92,6 +92,8 @@ def run(test, params, env):
                 continue
             elif re.search("secret,id=", arg):
                 continue
+            elif re.search("-cpu", arg):
+                continue
             retlist.append(arg)
 
         return retlist
