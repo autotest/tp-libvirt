@@ -143,10 +143,9 @@ def run(test, params, env):
             if status_error:
                 if invalid_label:
                     # invalid label should fail, more info in bug 1165485
-                    raise error.TestNAError("The label or model not valid, "
-                                            "check more info in bug: https://"
-                                            "bugzilla.redhat.com/show_bug.cgi"
-                                            "?id=1165485")
+                    logging.debug("The guest failed to start as expected,"
+                                  "details see bug: bugzilla.redhat.com/show_bug.cgi"
+                                  "?id=1165485")
                 else:
                     raise error.TestFail("Test succeeded in negative case.")
 
