@@ -3,16 +3,18 @@ import logging
 import shutil
 
 from avocado.utils import process
-from avocado.core import exceptions
 
 from virttest import virsh
 from virttest import utils_v2v
+from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import utils_package
 from virttest import utils_sasl
 from virttest import ssh_key
 from virttest import remote
 from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
+from virttest.staging import service
 from virttest.utils_test import libvirt
 
 from provider.v2v_vmcheck_helper import VMChecker
@@ -24,9 +26,9 @@ def run(test, params, env):
     """
     for v in params.itervalues():
         if "V2V_EXAMPLE" in v:
-            raise exceptions.TestSkipError("Please set real value for %s" % v)
+            test.skip("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
-        raise ValueError('Missing command: virt-v2v')
+        test.skip('Missing command: virt-v2v')
     vm_name = params.get('main_vm')
     new_vm_name = params.get('new_vm_name')
     xen_host = params.get('xen_hostname')
@@ -86,7 +88,7 @@ def run(test, params, env):
         logging.info('Checking grub file')
         grub_file = utils_misc.get_bootloader_cfg(session=vmcheck.session)
         if not grub_file:
-            raise exceptions.TestError('Not found grub file')
+            test.error('Not found grub file')
         content = vmcheck.session.cmd('cat %s' % grub_file)
         if check == 'console_xvc0':
             if 'console=xvc0' in content:
@@ -123,66 +125,26 @@ def run(test, params, env):
         val_md5, val_sha1 = params.get('val_md5'), params.get('val_sha1')
         logging.info('Expect MD5=%s, SHA1=%s', val_md5, val_sha1)
         if not val_md5 or not val_sha1:
-            raise exceptions.TestError('No MD5 or SHA1 value provided')
+            test.error('No MD5 or SHA1 value provided')
         cmd_sha1 = params.get('cmd_sha1')
         cmd_md5 = cmd_sha1 + ' MD5'
-        sha1 = vmcheck.session.cmd(cmd_sha1).strip().split('\n')[1].replace(' ', '')
-        md5 = vmcheck.session.cmd(cmd_md5).strip().split('\n')[1].replace(' ', '')
+        sha1 = vmcheck.session.cmd_output(cmd_sha1, safe=True).strip().split('\n')[1].replace(' ', '')
+        md5 = vmcheck.session.cmd_output(cmd_md5, safe=True).strip().split('\n')[1].replace(' ', '')
         logging.info('Actual MD5=%s, SHA1=%s', md5, sha1)
         if sha1 == val_sha1 and md5 == val_md5:
             logging.info('MD5 and SHA1 are correct')
         else:
             log_fail('MD5 or SHA1 of rhsrvany.exe not correct')
 
-    def check_v2v_log(output, check=None):
+    def check_disk(vmcheck, count):
         """
-        Check if error/warning meets expectation
+        Check if number of disks meets expectation
         """
-        # Fail if found error msg in log
-        not_expect_map = {
-            'xvda_disk': [
-                r'virt-v2v: WARNING: /boot/grub.*?/device.map references '
-                r'unknown device /dev/vd.*?\n',
-                r'virt-v2v: warning: /files/boot/grub/device.map/hd0 '
-                r'references unknown.*?after conversion.'
-            ],
-            'xvda_guest': [
-                r'virt-v2v: WARNING: /boot/grub.*?/device.map references '
-                r'unknown device /dev/vd.*?\n',
-                r'virt-v2v: warning: /files/boot/grub/device.map/hd0 '
-                r'references unknown.*?after conversion.'
-            ],
-            'libguestfs_backend_empty': ['libguestfs: error: invalid backend:']
-        }
-        expect_map = {
-            'same_name': ["virt-v2v: error: a libvirt domain called '.*?' "
-                          "already exists on the target."],
-            'libguestfs_backend_test': ['export LIBGUESTFS_BACKEND=direct',
-                                        'libguestfs: error: invalid backend: .*?'],
-            'no_passwordless_SSH': [
-                'virt-v2v: error: ssh-agent authentication has not been set up',
-                '\$SSH_AUTH_SOCK is not set',
-                'Please read "INPUT FROM RHEL 5 XEN" in the'
-            ],
-            'xml_without_image': ["Could not open '.*?': No such file or directory"],
-            'pv_no_regular_kernel':
-                ['virt-v2v: error: only Xen kernels are installed in this guest']
-        }
-
-        if check is None or not (check in not_expect_map or check in expect_map):
-            logging.info('Skip checking v2v log')
-        else:
-            logging.info('Checking v2v log')
-            if expect_map.has_key(check):
-                expect = True
-                content_map = expect_map
-            elif not_expect_map.has_key(check):
-                expect = False
-                content_map = not_expect_map
-            if utils_v2v.check_log(output, content_map[check], expect=expect):
-                logging.info('Finish checking v2v log')
-            else:
-                raise exceptions.TestFail('Check v2v log failed')
+        logging.info('Expect number of disks: %d', count)
+        actual = vmcheck.session.cmd('lsblk |grep disk |wc -l').strip()
+        logging.info('Actual number of disks: %s', actual)
+        if int(actual) != count:
+            log_fail('Number of disks is wrong')
 
     def check_result(result, status_error):
         """
@@ -190,16 +152,16 @@ def run(test, params, env):
         """
         libvirt.check_exit_status(result, status_error)
         output = result.stdout + result.stderr
-        if not status_error:
+        if not status_error and checkpoint != 'vdsm':
             if output_mode == 'rhev':
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                     timeout=v2v_timeout):
-                    raise exceptions.TestFail('Import VM failed')
+                    test.fail('Import VM failed')
             elif output_mode == 'libvirt':
                 try:
                     virsh.start(vm_name, debug=True, ignore_status=False)
                 except Exception, e:
-                    raise exceptions.TestFail('Start vm failed: %s', str(e))
+                    test.fail('Start vm failed: %s', str(e))
             # Check guest following the checkpoint document after convertion
             logging.info('Checking common checkpoints for v2v')
             vmchecker = VMChecker(test, params, env)
@@ -210,22 +172,26 @@ def run(test, params, env):
             # Check specific checkpoints
             if checkpoint == 'rhev_file':
                 check_rhev_file_exist(vmchecker.checker)
-            elif checkpoint == 'console_xvc0':
+            if checkpoint == 'console_xvc0':
                 check_grub_file(vmchecker.checker, 'console_xvc0')
-            elif checkpoint in ('vnc_autoport', 'vnc_encrypt'):
+            if checkpoint in ('vnc_autoport', 'vnc_encrypt'):
                 vmchecker.check_graphics(params[checkpoint])
-            elif checkpoint == 'sdl':
+            if checkpoint == 'sdl':
                 if output_mode == 'libvirt':
                     vmchecker.check_graphics({'type': 'vnc'})
                 elif output_mode == 'rhev':
                     vmchecker.check_graphics({'type': 'spice'})
-            elif checkpoint == 'pv_with_regular_kernel':
+            if checkpoint == 'pv_with_regular_kernel':
                 check_kernel(vmchecker.checker)
-            elif checkpoint in ['sound', 'pcspk']:
+            if checkpoint in ['sound', 'pcspk']:
                 check_sound_card(vmchecker.checker, checkpoint)
-            elif checkpoint == 'rhsrvany_md5':
+            if checkpoint == 'rhsrvany_md5':
                 check_rhsrvany_md5(vmchecker.checker)
-        check_v2v_log(output, checkpoint)
+            if checkpoint == 'multidisk':
+                check_disk(vmchecker.checker, params['disk_count'])
+        log_check = utils_v2v.check_log(params, output)
+        if log_check:
+            log_fail(log_check)
         # Merge 2 error lists
         if params.get('vmchecker'):
             error_list.extend(params['vmchecker'].errors)
@@ -240,8 +206,7 @@ def run(test, params, env):
             else:
                 logging.error('Virtio drivers not meet expectation')
         if len(error_list):
-            raise exceptions.TestFail('%d checkpoints failed: %s' %
-                                      (len(error_list), error_list))
+            test.fail('%d checkpoints failed: %s' % (len(error_list), error_list))
 
     try:
         v2v_params = {
@@ -379,7 +344,7 @@ def run(test, params, env):
             virtio_win_env = params.get('virtio_win_env', 'VIRTIO_WIN')
             process.run('rpm -e virtio-win')
             if process.run('rpm -q virtio-win', ignore_status=True).exit_status == 0:
-                raise exceptions.TestError('not removed')
+                test.error('not removed')
             if checkpoint.endswith('unset'):
                 logging.info('Unset env %s' % virtio_win_env)
                 os.unsetenv(virtio_win_env)
@@ -402,7 +367,43 @@ def run(test, params, env):
             for disk in disks.values():
                 # Check if vm has cdrom attached
                 if disk.get('device') == 'cdrom' and disk.find('source') is None:
-                    raise exceptions.TestError('No CDROM image attached')
+                    test.error('No CDROM image attached')
+        if checkpoint == 'vdsm':
+            extra_pkg = params.get('extra_pkg')
+            logging.info('Install %s', extra_pkg)
+            utils_package.package_install(extra_pkg.split(','))
+
+            # Backup conf file for recovery
+            for conf in params['bk_conf'].strip().split(','):
+                logging.debug('Back up %s', conf)
+                shutil.copyfile(conf, conf + '.bk')
+
+            logging.info('Configure libvirt for vdsm')
+            process.run('vdsm-tool configure --force')
+
+            logging.info('Start vdsm service')
+            service_manager = service.Factory.create_generic_service()
+            service_manager.start('vdsmd')
+
+            # Setup user and password
+            user_pwd = "[['%s', '%s']]" % (params.get("sasl_user"),
+                                           params.get("sasl_pwd"))
+            v2v_sasl = utils_sasl.SASL(sasl_user_pwd=user_pwd)
+            v2v_sasl.server_ip = 'localhost'
+            v2v_sasl.server_user = params.get('sasl_server_user', 'root')
+            v2v_sasl.server_pwd = params.get('sasl_server_passwd')
+            v2v_sasl.setup()
+
+            v2v_params['sasl_user'] = params.get("sasl_user")
+            v2v_params['sasl_pwd'] = params.get("sasl_pwd")
+        if checkpoint == 'multidisk':
+            params['disk_count'] = 0
+            blklist = virsh.domblklist(vm_name, uri=uri).stdout.split('\n')
+            logging.info(blklist)
+            for line in blklist:
+                if '/' in line:
+                    params['disk_count'] += 1
+            logging.info('Total disks: %d', params['disk_count'])
 
         # Check if xen guest exists again
         if not virsh.domain_exists(vm_name, uri=uri):
@@ -417,6 +418,23 @@ def run(test, params, env):
         check_result(v2v_result, status_error)
     finally:
         process.run('ssh-agent -k')
+        if checkpoint == 'vdsm':
+            logging.info('Stop vdsmd')
+            service_manager = service.Factory.create_generic_service()
+            service_manager.stop('vdsmd')
+            if params.get('extra_pkg'):
+                utils_package.package_remove(params['extra_pkg'].split(','))
+            for conf in params['bk_conf'].strip().split(','):
+                if os.path.exists(conf + '.bk'):
+                    logging.debug('Recover %s', conf)
+                    os.remove(conf)
+                    shutil.move(conf + '.bk', conf)
+            logging.info('Restart libvirtd')
+            libvirtd = utils_libvirtd.Libvirtd()
+            libvirtd.restart()
+            logging.info('Start network "default"')
+            virsh.net_start('default')
+            virsh.undefine(vm_name)
         if params.get('vmchecker'):
             params['vmchecker'].cleanup()
         if output_mode == 'libvirt':
@@ -431,4 +449,4 @@ def run(test, params, env):
             session.cmd('rm -f /etc/ssh/ssh_banner')
             session.cmd('service sshd restart')
         if checkpoint.startswith('virtio_win'):
-            utils_misc.yum_install(['virtio-win'])
+            utils_package.package_install(['virtio-win'])
