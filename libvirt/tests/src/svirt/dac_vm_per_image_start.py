@@ -4,6 +4,8 @@ import pwd
 import grp
 import logging
 
+from avocado.utils import process
+
 from virttest import utils_selinux
 from virttest import virt_vm
 from virttest import utils_config
@@ -11,6 +13,8 @@ from virttest import utils_libvirtd
 from virttest import data_dir
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.vm_xml import VMXML
+
+from provider import libvirt_version
 
 
 def format_user_group_str(user, group):
@@ -162,10 +166,14 @@ def run(test, params, env):
             # Get vm image label when VM is running
             if disk_type != "network":
                 disks = vm.get_blk_devices()
-                f = os.open(disks[disk_target]['source'], 0)
-                stat_re = os.fstat(f)
-                disk_context = "%s:%s" % (stat_re.st_uid, stat_re.st_gid)
-                os.close(f)
+                if libvirt_version.version_compare(3, 1, 0) and disk_type == "block":
+                    output = process.system_output(
+                        "nsenter -t %d -m -- ls -l %s" % (vm_pid, disks[disk_target]['source']))
+                    owner, group = output.strip().split()[2:4]
+                    disk_context = format_user_group_str(owner, group)
+                else:
+                    stat_re = os.stat(disks[disk_target]['source'])
+                    disk_context = "%s:%s" % (stat_re.st_uid, stat_re.st_gid)
                 logging.debug("The disk dac label after vm start is: %s",
                               disk_context)
                 if sec_label and relabel == 'yes':
