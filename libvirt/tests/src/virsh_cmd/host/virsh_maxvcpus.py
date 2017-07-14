@@ -5,7 +5,6 @@ from avocado.core import exceptions
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_conn
-from virttest.libvirt_xml import capability_xml
 from virttest.libvirt_xml import domcapability_xml as domcap
 from provider import libvirt_version
 import platform
@@ -33,7 +32,7 @@ def run(test, params, env):
     server_pwd = params.get("remote_pwd", local_pwd)
     transport_type = params.get("connect_transport_type", "local")
     transport = params.get("connect_transport", "ssh")
-
+    connect_uri = None
     # check the config
     if (connect_arg == "transport" and
             transport_type == "remote" and
@@ -69,21 +68,21 @@ def run(test, params, env):
     if libvirt_version.version_compare(2, 3, 0):
         try:
             maxvcpus = None
+            dom_capabilities = None
             # make sure we take maxvcpus from right host, helps incase remote
-            virsh_dargs = {'uri': connect_uri}
-            virsh_instance = virsh.Virsh(virsh_dargs)
             try:
-                capa = capability_xml.CapabilityXML(virsh_instance)
-                host_arch = capa.arch
-                maxvcpus = capa.get_guest_capabilities()['hvm'][host_arch]['maxcpus']
-                logging.debug("maxvcpus calculate is %s", maxvcpus)
+                dom_capabilities = domcap.DomCapabilityXML()
+                maxvcpus = dom_capabilities.max
+                logging.debug("maxvcpus calculate from domcapabilities "
+                              "is %s", maxvcpus)
             except:
                 raise exceptions.TestFail("Failed to get maxvcpus from "
-                                          "capabilities xml\n%s" % capa)
+                                          "domcapabilities xml:\n%s"
+                                          % dom_capabilities)
             if not maxvcpus:
-                raise exceptions.TestFail("Failed to get guest section for "
-                                          "host arch: %s from capabilities "
-                                          "xml\n%s" % (host_arch, capa))
+                raise exceptions.TestFail("Failed to get max value for vcpu"
+                                          "from domcapabilities "
+                                          "xml:\n%s" % dom_capabilities)
         except Exception, details:
             raise exceptions.TestFail("Failed get the virsh instance with uri: "
                                       "%s\n Details: %s" % (connect_uri, details))
