@@ -1,7 +1,6 @@
+import os
 import time
 import logging
-
-from autotest.client.shared import error
 
 from virttest import virsh
 from virttest import utils_misc
@@ -18,7 +17,6 @@ def run(test, params, env):
     status_cmd = params.get("status_cmd", "")
     freeze_cmd = params.get("freeze_cmd", "")
     thaw_cmd = params.get("thaw_cmd", "")
-    tmp_file = params.get("tmp_file", "/tmp/test.file")
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     try:
         def get_dirty(session, frozen=False):
@@ -52,24 +50,36 @@ def run(test, params, env):
                         return int(session.cmd_output(data_cmd).strip().
                                    split()[1])
             except (IndexError, ValueError), details:
-                raise error.TestFail("Get dirty info failed: %s" % details)
+                test.fail("Get dirty info failed: %s" % details)
 
+        device_source_path = os.path.join(test.tmpdir, "disk.img")
+        device_source = libvirt.create_local_disk("file", path=device_source_path,
+                                                  disk_format="qcow2")
         vm.prepare_guest_agent()
 
         # Do operation before freeze guest filesystem
         session = vm.wait_for_login()
+        tmp_file = "/mnt/test.file"
         try:
+            # Create extra image and attach to guest, then mount
+            old_parts = libvirt.get_parts_list(session)
+            ret = virsh.attach_disk(vm_name, device_source, "vdd")
+            if ret.exit_status:
+                test.fail("Attaching device failed before testing agent:%s" % ret.stdout)
+            time.sleep(1)
+            new_parts = libvirt.get_parts_list(session)
+            added_part = list(set(new_parts).difference(set(old_parts)))
+            session.cmd("mkfs.ext3 -F /dev/{0} && mount /dev/{0} /mnt".format(added_part[0]))
+
+            # Generate dirty memory
             session.cmd("rm -f %s" % tmp_file)
             session.cmd_output("cp /dev/zero %s 2>/dev/null &" % tmp_file)
-            time.sleep(5)
             # Get original dirty data
             org_dirty_info = get_dirty(session)
             fz_cmd_result = virsh.qemu_agent_command(vm_name, freeze_cmd,
                                                      ignore_status=True,
                                                      debug=True)
             libvirt.check_exit_status(fz_cmd_result)
-            # Wait for freeze filesystem
-            time.sleep(1)
 
             # Get frozen dirty data
             fz_dirty_info = get_dirty(session, True)
@@ -78,8 +88,8 @@ def run(test, params, env):
                                                      debug=True)
             libvirt.check_exit_status(st_cmd_result)
             if not st_cmd_result.stdout.count("frozen"):
-                raise error.TestFail("Guest filesystem status is not frozen: %s"
-                                     % st_cmd_result.stdout.strip())
+                test.fail("Guest filesystem status is not frozen: %s"
+                          % st_cmd_result.stdout.strip())
 
             tw_cmd_result = virsh.qemu_agent_command(vm_name, thaw_cmd,
                                                      ignore_status=True,
@@ -93,15 +103,15 @@ def run(test, params, env):
                                                      debug=True)
             libvirt.check_exit_status(st_cmd_result)
             if not st_cmd_result.stdout.count("thawed"):
-                raise error.TestFail("Guest filesystem status is not thawed: %s"
-                                     % st_cmd_result.stdout.strip())
+                test.fail("Guest filesystem status is not thawed: %s"
+                          % st_cmd_result.stdout.strip())
             logging.info("Original dirty data: %s" % org_dirty_info)
             logging.info("Frozen dirty data: %s" % fz_dirty_info)
             logging.info("Thawed dirty data: %s" % tw_dirty_info)
             if not tw_dirty_info or not org_dirty_info:
-                raise error.TestFail("The thawed dirty data should not be 0!")
+                test.fail("The thawed dirty data should not be 0!")
             if fz_dirty_info:
-                raise error.TestFail("The frozen dirty data should be 0!")
+                test.fail("The frozen dirty data should be 0!")
         finally:
             # Thaw the file system that remove action can be done
             virsh.qemu_agent_command(vm_name, thaw_cmd, ignore_status=True)
@@ -109,3 +119,4 @@ def run(test, params, env):
             session.close()
     finally:
         xml_backup.sync()
+        os.remove(device_source_path)
