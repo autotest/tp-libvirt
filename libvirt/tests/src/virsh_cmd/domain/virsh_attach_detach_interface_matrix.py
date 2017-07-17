@@ -65,7 +65,7 @@ def run(test, params, env):
             # All three conditions met
             logging.debug("Find %s in given iface XML", iface_mac)
             return True
-        logging.debug("Not find %s in gievn iface XML", iface_mac)
+        logging.debug("Not find %s in given iface XML", iface_mac)
         return False
 
     def check_result(vm_name, iface_source, iface_type, iface_mac,
@@ -294,7 +294,7 @@ def run(test, params, env):
             vm.resume()
             vm.wait_for_login().close()
         #Sleep a while for vm is stable
-        time.sleep(3)
+        time.sleep(10)
         if not ret.exit_status:
             check_result(vm_name, iface_source,
                          iface_type, iface_mac,
