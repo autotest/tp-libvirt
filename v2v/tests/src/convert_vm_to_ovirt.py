@@ -112,7 +112,7 @@ def run(test, params, env):
         v2v_params.update({'output_format': 'qcow2'})
 
     # Set libguestfs environment variable
-    if hypervisor == 'xen':
+    if hypervisor in ('xen', 'kvm'):
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
     try:
         # Execute virt-v2v command
