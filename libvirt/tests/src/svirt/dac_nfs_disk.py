@@ -5,7 +5,6 @@ import logging
 from avocado.utils import process
 
 from virttest import qemu_storage
-from virttest import data_dir
 from virttest import utils_selinux
 from virttest import virt_vm
 from virttest import virsh
@@ -141,7 +140,7 @@ def run(test, params, env):
 
         # Init a QemuImg instance and create img on nfs server dir.
         params['image_name'] = vol_name
-        tmp_dir = data_dir.get_tmp_dir()
+        tmp_dir = test.tmpdir
         nfs_path = os.path.join(tmp_dir, nfs_server_dir)
         image = qemu_storage.QemuImg(params, nfs_path, vol_name)
         # Create a image.
