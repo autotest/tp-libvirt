@@ -248,6 +248,7 @@ def run(test, params, env):
             vm.wait_for_login().close()
 
         #Sleep a while for vm is stable
+        time.sleep(10)
         if not ret.exit_status:
             check_result(device_source, device, device_target,
                          dt_options, False)
