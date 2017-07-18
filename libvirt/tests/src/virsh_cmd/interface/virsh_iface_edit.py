@@ -13,8 +13,6 @@ from virttest import utils_net
 from virttest import virsh
 from virttest.utils_test import libvirt
 
-NETWORK_SCRIPT = "/etc/sysconfig/network-scripts/ifcfg-"
-
 
 def get_ifstart_mode(iface_name):
     """
@@ -60,7 +58,8 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     if not libvirt.check_iface(iface_name, "exists", "--all"):
         raise error.TestError("Interface '%s' not exists" % iface_name)
-    iface_script = NETWORK_SCRIPT + iface_name
+    # get the interface script independent of distro
+    iface_script = utils_net.get_network_cfg_file(iface_name)
     iface_script_bk = os.path.join(test.tmpdir, "iface-%s.bk" % iface_name)
     net_iface = utils_net.Interface(name=iface_name)
     iface_is_up = net_iface.is_up()
