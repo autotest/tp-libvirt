@@ -192,23 +192,6 @@ def run(test, params, env):
         qemu_config.dump_image_format = dump_image_format
         libvirtd.restart()
 
-    # Deal with bypass-cache option
-    child_pid = 0
-    if options.find('bypass-cache') >= 0:
-        pid = os.fork()
-        if pid:
-            # Guarantee check_bypass function has run before dump
-            child_pid = pid
-            try:
-                wait_pid_active(pid, timeout)
-            finally:
-                os.kill(child_pid, signal.SIGTERM)
-        else:
-            check_bypass(dump_file)
-            # Wait for parent process kills us
-            while True:
-                time.sleep(1)
-
     # Deal with memory-only dump format
     if len(memory_dump_format):
         # Make sure libvirt support this option
@@ -255,6 +238,21 @@ def run(test, params, env):
                 logging.info("Find dump-guest-core=%s in qemum cmdline",
                              dump_guest_core)
 
+        # Deal with bypass-cache option
+        child_pid = 0
+        if options.find('bypass-cache') >= 0:
+            vm.wait_for_login()
+            pid = os.fork()
+            if pid:
+                # Guarantee check_bypass function has run before dump
+                child_pid = pid
+                wait_pid_active(pid, timeout)
+            else:
+                check_bypass(dump_file)
+                # Wait for parent process kills us
+                while True:
+                    time.sleep(1)
+
         # Run virsh command
         cmd_result = virsh.dump(vm_name, dump_file, options,
                                 unprivileged_user=unprivileged_user,
@@ -278,12 +276,10 @@ def run(test, params, env):
             else:
                 raise error.TestFail("The format of dumped file is wrong.")
     finally:
+        backup_xml.sync()
+        qemu_config.restore()
+        libvirtd.restart()
         if child_pid:
             os.kill(child_pid, signal.SIGTERM)
         if os.path.isfile(dump_file):
             os.remove(dump_file)
-        if vm.is_alive():
-            vm.destroy(gracefully=False)
-        backup_xml.sync()
-        qemu_config.restore()
-        libvirtd.restart()
