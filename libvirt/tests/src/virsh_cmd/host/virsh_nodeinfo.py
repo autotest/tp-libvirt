@@ -3,7 +3,6 @@ import re
 import logging
 
 from autotest.client import utils
-from autotest.client.shared import error
 
 from avocado.utils import cpu as cpu_util
 
@@ -37,7 +36,7 @@ def run(test, params, env):
         cpu_model_nodeinfo = _check_nodeinfo(nodeinfo_output, "CPU model", 3)
         cpu_model_os = utils.get_current_kernel_arch()
         if not re.match(cpu_model_nodeinfo, cpu_model_os):
-            raise error.TestFail(
+            test.fail(
                 "Virsh nodeinfo output didn't match CPU model")
 
         # Check number of CPUs, nodeinfo CPUs represent online threads in the
@@ -57,12 +56,12 @@ def run(test, params, env):
         if cpus_nodeinfo != cpus_online:
             if 'power' in cpu_util.get_cpu_arch():
                 if cpus_nodeinfo != cpus_total:
-                    raise error.TestFail("Virsh nodeinfo output of CPU(s) on"
-                                         " ppc did not match all threads in "
-                                         "the system")
+                    test.fail("Virsh nodeinfo output of CPU(s) on"
+                              " ppc did not match all threads in "
+                              "the system")
             else:
-                raise error.TestFail("Virsh nodeinfo output didn't match "
-                                     "number of CPU(s)")
+                test.fail("Virsh nodeinfo output didn't match "
+                          "number of CPU(s)")
 
         # Check CPU frequency, frequency is under clock for ppc
         cpu_frequency_nodeinfo = _check_nodeinfo(
@@ -84,8 +83,8 @@ def run(test, params, env):
         # a "fudge" factor to declare "close enough". Don't return a failure
         # just print a debug message and move on.
         diffval = abs(int(cpu_frequency_nodeinfo) - int(cpu_frequency_os))
-        if float(diffval) / float(cpu_frequency_nodeinfo) > 0.20 or \
-           float(diffval) / float(cpu_frequency_os) > 0.20:
+        if (float(diffval) / float(cpu_frequency_nodeinfo) > 0.20 or
+           float(diffval) / float(cpu_frequency_os) > 0.20):
             logging.debug("Virsh nodeinfo output didn't match CPU "
                           "frequency within 20 percent")
 
@@ -107,11 +106,11 @@ def run(test, params, env):
         cmd_result = utils.run(cmd, ignore_status=True)
         total_sockets_in_node = int(cmd_result.stdout.strip())
         if total_sockets_in_node != cpu_sockets_nodeinfo:
-            raise error.TestFail("Virsh nodeinfo output didn't match CPU "
-                                 "socket(s) of host OS")
+            test.fail("Virsh nodeinfo output didn't match CPU "
+                      "socket(s) of host OS")
         if cpu_sockets_nodeinfo != int(cpu_topology['sockets']):
-            raise error.TestFail("Virsh nodeinfo output didn't match CPU "
-                                 "socket(s) of virsh capabilities output")
+            test.fail("Virsh nodeinfo output didn't match CPU "
+                      "socket(s) of virsh capabilities output")
 
         # Check Core(s) per socket
         cores_per_socket_nodeinfo = _check_nodeinfo(
@@ -119,20 +118,34 @@ def run(test, params, env):
         cmd = "lscpu | grep 'Core(s) per socket' | head -n1 | awk '{print $4}'"
         cmd_result = utils.run(cmd, ignore_status=True)
         cores_per_socket_os = cmd_result.stdout.strip()
+        spec_numa = False
         if not re.match(cores_per_socket_nodeinfo, cores_per_socket_os):
-            raise error.TestFail("Virsh nodeinfo output didn't match Core(s) "
-                                 "per socket of host OS")
+            # for spec NUMA arch, the output of nodeinfo is in a spec format
+            cpus_os = utils_misc.get_cpu_info().get("CPU(s)")
+            numa_cells_nodeinfo = _check_nodeinfo(
+                nodeinfo_output, 'NUMA cell(s)', 3)
+            if (re.match(cores_per_socket_nodeinfo, cpus_os) and
+               re.match(numa_cells_nodeinfo, "1")):
+                spec_numa = True
+            else:
+                test.fail("Virsh nodeinfo output didn't match "
+                          "CPU(s) or Core(s) per socket of host OS")
         if cores_per_socket_nodeinfo != cpu_topology['cores']:
-            raise error.TestFail("Virsh nodeinfo output didn't match Core(s) "
-                                 "per socket of virsh capabilities output")
-
-        # Ckeck Thread(s) per core
+            test.fail("Virsh nodeinfo output didn't match Core(s) "
+                      "per socket of virsh capabilities output")
+        # Check Thread(s) per core
         threads_per_core_nodeinfo = _check_nodeinfo(nodeinfo_output,
                                                     'Thread(s) per core', 4)
-        if threads_per_core_nodeinfo != cpu_topology['threads']:
-            raise error.TestFail("Virsh nodeinfo output didn't match Thread(s) "
-                                 "per core of virsh capabilities output")
-
+        if not spec_numa:
+            if threads_per_core_nodeinfo != cpu_topology['threads']:
+                test.fail("Virsh nodeinfo output didn't match"
+                          "Thread(s) per core of virsh"
+                          "capabilities output")
+        else:
+            if threads_per_core_nodeinfo != "1":
+                test.fail("Virsh nodeinfo output didn't match"
+                          "Thread(s) per core of virsh"
+                          "capabilities output")
         # Check Memory size
         memory_size_nodeinfo = int(
             _check_nodeinfo(nodeinfo_output, 'Memory size', 3))
@@ -146,8 +159,8 @@ def run(test, params, env):
         logging.debug('The host total memory from nodes is %s', memory_size_os)
 
         if memory_size_nodeinfo != memory_size_os:
-            raise error.TestFail("Virsh nodeinfo output didn't match "
-                                 "Memory size")
+            test.fail("Virsh nodeinfo output didn't match "
+                      "Memory size")
 
     # Prepare libvirtd service
     check_libvirtd = params.has_key("libvirtd")
@@ -174,13 +187,13 @@ def run(test, params, env):
     if status_error == "yes":
         if status == 0:
             if libvirtd == "off":
-                raise error.TestFail("Command 'virsh nodeinfo' succeeded "
-                                     "with libvirtd service stopped, incorrect")
+                test.fail("Command 'virsh nodeinfo' succeeded "
+                          "with libvirtd service stopped, incorrect")
             else:
-                raise error.TestFail("Command 'virsh nodeinfo %s' succeeded"
-                                     "(incorrect command)" % option)
+                test.fail("Command 'virsh nodeinfo %s' succeeded"
+                          "(incorrect command)" % option)
     elif status_error == "no":
         output_check(output)
         if status != 0:
-            raise error.TestFail("Command 'virsh nodeinfo %s' failed "
-                                 "(correct command)" % option)
+            test.fail("Command 'virsh nodeinfo %s' failed "
+                      "(correct command)" % option)
