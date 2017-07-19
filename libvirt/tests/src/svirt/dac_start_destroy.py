@@ -4,8 +4,7 @@ import pwd
 import grp
 import logging
 
-from autotest.client import utils
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import utils_selinux
 from virttest import virt_vm
@@ -47,7 +46,7 @@ def check_qemu_grp_user(user):
         else:
             err_msg = "The given user: %s exist " % user
             err_msg += "but not in 'qemu' group."
-            raise error.TestFail(err_msg)
+            test.fail(err_msg)
     except KeyError:
         return False
 
@@ -147,6 +146,10 @@ def run(test, params, env):
 
     # Set selinux of host.
     backup_sestatus = utils_selinux.get_status()
+    if backup_sestatus == "disabled":
+        test.cancel("SELinux is in Disabled "
+                    "mode. it must be in Enforcing "
+                    "mode to run this test")
     utils_selinux.set_status(host_sestatus)
 
     def _create_user():
@@ -155,7 +158,7 @@ def run(test, params, env):
         """
         logging.debug("create a user 'vdsm_fake' in 'qemu' group")
         cmd = "useradd vdsm_fake -G qemu -s /sbin/nologin"
-        utils.run(cmd, ignore_status=False)
+        process.run(cmd, ignore_status=False, shell=True)
 
     create_qemu_user = False
     qemu_sock_mod = False
@@ -228,7 +231,7 @@ def run(test, params, env):
             # Start VM successfully.
             # VM with seclabel can access the image with the context.
             if status_error:
-                raise error.TestFail("Test succeeded in negative case.")
+                test.fail("Test succeeded in negative case.")
 
             # Get vm process label when VM is running.
             vm_pid = vm.get_pid()
@@ -247,33 +250,33 @@ def run(test, params, env):
             if set_sec_label and sec_label:
                 if ":" in sec_label:
                     if vm_context != sec_label_trans:
-                        raise error.TestFail("Label of VM processs is not "
-                                             "expected after starting.\nDetail:"
-                                             "vm_context=%s, sec_label_trans=%s"
-                                             % (vm_context, sec_label_trans))
+                        test.fail("Label of VM processs is not "
+                                  "expected after starting.\nDetail:"
+                                  "vm_context=%s, sec_label_trans=%s"
+                                  % (vm_context, sec_label_trans))
                     if sec_relabel == "yes":
                         if dynamic_ownership:
                             if disk_context != sec_label_trans:
-                                raise error.TestFail("Label of disk is not " +
-                                                     "expected" +
-                                                     " after VM starting.\n" +
-                                                     "Detail: disk_context" +
-                                                     "=%s" % disk_context +
-                                                     ", sec_label_trans=%s."
-                                                     % sec_label_trans)
+                                test.fail("Label of disk is not " +
+                                          "expected" +
+                                          " after VM starting.\n" +
+                                          "Detail: disk_context" +
+                                          "=%s" % disk_context +
+                                          ", sec_label_trans=%s."
+                                          % sec_label_trans)
             elif set_qemu_conf and not security_default_confined:
                 if vm_context != qemu_conf_label_trans:
-                    raise error.TestFail("Label of VM processs is not expected"
-                                         " after starting.\nDetail: vm_context="
-                                         "%s, qemu_conf_label_trans=%s"
-                                         % (vm_context, qemu_conf_label_trans))
+                    test.fail("Label of VM processs is not expected"
+                              " after starting.\nDetail: vm_context="
+                              "%s, qemu_conf_label_trans=%s"
+                              % (vm_context, qemu_conf_label_trans))
                 if disk_context != qemu_conf_label_trans:
                     if dynamic_ownership:
-                        raise error.TestFail("Label of disk is not expected " +
-                                             "after VM starting.\nDetail: di" +
-                                             "sk_context=%s, " % disk_context +
-                                             "qemu_conf_label_trans=%s." %
-                                             qemu_conf_label_trans)
+                        test.fail("Label of disk is not expected " +
+                                  "after VM starting.\nDetail: di" +
+                                  "sk_context=%s, " % disk_context +
+                                  "qemu_conf_label_trans=%s." %
+                                  qemu_conf_label_trans)
 
             # check vm started with -name $vm_name,process=qemu:$vm_name
             if set_process_name:
@@ -282,13 +285,13 @@ def run(test, params, env):
                 else:
                     chk_str = "-name %s,process=qemu:%s" % (vm_name, vm_name)
                 cmd = "ps -p %s -o command=" % vm_pid
-                result = utils.run(cmd)
+                result = process.run(cmd, shell=True)
                 if chk_str in result.stdout:
                     logging.debug("%s found in vm process command: %s" %
                                   (chk_str, result.stdout))
                 else:
-                    raise error.TestFail("%s not in vm process command: %s" %
-                                         (chk_str, result.stdout))
+                    test.fail("%s not in vm process command: %s" %
+                              (chk_str, result.stdout))
 
             # Check the label of disk after VM being destroyed.
             vm.destroy()
@@ -301,25 +304,25 @@ def run(test, params, env):
                 # image will restore to 0:0 when sec_relabel enabled.
                 if dynamic_ownership:
                     if not img_label_after == "0:0":
-                        raise error.TestFail("Label of disk is img_label_after"
-                                             ":%s" % img_label_after + ", it "
-                                             "did not restore to 0:0 in VM "
-                                             "shuting down.")
+                        test.fail("Label of disk is img_label_after"
+                                  ":%s" % img_label_after + ", it "
+                                  "did not restore to 0:0 in VM "
+                                  "shuting down.")
             elif set_qemu_conf and not set_sec_label:
                 # As dynamic_ownership as 1 on non-share fs, current domain
                 # image will restore to 0:0 when only set qemu.conf.
                 if dynamic_ownership:
                     if not img_label_after == "0:0":
-                        raise error.TestFail("Label of disk is img_label_after"
-                                             ":%s" % img_label_after + ", it "
-                                             "did not restore to 0:0 in VM "
-                                             "shuting down.")
+                        test.fail("Label of disk is img_label_after"
+                                  ":%s" % img_label_after + ", it "
+                                  "did not restore to 0:0 in VM "
+                                  "shuting down.")
                 else:
                     if (not img_label_after == img_label):
-                        raise error.TestFail("Bug: Label of disk is changed\n"
-                                             "Detail: img_label_after=%s, "
-                                             "img_label=%s.\n"
-                                             % (img_label_after, img_label))
+                        test.fail("Bug: Label of disk is changed\n"
+                                  "Detail: img_label_after=%s, "
+                                  "img_label=%s.\n"
+                                  % (img_label_after, img_label))
         except virt_vm.VMStartError, e:
             # Starting VM failed.
             # VM with seclabel can not access the image with the context.
@@ -332,13 +335,13 @@ def run(test, params, env):
                         if sec_relabel == "yes" and sec_label_trans == "0:0":
                             if set_qemu_conf:
                                 if qemu_conf_label_trans == "107:107":
-                                    raise error.TestNAError(err_msg)
+                                    test.cancel(err_msg)
                         elif sec_relabel == "no" and sec_label_trans == "0:0":
                             if not set_qemu_conf:
-                                raise error.TestNAError(err_msg)
+                                test.cancel(err_msg)
                 else:
-                    raise error.TestFail("Test failed in positive case."
-                                         "error: %s" % e)
+                    test.fail("Test failed in positive case."
+                              "error: %s" % e)
     finally:
         # clean up
         for path, label in backup_labels_of_disks.items():
@@ -357,5 +360,5 @@ def run(test, params, env):
             libvirtd.restart()
         if create_qemu_user:
             cmd = "userdel -r vdsm_fake"
-            output = utils.run(cmd, ignore_status=True)
+            output = process.run(cmd, ignore_status=True, shell=True)
         utils_selinux.set_status(backup_sestatus)
