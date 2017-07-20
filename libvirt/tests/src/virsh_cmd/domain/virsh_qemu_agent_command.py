@@ -9,6 +9,7 @@ from autotest.client.shared import error
 from virttest import virsh
 from virttest import remote
 from virttest import utils_libvirtd
+from virttest import utils_misc
 
 
 def reset_domain(vm, vm_state, needs_agent=False, guest_cpu_busy=False,
@@ -123,6 +124,14 @@ def run(test, params, env):
         vm_ref = hex(int(domid))
 
     try:
+        # Check whether qemu-guest-agent is active in guest
+        session = vm.wait_for_login()
+
+        def verify_alive():
+            return utils_misc.get_guest_service_status(
+                    session, 'qemu-guest-agent') == 'active'
+        if not utils_misc.wait_for(verify_alive, 30):
+            test.error('Service "qemu-guest-agent" is not active')
         # Run virsh command
         cmd_result = virsh.qemu_agent_command(vm_ref, cmd, options,
                                               ignore_status=True,
