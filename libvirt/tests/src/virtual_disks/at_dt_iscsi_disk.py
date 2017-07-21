@@ -1,7 +1,9 @@
 import os
 import re
+import time
 import base64
 import logging
+import platform
 
 from aexpect import ShellError
 
@@ -56,6 +58,10 @@ def run(test, params, env):
     secret_ephemeral = params.get("secret_ephemeral", "no")
     secret_private = params.get("secret_private", "yes")
     status_error = "yes" == params.get("status_error", "no")
+    # Indicate the PPC platform
+    on_ppc = False
+    if platform.platform().count('ppc64'):
+        on_ppc = True
 
     if disk_src_protocol == 'iscsi':
         if not libvirt_version.version_compare(1, 0, 4):
@@ -177,6 +183,7 @@ def run(test, params, env):
         if start_vm:
             if vm.is_dead():
                 vm.start()
+            vm.wait_for_login()
         else:
             if not vm.is_dead():
                 vm.destroy()
@@ -262,6 +269,10 @@ def run(test, params, env):
             else:
                 try:
                     session = vm.wait_for_login()
+                    # Here the script needs wait for a while for the guest to
+                    # recognize the hotplugged disk on PPC
+                    if on_ppc:
+                        time.sleep(10)
                     cmd = "grep %s /proc/partitions" % disk_target
                     s, o = session.cmd_status_output(cmd)
                     logging.info("%s output: %s", cmd, o)

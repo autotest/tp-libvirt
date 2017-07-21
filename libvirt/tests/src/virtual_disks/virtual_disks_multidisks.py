@@ -1,8 +1,10 @@
 import os
 import re
 import json
+import time
 import logging
 import aexpect
+import platform
 
 from avocado.utils import process
 
@@ -38,6 +40,10 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     virsh_dargs = {'debug': True, 'ignore_status': True}
+    # Indicate to the PPC platform
+    on_ppc = False
+    if platform.platform().count('ppc64'):
+        on_ppc = True
 
     def check_disk_order(targets_name):
         """
@@ -174,6 +180,9 @@ def run(test, params, env):
         logging.info("Checking VM partittion...")
         try:
             session = vm.wait_for_login()
+            # Here the script needs wait for a while for the guest to
+            # recognize the hotplugged disk on PPC
+            add_sleep()
             for i in range(len(devices)):
                 if devices[i] == "cdrom":
                     s, o = session.cmd_status_output(
@@ -217,6 +226,9 @@ def run(test, params, env):
         logging.info("Checking VM block size...")
         try:
             session = vm.wait_for_login()
+            # Here the script needs wait for a while for the guest to
+            # recognize the block on PPC
+            add_sleep()
             for target in targets_name:
                 cmd = "cat /sys/block/%s/queue/" % target
                 s, o = session.cmd_status_output("%slogical_block_size"
@@ -811,8 +823,20 @@ def run(test, params, env):
 
         # Start the VM.
         vm.start()
+        vm.wait_for_login()
         if status_error:
             test.fail("VM started unexpectedly")
+
+        def add_sleep(sleep_seconds=10):
+            """
+            Check specific arch and do sleep for specified seconds.
+            This is to workaround for some failures due to different
+            VM response.
+
+            :param sleep_seconds: seconds for sleeping
+            """
+            if on_ppc:
+                time.sleep(sleep_seconds)
 
         def test_device_update_boot_order(disk_type, disk_path, error_msg):
             """
