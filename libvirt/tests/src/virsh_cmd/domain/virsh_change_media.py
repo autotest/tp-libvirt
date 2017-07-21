@@ -159,79 +159,79 @@ def run(test, params, env):
     # Backup for recovery.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
-    iso_dir = os.path.join(data_dir.get_tmp_dir(), "tmp")
-    old_iso = os.path.join(iso_dir, old_iso_name)
-    new_iso = os.path.join(iso_dir, new_iso_name)
-    update_iso_xml = os.path.join(iso_dir, update_iso_xml_name)
-    if not os.path.exists(iso_dir):
-        os.mkdir(iso_dir)
-    if not init_iso_name:
-        init_iso = ""
-    else:
-        init_iso = os.path.join(iso_dir, init_iso_name)
-
-    if vm_ref == "name":
-        vm_ref = vm_name
-
-    env_pre(old_iso, new_iso)
-    # Check domain's disk device
-    disk_blk = vm_xml.VMXML.get_disk_blk(vm_name)
-    logging.info("disk_blk %s", disk_blk)
-    if target_device not in disk_blk:
-        logging.info("Adding device")
-        add_device(vm_name)
-
-    if vm.is_alive() and start_vm == "no":
-        logging.info("Destroying guest...")
-        vm.destroy()
-
-    elif vm.is_dead() and start_vm == "yes":
-        logging.info("Starting guest...")
-        vm.start()
-
-    # If test target is floppy, you need to set selinux to Permissive mode.
-    result = update_device(vm_name, init_iso, options, start_vm)
-
-    # If the selinux is set to enforcing, if we FAIL, then just SKIP
-    force_SKIP = False
-    if result.exit_status == 1 and utils_misc.selinux_enforcing() and \
-       result.stderr.count("unable to execute QEMU command 'change':"):
-        force_SKIP = True
-
-    # Libvirt will ignore --source when action is eject
-    if action == "--eject ":
-        source = ""
-    else:
-        source = os.path.join(iso_dir, source_name)
-        if source_path == "no":
-            source = source_name
-
-    # For read&write floppy test, the iso media need a writeable fs
-    rw_floppy_test = "yes" == params.get("rw_floppy_test", "no")
-    if rw_floppy_test:
-        utils.run("mkfs.ext3 -F %s" % source)
-
-    all_options = action + options + " " + source
-    result = virsh.change_media(vm_ref, target_device,
-                                all_options, ignore_status=True, debug=True)
-    if status_error:
-        if start_vm == "no" and vm.is_dead():
-            try:
-                vm.start()
-            except virt_vm.VMStartError, detail:
-                result.exit_status = 1
-                result.stderr = str(detail)
-        if start_vm == "yes" and vm.is_alive():
-            vm.destroy(gracefully=False)
-            try:
-                vm.start()
-            except virt_vm.VMStartError, detail:
-                result.exit_status = 1
-                result.stderr = str(detail)
-
-    status = result.exit_status
-
     try:
+        iso_dir = os.path.join(data_dir.get_tmp_dir(), "tmp")
+        old_iso = os.path.join(iso_dir, old_iso_name)
+        new_iso = os.path.join(iso_dir, new_iso_name)
+        update_iso_xml = os.path.join(iso_dir, update_iso_xml_name)
+        if not os.path.exists(iso_dir):
+            os.mkdir(iso_dir)
+        if not init_iso_name:
+            init_iso = ""
+        else:
+            init_iso = os.path.join(iso_dir, init_iso_name)
+
+        if vm_ref == "name":
+            vm_ref = vm_name
+
+        env_pre(old_iso, new_iso)
+        # Check domain's disk device
+        disk_blk = vm_xml.VMXML.get_disk_blk(vm_name)
+        logging.info("disk_blk %s", disk_blk)
+        if target_device not in disk_blk:
+            logging.info("Adding device")
+            add_device(vm_name)
+
+        if vm.is_alive() and start_vm == "no":
+            logging.info("Destroying guest...")
+            vm.destroy()
+
+        elif vm.is_dead() and start_vm == "yes":
+            logging.info("Starting guest...")
+            vm.start()
+
+        # If test target is floppy, you need to set selinux to Permissive mode.
+        result = update_device(vm_name, init_iso, options, start_vm)
+
+        # If the selinux is set to enforcing, if we FAIL, then just SKIP
+        force_SKIP = False
+        if result.exit_status == 1 and utils_misc.selinux_enforcing() and \
+           result.stderr.count("unable to execute QEMU command 'change':"):
+            force_SKIP = True
+
+        # Libvirt will ignore --source when action is eject
+        if action == "--eject ":
+            source = ""
+        else:
+            source = os.path.join(iso_dir, source_name)
+            if source_path == "no":
+                source = source_name
+
+        # For read&write floppy test, the iso media need a writeable fs
+        rw_floppy_test = "yes" == params.get("rw_floppy_test", "no")
+        if rw_floppy_test:
+            utils.run("mkfs.ext3 -F %s" % source)
+
+        all_options = action + options + " " + source
+        result = virsh.change_media(vm_ref, target_device,
+                                    all_options, ignore_status=True, debug=True)
+        if status_error:
+            if start_vm == "no" and vm.is_dead():
+                try:
+                    vm.start()
+                except virt_vm.VMStartError, detail:
+                    result.exit_status = 1
+                    result.stderr = str(detail)
+            if start_vm == "yes" and vm.is_alive():
+                vm.destroy(gracefully=False)
+                try:
+                    vm.start()
+                except virt_vm.VMStartError, detail:
+                    result.exit_status = 1
+                    result.stderr = str(detail)
+
+        status = result.exit_status
+
         if not status_error:
             if 'print-xml' in options:
                 vmxml_new = vm_xml.VMXML.new_from_dumpxml(vm_name)
@@ -252,30 +252,30 @@ def run(test, params, env):
                 session = vm.wait_for_login()
                 check_media(session, check_file, action, rw_floppy_test)
                 session.close()
+        # Negative testing
+        if status_error:
+            if status:
+                logging.info("Expected error (negative testing). Output: %s",
+                             result.stderr.strip())
+            else:
+                raise error.TestFail("Unexpected return code %d "
+                                     "(negative testing)" % status)
+
+        # Positive testing
+        else:
+            if status:
+                if force_SKIP:
+                    raise error.TestNAError("SELinux is set to enforcing and has "
+                                            "resulted in this test failing to open "
+                                            "the iso file for a floppy.")
+                raise error.TestFail("Unexpected error (positive testing). "
+                                     "Output: %s" % result.stderr.strip())
+            else:
+                logging.info("Expected success. Output: %s", result.stdout.strip())
     finally:
         # Clean the iso dir  and clean the device
         update_device(vm_name, "", options, start_vm)
+        vm.destroy(gracefully=False)
         # Recover xml of vm.
         vmxml_backup.sync()
         utils.safe_rmdir(iso_dir)
-
-    # Negative testing
-    if status_error:
-        if status:
-            logging.info("Expected error (negative testing). Output: %s",
-                         result.stderr.strip())
-        else:
-            raise error.TestFail("Unexpected return code %d "
-                                 "(negative testing)" % status)
-
-    # Positive testing
-    else:
-        if status:
-            if force_SKIP:
-                raise error.TestNAError("SELinux is set to enforcing and has "
-                                        "resulted in this test failing to open "
-                                        "the iso file for a floppy.")
-            raise error.TestFail("Unexpected error (positive testing). "
-                                 "Output: %s" % result.stderr.strip())
-        else:
-            logging.info("Expected success. Output: %s", result.stdout.strip())
