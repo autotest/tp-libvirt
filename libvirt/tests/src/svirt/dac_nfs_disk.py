@@ -2,8 +2,6 @@ import os
 import re
 import logging
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import qemu_storage
@@ -70,8 +68,8 @@ def run(test, params, env):
         try:
             img_val.append(int(params.get(i)))
         except ValueError:
-            raise error.TestNAError("%s value '%s' is not a number." %
-                                    (i, params.get(i)))
+            test.cancel("%s value '%s' is not a number." %
+                        (i, params.get(i)))
     # False positive - img_val was filled in the for loop above.
     # pylint: disable=E0632
     img_user, img_group, img_mode = img_val
@@ -111,6 +109,10 @@ def run(test, params, env):
                 os.chown(disk_path, 107, 107)
 
         # Set selinux of host.
+        if backup_sestatus == "disabled":
+            test.cancel("SELinux is in Disabled mode."
+                        "It must be Enabled to"
+                        "run this test")
         utils_selinux.set_status(host_sestatus)
 
         # set qemu conf
@@ -135,7 +137,7 @@ def run(test, params, env):
         result = process.run("setsebool virt_use_nfs %s" % virt_use_nfs,
                              shell=True)
         if result.exit_status:
-            raise error.TestNAError("Failed to set virt_use_nfs value")
+            test.cancel("Failed to set virt_use_nfs value")
 
         # Init a QemuImg instance and create img on nfs server dir.
         params['image_name'] = vol_name
@@ -156,7 +158,7 @@ def run(test, params, env):
         virsh.pool_refresh(pool_name, debug=True)
         cmd_result = virsh.vol_path(vol_name, pool_name, debug=True)
         if cmd_result.exit_status:
-            raise error.TestNAError("Failed to get volume path from pool.")
+            test.cancel("Failed to get volume path from pool.")
         img_path = cmd_result.stdout.strip()
 
         # Do the attach action.
@@ -164,8 +166,8 @@ def run(test, params, env):
         result = virsh.attach_disk(vm_name, source=img_path, target="vdf",
                                    extra=extra, debug=True)
         if result.exit_status:
-            raise error.TestFail("Failed to attach disk %s to VM."
-                                 "Detail: %s." % (img_path, result.stderr))
+            test.fail("Failed to attach disk %s to VM."
+                      "Detail: %s." % (img_path, result.stderr))
 
         # Change img ownership and mode on nfs server dir
         os.chown(server_img_path, img_user, img_group)
@@ -187,12 +189,12 @@ def run(test, params, env):
                               " start: %s" % img_label_after)
 
             if status_error:
-                raise error.TestFail('Test succeeded in negative case.')
+                test.fail('Test succeeded in negative case.')
         except virt_vm.VMStartError, e:
             # Starting VM failed.
             if not status_error:
-                raise error.TestFail("Test failed in positive case."
-                                     "error: %s" % e)
+                test.fail("Test failed in positive case."
+                          "error: %s" % e)
 
         if params.get("image_name_backing_file"):
             options = "--disk-only"
@@ -200,8 +202,8 @@ def run(test, params, env):
                                                     debug=True)
             if snapshot_result.exit_status:
                 if not status_error:
-                    raise error.TestFail("Failed to create snapshot. Error:%s."
-                                         % snapshot_result.stderr.strip())
+                    test.fail("Failed to create snapshot. Error:%s."
+                              % snapshot_result.stderr.strip())
             snapshot_name = re.search(
                 "\d+", snapshot_result.stdout.strip()).group(0)
 
@@ -216,8 +218,8 @@ def run(test, params, env):
             virsh.detach_disk(vm_name, target="vdf", extra="--persistent",
                               debug=True)
         except process.CmdError:
-            raise error.TestFail("Detach disk 'vdf' from VM %s failed."
-                                 % vm.name)
+            test.fail("Detach disk 'vdf' from VM %s failed."
+                      % vm.name)
     finally:
         # clean up
         vm.destroy()
@@ -236,7 +238,7 @@ def run(test, params, env):
             try:
                 pvt.cleanup_pool(pool_name, pool_type, pool_target,
                                  emulated_image)
-            except error.TestFail, detail:
+            except test.fail, detail:
                 logging.error(str(detail))
         utils_selinux.set_status(backup_sestatus)
         libvirtd.restart()
