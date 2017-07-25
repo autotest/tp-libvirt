@@ -17,6 +17,8 @@ from virttest import data_dir
 from virttest import virt_vm
 from virttest.libvirt_xml import vm_xml
 
+from provider import libvirt_version
+
 CLOCK_SOURCE_PATH = '/sys/devices/system/clocksource/clocksource0/'
 
 
@@ -440,7 +442,10 @@ def test_specific_timer(vm, params):
     :param params: Test parameters
     """
     timers = params.get("timer_name", "").split(',')
-    start_error = "yes" == params.get("timer_start_error", "no")
+    if 'tsc' in timers and not libvirt_version.version_compare(3, 2, 0):
+        start_error = True
+    else:
+        start_error = "yes" == params.get("timer_start_error", "no")
     if vm.is_dead():
         vm.start()
     vm.wait_for_login()
