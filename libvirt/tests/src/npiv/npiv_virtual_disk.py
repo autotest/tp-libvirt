@@ -125,6 +125,7 @@ def run(test, params, env):
     driver_type = params.get("driver_type", "raw")
     target_bus = params.get("target_bus", "virtio")
     readonly = params.get("readonly", "no")
+    attach_method = params.get("attach_method", "attach-device")
     new_vhbas = []
     blk_dev = ""
     lun_dev = ""
@@ -194,10 +195,20 @@ def run(test, params, env):
                                vm.address_cache)
         old_disks = libvirt_vm.get_disks()
         # Attach disk
-        dev_attach_status = virsh.attach_device(
-                    vm_name, disk_xml, debug=True)
+        dev_attach_status = None
+        if attach_method == "attach-device":
+            dev_attach_status = virsh.attach_device(
+                        vm_name, disk_xml, debug=True)
+        elif attach_method == "attach-disk":
+            opts = ""
+            if readonly == "yes":
+                opts = "--mode readonly"
+            dev_attach_status = virsh.attach_disk(vm_name, lun_dev_path,
+                                                  device_target, opts,
+                                                  debug=True)
+        else:
+            test.error("Invalid attach method provided.")
         utlv.check_exit_status(dev_attach_status)
-
         cur_disk_count = vmxml.get_disk_count(vm_name)
         cur_disks = libvirt_vm.get_disks()
         if cur_disk_count <= old_disk_count:
@@ -212,7 +223,15 @@ def run(test, params, env):
             raise exceptions.TestFail("Failed check the disk in vm.")
         session.cmd_status_output('umount %s' % new_disk)
         # Detach disk
-        dev_detach_status = virsh.detach_device(vm_name, disk_xml, debug=True)
+        dev_detach_status = None
+        if attach_method == "attach-device":
+            dev_detach_status = virsh.detach_device(vm_name, disk_xml,
+                                                    debug=True)
+        elif attach_method == "attach-disk":
+            dev_detach_status = virsh.detach_disk(vm_name, device_target,
+                                                  debug=True)
+        else:
+            test.error("Invalid attach method provided.")
         utlv.check_exit_status(dev_detach_status)
         cur_disks = libvirt_vm.get_disks()
         if cur_disks != old_disks:
