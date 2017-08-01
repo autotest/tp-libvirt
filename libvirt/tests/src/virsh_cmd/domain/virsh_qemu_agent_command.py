@@ -26,7 +26,7 @@ def reset_domain(vm, vm_state, needs_agent=False, guest_cpu_busy=False,
         logging.debug("Attempting to prepare guest agent")
         start_ga = vm_state != 'shut off'
         vm.prepare_guest_agent(start=start_ga)
-    if not vm_state == "shut off":
+    if not vm_state == "shut off" and needs_agent:
         session = vm.wait_for_login()
         if guest_cpu_busy:
             shell_file = "/tmp/test.sh"
