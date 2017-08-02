@@ -84,12 +84,15 @@ def run(test, params, env):
     if startup_policy == "mandatory":
         start_error = True
         restore_error = True
+        check_source = False
     elif startup_policy == "requisite":
         start_error = True
         restore_error = False
+        check_source = True
     elif startup_policy == "optional":
         start_error = False
         restore_error = False
+        check_source = False
     else:
         error.TestNAError("Unsupport startupPolicy ''%s' in this test" % startup_policy)
 
@@ -110,7 +113,7 @@ def run(test, params, env):
     try:
         virsh.attach_device(domainarg=vm_name, filearg=disk_xml_file,
                             flagstr="--config", **virsh_dargs)
-    except:
+    except Exception:
         os.remove(media_file)
         raise error.TestError("Attach %s fail", device_type)
 
@@ -139,7 +142,7 @@ def run(test, params, env):
         rename_file()
         result = virsh.start(vm_name, **virsh_dargs)
         libvirt.check_exit_status(result, expect_error=start_error)
-        if not start_error:
+        if not start_error and check_source:
             check_disk_source(vm_name, target_dev, expect_value)
 
         # Step 3. Move back the source file and start the domain(if needed)
@@ -153,7 +156,7 @@ def run(test, params, env):
         rename_file()
         result = virsh.restore(save_file, **virsh_dargs)
         libvirt.check_exit_status(result, expect_error=restore_error)
-        if not restore_error:
+        if not restore_error and check_source:
             check_disk_source(vm_name, target_dev, expect_value)
 
         # Step 5. Move back the source file and restore the domain(if needed)
