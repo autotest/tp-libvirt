@@ -1,6 +1,9 @@
 import os
 import logging
-import threading
+
+from avocado.utils import path
+from avocado.utils import process
+
 from virttest import virsh
 from virttest import data_dir
 from virttest.utils_libvirtd import LibvirtdSession
@@ -8,8 +11,6 @@ from virttest.libvirt_xml.xcepts import LibvirtXMLError
 from virttest.libvirt_xml.vm_xml import VMXML, VMCPUXML, VMPMXML
 from virttest.libvirt_xml.network_xml import NetworkXML, IPXML
 from virttest.libvirt_xml.devices import interface
-from autotest.client.shared import error
-from autotest.client import utils
 
 
 def run_destroy_console(params, libvirtd, vm):
@@ -24,7 +25,7 @@ def run_sig_segv(params, libvirtd, vm):
     """
     Kill libvirtd with signal SEGV.
     """
-    utils.run('pkill libvirtd --signal 11')
+    process.run('pkill libvirtd --signal 11')
 
 
 def run_shutdown_console(params, libvirtd, vm):
@@ -101,17 +102,8 @@ def run_kill_virsh_while_managedsave(params, libvirtd, vm):
     """
     if not vm.is_alive():
         vm.start()
-    thread = threading.Thread(
-        target=virsh.managedsave,
-        args=(vm.name,)
-    )
-    thread.start()
-    try:
-        res = utils.run('pkill -9 virsh', ignore_status=True)
-        if res.exit_status:
-            raise error.TestError("Failed to kill virsh:\n%s", res)
-    finally:
-        thread.join()
+    process.run("virsh managedsave %s &" % (vm.name), shell=True)
+    process.run("pkill -9 virsh", ignore_status=True)
 
 
 def post_kill_virsh_while_managedsave(params, libvirtd, vm):
@@ -233,7 +225,7 @@ def run_restart_firewalld(params, libvirtd, vm):
     logging.debug("Stopped at qemuStatInitialize. Back trace:")
     for line in libvirtd.back_trace():
         logging.debug(line)
-    utils.run('service firewalld restart')
+    process.run('service firewalld restart')
     libvirtd.cont()
 
 
@@ -247,7 +239,13 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "virt-tests-vm1")
     bug_url = params.get("bug_url", None)
     vm = env.get_vm(vm_name)
-
+    # Run virtlogd foreground
+    try:
+        path.find_command('virtlogd')
+        process.run("systemctl stop virtlogd", ignore_status=True)
+        process.run("virtlogd -d")
+    except path.CmdNotFoundError:
+        pass
     libvirtd = LibvirtdSession(gdb=True)
     try:
         libvirtd.start()
@@ -265,10 +263,16 @@ def run(test, params, env):
             if bug_url:
                 logging.error("You might met a regression bug. Please reference %s" % bug_url)
 
-            raise error.TestFail("Libvirtd stops with %s" % libvirtd.bundle['stop-info'])
+            test.fail("Libvirtd stops with %s" % libvirtd.bundle['stop-info'])
 
         if post_func_name in globals():
             post_func = globals()[post_func_name]
             post_func(params, libvirtd, vm)
     finally:
+        try:
+            path.find_command('virtlogd')
+            process.run('pkill virtlogd', ignore_status=True)
+            process.run('systemctl restart virtlogd.socket', ignore_status=True)
+        except path.CmdNotFoundError:
+            pass
         libvirtd.exit()
