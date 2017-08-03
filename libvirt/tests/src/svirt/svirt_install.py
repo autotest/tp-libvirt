@@ -1,6 +1,6 @@
 import os
 
-from autotest.client import utils
+from avocado.utils import process
 from autotest.client.shared import error
 
 from virttest import data_dir
@@ -68,8 +68,8 @@ def run(test, params, env):
         if sec_relabel is not None:
             cmd += ",relabel=%s" % sec_relabel
 
-        cmd += " --noautoconsole --graphics vnc --video vga &"
-        utils.run(cmd, ignore_status=True)
+        cmd += " --noautoconsole --graphics vnc --video vga"
+        process.run(cmd, timeout=600, ignore_status=True)
 
         def _vm_alive():
             return virsh.is_alive(vm_name)
