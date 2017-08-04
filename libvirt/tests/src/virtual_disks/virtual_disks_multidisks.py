@@ -544,7 +544,7 @@ def run(test, params, env):
     # Get device path.
     device_source_path = ""
     if source_path:
-        device_source_path = test.virtdir
+        device_source_path = "/var/lib/libvirt/images"
 
     # Prepare test environment.
     qemu_config = LibvirtQemuConfig()
