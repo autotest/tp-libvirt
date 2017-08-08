@@ -50,7 +50,7 @@ def run(test, params, env):
         process.system("wget %s -O %s/initrd.img" % (boot_initrd, tftp_root))
         process.system("wget %s -O %s/vmlinuz" % (boot_vmlinuz, tftp_root))
         process.system("cp -f /usr/share/syslinux/pxelinux.0 {0};"
-                       " mkdir -m 777 -p {0}/pxelinux.cfg".format(tftp_root))
+                       " mkdir -m 777 -p {0}/pxelinux.cfg".format(tftp_root), shell=True)
         pxe_file = "%s/pxelinux.cfg/default" % tftp_root
         boot_txt = """
 DISPLAY boot.txt
