@@ -2,7 +2,6 @@ import os
 import logging
 import re
 
-from avocado.core import exceptions
 from avocado.utils import process
 
 from virttest import utils_v2v
@@ -20,7 +19,7 @@ def run(test, params, env):
     """
     for v in params.itervalues():
         if "V2V_EXAMPLE" in v:
-            raise exceptions.TestSkipError("Please set real value for %s" % v)
+            test.cancel("Please set real value for %s" % v)
 
     vm_name = params.get("main_vm")
     target = params.get("target")
@@ -57,12 +56,12 @@ def run(test, params, env):
             utils_misc.add_identities_into_ssh_agent()
         except:
             process.run("ssh-agent -k")
-            raise exceptions.TestError("Fail to setup ssh-agent")
+            test.error("Fail to setup ssh-agent")
     elif hypervisor == "kvm":
         source_ip = None
         source_pwd = None
     else:
-        raise exceptions.TestSkipError("Unspported hypervisor: %s" % hypervisor)
+        test.cancel("Unspported hypervisor: %s" % hypervisor)
 
     # Create libvirt URI
     v2v_uri = utils_v2v.Uri(hypervisor)
@@ -82,7 +81,7 @@ def run(test, params, env):
         close_virsh = True
     try:
         if not v2v_virsh.domain_exists(vm_name):
-            raise exceptions.TestError("VM '%s' not exist" % vm_name)
+            test.error("VM '%s' not exist" % vm_name)
     finally:
         if close_virsh:
             v2v_virsh.close_session()
@@ -100,7 +99,8 @@ def run(test, params, env):
     v2v_params = {'target': target, 'hypervisor': hypervisor,
                   'main_vm': vm_name, 'input_mode': input_mode,
                   'network': network, 'bridge': bridge,
-                  'storage': storage, 'hostname': source_ip}
+                  'storage': storage, 'hostname': source_ip,
+                  'new_name': vm_name + utils_misc.generate_random_string(3)}
     if vpx_dc:
         v2v_params.update({"vpx_dc": vpx_dc})
     if esx_ip:
@@ -119,12 +119,14 @@ def run(test, params, env):
         v2v_ret = utils_v2v.v2v_cmd(v2v_params)
         logging.debug("virt-v2v verbose messages:\n%s", v2v_ret)
         if v2v_ret.exit_status != 0:
-            raise exceptions.TestFail("Convert VM failed")
+            test.fail("Convert VM failed")
+
+        params['main_vm'] = v2v_params['new_name']
 
         # Import the VM to oVirt Data Center from export domain, and start it
         if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                             timeout=v2v_timeout):
-            raise exceptions.TestError("Import VM failed")
+            test.error("Import VM failed")
 
         # Check all checkpoints after convert
         vmchecker = VMChecker(test, params, env)
@@ -152,7 +154,7 @@ def run(test, params, env):
         if len(ret) == 0:
             logging.info("All checkpoints passed")
         else:
-            raise exceptions.TestFail("%d checkpoints failed: %s" % (len(ret), ret))
+            test.fail("%d checkpoints failed: %s" % (len(ret), ret))
     finally:
         vmcheck = utils_v2v.VMCheck(test, params, env)
         vmcheck.cleanup()
