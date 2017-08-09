@@ -593,7 +593,7 @@ def run(test, params, env):
 
         # Create password file for access to ESX hypervisor
         if hypervisor == 'esx':
-            vpx_passwd = params.get("vpx_passwd")
+            vpx_passwd = params.get("vpx_password")
             vpx_passwd_file = os.path.join(test.tmpdir, "vpx_passwd")
             logging.info("Building ESX no password interactive verification.")
             pwd_f = open(vpx_passwd_file, 'w')
@@ -617,7 +617,10 @@ def run(test, params, env):
             sh_install_vm = params.get('sh_install_vm')
             if not sh_install_vm:
                 test.error('Source vm installing script missing')
-            process.run('su - %s -c %s' % (v2v_user, sh_install_vm))
+            with open(sh_install_vm) as fh:
+                cmd_install_vm = fh.read().strip()
+            process.run('su - %s -c "%s"' % (v2v_user, cmd_install_vm),
+                        timeout=10, shell=True)
 
         if checkpoint == 'vmx':
             mount_point = params.get('mount_point')
