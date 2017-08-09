@@ -1,8 +1,6 @@
 import re
 import logging
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import virt_vm
@@ -75,9 +73,9 @@ def run(test, params, env):
 
     if numa_memnode:
         if not libvirt_version.version_compare(1, 2, 7):
-            raise error.TestNAError("Setting hugepages more specifically per "
-                                    "numa node not supported on current "
-                                    "version")
+            test.cancel("Setting hugepages more specifically per "
+                        "numa node not supported on current "
+                        "version")
 
     # Prepare cpu numa cell parameter
     topology = {}
@@ -104,9 +102,9 @@ def run(test, params, env):
 
     if page_list:
         if not libvirt_version.version_compare(1, 2, 5):
-            raise error.TestNAError("Setting hugepages more specifically per "
-                                    "numa node not supported on current "
-                                    "version")
+            test.cancel("Setting hugepages more specifically per "
+                        "numa node not supported on current "
+                        "version")
 
     hp_cl = test_setup.HugePageConfig(params)
     default_hp_size = hp_cl.get_hugepage_size()
@@ -123,9 +121,9 @@ def run(test, params, env):
         size_dict = {'2048': '2M', '1048576': '1G', '16384': '16M'}
         for page in page_list:
             if page['size'] not in supported_hp_size:
-                raise error.TestError("Hugepage size [%s] isn't supported, "
-                                      "please verify kernel cmdline configuration."
-                                      % page['size'])
+                test.cancel("Hugepage size [%s] isn't supported, "
+                            "please verify kernel cmdline configuration."
+                            % page['size'])
             m_path = "/dev/hugepages%s" % size_dict[page['size']]
             hp_cl.hugepage_size = int(page['size'])
             hp_cl.hugepage_path = m_path
@@ -158,11 +156,11 @@ def run(test, params, env):
             used_node = list(set(used_node))
             for i in used_node:
                 if i not in node_list:
-                    raise error.TestNAError("%s in nodeset out of range" % i)
+                    test.cancel("%s in nodeset out of range" % i)
                 mem_size = host_numa_node.read_from_node_meminfo(i, 'MemTotal')
                 logging.debug("the memory total in the node %s is %s", i, mem_size)
                 if not int(mem_size):
-                    raise error.TestNAError("node %s memory is empty" % i)
+                    test.cancel("node %s memory is empty" % i)
 
         # set hugepage with qemu.conf and mount path
         if default_hp_size == 2048:
@@ -185,9 +183,9 @@ def run(test, params, env):
             multi_hp_size = hp_cl.get_multi_supported_hugepage_size()
             for size in hp_size:
                 if size not in multi_hp_size:
-                    raise error.TestNAError("The hugepage size %s not "
-                                            "supported or not configured under"
-                                            " current running kernel." % size)
+                    test.cancel("The hugepage size %s not "
+                                "supported or not configured under"
+                                " current running kernel." % size)
             # backup node page setting and set new value
             for i in h_list:
                 node_val = hp_cl.get_node_num_huge_pages(i['nodenum'],
@@ -201,6 +199,10 @@ def run(test, params, env):
                     hp_cl.set_node_num_huge_pages(i['num'],
                                                   i['nodenum'],
                                                   i['size'])
+                    node_val_after_set = hp_cl.get_node_num_huge_pages(i['nodenum'],
+                                                                       i['size'])
+                    if node_val_after_set < int(i['num']):
+                        test.cancel("There is not enough memory to allocate.")
 
         vmxml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
         vmxml.vcpu = vcpu_num
@@ -257,8 +259,8 @@ def run(test, params, env):
             if status_error:
                 return
             else:
-                raise error.TestFail("Test failed in positive case.\n error:"
-                                     " %s\n%s" % (e, bug_url))
+                test.fail("Test failed in positive case.\n error:"
+                          " %s\n%s" % (e, bug_url))
 
         vm_pid = vm.get_pid()
         # numa hugepage check
@@ -268,8 +270,8 @@ def run(test, params, env):
             numa_maps.close()
             hugepage_info = re.findall(".*file=\S*hugepages.*", numa_map_info)
             if not hugepage_info:
-                raise error.TestFail("Can't find hugepages usage info in vm "
-                                     "numa maps")
+                test.fail("Can't find hugepages usage info in vm "
+                          "numa maps")
             else:
                 logging.debug("The hugepage info in numa_maps is %s" %
                               hugepage_info)
@@ -297,9 +299,8 @@ def run(test, params, env):
                     for k in memnode_dict.keys():
                         for mk in memnode_dict[k].keys():
                             if memnode_dict[k][mk] != map_dict[k][mk]:
-                                raise error.TestFail("vm pid numa map dict %s"
-                                                     " not expected" %
-                                                     map_dict)
+                                test.fail("vm pid numa map dict %s"
+                                          " not expected" % map_dict)
 
         # qemu command line check
         f_cmdline = open("/proc/%s/cmdline" % vm_pid)
@@ -316,8 +317,7 @@ def run(test, params, env):
                 else:
                     continue
             if not p_found:
-                raise error.TestFail("%s not found in vm qemu cmdline" %
-                                     cmd['cmdline'])
+                test.fail("%s not found in vm qemu cmdline" % cmd['cmdline'])
 
         # vm inside check
         vm_cpu_info = utils_misc.get_cpu_info(session)
@@ -325,23 +325,21 @@ def run(test, params, env):
         session.close()
         node_num = int(vm_cpu_info["NUMA node(s)"])
         if node_num != len(numa_cell):
-            raise error.TestFail("node number %s in vm is not expected" %
-                                 node_num)
+            test.fail("node number %s in vm is not expected" % node_num)
         for i in range(len(numa_cell)):
             cpu_str = vm_cpu_info["NUMA node%s CPU(s)" % i]
             vm_cpu_list = utlv.cpus_parser(cpu_str)
             cpu_list = utlv.cpus_parser(numa_cell[i]["cpus"])
             if vm_cpu_list != cpu_list:
-                raise error.TestFail("vm node %s cpu list %s not expected" %
-                                     (i, vm_cpu_list))
+                test.fail("vm node %s cpu list %s not expected"
+                          % (i, vm_cpu_list))
         if topology:
             vm_topo_tuple = ("Socket(s)", "Core(s) per socket",
                              "Thread(s) per core")
             for i in range(len(topo_tuple)):
                 topo_info = vm_cpu_info[vm_topo_tuple[i]]
                 if topo_info != topology[topo_tuple[i]]:
-                    raise error.TestFail("%s in vm topology not expected." %
-                                         topo_tuple[i])
+                    test.fail("%s in vm topology not expected." % topo_tuple[i])
     finally:
         if vm.is_alive():
             vm.destroy(gracefully=False)
