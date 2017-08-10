@@ -28,7 +28,7 @@ def run(test, params, env):
     """
     for v in params.itervalues():
         if "V2V_EXAMPLE" in v:
-            test.skip("Please set real value for %s" % v)
+            test.cancel("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
     vm_name = params.get('main_vm', 'EXAMPLE')
@@ -448,7 +448,7 @@ def run(test, params, env):
         vm = kwargs['vm']
         grub_file = utils_misc.get_bootloader_cfg(session)
         if 'grub2' in grub_file:
-            test.skip('Skip this case on grub2')
+            test.cancel('Skip this case on grub2')
         cmd = "sed -i '1iserial -unit=0 -speed=115200\\n"
         cmd += "terminal -timeout=10 serial console' %s" % grub_file
         session.cmd(cmd)

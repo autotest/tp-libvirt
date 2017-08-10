@@ -32,7 +32,7 @@ def run(test, params, env):
         raise ValueError('Missing command: virt-v2v')
     for v in params.itervalues():
         if "V2V_EXAMPLE" in v:
-            test.skip("Please set real value for %s" % v)
+            test.cancel("Please set real value for %s" % v)
 
     vm_name = params.get("main_vm", "EXAMPLE")
     new_vm_name = params.get("new_vm_name")
@@ -498,7 +498,7 @@ def run(test, params, env):
             input_xml = params.get('input_xml')
             input_option += '-i %s %s' % (input_mode, input_xml)
         elif input_mode in ['ova']:
-            test.skip("Unsupported input mode: %s" % input_mode)
+            test.cancel("Unsupported input mode: %s" % input_mode)
         else:
             test.error("Unknown input mode %s" % input_mode)
         input_format = params.get("input_format", "")
@@ -570,7 +570,7 @@ def run(test, params, env):
                 input_option = string.replace(input_option, disk_img, disk_path)
                 os.chown(disk_path, user_info.pw_uid, user_info.pw_gid)
             elif not no_root:
-                test.skip("Only support convert local disk")
+                test.cancel("Only support convert local disk")
 
         # Setup ssh-agent access to xen hypervisor
         if hypervisor == 'xen':
