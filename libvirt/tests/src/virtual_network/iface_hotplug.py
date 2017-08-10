@@ -59,6 +59,7 @@ def run(test, params, env):
                                            "no")
     username = params.get("username")
     password = params.get("password")
+    poll_timeout = params.get("poll_timeout", 10)
 
     # stree_test require detach operation
     stress_test_detach_device = False
@@ -218,11 +219,17 @@ def run(test, params, env):
                 # Check if interface was detached
                 for iface in iface_list:
                     if iface.has_key('mac'):
-                        # Check interface in dumpxml output
-                        if vm_xml.VMXML.get_iface_by_mac(vm_name,
-                                                         iface['mac']):
-                            raise error.TestFail("Interface still exist"
-                                                 " after detachment")
+                        polltime = time.time() + poll_timeout
+                        while True:
+                            # Check interface in dumpxml output
+                            if not vm_xml.VMXML.get_iface_by_mac(vm_name,
+                                                                 iface['mac']):
+                                break
+                            else:
+                                time.sleep(2)
+                                if time.time() > polltime:
+                                    test.fail("Interface still "
+                                              "exists after detachment")
             session.close()
         except virt_vm.VMStartError as e:
             logging.info(str(e))
