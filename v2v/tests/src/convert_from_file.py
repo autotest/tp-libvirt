@@ -20,7 +20,7 @@ def run(test, params, env):
     """
     for v in params.itervalues():
         if "V2V_EXAMPLE" in v:
-            test.skip("Please set real value for %s" % v)
+            test.cancel("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         test.error('Missing command: virt-v2v')
     vm_name = params.get('main_vm', 'EXAMPLE')
