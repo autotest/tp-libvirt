@@ -235,19 +235,21 @@ def run(test, params, env):
                 run_and_check_vcpupin(vm, vm_ref, 0, 0, "")
                 return
         # Get the host cpu count
-        host_cpu_count = utils.count_cpus()
+        host_online_cpu_count = utils.count_cpus()
+        online_cpu_max = int(host_online_cpu_count) - 1
+        host_cpu_count = utils.count_total_cpus()
         cpu_max = int(host_cpu_count) - 1
-        if (int(host_cpu_count) < 2) and (not cpu_list == "x"):
+        if (int(host_online_cpu_count) < 2) and (not cpu_list == "x"):
             raise exceptions.TestSkipError("We need more cpus on host in this "
                                            "case for the cpu_list=%s. But "
                                            "current number of cpu on host is %s."
-                                           % (cpu_list, host_cpu_count))
+                                           % (cpu_list, host_online_cpu_count))
 
         # Run test case
         for vcpu in range(int(guest_vcpu_count)):
             if cpu_list == "x":
                 for cpu in cpus_list:
-                    left_cpus = "0-%s,^%s" % (cpu_max, cpu)
+                    left_cpus = "0-%s,^%s" % (online_cpu_max, cpu)
                     if offline_pin:
                         offline_pin_and_check(vm, vcpu, str(cpu))
                         if multi_dom:
@@ -260,12 +262,12 @@ def run(test, params, env):
                                                   options)
             else:
                 if cpu_list == "x-y":
-                    cpus = "0-%s" % cpu_max
+                    cpus = "0-%s" % online_cpu_max
                 elif cpu_list == "x,y":
                     cpus = ','.join(random.sample(cpus_list, 2))
                     logging.info(cpus)
                 elif cpu_list == "x-y,^z":
-                    cpus = "0-%s,^%s" % (cpu_max, cpu_max)
+                    cpus = "0-%s,^%s" % (online_cpu_max, online_cpu_max)
                 elif cpu_list == "r":
                     cpus = "r"
                 elif cpu_list == "-1":
