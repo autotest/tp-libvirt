@@ -481,23 +481,14 @@ def run(test, params, env):
                     vm_recover_check(option, libvirtd, check_shutdown)
     finally:
         # Restore test environment.
-
-        # Ensure libvirtd is started
-        if not libvirtd.is_running():
-            libvirtd.start()
-        if vm.is_paused():
-            virsh.resume(vm_name, debug=True)
-        elif vm.is_dead():
-            vm.start()
-        # Wait for VM in running state
-        wait_for_state("running")
+        # Restart libvirtd.service
+        qemu_config.restore()
+        libvirt_guests_config.restore()
+        libvirtd.restart()
         if autostart_bypass_cache:
             virsh.autostart(vm_name, "--disable",
                             ignore_status=True, debug=True)
-        if vm.is_alive():
-            vm.destroy(gracefully=False)
-        # Wait for VM to be in shut off state
-        utils_misc.wait_for(lambda: vm.state() == "shut off", 10)
+        vm.destroy(gracefully=False)
         virsh.managedsave_remove(vm_name, debug=True)
         vmxml_backup.sync()
         if multi_guests:
@@ -505,6 +496,3 @@ def run(test, params, env):
                 virsh.remove_domain("%s_%s" % (vm_name, i),
                                     "--remove-all-storage",
                                     debug=True)
-        qemu_config.restore()
-        libvirt_guests_config.restore()
-        libvirtd.restart()
