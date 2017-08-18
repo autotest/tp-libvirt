@@ -258,7 +258,7 @@ def run(test, params, env):
                     luks_encryption_params = {}
                     luks_encryption_params.update({"format": "luks"})
                     luks_secret_uuid = create_luks_secret(os.path.join(src_pool_target,
-                                                          vol_name))
+                                                                       vol_name))
                     secret_uuids.append(luks_secret_uuid)
                     luks_encryption_params.update({"secret": {"type": encryption_secret_type,
                                                               "uuid": luks_secret_uuid}})
