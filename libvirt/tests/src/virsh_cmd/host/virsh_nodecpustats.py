@@ -67,7 +67,7 @@ def run(test, params, env):
         if not total <= expected['total']:
             test.fail("Commands 'virsh nodecpustats' not succeeded"
                       " as total time: %f is more"
-                      " than proc/stat: %f" % (total, uptime))
+                      " than proc/stat: %f" % (total, expected['total']))
         return True
 
     def virsh_check_nodecpustats(actual_stats):
@@ -86,7 +86,7 @@ def run(test, params, env):
         if not total <= expected['total']:
             test.fail("Commands 'virsh nodecpustats' not succeeded"
                       " as total time: %f is more"
-                      " than proc/stat: %f" % (total, uptime))
+                      " than proc/stat: %f" % (total, expected['total']))
         return True
 
     def virsh_check_nodecpustats_percentage(actual_per):

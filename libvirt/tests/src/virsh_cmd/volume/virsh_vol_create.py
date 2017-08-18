@@ -6,6 +6,7 @@ import base64
 from autotest.client.shared import error
 
 from avocado.utils import process
+from avocado.core import exceptions
 
 from virttest import virsh
 from virttest import libvirt_storage
@@ -258,7 +259,7 @@ def run(test, params, env):
                     luks_encryption_params = {}
                     luks_encryption_params.update({"format": "luks"})
                     luks_secret_uuid = create_luks_secret(os.path.join(src_pool_target,
-                                                          vol_name))
+                                                                       vol_name))
                     secret_uuids.append(luks_secret_uuid)
                     luks_encryption_params.update({"secret": {"type": encryption_secret_type,
                                                               "uuid": luks_secret_uuid}})

@@ -88,7 +88,7 @@ def check_output(output_msg, params):
         logging.debug("%s: %s", key, value)
         if output_msg.find(value) >= 0:
             if (key == "ERROR 1" and
-               params.get("support_precreation") is True):
+                    params.get("support_precreation") is True):
                 logging.debug("The error is not expected: '%s'.", value)
             else:
                 logging.info("The known error was found: %s --- %s",

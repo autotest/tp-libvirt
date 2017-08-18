@@ -143,8 +143,7 @@ def check_output(output_msg, params):
 
     for (key, value) in ERR_MSGDICT.items():
         if output_msg.find(value) >= 0:
-            if (key == "ERROR 1" and
-               params.get("support_precreation") is True):
+            if key == "ERROR 1" and params.get("support_precreation") is True:
                 logging.debug("The error is not expected: '%s'.", value)
             elif key == "ERROR 2":
                 break
@@ -908,9 +907,7 @@ def check_domjobinfo_on_complete(test, source_jobinfo, target_jobinfo):
                       "does not has the field: '%s'" % key)
 
         target_value = target_info[key]
-        if (key == "Time elapsed" or
-           key == "Time elapsed w/o network" or
-           key == "Operation"):
+        if key in ["Time elapsed", "Time elapsed w/o network", "Operation"]:
             continue
         else:
             if cmp(value, target_value) != 0:
@@ -1160,11 +1157,10 @@ def run(test, params, env):
     remote_known_hosts_obj = None
     if migr_vm_back:
         ssh_key.setup_remote_ssh_key(server_ip, server_user, server_pwd)
-        remote_known_hosts_obj = ssh_key.setup_remote_known_hosts_file(
-                                  client_ip,
-                                  server_ip,
-                                  server_user,
-                                  server_pwd)
+        remote_known_hosts_obj = ssh_key.setup_remote_known_hosts_file(client_ip,
+                                                                       server_ip,
+                                                                       server_user,
+                                                                       server_pwd)
 
     if vm.is_alive() and start_vm == "no":
         vm.destroy(gracefully=False)
@@ -1331,7 +1327,7 @@ def run(test, params, env):
         logging.debug("Migration mounting point: %s", nfs_mount_dir)
         new_disk_source = test_dict.get("new_disk_source")
         if (nfs_mount_dir and not migrate_disks and
-           nfs_mount_dir != os.path.dirname(disk_source)):
+                nfs_mount_dir != os.path.dirname(disk_source)):
             libvirt.update_vm_disk_source(vm_name, nfs_mount_dir, "", source_type)
 
         target_image_path = test_dict.get("target_image_path")
@@ -1755,7 +1751,7 @@ def run(test, params, env):
         no_create_pool = test_dict.get("no_create_pool", "no")
         try:
             if (utils_misc.is_qemu_capability_supported("drive-mirror") and
-               utils_misc.is_qemu_capability_supported("nbd-server")):
+                    utils_misc.is_qemu_capability_supported("nbd-server")):
                 support_precreation = True
         except exceptions.TestError, e:
             logging.debug(e)
@@ -2353,7 +2349,7 @@ def run(test, params, env):
 
         cmd = test_dict.get("check_disk_size_cmd")
         if (virsh_options.find("copy-storage-all") >= 0 and
-           test_dict.get("local_image_format") == "raw"):
+                test_dict.get("local_image_format") == "raw"):
             # Check the image size on target host after migration
             local_disk_image = test_dict.get("local_disk_image")
             remote_image_list.append(local_disk_image)
@@ -2439,7 +2435,7 @@ def run(test, params, env):
                                           % (grep_from_remote,
                                              server_ip))
             if (re.search(r".*drive-virtio-disk0.*", output) is None or
-               re.search(r".*drive-virtio-disk1.*", output) is None):
+                    re.search(r".*drive-virtio-disk1.*", output) is None):
                 raise exceptions.TestFail("The actual output:\n%s\n"
                                           "Can not find 'disk0' or 'disk1' "
                                           "in the log on remote host '%s'"

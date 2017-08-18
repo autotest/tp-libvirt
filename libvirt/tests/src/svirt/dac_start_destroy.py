@@ -14,11 +14,12 @@ from virttest.libvirt_xml.vm_xml import VMXML
 from provider import libvirt_version
 
 
-def check_qemu_grp_user(user):
+def check_qemu_grp_user(user, test):
     """
     Check the given user exist and in 'qemu' group
 
     :param user: given user name or id
+    :param test: Test object
     :return: True or False
     """
     try:
@@ -170,7 +171,7 @@ def run(test, params, env):
         if qemu_group_user:
             if set_qemu_conf:
                 if "EXAMPLE" in qemu_user:
-                    if not check_qemu_grp_user("vdsm_fake"):
+                    if not check_qemu_grp_user("vdsm_fake", test):
                         _create_user()
                         create_qemu_user = True
                     qemu_user = "vdsm_fake"
@@ -178,7 +179,7 @@ def run(test, params, env):
             if set_sec_label:
                 if sec_label:
                     if "EXAMPLE" in sec_label:
-                        if not check_qemu_grp_user("vdsm_fake"):
+                        if not check_qemu_grp_user("vdsm_fake", test):
                             _create_user()
                             create_qemu_user = True
                         sec_label = "vdsm_fake:qemu"

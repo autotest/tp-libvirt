@@ -84,7 +84,7 @@ def run(test, params, env):
         # just print a debug message and move on.
         diffval = abs(int(cpu_frequency_nodeinfo) - int(cpu_frequency_os))
         if (float(diffval) / float(cpu_frequency_nodeinfo) > 0.20 or
-           float(diffval) / float(cpu_frequency_os) > 0.20):
+                float(diffval) / float(cpu_frequency_os) > 0.20):
             logging.debug("Virsh nodeinfo output didn't match CPU "
                           "frequency within 20 percent")
 
@@ -125,7 +125,7 @@ def run(test, params, env):
             numa_cells_nodeinfo = _check_nodeinfo(
                 nodeinfo_output, 'NUMA cell(s)', 3)
             if (re.match(cores_per_socket_nodeinfo, cpus_os) and
-               re.match(numa_cells_nodeinfo, "1")):
+                    re.match(numa_cells_nodeinfo, "1")):
                 spec_numa = True
             else:
                 test.fail("Virsh nodeinfo output didn't match "

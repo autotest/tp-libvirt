@@ -414,7 +414,7 @@ def run(test, params, env):
 
         disk_source = libvirt.create_local_disk(disk_type, disk_path, '10', disk_format)
         disks_img.append({"format": disk_format,
-                         "source": disk_path, "path": disk_path})
+                          "source": disk_path, "path": disk_path})
         custom_disk = Disk(type_name=disk_device_type)
         custom_disk.device = disk_device
         source_dict = {'file': disk_source}
