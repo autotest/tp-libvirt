@@ -13,6 +13,7 @@ from virttest import remote
 from virttest import utils_misc
 from virttest import virt_vm
 from virttest.utils_test import libvirt as utlv
+from virttest.libvirt_xml import vm_xml
 
 
 def add_devices_to_iommu_group(vfio_controller, pci_id_list):
@@ -303,7 +304,7 @@ def test_nic_group(vm, params):
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
         logging.debug("VMXML with disk boot:\n%s", vmxml)
         iface_list = vmxml.get_iface_all()
-        for node in network_list.values():
+        for node in iface_list.values():
             if node.get('type') == 'hostdev':
                 if "managed" in ext_opt:
                     if not node.get('managed') == "yes":

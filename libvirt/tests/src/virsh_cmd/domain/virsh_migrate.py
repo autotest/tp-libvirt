@@ -720,8 +720,7 @@ def run(test, params, env):
             vmxml_backup.max_mem_rt_unit = mem_size_unit
             vmxml_backup.sync()
             vm_max_mem_rt = int(vmxml_backup.max_mem_rt)
-        logging.debug("Hotplug mem = %d %s", (mem_hotplug_size,
-                                              mem_size_unit))
+        logging.debug("Hotplug mem = %d %s", mem_hotplug_size, mem_size_unit)
         logging.debug("Hotplug count = %d", mem_hotplug_count)
         logging.debug("Current mem = %d", vm_current_mem)
         logging.debug("VM maxmem = %d", vm_max_mem_rt)

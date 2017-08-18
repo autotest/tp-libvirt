@@ -6,6 +6,7 @@ import base64
 from autotest.client.shared import error
 
 from avocado.utils import process
+from avocado.core import exceptions
 
 from virttest import virsh
 from virttest import libvirt_storage

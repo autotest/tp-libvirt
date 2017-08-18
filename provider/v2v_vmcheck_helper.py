@@ -1,7 +1,7 @@
 import re
 import logging
 import time
-from distutils.version import LooseVersion
+from distutils.version import LooseVersion  # pylint: disable=E0611
 
 from avocado.core import exceptions
 from avocado.utils import process
