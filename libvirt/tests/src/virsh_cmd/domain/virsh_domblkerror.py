@@ -189,3 +189,6 @@ def run(test, params, env):
             vm.destroy()
             _pool_vol.cleanup_pool(pool_name, "fs", pool_target, img_name)
         vmxml_backup.sync()
+        if error_type == "unspecified error":
+            if not utils_misc.umount('', nfs_dir, 'nfs'):
+                logging.error('Failed to clean up nfs mount point')
