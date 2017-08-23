@@ -708,7 +708,7 @@ def run(test, params, env):
 
             if bootdisk_snapshot != "":
                 disk.snapshot = bootdisk_snapshot
-                if device_readonly:
+                if device_readonly[0] == 'yes':
                     disk.readonly = True
 
             disk.target = {"dev": bootdisk_target, "bus": bootdisk_bus}
