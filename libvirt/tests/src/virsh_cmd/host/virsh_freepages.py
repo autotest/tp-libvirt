@@ -77,7 +77,7 @@ def run(test, params, env):
     pagesize = params.get("freepages_page_size")
     huge_pages_num = params.get("huge_pages_num")
 
-    hp_cl = test_setup.HugePageConfig(params)
+    hp_cl = test_setup.HugePageConfig(test, params)
     default_hp_size = hp_cl.get_hugepage_size()
     supported_hp_size = hp_cl.get_multi_supported_hugepage_size()
 
