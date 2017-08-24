@@ -619,6 +619,9 @@ def run(test, params, env):
                                       flagstr=opts, debug=True)
             libvirt.check_result(ret, skip_if=unsupported_err)
             if additional_guest:
+                # Make sure the additional VM is running
+                if additional_vm.is_dead():
+                    additional_vm.start()
                 ret = virsh.attach_device(guest_name, xml_file,
                                           "", debug=True)
                 libvirt.check_result(ret, skip_if=unsupported_err)
