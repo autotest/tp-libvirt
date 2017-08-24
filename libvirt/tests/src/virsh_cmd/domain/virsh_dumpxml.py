@@ -154,7 +154,7 @@ def run(test, params, env):
     setup_libvirt_polkit = "yes" == params.get('setup_libvirt_polkit')
     if not libvirt_version.version_compare(1, 1, 1):
         if setup_libvirt_polkit:
-            test.skip("API acl test not supported in current libvirt version")
+            test.cancel("API acl test not supported in current libvirt version")
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user and setup_libvirt_polkit:
@@ -169,7 +169,7 @@ def run(test, params, env):
         try:
             vm_xml.VMXML.add_security_info(new_xml, security_pwd)
         except Exception, info:
-            test.skip(info)
+            test.cancel(info)
     domuuid = vm.get_uuid()
     domid = vm.get_id()
 
