@@ -672,7 +672,7 @@ def run(test, params, env):
     # To check if Hugepage supported and configure
     if enable_HP or enable_HP_pin:
         try:
-            hp_obj = test_setup.HugePageConfig(params)
+            hp_obj = test_setup.HugePageConfig(test, params)
             host_hp_size = hp_obj.get_hugepage_size()
             # libvirt xml takes HP sizes in KiB
             default_hp_unit = "KiB"

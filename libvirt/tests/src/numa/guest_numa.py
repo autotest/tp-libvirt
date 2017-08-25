@@ -106,7 +106,7 @@ def run(test, params, env):
                         "numa node not supported on current "
                         "version")
 
-    hp_cl = test_setup.HugePageConfig(params)
+    hp_cl = test_setup.HugePageConfig(test, params)
     default_hp_size = hp_cl.get_hugepage_size()
     supported_hp_size = hp_cl.get_multi_supported_hugepage_size()
     mount_path = []
