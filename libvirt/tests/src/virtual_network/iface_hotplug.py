@@ -59,7 +59,7 @@ def run(test, params, env):
                                            "no")
     username = params.get("username")
     password = params.get("password")
-    poll_timeout = params.get("poll_timeout", 10)
+    poll_timeout = int(params.get("poll_timeout", 10))
 
     # stree_test require detach operation
     stress_test_detach_device = False
