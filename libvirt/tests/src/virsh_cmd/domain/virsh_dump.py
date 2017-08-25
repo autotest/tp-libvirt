@@ -280,6 +280,6 @@ def run(test, params, env):
         qemu_config.restore()
         libvirtd.restart()
         if child_pid:
-            os.kill(child_pid, signal.SIGTERM)
+            os.kill(child_pid, signal.SIGKILL)
         if os.path.isfile(dump_file):
             os.remove(dump_file)
