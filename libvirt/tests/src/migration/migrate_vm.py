@@ -1104,6 +1104,9 @@ def run(test, params, env):
     # For --migrate-disks test
     migrate_disks = "yes" == test_dict.get("migrate_disks", "no")
 
+    # For bi-directional and tls reverse test
+    src_uri = test_dict.get("migration_source_uri", "qemu:///system")
+
     # Pre-creation image parameters
     target_pool_name = test_dict.get("target_pool_name", "temp_pool_1")
     target_pool_type = test_dict.get("target_pool_type", "dir")
@@ -1231,6 +1234,7 @@ def run(test, params, env):
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
                           'ssh_remote_auth': True}
+    migrate_setup = libvirt.MigrationTest()
 
     try:
         if iscsi_setup:
@@ -2249,6 +2253,10 @@ def run(test, params, env):
                 logging.debug("Start remote guest")
                 remote_virsh_session.start(target_vm_name)
 
+                # Permit iptables to permit special port to libvirt for
+                # migration on local machine
+                migrate_setup.migrate_pre_setup(src_uri, params, ports=uri_port)
+
             except (process.CmdError, remote.SCPError), e:
                 logging.debug(e)
 
@@ -2466,22 +2474,32 @@ def run(test, params, env):
             check_vm_disk_after_migration(vm, test_dict)
 
         if migr_vm_back:
-            src_uri = test_dict.get("migration_source_uri")
+            # Pre migration setup for local machine
+            migrate_setup.migrate_pre_setup(src_uri, params)
             cmd = "virsh migrate %s %s %s" % (vm_name,
                                               virsh_options, src_uri)
             logging.debug("Start migrating: %s", cmd)
             status, output = run_remote_cmd(cmd, server_ip, server_user,
                                             server_pwd)
+            logging.info(output)
+
             if status:
                 destroy_cmd = "virsh destroy %s" % vm_name
                 run_remote_cmd(destroy_cmd, server_ip,
                                server_user, server_pwd)
                 raise exceptions.TestFail("Failed to run '%s' on remote: %s"
                                           % (cmd, output))
-            logging.info(output)
 
     finally:
         logging.info("Recovery test environment")
+        # Clean up of pre migration setup for local machine
+        if target_vm_name:
+            migrate_setup.migrate_pre_setup(src_uri, params,
+                                            cleanup=True,
+                                            ports=uri_port)
+        if migr_vm_back:
+            migrate_setup.migrate_pre_setup(src_uri, params,
+                                            cleanup=True)
 
         if need_mkswap:
             if not vm.is_alive() or vm.is_dead():
