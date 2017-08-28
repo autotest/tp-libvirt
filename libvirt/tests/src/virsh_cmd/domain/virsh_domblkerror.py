@@ -184,6 +184,8 @@ def run(test, params, env):
             if os.path.isfile("%s.bak" % export_file):
                 shutil.move("%s.bak" % export_file, export_file)
             res = libvirt.setup_or_cleanup_nfs(is_setup=False,
+                                               mount_dir=nfs_dir,
+                                               export_dir=img_dir,
                                                restore_selinux=selinux_bak)
         elif error_type == "no space":
             vm.destroy()
