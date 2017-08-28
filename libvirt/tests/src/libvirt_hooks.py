@@ -1,6 +1,7 @@
 import os
 import shutil
 import logging
+import platform
 from autotest.client.shared import error
 from autotest.client import utils
 from virttest import virt_vm
@@ -237,7 +238,10 @@ def run(test, params, env):
         prepare_hook_file(hook_script %
                           (vm_test, hook_log))
         qemu_bin = params.get("qemu_bin", "/usr/libexec/qemu-kvm")
-        qemu_cmd = ("%s -cdrom %s -monitor unix:/tmp/demo,"
+        if "ppc" in platform.machine():
+            qemu_bin = "%s -machine pseries" % qemu_bin
+        qemu_cmd = ("%s -drive file=%s,if=none,bus=0,unit=1"
+                    " -monitor unix:/tmp/demo,"
                     "server,nowait -name %s" %
                     (qemu_bin, disk_src, vm_test))
         ret = utils.run("%s &" % qemu_cmd)
