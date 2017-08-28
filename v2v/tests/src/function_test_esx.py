@@ -121,7 +121,7 @@ def run(test, params, env):
                                                     timeout=v2v_timeout):
                     test.fail('Import VM failed')
             elif output_mode == 'libvirt':
-                virsh.start(vm_name)
+                virsh.start(vm_name, debug=True)
             # Check guest following the checkpoint document after convertion
             logging.info('Checking common checkpoints for v2v')
             vmchecker = VMChecker(test, params, env)
@@ -232,7 +232,7 @@ def run(test, params, env):
         else:
             v2v_result = utils_v2v.v2v_cmd(v2v_params)
         if v2v_params.has_key('new_name'):
-            params['main_vm'] = v2v_params['new_name']
+            vm_name = params['main_vm'] = v2v_params['new_name']
         check_result(v2v_result, status_error)
 
     finally:
