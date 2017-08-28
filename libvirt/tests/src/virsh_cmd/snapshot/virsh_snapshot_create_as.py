@@ -8,6 +8,7 @@ import logging
 from autotest.client.shared import error
 from autotest.client import utils
 
+from virttest import utils_package
 from virttest import virsh
 from virttest import utils_misc
 from virttest import xml_utils
@@ -409,6 +410,9 @@ def run(test, params, env):
     # A backup of original vm
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     logging.debug("original xml is %s", vmxml_backup)
+
+    if not utils_package.package_install('targetcli'):
+        test.error("Failed to install targetcli package")
 
     # Generate empty image for negative test
     if bad_disk is not None:
