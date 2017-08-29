@@ -234,7 +234,7 @@ def run(test, params, env):
         snap_name = "s1"
         snap_mem = os.path.join(test.tmpdir, "rbd.mem")
         snap_disk = os.path.join(test.tmpdir, "rbd.disk")
-        xml_snap_exp = ["disk name=%s snapshot='external' type='file'" % target_dev]
+        xml_snap_exp = ["disk name='%s' snapshot='external' type='file'" % target_dev]
         xml_dom_exp = ["source file='%s'" % snap_disk,
                        "backingStore type='network' index='1'",
                        "source protocol='rbd' name='%s'" % disk_src_name]
