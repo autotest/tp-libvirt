@@ -69,12 +69,15 @@ def run(test, params, env):
     desc = params.get("list_desc", "")
     libvirtd = params.get("libvirtd", "on")
     remote_ref = params.get("remote_ref", "")
-    remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
+    remote_ip = params.get("remote_ip")
     remote_pwd = params.get("remote_pwd", None)
-    local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
+    local_ip = params.get("local_ip")
     remote_user = params.get("remote_user", "root")
     local_user = params.get("username", "root")
-    local_pwd = params.get("local_pwd", "password")
+    local_pwd = params.get("local_pwd", None)
+
+    if "EXAMPLE" in remote_ip or "EXAMPLE" in local_ip:
+        test.cancel("Please set real value for remote_ip or local_ip")
 
     vm = env.get_vm(vm_name)
     domuuid = vm.get_uuid()
