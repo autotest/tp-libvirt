@@ -385,7 +385,12 @@ class SerialFile(AttachDeviceBase):
     def make_filepath(self, index):
         """Return full path to unique filename per device index"""
         # auto-cleaned at end of test
-        return os.path.join(data_dir.get_tmp_dir(), 'serial_%s_%s-%d.log'
+        if self.type_name == 'file':
+            serial_dir = '/var/log/libvirt'
+        else:
+            serial_dir = data_dir.get_tmp_dir()
+
+        return os.path.join(serial_dir, 'serial_%s_%s-%d.log'
                             % (self.type_name, self.identifier, index))
 
     @staticmethod
