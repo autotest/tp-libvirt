@@ -21,7 +21,7 @@ _VM_FILE_PATH = "/tmp/test.txt"
 _REPEAT = 10
 
 
-def convert_img_to_dev(src_fmt, dest_fmt, img_src, blk_dev):
+def convert_img_to_dev(test, src_fmt, dest_fmt, img_src, blk_dev):
     """
     Use qemu-img convert to convert a source img to dest img
 
@@ -49,8 +49,9 @@ def create_file_in_vm(vm, file_name, content, repeat):
     for repeat_index in range(int(repeat)):
         logging.debug("Round %s of echo on vm: %s", repeat_index, vm.name)
         time.sleep(_TIMEOUT)
-        status, output = client_session.cmd_status_output(cmd_echo)
-        if status:
+        try:
+            status, output = client_session.cmd_status_output(cmd_echo)
+        except process.cmdError, detail:
             logging.error("Fail to echo '%s' to '%s' in vm with"
                           " exception %s", content, file_name, detail)
             client_session = vm.wait_for_login()
@@ -110,7 +111,7 @@ def replace_vm_first_vd(vm_name, disk_obj):
     vmxml.sync()
 
 
-def get_blks_by_scsi(scsi_bus, blk_prefix="sd"):
+def get_blks_by_scsi(test, scsi_bus, blk_prefix="sd"):
     """
     Find the scsi block devices under /dev/, with specific scsi bus number
 
@@ -133,7 +134,7 @@ def get_blks_by_scsi(scsi_bus, blk_prefix="sd"):
     return blk_names
 
 
-def get_symbols_by_blk(blkdev, method="by-path"):
+def get_symbols_by_blk(test, blkdev, method="by-path"):
     """
     Find the lun device name under /dev/disk/by-path for specified
     block device.
@@ -241,17 +242,17 @@ def run(test, params, env):
                 path_to_blk = os.path.join(_MPATH_DIR, new_mpath_devs[0])
             elif vd_formats[vm_index] == "by_path":
                 new_vhba_scsibus = re.sub("\D", "", new_vhba)
-                utils_misc.wait_for(lambda: get_blks_by_scsi(new_vhba_scsibus),
+                utils_misc.wait_for(lambda: get_blks_by_scsi(test, new_vhba_scsibus),
                                     timeout=_TIMEOUT)
-                new_blks = get_blks_by_scsi(new_vhba_scsibus)
+                new_blks = get_blks_by_scsi(test, new_vhba_scsibus)
                 if not new_blks:
                     test.fail("blk dev not found with scsi_%s",
                               new_vhba_scsibus)
                 first_blk_dev = new_blks[0]
                 utils_misc.wait_for(
-                        lambda: get_symbols_by_blk(first_blk_dev),
+                        lambda: get_symbols_by_blk(test, first_blk_dev),
                         timeout=_TIMEOUT)
-                lun_sl = get_symbols_by_blk(first_blk_dev)
+                lun_sl = get_symbols_by_blk(test, first_blk_dev)
                 if not lun_sl:
                     test.fail("lun symbolic links not found in "
                               "/dev/disk/by-path/ for %s" %
@@ -263,7 +264,7 @@ def run(test, params, env):
             img_info = utils_misc.get_image_info(img_src)
             src_fmt = img_info["format"]
             dest_fmt = "qcow2"
-            convert_img_to_dev(src_fmt, dest_fmt, img_src, path_to_blk)
+            convert_img_to_dev(test, src_fmt, dest_fmt, img_src, path_to_blk)
             disk_obj = prepare_disk_obj(disk_types[vm_index], disk_devices[vm_index],
                                         driver_names[vm_index], driver_types[vm_index],
                                         path_to_blk, device_targets[vm_index],
