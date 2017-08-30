@@ -9,6 +9,8 @@ from autotest.client.shared import error
 from autotest.client.shared import utils
 
 from avocado.utils import path as utils_path
+from avocado.utils import service as avocado_service
+from avocado.utils import process
 
 from virttest import libvirt_storage
 from virttest import utils_selinux
@@ -18,12 +20,15 @@ from virttest import utils_misc
 from virttest import virsh
 from virttest import remote
 from virttest import data_dir
+from virttest import utils_test
 from virttest.libvirt_xml import vol_xml
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.staging import utils_cgroup
 from virttest.staging import service
 from virttest.tests import unattended_install
+from virttest.utils_iptables import Iptables
+from virttest.utils_misc import SELinuxBoolean
 
 
 class Vol_clone(object):
@@ -760,6 +765,120 @@ class Migration(object):
         self.session.close()
 
 
+class Dom_opterations_nfs(object):
+
+    """
+    Test if such operations works well on nfs disconnected storage:
+        1) save: test passes if there is 'nfs.*not responding' in dmesg
+        2) domstats: test passes if this operation doesn't hang
+        3) blkdeviotune: test passes if this operation doesn't hang
+    """
+
+    def __init__(self, test, params):
+        self.vm_name = params.get("main_vm", "avocado-vt-vm1")
+        self.env = params.get("env")
+        self.vm = self.env.get_vm(self.vm_name)
+        self.operation_timeout = int(params.get("operation_timeout"))
+        self.nfs_no_response_sign = params.get("nfs_no_response_sign")
+        self.export_options = params.get("export_options")
+        self.mount_options = params.get("mount_options")
+        self.operation = params.get("operation")
+        self.operation_option = params.get("operation_option")
+        self.sav_filename = params.get("sav_filename")
+        self.iptable_rule = params.get("iptable_rule")
+        self.vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(
+            self.vm_name)
+        self.disk_tgt = self.vmxml_backup.get_disk_all().keys()[0]
+
+        def setup_nfs_disk(vm_name):
+            """
+            Setup disk on nfs storage
+            """
+            vmxml = vm_xml.VMXML.new_from_dumpxml(self.vm_name)
+            disk_xml = vmxml.get_devices(device_type="disk")[0]
+            source_image_path = disk_xml.source.attrs['file']
+            logging.debug("VM origin image path: %s", source_image_path)
+            seLinuxBool = SELinuxBoolean(params)
+            seLinuxBool.setup()
+            nfs_res = utils_test.libvirt.setup_or_cleanup_nfs(
+                is_setup=True,
+                is_mount=True,
+                export_options=self.export_options,
+                mount_options=self.mount_options)
+            logging.debug('NFS is setup ~~~~~~~~~~')
+            cp_cmd = process.run("cp %s %s" % (
+                source_image_path, nfs_res['mount_dir']))
+            time.sleep(3)
+            logging.debug("cp command: %s", cp_cmd.command)
+            vmxml.del_device(disk_xml)
+            nfs_image_path = os.path.join(
+                nfs_res['mount_dir'], os.path.basename(source_image_path))
+            logging.debug("VM new image path %s", nfs_image_path)
+            disk_dict = {'attrs': {'file': nfs_image_path}}
+            disk_xml.source = disk_xml.new_disk_source(**disk_dict)
+            logging.debug("VM new disk xml:\n%s", disk_xml)
+            vmxml.add_device(disk_xml)
+            vmxml.sync()
+            return nfs_res
+
+        def operations():
+            """
+            Do save | domstats | blkdeviotune operations
+            """
+            if self.operation == "save":
+                virsh.save(self.vm_name, self.save_file, debug=True, timeout=self.operation_timeout)
+            if self.operation == "domstats":
+                virsh.domstats(self.vm_name, opertions=self.operation_option, debug=True, timeout=self.operation_timeout)
+            if self.operation == "blkdeviotune":
+                virsh.blkdeviotune(self.vm_name, self.disk_tgt, debug=True, timeout=self.operation_timeout)
+        self.nfs_res = setup_nfs_disk(self.vm_name)
+        self.save_file = os.path.join(data_dir.get_tmp_dir(), self.sav_filename)
+        self.td = threading.Thread(target=operations)
+
+    def run_test(self):
+        """
+        Run opertions as thread
+        """
+        self.vm.start()
+        # Try to save VM
+        self.td.start()
+
+    def result_confirm(self, params):
+        """
+        Confirm the sign of nfs not response in dmesg, thread finished before
+        timeout
+        """
+        self.td.join()
+
+        def check_nfs_response():
+            """
+            Check if there is 'nfs not responding' in dmesg.
+            """
+            response = self.nfs_no_response_sign in process.run('dmesg').stdout
+            if response:
+                logging.debug(self.nfs_no_response_sign)
+            return response
+
+        Iptables.setup_or_cleanup_iptables_rules([self.iptable_rule], cleanup=True)
+        if self.operation == "save":
+            if not check_nfs_response():
+                raise error.TestFail("No nfs not response sign in dmesg")
+
+    def recover(self, params=None):
+        """
+        Recover env
+        """
+        Iptables.setup_or_cleanup_iptables_rules([self.iptable_rule], cleanup=True)
+        if self.vm.is_alive():
+            self.vm.destroy()
+        self.vmxml_backup.sync()
+        utils_test.libvirt.setup_or_cleanup_nfs(
+            is_setup=False,
+            is_mount=False,
+            restore_selinux=self.nfs_res["selinux_status_bak"])
+        process.run("dmesg -c")
+
+
 def cpu_lack(params):
     """
     Disable assigned cpu.
@@ -872,6 +991,15 @@ def remove_machine_cgroup():
     cg_ser.cgconfig_restart()
     libvirt_ser = service.Factory.create_specific_service("libvirtd")
     libvirt_ser.restart()
+
+
+def nfs_disconnected(params):
+    """
+    Drop nfs connection by iptables
+    """
+    service_mgr = avocado_service.ServiceManager()
+    service_mgr.start('iptables')
+    Iptables.setup_or_cleanup_iptables_rules([params.get("iptable_rule")])
 
 
 def run(test, params, env):
