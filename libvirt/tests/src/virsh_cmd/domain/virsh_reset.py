@@ -1,5 +1,6 @@
 import logging
 import commands
+import time
 
 from autotest.client.shared import error
 
@@ -98,6 +99,7 @@ def run(test, params, env):
             raise error.TestFail("Expect fail, but succeed indeed.")
 
         session.close()
+        time.sleep(5)
         session = vm.wait_for_login()
         status = session.get_command_status("ls %s" % tmpfile)
         if status == 0:
