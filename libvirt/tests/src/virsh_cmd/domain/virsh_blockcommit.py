@@ -239,7 +239,15 @@ def run(test, params, env):
         blockcommit_options = "--wait --verbose"
 
         if with_timeout:
-            blockcommit_options += " --timeout 1"
+            # Setting timeout to 10s will be enough for most systems complete
+            # blockcommit.
+            # But do note that the test scenario that a blockcommit job will
+            # be aborted if the job duration exceeds this timeout is still not
+            # covered.
+            # This test scenario is not trivial to implement since the
+            # blockcommit duration heavily depends on the IO performance of
+            # the hardware.
+            blockcommit_options += " --timeout 10"
 
         if base_option == "shallow":
             blockcommit_options += " --shallow"
