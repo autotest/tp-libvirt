@@ -6,10 +6,9 @@ import errno
 import socket
 import threading
 import select
+import platform
 
 import aexpect
-
-from autotest.client.shared import error
 
 from virttest import remote
 from virttest import virsh
@@ -365,18 +364,19 @@ def run(test, params, env):
         serial_elem = current_xml.xmltreefile.find('devices/serial')
         console_elem = current_xml.xmltreefile.find('devices/console')
         if console_elem is None:
-            raise error.TestFail("Expect generate console automatically, "
-                                 "but found none.")
+            test.fail("Expect generate console automatically, "
+                      "but found none.")
         if serial_elem and console_target_type != 'serial':
-            raise error.TestFail("Don't Expect exist serial device, "
-                                 "but found:\n%s" % serial_elem)
+            test.fail("Don't Expect exist serial device, "
+                      "but found:\n%s" % serial_elem)
 
         cur_console = console_cls.new_from_element(console_elem)
         logging.debug("Current console XML is:\n%s", cur_console)
         # Compare current serial and console with oracle.
         if not expected_console == cur_console:
-            raise error.TestFail("Expect generate console:\n%s\nBut got:\n%s" %
-                                 (expected_console, cur_console))
+            # "==" has been override
+            test.fail("Expect generate console:\n%s\nBut got:\n%s" %
+                      (expected_console, cur_console))
 
         if console_target_type == 'serial':
             serial_cls = librarian.get('serial')
@@ -390,15 +390,16 @@ def run(test, params, env):
                     expected_serial.protocol_type = "raw"
             expected_serial.target_port = serial_dev.target_port
             if serial_elem is None:
-                raise error.TestFail("Expect exist serial device, "
-                                     "but found none.")
+                test.fail("Expect exist serial device, "
+                          "but found none.")
             cur_serial = serial_cls.new_from_element(serial_elem)
             logging.debug("Expected serial XML is:\n%s", expected_serial)
             logging.debug("Current serial XML is:\n%s", cur_serial)
             # Compare current serial and console with oracle.
             if not expected_serial == cur_serial:
-                raise error.TestFail("Expect serial device:\n%s\nBut got:\n"
-                                     "%s" % (expected_serial, cur_serial))
+                # "==" has been override
+                test.fail("Expect serial device:\n%s\nBut got:\n "
+                          "%s" % (expected_serial, cur_serial))
 
     def prepare_serial_console():
         """
@@ -515,7 +516,10 @@ def run(test, params, env):
 
         exp_ser_opt = ','.join(exp_ser_opts)
 
-        exp_ser_devs = ['isa-serial', 'chardev=charserial0', 'id=serial0']
+        if "ppc" in platform.machine():
+            exp_ser_devs = ['spapr-vty', 'chardev=charserial0', 'reg=0x30000000']
+        else:
+            exp_ser_devs = ['isa-serial', 'chardev=charserial0', 'id=serial0']
         exp_ser_dev = ','.join(exp_ser_devs)
 
         if console_target_type != 'serial' or serial_type in ['spiceport']:
@@ -524,10 +528,10 @@ def run(test, params, env):
 
         # Check options against expectation
         if ser_opt != exp_ser_opt:
-            raise error.TestFail('Expect get qemu command serial option "%s", '
-                                 'but got "%s"' % (exp_ser_opt, ser_opt))
+            test.fail('Expect get qemu command serial option "%s", '
+                      'but got "%s"' % (exp_ser_opt, ser_opt))
         if ser_dev != exp_ser_dev:
-            raise error.TestFail(
+            test.fail(
                 'Expect get qemu command serial device option "%s", '
                 'but got "%s"' % (exp_ser_dev, ser_dev))
 
@@ -541,11 +545,11 @@ def run(test, params, env):
             exp_con_devs += ['chardev=charconsole0', 'id=console0']
             exp_con_dev = ','.join(exp_con_devs)
             if con_opt != exp_con_opt:
-                raise error.TestFail(
+                test.fail(
                     'Expect get qemu command console option "%s", '
                     'but got "%s"' % (exp_con_opt, con_opt))
             if con_dev != exp_con_dev:
-                raise error.TestFail(
+                test.fail(
                     'Expect get qemu command console device option "%s", '
                     'but got "%s"' % (exp_con_dev, con_dev))
 
