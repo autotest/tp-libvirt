@@ -33,12 +33,8 @@ def test_df(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
     gf.do_mount("/")
@@ -62,12 +58,8 @@ def test_df_h(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
     gf.do_mount("/")
@@ -94,12 +86,8 @@ def test_dd(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
     gf.do_mount("/")
@@ -126,12 +114,8 @@ def test_copy_size(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
     gf.do_mount("/")
@@ -158,12 +142,8 @@ def test_download(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
     gf.do_mount("/")
@@ -191,12 +171,8 @@ def test_download_offset(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
     gf.do_mount("/")
@@ -226,12 +202,8 @@ def test_upload(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
     gf.do_mount("/")
@@ -259,12 +231,8 @@ def test_upload_offset(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
     gf.do_mount("/")
@@ -291,12 +259,8 @@ def test_fallocate(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
     gf.do_mount("/")
@@ -332,12 +296,8 @@ def test_fallocate64(vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    if add_ref == "disk":
-        image_path = params.get("image_path")
-        gf.add_drive_opts(image_path, readonly=readonly)
-    elif add_ref == "domain":
-        vm_name = params.get("main_vm")
-        gf.add_domain(vm_name, readonly=readonly)
+    image_path = params.get("image_path")
+    gf.add_drive_opts(image_path, readonly=readonly)
 
     gf.run()
     gf.do_mount("/")

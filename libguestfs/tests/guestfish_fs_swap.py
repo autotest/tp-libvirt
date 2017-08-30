@@ -110,8 +110,8 @@ def test_swap_device(vm, params):
         logging.error(active_swapdevice)
         raise error.TestFail("test_swapoff_device failed")
 
-    os.system('rm -f ' + test_img + ' > /dev/null')
     gf.close_session()
+    os.system('rm -f ' + test_img + ' > /dev/null')
 
 
 def test_swap_label(vm, params):
@@ -191,8 +191,8 @@ def test_swap_label(vm, params):
         logging.error(active_swapdevice)
         raise error.TestFail("test_swapoff_label failed")
 
-    os.system('rm -f ' + test_img + ' > /dev/null')
     gf.close_session()
+    os.system('rm -f ' + test_img + ' > /dev/null')
 
 
 def test_swap_uuid(vm, params):
@@ -272,8 +272,8 @@ def test_swap_uuid(vm, params):
         logging.error(active_swapdevice)
         raise error.TestFail("test_swapoff_uuid failed")
 
-    os.system('rm -f ' + test_img + ' > /dev/null')
     gf.close_session()
+    os.system('rm -f ' + test_img + ' > /dev/null')
 
 
 def test_swap_file(vm, params):
@@ -351,8 +351,8 @@ def test_swap_file(vm, params):
         logging.error(active_swapdevice)
         raise error.TestFail("test_swapoff_file failed")
 
-    os.system('rm -f ' + test_img + ' > /dev/null')
     gf.close_session()
+    os.system('rm -f ' + test_img + ' > /dev/null')
 
 
 def run(test, params, env):
