@@ -584,9 +584,15 @@ def run(test, params, env):
                 process.run(snap_cmd, ignore_status=False, shell=True)
             if test_json_pseudo_protocol:
                 # Create one frontend image with the rbd backing file.
-                json_str = ('json:{"file.driver":"rbd",'
-                            '"file.filename":"rbd:%s:mon_host=%s"}'
-                            % (disk_src_name, mon_host))
+                # pass different json string according the auth config
+                if auth_user and auth_key:
+                    json_str = ('json:{"file.driver":"rbd",'
+                                '"file.filename":"rbd:%s:mon_host=%s:id=%s:key=%s"}'
+                                % (disk_src_name, mon_host, auth_user, auth_key))
+                else:
+                    json_str = ('json:{"file.driver":"rbd",'
+                                '"file.filename":"rbd:%s:mon_host=%s"}'
+                                % (disk_src_name, mon_host))
                 disk_cmd = ("qemu-img create -f qcow2 -b '%s' %s" %
                             (json_str, front_end_img_file))
                 disk_path = front_end_img_file
