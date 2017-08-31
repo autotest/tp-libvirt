@@ -1,5 +1,6 @@
 import logging
 import os
+import platform
 
 from virttest import virt_vm
 from virttest import virsh
@@ -34,6 +35,7 @@ def run(test, params, env):
     pmsuspend_error = 'yes' == params.get("pmsuspend_error", 'no')
     pmsuspend_error_msg = params.get("pmsuspend_error_msg")
     agent_error_test = 'yes' == params.get("agent_error_test", 'no')
+    arch = platform.processor()
 
     # Libvirt acl test related params
     uri = params.get("virsh_uri")
@@ -63,11 +65,12 @@ def run(test, params, env):
         if pmsuspend_error:
             fail_pat.append('access denied')
 
-    # Setup possible failure patterns
-    if pm_enabled == 'not_set':
-        fail_pat.append('not supported')
-    if pm_enabled == 'no':
-        fail_pat.append('disabled')
+    # Setup possible failure patterns excluding ppc
+    if "ppc64" not in arch:
+        if pm_enabled == 'not_set':
+            fail_pat.append('not supported')
+        if pm_enabled == 'no':
+            fail_pat.append('disabled')
 
     if vm_state == 'paused':
         # For older version
@@ -90,18 +93,19 @@ def run(test, params, env):
             vm.destroy()
 
         # Set pm tag in domain's XML if needed.
-        if pm_enabled == 'not_set':
-            try:
-                if vmxml.pm:
-                    del vmxml.pm
-            except xcepts.LibvirtXMLNotFoundError:
-                pass
-        else:
-            pm_xml = vm_xml.VMPMXML()
-            pm_xml.mem_enabled = pm_enabled_mem
-            pm_xml.disk_enabled = pm_enabled_disk
-            vmxml.pm = pm_xml
-        vmxml.sync()
+        if "ppc64" not in arch:
+            if pm_enabled == 'not_set':
+                try:
+                    if vmxml.pm:
+                        del vmxml.pm
+                except xcepts.LibvirtXMLNotFoundError:
+                    pass
+            else:
+                pm_xml = vm_xml.VMPMXML()
+                pm_xml.mem_enabled = pm_enabled_mem
+                pm_xml.disk_enabled = pm_enabled_disk
+                vmxml.pm = pm_xml
+            vmxml.sync()
 
         try:
             vm.prepare_guest_agent()
