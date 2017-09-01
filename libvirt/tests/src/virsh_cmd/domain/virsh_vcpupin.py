@@ -2,10 +2,8 @@ import logging
 import re
 import random
 
-from autotest.client import utils
-
 from avocado.utils import process
-from avocado.core import exceptions
+from avocado.utils import cpu as cpuutils
 
 from virttest import virsh
 from virttest import utils_test
@@ -80,8 +78,8 @@ def run(test, params, env):
             logging.info("successfully pinned cpu_list: %s --> vcpu: %s",
                          cpu_list, vcpu)
         else:
-            raise exceptions.TestFail("Cpu pinning details not updated properly in"
-                                      " virsh vcpuinfo command output")
+            test.fail("Cpu pinning details not updated properly in"
+                      " virsh vcpuinfo command output")
 
         # Check for affinity value from vcpupin output
         actual_output_vcpupin = affinity_from_vcpupin(vm_name, vcpu)
@@ -90,8 +88,8 @@ def run(test, params, env):
             logging.info("successfully pinned cpu_list: %s --> vcpu: %s",
                          cpu_list, vcpu)
         else:
-            raise exceptions.TestFail("Cpu pinning details not updated properly in"
-                                      " virsh vcpupin command output")
+            test.fail("Cpu pinning details not updated properly in"
+                      " virsh vcpupin command output")
 
         if pid is None:
             return
@@ -105,9 +103,9 @@ def run(test, params, env):
             logging.info("successfully pinned vcpu: %s --> cpu: %s"
                          " in respective proc entry", vcpu, cpu_list)
         else:
-            raise exceptions.TestFail("Cpu pinning details not "
-                                      "updated properly in /proc/"
-                                      "%s/task/%s/status" % (pid, vcpu_pid))
+            test.fail("Cpu pinning details are not "
+                      "updated properly in /proc/"
+                      "%s/task/%s/status" % (pid, vcpu_pid))
 
     def run_and_check_vcpupin(vm, vm_ref, vcpu, cpu_list, options):
         """
@@ -121,17 +119,17 @@ def run(test, params, env):
         cmdResult = virsh.vcpupin(vm_ref, vcpu, cpu_list, options, debug=True)
         if cmdResult.exit_status:
             if not status_error:
-                # Command fail and it is in positive case.
-                raise exceptions.TestFail(cmdResult)
+                # Command fail and it is positive case.
+                test.fail(cmdResult)
             else:
-                # Command fail and it is in negative case.
+                # Command fail and it is negative case.
                 return
         else:
             if status_error:
-                # Command success and it is in negative case.
-                raise exceptions.TestFail(cmdResult)
+                # Command success and it is negative case.
+                test.fail(cmdResult)
             else:
-                # Command success and it is in positive case.
+                # Command success and it is positive case.
                 # "--config" will take effect after VM destroyed.
                 pid = None
                 vcpu_pid = None
@@ -161,8 +159,8 @@ def run(test, params, env):
         check_vcpupin(vm.name, vcpu, cpu_list, pid, vcpu_pid)
 
     if not virsh.has_help_command('vcpucount'):
-        raise exceptions.TestSkipError("This version of libvirt doesn't"
-                                       " support this test")
+        test.cancel("This version of libvirt doesn't"
+                    " support this test")
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     # Get the variables for vcpupin command.
@@ -195,7 +193,7 @@ def run(test, params, env):
                                        vcpucount_option).stdout.strip()
 
     # Find the alive cpus list
-    cpus_list = utils.cpu_online_map()
+    cpus_list = cpuutils.cpu_online_list()
     logging.info("Active cpus in host are %s", cpus_list)
 
     try:
@@ -218,9 +216,9 @@ def run(test, params, env):
             if len(vm_names) > 1:
                 vm2 = env.get_vm(vm_names[1])
             else:
-                raise exceptions.TestError("Need more than one domains")
+                test.error("Need more than one domains")
             if not vm2:
-                raise exceptions.TestSkipError("No %s find" % vm_names[1])
+                test.cancel("No %s find" % vm_names[1])
             vm2.destroy()
             vm2xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm2.name)
             vm2xml_backup = vm2xml.copy()
@@ -235,19 +233,21 @@ def run(test, params, env):
                 run_and_check_vcpupin(vm, vm_ref, 0, 0, "")
                 return
         # Get the host cpu count
-        host_cpu_count = utils.count_cpus()
+        host_online_cpu_count = cpuutils.online_cpus_count()
+        online_cpu_max = int(host_online_cpu_count) - 1
+        host_cpu_count = cpuutils.total_cpus_count()
         cpu_max = int(host_cpu_count) - 1
-        if (int(host_cpu_count) < 2) and (not cpu_list == "x"):
-            raise exceptions.TestSkipError("We need more cpus on host in this "
-                                           "case for the cpu_list=%s. But "
-                                           "current number of cpu on host is %s."
-                                           % (cpu_list, host_cpu_count))
+        if (int(host_online_cpu_count) < 2) and (not cpu_list == "x"):
+            test.cancel("We need more cpus on host in this "
+                        "case for the cpu_list=%s. But "
+                        "current number of cpu on host is %s."
+                        % (cpu_list, host_online_cpu_count))
 
         # Run test case
         for vcpu in range(int(guest_vcpu_count)):
             if cpu_list == "x":
                 for cpu in cpus_list:
-                    left_cpus = "0-%s,^%s" % (cpu_max, cpu)
+                    left_cpus = "0-%s,^%s" % (online_cpu_max, cpu)
                     if offline_pin:
                         offline_pin_and_check(vm, vcpu, str(cpu))
                         if multi_dom:
@@ -260,12 +260,12 @@ def run(test, params, env):
                                                   options)
             else:
                 if cpu_list == "x-y":
-                    cpus = "0-%s" % cpu_max
+                    cpus = "0-%s" % online_cpu_max
                 elif cpu_list == "x,y":
                     cpus = ','.join(random.sample(cpus_list, 2))
                     logging.info(cpus)
                 elif cpu_list == "x-y,^z":
-                    cpus = "0-%s,^%s" % (cpu_max, cpu_max)
+                    cpus = "0-%s,^%s" % (online_cpu_max, online_cpu_max)
                 elif cpu_list == "r":
                     cpus = "r"
                 elif cpu_list == "-1":
@@ -273,8 +273,8 @@ def run(test, params, env):
                 elif cpu_list == "out_of_max":
                     cpus = str(cpu_max + 1)
                 else:
-                    raise exceptions.TestSkipError("Cpu_list=%s is not recognized."
-                                                   % cpu_list)
+                    test.cancel("Cpu_list=%s is not recognized."
+                                % cpu_list)
                 if offline_pin:
                     offline_pin_and_check(vm, vcpu, cpus)
                 else:
