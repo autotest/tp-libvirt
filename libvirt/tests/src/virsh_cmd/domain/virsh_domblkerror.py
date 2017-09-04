@@ -4,6 +4,7 @@ import shutil
 import os
 
 from avocado.utils import process
+from avocado.utils import distro
 
 from virttest import virsh
 from virttest import data_dir
@@ -35,6 +36,8 @@ def run(test, params, env):
     target_dev = params.get("domblkerror_target_dev", "vdb")
     pool_name = params.get("domblkerror_pool_name", "fs_pool")
     vol_name = params.get("domblkerror_vol_name", "vol1")
+    ubuntu = distro.detect().name == 'Ubuntu'
+    nfs_service = None
 
     vm = env.get_vm(vm_name)
     # backup /etc/exports
@@ -67,12 +70,16 @@ def run(test, params, env):
                                                is_mount=False,
                                                export_options=mount_opt,
                                                export_dir=img_dir)
-            selinux_bak = res["selinux_status_bak"]
+            if not ubuntu:
+                selinux_bak = res["selinux_status_bak"]
             process.run("mount -o nolock,soft,timeo=1,retrans=1,retry=0 "
                         "127.0.0.1:%s %s" % (img_dir, nfs_dir), shell=True,
                         verbose=True)
             img_path = os.path.join(nfs_dir, img_name)
-            nfs_service = Factory.create_service("nfs")
+            if not ubuntu:
+                nfs_service = Factory.create_service("nfs")
+            else:
+                nfs_service = Factory.create_service("nfs-kernel-server")
 
         elif error_type == "no space":
             # Steps to generate no space block error:
