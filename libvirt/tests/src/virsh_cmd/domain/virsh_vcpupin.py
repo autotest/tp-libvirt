@@ -193,7 +193,7 @@ def run(test, params, env):
                                        vcpucount_option).stdout.strip()
 
     # Find the alive cpus list
-    cpus_list = cpuutils.cpu_online_list()
+    cpus_list = map(str, cpuutils.cpu_online_list())
     logging.info("Active cpus in host are %s", cpus_list)
 
     try:
@@ -233,11 +233,11 @@ def run(test, params, env):
                 run_and_check_vcpupin(vm, vm_ref, 0, 0, "")
                 return
         # Get the host cpu count
-        host_online_cpu_count = cpuutils.online_cpus_count()
-        online_cpu_max = int(host_online_cpu_count) - 1
+        host_online_cpu_count = len(cpus_list)
+        online_cpu_max = max(map(int, cpus_list))
         host_cpu_count = cpuutils.total_cpus_count()
         cpu_max = int(host_cpu_count) - 1
-        if (int(host_online_cpu_count) < 2) and (not cpu_list == "x"):
+        if (host_online_cpu_count < 2) and (not cpu_list == "x"):
             test.cancel("We need more cpus on host in this "
                         "case for the cpu_list=%s. But "
                         "current number of cpu on host is %s."
