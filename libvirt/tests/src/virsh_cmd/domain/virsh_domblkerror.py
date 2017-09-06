@@ -191,3 +191,4 @@ def run(test, params, env):
             vm.destroy()
             _pool_vol.cleanup_pool(pool_name, "fs", pool_target, img_name)
         vmxml_backup.sync()
+        data_dir.clean_tmp_files()
