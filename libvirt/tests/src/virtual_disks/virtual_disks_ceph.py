@@ -587,6 +587,9 @@ def run(test, params, env):
                 json_str = ('json:{"file.driver":"rbd",'
                             '"file.filename":"rbd:%s:mon_host=%s"}'
                             % (disk_src_name, mon_host))
+                # pass different json string according to the auth config
+                if auth_user and auth_key:
+                    json_str = ('%s:id=%s:key=%s"}' % (json_str[:-2], auth_user, auth_key))
                 disk_cmd = ("qemu-img create -f qcow2 -b '%s' %s" %
                             (json_str, front_end_img_file))
                 disk_path = front_end_img_file
