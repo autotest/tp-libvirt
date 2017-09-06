@@ -97,7 +97,7 @@ def run(test, params, env):
 
         return disk
 
-    def prepare_disk(path, disk_format):
+    def prepare_disk(path, disk_format, device, device_type):
         """
         Prepare the disk for a given disk format.
         """
@@ -137,9 +137,13 @@ def run(test, params, env):
             # Run partprobe to make the change take effect.
             process.run("partprobe", ignore_status=True, shell=True)
             libvirt.mkfs("%s1" % device_source, "ext3")
-            device_source += "1"
+            # For lun device, need to pass the whole iSCSI LUN
+            if device == "lun" and device_type == "block":
+                new_device_source = device_source
+            else:
+                new_device_source = device_source + "1"
             disk.update({"format": disk_format,
-                         "source": device_source})
+                         "source": new_device_source})
         elif disk_format in ["raw", "qcow2", "vhdx"]:
             disk_size = params.get("virt_disk_device_size", "1")
             device_source = libvirt.create_local_disk(
@@ -564,7 +568,7 @@ def run(test, params, env):
             else:
                 path = "%s/%s.%s" % (device_source_path,
                                      device_source_names[i], device_formats[i])
-                disk = prepare_disk(path, device_formats[i])
+                disk = prepare_disk(path, device_formats[i], devices[i], device_types[i])
                 if disk:
                     disks.append(disk)
 
@@ -635,6 +639,14 @@ def run(test, params, env):
                 disk_xml.vendor = vendor
             if product != "":
                 disk_xml.product = product
+
+            if (test_bus_device_option and
+                    devices[i] == "lun" and
+                    device_bus[i] == "scsi"):
+                if not libvirt_version.version_compare(2, 0, 0):
+                    virtio_scsi_controller = False
+                    device_targets[i] = "vdb"
+                    device_bus[i] = "virtio"
 
             disk_xml.target = {"dev": device_targets[i], "bus": device_bus[i]}
             if len(device_readonly) > i:
