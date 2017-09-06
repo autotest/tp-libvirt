@@ -980,6 +980,14 @@ def run(test, params, env):
     5) Parse and check result with expected.
     6) Clean up environment.
     """
+    # Since 3.1.0, '-1' is not an valid value for the VNC port with
+    # autoport is disabled, it means the VM will be failed to be
+    # started as expected. So, cancel to test this case since there is
+    # one similiar test scenario in the negative_test, which is
+    # negative_tests.vnc_only.no_autoport.port_-2
+    if libvirt_version.version_compare(3, 1, 0) and (params.get("vnc_port") == '-1'):
+        test.cancel('Cancel this case, since it is equivalence class test '
+                    'with case negative_tests.vnc_only.no_autoport.port_-2')
 
     # Since 2.0.0, there are some changes for listen type and port
     # 1. Two new listen types: 'none' and 'socket'(not covered in this test)
