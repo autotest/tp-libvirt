@@ -11,6 +11,7 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import utils_misc
 from virttest import utils_libvirtd
+from virttest import utils_test
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
@@ -365,6 +366,8 @@ def run(test, params, env):
     sockets = int(params.get("sockets", "0"))
     cores = int(params.get("cores", "0"))
     threads = int(params.get("threads", "0"))
+    with_stress = "yes" == params.get("run_stress", "no")
+    iterations = int(params.get("test_itr", 1))
     # Init expect vcpu count values
     expect_vcpu_num = [vcpu_max_num, vcpu_max_num, vcpu_current_num,
                        vcpu_current_num, vcpu_current_num]
@@ -434,7 +437,10 @@ def run(test, params, env):
         if 'power' not in cpu_util.get_cpu_arch():
             vmxml.set_pm_suspend(vm_name, "yes", "yes")
         vm.start()
-
+        if with_stress:
+            bt = utils_test.run_avocado_bg(vm, params, test)
+            if not bt:
+                test.cancel("guest stress failed to start")
         # Create swap partition/file if nessesary
         if vm_operation == "s4":
             need_mkswap = not vm.has_swap()
@@ -451,182 +457,185 @@ def run(test, params, env):
             vm.remove_package('qemu-guest-agent')
 
         # Run test
-        check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin)
-        # plug vcpu
-        if vcpu_plug:
-            # Pin vcpu
-            if pin_before_plug:
-                result = virsh.vcpupin(vm_name, pin_vcpu, pin_cpu_list,
-                                       ignore_status=True, debug=True)
-                libvirt.check_exit_status(result)
-                expect_vcpupin = {pin_vcpu: pin_cpu_list}
+        for _ in range(iterations):
+            check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin)
+            # plug vcpu
+            if vcpu_plug:
+                # Pin vcpu
+                if pin_before_plug:
+                    result = virsh.vcpupin(vm_name, pin_vcpu, pin_cpu_list,
+                                           ignore_status=True, debug=True)
+                    libvirt.check_exit_status(result)
+                    expect_vcpupin = {pin_vcpu: pin_cpu_list}
 
-            result = virsh.setvcpus(vm_name, vcpu_plug_num, setvcpu_option,
-                                    readonly=setvcpu_readonly,
-                                    ignore_status=True, debug=True)
-            check_setvcpus_result(result, status_error)
-
-            if setvcpu_option == "--config":
-                expect_vcpu_num[2] = vcpu_plug_num
-            elif setvcpu_option == "--guest":
-                # vcpuset '--guest' only affect vcpu number in guest
-                expect_vcpu_num[4] = vcpu_plug_num
-            else:
-                expect_vcpu_num[3] = vcpu_plug_num
-                expect_vcpu_num[4] = vcpu_plug_num
-                if not status_error:
-                    if not online_new_vcpu(vm, vcpu_plug_num):
-                        raise error.TestFail("Fail to enable new added cpu")
-
-            # Pin vcpu
-            if pin_after_plug:
-                result = virsh.vcpupin(vm_name, pin_vcpu, pin_cpu_list,
-                                       ignore_status=True, debug=True)
-                libvirt.check_exit_status(result)
-                expect_vcpupin = {pin_vcpu: pin_cpu_list}
-
-            if status_error and check_after_plug_fail:
-                check_vcpu_number(vm, expect_vcpu_num_bk, {}, setvcpu_option)
-
-            if not status_error:
-                if restart_libvirtd:
-                    utils_libvirtd.libvirtd_restart()
-
-                # Check vcpu number and related commands
-                check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin,
-                                  setvcpu_option)
-
-                # Control domain
-                manipulate_domain(vm_name, vm_operation)
-
-                if vm_operation != "null":
-                    # Check vcpu number and related commands
-                    check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin,
-                                      setvcpu_option)
-
-                # Recover domain
-                manipulate_domain(vm_name, vm_operation, recover=True)
-
-                # Resume domain from S4 status may takes long time(QEMU bug),
-                # here we wait for 10 mins then skip the remaining part of
-                # tests if domain not resume successfully
-                try:
-                    vm.wait_for_login(timeout=600)
-                except Exception, e:
-                    raise error.TestWarn("Skip remaining test steps as domain"
-                                         " not resume in 10 mins: %s" % e)
-                # For hotplug/unplug vcpu without '--config flag, after
-                # suspend domain to disk(shut off) and re-start it, the
-                # current live vcpu number will recover to orinial value
-                if vm_operation == 's4':
-                    if setvcpu_option.count("--config"):
-                        expect_vcpu_num[3] = vcpu_plug_num
-                        expect_vcpu_num[4] = vcpu_plug_num
-                    elif setvcpu_option.count("--guest"):
-                        expect_vcpu_num[4] = vcpu_plug_num
-                    else:
-                        expect_vcpu_num[3] = vcpu_current_num
-                        expect_vcpu_num[4] = vcpu_current_num
-                if vm_operation != "null":
-                    # Check vcpu number and related commands
-                    check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin,
-                                      setvcpu_option)
-
-        # Unplug vcpu
-        # Since QEMU 2.2.0, by default all current vcpus are non-hotpluggable
-        # when VM started , and it required that vcpu 0(id=1) is always
-        # present and non-hotpluggable, which means we can't hotunplug these
-        # vcpus directly. So we can either hotplug more vcpus before we do
-        # hotunplug, or modify the 'hotpluggable' attribute to 'yes' of the
-        # vcpus except vcpu 0, to make sure libvirt can find appropriate
-        # hotpluggable vcpus to reach the desired target vcpu count. For
-        # simple prepare step, here we choose to hotplug more vcpus.
-        if vcpu_unplug:
-            if setvcpu_option == "--live":
-                logging.info("Hotplug vcpu to the maximum count to make sure"
-                             " all these new plugged vcpus are hotunpluggable")
-                result = virsh.setvcpus(vm_name, vcpu_max_num, '--live',
-                                        debug=True)
-                libvirt.check_exit_status(result)
-            # Pin vcpu
-            if pin_before_unplug:
-                result = virsh.vcpupin(vm_name, pin_vcpu, pin_cpu_list,
-                                       ignore_status=True, debug=True)
-                libvirt.check_exit_status(result)
-                # As the vcpu will unplug later, so set expect_vcpupin to empty
-                expect_vcpupin = {}
-
-            result = virsh.setvcpus(vm_name, vcpu_unplug_num, setvcpu_option,
-                                    readonly=setvcpu_readonly,
-                                    ignore_status=True, debug=True)
-
-            try:
+                result = virsh.setvcpus(vm_name, vcpu_plug_num, setvcpu_option,
+                                        readonly=setvcpu_readonly,
+                                        ignore_status=True, debug=True)
                 check_setvcpus_result(result, status_error)
-            except error.TestNAError:
-                raise error.TestWarn("Skip unplug vcpu as it is not supported")
 
-            if setvcpu_option == "--config":
-                expect_vcpu_num[2] = vcpu_unplug_num
-            elif setvcpu_option == "--guest":
-                # vcpuset '--guest' only affect vcpu number in guest
-                expect_vcpu_num[4] = vcpu_unplug_num
-            else:
-                expect_vcpu_num[3] = vcpu_unplug_num
-                expect_vcpu_num[4] = vcpu_unplug_num
+                if setvcpu_option == "--config":
+                    expect_vcpu_num[2] = vcpu_plug_num
+                elif setvcpu_option == "--guest":
+                    # vcpuset '--guest' only affect vcpu number in guest
+                    expect_vcpu_num[4] = vcpu_plug_num
+                else:
+                    expect_vcpu_num[3] = vcpu_plug_num
+                    expect_vcpu_num[4] = vcpu_plug_num
+                    if not status_error:
+                        if not online_new_vcpu(vm, vcpu_plug_num):
+                            raise error.TestFail("Fail to enable new added cpu")
 
-            # Pin vcpu
-            if pin_after_unplug:
-                result = virsh.vcpupin(vm_name, pin_vcpu, pin_cpu_list,
-                                       ignore_status=True, debug=True)
-                libvirt.check_exit_status(result)
-                expect_vcpupin = {pin_vcpu: pin_cpu_list}
+                # Pin vcpu
+                if pin_after_plug:
+                    result = virsh.vcpupin(vm_name, pin_vcpu, pin_cpu_list,
+                                           ignore_status=True, debug=True)
+                    libvirt.check_exit_status(result)
+                    expect_vcpupin = {pin_vcpu: pin_cpu_list}
 
-            if not status_error:
-                if restart_libvirtd:
-                    utils_libvirtd.libvirtd_restart()
+                if status_error and check_after_plug_fail:
+                    check_vcpu_number(vm, expect_vcpu_num_bk, {}, setvcpu_option)
 
-                # Check vcpu number and related commands
-                check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin,
-                                  setvcpu_option)
+                if not status_error:
+                    if restart_libvirtd:
+                        utils_libvirtd.libvirtd_restart()
 
-                # Control domain
-                manipulate_domain(vm_name, vm_operation)
-
-                if vm_operation != "null":
                     # Check vcpu number and related commands
                     check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin,
                                       setvcpu_option)
 
-                # Recover domain
-                manipulate_domain(vm_name, vm_operation, recover=True)
+                    # Control domain
+                    manipulate_domain(vm_name, vm_operation)
 
-                # Resume domain from S4 status may takes long time(QEMU bug),
-                # here we wait for 10 mins then skip the remaining part of
-                # tests if domain not resume successfully
+                    if vm_operation != "null":
+                        # Check vcpu number and related commands
+                        check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin,
+                                          setvcpu_option)
+
+                    # Recover domain
+                    manipulate_domain(vm_name, vm_operation, recover=True)
+
+                    # Resume domain from S4 status may takes long time(QEMU bug),
+                    # here we wait for 10 mins then skip the remaining part of
+                    # tests if domain not resume successfully
+                    try:
+                        vm.wait_for_login(timeout=600)
+                    except Exception, e:
+                        raise error.TestWarn("Skip remaining test steps as domain"
+                                             " not resume in 10 mins: %s" % e)
+                    # For hotplug/unplug vcpu without '--config flag, after
+                    # suspend domain to disk(shut off) and re-start it, the
+                    # current live vcpu number will recover to orinial value
+                    if vm_operation == 's4':
+                        if setvcpu_option.count("--config"):
+                            expect_vcpu_num[3] = vcpu_plug_num
+                            expect_vcpu_num[4] = vcpu_plug_num
+                        elif setvcpu_option.count("--guest"):
+                            expect_vcpu_num[4] = vcpu_plug_num
+                        else:
+                            expect_vcpu_num[3] = vcpu_current_num
+                            expect_vcpu_num[4] = vcpu_current_num
+                    if vm_operation != "null":
+                        # Check vcpu number and related commands
+                        check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin,
+                                          setvcpu_option)
+
+            # Unplug vcpu
+            # Since QEMU 2.2.0, by default all current vcpus are non-hotpluggable
+            # when VM started , and it required that vcpu 0(id=1) is always
+            # present and non-hotpluggable, which means we can't hotunplug these
+            # vcpus directly. So we can either hotplug more vcpus before we do
+            # hotunplug, or modify the 'hotpluggable' attribute to 'yes' of the
+            # vcpus except vcpu 0, to make sure libvirt can find appropriate
+            # hotpluggable vcpus to reach the desired target vcpu count. For
+            # simple prepare step, here we choose to hotplug more vcpus.
+            if vcpu_unplug:
+                if setvcpu_option == "--live":
+                    logging.info("Hotplug vcpu to the maximum count to make sure"
+                                 " all these new plugged vcpus are hotunpluggable")
+                    result = virsh.setvcpus(vm_name, vcpu_max_num, '--live',
+                                            debug=True)
+                    libvirt.check_exit_status(result)
+                # Pin vcpu
+                if pin_before_unplug:
+                    result = virsh.vcpupin(vm_name, pin_vcpu, pin_cpu_list,
+                                           ignore_status=True, debug=True)
+                    libvirt.check_exit_status(result)
+                    # As the vcpu will unplug later, so set expect_vcpupin to empty
+                    expect_vcpupin = {}
+
+                result = virsh.setvcpus(vm_name, vcpu_unplug_num, setvcpu_option,
+                                        readonly=setvcpu_readonly,
+                                        ignore_status=True, debug=True)
+
                 try:
-                    vm.wait_for_login(timeout=600)
-                except Exception, e:
-                    raise error.TestWarn("Skip remaining test steps as domain"
-                                         " not resume in 10 mins: %s" % e)
-                # For hotplug/unplug vcpu without '--config flag, after
-                # suspend domain to disk(shut off) and re-start it, the
-                # current live vcpu number will recover to orinial value
-                if vm_operation == 's4':
-                    if setvcpu_option.count("--config"):
-                        expect_vcpu_num[3] = vcpu_unplug_num
-                        expect_vcpu_num[4] = vcpu_unplug_num
-                    elif setvcpu_option.count("--guest"):
-                        expect_vcpu_num[4] = vcpu_unplug_num
-                    else:
-                        expect_vcpu_num[3] = vcpu_current_num
-                        expect_vcpu_num[4] = vcpu_current_num
-                if vm_operation != "null":
+                    check_setvcpus_result(result, status_error)
+                except error.TestNAError:
+                    raise error.TestWarn("Skip unplug vcpu as it is not supported")
+
+                if setvcpu_option == "--config":
+                    expect_vcpu_num[2] = vcpu_unplug_num
+                elif setvcpu_option == "--guest":
+                    # vcpuset '--guest' only affect vcpu number in guest
+                    expect_vcpu_num[4] = vcpu_unplug_num
+                else:
+                    expect_vcpu_num[3] = vcpu_unplug_num
+                    expect_vcpu_num[4] = vcpu_unplug_num
+
+                # Pin vcpu
+                if pin_after_unplug:
+                    result = virsh.vcpupin(vm_name, pin_vcpu, pin_cpu_list,
+                                           ignore_status=True, debug=True)
+                    libvirt.check_exit_status(result)
+                    expect_vcpupin = {pin_vcpu: pin_cpu_list}
+
+                if not status_error:
+                    if restart_libvirtd:
+                        utils_libvirtd.libvirtd_restart()
+
                     # Check vcpu number and related commands
                     check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin,
                                       setvcpu_option)
+
+                    # Control domain
+                    manipulate_domain(vm_name, vm_operation)
+
+                    if vm_operation != "null":
+                        # Check vcpu number and related commands
+                        check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin,
+                                          setvcpu_option)
+
+                    # Recover domain
+                    manipulate_domain(vm_name, vm_operation, recover=True)
+
+                    # Resume domain from S4 status may takes long time(QEMU bug),
+                    # here we wait for 10 mins then skip the remaining part of
+                    # tests if domain not resume successfully
+                    try:
+                        vm.wait_for_login(timeout=600)
+                    except Exception, e:
+                        raise error.TestWarn("Skip remaining test steps as domain"
+                                             " not resume in 10 mins: %s" % e)
+                    # For hotplug/unplug vcpu without '--config flag, after
+                    # suspend domain to disk(shut off) and re-start it, the
+                    # current live vcpu number will recover to orinial value
+                    if vm_operation == 's4':
+                        if setvcpu_option.count("--config"):
+                            expect_vcpu_num[3] = vcpu_unplug_num
+                            expect_vcpu_num[4] = vcpu_unplug_num
+                        elif setvcpu_option.count("--guest"):
+                            expect_vcpu_num[4] = vcpu_unplug_num
+                        else:
+                            expect_vcpu_num[3] = vcpu_current_num
+                            expect_vcpu_num[4] = vcpu_current_num
+                    if vm_operation != "null":
+                        # Check vcpu number and related commands
+                        check_vcpu_number(vm, expect_vcpu_num, expect_vcpupin,
+                                          setvcpu_option)
     # Recover env
     finally:
         if need_mkswap:
             vm.cleanup_swap()
+        if with_stress:
+            bt.join(ignore_status=True)
         vm.destroy()
         backup_xml.sync()
