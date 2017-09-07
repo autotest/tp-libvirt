@@ -3,8 +3,6 @@ import logging
 import re
 import base64
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 from avocado.core import exceptions
 
@@ -20,7 +18,7 @@ from provider import libvirt_version
 
 def run(test, params, env):
     """
-    Test virsh vol-create command to cover the following matrix:
+    Test virsh vol-create and vol-create-as command to cover the following matrix:
     pool_type = [dir, fs, netfs]
     volume_format = [raw, bochs, cloop, cow, dmg, iso, qcow, qcow2, qed,
                      vmdk, vpc]
@@ -58,25 +56,26 @@ def run(test, params, env):
     incomplete_target = "yes" == params.get("incomplete_target", "no")
     luks_encrypted = "luks" == params.get("encryption_method")
     encryption_secret_type = params.get("encryption_secret_type", "passphrase")
+    virsh_readonly_mode = 'yes' == params.get("virsh_readonly", "no")
 
     if not libvirt_version.version_compare(1, 0, 0):
         if "--prealloc-metadata" in extra_option:
-            raise error.TestNAError("metadata preallocation not supported in"
-                                    " current libvirt version.")
+            test.cancel("metadata preallocation not supported in"
+                        " current libvirt version.")
         if incomplete_target:
-            raise error.TestNAError("It does not support generate target "
-                                    "path in thi libvirt version.")
+            test.cancel("It does not support generate target path"
+                        "in current libvirt version.")
 
     pool_type = ['dir', 'disk', 'fs', 'logical', 'netfs', 'iscsi', 'scsi']
     if src_pool_type not in pool_type:
-        raise error.TestNAError("pool type %s not in supported type list: %s" %
-                                (src_pool_type, pool_type))
+        test.cancel("pool type %s not in supported type list: %s" %
+                    (src_pool_type, pool_type))
 
     # libvirt acl polkit related params
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
@@ -122,7 +121,7 @@ def run(test, params, env):
             encryption_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
                                          ret.stdout)[0].lstrip()
         except IndexError, e:
-            raise exceptions.TestError("Fail to get newly created secret uuid")
+            test.error("Fail to get newly created secret uuid")
         logging.debug("Secret uuid %s", encryption_uuid)
 
         # Set secret value.
@@ -202,20 +201,21 @@ def run(test, params, env):
         logging.debug("Current volumes in %s: %s", pool_name, src_volumes)
         if expect_exist:
             if vol_name not in src_volumes:
-                raise error.TestFail("Can't find volume %s in pool %s"
-                                     % (vol_name, pool_name))
+                test.fail("Can't find volume %s in pool %s"
+                          % (vol_name, pool_name))
             # check format in volume xml
+            volxml = libvirt_xml.VolXML()
             post_xml = volxml.new_from_vol_dumpxml(vol_name, pool_name)
             logging.debug("Volume %s XML: %s" % (vol_name,
                                                  post_xml.xmltreefile))
             if 'format' in post_xml.keys() and vol_format is not None:
                 if post_xml.format != vol_format:
-                    raise error.TestFail("Volume format %s is not expected"
-                                         % vol_format + " as defined.")
+                    test.fail("Volume format %s is not expected"
+                              % vol_format + " as defined.")
         else:
             if vol_name in src_volumes:
-                raise error.TestFail("Find volume %s in pool %s, but expect not"
-                                     % (vol_name, pool_name))
+                test.fail("Find volume %s in pool %s, but expect not"
+                          % (vol_name, pool_name))
 
     fmt_err0 = "Unknown file format '%s'" % vol_format
     fmt_err1 = "Formatting or formatting option not "
@@ -235,22 +235,22 @@ def run(test, params, env):
                      source_format=src_pool_format)
 
         src_pv = libvirt_storage.PoolVolume(src_pool_name)
+        src_pool_uuid = libvirt_storage.StoragePool().pool_info(src_pool_name)['UUID']
         # Print current pools for debugging
         logging.debug("Current pools:%s",
                       libvirt_storage.StoragePool().list_pools())
-
         # Create volumes by virsh in a loop
         while pool_vol_num > 0:
             # Set volume xml file
             vol_name = prefix_vol_name + "_%s" % pool_vol_num
             pool_vol_num -= 1
+            # disk partition for new volume
+            if src_pool_type == "disk":
+                vol_name = utlv.new_disk_vol_name(src_pool_name)
+                if vol_name is None:
+                    test.error("Fail to generate volume name")
             if by_xml:
                 # According to BZ#1138523, we need inpect the right name
-                # (disk partition) for new volume
-                if src_pool_type == "disk":
-                    vol_name = utlv.new_disk_vol_name(src_pool_name)
-                    if vol_name is None:
-                        raise error.TestError("Fail to generate volume name")
                 vol_arg['name'] = vol_name
                 volxml = libvirt_xml.VolXML()
                 newvol = volxml.new_vol(**vol_arg)
@@ -264,12 +264,10 @@ def run(test, params, env):
                     luks_encryption_params.update({"secret": {"type": encryption_secret_type,
                                                               "uuid": luks_secret_uuid}})
                     newvol.encryption = volxml.new_encryption(**luks_encryption_params)
-
                 vol_xml = newvol['xml']
                 if params.get('setup_libvirt_polkit') == 'yes':
                     process.run("chmod 666 %s" % vol_xml, ignore_status=True,
                                 shell=True)
-
                 # Run virsh_vol_create to create vol
                 logging.debug("Create volume from XML: %s" % newvol.xmltreefile)
                 cmd_result = virsh.vol_create(
@@ -278,10 +276,13 @@ def run(test, params, env):
                     ignore_status=True, debug=True)
             else:
                 # Run virsh_vol_create_as to create_vol
+                pool_name = src_pool_name
+                if params.get("create_vol_by_pool_uuid") == "yes":
+                    pool_name = src_pool_uuid
                 cmd_result = virsh.vol_create_as(
-                    vol_name, src_pool_name, vol_capacity, vol_allocation,
-                    vol_format, unprivileged_user=unprivileged_user, uri=uri,
-                    ignore_status=True, debug=True)
+                    vol_name, pool_name, vol_capacity, vol_allocation,
+                    vol_format, extra_option, unprivileged_user=unprivileged_user,
+                    uri=uri, readonly=virsh_readonly_mode, ignore_status=True, debug=True)
             # Check result
             try:
                 utlv.check_exit_status(cmd_result, status_error)
@@ -291,10 +292,10 @@ def run(test, params, env):
                                               src_pool_name).stdout.strip()
                     logging.debug("Full path of %s: %s", vol_name, vol_path)
                     vol_path_list.append(vol_path)
-            except error.TestFail, e:
+            except exceptions.TestFail, e:
                 stderr = cmd_result.stderr
                 if any(err in stderr for err in fmt_err_list):
-                    raise error.TestNAError(skip_msg)
+                    test.cancel(skip_msg)
                 else:
                     raise e
         # Post process vol by other programs
@@ -307,14 +308,14 @@ def run(test, params, env):
                 try:
                     virsh.pool_refresh(src_pool_name, ignore_status=False)
                     check_vol(src_pool_name, process_vol, expect_vol_exist)
-                except (process.CmdError, error.TestFail), e:
+                except (process.CmdError, exceptions.TestFail), e:
                     if process_vol_type == "thin":
-                        logging.error(e)
-                        raise error.TestNAError("You may encounter bug BZ#1060287")
+                        logging.error(str(e))
+                        test.fail("You may encounter bug BZ#1060287")
                     else:
                         raise e
             else:
-                raise error.TestFail("Post process volume failed")
+                test.fail("Post process volume failed")
     finally:
         # Cleanup
         # For old version lvm2(2.02.106 or early), deactivate volume group
@@ -328,7 +329,7 @@ def run(test, params, env):
                              src_emulated_image)
             for secret_uuid in set(secret_uuids):
                 virsh.secret_undefine(secret_uuid)
-        except error.TestFail, detail:
+        except exceptions.TestFail, detail:
             logging.error(str(detail))
         if multipathd_status:
             multipathd.start()
