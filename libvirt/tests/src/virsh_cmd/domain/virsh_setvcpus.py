@@ -81,6 +81,7 @@ def run(test, params, env):
     sockets = params.get("sockets")
     cores = params.get("cores")
     threads = params.get("threads")
+    result = True
 
     # Early death 1.1
     if vm_ref == "remote" and (remote_ip.count("EXAMPLE.COM") or
