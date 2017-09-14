@@ -54,6 +54,8 @@ class Console(aexpect.ShellSession):
         elif console_type == 'tcp':
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             if is_server:
+                # Fix the address already in use issue after other case run
+                time.sleep(60)
                 self.socket.bind(address)
                 self.socket.listen(1)
                 self._poll_thread = threading.Thread(
