@@ -4,6 +4,7 @@ import shutil
 import os
 
 from avocado.utils import process
+from avocado.utils import distro
 
 from virttest import virsh
 from virttest import data_dir
@@ -35,6 +36,9 @@ def run(test, params, env):
     target_dev = params.get("domblkerror_target_dev", "vdb")
     pool_name = params.get("domblkerror_pool_name", "fs_pool")
     vol_name = params.get("domblkerror_vol_name", "vol1")
+    ubuntu = distro.detect().name == 'Ubuntu'
+    nfs_service_package = params.get("nfs_service_package", "nfs-kernel-server")
+    nfs_service = None
 
     vm = env.get_vm(vm_name)
     # backup /etc/exports
@@ -67,12 +71,14 @@ def run(test, params, env):
                                                is_mount=False,
                                                export_options=mount_opt,
                                                export_dir=img_dir)
-            selinux_bak = res["selinux_status_bak"]
+            if not ubuntu:
+                selinux_bak = res["selinux_status_bak"]
+                nfs_service_package = "nfs"
             process.run("mount -o nolock,soft,timeo=1,retrans=1,retry=0 "
                         "127.0.0.1:%s %s" % (img_dir, nfs_dir), shell=True,
                         verbose=True)
             img_path = os.path.join(nfs_dir, img_name)
-            nfs_service = Factory.create_service("nfs")
+            nfs_service = Factory.create_service(nfs_service_package)
 
         elif error_type == "no space":
             # Steps to generate no space block error:
@@ -82,6 +88,7 @@ def run(test, params, env):
             # 4. In guest, create large image in the vol, which may cause
             # guest paused
 
+            _pool_vol = None
             pool_target = os.path.join(tmp_dir, pool_name)
             _pool_vol = libvirt.PoolVolumeTest(test, params)
             _pool_vol.pre_pool(pool_name, "fs", pool_target, img_name,
@@ -189,6 +196,7 @@ def run(test, params, env):
                                                restore_selinux=selinux_bak)
         elif error_type == "no space":
             vm.destroy()
-            _pool_vol.cleanup_pool(pool_name, "fs", pool_target, img_name)
+            if _pool_vol:
+                _pool_vol.cleanup_pool(pool_name, "fs", pool_target, img_name)
         vmxml_backup.sync()
         data_dir.clean_tmp_files()
