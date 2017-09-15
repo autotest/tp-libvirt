@@ -607,11 +607,10 @@ def run(test, params, env):
             'hostname': remote_host, 'hypervisor': 'kvm', 'v2v_opts': '-v -x',
             'storage': output_storage, 'network': network, 'bridge': bridge,
             'target': target, 'main_vm': vm_name, 'input_mode': 'libvirt',
+            'new_name': vm_name + '_' + utils_misc.generate_random_string(3)
         }
         if output_format:
             v2v_params.update({'output_format': output_format})
-        if params.get('new_name'):
-            v2v_params.update({'new_name': params['new_name']})
         # Build rhev related options
         if output_mode == 'rhev':
             # Create SASL user on the ovirt host
