@@ -162,7 +162,10 @@ def run(test, params, env):
             return (vm.state() == "paused")
 
         if not utils_misc.wait_for(_check_state, timeout):
-            test.fail("Guest does not paused, it is %s now" % vm.state())
+            # If not paused, perform one more IO operation to the mnt disk
+            session.cmd("echo 'one more write to big file' > %s/big_file" % mnt_dir)
+            if not utils_misc.wait_for(_check_state, 60):
+                test.fail("Guest does not paused, it is %s now" % vm.state())
         else:
             logging.info("Now domain state changed to paused status")
             output = virsh.domblkerror(vm_name)
