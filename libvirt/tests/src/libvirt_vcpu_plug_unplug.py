@@ -200,6 +200,9 @@ def manipulate_domain(vm_name, vm_operation, recover=False):
             libvirt.check_exit_status(result)
             # Wait domain state change: 'in shutdown' -> 'shut off'
             utils_misc.wait_for(lambda: virsh.is_dead(vm_name), 5)
+        elif vm_operation == "suspend":
+            result = virsh.suspend(vm_name, ignore_status=True, debug=True)
+            libvirt.check_exit_status(result)
         else:
             logging.debug("No operation for the domain")
 
@@ -217,6 +220,9 @@ def manipulate_domain(vm_name, vm_operation, recover=False):
         elif vm_operation == "s3":
             suspend_target = "mem"
             result = virsh.dompmwakeup(vm_name, ignore_status=True, debug=True)
+            libvirt.check_exit_status(result)
+        elif vm_operation == "suspend":
+            result = virsh.resume(vm_name, ignore_status=True, debug=True)
             libvirt.check_exit_status(result)
         else:
             logging.debug("No need recover the domain")
