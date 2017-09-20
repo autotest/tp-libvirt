@@ -328,7 +328,7 @@ def run(test, params, env):
             # Starting VM failed.
             # VM with seclabel can not access the image with the context.
             if not status_error:
-                err_msg = "Domain start fail not due to  DAC setting, check "
+                err_msg = "Domain start failed as expected, check "
                 err_msg += "more in https://bugzilla.redhat.com/show_bug"
                 err_msg += ".cgi?id=856951"
                 if set_sec_label:
@@ -336,10 +336,10 @@ def run(test, params, env):
                         if sec_relabel == "yes" and sec_label_trans == "0:0":
                             if set_qemu_conf:
                                 if qemu_conf_label_trans == "107:107":
-                                    test.cancel(err_msg)
+                                    logging.debug(err_msg)
                         elif sec_relabel == "no" and sec_label_trans == "0:0":
                             if not set_qemu_conf:
-                                test.cancel(err_msg)
+                                logging.debug(err_msg)
                 else:
                     test.fail("Test failed in positive case."
                               "error: %s" % e)
