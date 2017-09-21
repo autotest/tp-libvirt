@@ -1,0 +1,23 @@
+<domain type='lxc'>
+<name>lxc_test_vm1</name>
+<memory unit='KiB'>500000</memory>
+<currentMemory unit='KiB'>500000</currentMemory>
+<vcpu placement='static'>1</vcpu>
+<os>i
+<type arch='x86_64'>exe</type>
+<init>/bin/sh</init>
+</os>
+<clock offset='utc'/>
+<on_poweroff>destroy</on_poweroff>
+<on_reboot>restart</on_reboot>
+<on_crash>destroy</on_crash>
+<devices>
+<emulator>/usr/libexec/libvirt_lxc</emulator>
+<console type='pty' tty='/dev/pts/2'>
+<source path='/dev/pts/2'/>
+<target type='lxc' port='0'/>
+<alias name='console0'/>
+</console>
+</devices>
+<seclabel type='none'/>
+</domain>
