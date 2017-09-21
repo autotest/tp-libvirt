@@ -30,7 +30,7 @@ def run(test, params, env):
     """
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
-    for v in params.itervalues():
+    for v in list(params.values()):
         if "V2V_EXAMPLE" in v:
             test.cancel("Please set real value for %s" % v)
 
@@ -277,7 +277,7 @@ def run(test, params, env):
                 fail.append(key)
 
         # Check disk info
-        disk = xml.get_disk_all().values()[0]
+        disk = list(xml.get_disk_all().values())[0]
         bus, type = disk.find('target').get('bus'), disk.find('driver').get('type')
         path = disk.find('source').get('file')
         disks_info = "%s (%s) [%s]" % (path, type, bus)
@@ -290,7 +290,7 @@ def run(test, params, env):
             fail.append('disks')
 
         # Check nic info
-        nic = xml.get_iface_all().values()[0]
+        nic = list(xml.get_iface_all().values())[0]
         type = nic.get('type')
         mac = nic.find('mac').get('address')
         nic_source = nic.find('source')
