@@ -5,6 +5,7 @@ import time
 from avocado.utils import process
 
 from virttest import virsh
+from virttest import utils_misc
 from virttest import utils_v2v
 from virttest import utils_sasl
 from virttest import data_dir
@@ -24,7 +25,6 @@ def run(test, params, env):
     if utils_v2v.V2V_EXEC is None:
         test.error('Missing command: virt-v2v')
     vm_name = params.get('main_vm', 'EXAMPLE')
-    new_vm_name = params.get('new_name')
     target = params.get('target')
     input_mode = params.get('input_mode')
     input_file = params.get('input_file')
@@ -112,7 +112,8 @@ def run(test, params, env):
         v2v_params = {
             'main_vm': vm_name, 'target': target, 'v2v_opts': '-v -x',
             'storage': output_storage, 'network': network, 'bridge': bridge,
-            'input_mode': input_mode, 'input_file': input_file
+            'input_mode': input_mode, 'input_file': input_file,
+            'new_name': 'ova_vm_' + utils_misc.generate_random_string(3)
         }
         if output_format:
             v2v_params.update({'output_format': output_format})
@@ -146,9 +147,8 @@ def run(test, params, env):
 
         v2v_result = utils_v2v.v2v_cmd(v2v_params)
 
-        if new_vm_name:
-            vm_name = new_vm_name
-            params['main_vm'] = new_vm_name
+        if 'new_name' in v2v_params:
+            vm_name = params['main_vm'] = v2v_params['new_name']
 
         check_result(v2v_result, status_error)
     finally:
