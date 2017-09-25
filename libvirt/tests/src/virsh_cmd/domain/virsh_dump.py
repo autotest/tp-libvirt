@@ -4,8 +4,7 @@ import commands
 import time
 import signal
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
@@ -14,74 +13,6 @@ from virttest.libvirt_xml import vm_xml
 from virttest import data_dir
 
 from provider import libvirt_version
-
-
-def wait_pid_active(pid, timeout=5):
-    """
-    Wait for pid in running status
-
-    :param: pid: Desired pid
-    :param: timeout: Max time we can wait
-    """
-    cmd = ("cat /proc/%d/stat | awk '{print $3}'" % pid)
-    try:
-        while (True):
-            timeout = timeout - 1
-            if not timeout:
-                raise error.TestNAError("Time out for waiting pid!")
-            pid_status = utils.run(cmd, ignore_status=False).stdout.strip()
-            if pid_status != "R":
-                time.sleep(1)
-                continue
-            else:
-                break
-    except Exception, detail:
-        raise error.TestFail(detail)
-
-
-def check_flag(file_flag):
-    """
-    Check if file flag include O_DIRECT.
-
-    Note, O_DIRECT is defined as:
-    #define O_DIRECT        00040000        /* direct disk access hint */
-    """
-    if int(file_flag) == 4:
-        logging.info("File flags include O_DIRECT")
-        return True
-    else:
-        logging.error("File flags doesn't include O_DIRECT")
-        return False
-
-
-def check_bypass(dump_file):
-    """
-    Get the file flags of domain core dump file and check it.
-    """
-
-    cmd1 = "lsof -w %s" % dump_file
-    while True:
-        if not os.path.exists(dump_file) or os.system(cmd1):
-            continue
-        cmd2 = ("cat /proc/$(%s |awk '/libvirt_i/{print $2}')/fdinfo/1"
-                "|grep flags|awk '{print $NF}'" % cmd1)
-        (status, output) = commands.getstatusoutput(cmd2)
-        if status:
-            raise error.TestFail("Fail to get the flags of dumped file")
-        if not len(output):
-            continue
-        try:
-            logging.debug("The flag of dumped file: %s", output)
-            file_flag = output[-5]
-            if check_flag(file_flag):
-                logging.info("Bypass file system cache "
-                             "successfully when dumping")
-                break
-            else:
-                raise error.TestFail("Bypass file system cache "
-                                     "fail when dumping")
-        except (ValueError, IndexError), detail:
-            raise error.TestFail(detail)
 
 
 def run(test, params, env):
@@ -120,8 +51,73 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
+
+    def wait_pid_active(pid, timeout=5):
+        """
+        Wait for pid in running status
+
+        :param: pid: Desired pid
+        :param: timeout: Max time we can wait
+        """
+        cmd = ("cat /proc/%d/stat | awk '{print $3}'" % pid)
+        try:
+            while (True):
+                timeout = timeout - 1
+                if not timeout:
+                    test.cancel("Time out for waiting pid!")
+                pid_status = process.run(cmd, ignore_status=False, shell=True).stdout.strip()
+                if pid_status != "R":
+                    time.sleep(1)
+                    continue
+                else:
+                    break
+        except Exception, detail:
+            test.fail(detail)
+
+    def check_flag(file_flag):
+        """
+        Check if file flag include O_DIRECT.
+
+        Note, O_DIRECT is defined as:
+        #define O_DIRECT        00040000        /* direct disk access hint */
+        """
+        if int(file_flag) == 4:
+            logging.info("File flags include O_DIRECT")
+            return True
+        else:
+            logging.error("File flags doesn't include O_DIRECT")
+            return False
+
+    def check_bypass(dump_file):
+        """
+        Get the file flags of domain core dump file and check it.
+        """
+
+        cmd1 = "lsof -w %s" % dump_file
+        while True:
+            if not os.path.exists(dump_file) or process.system(cmd1):
+                continue
+            cmd2 = ("cat /proc/$(%s |awk '/libvirt_i/{print $2}')/fdinfo/1"
+                    "|grep flags|awk '{print $NF}'" % cmd1)
+            (status, output) = commands.getstatusoutput(cmd2)
+            if status:
+                test.fail("Fail to get the flags of dumped file")
+            if not len(output):
+                continue
+            try:
+                logging.debug("The flag of dumped file: %s", output)
+                file_flag = output[-5]
+                if check_flag(file_flag):
+                    logging.info("Bypass file system cache "
+                                 "successfully when dumping")
+                    break
+                else:
+                    test.fail("Bypass file system cache "
+                              "fail when dumping")
+            except (ValueError, IndexError), detail:
+                test.fail(detail)
 
     def check_domstate(actual, options):
         """
@@ -196,14 +192,14 @@ def run(test, params, env):
     if len(memory_dump_format):
         # Make sure libvirt support this option
         if virsh.has_command_help_match("dump", "--format") is None:
-            raise error.TestNAError("Current libvirt version doesn't support"
-                                    " --format option for dump command")
+            test.cancel("Current libvirt version doesn't support"
+                        " --format option for dump command")
         # Make sure QEMU support this format
         query_cmd = '{"execute":"query-dump-guest-memory-capability"}'
         qemu_capa = virsh.qemu_monitor_command(vm_name, query_cmd).stdout
         if (memory_dump_format not in qemu_capa) and not status_error:
-            raise error.TestNAError("Unsupported dump format '%s' for"
-                                    " this QEMU binary" % memory_dump_format)
+            test.cancel("Unsupported dump format '%s' for"
+                        " this QEMU binary" % memory_dump_format)
         options += " --format %s" % memory_dump_format
         if memory_dump_format == 'elf':
             dump_image_format = 'elf'
@@ -216,7 +212,7 @@ def run(test, params, env):
 
     dump_guest_core = params.get("dump_guest_core", "")
     if dump_guest_core not in ["", "on", "off"]:
-        raise error.TestError("invalid dumpCore value: %s" % dump_guest_core)
+        test.error("invalid dumpCore value: %s" % dump_guest_core)
     try:
         # Set dumpCore in guest xml
         if dump_guest_core:
@@ -229,11 +225,11 @@ def run(test, params, env):
             vm_pid = vm.get_pid()
             cmd = "cat /proc/%d/cmdline|xargs -0 echo" % vm_pid
             cmd += "|grep dump-guest-core=%s" % dump_guest_core
-            result = utils.run(cmd, ignore_status=True)
+            result = process.run(cmd, ignore_status=True, shell=True)
             logging.debug("cmdline: %s" % result.stdout)
             if result.exit_status:
-                error.TestFail("Not find dump-guest-core=%s in qemu cmdline"
-                               % dump_guest_core)
+                test.fail("Not find dump-guest-core=%s in qemu cmdline"
+                          % dump_guest_core)
             else:
                 logging.info("Find dump-guest-core=%s in qemum cmdline",
                              dump_guest_core)
@@ -262,19 +258,19 @@ def run(test, params, env):
 
         logging.info("Start check result")
         if not check_domstate(vm.state(), options):
-            raise error.TestFail("Domain status check fail.")
+            test.fail("Domain status check fail.")
         if status_error:
             if not status:
-                raise error.TestFail("Expect fail, but run successfully")
+                test.fail("Expect fail, but run successfully")
         else:
             if status:
-                raise error.TestFail("Expect succeed, but run fail")
+                test.fail("Expect succeed, but run fail")
             if not os.path.exists(dump_file):
-                raise error.TestFail("Fail to find domain dumped file.")
+                test.fail("Fail to find domain dumped file.")
             if check_dump_format(dump_image_format, dump_file):
                 logging.info("Successfully dump domain to %s", dump_file)
             else:
-                raise error.TestFail("The format of dumped file is wrong.")
+                test.fail("The format of dumped file is wrong.")
     finally:
         backup_xml.sync()
         qemu_config.restore()
