@@ -111,8 +111,8 @@ def set_numa_parameter(params, cgstop):
 
     # Get host numa node list
     host_numa_node = utils_misc.NumaInfo()
-    node_list = host_numa_node.online_nodes
-    logging.debug("host node list is %s", node_list)
+    node_list = host_numa_node.online_nodes_withmem
+    logging.debug("host online nodes with memory %s", node_list)
 
     # Don't use libvirt_xml here because testing numatune command
     result = virsh.numatune(vm_name, mode, nodeset, options, debug=True)
