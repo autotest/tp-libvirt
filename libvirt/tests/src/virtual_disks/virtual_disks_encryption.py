@@ -267,6 +267,7 @@ def run(test, params, env):
             # can be normally started or attached since qemu will just treat
             # it as RAW, so we don't test LUKS with status_error=TRUE.
             vm.start()
+            vm.wait_for_login()
             if status_error:
                 if hotplug:
                     logging.debug("attaching disk, expecting error...")
