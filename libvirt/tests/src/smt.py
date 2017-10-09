@@ -122,6 +122,8 @@ def run(test, params, env):
     logging.info("Guest: cores:%d, threads:%d, sockets:%d", vm_cores,
                  vm_threads, vm_sockets)
     try:
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        org_xml = vmxml.copy()
         # try installing powerpc-utils in guest if not skip
         try:
             session = vm.wait_for_login()
@@ -129,8 +131,6 @@ def run(test, params, env):
             session.close()
         except:
             test.cancel("Unable to install powerpc-utils package in guest")
-        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-        org_xml = vmxml.copy()
 
         # Initial Setup of vm
         vmxml.set_vm_vcpus(vm_name, max_vcpu, current_vcpu,
