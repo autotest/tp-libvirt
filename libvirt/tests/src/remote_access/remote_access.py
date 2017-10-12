@@ -386,6 +386,11 @@ def run(test, params, env):
 
     finally:
         # recovery test environment
+        # Destroy the VM after all test are done
+        vm = env.get_vm(vm_name)
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
+
         if rmdir_cmd:
             utils.system(rmdir_cmd, ignore_status=True)
 
