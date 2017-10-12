@@ -1,8 +1,6 @@
 import re
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virt_vm
 from virttest import virsh
 from virttest.utils_test import libvirt
@@ -94,19 +92,12 @@ def run(test, params, env):
         logging.debug("Controller XML is:%s", ctrl)
         vm_xml.add_device(ctrl)
 
-        if usb_cntlr_model is not None:
-            ctrl = Controller(type_name='usb')
-            ctrl.model = usb_cntlr_model
-            if usb_cntlr_addr is not None:
-                match = re.match(r"(?P<bus>[0-9]*):(?P<slot>[0-9]*).(?P<function>[0-9])", usb_cntlr_addr)
-                if match:
-                    addr_dict = match.groupdict()
-                    addr_dict['bus'] = hex(int(addr_dict['bus']))
-                    addr_dict['slot'] = hex(int(addr_dict['slot']))
-                    addr_dict['function'] = hex(int(addr_dict['function']))
-                    addr_dict['domain'] = '0x0000'
-                    ctrl.address = ctrl.new_controller_address(attrs=addr_dict)
-            vm_xml.add_device(ctrl)
+        if cmpnn_cntlr_model is not None:
+            for i in range(int(cmpnn_cntlr_num)):
+                ctrl = Controller(type_name='usb')
+                ctrl.model = cmpnn_cntlr_model + str(i+1)
+                ctrl.index = index
+                vm_xml.add_device(ctrl)
 
     def define_and_check():
         """
@@ -183,8 +174,8 @@ def run(test, params, env):
             if addr_str is None:
                 return
             else:
-                raise error.TestFail('Expect controller do not have address, '
-                                     'but got "%s"' % addr_str)
+                raise test.fail('Expect controller do not have address, '
+                                'but got "%s"' % addr_str)
 
         exp_addr_patt = r'00:[0-9]{2}.[0-9]'
         if model in ['ehci']:
@@ -193,8 +184,8 @@ def run(test, params, env):
             exp_addr_patt = addr_str
 
         if not re.match(exp_addr_patt, addr_str):
-            raise error.TestFail('Expect get controller address "%s", '
-                                 'but got "%s"' % (exp_addr_patt, addr_str))
+            raise test.fail('Expect get controller address "%s", '
+                            'but got "%s"' % (exp_addr_patt, addr_str))
 
     def check_qemu_cmdline():
         """
@@ -221,8 +212,28 @@ def run(test, params, env):
 
         # Check options against expectation
         if pcihole_opt != exp_pcihole_opt:
-            raise error.TestFail('Expect get qemu command serial option "%s", '
-                                 'but got "%s"' % (exp_pcihole_opt, pcihole_opt))
+            raise test.fail('Expect get qemu command serial option "%s", '
+                            'but got "%s"' % (exp_pcihole_opt, pcihole_opt))
+
+        # Check usb options against expectation
+        if cntlr_type == "usb":
+            model_list = [model]
+            if cmpnn_cntlr_num is not None:
+                for i in range(int(cmpnn_cntlr_num)):
+                    model_list.append(cmpnn_cntlr_model+str(i+1))
+
+            pattern = ""
+            for item in model_list:
+                if item == "ehci":
+                    pattern = r"-device.usb-ehci"
+                else:
+                    name = item.split('-')
+                    pattern = pattern + r"-device.%s-usb-%s.*" % (name[0], name[1])
+
+            logging.debug("pattern is %s", pattern)
+
+            if not re.search(pattern, cmdline):
+                test.fail("Expect get usb model info in qemu cmdline, but failed!")
 
     def check_msi():
         """
@@ -231,7 +242,7 @@ def run(test, params, env):
         addr_str = get_controller_addr(cntlr_type='virtio-serial')
 
         if addr_str is None:
-            raise error.TestError("Can't find target controller in XML")
+            raise test.error("Can't find target controller in XML")
 
         session = vm.wait_for_login()
         status, output = session.cmd_status_output('lspci -vvv -s %s' % addr_str)
@@ -239,12 +250,12 @@ def run(test, params, env):
 
         if (vectors is not None and int(vectors) == 0):
             if 'MSI' in output:
-                raise error.TestFail('Expect MSI disable with zero vectors,'
-                                     ' but got %s' % output)
+                raise test.fail('Expect MSI disable with zero vectors,'
+                                ' but got %s' % output)
         if (vectors is None or int(vectors) != 0):
             if 'MSI' not in output:
-                raise error.TestFail('Expect MSI enable with non-zero vectors,'
-                                     ' but got %s' % output)
+                raise test.fail('Expect MSI enable with non-zero vectors,'
+                                ' but got %s' % output)
 
     os_machine = params.get('os_machine', 'i440fx')
     cntlr_type = params.get('controller_type', None)
@@ -253,8 +264,8 @@ def run(test, params, env):
     vectors = params.get('controller_vectors', None)
     pcihole = params.get('controller_pcihole64', None)
     addr_str = params.get('controller_address', None)
-    usb_cntlr_model = params.get('usb_controller_model', None)
-    usb_cntlr_addr = params.get('usb_controller_address', None)
+    cmpnn_cntlr_model = params.get('companian_controller_model', None)
+    cmpnn_cntlr_num = params.get('companian_controller_num', None)
     vm_name = params.get("main_vm", "avocado-vt-vm1")
 
     vm = env.get_vm(vm_name)
@@ -266,7 +277,7 @@ def run(test, params, env):
         remove_usb_devices(vm_xml)
         setup_controller_xml()
         setup_os_xml()
-        logging.debug("Test VM XML is %s" % vm_xml)
+        logging.debug("Test VM XML is %s", vm_xml)
 
         if not define_and_check():
             logging.debug("Can't define the VM, exiting.")
@@ -279,7 +290,7 @@ def run(test, params, env):
                 logging.debug("Can't start the VM, exiting.")
                 return
         except virt_vm.VMStartError, detail:
-            raise error.TestFail(detail)
+            raise test.fail(detail)
 
         check_qemu_cmdline()
 
