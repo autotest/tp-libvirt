@@ -907,7 +907,10 @@ def check_domjobinfo_on_complete(test, source_jobinfo, target_jobinfo):
                       "does not has the field: '%s'" % key)
 
         target_value = target_info[key]
-        if key in ["Time elapsed", "Time elapsed w/o network", "Operation"]:
+        if key in ["Time elapsed",
+                   "Time elapsed w/o network",
+                   "Operation",
+                   "Expected downtime"]:
             continue
         else:
             if cmp(value, target_value) != 0:
