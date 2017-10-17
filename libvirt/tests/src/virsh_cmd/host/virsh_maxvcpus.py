@@ -122,7 +122,7 @@ def run(test, params, env):
                     pass
             else:
                 # It covers all possible combinations
-                if option in ['qemu', 'kvm', '']:
+                if option in ['qemu', 'kvm', '--type qemu', '--type kvm', 'kqemu', '--type kqemu', '']:
                     if (is_arm and gic_version == '2' and option in ['kvm', '']):
                         if not maxvcpus_test == '8':
                             raise exceptions.TestFail("Command output %s is not "
