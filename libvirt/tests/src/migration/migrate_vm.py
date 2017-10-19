@@ -902,6 +902,8 @@ def check_domjobinfo_on_complete(test, source_jobinfo, target_jobinfo):
     target_info = read_domjobinfo(test, target_jobinfo)
 
     for key, value in source_info.items():
+        if key in ["Expected downtime"]:
+            continue
         if not target_info.has_key(key):
             test.fail("The domjobinfo on target host "
                       "does not has the field: '%s'" % key)
@@ -909,8 +911,7 @@ def check_domjobinfo_on_complete(test, source_jobinfo, target_jobinfo):
         target_value = target_info[key]
         if key in ["Time elapsed",
                    "Time elapsed w/o network",
-                   "Operation",
-                   "Expected downtime"]:
+                   "Operation"]:
             continue
         else:
             if cmp(value, target_value) != 0:
