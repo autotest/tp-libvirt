@@ -1,5 +1,3 @@
-from autotest.client.shared import error
-
 from virttest import virsh
 
 from provider import libvirt_version
@@ -37,8 +35,8 @@ def run(test, params, env):
         if vm_ref == '':
             no_err_msg = True
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current libvirt "
+                        "version.")
 
     # Run test case
     if vm_ref == "id":
@@ -61,14 +59,22 @@ def run(test, params, env):
     if status == 0 and not vm.is_paused():
         status = 1
 
+    # resume the VM
+    if vm.is_paused():
+        result = virsh.resume(vm_ref, ignore_status=True,
+                              unprivileged_user=unprivileged_user,
+                              uri=uri, debug=True)
+        if result.exit_status or vm.is_paused():
+            status = 1
+
     # Check result
     if status_error == "yes":
         if not err and not no_err_msg:
-            raise error.TestFail("No error hint to user about bad command!")
+            test.fail("No error hint to user about bad command!")
         if status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if status != 0 or output == "":
-            raise error.TestFail("Run failed with right command")
+            test.fail("Run failed with right command")
     else:
-        raise error.TestFail("The status_error must be 'yes' or 'no'!")
+        test.fail("The status_error must be 'yes' or 'no'!")
