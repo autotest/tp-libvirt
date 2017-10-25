@@ -372,10 +372,10 @@ def run(test, params, env):
         """
         Create a large file to make left space of root less than $left_space MB
         """
-        cmd_df = "df -m /"
-        df_output = session.cmd_output(cmd_df).strip()
+        cmd_df = "df -m / --output=avail"
+        df_output = session.cmd(cmd_df).strip()
         logging.debug('Command output: %s', df_output)
-        avail = int(df_output.split('\n')[-1].split()[3])
+        avail = int(df_output.strip().split('\n')[-1])
         logging.info('Available space: %dM' % avail)
         if avail > left_space - 1:
             tmp_dir = data_dir.get_tmp_dir()
