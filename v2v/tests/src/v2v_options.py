@@ -405,6 +405,8 @@ def run(test, params, env):
                     test.fail('qemu-kvm-rhev is in dependency')
                 if 'libX11' in output:
                     test.fail('libX11 is in dependency')
+                if 'kernel-rt' in output:
+                    test.fail('kernel-rt is in dependency')
                 win_img = params.get('win_image')
                 command = 'guestfish -a %s -i'
                 if process.run(command % win_img, ignore_status=True).exit_status == 0:
