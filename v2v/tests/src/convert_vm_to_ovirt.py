@@ -132,20 +132,27 @@ def run(test, params, env):
 
         # Other checks
         err_list = []
-        os_list = ['win8', 'win8.1', 'win10', 'win2012', 'win2012r2']
+        os_list = ['win8', 'win8.1', 'win10', 'win2012', 'win2012r2', 'win2008']
         win_version = ['6.2', '6.3', '10.0', '6.2', '6.3']
         os_map = dict(zip(os_list, win_version))
         vm_arch = params.get('vm_arch')
         os_ver = params.get('os_version')
 
-        if params.get('os_version') in os_list:
-            qxl_warn = 'virt-v2v: warning: there is no QXL driver for this ' \
-                       'version of Windows \(%s[.\s]*?%s\)' %\
-                       (os_map[os_ver], vm_arch)
-            if re.search(qxl_warn, v2v_ret.stdout):
-                logging.debug('Found QXL warning')
+        if os_ver in os_list:
+            vga_log = 'The guest will be configured to use a basic VGA ' \
+                      'display driver'
+            if re.search(vga_log, v2v_ret.stdout):
+                logging.debug('Found vga log')
             else:
-                err_list.append('Not find QXL warning')
+                err_list.append('Not find vga log')
+            if os_ver != 'win2008':
+                qxl_warn = 'virt-v2v: warning: there is no QXL driver for ' \
+                           'this version of Windows \(%s[.\s]*?%s\)' %\
+                           (os_map[os_ver], vm_arch)
+                if re.search(qxl_warn, v2v_ret.stdout):
+                    logging.debug('Found QXL warning')
+                else:
+                    err_list.append('Not find QXL warning')
 
         ret.extend(err_list)
 
