@@ -7,7 +7,6 @@ from autotest.client.shared import error
 
 from virttest import virsh
 from virttest import data_dir
-from virttest import utils_misc
 
 from provider import libvirt_version
 
@@ -125,8 +124,8 @@ def run(test, params, env):
         else:
             raise error.TestError("Unknown scale value")
 
-        image_info = utils_misc.get_image_info(image_path)
-        actual_size = int(image_info['vsize'])
+        result = virsh.domblkinfo(vm_name, image_path, **virsh_dargs)
+        actual_size = int(re.findall(r"\d+", result.stdout.strip())[0])
 
         logging.info("The expected block size is %s bytes, "
                      "the actual block size is %s bytes",
