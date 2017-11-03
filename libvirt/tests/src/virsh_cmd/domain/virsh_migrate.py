@@ -7,6 +7,7 @@ import threading
 
 from avocado.utils import process
 from avocado.utils import path
+from avocado.core import exceptions
 
 from virttest import nfs
 from virttest import remote
@@ -803,6 +804,7 @@ def run(test, params, env):
     nfs_client = None
     seLinuxBool = None
     skip_exception = False
+    fail_exception = False
     exception = False
     remote_viewer_pid = None
     asynch_migration = False
@@ -1305,8 +1307,10 @@ def run(test, params, env):
             if not re.search(new_nic_mac, vm_dest_xml):
                 check_dest_xml = False
 
-    except test.cancel, detail:
+    except exceptions.TestCancel, detail:
         skip_exception = True
+    except exceptions.TestFail, detail:
+        fail_exception = True
     except Exception, detail:
         exception = True
         logging.error("%s: %s", detail.__class__, detail)
@@ -1375,6 +1379,8 @@ def run(test, params, env):
 
     if skip_exception:
         test.cancel(detail)
+    if fail_exception:
+        test.fail(detail)
     if exception:
         test.error("Error occurred. \n%s: %s" % (detail.__class__, detail))
 
