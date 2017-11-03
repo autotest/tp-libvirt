@@ -478,13 +478,14 @@ def run(test, params, env):
            not virsh.domain_exists(vm.name, uri=dest_uri)):
             test.error("Domain is not found with 'paused' state in 50s")
 
-    def run_migration_cmd(cmd):
+    def run_migration_cmd(cmd, timeout=5):
         """
         Check to see the VM on target machine should ran up once
         migration-postcopy command is executed. To get sufficient time to
         check this command takes effect, the VM need run with stress.
 
         :params cmd: The command to be executed while migration
+        :params timeout: timeout for migrate-postcopy to get triggered
 
         """
         stress_thread = threading.Thread(target=thread_func_stress,
@@ -494,7 +495,14 @@ def run(test, params, env):
         process.system_output("virsh %s %s" % (cmd, vm_name))
         logging.debug("Checking the VM state on target host after "
                       "executing '%s'", cmd)
-        check_vm_state(vm, 'running', dest_uri, False)
+
+        def check_vm_state_dest():
+            return check_vm_state(vm, 'running', dest_uri, ignore_error=True)
+
+        # check_vm_state can fail if it checks immediately after virsh
+        # migrate-postcopy, just give a breathe time.
+        if not utils_misc.wait_for(check_vm_state_dest, timeout=timeout):
+            test.fail("VM failed to be in running state at destination")
 
     # For negative scenarios, there_desturi_nonexist and there_desturi_missing
     # let the test takes desturi from variants in cfg and for other scenarios
