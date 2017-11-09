@@ -1,15 +1,14 @@
-import time
 import logging
+import time
 
-from autotest.client.shared import error
-
-from virttest import virt_vm
-from virttest import virsh
-from virttest import utils_net
 from virttest import utils_libvirtd
-from virttest.utils_test import libvirt
+from virttest import utils_misc
+from virttest import utils_net
+from virttest import virsh
+from virttest import virt_vm
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.interface import Interface
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):
@@ -117,13 +116,13 @@ def run(test, params, env):
                             break
                         elif (ret.stderr.count("doesn't support option %s"
                                                % attach_option)):
-                            raise error.TestNAError(ret.stderr)
+                            test.cancel(ret.stderr)
                         elif status_error:
                             continue
                         else:
                             logging.error("Command output %s" %
                                           ret.stdout.strip())
-                            raise error.TestFail("Failed to attach-device")
+                            test.fail("Failed to attach-device")
                     elif stress_test:
                         # Detach the device immediately for stress test
                         ret = virsh.detach_device(vm_name, iface_xml_obj.xml,
@@ -133,8 +132,6 @@ def run(test, params, env):
                     else:
                         iface_list.append({'mac': mac,
                                            'iface_xml': iface_xml_obj})
-                # Need sleep here for attachment take effect
-                time.sleep(5)
             elif attach_iface:
                 for i in range(int(iface_num)):
                     logging.info("Try to attach interface loop %s" % i)
@@ -151,13 +148,13 @@ def run(test, params, env):
                             break
                         elif (ret.stderr.count("doesn't support option %s"
                                                % attach_option)):
-                            raise error.TestNAError(ret.stderr)
+                            test.cancel(ret.stderr)
                         elif status_error:
                             continue
                         else:
                             logging.error("Command output %s" %
                                           ret.stdout.strip())
-                            raise error.TestFail("Failed to attach-interface")
+                            test.fail("Failed to attach-interface")
                     elif stress_test:
                         # Detach the device immediately for stress test
                         options = ("--type %s --mac %s %s" %
@@ -167,8 +164,6 @@ def run(test, params, env):
                         libvirt.check_exit_status(ret)
                     else:
                         iface_list.append({'mac': mac})
-                # Need sleep here for attachment take effect
-                time.sleep(5)
 
             # Restart libvirtd service
             if restart_libvirtd:
@@ -183,27 +178,31 @@ def run(test, params, env):
 
             # Check if interface was attached
             for iface in iface_list:
-                if iface.has_key('mac'):
+                if 'mac' in iface:
                     # Check interface in dumpxml output
                     if_attr = vm_xml.VMXML.get_iface_by_mac(vm_name,
                                                             iface['mac'])
                     if not if_attr:
-                        raise error.TestFail("Can't see interface "
-                                             " in dumpxml")
+                        test.fail("Can't see interface in dumpxml")
                     if (if_attr['type'] != iface_type or
                             if_attr['source'] != iface_source['network']):
-                        raise error.TestFail("Interface attribute doesn't"
-                                             " match attachment opitons")
+                        test.fail("Interface attribute doesn't"
+                                  " match attachment opitons")
                     # Check interface on guest
-                    if not utils_net.get_linux_ifname(session,
-                                                      iface['mac']):
-                        raise error.TestFail("Can't see interface"
-                                             " on guest")
+
+                    def get_iface():
+                        try:
+                            utils_net.get_linux_ifname(session, iface['mac'])
+                            return True
+                        except Exception:
+                            return False
+                    if not utils_misc.wait_for(get_iface, timeout=60):
+                        test.fail("Can't see interface on guest")
 
             # Detach hot/cold-plugged interface at last
             if detach_device:
                 for iface in iface_list:
-                    if iface.has_key('iface_xml'):
+                    if 'iface_xml' in iface:
                         ret = virsh.detach_device(vm_name,
                                                   iface['iface_xml'].xml,
                                                   flagstr="",
@@ -218,7 +217,7 @@ def run(test, params, env):
 
                 # Check if interface was detached
                 for iface in iface_list:
-                    if iface.has_key('mac'):
+                    if 'mac' in iface:
                         polltime = time.time() + poll_timeout
                         while True:
                             # Check interface in dumpxml output
@@ -233,7 +232,7 @@ def run(test, params, env):
             session.close()
         except virt_vm.VMStartError as e:
             logging.info(str(e))
-            raise error.TestFail('VM failed to start:\n%s' % e)
+            test.fail('VM failed to start:\n%s' % e)
 
     finally:
         # Recover VM.
