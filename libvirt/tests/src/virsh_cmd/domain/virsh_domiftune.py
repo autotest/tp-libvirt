@@ -59,8 +59,11 @@ def check_domiftune(params, test_clear):
     else:
         domiftune_params = virt_xml_obj.get_iftune_params(vm_name)
 
-    inbound_from_xml = domiftune_params.get("inbound")
-    outbound_from_xml = domiftune_params.get("outbound")
+    try:
+        inbound_from_xml = domiftune_params.get("inbound").get("average")
+        outbound_from_xml = domiftune_params.get("outbound").get("average")
+    except AttributeError, details:
+        logging.error("Error in get inbound/outbound average: %s", details)
     logging.debug("inbound_from_xml=%s, outbound_from_xml=%s",
                   inbound_from_xml, outbound_from_cmd_output)
 
