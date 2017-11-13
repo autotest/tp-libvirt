@@ -22,7 +22,9 @@ def run(test, params, env):
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     status_error = ("yes" == params.get("status_error", "no"))
-    options = params.get("sendkey_options", "")
+    keystrokes = params.get("sendkey", "")
+    codeset = params.get("codeset", "")
+    holdtime = params.get("holdtime", "")
     sysrq_test = ("yes" == params.get("sendkey_sysrq", "no"))
     sleep_time = int(params.get("sendkey_sleeptime", 2))
     readonly = params.get("readonly", False)
@@ -30,6 +32,7 @@ def run(test, params, env):
     password = params.get("password")
     create_file = params.get("create_file_name")
     uri = params.get("virsh_uri")
+    simultaneous = params.get("sendkey_simultaneous", "yes") == "yes"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
@@ -92,9 +95,24 @@ def run(test, params, env):
         send_line(password)
         time.sleep(2)
 
-        output = virsh.sendkey(vm_name, options, readonly=readonly,
-                               unprivileged_user=unprivileged_user,
-                               uri=uri)
+        if sysrq_test or simultaneous:
+            output = virsh.sendkey(vm_name, keystrokes, codeset=codeset,
+                                   holdtime=holdtime, readonly=readonly,
+                                   unprivileged_user=unprivileged_user,
+                                   uri=uri)
+        else:
+            # If multiple keycodes are specified, they are all sent
+            # simultaneously to the guest, and they may be received
+            # in random order. If you need distinct keypresses, you
+            # must use multiple send-key invocations.
+            for keystroke in keystrokes.split():
+                output = virsh.sendkey(vm_name, keystroke, codeset=codeset,
+                                       holdtime=holdtime, readonly=readonly,
+                                       unprivileged_user=unprivileged_user,
+                                       uri=uri)
+                if output.exit_status:
+                    test.fail("Failed to send key %s to guest: %s" %
+                              (keystroke, output.stderr))
         time.sleep(sleep_time)
         if output.exit_status != 0:
             if status_error:
@@ -123,17 +141,17 @@ def run(test, params, env):
             # we'll do a check and wait loop for up to 60 seconds
             timeout = 60
             while timeout >= 0:
-                if "KEY_H" in options:
+                if "KEY_H" in keystrokes:
                     get_status = session.cmd_status("cat /var/log/messages|"
                                                     "grep 'SysRq.*HELP'")
-                elif "KEY_M" in options:
+                elif "KEY_M" in keystrokes:
                     get_status = session.cmd_status("cat /var/log/messages|"
                                                     "grep 'SysRq.*Show Memory'")
-                elif "KEY_T" in options:
+                elif "KEY_T" in keystrokes:
                     get_status = session.cmd_status("cat /var/log/messages|"
                                                     "grep 'SysRq.*Show State'")
-                elif "KEY_B" in options:
-                    client_session = vm.wait_for_login()
+                elif "KEY_B" in keystrokes:
+                    session = vm.wait_for_login()
                     result = virsh.domstate(vm_name, '--reason', ignore_status=True)
                     output = result.stdout.strip()
                     logging.debug("The guest state: %s", output)
@@ -141,7 +159,7 @@ def run(test, params, env):
                         get_status = 1
                     else:
                         get_status = 0
-                    client_session.close()
+                        session.close()
 
                 if get_status == 0:
                     timeout = -1
@@ -151,8 +169,8 @@ def run(test, params, env):
                     timeout = timeout - 1
 
             if get_status != 0:
-                test.fail("SysRq does not take effect in guest, options is "
-                          "%s" % options)
+                test.fail("SysRq does not take effect in guest, keystrokes is "
+                          "%s" % keystrokes)
             else:
                 logging.info("Succeed to send SysRq command")
         else:
