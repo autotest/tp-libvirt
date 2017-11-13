@@ -76,9 +76,6 @@ def run(test, params, env):
     local_user = params.get("username", "root")
     local_pwd = params.get("local_pwd", None)
 
-    if "EXAMPLE" in remote_ip or "EXAMPLE" in local_ip:
-        test.cancel("Please set real value for remote_ip or local_ip")
-
     vm = env.get_vm(vm_name)
     domuuid = vm.get_uuid()
     domid = vm.get_id()
