@@ -250,7 +250,8 @@ def run(test, params, env):
             cmd_result = virsh.snapshot_list(vm_name, **virsh_dargs)
             if snapshot_name2 not in cmd_result:
                 raise error.TestError("Snapshot %s not found" % snapshot_name2)
-
+        elif domain_operation == "":
+            logging.debug("No domain operation provided, so skip it")
         else:
             logging.error("Unsupport operation %s in this case, so skip it",
                           domain_operation)
