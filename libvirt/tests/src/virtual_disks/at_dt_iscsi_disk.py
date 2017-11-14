@@ -76,6 +76,15 @@ def run(test, params, env):
 
     virsh_dargs = {'debug': True, 'ignore_status': True}
     try:
+        start_vm = "yes" == params.get("start_vm", "yes")
+        if start_vm:
+            if vm.is_dead():
+                vm.start()
+            vm.wait_for_login()
+        else:
+            if not vm.is_dead():
+                vm.destroy()
+
         if chap_auth:
             # Create a secret xml to define it
             secret_xml = SecretXML(secret_ephemeral, secret_private)
@@ -178,20 +187,7 @@ def run(test, params, env):
                                 'secret_usage': secret_xml.target}
             disk_params.update(disk_params_auth)
         disk_xml = libvirt.create_disk_xml(disk_params)
-
-        start_vm = "yes" == params.get("start_vm", "yes")
-        if start_vm:
-            if vm.is_dead():
-                vm.start()
-            vm.wait_for_login()
-        else:
-            if not vm.is_dead():
-                vm.destroy()
         attach_option = params.get("attach_option", "")
-        disk_xml_f = open(disk_xml)
-        disk_xml_content = disk_xml_f.read()
-        disk_xml_f.close()
-        logging.debug("Attach disk by XML: %s", disk_xml_content)
         cmd_result = virsh.attach_device(domainarg=vm_name, filearg=disk_xml,
                                          flagstr=attach_option,
                                          dargs=virsh_dargs)
