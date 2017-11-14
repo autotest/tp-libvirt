@@ -744,8 +744,8 @@ def run(test, params, env):
             if (int(utils_memory.get_num_huge_pages_free()) < no_of_HPs):
                 hugepage_assign(str(no_of_HPs))
             logging.debug("Hugepage support check done on host")
-        except:
-            test.cancel("HP not supported/configured")
+        except Exception, info:
+            test.cancel("HP not supported/configured: %s" % info)
 
     # To check mem hotplug should not exceed maxmem
     if mem_hotplug:
@@ -935,10 +935,10 @@ def run(test, params, env):
 
         # Perform cpu hotplug or hotunplug before migration
         if cpu_hotplug:
+            guest_ip = vm.get_address()
             if hotplug_after_migrate or hotunplug_after_migrate:
                 config_opt = ["StrictHostKeyChecking=no"]
                 guest_user = params.get("username", "root")
-                guest_ip = vm.get_address()
                 guest_pwd = params.get("password", "password")
                 # Configure ssh key between destination machine and VM
                 # before migration, so that commands can be executed from
