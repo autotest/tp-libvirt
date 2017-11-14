@@ -1150,9 +1150,10 @@ def run(test, params, env):
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         # Start the VM.
         vm.start()
-        vm.wait_for_login()
-        if status_error:
-            test.fail("VM started unexpectedly")
+        if not("yes" == device_readonly[0] and test_with_boot_disk):
+            vm.wait_for_login()
+            if status_error:
+                test.fail("VM started unexpectedly")
 
         def add_sleep(sleep_seconds=10):
             """
