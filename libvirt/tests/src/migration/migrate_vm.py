@@ -4,6 +4,7 @@ import re
 import signal
 import time
 import aexpect
+import platform
 
 from subprocess import PIPE
 from subprocess import Popen
@@ -2237,11 +2238,20 @@ def run(test, params, env):
                                                  password=server_pwd,
                                                  port='22',
                                                  remote_path=xml_path)
+                logging.debug("Modify remote guest xml's disk path")
                 pattern2repl = {r".*.qcow2.*":
                                 "<source file='%s/%s'/>"
                                 % (nfs_mount_dir, image_name)}
+                guest_config.sub(pattern2repl)
+                logging.debug("Modify remote guest xml's machine type")
+                machine_type = "pc"
+                arch = platform.machine()
+                if arch.count("ppc64"):
+                    machine_type = "pseries"
 
-                logging.debug("Modify the config file using pattern")
+                pattern2repl = {r".*.machine=.*":
+                                "<type arch='%s' machine='%s'>hvm</type>"
+                                % (arch, machine_type)}
                 guest_config.sub(pattern2repl)
 
                 # undefine remote guest
@@ -2263,7 +2273,8 @@ def run(test, params, env):
 
             except (process.CmdError, remote.SCPError), e:
                 logging.debug(e)
-
+            except Exception, details:
+                logging.debug(details)
             finally:
                 logging.debug("Recover remote guest's XML")
                 del guest_config
