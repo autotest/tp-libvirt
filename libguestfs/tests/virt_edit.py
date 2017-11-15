@@ -1,5 +1,6 @@
 import logging
 import re
+from avocado.utils import process
 
 from autotest.client.shared import utils
 from autotest.client.shared import error
@@ -111,7 +112,11 @@ def run(test, params, env):
         logging.info("disk to be edit:%s", vm_ref)
         if test_format:
             # Get format:raw or qcow2
-            info = utils.run("qemu-img info %s" % vm_ref).stdout
+            if "-U" in process.run("qemu-img -h").stdout:
+                img_info_cmd = "qemu-img info -U"
+            else:
+                img_info_cmd = "qemu-img info"
+            info = utils.run("%s %s" % (img_info_cmd, vm_ref)).stdout
             for line in info.splitlines():
                 comps = line.split(':')
                 if comps[0].count("format"):

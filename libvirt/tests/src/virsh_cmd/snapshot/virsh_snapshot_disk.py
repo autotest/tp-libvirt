@@ -2,6 +2,7 @@ import os
 import logging
 import re
 import tempfile
+from avocado.utils import process
 
 from autotest.client.shared import error
 from autotest.client import utils
@@ -178,7 +179,12 @@ def run(test, params, env):
 
         if not multi_gluster_disks:
             # Do the attach action.
-            out = utils.run("qemu-img info %s" % img_path)
+            if "-U" in process.run("qemu-img -h").stdout:
+                img_info_cmd = "qemu-img info -U"
+            else:
+                img_info_cmd = "qemu-img info"
+
+            out = utils.run("%s %s" % (img_info_cmd, img_path))
             logging.debug("The img info is:\n%s" % out.stdout.strip())
             result = virsh.attach_disk(vm_name, source=img_path, target="vdf",
                                        extra=extra, debug=True)

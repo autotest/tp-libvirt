@@ -4,6 +4,7 @@ import time
 import commands
 import string
 import logging
+from avocado.utils import process
 
 from autotest.client.shared import error
 from autotest.client import utils
@@ -50,7 +51,11 @@ def check_snap_in_image(vm_name, snap_name):
     domxml = virsh.dumpxml(vm_name).stdout.strip()
     xtf_dom = xml_utils.XMLTreeFile(domxml)
 
-    cmd = "qemu-img info " + xtf_dom.find("devices/disk/source").get("file")
+    if "-U" in process.run("qemu-img -h").stdout:
+        img_info_cmd = "qemu-img info -U"
+    else:
+        img_info_cmd = "qemu-img info"
+    cmd = img_info_cmd + " " + xtf_dom.find("devices/disk/source").get("file")
     img_info = commands.getoutput(cmd).strip()
 
     if re.search(snap_name, img_info):
