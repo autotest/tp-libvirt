@@ -56,17 +56,32 @@ def run(test, params, env):
             if "device='cdrom'" not in xml:
                 log_fail('CDROM no longer exists')
 
-    def check_vmtools(vmcheck):
+    def check_vmtools(vmcheck, check):
         """
-        Check whether vmware tools packages have been removed
+        Check whether vmware tools packages have been removed,
+        or vmware-tools service has stopped
+
+        :param vmcheck: VMCheck object for vm checking
+        :param check: Checkpoint of different cases
+        :return: None
         """
-        pkgs = vmcheck.session.cmd('rpm -qa').strip()
-        removed_pkgs = params.get('removed_pkgs').strip().split(',')
-        if not removed_pkgs:
-            test.error('Missing param "removed_pkgs"')
-        for pkg in removed_pkgs:
-            if pkg in pkgs:
-                log_fail('Package "%s" not removed' % pkg)
+        if check == 'vmtools':
+            logging.info('Check if packages been removed')
+            pkgs = vmcheck.session.cmd('rpm -qa').strip()
+            removed_pkgs = params.get('removed_pkgs').strip().split(',')
+            if not removed_pkgs:
+                test.error('Missing param "removed_pkgs"')
+            for pkg in removed_pkgs:
+                if pkg in pkgs:
+                    log_fail('Package "%s" not removed' % pkg)
+        elif check == 'vmtools_service':
+            logging.info('Check if service stopped')
+            vmtools_service = params.get('service_name')
+            status = utils_misc.get_guest_service_status(
+                vmcheck.session, vmtools_service)
+            logging.info('Service %s status: %s', vmtools_service, status)
+            if status != 'inactive':
+                log_fail('Service "%s" is not stopped' % vmtools_service)
 
     def check_modprobe(vmcheck):
         """
@@ -135,8 +150,8 @@ def run(test, params, env):
                 virsh_session = utils_sasl.VirshSessionSASL(params)
                 virsh_session_id = virsh_session.get_id()
                 check_device_exist('cdrom', virsh_session_id)
-            if checkpoint == 'vmtools':
-                check_vmtools(vmchecker.checker)
+            if checkpoint.startswith('vmtools'):
+                check_vmtools(vmchecker.checker, checkpoint)
             if checkpoint == 'modprobe':
                 check_modprobe(vmchecker.checker)
             if checkpoint == 'device_map':
