@@ -136,7 +136,7 @@ def run(test, params, env):
     try:
         # Get host numa node list
         host_numa_node = utils_misc.NumaInfo()
-        node_list = host_numa_node.online_nodes
+        node_list = host_numa_node.online_nodes_withmem
         logging.debug("host node list is %s", node_list)
         used_node = []
         if numa_memory.get('nodeset'):

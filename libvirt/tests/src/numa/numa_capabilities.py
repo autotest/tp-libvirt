@@ -21,7 +21,7 @@ def run(test, params, env):
         logging.debug("topo xml is %s", topo.xmltreefile)
         cell_list = topo.get_cell()
         numa_info = utils_misc.NumaInfo()
-        node_list = numa_info.online_nodes
+        node_list = numa_info.online_nodes_withmem
 
         for cell_num in range(len(cell_list)):
             # check node distances

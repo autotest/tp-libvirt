@@ -28,6 +28,22 @@ def run(test, params, env):
         """
         numad_log.append(line)
 
+    def cpu_adapter_mod(par_list, std_list):
+        if not set(par_list).issubset(std_list):
+            if not len(par_list) > len(std_list):
+                tmp_list = []
+                for un in par_list:
+                    if un in std_list:
+                        tmp_list.append(un)
+                for nd in std_list:
+                    if not len(par_list) > len(tmp_list):
+                        break
+                    if nd not in tmp_list:
+                        tmp_list.append(nd)
+                if len(par_list) == len(tmp_list):
+                    par_list = tmp_list
+        return par_list
+
     def mem_compare(used_node, left_node):
         """
         Memory in used nodes should greater than left nodes
@@ -90,6 +106,7 @@ def run(test, params, env):
     vcpu_placement = params.get("vcpu_placement")
     vcpu_cpuset = params.get("vcpu_cpuset")
     bug_url = params.get("bug_url", "")
+    cpu_adapter = "yes" == params.get("cpu_adapter", "no")
     status_error = "yes" == params.get("status_error", "no")
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -126,7 +143,7 @@ def run(test, params, env):
 
         # Get host numa node list
         host_numa_node = utils_misc.NumaInfo()
-        node_list = host_numa_node.online_nodes
+        node_list = host_numa_node.online_nodes_withmem
         logging.debug("host node list is %s", node_list)
 
         # Get host cpu list
@@ -140,6 +157,8 @@ def run(test, params, env):
 
         if numa_memory.get('nodeset'):
             used_node = utils_test.libvirt.cpus_parser(numa_memory['nodeset'])
+            if cpu_adapter:
+                used_node = cpu_adapter_mod(used_node, node_list)
             logging.debug("set node list is %s", used_node)
             if not status_error:
                 if not set(used_node).issubset(node_list):
@@ -148,6 +167,9 @@ def run(test, params, env):
 
         if vcpu_cpuset:
             pre_cpuset = utils_test.libvirt.cpus_parser(vcpu_cpuset)
+            if cpu_adapter:
+                pre_cpuset = cpu_adapter_mod(pre_cpuset, cpu_list)
+                vcpu_cpuset = ",".join(str(i) for i in pre_cpuset)
             logging.debug("Parsed cpuset list is %s", pre_cpuset)
             if not set(pre_cpuset).issubset(cpu_list):
                 raise exceptions.TestSkipError("cpuset %s out of range" %

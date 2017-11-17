@@ -14,7 +14,25 @@ def run(test, params, env):
     """
     Test vcpupin while numad is running
     """
+
+    def cpu_adapter_mod(par_list, std_list):
+        if not set(par_list).issubset(std_list):
+            if not len(par_list) > len(std_list):
+                tmp_list = []
+                for un in par_list:
+                    if un in std_list:
+                        tmp_list.append(un)
+                for nd in std_list:
+                    if not len(par_list) > len(tmp_list):
+                        break
+                    if nd not in tmp_list:
+                        tmp_list.append(nd)
+                if len(par_list) == len(tmp_list):
+                    par_list = tmp_list
+        return par_list
+
     vcpu_placement = params.get("vcpu_placement")
+    cpu_adapter = "yes" == params.get("cpu_adapter", "no")
     bug_url = params.get("bug_url", "")
     status_error = "yes" == params.get("status_error", "no")
     vm_name = params.get("main_vm")
@@ -35,16 +53,17 @@ def run(test, params, env):
     try:
         # Get host numa node list
         host_numa_node = utils_misc.NumaInfo()
-        node_list = host_numa_node.online_nodes
+        node_list = host_numa_node.online_nodes_withmem
         logging.debug("host node list is %s", node_list)
         if numa_memory.get('nodeset'):
             used_node = utils_test.libvirt.cpus_parser(numa_memory['nodeset'])
+            if cpu_adapter:
+                used_node = cpu_adapter_mod(used_node, node_list)
             logging.debug("set node list is %s", used_node)
             if not status_error:
-                for i in used_node:
-                    if i > max(node_list):
-                        raise error.TestNAError("nodeset %s out of range" %
-                                                numa_memory['nodeset'])
+                if not set(used_node).issubset(node_list):
+                    raise test.cancel("nodeset %s out of range" %
+                                      numa_memory['nodeset'])
         # Start numad
         try:
             utils.run("service numad start")
