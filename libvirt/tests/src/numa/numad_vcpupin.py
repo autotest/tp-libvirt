@@ -6,7 +6,6 @@ from autotest.client.shared import error
 from virttest import libvirt_xml
 from virttest import virsh
 from virttest import utils_misc
-from virttest import utils_test
 from virttest import utils_libvirtd
 
 
@@ -37,14 +36,10 @@ def run(test, params, env):
         host_numa_node = utils_misc.NumaInfo()
         node_list = host_numa_node.online_nodes
         logging.debug("host node list is %s", node_list)
-        if numa_memory.get('nodeset'):
-            used_node = utils_test.libvirt.cpus_parser(numa_memory['nodeset'])
-            logging.debug("set node list is %s", used_node)
-            if not status_error:
-                for i in used_node:
-                    if i > max(node_list):
-                        raise error.TestNAError("nodeset %s out of range" %
-                                                numa_memory['nodeset'])
+        if len(node_list) < 2:
+            test.cancel('Online NUMA nodes less than 2')
+        node_a, node_b = min(node_list), max(node_list)
+        numa_memory.update({'nodeset': '%d,%d' % (node_a, node_b)})
         # Start numad
         try:
             utils.run("service numad start")
