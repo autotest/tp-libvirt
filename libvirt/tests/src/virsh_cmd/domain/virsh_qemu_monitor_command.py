@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import utils_libvirtd
 
@@ -25,12 +23,13 @@ def run(test, params, env):
     help_info = virsh.help("qemu-monitor-command").stdout.strip()
     if "--pretty" in options:
         if "--pretty" not in help_info:
-            raise error.TestNAError("--pretty option is not supported in"
-                                    " current version")
+            test.cancel("--pretty option is not supported in current version")
 
     try:
         # Prepare vm state for test
-        if vm_state != "shutoff":
+
+        # Start vm if it is not alive
+        if vm_state != "shutoff" and not vm.is_alive():
             vm.start()
             vm.wait_for_login()
             domid = vm.get_id()
@@ -55,20 +54,22 @@ def run(test, params, env):
 
         # Check result
         if not libvirtd_inst.is_running():
-            raise error.TestFail("Libvirtd is not running after run command.")
+            test.fail("Libvirtd is not running after run command.")
         if status_error:
             if not status:
                 # Return status is 0 with unknown command
                 if "unknown command:" in output:
                     logging.debug("Command failed: %s" % output)
                 else:
-                    raise error.TestFail("Expect fail, but run successfully.")
+                    test.fail("Expect fail, but run successfully.")
             else:
                 logging.debug("Command failed as expected.")
         else:
             if status:
-                raise error.TestFail("Expect succeed, but run fail.")
+                test.fail("Expect succeed, but run fail: %s", cmd_result.stderr)
     finally:
         # Cleanup
         if not libvirtd_inst.is_running():
             libvirtd_inst.restart()
+        if vm.is_alive():
+            vm.destroy()
