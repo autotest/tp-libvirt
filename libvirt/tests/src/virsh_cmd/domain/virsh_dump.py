@@ -1,8 +1,8 @@
 import os
 import logging
 import commands
+import multiprocessing
 import time
-import signal
 
 from avocado.utils import process
 
@@ -41,7 +41,7 @@ def run(test, params, env):
     start_vm = params.get("start_vm") == "yes"
     paused_after_start_vm = params.get("paused_after_start_vm") == "yes"
     status_error = params.get("status_error", "no") == "yes"
-    timeout = int(params.get("check_pid_timeout", "5"))
+    check_bypass_timeout = int(params.get("check_bypass_timeout", "120"))
     memory_dump_format = params.get("memory_dump_format", "")
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
@@ -53,28 +53,6 @@ def run(test, params, env):
         if params.get('setup_libvirt_polkit') == 'yes':
             test.cancel("API acl test not supported in current"
                         " libvirt version.")
-
-    def wait_pid_active(pid, timeout=5):
-        """
-        Wait for pid in running status
-
-        :param: pid: Desired pid
-        :param: timeout: Max time we can wait
-        """
-        cmd = ("cat /proc/%d/stat | awk '{print $3}'" % pid)
-        try:
-            while (True):
-                timeout = timeout - 1
-                if not timeout:
-                    test.cancel("Time out for waiting pid!")
-                pid_status = process.run(cmd, ignore_status=False, shell=True).stdout.strip()
-                if pid_status != "R":
-                    time.sleep(1)
-                    continue
-                else:
-                    break
-        except Exception, detail:
-            test.fail(detail)
 
     def check_flag(file_flag):
         """
@@ -90,20 +68,23 @@ def run(test, params, env):
             logging.error("File flags doesn't include O_DIRECT")
             return False
 
-    def check_bypass(dump_file):
+    def check_bypass(dump_file, result_dict):
         """
         Get the file flags of domain core dump file and check it.
         """
-
+        error = ''
         cmd1 = "lsof -w %s" % dump_file
         while True:
             if not os.path.exists(dump_file) or process.system(cmd1):
+                time.sleep(0.1)
                 continue
             cmd2 = ("cat /proc/$(%s |awk '/libvirt_i/{print $2}')/fdinfo/1"
                     "|grep flags|awk '{print $NF}'" % cmd1)
             (status, output) = commands.getstatusoutput(cmd2)
             if status:
-                test.fail("Fail to get the flags of dumped file")
+                error = "Fail to get the flags of dumped file"
+                logging.error(error)
+                break
             if not len(output):
                 continue
             try:
@@ -114,10 +95,14 @@ def run(test, params, env):
                                  "successfully when dumping")
                     break
                 else:
-                    test.fail("Bypass file system cache "
-                              "fail when dumping")
+                    error = "Bypass file system cache fail when dumping"
+                    logging.error(error)
+                    break
             except (ValueError, IndexError), detail:
-                test.fail(detail)
+                error = detail
+                logging.error(error)
+                break
+        result_dict['bypass'] = error
 
     def check_domstate(actual, options):
         """
@@ -235,19 +220,12 @@ def run(test, params, env):
                              dump_guest_core)
 
         # Deal with bypass-cache option
-        child_pid = 0
         if options.find('bypass-cache') >= 0:
             vm.wait_for_login()
-            pid = os.fork()
-            if pid:
-                # Guarantee check_bypass function has run before dump
-                child_pid = pid
-                wait_pid_active(pid, timeout)
-            else:
-                check_bypass(dump_file)
-                # Wait for parent process kills us
-                while True:
-                    time.sleep(1)
+            result_dict = multiprocessing.Manager().dict()
+            child_process = multiprocessing.Process(target=check_bypass,
+                                                    args=(dump_file, result_dict))
+            child_process.start()
 
         # Run virsh command
         cmd_result = virsh.dump(vm_name, dump_file, options,
@@ -255,6 +233,9 @@ def run(test, params, env):
                                 uri=uri,
                                 ignore_status=True, debug=True)
         status = cmd_result.exit_status
+        if 'child_process' in locals():
+            child_process.join(timeout=check_bypass_timeout)
+            params['bypass'] = result_dict['bypass']
 
         logging.info("Start check result")
         if not check_domstate(vm.state(), options):
@@ -271,11 +252,11 @@ def run(test, params, env):
                 logging.info("Successfully dump domain to %s", dump_file)
             else:
                 test.fail("The format of dumped file is wrong.")
+        if params.get('bypass'):
+            test.fail(params['bypass'])
     finally:
         backup_xml.sync()
         qemu_config.restore()
         libvirtd.restart()
-        if child_pid:
-            os.kill(child_pid, signal.SIGKILL)
         if os.path.isfile(dump_file):
             os.remove(dump_file)
