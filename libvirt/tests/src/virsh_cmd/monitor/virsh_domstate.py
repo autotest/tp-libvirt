@@ -2,6 +2,7 @@ import re
 import os
 import shutil
 import logging
+import platform
 
 from aexpect import ShellTimeoutError
 from aexpect import ShellProcessTerminatedError
@@ -116,8 +117,9 @@ def run(test, params, env):
             if not vmxml.xmltreefile.find('devices').findall('panic'):
                 # Add <panic> device to domain
                 panic_dev = Panic()
-                panic_dev.addr_type = "isa"
-                panic_dev.addr_iobase = "0x505"
+                if "ppc" not in platform.machine():
+                    panic_dev.addr_type = "isa"
+                    panic_dev.addr_iobase = "0x505"
                 vmxml.add_device(panic_dev)
             vmxml.sync()
             # Config auto_dump_path in qemu.conf
