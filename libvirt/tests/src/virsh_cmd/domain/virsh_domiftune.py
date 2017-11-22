@@ -26,7 +26,8 @@ def check_domiftune(params, test_clear):
     peak_out_from_cmd_output = None
     burst_in_from_cmd_output = None
     burst_out_from_cmd_output = None
-    domiftune_params = {}
+    inbound_from_xml = None
+    outbound_from_xml = None
 
     logging.debug("Checking inbound=%s outbound=%s", inbound, outbound)
     if vm and vm.is_alive():
@@ -65,7 +66,7 @@ def check_domiftune(params, test_clear):
     except AttributeError, details:
         logging.error("Error in get inbound/outbound average: %s", details)
     logging.debug("inbound_from_xml=%s, outbound_from_xml=%s",
-                  inbound_from_xml, outbound_from_cmd_output)
+                  inbound_from_xml, outbound_from_xml)
 
     if vm and vm.is_alive() and options != "config":
         if test_clear and inbound:
