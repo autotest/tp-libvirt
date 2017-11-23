@@ -272,7 +272,6 @@ class VMChecker(object):
 
         # 2. Check Red Hat VirtIO drivers and display adapter
         logging.info("Checking VirtIO drivers and display adapter")
-        win_dirves = self.checker.get_driver_info()
         expect_drivers = ["Red Hat VirtIO SCSI",
                           "Red Hat VirtIO Ethernet Adapte"]
         # Windows display adapter is different for each release
@@ -283,13 +282,27 @@ class VMChecker(object):
         if self.os_version in ['win8', 'win8.1', 'win10', 'win2012', 'win2012r2', 'win2016']:
             expect_adapter = 'Basic Display Driver'
         expect_drivers.append(expect_adapter)
-        for driver in expect_drivers:
-            if driver in win_dirves:
-                logging.info("Find driver: %s", driver)
-                logging.info("PASS")
+        check_drivers = expect_drivers[:]
+        for check_times in range(5):
+            logging.info('Check drivers for the %dth time', check_times + 1)
+            win_dirves = self.checker.get_driver_info()
+            for driver in expect_drivers:
+                if driver in win_dirves:
+                    logging.info("Driver %s found", driver)
+                    check_drivers.remove(driver)
+                else:
+                    err_msg = "Driver %s not found" % driver
+                    logging.error(err_msg)
+            expect_drivers = check_drivers[:]
+            if not expect_drivers:
+                break
             else:
-                err_msg = "Not find driver: %s" % driver
-                self.log_err(err_msg)
+                wait = 60
+                logging.info('Wait another %d seconds...', wait)
+                time.sleep(wait)
+        if expect_drivers:
+            for driver in expect_drivers:
+                self.log_err("Not find driver: %s" % driver)
 
         # 3. Check graphic and video type in VM XML
         if self.compare_version(V2V_7_3_VERSION):
