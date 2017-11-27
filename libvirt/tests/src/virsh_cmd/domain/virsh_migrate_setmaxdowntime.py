@@ -280,7 +280,8 @@ def run(test, params, env):
         mount_dir = params.get("mnt_path_name")
         libvirt.setup_or_cleanup_nfs(False, export_dir=exp_dir,
                                      mount_dir=mount_dir,
-                                     restore_selinux=local_selinux_bak)
+                                     restore_selinux=local_selinux_bak,
+                                     rm_export_dir=False)
 
         # Recover libvirtd service configuration on local
         if libvirtd_conf:
