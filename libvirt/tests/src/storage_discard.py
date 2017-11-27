@@ -6,7 +6,7 @@ import re
 import logging
 import time
 
-from autotest.client import lv_utils
+from avocado.utils import lv_utils
 from autotest.client.shared import error
 
 from avocado.utils import process
