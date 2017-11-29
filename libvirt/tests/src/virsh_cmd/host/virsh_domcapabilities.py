@@ -33,11 +33,11 @@ def run(test, params, env):
         guest_capa = capa_xml.get_guest_capabilities()
         for arch_prop in guest_capa.values():
             for arch in arch_prop.keys():
-                machine_list = arch_prop[arch]['machine']
                 virttype_list = []
-                emulatorbin_list = [arch_prop[arch]['emulator']]
                 for key in arch_prop[arch].keys():
                     if key.startswith("domain_"):
+                        machine_list = arch_prop[arch][key]['machine']
+                        emulatorbin_list = [arch_prop[arch][key]['emulator']]
                         virttype_list.append(key[7:])
                         if arch_prop[arch][key].values():
                             emulatorbin_list.append(arch_prop[arch][key]['emulator'])
