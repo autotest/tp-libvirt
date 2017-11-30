@@ -75,7 +75,7 @@ def run(test, params, env):
         if node:
             tmp_list = []
             for node_num in node:
-                host_node = utils_misc.NumaNode(i=node_num+1)
+                host_node = utils_misc.NumaNode(i=node_num + 1)
                 logging.debug("node %s cpu list is %s" %
                               (node_num, host_node.cpus))
                 tmp_list += host_node.cpus
@@ -126,13 +126,13 @@ def run(test, params, env):
 
         # Get host numa node list
         host_numa_node = utils_misc.NumaInfo()
-        node_list = host_numa_node.online_nodes
+        node_list = host_numa_node.online_nodes_withmem
         logging.debug("host node list is %s", node_list)
 
         # Get host cpu list
         tmp_list = []
         for node_num in node_list:
-            host_node = utils_misc.NumaNode(i=node_num+1)
+            host_node = utils_misc.NumaNode(i=node_num + 1)
             logging.debug("node %s cpu list is %s" %
                           (node_num, host_node.cpus))
             tmp_list += host_node.cpus
@@ -163,7 +163,7 @@ def run(test, params, env):
             vmxml.cpuset = vcpu_cpuset
         logging.debug("vm xml is %s", vmxml)
         vmxml.sync()
-        numad_cmd_opt = "-w %s:%s" % (vcpu_num, max_mem/1024)
+        numad_cmd_opt = "-w %s:%s" % (vcpu_num, max_mem / 1024)
 
         try:
             vm.start()
@@ -195,7 +195,7 @@ def run(test, params, env):
                     raise exceptions.TestFail("cpuset not found in domain "
                                               "xml.")
 
-        except virt_vm.VMStartError, e:
+        except virt_vm.VMStartError as e:
             # Starting VM failed.
             if status_error:
                 return
