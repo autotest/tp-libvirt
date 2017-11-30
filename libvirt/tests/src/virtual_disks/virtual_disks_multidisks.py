@@ -1447,7 +1447,7 @@ def run(test, params, env):
                                          hub_addr["port"]))
             time.sleep(1)
             if process.system(cmd, ignore_status=True, shell=True):
-                test.fail("Cann't see disk option"
+                test.fail("Can not see disk option"
                           " in command line")
 
         if dom_iothreads:
@@ -1457,7 +1457,7 @@ def run(test, params, env):
         if check_partitions:
             if not check_vm_partitions(devices,
                                        device_targets):
-                test.fail("Cann't see device in VM")
+                test.fail("Can not see device in VM")
 
         # Check discard in VM after command.
         if check_discard:
