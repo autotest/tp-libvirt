@@ -221,8 +221,8 @@ def run(test, params, env):
                 """
                 Check policy value in dumpxml with active or inactive option
 
-                :active_policy: active policy attribute value
-                :inactive_policy: inactive policy attribute value
+                :param active_policy: active policy attribute value
+                :param inactive_policy: inactive policy attribute value
                 """
                 vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
                 disk_list = vmxml.devices.by_device_tag("disk")
@@ -247,7 +247,7 @@ def run(test, params, env):
         """
         Update source and policy at the same time,then check those changes.
 
-        :xml_policy_file: VM xml policy file
+        :param xml_policy_file: VM xml policy file
         """
         xmltreefile = XMLTreeFile(xml_policy_file)
 
@@ -255,8 +255,8 @@ def run(test, params, env):
             """
             Configure startupPolicy attribute value.
 
-            :update: update value or not
-            :policy: policy value
+            :param update: update value or not
+            :param policy: policy value
             :return: flag_option and boolean value
             """
             if update:
@@ -271,8 +271,8 @@ def run(test, params, env):
             """
             Update startupPolicy source value.
 
-            :update: update value or not
-            :policy: policy value
+            :param update: update value or not
+            :param policy: policy value
             :return: flag_option and boolean value
             """
             source_file = policy_item.get('file')
