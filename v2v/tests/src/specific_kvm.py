@@ -14,7 +14,6 @@ from virttest import utils_misc
 from virttest import utils_sasl
 from virttest import libvirt_vm
 from virttest import data_dir
-from virttest import utils_package
 from virttest import utils_selinux
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
@@ -112,54 +111,15 @@ def run(test, params, env):
         else:
             log_fail("Disk counts is wrong")
 
-    def install_kernel(session, url=None, kernel_debug=False):
-        """
-        Install kernel to vm
-        """
-        if kernel_debug:
-            if not utils_package.package_install(['kernel-debug'], session=session):
-                test.error('Fail on installing debug kernel')
-            else:
-                logging.info('Install kernel-debug success')
-        else:
-            if not (url and url.endswith('.rpm')):
-                test.error('kernel url not contain ".rpm"')
-            # rhel6 need to install kernel-firmware first
-            if '.el6' in session.cmd('uname -r'):
-                kernel_fm_url = params.get('kernel_fm_url')
-                cmd_install_firmware = 'rpm -Uv %s --force' % kernel_fm_url
-                try:
-                    session.cmd(cmd_install_firmware, timeout=v2v_timeout)
-                except Exception, e:
-                    test.error(str(e))
-            cmd_install_kernel = 'rpm -iv %s --force' % url
-            try:
-                session.cmd(cmd_install_kernel, timeout=v2v_timeout)
-            except Exception, e:
-                test.error(str(e))
-
     @vm_shell
-    def multi_kernel(*args, **kwargs):
-        """
-        Make multi-kernel test
-        """
-        session = kwargs['session']
-        vm = kwargs['vm']
-        kernel_url = params.get('kernel_url')
-        install_kernel(session, kernel_url, debug_kernel)
-        default_kernel = vm.set_boot_kernel(1, debug_kernel)
-        if not default_kernel:
-            test.error('Set default kernel failed')
-        params['defaultkernel'] = default_kernel
-
     def check_vmlinuz_initramfs(v2v_result):
         """
         Check if vmlinuz matches initramfs on multi-kernel case
         """
         logging.info('Checking if vmlinuz matches initramfs')
         kernels = re.search(
-                'kernel packages in this guest:.*?(\(kernel.*?\).*?){2,}',
-                v2v_result, re.DOTALL)
+            'kernel packages in this guest:.*?(\(kernel.*?\).*?){2,}',
+            v2v_result, re.DOTALL)
         try:
             lines = kernels.group(0)
             kernel_list = re.findall('\((.*?)\)', lines)
@@ -174,19 +134,16 @@ def run(test, params, env):
         except Exception, e:
             test.error('Error on find kernel info \n %s' % str(e))
 
-    def check_boot_kernel(vmcheck, default_kernel, kernel_debug=False):
+    def check_boot_kernel(vmcheck):
         """
-        Check if converted vm use the default kernel
+        Check if converted vm use the latest kernel
         """
-        logging.debug('Check debug kernel: %s' % kernel_debug)
         current_kernel = vmcheck.session.cmd('uname -r').strip()
         logging.debug('Current kernel: %s' % current_kernel)
-        logging.debug('Default kernel: %s' % default_kernel)
-        if kernel_debug:
-            if '.debug' in current_kernel:
-                log_fail('VM should choose non-debug kernel')
-        elif current_kernel not in default_kernel:
-            log_fail('VM should choose default kernel')
+        if current_kernel == '3.10.0-799.el7.x86_64':
+            logging.debug('The kernel is the latest kernel')
+        else:
+            log_fail('VM should choose lastest kernel not %s' % current_kernel)
 
     def check_floppy_exist(vmcheck):
         """
@@ -262,7 +219,7 @@ def run(test, params, env):
         Check if number and type of network cards meet expectation
         """
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
-                vm_name, virsh_instance=virsh_instance)
+            vm_name, virsh_instance=virsh_instance)
         iflist = vmxml.get_iface_all()
         logging.debug('MAC list before v2v: %s' % mac_list)
         logging.debug('MAC list after  v2v: %s' % iflist.keys())
@@ -342,7 +299,8 @@ def run(test, params, env):
             if session.cmd_status('cat /etc/fstab|grep %s' % map[type]):
                 # Specify device by UUID
                 if type == 'uuid':
-                    entry = session.cmd('blkid -s UUID|grep swap').strip().split()
+                    entry = session.cmd(
+                        'blkid -s UUID|grep swap').strip().split()
                     # Replace path for UUID
                     origin = entry[0].strip(':')
                     replace = entry[1].replace('"', '')
@@ -399,45 +357,6 @@ def run(test, params, env):
         session.cmd('touch /var/lib/rpm/__db.001')
         if not session.cmd_status('yum update'):
             test.error('Corrupt rpmdb failed')
-
-    @vm_shell
-    def bogus_kernel(**kwargs):
-        """
-        Add a bogus kernel entry
-        """
-        session = kwargs['session']
-        vm = kwargs['vm']
-        grub_file = utils_misc.get_bootloader_cfg(session)
-        cfg = {
-            "file": [grub_file, "/etc/grub.d/40_custom"],
-            "search": ["title .*?.img", "menuentry '.*?}"],
-            "title": [["(title\s)", r"\1bogus "],
-                      ["(menuentry\s'.*?)'", r"\1 bogus'"]],
-            "kernel": [["(kernel .*?)(\s)", r"\1.bogus\2"],
-                       ["(/vmlinuz.*?)(\s)", r"\1.bogus\2"]],
-            "make": ["pwd", "grub2-mkconfig -o /boot/grub2/grub.cfg"]
-        }
-        if 'grub2' in grub_file:
-            index = 1
-        else:
-            index = 0
-        content = session.cmd('cat %s' % grub_file).strip()
-        search = re.search(cfg['search'][index], content, re.DOTALL)
-        if search:
-            # Make a copy of existing kernel entry string
-            new_entry = search.group(0)
-            # Replace title with bogus title
-            new_entry = re.sub(cfg['title'][index][0],
-                               cfg['title'][index][1], new_entry)
-            # Replace kernel with bogus kernel
-            new_entry = re.sub(cfg['kernel'][index][0],
-                               cfg['kernel'][index][1], new_entry)
-            logging.info(new_entry)
-            session.cmd('echo "%s"|cat >> %s' % (new_entry, cfg['file'][index]))
-            # Make effect
-            session.cmd(cfg['make'][index])
-        else:
-            test.error('No kernel found')
 
     @vm_shell
     def grub_serial_terminal(**kwargs):
@@ -557,13 +476,10 @@ def run(test, params, env):
                 if len(ret) == 0:
                     logging.info("All common checkpoints passed")
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
-                    vm_name, virsh_instance=vmchecker.virsh_instance)
+                vm_name, virsh_instance=vmchecker.virsh_instance)
             logging.debug(vmxml)
-            if checkpoint in ['multi_kernel', 'debug_kernel']:
-                default_kernel = params.get('defaultkernel')
-                check_boot_kernel(vmchecker.checker, default_kernel, debug_kernel)
-                if checkpoint == 'multi_kernel':
-                    check_vmlinuz_initramfs(output)
+            if checkpoint == 'multi_kernel':
+                check_boot_kernel(vmchecker.checker)
             if checkpoint == 'floppy':
                 check_floppy_exist(vmchecker.checker)
             if checkpoint == 'multi_disks':
@@ -586,7 +502,8 @@ def run(test, params, env):
                 if listen_type != checkpoint.split('_')[-1]:
                     log_fail('listen type changed after conversion')
             if checkpoint.startswith('selinux'):
-                status = vmchecker.checker.session.cmd('getenforce').strip().lower()
+                status = vmchecker.checker.session.cmd(
+                    'getenforce').strip().lower()
                 logging.info('Selinux status after v2v:%s', status)
                 if status != checkpoint[8:]:
                     log_fail('Selinux status not match')
@@ -600,7 +517,8 @@ def run(test, params, env):
         if log_check:
             log_fail(log_check)
         if len(error_list):
-            test.fail('%d checkpoints failed: %s' % (len(error_list), error_list))
+            test.fail('%d checkpoints failed: %s' %
+                      (len(error_list), error_list))
 
     try:
         v2v_params = {
@@ -641,8 +559,6 @@ def run(test, params, env):
                 if disk.get('device') == 'disk':
                     disk_count += 1
             params['ori_disks'] = disk_count
-        if checkpoint in multi_kernel_list:
-            multi_kernel()
         if checkpoint == 'virtio_on':
             change_disk_bus('virtio')
         if checkpoint == 'virtio_off':
@@ -687,9 +603,6 @@ def run(test, params, env):
                 os.environ['LIBGUESTFS_CACHEDIR'] = '/home'
         if checkpoint == 'corrupt_rpmdb':
             corrupt_rpmdb()
-        if checkpoint == 'bogus_kernel':
-            bogus_kernel()
-            check_boot()
         if checkpoint.startswith('network'):
             change_network_model(checkpoint[8:])
         if checkpoint == 'multi_netcards':
@@ -709,7 +622,8 @@ def run(test, params, env):
                 spice_passwd = {'type': 'spice',
                                 'passwd': params.get('spice_passwd', 'redhat')}
                 vm_xml.VMXML.set_graphics_attr(vm_name, spice_passwd)
-                params[checkpoint] = {'type': 'spice', 'passwdValidTo': '1970-01-01T00:00:01'}
+                params[checkpoint] = {'type': 'spice',
+                                      'passwdValidTo': '1970-01-01T00:00:01'}
             else:
                 graphic_video = checkpoint.split('_')
                 graphic = graphic_video[0]
@@ -719,13 +633,15 @@ def run(test, params, env):
                     video_type = graphic_video[1]
                     logging.info('Set video type to %s', video_type)
                     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-                    video = vmxml.xmltreefile.find('devices').find('video').find('model')
+                    video = vmxml.xmltreefile.find(
+                        'devices').find('video').find('model')
                     video.set('type', video_type)
                     vmxml.sync()
         if checkpoint.startswith('listen'):
             listen_type = checkpoint.split('_')[-1]
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-            listen = vmxml.xmltreefile.find('devices').find('graphics').find('listen')
+            listen = vmxml.xmltreefile.find(
+                'devices').find('graphics').find('listen')
             listen.set('type', listen_type)
             vmxml.sync()
         if checkpoint == 'host_selinux_on':
@@ -771,11 +687,13 @@ def run(test, params, env):
             virsh.detach_interface(vm_name, 'bridge --current', debug=True)
         if checkpoint == 'only_net':
             logging.info('Attach network')
-            virsh.attach_interface(vm_name, 'network default --current', debug=True)
+            virsh.attach_interface(
+                vm_name, 'network default --current', debug=True)
             v2v_params.pop('bridge')
         if checkpoint == 'only_br':
             logging.info('Attatch bridge')
-            virsh.attach_interface(vm_name, 'bridge virbr0 --current', debug=True)
+            virsh.attach_interface(
+                vm_name, 'bridge virbr0 --current', debug=True)
             v2v_params.pop('network')
         if checkpoint == 'no_libguestfs_backend':
             os.environ.pop('LIBGUESTFS_BACKEND')
