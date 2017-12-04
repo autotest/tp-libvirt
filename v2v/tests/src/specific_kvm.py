@@ -145,6 +145,7 @@ def run(test, params, env):
             logging.debug('The kernel is the latest kernel')
         else:
             log_fail('VM should choose lastest kernel not %s' % current_kernel)
+            
     def check_floppy_exist(vmcheck):
         """
         Check if floppy exists after convertion
