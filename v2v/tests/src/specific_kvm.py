@@ -112,46 +112,7 @@ def run(test, params, env):
         else:
             log_fail("Disk counts is wrong")
 
-    def install_kernel(session, url=None, kernel_debug=False):
-        """
-        Install kernel to vm
-        """
-        if kernel_debug:
-            if not utils_package.package_install(['kernel-debug'], session=session):
-                test.error('Fail on installing debug kernel')
-            else:
-                logging.info('Install kernel-debug success')
-        else:
-            if not (url and url.endswith('.rpm')):
-                test.error('kernel url not contain ".rpm"')
-            # rhel6 need to install kernel-firmware first
-            if '.el6' in session.cmd('uname -r'):
-                kernel_fm_url = params.get('kernel_fm_url')
-                cmd_install_firmware = 'rpm -Uv %s --force' % kernel_fm_url
-                try:
-                    session.cmd(cmd_install_firmware, timeout=v2v_timeout)
-                except Exception, e:
-                    test.error(str(e))
-            cmd_install_kernel = 'rpm -iv %s --force' % url
-            try:
-                session.cmd(cmd_install_kernel, timeout=v2v_timeout)
-            except Exception, e:
-                test.error(str(e))
-
     @vm_shell
-    def multi_kernel(*args, **kwargs):
-        """
-        Make multi-kernel test
-        """
-        session = kwargs['session']
-        vm = kwargs['vm']
-        kernel_url = params.get('kernel_url')
-        install_kernel(session, kernel_url, debug_kernel)
-        default_kernel = vm.set_boot_kernel(1, debug_kernel)
-        if not default_kernel:
-            test.error('Set default kernel failed')
-        params['defaultkernel'] = default_kernel
-
     def check_vmlinuz_initramfs(v2v_result):
         """
         Check if vmlinuz matches initramfs on multi-kernel case
@@ -174,20 +135,17 @@ def run(test, params, env):
         except Exception, e:
             test.error('Error on find kernel info \n %s' % str(e))
 
-    def check_boot_kernel(vmcheck, default_kernel, kernel_debug=False):
+    def check_boot_kernel(vmcheck):
         """
-        Check if converted vm use the default kernel
+        Check if converted vm use the latest kernel
         """
-        logging.debug('Check debug kernel: %s' % kernel_debug)
         current_kernel = vmcheck.session.cmd('uname -r').strip()
         logging.debug('Current kernel: %s' % current_kernel)
-        logging.debug('Default kernel: %s' % default_kernel)
-        if kernel_debug:
-            if '.debug' in current_kernel:
-                log_fail('VM should choose non-debug kernel')
-        elif current_kernel not in default_kernel:
-            log_fail('VM should choose default kernel')
-
+        if current_kernel == '3.10.0-799.el7.x86_64':
+            logging.debug('The kernel is the latest kernel')
+        else:
+            log_fail('VM should choose lastest kernel not %s' % current_kernel)
+    
     def check_floppy_exist(vmcheck):
         """
         Check if floppy exists after convertion
@@ -401,45 +359,6 @@ def run(test, params, env):
             test.error('Corrupt rpmdb failed')
 
     @vm_shell
-    def bogus_kernel(**kwargs):
-        """
-        Add a bogus kernel entry
-        """
-        session = kwargs['session']
-        vm = kwargs['vm']
-        grub_file = utils_misc.get_bootloader_cfg(session)
-        cfg = {
-            "file": [grub_file, "/etc/grub.d/40_custom"],
-            "search": ["title .*?.img", "menuentry '.*?}"],
-            "title": [["(title\s)", r"\1bogus "],
-                      ["(menuentry\s'.*?)'", r"\1 bogus'"]],
-            "kernel": [["(kernel .*?)(\s)", r"\1.bogus\2"],
-                       ["(/vmlinuz.*?)(\s)", r"\1.bogus\2"]],
-            "make": ["pwd", "grub2-mkconfig -o /boot/grub2/grub.cfg"]
-        }
-        if 'grub2' in grub_file:
-            index = 1
-        else:
-            index = 0
-        content = session.cmd('cat %s' % grub_file).strip()
-        search = re.search(cfg['search'][index], content, re.DOTALL)
-        if search:
-            # Make a copy of existing kernel entry string
-            new_entry = search.group(0)
-            # Replace title with bogus title
-            new_entry = re.sub(cfg['title'][index][0],
-                               cfg['title'][index][1], new_entry)
-            # Replace kernel with bogus kernel
-            new_entry = re.sub(cfg['kernel'][index][0],
-                               cfg['kernel'][index][1], new_entry)
-            logging.info(new_entry)
-            session.cmd('echo "%s"|cat >> %s' % (new_entry, cfg['file'][index]))
-            # Make effect
-            session.cmd(cfg['make'][index])
-        else:
-            test.error('No kernel found')
-
-    @vm_shell
     def grub_serial_terminal(**kwargs):
         """
         Edit the serial and terminal lines of grub.conf
@@ -559,11 +478,8 @@ def run(test, params, env):
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
                     vm_name, virsh_instance=vmchecker.virsh_instance)
             logging.debug(vmxml)
-            if checkpoint in ['multi_kernel', 'debug_kernel']:
-                default_kernel = params.get('defaultkernel')
-                check_boot_kernel(vmchecker.checker, default_kernel, debug_kernel)
-                if checkpoint == 'multi_kernel':
-                    check_vmlinuz_initramfs(output)
+            if checkpoint == 'multi_kernel':
+                check_boot_kernel(vmchecker.checker)
             if checkpoint == 'floppy':
                 check_floppy_exist(vmchecker.checker)
             if checkpoint == 'multi_disks':
@@ -641,8 +557,6 @@ def run(test, params, env):
                 if disk.get('device') == 'disk':
                     disk_count += 1
             params['ori_disks'] = disk_count
-        if checkpoint in multi_kernel_list:
-            multi_kernel()
         if checkpoint == 'virtio_on':
             change_disk_bus('virtio')
         if checkpoint == 'virtio_off':
@@ -687,9 +601,6 @@ def run(test, params, env):
                 os.environ['LIBGUESTFS_CACHEDIR'] = '/home'
         if checkpoint == 'corrupt_rpmdb':
             corrupt_rpmdb()
-        if checkpoint == 'bogus_kernel':
-            bogus_kernel()
-            check_boot()
         if checkpoint.startswith('network'):
             change_network_model(checkpoint[8:])
         if checkpoint == 'multi_netcards':
