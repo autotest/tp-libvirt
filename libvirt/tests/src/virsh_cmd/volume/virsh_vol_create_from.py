@@ -7,6 +7,7 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import libvirt_storage
 from virttest.utils_test import libvirt as utlv
+from virttest import utils_misc
 
 from provider import libvirt_version
 
@@ -103,13 +104,18 @@ def run(test, params, env):
         # Metadata preallocation is not supported for block volumes
         if dest_pool_type in ["disk", "logical"]:
             prealloc_option = ""
+        pid_before_run = utils_misc.get_pid("libvirtd")
         # Run run_virsh_vol_create_from to create dest vol
         cmd_result = virsh.vol_create_from(dest_pool_name, vol_file,
                                            src_vol_name, src_pool_name,
                                            prealloc_option, ignore_status=True,
                                            debug=True)
+        pid_after_run = utils_misc.get_pid("libvirtd")
+        logging.debug("%s, %s" % (pid_before_run, pid_after_run))
+        # According to bug 1363636, we need check libvirtd status
+        if pid_before_run != pid_after_run:
+            test.fail("Pls check libvirtd has crashed")
         status = cmd_result.exit_status
-
         # Check result
         if status_error == "no":
             if status == 0:
