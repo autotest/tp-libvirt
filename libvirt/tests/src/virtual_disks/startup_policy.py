@@ -250,6 +250,7 @@ def run(test, params, env):
         :param xml_policy_file: VM xml policy file
         """
         xmltreefile = XMLTreeFile(xml_policy_file)
+        policy_item = xmltreefile.find('/source')
 
         def configure_startup_policy(update=False, policy='optional'):
             """
@@ -264,6 +265,7 @@ def run(test, params, env):
             else:
                 policy_item.set("startupPolicy", policy)
             flag_option = "--live"
+            xmltreefile.write(xml_policy_file, encoding="UTF-8")
             return flag_option, False
 
         # Update source and startUpPolicy attribute value.
@@ -284,15 +286,18 @@ def run(test, params, env):
             policy_item.set("file", new_source_file)
             policy_item.set("startupPolicy", policy)
             flag_option = "--persistent"
-            return flag_option, update
+            xmltreefile.write(xml_policy_file, encoding="UTF-8")
+            return flag_option, False
 
+        function_list = [configure_startup_policy, update_source_policy,
+                         configure_startup_policy, update_source_policy]
+        function_parameter = [False, False, True, True]
         # Loop all above scenarios to update device.
-        for func in [configure_startup_policy(update=True), configure_startup_policy(update=False),
-                     update_source_policy(update=False), update_source_policy(update=True)]:
+        for index in range(len(function_list)):
             try:
-                policy_item = xmltreefile.find('/source')
-                flag_option, update_error = func()
-                xmltreefile.write(xml_policy_file, encoding="UTF-8")
+                func = function_list[index]
+                para = function_parameter[index]
+                flag_option, update_error = func(para)
                 ret = virsh.update_device(vm_name, xml_policy_file, flagstr=flag_option, debug=True)
                 libvirt.check_exit_status(ret, expect_error=update_error)
             except AttributeError, elem_attr:
@@ -374,9 +379,6 @@ def run(test, params, env):
     expect_value = [None, startup_policy]
 
     try:
-        # For dir based pool and startup_policy='optional', forcedly initialized restore_error to True.
-        if pool_type == "dir" and startup_policy == "optional" and not device_type == "disk":
-            restore_error = True
         if disk_type == "volume":
             pvt = libvirt.PoolVolumeTest(test, params)
             vol_name, vol_path = create_volume(pvt, vol_name)
