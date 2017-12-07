@@ -1,4 +1,5 @@
 import logging
+import platform
 
 from autotest.client import os_dep
 from autotest.client.shared import error
@@ -41,7 +42,10 @@ def run(test, params, env):
         # Check the host cpu count.
         xml_cpu_count = cap_xml.cpu_count
         logging.debug("Host cpus count (capabilities_xml): %s", xml_cpu_count)
-        cmd = "grep processor /proc/cpuinfo | wc -l"
+        search_str = 'processor'
+        if platform.machine() == 's390x':
+            search_str = 'cpu number'
+        cmd = "grep %s /proc/cpuinfo | wc -l" % search_str
         exp_cpu_count = int(process.run(cmd, shell=True).stdout.strip())
         if xml_cpu_count != exp_cpu_count:
             raise error.TestFail("Host cpus count is expected to be %s, "
