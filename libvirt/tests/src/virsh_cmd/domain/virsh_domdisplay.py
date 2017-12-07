@@ -48,7 +48,12 @@ def run(test, params, env):
              "spice" in options and graphic != "spice":
             status_error = True
 
-    def prepare_ssl_env():
+    def restart_libvirtd():
+        # make modification effect
+        libvirtd_instance = utils_libvirtd.Libvirtd()
+        libvirtd_instance.restart()
+
+    def clean_ssl_env():
         """
         Do prepare for ssl spice connection
         """
@@ -64,12 +69,19 @@ def run(test, params, env):
         # write back to origin file with cut left content
         f_obj = open(qemu_conf, "w")
         f_obj.write(left_cont)
+        f_obj.close()
+
+    def prepare_ssl_env():
+        """
+        Clean ssl spice connection firstly
+        """
+        # modify qemu.conf
+        clean_ssl_env()
+        # Append ssl spice configuration
+        f_obj = open(qemu_conf, "a")
         f_obj.write("spice_tls = 1\n")
         f_obj.write("spice_tls_x509_cert_dir = \"/etc/pki/libvirt-spice\"")
         f_obj.close()
-
-        # make modification effect
-        utils_libvirtd.libvirtd_restart()
 
         # Generate CA cert
         utils_misc.create_x509_dir("/etc/pki/libvirt-spice",
@@ -79,14 +91,17 @@ def run(test, params, env):
 
     try:
         graphic_count = len(vmxml_backup.get_graphics_devices())
+        shutil.copyfile(qemu_conf, tmp_file)
         if is_ssl:
             # Do backup for qemu.conf in tmp_file
-            shutil.copyfile(qemu_conf, tmp_file)
             prepare_ssl_env()
+            restart_libvirtd()
             if graphic_count:
                 Graphics.del_graphic(vm_name)
             Graphics.add_graphic(vm_name, passwd, "spice", True)
         else:
+            clean_ssl_env()
+            restart_libvirtd()
             if graphic_count:
                 Graphics.del_graphic(vm_name)
             Graphics.add_graphic(vm_name, passwd, graphic)
@@ -162,9 +177,8 @@ def run(test, params, env):
                                  % (expect, output))
 
     finally:
+        # qemu.conf recovery
+        shutil.move(tmp_file, qemu_conf)
+        restart_libvirtd()
         # Domain xml recovery
         vmxml_backup.sync()
-        if is_ssl:
-            # qemu.conf recovery
-            shutil.move(tmp_file, qemu_conf)
-            utils_libvirtd.libvirtd_restart()
