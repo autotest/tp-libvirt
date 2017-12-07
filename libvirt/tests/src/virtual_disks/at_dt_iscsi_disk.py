@@ -59,9 +59,9 @@ def run(test, params, env):
     secret_private = params.get("secret_private", "yes")
     status_error = "yes" == params.get("status_error", "no")
     # Indicate the PPC platform
-    on_ppc = False
-    if platform.platform().count('ppc64'):
-        on_ppc = True
+    on_x86 = True
+    if not platform.machine().count('x86'):
+        on_x86 = False
 
     if disk_src_protocol == 'iscsi':
         if not libvirt_version.version_compare(1, 0, 4):
@@ -268,7 +268,7 @@ def run(test, params, env):
                     session = vm.wait_for_login()
                     # Here the script needs wait for a while for the guest to
                     # recognize the hotplugged disk on PPC
-                    if on_ppc:
+                    if not on_x86:
                         time.sleep(10)
                     cmd = "grep %s /proc/partitions" % disk_target
                     s, o = session.cmd_status_output(cmd)
