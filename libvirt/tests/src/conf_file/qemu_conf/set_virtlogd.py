@@ -8,6 +8,7 @@ from avocado.utils import process
 
 from virttest import utils_config
 from virttest import utils_libvirtd
+from virttest import utils_package
 from virttest import virt_vm
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.console import Console
@@ -179,7 +180,7 @@ def run(test, params, env):
                       "Error: %s" % str(detail))
         # Check VM log file has right permission and owner.
         check_vm_log_file_permission_and_owner(vm_name)
-
+        utils_package.package_install(['lsof'])
         # Check VM log file is opened by virtlogd.
         cmd = ("lsof -w %s|grep 'virtlogd'" % guest_log_file)
         errorMessage = "VM log file: %s is not opened by:virtlogd." % guest_log_file
