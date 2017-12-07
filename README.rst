@@ -45,8 +45,9 @@ using virt test, and commit your changes.
 
     inspekt checkall --disable-style E501,E265,W601,E402,E722,E741 --no-license-check
 
-6) Fix any problems
-7) Push your changes and submit a pull request
-8) That's it.
+6) Ensure check-list in tp-libvirt_review_comment_summary.rst are met
+7) Fix any problems
+8) Push your changes and submit a pull request
+9) That's it.
 
 [1] You can always create your own test provider, if you have special purposes, or just want to develop your work independently.
