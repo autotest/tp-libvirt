@@ -166,7 +166,7 @@ def run(test, params, env):
 
     set_value_of_cgroup = get_parameter_in_cgroup(vm, cgroup_type=schedinfo_param,
                                                   parameter=cgroup_ref)
-    vm.destroy()
+    vm.destroy(gracefully=False)
 
     if set_ref:
         set_value_of_output = schedinfo_output_analyse(result, set_ref,
