@@ -668,7 +668,31 @@ def run(test, params, env):
                                                 "no")
     hotunplug_after_migrate = "yes" == params.get("virsh_hotunplug_cpu_after",
                                                   "no")
+    compat_guest_migrate = (params.get("host_arch", "all_arch") in
+                            utils_misc.get_cpu_info()['Model name'])
+    compat_mode = "yes" == params.get("compat_mode", "no")
 
+    # Configurations for cpu compat guest to boot
+    if compat_mode:
+        if compat_guest_migrate:
+            if not libvirt_version.version_compare(3, 2, 0):
+                test.cancel("host CPU model is not supported")
+            if vm.is_alive():
+                vm.destroy()
+            cpu_model = params.get("cpu_model", None)
+            vm_xml.VMXML.set_cpu_mode(vm.name, mode='host-model',
+                                      model=cpu_model)
+            vm.start()
+            session = vm.wait_for_login()
+            actual_cpu_model = utils_misc.get_cpu_info(session)['Model name']
+            if cpu_model not in actual_cpu_model.lower():
+                test.error("Failed to configure cpu model,\nexpected: %s but "
+                           "actual cpu model: %s" % (cpu_model,
+                                                     actual_cpu_model))
+            logging.debug("Configured cpu model successfully! Guest booted "
+                          "with CPU model: %s", actual_cpu_model)
+        else:
+            test.cancel("Host arch is not POWER9")
     # Configurations for cpu hotplug and cpu hotunplug
     if cpu_hotplug:
         # To check cpu hotplug is supported or not
