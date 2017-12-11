@@ -270,6 +270,17 @@ def qemu_vnc_options(libvirt_vm):
 
     vnc_addr_port = vnc_opt_split[0]
     addr, vnc_dict['port'] = vnc_addr_port.rsplit(':', 1)
+
+    #The format of vnc relevant arguments in qemu command line varies
+    #in different RHEL versions, see below:
+    #In RHEL6.9, like '-vnc unix:/var/lib/libvirt/qemu/*.vnc'
+    #In RHEL7.3, like '-vnc unix:/var/lib/libvirt/qemu/*vnc.sock'
+    #In RHEL7.5, like '-vnc vnc=unix:/var/lib/libvirt/qemu/*vnc.sock'
+
+    #Note, for RHEL7.5, 'vnc=' is added before regular arguments.
+    #For compatibility, one more handling is added for this change.
+    addr = addr.split('=')[1] if '=' in addr else addr
+
     if addr.startswith('[') and addr.endswith(']'):
         addr = addr[1:-1]
     vnc_dict['addr'] = addr
