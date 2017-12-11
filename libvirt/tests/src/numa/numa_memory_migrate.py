@@ -51,7 +51,7 @@ def run(test, params, env):
 
     # Get host numa node list
     host_numa_node = utils_misc.NumaInfo()
-    node_list = host_numa_node.online_nodes
+    node_list = host_numa_node.online_nodes_withmem
     logging.debug("host node list is %s", node_list)
     if len(node_list) < 2:
         raise exceptions.TestSkipError("At least 2 numa nodes are needed on"
@@ -102,7 +102,7 @@ def run(test, params, env):
         try:
             vm.start()
             vm.wait_for_login()
-        except virt_vm.VMStartError, e:
+        except virt_vm.VMStartError as e:
             raise exceptions.TestFail("Test failed in positive case.\n "
                                       "error: %s" % e)
 
