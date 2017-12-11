@@ -350,6 +350,183 @@ def run(test, params, env):
         fp.close()
         return mem_xml_file
 
+    def get_remote_session(vm, params=None):
+        """
+        Get the session of guest in source host or in remote host
+
+        :param vm: vm object
+        :param params: Test dict params
+
+        :return: session object of vm
+        """
+        if params:
+            remote_user = params.get("remote_user", "root")
+            remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
+            remote_pwd = params.get("remote_pwd", None)
+            session = remote.remote_login("ssh", remote_ip, "22", remote_user,
+                                          remote_pwd, r"[\#\$]\s*$")
+        else:
+            session = vm.wait_for_login()
+        return session
+
+    def memory_hotplug_hotunplug(vm, mem_hotplug_size, mem_size_unit,
+                                 mem_hotplug_count, uri=None, unplug=False,
+                                 params=None, vm_ip=None, session_timeout=600):
+        """
+        Performs Memory Hotplug or Hotunplug based on the hotplug count given.
+
+        :param vm: vm object
+        :param mem_hotplug_size: memory size to be hotplugged
+        :param mem_size_unit: unit of memory size
+        :param mem_hotplug_count: no of times hotplug/hotunplug operation
+        :param uri: virsh connect uri if operation to be performed remotely
+        :param unplug: if False perform hotplug, if True perform hotunplug
+        :param params: Test dict params
+        :param vm_ip: vm's ip address
+        :param session_timeout: time out for shell session to return
+
+        :raise: test.fail if memory hotplug or hotunplug doesn't work
+        """
+
+        mem_xml_list = []
+        # For all numa node related scenarios, we create and use node 0 and
+        # node 1 for guest, perform hotplug/hotunplug to node 0 if hotplug
+        # count is 1 and perform hotplug/hotunplug to node 0 and node 1
+        # alternatively if hotplug count > 1
+        numa_node = '0'
+        cmd = "cat /proc/meminfo | grep 'MemTotal'"
+        dmesg_cmd = "dmesg -c"
+        if params:
+            guest_user = params.get("username", "root")
+            ssh_cmd = "ssh %s@%s" % (guest_user, vm_ip)
+            ssh_cmd += " -o StrictHostKeyChecking=no"
+            cmd = "%s '%s'" % (ssh_cmd, cmd)
+            dmesg_cmd = "%s '%s'" % (ssh_cmd, dmesg_cmd)
+        session = get_remote_session(vm, params=params)
+        # clear the dmesg log
+        if session.cmd(dmesg_cmd) != 0:
+            logging.error("Failed to clear the dmesg logs")
+        act_mem = session.cmd_output(cmd, timeout=session_timeout)
+        act_mem = int(act_mem.split()[-2].strip())
+        virsh_inst = virsh.Virsh(uri=uri)
+        vmxml_backup = vm_xml.VMXML.new_from_dumpxml(vm.name,
+                                                     virsh_instance=virsh_inst)
+        vm_current_mem = int(vmxml_backup.current_mem)
+        if mem_hotplug_count == 1:
+            mem_xml = create_mem_hotplug_xml(mem_hotplug_size,
+                                             mem_size_unit, numa_node)
+            if not unplug:
+                logging.info("Trying to hotplug memory")
+                ret_attach = virsh.attach_device(vm.name, mem_xml,
+                                                 flagstr="--live",
+                                                 debug=True, uri=uri)
+                if ret_attach.exit_status != 0:
+                    test.fail("Hotplug memory failed: %s", ret_attach.stderr)
+            else:
+                logging.info("Trying to hotunplug memory")
+                ret_attach = virsh.detach_device(vm.name, mem_xml,
+                                                 flagstr="--live",
+                                                 debug=True, uri=uri)
+                if ret_attach.exit_status != 0:
+                    test.fail("Hotunplug memory failed: %s", ret_attach.stderr)
+            mem_xml_list.append(mem_xml)
+        elif mem_hotplug_count > 1:
+            for each_count in range(mem_hotplug_count):
+                mem_xml = create_mem_hotplug_xml(mem_hotplug_size,
+                                                 mem_size_unit,
+                                                 numa_node)
+                if not unplug:
+                    logging.info("Trying to hotplug memory count: %s",
+                                 each_count + 1)
+                    ret_attach = virsh.attach_device(vm.name, mem_xml,
+                                                     flagstr="--live",
+                                                     debug=True, uri=uri)
+                    if ret_attach.exit_status != 0:
+                        test.fail("Hotunplug memory failed at count %s: %s",
+                                  each_count + 1, ret_attach.stderr)
+                else:
+                    logging.info("Trying to hotunplug memory count: %s",
+                                 each_count + 1)
+                    ret_attach = virsh.detach_device(vm.name, mem_xml,
+                                                     flagstr="--live",
+                                                     debug=True, uri=uri)
+                    if ret_attach.exit_status != 0:
+                        test.fail("Hotunplug memory failed at count %s: %s",
+                                  each_count + 1, ret_attach.stderr)
+                    # Hotplug memory to numa node alternatively if
+                    # there are 2 nodes
+                    if len(numa_dict_list) == 2:
+                        if numa_node == '0':
+                            numa_node = '1'
+                        else:
+                            numa_node = '0'
+                mem_xml_list.append(mem_xml)
+        if unplug:
+            session = get_remote_session(vm, params=params)
+            err_msg = "pseries-hotplug-mem: Memory indexed-count-remove failed"
+            cmd = "shutdown -r now"
+            dmesg_cmd = "dmesg"
+            if params:
+                cmd = "%s '%s'" % (ssh_cmd, cmd)
+                dmesg_cmd = "%s '%s'" % (ssh_cmd, dmesg_cmd)
+            if err_msg in str(session.cmd_output(dmesg_cmd)).strip():
+                # if hotplugged memory is in use then mem hotunplug might fail
+                # so guest is reboot necessary for mem hotunplug to take effect
+                try:
+                    session.cmd(cmd)
+                except Exception:
+                    logging.info("guest reboot command triggered")
+                    if hotunplug_mem_before and not params:
+                        session = vm.wait_for_login()
+            cmd = "cat /proc/meminfo | grep 'MemTotal'"
+            if params:
+                ssh_cmd += " -o ConnectTimeout=300"
+                cmd = "%s '%s'" % (ssh_cmd, cmd)
+            # check hotplugged memory is reflected
+            status = -1
+            while(True):
+                status, output = session.cmd_status_output(cmd,
+                                                           timeout=session_timeout)
+                if status == 0:
+                    vm_new_mem = int(str(output).split()[-2].strip())
+                    break
+        if not unplug:
+            session = get_remote_session(vm, params=params)
+            vm_new_mem = session.cmd_output(cmd, timeout=session_timeout)
+            vm_new_mem = int(vm_new_mem.split()[-2].strip())
+        vmxml_backup = vm_xml.VMXML.new_from_dumpxml(vm.name,
+                                                     virsh_instance=virsh_inst)
+        vm_new_current_mem = int(vmxml_backup.current_mem)
+        logging.debug("Old current memory %d", vm_current_mem)
+        logging.debug("New current memory %d", vm_new_current_mem)
+        logging.debug("Old current memory inside guest %d", act_mem)
+        logging.debug("New current memory inside guest %d", vm_new_mem)
+        if not unplug:
+            expected_mem = vm_current_mem + vm_hotplug_mem
+            expected_vm_mem = act_mem + vm_hotplug_mem
+            logging.debug("Hot plug mem %d", vm_hotplug_mem)
+            logging.debug("old mem + hotplug = %d", expected_mem)
+            logging.debug("old mem + hotplug inside guest = %d",
+                          expected_vm_mem)
+            if not vm_new_mem > act_mem:
+                test.fail("Memory hotplug/hotunplug failed")
+        else:
+            expected_mem = vm_current_mem - vm_hotplug_mem
+            expected_vm_mem = act_mem - vm_hotplug_mem
+            logging.debug("Hot unplug mem %d", vm_hotplug_mem)
+            logging.debug("old mem - hotunplug = %d", expected_mem)
+            logging.debug("old mem - hotunplug inside guest = %d",
+                          expected_vm_mem)
+            if not vm_new_mem < act_mem:
+                test.fail("Memory hotplug/hotunplug failed")
+        if not vm_new_current_mem == expected_mem:
+            test.fail("Memory hotplug/hotunplug failed")
+
+        logging.debug("Memory hotplug/hotunplug successful !!!")
+        if session:
+            session.close()
+        return mem_xml_list
+
     def cpu_hotplug_hotunplug(vm, vm_addr, cpu_count, operation,
                               uri=None, params=None):
         """
@@ -364,14 +541,7 @@ def run(test, params, env):
 
         :raise test.fail if hotplug or hotunplug doesn't work
         """
-        if params:
-            remote_user = params.get("remote_user", "root")
-            remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
-            remote_pwd = params.get("remote_pwd", None)
-            session = remote.remote_login("ssh", remote_ip, "22", remote_user,
-                                          remote_pwd, r"[\#\$]\s*$")
-        else:
-            session = vm.wait_for_login()
+        session = get_remote_session(vm, params=params)
         status = virsh.setvcpus(vm.name, cpu_count, extra="--live", debug=True,
                                 uri=uri)
         if status.exit_status:
@@ -653,10 +823,16 @@ def run(test, params, env):
     postcopy_cmd = params.get("virsh_postcopy_cmd", "")
     postcopy_timeout = int(params.get("postcopy_migration_timeout", "180"))
     mem_hotplug = "yes" == params.get("virsh_migrate_mem_hotplug", "no")
+    hotplug_mem_before = "yes" == params.get("virsh_hotplug_mem_before", "no")
+    hotplug_mem_after = "yes" == params.get("virsh_hotplug_mem_after", "no")
+    hotunplug_mem_before = "yes" == params.get("virsh_hotunplug_mem_before",
+                                               "no")
+    hotunplug_mem_after = "yes" == params.get("virsh_hotunplug_mem_after", "no")
     # min memory that can be hotplugged 256 MiB - 256 * 1024 = 262144
     mem_hotplug_size = int(params.get("virsh_migrate_hotplug_mem", "262144"))
     mem_hotplug_count = int(params.get("virsh_migrate_mem_hotplug_count", "1"))
     mem_size_unit = params.get("virsh_migrate_hotplug_mem_unit", "KiB")
+    session_timeout = int(params.get("guest_session_timeout", 600))
     migrate_there_and_back = "yes" == params.get("virsh_migrate_back", "no")
     cpu_hotplug = "yes" == params.get("virsh_migrate_cpu_hotplug", "no")
     cpu_hotunplug = "yes" == params.get("virsh_migrate_cpu_hotunplug", "no")
@@ -754,6 +930,7 @@ def run(test, params, env):
         if not libvirt_version.version_compare(1, 2, 14):
             test.cancel("Memory Hotplug is not supported")
 
+        xml_list = []
         # hotplug memory in KiB
         vmxml_backup = vm_xml.VMXML.new_from_dumpxml(vm_name)
         vm_max_dimm_slots = int(params.get("virsh_migrate_max_dimm_slots",
@@ -933,10 +1110,10 @@ def run(test, params, env):
 
         vm_session = vm.wait_for_login()
 
-        # Perform cpu hotplug or hotunplug before migration
-        if cpu_hotplug:
+        if cpu_hotplug or mem_hotplug:
             guest_ip = vm.get_address()
-            if hotplug_after_migrate or hotunplug_after_migrate:
+            if(hotplug_after_migrate or hotunplug_after_migrate or
+               hotplug_mem_after or hotunplug_mem_after):
                 config_opt = ["StrictHostKeyChecking=no"]
                 guest_user = params.get("username", "root")
                 guest_pwd = params.get("password", "password")
@@ -949,6 +1126,9 @@ def run(test, params, env):
                                              password2=guest_pwd,
                                              config_options=config_opt,
                                              public_key="rsa")
+
+        # Perform cpu hotplug or hotunplug before migration
+        if cpu_hotplug:
             if hotplug_before_migrate:
                 logging.debug("Performing CPU Hotplug before migration")
                 cpu_hotplug_hotunplug(vm, guest_ip, max_vcpus, "Hotplug")
@@ -957,50 +1137,27 @@ def run(test, params, env):
                     logging.debug("Performing CPU Hot Unplug before migration")
                     cpu_hotplug_hotunplug(vm, guest_ip, current_vcpus, "Hotunplug")
 
-        # Perform memory hotplug after VM is up
+        # Perform memory hotplug after VM is up before migration
         if mem_hotplug:
             if enable_numa:
-                numa_node = '0'
-                if mem_hotplug_count == 1:
-                    mem_xml = create_mem_hotplug_xml(mem_hotplug_size,
-                                                     mem_size_unit, numa_node)
-                    logging.info("Trying to hotplug memory")
-                    ret_attach = virsh.attach_device(vm_name, mem_xml,
-                                                     flagstr="--live",
-                                                     debug=True)
-                    if ret_attach.exit_status != 0:
-                        logging.error("Hotplugging memory failed")
-                elif mem_hotplug_count > 1:
-                    for each_count in range(mem_hotplug_count):
-                        mem_xml = create_mem_hotplug_xml(mem_hotplug_size,
-                                                         mem_size_unit,
-                                                         numa_node)
-                        logging.info("Trying to hotplug memory")
-                        ret_attach = virsh.attach_device(vm_name, mem_xml,
-                                                         flagstr="--live",
-                                                         debug=True)
-                        if ret_attach.exit_status != 0:
-                            logging.error("Hotplugging memory failed")
-                        # Hotplug memory to numa node alternatively if
-                        # there are 2 nodes
-                        if len(numa_dict_list) == 2:
-                            if numa_node == '0':
-                                numa_node = '1'
-                            else:
-                                numa_node = '0'
-                # check hotplugged memory is reflected
-                vmxml_backup = vm_xml.VMXML.new_from_dumpxml(vm_name)
-                vm_new_current_mem = int(vmxml_backup.current_mem)
-                logging.debug("Old current memory %d", vm_current_mem)
-                logging.debug("Hot plug mem %d", vm_hotplug_mem)
-                logging.debug("New current memory %d", vm_new_current_mem)
-                logging.debug("old mem + hotplug = %d", (vm_current_mem +
-                                                         vm_hotplug_mem))
-                if not (vm_new_current_mem == (vm_current_mem +
-                                               vm_hotplug_mem)):
-                    test.fail("Memory hotplug failed")
-                else:
-                    logging.debug("Memory hotplugged successfully !!!")
+                if hotplug_mem_before:
+                    logging.debug("Performing Memory Hotplug before migration")
+                    mem_xml = memory_hotplug_hotunplug(vm,
+                                                       mem_hotplug_size,
+                                                       mem_size_unit,
+                                                       mem_hotplug_count,
+                                                       session_timeout=session_timeout)
+                    xml_list.extend(mem_xml)
+                if hotunplug_mem_before:
+                    logging.debug("Performing Memory Hotunplug before "
+                                  "migration")
+                    mem_xml = memory_hotplug_hotunplug(vm,
+                                                       mem_hotplug_size,
+                                                       mem_size_unit,
+                                                       mem_hotplug_count,
+                                                       unplug=True,
+                                                       session_timeout=session_timeout)
+                    xml_list.extend(mem_xml)
 
         # Confirm VM can be accessed through network.
         time.sleep(delay)
@@ -1153,8 +1310,8 @@ def run(test, params, env):
             logging.info(o_ping)
             if s_ping != 0:
                 server_session.close()
-                test.error("%s did not respond after %d sec." % (vm.name,
-                                                                 ping_timeout))
+                test.fail("%s did not respond after %d sec." % (vm.name,
+                                                                ping_timeout))
             server_session.close()
             logging.debug("Migration from %s to %s success" %
                           (src_uri, dest_uri))
@@ -1197,20 +1354,24 @@ def run(test, params, env):
                                                  timeout=ping_timeout)
                 logging.info(o_ping)
                 if s_ping != 0:
-                    test.error("%s did not respond after %d sec." %
-                               (vm.name, ping_timeout))
+                    test.fail("%s did not respond after %d sec." %
+                              (vm.name, ping_timeout))
                 # clean up of pre migration setup for local machine
                 migrate_setup.migrate_pre_setup(src_uri, params,
                                                 cleanup=True)
 
+            # connect uri configured for virsh to connect with host after
+            # migration, for there_and_back migration VM will be back to
+            # source after migration
+            uri = dest_uri
+            if migrate_there_and_back:
+                uri = src_uri
+
             # Perform CPU hotplug or CPU hotunplug after migration
             if cpu_hotplug:
-                uri = dest_uri
                 session = remote.wait_for_login('ssh', server_ip, '22',
                                                 server_user, server_pwd,
                                                 r"[\#\$]\s*$")
-                if migrate_there_and_back:
-                    uri = src_uri
                 if hotplug_after_migrate:
                     logging.debug("Performing CPU Hotplug after migration")
                     cpu_hotplug_hotunplug(vm, vm_ip, max_vcpus, "Hotplug",
@@ -1220,6 +1381,32 @@ def run(test, params, env):
                         logging.debug("Performing CPU Hot Unplug after migration")
                         cpu_hotplug_hotunplug(vm, vm_ip, current_vcpus,
                                               "Hotunplug", uri=uri, params=params)
+
+            # Perform memory hotplug after VM is up after migration
+            if mem_hotplug:
+                if enable_numa:
+                    if hotplug_mem_after:
+                        logging.debug("Performing Memory Hotplug after migration")
+                        mem_xml = memory_hotplug_hotunplug(vm,
+                                                           mem_hotplug_size,
+                                                           mem_size_unit,
+                                                           mem_hotplug_count,
+                                                           uri=uri, params=params,
+                                                           vm_ip=vm_ip,
+                                                           session_timeout=session_timeout)
+                        xml_list.extend(mem_xml)
+                    if hotunplug_mem_after:
+                        logging.debug("Performing Memory Hotunplug after "
+                                      "migration")
+                        mem_xml = memory_hotplug_hotunplug(vm,
+                                                           mem_hotplug_size,
+                                                           mem_size_unit,
+                                                           mem_hotplug_count,
+                                                           uri=uri,
+                                                           unplug=True, params=params,
+                                                           vm_ip=vm_ip,
+                                                           session_timeout=session_timeout)
+                        xml_list.extend(mem_xml)
 
         if graphics_server:
             logging.info("To check the process running '%s'.",
@@ -1336,9 +1523,11 @@ def run(test, params, env):
 
     # cleanup xml created during memory hotplug test
     if mem_hotplug:
-        if os.path.isfile(mem_xml):
-            data_dir.clean_tmp_files()
+        if xml_list:
             logging.debug("Cleanup mem hotplug xml")
+            for mem_xml in xml_list:
+                if os.path.isfile(mem_xml):
+                    data_dir.clean_tmp_files()
 
     # cleanup hugepages
     if enable_HP or enable_HP_pin:
