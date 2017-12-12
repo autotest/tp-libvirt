@@ -6,6 +6,7 @@ from virttest import libvirt_vm
 from virttest import remote
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import ssh_key
 
 
 def run(test, params, env):
@@ -40,6 +41,7 @@ def run(test, params, env):
         remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
         local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
         remote_pwd = params.get("remote_pwd", "")
+        local_pwd = params.get("local_pwd", "")
         status = 0
         output = ""
         err = ""
@@ -51,6 +53,11 @@ def run(test, params, env):
             session = remote.remote_login("ssh", remote_ip, "22", "root",
                                           remote_pwd, "#")
             session.cmd_output('LANG=C')
+
+            # setup ssh auto login from remote machine to test machine
+            ssh_key.setup_remote_ssh_key(remote_ip, "root", remote_pwd,
+                                         local_ip, "root", local_pwd)
+
             command = "virsh -c %s domid %s" % (uri, vm_name)
             status, output = session.cmd_status_output(command,
                                                        internal_timeout=5)
