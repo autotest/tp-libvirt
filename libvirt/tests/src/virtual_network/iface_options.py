@@ -207,7 +207,7 @@ def run(test, params, env):
                 mode = iface.source["mode"]
                 if mode == "passthrough":
                     mode = "passthru"
-                if not output.count("macvtap  mode %s" % mode):
+                if not re.search("macvtap\s+mode %s" % mode, output):
                     raise error.TestFail("Failed to verify macvtap mode")
 
     def run_cmdline_test(iface_mac):
