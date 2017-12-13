@@ -86,7 +86,7 @@ def get_numa_parameter(params, cgstop):
             # If we stopped control groups, then we expect a different
             # result in this failure case; however, if there were no
             # control groups to stop, then don't error needlessly
-            if cgstop:
+            if not cgstop:
                 raise error.TestFail("Unexpected return code %d" % status)
             else:
                 logging.info("Control groups stopped, thus expected success")
@@ -114,6 +114,13 @@ def set_numa_parameter(params, cgstop):
     node_list = host_numa_node.online_nodes_withmem
     logging.debug("host online nodes with memory %s", node_list)
 
+    # Get original numatune memory mode
+    ori_mode = ''
+    ori_numatune = {}
+    if libvirt_xml.VMXML.new_from_dumpxml(vm_name).xmltreefile.find('numatune'):
+        ori_numatune = libvirt_xml.VMXML.get_numa_memory_params(vm_name)
+        ori_mode = ori_numatune['mode'] if 'mode' in ori_numatune else ''
+
     # Don't use libvirt_xml here because testing numatune command
     result = virsh.numatune(vm_name, mode, nodeset, options, debug=True)
     status = result.exit_status
@@ -122,9 +129,14 @@ def set_numa_parameter(params, cgstop):
     status_error = params.get("status_error", "no")
 
     # For a running domain, the mode can't be changed, and the nodeset can
-    # be changed only the domain was started with a mode of 'strict'
+    # be changed only the domain was started with a mode of 'strict' which
+    # should be the same with original mode
+    if ori_mode == mode and (ori_numatune.get('nodeset') == nodeset or not nodeset):
+        status_error = "no"
     if mode == "strict" and start_vm == "yes":
         status_error = "no"
+    if ori_mode and ori_mode != mode and start_vm == "yes":
+        status_error = "yes"
 
     # TODO, the '--config' option will affect next boot, and if the guest
     # is shutoff status, the '--current' option will be equivalent to
@@ -142,7 +154,7 @@ def set_numa_parameter(params, cgstop):
             # If we stopped control groups, then we expect a different
             # result in this failure case; however, if there were no
             # control groups to stop, then don't error needlessly
-            if cgstop:
+            if not cgstop:
                 raise error.TestFail("Unexpected return code %d" % status)
             else:
                 logging.info("Control groups stopped, thus expected success")
@@ -222,7 +234,7 @@ def run(test, params, env):
                 if vm.is_alive():
                     vm.destroy()
                 cg.cgconfig_stop()
-                cgstop = True
+            cgstop = True
 
         # If we stopped cg, then refresh libvirtd service
         # to get latest cgconfig service change; otherwise,
