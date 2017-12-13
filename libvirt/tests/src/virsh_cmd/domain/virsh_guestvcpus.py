@@ -17,7 +17,7 @@ def run(test, params, env):
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
-    vcpus_num = int(params.get("vcpus_num", "4"))
+    vcpus_num = int(params.get("vcpus_num", "20"))
     vcpus_placement = params.get("vcpus_placement", "static")
     option = params.get("option", "")
     combine = params.get("combine", "")
@@ -27,6 +27,7 @@ def run(test, params, env):
     status_error = params.get("status_error", "no")
     error_msg = params.get("error_msg", "no")
     vcpus_list = ""
+    offline_vcpus = ""
 
     # Back up domain XML
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -97,13 +98,11 @@ def run(test, params, env):
 
             if combine == "yes":
                 online_vcpus = '0,1'
-                offline_vcpus = '2' + ',' + str(vcpus_num - 1)
             elif option == "--disable":
                 online_vcpus = '0'
                 offline_vcpus = '1' + '-' + str(vcpus_num - 1)
             else:
                 online_vcpus = '0' + '-' + str(vcpus_num - 1)
-                offline_vcpus = ""
 
             if offline_vcpus:
                 if (vm_cpu_info["Off-line CPU(s) list"] != offline_vcpus or
