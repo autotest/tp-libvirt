@@ -52,10 +52,8 @@ def run(test, params, env):
     logging.info("The command: %s", cmd)
 
     # setup autologin for ssh to remote machine to execute commands
-    config_opt = ["StrictHostKeyChecking=no"]
     if remote_ref:
-        ssh_key.setup_remote_ssh_key(remote_ip, remote_user, remote_pwd,
-                                     config_options=config_opt)
+        ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
 
     try:
         if remote_ref == "remote":
