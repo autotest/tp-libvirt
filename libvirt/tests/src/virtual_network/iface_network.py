@@ -178,26 +178,34 @@ TIMEOUT 3"""
         cmd = "tc class show dev %s" % ifname
         class_output = process.system_output(cmd)
         logging.debug("Bandwidth class output: %s", class_output)
-        class_pattern = (r"class htb %s.*rate (\d+)Kbit ceil"
-                         " (\d+)Kbit burst (\d+)(K?M?)b.*" % rule_id)
+        class_pattern = (r"class htb %s.*rate (\d+)(K?M?)bit ceil"
+                         " (\d+)(K?M?)bit burst (\d+)(K?M?)b.*" % rule_id)
         se = re.search(class_pattern, class_output, re.M)
         if not se:
             test.fail("Can't find outbound setting for htb %s" % rule_id)
         logging.debug("bandwidth from tc output:%s" % str(se.groups()))
-        ceil = None
+        rate = None
         if bandwidth.has_key("floor"):
-            ceil = int(bandwidth["floor"]) * 8
+            rate = int(bandwidth["floor"]) * 8
         elif bandwidth.has_key("average"):
-            ceil = int(bandwidth["average"]) * 8
-        if ceil:
-            assert int(se.group(1)) == ceil
-        if bandwidth.has_key("peak"):
-            assert int(se.group(2)) == int(bandwidth["peak"]) * 8
-        if bandwidth.has_key("burst"):
-            if se.group(4) == 'M':
-                tc_burst = int(se.group(3)) * 1024
+            rate = int(bandwidth["average"]) * 8
+        if rate:
+            if se.group(2) == 'M':
+                rate_check = int(se.group(1)) * 1000
             else:
-                tc_burst = int(se.group(3))
+                rate_check = int(se.group(1))
+            assert rate_check == rate
+        if bandwidth.has_key("peak"):
+            if se.group(4) == 'M':
+                ceil_check = int(se.group(3)) * 1000
+            else:
+                ceil_check = int(se.group(3))
+            assert ceil_check == int(bandwidth["peak"]) * 8
+        if bandwidth.has_key("burst"):
+            if se.group(6) == 'M':
+                tc_burst = int(se.group(5)) * 1024
+            else:
+                tc_burst = int(se.group(5))
             assert tc_burst == int(bandwidth["burst"])
 
     def check_filter_rules(ifname, bandwidth):
