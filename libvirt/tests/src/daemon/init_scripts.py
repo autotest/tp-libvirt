@@ -91,6 +91,7 @@ def run(test, params, env):
 
     username = 'virt-test'
     utils.run('useradd %s' % username, ignore_status=True)
+    utils.run('usermod -s /bin/bash %s' % username, ignore_status=True)
     try:
         for command in avail_commands:
             if command == 'systemctl':
