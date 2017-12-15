@@ -5,17 +5,18 @@ import base64
 
 import aexpect
 
-from avocado.core import exceptions
 from avocado.utils import process
 
 from virttest import remote
 from virttest import virt_vm
 from virttest import virsh
 from virttest.utils_test import libvirt
-from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.controller import Controller
+
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -119,8 +120,8 @@ def run(test, params, env):
             cmd += " | grep iothread=iothread%s" % driver_iothread
 
         if process.system(cmd, ignore_status=True, shell=True):
-            raise exceptions.TestFail("Can't see disk option '%s' "
-                                      "in command line" % cmd)
+            test.fail("Can't see disk option '%s' "
+                      "in command line" % cmd)
 
     # Disk specific attributes.
     device = params.get("virt_disk_device", "disk")
@@ -147,6 +148,7 @@ def run(test, params, env):
     auth_usage = "yes" == params.get("auth_usage", "")
 
     status_error = "yes" == params.get("status_error")
+    define_error = "yes" == params.get("define_error", "no")
     test_save_snapshot = "yes" == params.get("test_save_snapshot", "no")
     test_qemu_cmd = "yes" == params.get("test_qemu_cmd", "no")
     check_partitions = "yes" == params.get("virt_disk_check_partitions", "yes")
@@ -168,6 +170,9 @@ def run(test, params, env):
         chap_user = ""
         chap_passwd = ""
         if auth_uuid or auth_usage:
+            auth_place_in_location = params.get("auth_place_in_location")
+            if 'source' in auth_place_in_location and not libvirt_version.version_compare(3, 9, 0):
+                test.cancel("place auth in source is not supported in current libvirt version")
             auth_type = params.get("auth_type")
             secret_usage_target = params.get("secret_usage_target")
             secret_usage_type = params.get("secret_usage_type")
@@ -189,7 +194,7 @@ def run(test, params, env):
                                      ret.stdout)[0].lstrip()
             logging.debug("Secret uuid %s", secret_uuid)
             if secret_uuid == "":
-                raise exceptions.TestError("Failed to get secret uuid")
+                test.error("Failed to get secret uuid")
 
             # Set secret value
             secret_string = base64.b64encode(chap_passwd)
@@ -216,10 +221,7 @@ def run(test, params, env):
 
         disk_xml = Disk(type_name=device_type)
         disk_xml.device = device
-        disk_xml.source = disk_xml.new_disk_source(
-            **{"attrs": {"protocol": "iscsi",
-                         "name": "%s/%s" % (iscsi_target, lun_num)},
-               "hosts": [{"name": iscsi_host, "port": iscsi_port}]})
+
         disk_xml.target = {"dev": device_target, "bus": device_bus}
         driver_dict = {"name": "qemu", "type": device_format}
 
@@ -243,13 +245,23 @@ def run(test, params, env):
             auth_dict = {"auth_user": chap_user,
                          "secret_type": secret_usage_type,
                          "secret_usage": secret_usage_target}
+        disk_source = disk_xml.new_disk_source(
+            **{"attrs": {"protocol": "iscsi",
+                         "name": "%s/%s" % (iscsi_target, lun_num)},
+               "hosts": [{"name": iscsi_host, "port": iscsi_port}]})
         if auth_dict:
-            disk_xml.auth = disk_xml.new_auth(**auth_dict)
+            disk_auth = disk_xml.new_auth(**auth_dict)
+            if 'source' in auth_place_in_location:
+                disk_source.auth = disk_auth
+            if 'disk' in auth_place_in_location:
+                disk_xml.auth = disk_auth
+
+        disk_xml.source = disk_source
         # Sync VM xml.
         vmxml.add_device(disk_xml)
 
         # After virtio 1.0 is enabled, lun type device need use virtio-scsi
-        # instead of virtio, so addtional controller is needed.
+        # instead of virtio, so additional controller is needed.
         # Add controller.
         if device == "lun":
             ctrl = Controller(type_name=cntlr_type)
@@ -270,15 +282,18 @@ def run(test, params, env):
                 ctrl_driver_dict.update({"iothread": driver_iothread})
                 ctrl.driver = ctrl_driver_dict
             logging.debug("Controller XML is:%s", ctrl)
+            if cntlr_type:
+                vmxml.del_controller(cntlr_type)
+            else:
+                vmxml.del_controller("scsi")
             vmxml.add_device(ctrl)
-
-        vmxml.sync()
 
         try:
             # Start the VM and check status.
+            vmxml.sync()
             vm.start()
             if status_error:
-                raise exceptions.TestFail("VM started unexpectedly.")
+                test.fail("VM started unexpectedly.")
 
             # Check Qemu command line
             if test_qemu_cmd:
@@ -289,13 +304,16 @@ def run(test, params, env):
                 if re.search(uuid, str(e)):
                     pass
             else:
-                raise exceptions.TestFail("VM failed to start."
-                                          "Error: %s" % str(e))
+                test.fail("VM failed to start."
+                          "Error: %s" % str(e))
+        except xcepts.LibvirtXMLError as xml_error:
+            if not define_error:
+                test.fail("Failed to define VM:\n%s" % xml_error)
         else:
             # Check partitions in VM.
             if check_partitions:
                 if not check_in_vm(device_target, old_parts):
-                    raise exceptions.TestFail("Check disk partitions in VM failed")
+                    test.fail("Check disk partitions in VM failed")
             # Test domain save/restore/snapshot.
             if test_save_snapshot:
                 save_file = os.path.join(test.tmpdir, "%.save" % vm_name)
