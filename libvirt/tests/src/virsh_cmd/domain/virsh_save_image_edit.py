@@ -41,8 +41,8 @@ def run(test, params, env):
             session.sendline(edit_cmd)
             session.send('\x1b')
             session.send('ZZ')
-            session.read_until_last_line_matches(
-                    patterns=['edited', 'not changed'],
+            session.read_until_any_line_matches(
+                    patterns=['State file.*%s edited' % vm_save, 'not changed'],
                     timeout=5,
                     print_func=logging.debug)
         except (aexpect.ShellError, aexpect.ExpectError,
