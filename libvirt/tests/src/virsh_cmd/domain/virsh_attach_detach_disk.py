@@ -15,6 +15,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
 from virttest.staging import lv_utils
+from virttest import utils_misc
 
 from provider import libvirt_version
 
@@ -62,7 +63,7 @@ def run(test, params, env):
                             attached = True
                 session.close()
             return attached
-        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
             logging.error(str(e))
             return False
 
@@ -98,20 +99,32 @@ def run(test, params, env):
                         return False
                 session.close()
             return True
-        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
             logging.error(str(e))
             return False
+
+    # Get test command.
+    test_cmd = params.get("at_dt_disk_test_cmd", "attach-disk")
 
     vm_ref = params.get("at_dt_disk_vm_ref", "name")
     at_options = params.get("at_dt_disk_at_options", "")
     dt_options = params.get("at_dt_disk_dt_options", "")
+    at_with_shareable = "yes" == params.get("at_with_shareable", 'no')
     pre_vm_state = params.get("at_dt_disk_pre_vm_state", "running")
     status_error = "yes" == params.get("status_error", 'no')
     no_attach = params.get("at_dt_disk_no_attach", 'no')
     os_type = params.get("os_type", "linux")
-
-    # Get test command.
-    test_cmd = params.get("at_dt_disk_test_cmd", "attach-disk")
+    qemu_file_lock = params.get("qemu_file_lock", "")
+    if qemu_file_lock:
+        if utils_misc.compare_qemu_version(2, 9, 0):
+            logging.info('From qemu-kvm-rhev 2.9.0:'
+                         'QEMU image locking, which should prevent multiple '
+                         'runs of QEMU or qemu-img when a VM is running.')
+            if test_cmd == "detach-disk" or pre_vm_state == "shut off":
+                test.cancel('This case is not supported.')
+            else:
+                logging.info('The expect result is failure as opposed with succeed')
+                status_error = True
 
     # Disk specific attributes.
     device = params.get("at_dt_disk_device", "disk")
@@ -134,6 +147,8 @@ def run(test, params, env):
     address2 = params.get("at_dt_disk_address2", "")
     cache_options = params.get("cache_options", "")
     time_sleep = params.get("time_sleep", 3)
+    if at_with_shareable:
+        at_options += " --mode shareable"
     if serial:
         at_options += (" --serial %s" % serial)
     if address2:
@@ -143,8 +158,8 @@ def run(test, params, env):
     if cache_options:
         if cache_options.count("directsync"):
             if not libvirt_version.version_compare(1, 0, 0):
-                raise error.TestNAError("'directsync' cache option doesn't support in"
-                                        " current libvirt version.")
+                test.cancel("'directsync' cache option doesn't "
+                            "support in current libvirt version.")
         at_options += (" --cache %s" % cache_options)
 
     vm_name = params.get("main_vm")
@@ -200,8 +215,11 @@ def run(test, params, env):
 
     # If we are testing detach-disk, we need to attach certain device first.
     if test_cmd == "detach-disk" and no_attach != "yes":
+        s_at_options = "--driver qemu --config"
+        if at_with_shareable:
+            s_at_options += ' --mode shareable'
         s_attach = virsh.attach_disk(vm_name, device_source, device_target,
-                                     "--driver qemu --config").exit_status
+                                     s_at_options).exit_status
         if s_attach != 0:
             logging.error("Attaching device failed before testing detach-disk")
 
@@ -212,7 +230,7 @@ def run(test, params, env):
                 "file", path=device_source_path,
                 size="1", disk_format=device_source_format)
             s_attach = virsh.attach_disk(vm_name, device_source, device_target2,
-                                         "--driver qemu --config").exit_status
+                                         s_at_options).exit_status
             if s_attach != 0:
                 logging.error("Attaching device failed before testing "
                               "detach-disk test_twice")
