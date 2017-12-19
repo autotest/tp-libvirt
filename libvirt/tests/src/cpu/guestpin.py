@@ -120,25 +120,64 @@ def run(test, params, env):
     condn_sleep_sec = int(params.get("condn_sleep_sec", 30))
     pintype = params.get("pintype", "random")
     emulatorpin = "yes" == params.get("emulatorpin", "no")
+    config_pin = "yes" == params.get("config_pin", "no")
     iterations = int(params.get("itr", 1))
     vmxml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     org_xml = vmxml.copy()
+    fail = False
     # Destroy the vm
     vm.destroy()
     try:
+        cpus_list = cpu.cpu_online_list()
+        if len(cpus_list) < 2:
+            test.cancel("Need minimum two online host cpus")
         # Set vcpu and topology
         libvirt_xml.VMXML.set_vm_vcpus(vm_name, max_vcpu, current_vcpu,
                                        vm_sockets, vm_cores, vm_threads)
+        if config_pin:
+            cpustats = {}
+            result = virsh.emulatorpin(vm_name, cpus_list[-1], "config",
+                                       debug=True)
+            libvirt.check_exit_status(result)
+            result = virsh.vcpupin(vm_name, "0", cpus_list[0], "--config",
+                                   ignore_status=True, debug=True)
+            libvirt.check_exit_status(result)
         try:
             vm.start()
         except virt_vm.VMStartError, detail:
             test.fail("%s" % detail)
 
-        cpus_list = cpu.cpu_online_list()
         cpucount = vm.get_cpu_count()
         if cpucount != current_vcpu:
             test.fail("Incorrect initial guest vcpu\nExpected:%s Actual:%s",
                       cpucount, current_vcpu)
+
+        if config_pin:
+            cpustats = utils_hotplug.get_cpustats(vm)
+            if not cpustats:
+                test.fail("cpu stats command failed to run")
+
+            logging.debug("Check cpustats for emulatorpinned cpu")
+            if cpustats[cpus_list[-1]][0] > 0:
+                fail = True
+                logging.error("Non zero vcputime even with no vcpu pinned")
+            if cpustats[cpus_list[-1]][1] == 0:
+                fail = True
+                logging.error("emulatortime should be positive as it is pinned")
+
+            logging.debug("Check cpustats for vcpupinned cpu")
+            if cpustats[cpus_list[0]][0] == 0:
+                fail = True
+                logging.error("vcputime should be positive as vcpu it is pinned")
+            if cpustats[cpus_list[0]][1] > 0:
+                fail = True
+                logging.error("Non zero emulatortime even with emulator unpinned")
+
+            logging.debug("Check cpustats for non-pinned cpus")
+            for index in cpus_list[1:-1]:
+                if cpustats[index][2] > 0:
+                    fail = True
+                    logging.error("Non zero cputime even with no vcpu,emualtor pinned")
 
         if condition:
             condn_result = set_condition(vm_name, condition)
@@ -152,13 +191,20 @@ def run(test, params, env):
                 libvirt.check_exit_status(result)
             for vcpu in range(max_vcpu):
                 if pintype == "random":
-                    hostcpu = random.choice(cpus_list)
+                    hostcpu = random.choice(cpus_list[:-1])
                 if pintype == "sequential":
-                    hostcpu = cpus_list[vcpu % len(cpus_list)]
+                    hostcpu = cpus_list[vcpu % len(cpus_list[:-1])]
                 result = virsh.vcpupin(vm_name, vcpu, hostcpu,
                                        ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
-
+                cpustats = utils_hotplug.get_cpustats(vm, hostcpu)
+                if config_pin:
+                    if cpustats[hostcpu][0] == 0:
+                        fail = True
+                        logging.error("vcputime should be positive as vcpu is pinned")
+                    if cpustats[hostcpu][1] > 0:
+                        fail = True
+                        logging.error("Non zero emulatortime even with emulator unpinned")
         if condition:
             set_condition(vm_name, condition, reset=True, guestbt=condn_result)
 
@@ -168,4 +214,6 @@ def run(test, params, env):
             test.fail("Incorrect final guest vcpu\nExpected:%s Actual:%s",
                       cpucount, current_vcpu)
     finally:
+        if fail:
+            test.fail("Consult previous errors")
         org_xml.sync()
