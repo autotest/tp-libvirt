@@ -90,6 +90,22 @@ def run(test, params, env):
                 if 'pci' in net_device_address:
                     return net_device_address
 
+    def check_kernel_option():
+        """
+        Check the kernel option if the kernel cmdline include  "iommu=on" option
+        """
+        check_cmd = "egrep '(intel|amd)_iommu=on' /proc/cmdline"
+        try:
+            check_result = process.run(check_cmd, shell=True)
+        except Exception:
+            test.cancel("Operation not supported: neither VFIO nor KVM device assignment"
+                        "is currently supported on this system")
+        else:
+            logging.debug('IOMMU is enabled')
+
+    #Check kernel iommu option
+    check_kernel_option()
+
     # Init variables
     device_address = params.get('nodedev_device', 'ENTER.YOUR.PCI.DEVICE.TO.DETACH')
     if device_address.find('ENTER.YOUR.PCI.DEVICE.TO.DETACH') != -1:
@@ -98,11 +114,9 @@ def run(test, params, env):
             device_address = device_address.replace('ENTER.YOUR.PCI.DEVICE.TO.DETACH', replace_address)
         else:
             test.cancel('Param device_address is not configured.')
-
     device_opt = params.get('nodedev_device_opt', '')
     status_error = ('yes' == params.get('status_error', 'no'))
     # check variables.
-
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
             test.cancel("API acl test not supported in current"
