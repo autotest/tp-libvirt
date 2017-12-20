@@ -34,6 +34,7 @@ class TestParams(object):
         self.virsh = None  # Can't be known yet
         self._e = env
         self._p = params
+        self.serial_dir = params.get("serial_dir", "/var/log/libvirt")
 
     @property
     def start_vm(self):
@@ -386,7 +387,7 @@ class SerialFile(AttachDeviceBase):
         """Return full path to unique filename per device index"""
         # auto-cleaned at end of test
         if self.type_name == 'file':
-            serial_dir = '/var/log/libvirt'
+            serial_dir = self.test_params.serial_dir
         else:
             serial_dir = data_dir.get_tmp_dir()
 
