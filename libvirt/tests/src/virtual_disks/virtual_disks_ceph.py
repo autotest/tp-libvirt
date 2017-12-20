@@ -250,7 +250,7 @@ def run(test, params, env):
             options = snap_name
 
         ret = virsh.snapshot_create_as(vm_name, options)
-        if test_disk_internal_snapshot:
+        if test_disk_internal_snapshot or test_disk_readonly:
             libvirt.check_result(ret, expected_fails=unsupported_err)
         else:
             libvirt.check_result(ret, skip_if=unsupported_err)
@@ -481,6 +481,7 @@ def run(test, params, env):
         unsupported_err.append('live disk snapshot not supported')
     if test_disk_readonly:
         unsupported_err.append('Unable to read from monitor: Connection reset by peer')
+        unsupported_err.append('Permission denied')
     if test_disk_internal_snapshot:
         unsupported_err.append('unsupported configuration: internal snapshot for disk ' +
                                'vdb unsupported for storage type raw')
