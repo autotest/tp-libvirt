@@ -118,10 +118,13 @@ def run(test, params, env):
         # do the same if we find "/usr/bin/qemu-kvm" in the incoming
         # argument list and we find "qemu-system-x86_64 -machine accel=kvm"
         # in the running guest's cmdline
-        if conv_arg.find("/usr/bin/qemu-kvm") != 1 and \
-                cmdline.find("/usr/bin/qemu-system-x86_64 -machine accel=kvm") != -1:
-            cmdline = re.sub(r"/usr/bin/qemu-system-x86_64 -machine accel=kvm",
-                             "/usr/bin/qemu-kvm", cmdline)
+        qemu_bin = "/usr/bin/qemu-kvm"
+        arch_bin = ["/usr/bin/qemu-system-x86_64 -machine accel=kvm",
+                    "/usr/bin/qemu-system-ppc64 -machine accel=kvm"]
+        if conv_arg.find(qemu_bin) != -1:
+            for arch in arch_bin:
+                if cmdline.find(arch) != -1:
+                    cmdline = re.sub(arch, qemu_bin, cmdline)
 
         # Now prepend the various environment variables that will be in
         # the conv_arg, but not in the actual command
@@ -162,7 +165,7 @@ def run(test, params, env):
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()
     ret = virsh.domxml_to_native(dtn_format, file_xml, extra_param,
-                                 ignore_status=True)
+                                 ignore_status=True, debug=True)
     status = ret.exit_status
     conv_arg = ret.stdout.strip()
 
