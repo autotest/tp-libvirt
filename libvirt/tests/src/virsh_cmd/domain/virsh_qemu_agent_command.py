@@ -22,11 +22,13 @@ def reset_domain(vm, vm_state, needs_agent=False, guest_cpu_busy=False,
     """
     if vm.is_alive():
         vm.destroy()
+    if not needs_agent:
+        vm.prepare_guest_agent(start=False)
     if needs_agent:
         logging.debug("Attempting to prepare guest agent")
         start_ga = vm_state != 'shut off'
         vm.prepare_guest_agent(start=start_ga)
-    if not vm_state == "shut off" and needs_agent:
+    if not vm_state == "shut off":
         session = vm.wait_for_login()
         if guest_cpu_busy:
             shell_file = "/tmp/test.sh"
@@ -124,14 +126,17 @@ def run(test, params, env):
         vm_ref = hex(int(domid))
 
     try:
-        # Check whether qemu-guest-agent is active in guest
-        session = vm.wait_for_login()
+        if vm_state == "running" and needs_agent:
+            # Check whether qemu-guest-agent is active in guest
+            session = vm.wait_for_login()
 
-        def verify_alive():
-            return utils_misc.get_guest_service_status(
+            def verify_alive():
+                return utils_misc.get_guest_service_status(
                     session, 'qemu-guest-agent') == 'active'
-        if not utils_misc.wait_for(verify_alive, 30):
-            test.error('Service "qemu-guest-agent" is not active')
+
+            if not utils_misc.wait_for(verify_alive, 30):
+                test.error('Service "qemu-guest-agent" is not active')
+
         # Run virsh command
         cmd_result = virsh.qemu_agent_command(vm_ref, cmd, options,
                                               ignore_status=True,
