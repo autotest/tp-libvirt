@@ -357,7 +357,10 @@ def run(test, params, env):
             tls_obj_new.conn_setup(True, False)
 
         # setup SASL certification
-        if sasl_user_pwd:
+        # From libvirt-3.2.0, the default sasl change from
+        # DIGEST-MD5 to GSSAPI. "sasl_user" is discarded.
+        # More details: https://libvirt.org/auth.html#ACL_server_kerberos
+        if sasl_user_pwd and not libvirt_version.version_compare(3, 2, 0):
             # covert string tuple and list to python data type
             sasl_user_pwd = eval(sasl_user_pwd)
             if sasl_allowed_users:
