@@ -113,6 +113,7 @@ def run(test, params, env):
         sec_dict['label'] = sec_label
     set_sec_label = "yes" == params.get("set_sec_label", "no")
     set_qemu_conf = "yes" == params.get("set_qemu_conf", "no")
+    qemu_no_usr_grp = "yes" == params.get("qemu_no_usr_grp", "no")
     # Get qemu.conf config variables
     qemu_user = params.get("qemu_user", None)
     qemu_group = params.get("qemu_group", None)
@@ -265,7 +266,8 @@ def run(test, params, env):
                                           "=%s" % disk_context +
                                           ", sec_label_trans=%s."
                                           % sec_label_trans)
-            elif set_qemu_conf and not security_default_confined:
+            elif(set_qemu_conf and not security_default_confined and not
+                 qemu_no_usr_grp):
                 if vm_context != qemu_conf_label_trans:
                     test.fail("Label of VM processs is not expected"
                               " after starting.\nDetail: vm_context="
@@ -334,7 +336,7 @@ def run(test, params, env):
                 if set_sec_label:
                     if sec_label:
                         if sec_relabel == "yes" and sec_label_trans == "0:0":
-                            if set_qemu_conf:
+                            if set_qemu_conf and not qemu_no_usr_grp:
                                 if qemu_conf_label_trans == "107:107":
                                     logging.debug(err_msg)
                         elif sec_relabel == "no" and sec_label_trans == "0:0":
