@@ -255,6 +255,22 @@ def run(test, params, env):
     5) Shutdown the VM and check whether cleaned up properly
     6) Clean up environment
     """
+
+    def set_targets(serial):
+        """
+        Prepare a serial device XML according to parameters
+        """
+        machine = platform.machine()
+        if "ppc" in machine:
+            serial.target_model = 'spapr-vty'
+            serial.target_type = 'spapr-vio-serial'
+        elif "aarch" in machine:
+            serial.target_model = 'pl011'
+            serial.target_type = 'system-serial'
+        else:
+            serial.target_model = 'isa-serial'
+            serial.target_type = 'isa-serial'
+
     def prepare_serial_device():
         """
         Prepare a serial device XML according to parameters
@@ -262,6 +278,8 @@ def run(test, params, env):
         serial = librarian.get('serial')(serial_type)
 
         serial.target_port = "0"
+
+        set_targets(serial)
 
         sources = []
         logging.debug(sources_str)
@@ -382,6 +400,8 @@ def run(test, params, env):
             serial_cls = librarian.get('serial')
             expected_serial = serial_cls(serial_type)
             expected_serial.sources = sources
+
+            set_targets(expected_serial)
 
             if serial_type == 'tcp':
                 if 'protocol_type' in serial_type:
