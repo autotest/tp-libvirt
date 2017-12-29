@@ -1,8 +1,6 @@
 import re
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import qemu_vm
@@ -36,22 +34,25 @@ def run(test, params, env):
 
         # Check result
         if not libvirtd_inst.is_running():
-            raise error.TestFail("Libvirtd is not running after run command.")
+            test.fail("Libvirtd is not running after run command.")
         if status_error:
             if not status:
-                raise error.TestFail("Expect fail, run succeed.")
+                test.fail("Expect fail, run succeed.")
             else:
                 logging.debug("Command failed as expected.")
         else:
             if status:
+                err_msg = "error: Failed to attach to pid"
+                if err_msg in cmd_result.stderr:
+                    test.fail("Command failed: %s" % cmd_result.stderr)
                 list_output = virsh.dom_list().stdout.strip()
                 if re.search('attach_dom', list_output):
-                    raise error.TestFail("Command failed but domain found "
-                                         "in virsh list.")
+                    test.fail("Command failed but domain found "
+                              "in virsh list.")
                 err_msg = "No worry, the command is explicitly unsupported, "
                 err_msg += "it's a development crutch and not highly reliable"
                 err_msg += " mechanism."
-                raise error.TestNAError(err_msg)
+                test.cancel(err_msg)
     finally:
         # Cleanup
         if new_vm:
