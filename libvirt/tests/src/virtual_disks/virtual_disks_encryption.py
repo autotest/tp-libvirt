@@ -17,6 +17,8 @@ from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml.devices.disk import Disk
 
+from provider import libvirt_version
+
 
 def run(test, params, env):
     """
@@ -162,7 +164,11 @@ def run(test, params, env):
     device_target = params.get("virt_disk_device_target", "vdd")
     device_type = params.get("virt_disk_device_type", "file")
     device_bus = params.get("virt_disk_device_bus", "virtio")
-
+    encryption_in_source = "yes" == params.get("encryption_in_source")
+    encryption_out_source = "yes" == params.get("encryption_out_source")
+    if encryption_in_source and not libvirt_version.version_compare(3, 9, 0):
+        test.cancel("Cannot put <encryption> inside disk <source> in "
+                    "this libvirt version.")
     # Pool/Volume options.
     pool_name = params.get("pool_name")
     pool_type = params.get("pool_type")
@@ -236,24 +242,28 @@ def run(test, params, env):
             dev_attrs = "dir"
         else:
             dev_attrs = "dev"
-        disk_xml.source = disk_xml.new_disk_source(
-            **{"attrs": {dev_attrs: volume_target_path}})
+        disk_source = disk_xml.new_disk_source(
+                **{"attrs": {dev_attrs: volume_target_path}})
         disk_xml.driver = {"name": "qemu", "type": volume_target_format,
                            "cache": "none"}
         disk_xml.target = {"dev": device_target, "bus": device_bus}
-
         v_xml = vol_xml.VolXML.new_from_vol_dumpxml(volume_name, pool_name)
-
         sec_uuids.append(v_xml.encryption.secret["uuid"])
         if not status_error:
             logging.debug("vol info -- format: %s, type: %s, uuid: %s",
                           v_xml.encryption.format,
                           v_xml.encryption.secret["type"],
                           v_xml.encryption.secret["uuid"])
-            disk_xml.encryption = disk_xml.new_encryption(
-                **{"encryption": v_xml.encryption.format, "secret": {
-                    "type": v_xml.encryption.secret["type"],
-                    "uuid": v_xml.encryption.secret["uuid"]}})
+            encryption_dict = {"encryption": v_xml.encryption.format,
+                               "secret": {"type": v_xml.encryption.secret["type"],
+                                          "uuid": v_xml.encryption.secret["uuid"]}}
+            if encryption_in_source:
+                disk_source.encryption = disk_xml.new_encryption(
+                        **encryption_dict)
+            if encryption_out_source:
+                disk_xml.encryption = disk_xml.new_encryption(
+                        **encryption_dict)
+        disk_xml.source = disk_source
         logging.debug("disk xml is:\n%s" % disk_xml)
         if not hotplug:
             # Sync VM xml.
