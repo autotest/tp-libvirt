@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import network_xml
@@ -31,8 +29,8 @@ def run(test, params, env):
     except (KeyError, AttributeError):
         pass  # Not found - good
     else:
-        raise error.TestNAError("Found network bridge '%s' - skipping" %
-                                (net_name))
+        test.cancel("Found network bridge '%s' - skipping" %
+                    (net_name))
 
     # Define a very bare bones bridge, don't provide UUID - use whatever
     # libvirt ends up generating.  We need to define a persistent network
@@ -54,8 +52,8 @@ def run(test, params, env):
         test_xml.xml = temp_bridge
         test_xml.define()
     except xcepts.LibvirtXMLError, detail:
-        raise error.TestNAError("Failed to define a test network.\n"
-                                "Detail: %s." % detail)
+        test.error("Failed to define a test network.\n"
+                   "Detail: %s." % detail)
 
     # To guarantee cleanup will be executed
     try:
@@ -68,8 +66,8 @@ def run(test, params, env):
         try:
             testbr_xml = currents[net_name]
         except (KeyError, AttributeError):
-            raise error.TestError("Did not find newly defined bridge '%s'" %
-                                  (net_name))
+            test.error("Did not find newly defined bridge '%s'" %
+                       (net_name))
 
         # Prepare default property for network
         # Transient network can not be set autostart
@@ -117,11 +115,11 @@ def run(test, params, env):
     # Check Result
     if status_error:
         if status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
     else:
         if disable:
             if status or is_active:
-                raise error.TestFail("Disable autostart failed.")
+                test.fail("Disable autostart failed.")
         else:
             if status or (not is_active):
-                raise error.TestFail("Set network autostart failed.")
+                test.fail("Set network autostart failed.")
