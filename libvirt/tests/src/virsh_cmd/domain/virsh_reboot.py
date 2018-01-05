@@ -82,6 +82,10 @@ def run(test, params, env):
                 status, output = session.cmd_status_output(command,
                                                            internal_timeout=5)
                 session.close()
+                if not status:
+                    # the operation before the end of reboot
+                    # may result in data corruption
+                    vm.wait_for_login().close()
             except (remote.LoginError, process.CmdError, aexpect.ShellError), e:
                 logging.error("Exception: %s", str(e))
                 status = -1
@@ -95,6 +99,8 @@ def run(test, params, env):
                 if not virsh.has_command_help_match('reboot', '\s+--mode\s+'):
                     # old libvirt doesn't support reboot
                     status = -2
+            else:
+                vm.wait_for_login().close()
         output = virsh.dom_list(ignore_status=True).stdout.strip()
 
         # recover libvirtd service start
