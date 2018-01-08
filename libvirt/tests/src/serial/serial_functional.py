@@ -1,5 +1,4 @@
 import os
-import platform
 import logging
 import time
 import errno
@@ -15,6 +14,8 @@ from virttest import virsh
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices import librarian
+
+from provider import libvirt_version
 
 
 class Console(aexpect.ShellSession):
@@ -538,6 +539,8 @@ def run(test, params, env):
 
         if "ppc" in platform.machine():
             exp_ser_devs = ['spapr-vty', 'chardev=charserial0', 'reg=0x30000000']
+            if libvirt_version.version_compare(3, 9, 0):
+                exp_ser_devs.insert(2, 'id=serial0')
         else:
             exp_ser_devs = ['isa-serial', 'chardev=charserial0', 'id=serial0']
         exp_ser_dev = ','.join(exp_ser_devs)
