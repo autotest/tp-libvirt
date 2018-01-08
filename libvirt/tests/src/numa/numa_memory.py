@@ -170,6 +170,10 @@ def run(test, params, env):
         vmxml.numa_memory = numa_memory
         vcpu_num = vmxml.vcpu
         max_mem = vmxml.max_mem
+        if vmxml.xmltreefile.find('cputune'):
+            vmxml.xmltreefile.remove_by_xpath('/cputune')
+        else:
+            logging.debug('No vcpupin found')
         if vcpu_placement:
             vmxml.placement = vcpu_placement
         if vcpu_cpuset:
