@@ -345,7 +345,7 @@ def run(test, params, env):
                     expect_vcpu_num['guest_live'] = vcpu_plug_num
                     if not status_error:
                         if not utils_misc.wait_for(lambda: utils_misc.check_if_vm_vcpu_match(vcpu_plug_num, vm),
-                                                   60, text="wait for vcpu online") or not online_new_vcpu(vm, vcpu_plug_num):
+                                                   120, text="wait for vcpu online") or not online_new_vcpu(vm, vcpu_plug_num):
                             test.fail("Fail to enable new added cpu")
 
                 # Pin vcpu
