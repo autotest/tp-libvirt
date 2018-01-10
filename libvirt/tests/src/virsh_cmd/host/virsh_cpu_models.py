@@ -1,8 +1,5 @@
 import logging
 
-from avocado.utils import process
-
-from virttest import remote
 from virttest import ssh_key
 from virttest import virsh
 from virttest import libvirt_vm
@@ -16,39 +13,22 @@ def run(test, params, env):
     """
     cpu_arch = params.get("cpu_arch", "")
     option = params.get("option", "")
-    target_uri = params.get("target_uri", "default")
     status_error = "yes" == params.get("status_error", "no")
-    restart_libvirtd_remotely = "yes" == params.get(
-        "restart_libvirtd_remotely", "no")
+    remote_ref = params.get("remote_ref", "")
 
     remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
     remote_pwd = params.get("remote_pwd", None)
 
-    local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
-    local_pwd = params.get("local_pwd", None)
+    connect_uri = libvirt_vm.normalize_connect_uri(params.get("connect_uri",
+                                                              "default"))
 
-    if 'EXAMPLE.COM' in (target_uri, remote_ip, local_ip):
-        test.error("Please replace '%s/%s/%s' with valid uri or remote_ip or "
-                   "local_ip" % (target_uri, remote_ip, local_ip))
+    if 'EXAMPLE.COM' in remote_ip:
+        test.error("Please replace '%s' with valid remote_ip" % remote_ip)
 
-    if restart_libvirtd_remotely:
-        try:
-            session = remote.remote_login("ssh", remote_ip, "22", "root",
-                                          remote_pwd, "#")
-            session.cmd_output('LANG=C')
-            ssh_key.setup_remote_ssh_key(remote_ip, "root", remote_pwd,
-                                         local_ip, "root", local_pwd)
+    if remote_ref == "remote":
+        ssh_key.setup_ssh_key(remote_ip, "root", remote_pwd)
+        connect_uri = libvirt_vm.complete_uri(remote_ip)
 
-            cmd = "service libvirtd restart"
-            status, output = session.cmd_status_output(cmd, internal_timeout=5)
-            logging.debug("cmd: %s, status: %s, output: %s"
-                          % (cmd, status, output))
-        except process.CmdError, info:
-            test.error("Fail to restart libvirtd on remote: %s" % info)
-        finally:
-            session.close()
-
-    connect_uri = libvirt_vm.normalize_connect_uri(target_uri)
     arch_list = []
     if not cpu_arch:
         try:
