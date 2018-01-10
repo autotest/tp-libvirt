@@ -1,5 +1,4 @@
-from autotest.client.shared import error
-
+from virttest import ssh_key
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest.utils_test import libvirt as utlv
@@ -10,11 +9,20 @@ def run(test, params, env):
     """
     Test the command virsh domcapabilities
     """
-    target_uri = params.get("target_uri", "default")
-    if target_uri.count("EXAMPLE.COM"):
-        raise error.TestNAError("Please replace '%s' with valid uri" %
-                                target_uri)
-    connect_uri = libvirt_vm.normalize_connect_uri(target_uri)
+    remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
+    remote_pwd = params.get("remote_pwd", None)
+    remote_ref = params.get("remote_ref", "")
+
+    connect_uri = libvirt_vm.normalize_connect_uri(params.get("connect_uri",
+                                                              "default"))
+
+    if 'EXAMPLE.COM' in remote_ip:
+        test.error("Please replace '%s' with valid remote_ip" % remote_ip)
+
+    if remote_ref == "remote":
+        ssh_key.setup_ssh_key(remote_ip, "root", remote_pwd)
+        connect_uri = libvirt_vm.complete_uri(remote_ip)
+
     virsh_options = params.get("virsh_options", "")
     virttype = params.get("virttype_value", "")
     emulatorbin = params.get("emulatorbin_value", "")
