@@ -23,7 +23,7 @@ def run(test, params, env):
                                                               "default"))
 
     if 'EXAMPLE.COM' in remote_ip:
-        test.error("Please replace '%s' with valid remote_ip" % remote_ip)
+        test.cancel("Please replace '%s' with valid remote_ip" % remote_ip)
 
     if remote_ref == "remote":
         ssh_key.setup_ssh_key(remote_ip, "root", remote_pwd)
