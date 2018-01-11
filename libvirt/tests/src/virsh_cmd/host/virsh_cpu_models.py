@@ -15,17 +15,16 @@ def run(test, params, env):
     option = params.get("option", "")
     status_error = "yes" == params.get("status_error", "no")
     remote_ref = params.get("remote_ref", "")
-
-    remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
-    remote_pwd = params.get("remote_pwd", None)
-
     connect_uri = libvirt_vm.normalize_connect_uri(params.get("connect_uri",
                                                               "default"))
 
-    if 'EXAMPLE.COM' in remote_ip:
-        test.error("Please replace '%s' with valid remote_ip" % remote_ip)
-
     if remote_ref == "remote":
+        remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
+        remote_pwd = params.get("remote_pwd", None)
+
+        if 'EXAMPLE.COM' in remote_ip:
+            test.cancel("Please replace '%s' with valid remote ip" % remote_ip)
+
         ssh_key.setup_ssh_key(remote_ip, "root", remote_pwd)
         connect_uri = libvirt_vm.complete_uri(remote_ip)
 
