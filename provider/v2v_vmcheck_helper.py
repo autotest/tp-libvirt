@@ -35,7 +35,8 @@ class VMChecker(object):
         self.setup_session()
         self.checker = utils_v2v.VMCheck(test, params, env)
         self.checker.virsh_session_id = self.virsh_session_id
-        self.virsh_instance = virsh.VirshPersistent(session_id=self.virsh_session_id)
+        self.virsh_instance = virsh.VirshPersistent(
+            session_id=self.virsh_session_id)
         self.vmxml = virsh.dumpxml(self.vm_name,
                                    session_id=self.virsh_session_id).stdout.strip()
 
@@ -61,7 +62,8 @@ class VMChecker(object):
             logging.info('Trying %d times', index + 1)
             try:
                 if self.target == "ovirt":
-                    self.virsh_session = utils_sasl.VirshSessionSASL(self.params)
+                    self.virsh_session = utils_sasl.VirshSessionSASL(
+                        self.params)
                     self.virsh_session_id = self.virsh_session.get_id()
                 else:
                     self.virsh_session = virsh.VirshPersistent()
@@ -212,6 +214,8 @@ class VMChecker(object):
 
         # 5. Check virtio disk partition
         logging.info("Checking virtio disk partition in device map")
+        if self.checker.is_uefi_guest():
+            logging.info("The guest is uefi mode,skip the checkpoint")
         if not self.checker.get_grub_device():
             err_msg = "Not find vd? in disk partition"
             self.log_err(err_msg)
@@ -322,8 +326,8 @@ class VMChecker(object):
         """
         logging.info('Check graphics parameters')
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
-                self.vm_name, options='--security-info',
-                virsh_instance=self.virsh_instance)
+            self.vm_name, options='--security-info',
+            virsh_instance=self.virsh_instance)
         graphic = vmxml.xmltreefile.find('devices').find('graphics')
         status = True
         for key in param:
