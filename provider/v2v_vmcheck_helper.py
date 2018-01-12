@@ -212,7 +212,9 @@ class VMChecker(object):
 
         # 5. Check virtio disk partition
         logging.info("Checking virtio disk partition in device map")
-        if not self.checker.get_grub_device():
+        if self.checker.is_uefi_guest():
+            logging.info("The guest is uefi mode,skip the checkpoint")
+        elif not self.checker.get_grub_device():
             err_msg = "Not find vd? in disk partition"
             self.log_err(err_msg)
         else:
