@@ -232,6 +232,7 @@ def run(test, params, env):
                         **virsh_dargs).exit_status:
             backup_xml.define()
             raise exceptions.TestSkipError("Cann't create the domain")
+        vm.wait_for_login().close()
 
     dom_uuid = vm.get_uuid()
     dom_id = vm.get_id()
