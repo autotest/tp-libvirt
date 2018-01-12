@@ -257,7 +257,7 @@ def run(test, params, env):
             try:
                 del vmxml.numa_memory
                 del vmxml.numa_memnode
-            except:
+            except Exception:
                 # Not exists
                 pass
 
