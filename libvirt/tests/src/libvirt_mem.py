@@ -9,6 +9,7 @@ from autotest.client import utils
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import utils_numeric
 from virttest import virt_vm
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
@@ -263,6 +264,13 @@ def run(test, params, env):
 
         if numa_cells:
             cells = [ast.literal_eval(x) for x in numa_cells]
+            # Rounding the numa memory values
+            if align_mem_values:
+                for cell in range(cells.__len__()):
+                    memory_value = str(utils_numeric.align_value(
+                                           cells[cell]["memory"],
+                                           align_to_value))
+                    cells[cell]["memory"] = memory_value
             cpu_xml = vm_xml.VMCPUXML()
             cpu_xml.xml = "<cpu><numa/></cpu>"
             cpu_mode = params.get("cpu_mode")
@@ -315,6 +323,8 @@ def run(test, params, env):
     cur_mem = params.get("current_mem")
     numa_cells = params.get("numa_cells", "").split()
     set_max_mem = params.get("set_max_mem")
+    align_mem_values = "yes" == params.get("align_mem_values", "no")
+    align_to_value = int(params.get("align_to_value", "65536"))
 
     # params for attached device
     tg_size = params.get("tg_size")
@@ -336,6 +346,14 @@ def run(test, params, env):
     if not libvirt_version.version_compare(1, 2, 14):
         raise exceptions.TestSkipError("Memory hotplug not supported in"
                                        "current libvirt version.")
+
+    if align_mem_values:
+        # Rounding the following values to 'align'
+        max_mem = utils_numeric.align_value(max_mem, align_to_value)
+        max_mem_rt = utils_numeric.align_value(max_mem_rt, align_to_value)
+        cur_mem = utils_numeric.align_value(cur_mem, align_to_value)
+        tg_size = utils_numeric.align_value(tg_size, align_to_value)
+
     try:
         # Drop caches first for host has enough memory
         drop_caches()
