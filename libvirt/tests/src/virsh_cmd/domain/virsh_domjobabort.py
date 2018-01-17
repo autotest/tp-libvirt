@@ -3,7 +3,6 @@ import subprocess
 import logging
 import time
 
-from autotest.client.shared import error
 from autotest.client.shared import ssh_key
 
 from virttest import virsh
@@ -54,7 +53,7 @@ def run(test, params, env):
             file = ""
         elif action == "migrate":
             # Slow down migration for domjobabort
-            virsh.migrate_setspeed(vm_name, "1")
+            virsh.migrate_setspeed(vm_name, "1", ignore_status=True, debug=True)
             file = remote_uri
             args = "--unsafe"
         command = "virsh %s %s %s %s" % (action, vm_name, file, args)
@@ -83,8 +82,7 @@ def run(test, params, env):
 
     if action == "migrate":
         if remote_host.count("EXAMPLE"):
-            raise error.TestNAError("Remote host should be configured "
-                                    "for migrate.")
+            test.cancel("Remote host should be configured for migrate.")
         else:
             # Config ssh autologin for remote host
             ssh_key.setup_ssh_key(remote_host, remote_user,
@@ -136,6 +134,8 @@ def run(test, params, env):
             break
         else:
             logging.debug("Job started: %s", jobtype)
+            # Add for test
+            #virsh.dom_list("--all", ignore_status=True, debug=True)
             break
     ret = virsh.domjobabort(vm_ref, ignore_status=True, debug=True)
     status = ret.exit_status
@@ -174,7 +174,7 @@ def run(test, params, env):
     # check status_error
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if status != 0:
-            raise error.TestFail("Run failed with right command")
+            test.fail("Run failed with right command")
