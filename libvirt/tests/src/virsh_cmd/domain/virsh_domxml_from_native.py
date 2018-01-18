@@ -1,11 +1,11 @@
 import re
 import os
 
-from autotest.client.shared import error
-from autotest.client import utils
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest.utils_test import libvirt as utlv
 
 
 def run(test, params, env):
@@ -31,7 +31,7 @@ def run(test, params, env):
         :param guest_args : File which will save config information.
         """
         pid = vm.get_pid()
-        cmdline = utils.system_output("cat -v /proc/%d/cmdline" % pid)
+        cmdline = process.run("cat -v /proc/%d/cmdline" % pid).stdout
         cmdline = re.sub(r'\^@', ' ', cmdline)
         cmdline_tmp = re.sub(r'\s-drive\s[^\s]+', '\s', cmdline)
         guest_file = file(guest_args, 'w')
@@ -42,7 +42,7 @@ def run(test, params, env):
     dfn_format = params.get("dfn_format")
     guest_args = params.get("dfn_guest_args", "")
     invalid_guest_args = params.get("dfn_invalid_guest_args")
-    status_error = params.get("status_error")
+    status_error = "yes" == params.get("status_error", "no")
 
     # put vm's information to a file
     if guest_args != "":
@@ -57,8 +57,7 @@ def run(test, params, env):
     # Ignore exception with ignore_status=True.
     ret = virsh.domxml_from_native(dfn_format, guest_args, invalid_guest_args,
                                    ignore_status=True)
-    status = ret.exit_status
-
+    utlv.check_exit_status(ret, status_error)
     # recover libvirtd service start
     if libvirtd == "off":
         utils_libvirtd.libvirtd_start()
@@ -66,11 +65,3 @@ def run(test, params, env):
     # clean up
     if os.path.exists(guest_args):
         os.remove(guest_args)
-
-    # check status_error
-    if status_error == "yes":
-        if status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
-    elif status_error == "no":
-        if status != 0:
-            raise error.TestFail("Run failed with right command")
