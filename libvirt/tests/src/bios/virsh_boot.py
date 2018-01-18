@@ -282,7 +282,7 @@ def apply_boot_options(vmxml, params):
     loader_type = params.get("loader_type", "")
     boot_type = params.get("boot_type", "seabios")
     with_nvram = (params.get("with_nvram", "no") == "yes")
-    with_loader = (params.get("with_loader", "no") == "yes")
+    with_loader = (params.get("with_loader", "yes") == "yes")
     with_readonly = (params.get("with_readonly", "yes") == "yes")
     with_loader_type = (params.get("with_loader_type", "yes") == "yes")
     with_template = (params.get("with_template", "yes") == "yes")
@@ -312,7 +312,7 @@ def apply_boot_options(vmxml, params):
         if with_template:
             dict_os_attrs.update({"nvram_template": template})
 
-    vmxml.set_os_attrs(dict_os_attrs)
+    vmxml.set_os_attrs(**dict_os_attrs)
 
 
 def enable_secure_boot(vm, vmxml, test, **kwargs):
@@ -340,7 +340,7 @@ def enable_secure_boot(vm, vmxml, test, **kwargs):
     vmxml.remove_all_boots()
     dict_os_attrs.update({"boots": ["cdrom"]})
     dict_os_attrs.update({"secure": "yes"})
-    vmxml.set_os_attrs(dict_os_attrs)
+    vmxml.set_os_attrs(**dict_os_attrs)
     logging.debug("Enable secure boot mode:\n%s", open(vmxml.xml).read())
     # Enroll key in Uefi shell
     vmxml.undefine()
@@ -539,7 +539,7 @@ def set_boot_dev_or_boot_order(vmxml, **kwargs):
         # If more than one boot dev
         if two_same_boot_dev:
             boot_list.append(boot_dev)
-        vmxml.set_os_attrs({"boots": boot_list})
+        vmxml.set_os_attrs(**{"boots": boot_list})
     elif boot_ref == "order":
         vmxml.set_boot_order_by_target_dev(target_dev, boot_order)
 
@@ -608,7 +608,6 @@ def run(test, params, env):
                                   "uefi_custom_codes": custom_codes}
             enable_secure_boot(vm, vmxml, test, **secure_boot_kwargs)
         if not secure_boot_mode:
-            # Some negative cases failed at virsh.define
             define_error = ("yes" == params.get("define_error", "no"))
             enable_normal_boot(vmxml, check_points, define_error, test)
             # Some negative cases failed at virsh.define
@@ -633,7 +632,7 @@ def run(test, params, env):
                         logging.debug("Got check point as expected")
                         break
         elif boot_dev == "hd":
-            ret = virsh.start(vm_name)
+            ret = virsh.start(vm_name, timeout=60)
             utlv.check_result(ret, expected_fails=check_points)
             # For no boot options, further check if boot dev can be automatically added
             if not with_boot:
