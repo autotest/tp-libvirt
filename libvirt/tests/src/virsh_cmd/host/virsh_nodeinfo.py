@@ -1,10 +1,9 @@
 import os
 import re
 import logging
+import platform
 
-from autotest.client import utils
-
-from avocado.utils import cpu as cpu_util
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
@@ -26,7 +25,7 @@ def run(test, params, env):
     def _check_nodeinfo(nodeinfo_output, verify_str, column):
         cmd = "echo \"%s\" | grep \"%s\" | awk '{print $%s}'" % (
             nodeinfo_output, verify_str, column)
-        cmd_result = utils.run(cmd, ignore_status=True)
+        cmd_result = process.run(cmd, ignore_status=True, shell=True)
         stdout = cmd_result.stdout.strip()
         logging.debug("Info %s on nodeinfo output:%s" % (verify_str, stdout))
         return stdout
@@ -34,8 +33,8 @@ def run(test, params, env):
     def output_check(nodeinfo_output):
         # Check CPU model
         cpu_model_nodeinfo = _check_nodeinfo(nodeinfo_output, "CPU model", 3)
-        cpu_model_os = utils.get_current_kernel_arch()
-        if not re.match(cpu_model_nodeinfo, cpu_model_os):
+        cpu_arch = platform.machine()
+        if not re.match(cpu_model_nodeinfo, cpu_arch):
             test.fail(
                 "Virsh nodeinfo output didn't match CPU model")
 
@@ -43,9 +42,11 @@ def run(test, params, env):
         # system, check all online cpus in sysfs
         cpus_nodeinfo = _check_nodeinfo(nodeinfo_output, "CPU(s)", 2)
         cmd = "cat /sys/devices/system/cpu/cpu*/online | grep 1 | wc -l"
-        cpus_online = utils.run(cmd, ignore_status=True).stdout.strip()
+        cpus_online = process.run(cmd, ignore_status=True,
+                                  shell=True).stdout.strip()
         cmd = "cat /sys/devices/system/cpu/cpu*/online | wc -l"
-        cpus_total = utils.run(cmd, ignore_status=True).stdout.strip()
+        cpus_total = process.run(cmd, ignore_status=True,
+                                 shell=True).stdout.strip()
         if not os.path.exists('/sys/devices/system/cpu/cpu0/online'):
             cpus_online = str(int(cpus_online) + 1)
             cpus_total = str(int(cpus_total) + 1)
@@ -54,7 +55,7 @@ def run(test, params, env):
         logging.debug("host total cpus are %s", cpus_total)
 
         if cpus_nodeinfo != cpus_online:
-            if 'power' in cpu_util.get_cpu_arch():
+            if 'ppc' in cpu_arch:
                 if cpus_nodeinfo != cpus_total:
                     test.fail("Virsh nodeinfo output of CPU(s) on"
                               " ppc did not match all threads in "
@@ -66,9 +67,9 @@ def run(test, params, env):
         # Check CPU frequency, frequency is under clock for ppc
         cpu_frequency_nodeinfo = _check_nodeinfo(
             nodeinfo_output, 'CPU frequency', 3)
-        cmd = ("cat /proc/cpuinfo | grep -E 'cpu MHz|clock' | head -n1 | "
-               "awk -F: '{print $2}' | awk -F. '{print $1}'")
-        cmd_result = utils.run(cmd, ignore_status=True)
+        cmd = ("cat /proc/cpuinfo | grep -E 'cpu MHz|clock|BogoMIPS' | "
+               "head -n1 | awk -F: '{print $2}' | awk -F. '{print $1}'")
+        cmd_result = process.run(cmd, ignore_status=True, shell=True)
         cpu_frequency_os = cmd_result.stdout.strip()
         logging.debug("cpu_frequency_nodeinfo=%s cpu_frequency_os=%s",
                       cpu_frequency_nodeinfo, cpu_frequency_os)
@@ -103,7 +104,7 @@ def run(test, params, env):
         node_online_list = node_info.get_online_nodes()
         cmd = "cat /sys/devices/system/node/node%s" % node_online_list[0]
         cmd += "/cpu*/topology/physical_package_id | uniq |wc -l"
-        cmd_result = utils.run(cmd, ignore_status=True)
+        cmd_result = process.run(cmd, ignore_status=True, shell=True)
         total_sockets_in_node = int(cmd_result.stdout.strip())
         if total_sockets_in_node != cpu_sockets_nodeinfo:
             test.fail("Virsh nodeinfo output didn't match CPU "
@@ -116,7 +117,7 @@ def run(test, params, env):
         cores_per_socket_nodeinfo = _check_nodeinfo(
             nodeinfo_output, 'Core(s) per socket', 4)
         cmd = "lscpu | grep 'Core(s) per socket' | head -n1 | awk '{print $4}'"
-        cmd_result = utils.run(cmd, ignore_status=True)
+        cmd_result = process.run(cmd, ignore_status=True, shell=True)
         cores_per_socket_os = cmd_result.stdout.strip()
         spec_numa = False
         if not re.match(cores_per_socket_nodeinfo, cores_per_socket_os):
