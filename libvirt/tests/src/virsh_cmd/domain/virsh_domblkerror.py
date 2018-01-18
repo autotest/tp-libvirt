@@ -170,6 +170,7 @@ def run(test, params, env):
 
         if not utils_misc.wait_for(_check_state, timeout):
             # If not paused, perform one more IO operation to the mnt disk
+            session = vm.wait_for_login()
             session.cmd("echo 'one more write to big file' > %s/big_file" % mnt_dir)
             if not utils_misc.wait_for(_check_state, 60):
                 test.fail("Guest does not paused, it is %s now" % vm.state())
@@ -187,6 +188,8 @@ def run(test, params, env):
                 test.fail("Fail to get domblkerror info:%s" % output.stderr)
     finally:
         logging.info("Do clean steps")
+        if session:
+            session.close()
         if error_type == "unspecified error":
             if nfs_service is not None:
                 nfs_service.start()
