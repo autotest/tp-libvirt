@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+import platform
 
 from avocado.utils import cpu as cpu_util
 
@@ -296,7 +297,8 @@ def run(test, params, env):
         else:
             vmxml.set_vm_vcpus(vm_name, vcpu_max_num, vcpu_current_num)
         # Do not apply S3/S4 on power
-        if 'power' not in cpu_util.get_cpu_arch():
+        cpu_arch = platform.machine()
+        if cpu_arch in ('x86_64', 'i386', 'i686'):
             vmxml.set_pm_suspend(vm_name, "yes", "yes")
         vm.start()
         if with_stress:
