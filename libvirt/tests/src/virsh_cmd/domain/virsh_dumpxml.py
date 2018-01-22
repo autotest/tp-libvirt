@@ -2,8 +2,10 @@ import re
 import logging
 
 from virttest import virsh
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import capability_xml
+from virttest.libvirt_xml import domcapability_xml
 from virttest.utils_test import libvirt as utlv
 
 from provider import libvirt_version
@@ -47,10 +49,25 @@ def run(test, params, env):
         vmcpu_xml.add_feature('vmx', 'forbid')
         # Unsupport feature 'ia64'
         vmcpu_xml.add_feature('ia64', 'optional')
-        vmcpu_xml.add_feature('vme', 'require')
+        vmcpu_xml.add_feature('vme', 'optional')
         vmxml['cpu'] = vmcpu_xml
         logging.debug('Custom VM CPU: %s', vmcpu_xml.xmltreefile)
         vmxml.sync()
+
+    def get_cpu_features():
+        """
+        Get all supported CPU features
+
+        :return: list of feature string
+        """
+        features = []
+        dom_capa = domcapability_xml.DomCapabilityXML()
+        modelname = dom_capa.get_hostmodel_name()
+        for item in dom_capa.get_additional_feature_list('host-model'):
+            for key, value in item.items():
+                if value == 'require':
+                    features.append(key)
+        return list(set(features) | set(utils_misc.get_model_features(modelname)))
 
     def check_cpu(xml, cpu_match):
         """
@@ -84,8 +101,13 @@ def run(test, params, env):
             expect_policy = "disable"
             if f_name in ["xtpr", "vme", "ia64"]:
                 # Check if feature is support on the host
-                if host_capa.check_feature_name(f_name):
-                    expect_policy = "require"
+                # Since libvirt3.9, libvirt query qemu/kvm to get one feature support or not
+                if libvirt_version.version_compare(3, 9, 0):
+                    if f_name in get_cpu_features():
+                        expect_policy = "require"
+                else:
+                    if host_capa.check_feature_name(f_name):
+                        expect_policy = "require"
                 if f_policy != expect_policy:
                     logging.error(err_msg)
                     check_pass = False
@@ -107,10 +129,13 @@ def run(test, params, env):
             # Count actual require features
             if f_policy == "require":
                 require_count += 1
-        # Check
+
+        # Check optional feature is changed to require/disable
         expect_model = 'Penryn'
+
         if cpu_match == "minimum":
             # libvirt commit 3b6be3c0 change the behavior of update-cpu
+            # Check model is changed to host cpu-model given in domcapabilities
             if libvirt_version.version_compare(3, 0, 0):
                 expect_model = host_capa.model
             expect_match = "exact"
@@ -127,6 +152,7 @@ def run(test, params, env):
                 logging.error("Found %d require features, but expect %s",
                               require_count, expect_require_features)
                 check_pass = False
+
         logging.debug("Expect 'match' value is: %s", expect_match)
         match = vmcpu_xml['match']
         if match != expect_match:
@@ -218,6 +244,5 @@ def run(test, params, env):
                         is_dumpxml_of_running_vm(output, domid)):
                     test.fail("Found domain id in XML when run virsh dumpxml"
                               " for a shutoff VM")
-
     finally:
         backup_xml.sync()
