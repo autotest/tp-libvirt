@@ -135,8 +135,6 @@ def run(test, params, env):
             break
         else:
             logging.debug("Job started: %s", jobtype)
-            # Add for test
-            #virsh.dom_list("--all", ignore_status=True, debug=True)
             break
     ret = virsh.domjobabort(vm_ref, ignore_status=True, debug=True)
     status = ret.exit_status
