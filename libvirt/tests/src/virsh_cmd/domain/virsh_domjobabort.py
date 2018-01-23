@@ -54,7 +54,7 @@ def run(test, params, env):
         elif action == "migrate":
             # Slow down migration for domjobabort
             virsh.migrate_setspeed(vm_name, "1")
-            time.sleep(1)
+            time.sleep(3)
             #virsh.migrate_setspeed(vm_name, "1", ignore_status=True, debug=True)
             file = remote_uri
             args = "--unsafe"
