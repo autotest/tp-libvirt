@@ -58,11 +58,8 @@ def run(test, params, env):
             args = "--unsafe"
         command = "virsh %s %s %s %s" % (action, vm_name, file, args)
         logging.debug("Action: %s", command)
-        try:
-            p = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE)
-        except Exception, err:
-            test.error("migrate failed: err: %s" % err)
+        p = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
         return p
 
     action = params.get("jobabort_action", "dump")
@@ -126,22 +123,18 @@ def run(test, params, env):
 
     # Give enough time for starting job
     t = 0
-    while t < 5:
-        if process.poll():
-            jobtype = vm.get_job_type()
-            if "None" == jobtype:
-                t += 1
-                time.sleep(1)
-                continue
-            elif jobtype is False:
-                logging.error("Get job type failed.")
-                break
-            else:
-                logging.debug("Job started: %s", jobtype)
-                break
+    while t < 30:
+        jobtype = vm.get_job_type()
+        if "None" == jobtype:
+            t += 1
+            time.sleep(1)
+            continue
+        elif jobtype is False:
+            logging.error("Get job type failed.")
+            break
         else:
-            logging.error("migrate have finished.")
-            status = process.returncode
+            logging.debug("Job started: %s", jobtype)
+            break
 
     ret = virsh.domjobabort(vm_ref, ignore_status=True, debug=True)
     status = ret.exit_status
