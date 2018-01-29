@@ -387,7 +387,10 @@ class SerialFile(AttachDeviceBase):
         """Return full path to unique filename per device index"""
         # auto-cleaned at end of test
         if self.type_name == 'file':
-            serial_dir = self.test_params.serial_dir
+            if libvirt_version.version_compare(3, 2, 0):
+                serial_dir = '/var/log/libvirt'
+            else:
+                serial_dir = self.test_params.serial_dir
         else:
             serial_dir = data_dir.get_tmp_dir()
 
