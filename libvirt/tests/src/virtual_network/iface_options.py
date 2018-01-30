@@ -19,6 +19,7 @@ from virttest import utils_libvirtd
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.interface import Interface
+from virttest.libvirt_xml import xcepts
 
 from provider import libvirt_version
 
@@ -89,7 +90,7 @@ def run(test, params, env):
             # if it's not in host interface list, try to set
             # source device to first active interface of host
             if (iface.type_name == "direct" and
-                    source.has_key('dev') and
+                    'dev' in source and
                     source['dev'] not in net_ifs):
                 logging.warn("Source device %s is not a interface"
                              " of host, reset to %s",
@@ -146,7 +147,11 @@ def run(test, params, env):
         else:
             vmxml.devices = xml_devices
             vmxml.xmltreefile.write()
-            vmxml.sync()
+            try:
+                vmxml.sync()
+            except xcepts.LibvirtXMLError as e:
+                if not define_error:
+                    test.fail("Define VM fail: %s" % e)
 
     def check_offloads_option(if_name, driver_options, session=None):
         """
@@ -167,8 +172,8 @@ def run(test, params, env):
         if ret:
             test.fail("ethtool return error code")
         logging.debug("ethtool output: %s", output)
-        for offload in driver_options.keys():
-            if offloads.has_key(offload):
+        for offload in list(driver_options.keys()):
+            if offload in offloads:
                 if (output.count(offloads[offload]) and
                     not output.count("%s: %s" % (
                         offloads[offload], driver_options[offload]))):
@@ -194,16 +199,16 @@ def run(test, params, env):
         driver_dict = {}
         if iface_driver:
             driver_dict = ast.literal_eval(iface_driver)
-        for driver_opt in driver_dict.keys():
+        for driver_opt in list(driver_dict.keys()):
             if not driver_dict[driver_opt] == iface.driver.driver_attr[driver_opt]:
                 test.fail("Can't see driver option %s=%s in vm xml"
                           % (driver_opt, driver_dict[driver_opt]))
         if iface_target:
-            if (not iface.target.has_key("dev") or
+            if ("dev" not in iface.target or
                     not iface.target["dev"].startswith(iface_target)):
                 test.fail("Can't see device target dev in vm xml")
             # Check macvtap mode by ip link command
-            if iface_target == "macvtap" and iface.source.has_key("mode"):
+            if iface_target == "macvtap" and "mode" in iface.source:
                 cmd = "ip -d link show %s" % iface.target["dev"]
                 output = process.run(cmd, shell=True).stdout_text
                 logging.debug("ip link output: %s", output)
@@ -245,7 +250,7 @@ def run(test, params, env):
         # Test <driver> xml options.
         if iface_driver:
             iface_driver_dict = ast.literal_eval(iface_driver)
-            for driver_opt in iface_driver_dict.keys():
+            for driver_opt in list(iface_driver_dict.keys()):
                 if driver_opt == "name":
                     continue
                 elif driver_opt == "txmode":
@@ -266,12 +271,14 @@ def run(test, params, env):
         if iface_driver_guest:
             driver_dict.update(ast.literal_eval(iface_driver_guest))
 
-        for driver_opt in driver_dict.keys():
-            if (not cmd_opt.has_key(driver_opt) or
+        for driver_opt in list(driver_dict.keys()):
+            if (driver_opt not in cmd_opt or
                     not cmd_opt[driver_opt] == driver_dict[driver_opt]):
                 test.fail("Can't see option '%s=%s' in qemu-kvm "
                           " command line" %
                           (driver_opt, driver_dict[driver_opt]))
+            logging.info("Find %s=%s in qemu-kvm command line" %
+                         (driver_opt, driver_dict[driver_opt]))
         if test_backend:
             guest_pid = ret.stdout_text.rsplit()[1]
             cmd = "lsof %s | grep %s" % (backend["tap"], guest_pid)
@@ -281,7 +288,7 @@ def run(test, params, env):
             cmd = "lsof %s | grep %s" % (backend["vhost"], guest_pid)
             if process.system(cmd, ignore_status=True, shell=True):
                 test.fail("Guest process didn't open backend file"
-                          " %s" % backend["tap"])
+                          " %s" % backend["vhost"])
 
     def get_guest_ip(session, mac):
         """
@@ -341,7 +348,7 @@ def run(test, params, env):
                       " on host")
         vms_ip_dict = {}
         # Get ip address on each guest
-        for vms in vms_sess_dict.keys():
+        for vms in list(vms_sess_dict.keys()):
             vm_mac = vm_xml.VMXML.get_first_mac_by_name(vms)
             vm_ip = get_guest_ip(vms_sess_dict[vms], vm_mac)
             if not vm_ip:
@@ -358,12 +365,12 @@ def run(test, params, env):
                        " on host")
         cmd = ("iptables -F;omping -m %s %s" %
                (src_addr, "192.168.122.1 %s" %
-                ' '.join(vms_ip_dict.values())))
+                ' '.join(list(vms_ip_dict.values()))))
         # Run a backgroup job waiting for connection of client
         bgjob = utils_misc.AsyncJob(cmd)
 
         # Run omping client on guests
-        for vms in vms_sess_dict.keys():
+        for vms in list(vms_sess_dict.keys()):
             # omping should be installed first
             if not utils_package.package_install(["omping"], vms_sess_dict[vms]):
                 test.error("Failed to install omping"
@@ -381,6 +388,7 @@ def run(test, params, env):
 
     status_error = "yes" == params.get("status_error", "no")
     start_error = "yes" == params.get("start_error", "no")
+    define_error = "yes" == params.get("define_error", "no")
     unprivileged_user = params.get("unprivileged_user")
 
     # Interface specific attributes.
@@ -393,6 +401,7 @@ def run(test, params, env):
     iface_driver_host = params.get("iface_driver_host")
     iface_driver_guest = params.get("iface_driver_guest")
     attach_device = params.get("attach_iface_device")
+    expect_tx_size = params.get("expect_tx_size")
     change_option = "yes" == params.get("change_iface_options", "no")
     update_device = "yes" == params.get("update_iface_device", "no")
     additional_guest = "yes" == params.get("additional_guest", "no")
@@ -413,6 +422,7 @@ def run(test, params, env):
     test_libvirtd = "yes" == params.get("test_libvirtd", "no")
     test_guest_ip = "yes" == params.get("test_guest_ip", "no")
     test_backend = "yes" == params.get("test_backend", "no")
+    check_guest_trans = "yes" == params.get("check_guest_trans", "no")
 
     if iface_driver_host or iface_driver_guest or test_backend:
         if not libvirt_version.version_compare(1, 2, 8):
@@ -470,6 +480,8 @@ def run(test, params, env):
             # Edit the interface xml.
             if change_option:
                 modify_iface_xml(update=False)
+                if define_error:
+                    return
 
             if rm_vhost_driver:
                 # Check vhost driver.
@@ -539,8 +551,9 @@ def run(test, params, env):
                 iface_xml_obj.xmltreefile.write()
                 ret = virsh.attach_device(vm_name, iface_xml_obj.xml,
                                           flagstr="--live",
-                                          ignore_status=True)
-                libvirt.check_exit_status(ret)
+                                          ignore_status=True,
+                                          debug=True)
+                libvirt.check_exit_status(ret, status_error)
                 # Need sleep here for attachment take effect
                 time.sleep(5)
 
@@ -579,6 +592,27 @@ def run(test, params, env):
                 if not get_guest_ip(session, iface_mac):
                     test.fail("Guest can't get a"
                               " valid ip address")
+            # Check guest RX/TX ring
+            if check_guest_trans:
+                ifname_guest = utils_net.get_linux_ifname(session, iface_mac)
+                ret, outp = session.cmd_status_output("ethtool -g %s" % ifname_guest)
+                if ret:
+                    test.fail("ethtool return error code")
+                logging.info("ethtool output is %s", outp)
+                driver_dict = ast.literal_eval(iface_driver)
+                if expect_tx_size:
+                    driver_dict['tx_queue_size'] = expect_tx_size
+                for outp_p in outp.split("Current hardware"):
+                    if 'rx_queue_size' in driver_dict:
+                        if re.search("RX:\s*%s" % driver_dict['rx_queue_size'], outp_p):
+                            logging.info("Find RX setting RX:%s by ethtool", driver_dict['rx_queue_size'])
+                        else:
+                            test.fail("Cannot find matching rx setting")
+                    if 'tx_queue_size' in driver_dict:
+                        if re.search("TX:\s*%s" % driver_dict['tx_queue_size'], outp_p):
+                            logging.info("Find TX settint TX:%s by ethtool", driver_dict['tx_queue_size'])
+                        else:
+                            test.fail("Cannot find matching tx setting")
 
             session.close()
             # Restart libvirtd and guest, then test again
@@ -590,7 +624,7 @@ def run(test, params, env):
                     run_xml_test(iface_mac)
 
             # Detach hot/cold-plugged interface at last
-            if attach_device:
+            if attach_device and not status_error:
                 ret = virsh.detach_device(vm_name, iface_xml_obj.xml,
                                           flagstr="", ignore_status=True)
                 libvirt.check_exit_status(ret)
