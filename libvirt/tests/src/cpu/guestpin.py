@@ -13,6 +13,7 @@ from virttest import utils_test
 from virttest import libvirt_xml
 from virttest.utils_test import libvirt
 from virttest import utils_hotplug
+from virttest.staging import utils_cgroup
 
 
 def run(test, params, env):
@@ -105,6 +106,28 @@ def run(test, params, env):
                 result = process.run("ppc64_cpu --smt=2", shell=True)
                 # Change back the host smt
                 result = process.run("ppc64_cpu --smt=4", shell=True)
+                # Work around due to known cgroup issue after cpu hot(un)plug
+                # sequence
+                root_cpuset_path = utils_cgroup.get_cgroup_mountpoint("cpuset")
+                machine_cpuset_path = os.path.join(root_cpuset_path,
+                                                   "machine.slice")
+                if os.path.isdir(machine_cpuset_path):
+                    root_cpuset_cpus = os.path.join(root_cpuset_path,
+                                                    "cpuset.cpus")
+                    machine_cpuset_cpus = os.path.join(machine_cpuset_path,
+                                                       "cpuset.cpus")
+                    # check if file content differs
+                    cmd = "diff %s %s" % (root_cpuset_cpus,
+                                          machine_cpuset_cpus)
+                    if process.system(cmd, verbose=True, ignore_status=True):
+                        cmd = "cp %s %s" % (root_cpuset_cpus,
+                                            machine_cpuset_cpus)
+                        process.system(cmd, verbose=True)
+                else:
+                    logging.warning("cgroup cpuset might not recover properly "
+                                    "for guests after host smt changes, "
+                                    "restore it manually")
+
             else:
                 logging.debug("No need recover the domain")
         return bt
