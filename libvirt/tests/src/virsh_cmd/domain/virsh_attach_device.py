@@ -808,6 +808,18 @@ def run(test, params, env):
     5) Restore domain
     6) Handle results
     """
+    # Remove non-disk disks before test to avoid influence.
+    # None-disk disks such as cdrom with bus 'SATA' will be recognized
+    # as 'cdrom', not 'sda' as expected, therefore the attached SATA
+    # disk will not be recognized as 'sdb' as expected.
+    vm_name = params.get('main_vm')
+    backup_vm_xml = vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
+    disks = vmxml.devices.by_device_tag('disk')
+    for disk in disks:
+        if disk.device != 'disk':
+            virsh.detach_disk(vm_name, disk.target['dev'],
+                              extra='--current',
+                              debug=True)
 
     dev_obj = params.get("vadu_dev_objs")
     # Skip chardev hotplug on rhel6 host as it is not supported
@@ -877,3 +889,4 @@ def run(test, params, env):
         # Device cleanup can raise multiple exceptions, do it last:
         logging.info("Cleaning up test devices")
         test_params.cleanup(test_devices)
+        backup_vm_xml.sync()
