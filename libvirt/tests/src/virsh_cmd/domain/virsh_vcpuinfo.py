@@ -1,11 +1,10 @@
 import logging
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import ssh_key
 
 
 def run(test, params, env):
@@ -38,21 +37,22 @@ def run(test, params, env):
         """
         remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
         remote_pwd = params.get("remote_pwd", None)
+        local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
+        local_pwd = params.get("local_pwd", None)
         # Used for connecting from remote to local
         connect_uri = params.get("remote_connect_uri",
                                  "qemu+ssh://LOCAL.EXAMPLE.COM/system")
-        # Verify connect_uri is useful for this test.
-        if not virsh.VirshConnectBack.kosher_args(remote_ip, connect_uri):
-            raise error.TestNAError("The connect_uri parameter '%s' does "
-                                    "not point at fully-qualified host "
-                                    "from perspective of remote support "
-                                    "system at '%s'." % (connect_uri,
-                                                         remote_ip))
+        # Verify connect_uri/remote_ip/local_ip is useful for this test.
+        if ("EXAMPLE" in remote_ip or "EXAMPLE" in connect_uri
+                or "EXAMPLE" in local_ip):
+            test.cancel("Please set remote_ip or connect_uri or local_ip.")
 
         status = 0
         output = ""
         err = ""
         try:
+            ssh_key.setup_remote_ssh_key(remote_ip, "root", remote_pwd,
+                                         local_ip, "root", local_pwd)
             vcback = virsh.VirshConnectBack(remote_ip=remote_ip,
                                             remote_pwd=remote_pwd,
                                             uri=connect_uri,
@@ -99,14 +99,14 @@ def run(test, params, env):
     if status_error == "yes":
         if not status:
             logging.debug(result)
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
         # Check the error message in negative case.
         if not err:
             logging.debug(result)
             logging.debug("Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=889276 "
                           "is helpful for tracing this bug.")
-            raise error.TestFail("No error message for a command error!")
+            test.fail("No error message for a command error!")
     elif status_error == "no":
         if status:
             logging.debug(result)
-            raise error.TestFail("Run failed with right command")
+            test.fail("Run failed with right command")
