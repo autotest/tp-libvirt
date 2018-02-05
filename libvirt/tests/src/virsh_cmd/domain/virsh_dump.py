@@ -3,6 +3,7 @@ import logging
 import commands
 import multiprocessing
 import time
+import platform
 
 from avocado.utils import process
 
@@ -54,14 +55,25 @@ def run(test, params, env):
             test.cancel("API acl test not supported in current"
                         " libvirt version.")
 
-    def check_flag(file_flag):
+    def check_flag(file_flags):
         """
         Check if file flag include O_DIRECT.
 
-        Note, O_DIRECT is defined as:
-        #define O_DIRECT        00040000        /* direct disk access hint */
+        :param file_flags: The flags of dumped file
+
+        Note, O_DIRECT(direct disk access hint) is defined as:
+        on x86_64:
+        #define O_DIRECT        00040000
+        on ppc64le or arch64:
+        #define O_DIRECT        00200000
         """
-        if int(file_flag) == 4:
+        arch = platform.machine()
+        file_flags_b = bin(int(file_flags, 16))
+        file_flag_index = -19
+        if 'ppc64' in arch or 'aarch64' in arch:
+            file_flag_index = -21
+
+        if file_flags_b[file_flag_index] == 1:
             logging.info("File flags include O_DIRECT")
             return True
         else:
@@ -89,8 +101,7 @@ def run(test, params, env):
                 continue
             try:
                 logging.debug("The flag of dumped file: %s", output)
-                file_flag = output[-5]
-                if check_flag(file_flag):
+                if check_flag(output):
                     logging.info("Bypass file system cache "
                                  "successfully when dumping")
                     break
