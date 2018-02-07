@@ -2,6 +2,7 @@ import os
 import logging
 import shutil
 import time
+import platform
 
 import aexpect
 
@@ -58,6 +59,10 @@ def run(test, params, env):
     wipe_data = "yes" == params.get("wipe_data", "no")
     if wipe_data:
         option += " --wipe-storage"
+    nvram_o = None
+    if platform.machine() == 'aarch64':
+        nvram_o = " --nvram"
+        option += nvram_o
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
@@ -157,7 +162,7 @@ def run(test, params, env):
                 logging.debug("Error status, command output: %s",
                               cmdresult.stderr.strip())
             if undefine_twice:
-                status2 = virsh.undefine(vm_ref,
+                status2 = virsh.undefine(vm_ref, nvram_o,
                                          ignore_status=True).exit_status
         else:
             if remote_ip.count("EXAMPLE.COM") or local_ip.count("EXAMPLE.COM"):
@@ -218,7 +223,7 @@ def run(test, params, env):
         # Test define with acl control and recover domain.
         if params.get('setup_libvirt_polkit') == 'yes':
             if virsh.domain_exists(vm.name):
-                virsh.undefine(vm_ref, ignore_status=True)
+                virsh.undefine(vm_ref, nvram_o, ignore_status=True)
             cmd = "chmod 666 %s" % backup_xml.xml
             process.run(cmd, ignore_status=False, shell=True)
             s_define = virsh.define(backup_xml.xml,
