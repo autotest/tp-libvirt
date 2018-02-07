@@ -68,12 +68,11 @@ def run(test, params, env):
         #define O_DIRECT        00200000
         """
         arch = platform.machine()
-        file_flags_b = bin(int(file_flags, 16))
-        file_flag_index = -19
+        file_flag_check = int('00040000', 16)
         if 'ppc64' in arch or 'aarch64' in arch:
-            file_flag_index = -21
+            file_flag_check = int('00200000', 16)
 
-        if file_flags_b[file_flag_index] == 1:
+        if int(file_flags, 16) & file_flag_check == file_flag_check:
             logging.info("File flags include O_DIRECT")
             return True
         else:
