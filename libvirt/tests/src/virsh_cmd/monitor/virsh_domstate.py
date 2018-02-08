@@ -108,9 +108,23 @@ def run(test, params, env):
 
     dump_path = os.path.join(test.tmpdir, "dump/")
     logging.debug("dump_path: %s", dump_path)
-    os.mkdir(dump_path)
+    try:
+        os.mkdir(dump_path)
+    except OSError:
+        # If the path already exists then pass
+        pass
     dump_file = ""
     try:
+        # Let's have guest memory less so that dumping core takes
+        # time which doesn't timeout the testcase
+        if vm_oncrash_action in ['coredump-destroy', 'coredump-restart']:
+            memory_value = int(params.get("memory_value", "2097152"))
+            memory_unit = params.get("memory_unit", "KiB")
+            vmxml.set_memory(memory_value)
+            vmxml.set_memory_unit(memory_unit)
+            logging.debug(vmxml)
+            vmxml.sync()
+
         if vm_action == "crash":
             if vm.is_alive():
                 vm.destroy(gracefully=False)
