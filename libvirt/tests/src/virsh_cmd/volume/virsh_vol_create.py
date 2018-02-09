@@ -311,7 +311,7 @@ def run(test, params, env):
                 except (process.CmdError, exceptions.TestFail), e:
                     if process_vol_type == "thin":
                         logging.error(str(e))
-                        test.fail("You may encounter bug BZ#1060287")
+                        test.cancel("You may encounter bug BZ#1060287")
                     else:
                         raise e
             else:
