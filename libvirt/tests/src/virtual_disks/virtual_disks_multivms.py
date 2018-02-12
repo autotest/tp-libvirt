@@ -14,6 +14,8 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.controller import Controller
 
+from provider import libvirt_version
+
 
 def run(test, params, env):
     """
@@ -179,6 +181,11 @@ def run(test, params, env):
             if len(vms_sgio) > i:
                 disk_sgio = vms_sgio[i]
             shareable = ""
+
+            # Since lock feature is introduced in libvirt 3.9.0 afterwards, disk shareable attribute
+            # need be set if both of VMs need be started successfully in case they share the same disk
+            if test_error_policy and libvirt_version.version_compare(3, 9, 0):
+                vms_share = ["shareable", "shareable"]
             if len(vms_share) > i:
                 shareable = vms_share[i]
             readonly = ""
