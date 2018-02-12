@@ -2,6 +2,7 @@ import os
 import re
 import ast
 import logging
+import tempfile
 
 from avocado.core import exceptions
 from autotest.client import utils
@@ -11,6 +12,7 @@ from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import utils_numeric
 from virttest import virt_vm
+from virttest import data_dir
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
@@ -88,7 +90,7 @@ def run(test, params, env):
         # Run the command
         utils.run(cmd)
 
-    def check_guest_meminfo(old_mem):
+    def check_guest_meminfo(old_mem, check_option):
         """
         Check meminfo on guest.
         """
@@ -110,12 +112,13 @@ def run(test, params, env):
         no_of_times = 1
         if at_times:
             no_of_times = at_times
-        if attach_device:
+        if check_option == "attach":
             if new_mem != int(old_mem) + (int(tg_size) * no_of_times):
                 raise exceptions.TestFail("Total memory on guest couldn't"
                                           " changed after attach memory "
                                           "device")
-        if detach_device:
+
+        if check_option == "detach":
             if new_mem != int(old_mem) - (int(tg_size) * no_of_times):
                 raise exceptions.TestFail("Total memory on guest couldn't"
                                           " changed after detach memory "
@@ -325,6 +328,8 @@ def run(test, params, env):
     set_max_mem = params.get("set_max_mem")
     align_mem_values = "yes" == params.get("align_mem_values", "no")
     align_to_value = int(params.get("align_to_value", "65536"))
+    known_unplug_errors = []
+    known_unplug_errors.append(params.get("known_unplug_errors"))
 
     # params for attached device
     tg_size = params.get("tg_size")
@@ -428,7 +433,7 @@ def run(test, params, env):
         # Check guest meminfo after attachment
         if (attach_device and not attach_option.count("config") and
                 not any([attach_error, start_error])):
-            check_guest_meminfo(old_mem_total)
+            check_guest_meminfo(old_mem_total, check_option="attach")
 
         # Consuming memory on guest,
         # to verify memory changes by numastat
@@ -467,6 +472,7 @@ def run(test, params, env):
                 check_dom_xml(at_mem=attach_device)
 
         # Detach the memory device
+        unplug_failed_with_known_error = False
         if detach_device:
             if not dev_xml:
                 dev_xml = create_mem_xml()
@@ -474,8 +480,30 @@ def run(test, params, env):
                 ret = virsh.detach_device(vm_name, dev_xml.xml,
                                           flagstr=attach_option)
                 libvirt.check_exit_status(ret, detach_error)
-            if test_dom_xml:
+            # Check whether a known error occured or not
+            dmesg_file = tempfile.mktemp(dir=data_dir.get_tmp_dir())
+            try:
+                session = vm.wait_for_login()
+                utils_misc.verify_dmesg(dmesg_log_file=dmesg_file, ignore_result=True, session=session, level_check=4)
+                session.close()
+            except Exception:
+                raise exceptions.TestFail("After memory unplug"
+                                          " Unable to connect to VM"
+                                          " or unable to collect dmesg")
+            if known_unplug_errors:
+                for known_error in known_unplug_errors:
+                    if (known_error[0] == known_error[-1]) and \
+                       known_error.startswith(("'")):
+                        known_error = known_error[1:-1]
+                    if known_error in open(dmesg_file).read():
+                        unplug_failed_with_known_error = True
+                        logging.debug("Known error occured, while hot unplug"
+                                      ": %s", known_error)
+            if test_dom_xml and not unplug_failed_with_known_error:
                 check_dom_xml(dt_mem=detach_device)
+                # Remove dmesg temp file
+                if os.path.exists(dmesg_file):
+                    os.remove(dmesg_file)
 
     finally:
         # Delete snapshots.
