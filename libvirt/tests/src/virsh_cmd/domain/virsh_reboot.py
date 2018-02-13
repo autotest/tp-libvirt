@@ -3,8 +3,6 @@ import logging
 
 import aexpect
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import libvirt_vm
@@ -34,7 +32,7 @@ def run(test, params, env):
     libvirtd = params.get("libvirtd", "on")
     vm_ref = params.get("reboot_vm_ref")
     status_error = ("yes" == params.get("status_error"))
-    extra = params.get("reboot_extra")
+    extra = params.get("reboot_extra", "")
     remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
     local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
     remote_pwd = params.get("remote_pwd", "password")
@@ -49,7 +47,7 @@ def run(test, params, env):
         except virt_vm.VMError, e:
             logging.debug(e)
             # qemu-guest-agent is not available on REHL5
-            raise error.TestNAError("qemu-guest-agent package is not available")
+            test.cancel("qemu-guest-agent package is not available")
 
         if pre_domian_status == "shutoff":
             virsh.destroy(vm_name)
@@ -70,8 +68,8 @@ def run(test, params, env):
             vm_ref = params.get(vm_ref)
         elif vm_ref == "remote_name":
             if remote_ip.count("EXAMPLE.COM") or local_ip.count("EXAMPLE.COM"):
-                raise error.TestNAError("remote_ip and/or local_ip parameters"
-                                        " not changed from default values")
+                test.cancel("remote_ip and/or local_ip parameters"
+                            " not changed from default values")
             complete_uri = libvirt_vm.complete_uri(local_ip)
             try:
                 session = remote.remote_login("ssh", remote_ip, "22", "root",
@@ -90,7 +88,9 @@ def run(test, params, env):
                 logging.error("Exception: %s", str(e))
                 status = -1
         if vm_ref != "remote_name":
-            vm_ref = "%s %s" % (vm_ref, extra)
+            vm_ref = "%s" % vm_ref
+            if extra:
+                vm_ref += " %s" % extra
             cmdresult = virsh.reboot(vm_ref, mode,
                                      ignore_status=True, debug=True)
             status = cmdresult.exit_status
@@ -110,12 +110,12 @@ def run(test, params, env):
         # check status_error
         if status_error:
             if not status:
-                raise error.TestFail("Run successfully with wrong command!")
+                test.fail("Run successfully with wrong command!")
         else:
             if status or (not re.search(vm_name, output)):
                 if status == -2:
-                    raise error.TestNAError(
-                        "Reboot command doesn't work on older libvirt versions")
-                raise error.TestFail("Run failed with right command")
+                    test.cancel("Reboot command doesn't work on older libvirt "
+                                "versions")
+                test.fail("Run failed with right command")
     finally:
         xml_backup.sync()
