@@ -3,6 +3,7 @@ import os
 import shutil
 import logging
 import platform
+import signal
 
 from aexpect import ShellTimeoutError
 from aexpect import ShellProcessTerminatedError
@@ -82,6 +83,9 @@ def run(test, params, env):
     vm_action = params.get("domstate_vm_action", "")
     vm_oncrash_action = params.get("domstate_vm_oncrash")
     reset_action = "yes" == params.get("reset_action", "no")
+    dump_option = params.get("dump_option", "")
+    start_action = params.get("start_action", "normal")
+    kill_action = params.get("kill_action", "normal")
 
     domid = vm.get_id()
     domuuid = vm.get_uuid()
@@ -105,6 +109,11 @@ def run(test, params, env):
     # Back up qemu.conf
     qemu_conf = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
+
+    # Get image file
+    image_source = vm.get_first_disk_devices()['source']
+    logging.debug("image source: %s" % image_source)
+    new_image_source = image_source + '.rename'
 
     dump_path = os.path.join(test.tmpdir, "dump/")
     logging.debug("dump_path: %s", dump_path)
@@ -159,11 +168,22 @@ def run(test, params, env):
                 virsh.destroy(vm_name, ignore_status=False)
             elif vm_action == "start":
                 virsh.destroy(vm_name, ignore_status=False)
-                virsh.start(vm_name, ignore_status=False)
+                if start_action == "rename":
+                    # rename the guest image file to make guest fail to start
+                    os.rename(image_source, new_image_source)
+                    virsh.start(vm_name, ignore_status=True)
+                else:
+                    virsh.start(vm_name, ignore_status=False)
             elif vm_action == "kill":
-                libvirtd_service.stop()
-                utils_misc.kill_process_by_pattern(vm_name)
-                libvirtd_service.restart()
+                if kill_action == "stop_libvirtd":
+                    libvirtd_service.stop()
+                    utils_misc.kill_process_by_pattern(vm_name)
+                    libvirtd_service.restart()
+                elif kill_action == "reboot_vm":
+                    virsh.reboot(vm_name, ignore_status=False)
+                    utils_misc.kill_process_tree(vm.get_pid(), signal.SIGKILL)
+                else:
+                    utils_misc.kill_process_tree(vm.get_pid(), signal.SIGKILL)
             elif vm_action == "crash":
                 session = vm.wait_for_login()
                 session.cmd("service kdump stop", ignore_all_errors=True)
@@ -185,6 +205,9 @@ def run(test, params, env):
                 except (ShellTimeoutError, ShellProcessTerminatedError):
                     pass
                 session.close()
+            elif vm_action == "dump":
+                dump_file = dump_path + "*" + vm_name + "-*"
+                virsh.dump(vm_name, dump_file, dump_option, ignore_status=False)
         except process.CmdError, detail:
             test.error("Guest prepare action error: %s" % detail)
 
@@ -237,8 +260,12 @@ def run(test, params, env):
                     if not output.count("destroyed"):
                         test.fail(err_msg)
                 elif vm_action == "start":
-                    if not output.count("booted"):
-                        test.fail(err_msg)
+                    if start_action == "rename":
+                        if not output.count("shut off (failed)"):
+                            test.fail(err_msg)
+                    else:
+                        if not output.count("booted"):
+                            test.fail(err_msg)
                 elif vm_action == "kill":
                     if not output.count("crashed"):
                         test.fail(err_msg)
@@ -265,6 +292,13 @@ def run(test, params, env):
                         if not find_dump_file:
                             test.fail("Core dump file is not created in dump "
                                       "path: %s" % dump_path)
+                elif vm_action == "dump":
+                    if dump_option == "--live":
+                        if not output.count("running (unpaused)"):
+                            test.fail(err_msg)
+                    elif dump_option == "--crash":
+                        if not output.count("shut off (crashed)"):
+                            test.fail(err_msg)
             if vm_ref == "remote":
                 if not (re.search("running", output) or
                         re.search("blocked", output) or
@@ -273,7 +307,10 @@ def run(test, params, env):
     finally:
         qemu_conf.restore()
         libvirtd.restart()
-        vm.destroy(gracefully=False)
+        if vm_action == "start" and start_action == "rename":
+            os.rename(new_image_source, image_source)
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
         backup_xml.sync()
         if os.path.exists(dump_path):
             shutil.rmtree(dump_path)
