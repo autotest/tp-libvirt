@@ -1,11 +1,9 @@
 import logging
 
 from virttest import libvirt_vm
-from virttest import nfs
 from virttest import virsh
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
-from virttest.utils_misc import SELinuxBoolean
 
 
 def run(test, params, env):
@@ -32,45 +30,12 @@ def run(test, params, env):
     params["disk_source_protocol"] = "netfs"
     params["mnt_path_name"] = nfs_mount_path
 
-    # Params for NFS and SSH setup
-    params["server_ip"] = migrate_dest_ip
-    params["server_user"] = "root"
-    params["server_pwd"] = params.get("migrate_dest_pwd")
-    params["client_ip"] = params.get("migrate_source_host")
-    params["client_user"] = "root"
-    params["client_pwd"] = params.get("migrate_source_pwd")
-    params["nfs_client_ip"] = migrate_dest_ip
-    params["nfs_server_ip"] = params.get("migrate_source_host")
-
-    # Params to enable SELinux boolean on remote host
-    params["remote_boolean_varible"] = "virt_use_nfs"
-    params["local_boolean_varible"] = "virt_use_nfs"
-    params["remote_boolean_value"] = "on"
-    params["local_boolean_value"] = "on"
-    params["set_sebool_remote"] = "yes"
-    params["set_sebool_local"] = "yes"
-
     src_uri = "qemu:///system"
     dest_uri = libvirt_vm.complete_uri(params["server_ip"])
 
     vmxml_dict = {}
-    # Backup the SELinux status on local host for recovering
-    local_selinux_bak = params.get("selinux_status_bak")
 
-    # Configure NFS client on remote host
-    nfs_client = nfs.NFSClient(params)
-    nfs_client.setup()
-
-    logging.info("Enable virt NFS SELinux boolean on target host.")
-    seLinuxBool = SELinuxBoolean(params)
-    seLinuxBool.setup()
-
-    # Permit iptables to permit 49152-49216 ports to libvirt for
-    # migration and if arch is ppc with power8 then switch off smt
-    # will be taken care in remote machine for migration to succeed
     migrate_setup = libvirt.MigrationTest()
-    migrate_setup.migrate_pre_setup(dest_uri, params)
-
     try:
         for vm in vm_list:
             vmxml_dict[vm.name] = vm_xml.VMXML.new_from_dumpxml(vm.name)
@@ -102,19 +67,8 @@ def run(test, params, env):
                 vm.undefine()
             if vm.is_alive():
                 vm.destroy()
-        # clean up of pre migration setup for local machine
-        if migrate_setup:
-            migrate_setup.migrate_pre_setup(src_uri, params, cleanup=True)
         for source_file in params.get("source_file_list", []):
             libvirt.delete_local_disk("file", path=source_file)
-        exp_dir = params.get("export_dir")
-        mount_dir = params.get("mnt_path_name")
-        libvirt.setup_or_cleanup_nfs(False, export_dir=exp_dir,
-                                     mount_dir=mount_dir,
-                                     restore_selinux=local_selinux_bak,
-                                     rm_export_dir=False)
-        if seLinuxBool:
-            seLinuxBool.cleanup(True)
 
         if vmxml_dict:
             for key in vmxml_dict.keys():
