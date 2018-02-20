@@ -13,6 +13,7 @@ from virttest import utils_test
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest import utils_hotplug
+from virttest import utils_package
 
 
 def run(test, params, env):
@@ -318,7 +319,9 @@ def run(test, params, env):
             vm.setenforce(0)
         else:
             # Remove qemu-guest-agent for negative test
-            vm.remove_package('qemu-guest-agent')
+            session = vm.wait_for_login()
+            if not utils_package.package_remove('qemu-guest-agent', session):
+                test.error("Failed to remove qemu-guest-agent package")
 
         # Run test
         for _ in range(iterations):
