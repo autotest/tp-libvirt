@@ -9,6 +9,7 @@ from avocado.utils import distro
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_misc
+from virttest import utils_package
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
@@ -39,11 +40,20 @@ def run(test, params, env):
     ubuntu = distro.detect().name == 'Ubuntu'
     nfs_service_package = params.get("nfs_service_package", "nfs-kernel-server")
     nfs_service = None
+    session = None
+    selinux_bak = ""
 
     vm = env.get_vm(vm_name)
-    # backup /etc/exports
-    shutil.copyfile(export_file, "%s.bak" % export_file)
-    selinux_bak = ""
+    if error_type == "unspecified error":
+        session = vm.wait_for_login()
+        if not ubuntu:
+            nfs_service_package = "nfs"
+        if not utils_package.package_install(nfs_service_package, session):
+            session.close()
+            test.cancel("NFS package not available in guest to test")
+        session.close()
+        # backup /etc/exports
+        shutil.copyfile(export_file, "%s.bak" % export_file)
     # backup xml
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
@@ -73,7 +83,6 @@ def run(test, params, env):
                                                export_dir=img_dir)
             if not ubuntu:
                 selinux_bak = res["selinux_status_bak"]
-                nfs_service_package = "nfs"
             process.run("mount -o nolock,soft,timeo=1,retrans=1,retry=0 "
                         "127.0.0.1:%s %s" % (img_dir, nfs_dir), shell=True,
                         verbose=True)
