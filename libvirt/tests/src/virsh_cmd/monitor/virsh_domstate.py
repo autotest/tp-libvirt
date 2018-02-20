@@ -16,6 +16,7 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import utils_config
+from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
 
@@ -279,9 +280,16 @@ def run(test, params, env):
                     if vm_oncrash_action == "preserve" and reset_action:
                         virsh_dargs = {'debug': True, 'ignore_status': True}
                         ret = virsh.reset(vm_name, **virsh_dargs)
-                        if ret.exit_status != 0:
-                            test.fail("virsh reset failed after guest crash: "
-                                      "%s" % ret.stderr)
+                        libvirt.check_exit_status(ret)
+                        ret = virsh.domstate(vm_name, extra,
+                                             **virsh_dargs).stdout.strip()
+                        if "paused (crashed)" not in ret:
+                            test.fail("vm fails to change state from crashed"
+                                      " to paused after virsh reset")
+                        # it will be in paused (crashed) state after reset
+                        # and resume is required for the vm to reboot
+                        ret = virsh.resume(vm_name, **virsh_dargs)
+                        libvirt.check_exit_status(ret)
                         vm.wait_for_login()
                         cmd_output = virsh.domstate(vm_name,
                                                     '--reason').stdout.strip()
