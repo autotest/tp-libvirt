@@ -2043,6 +2043,7 @@ def run(test, params, env):
                     if utils_misc.safe_kill(p.pid, signal.SIGINT):
                         logging.info("Succeed to cancel migration:"
                                      " [%s].", p.pid)
+                        time.sleep(delay)
                     else:
                         raise exceptions.TestError("Fail to cancel"
                                                    " migration: [%s]", p.pid)
