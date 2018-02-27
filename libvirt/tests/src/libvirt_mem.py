@@ -4,8 +4,7 @@ import ast
 import logging
 import tempfile
 
-from avocado.core import exceptions
-from autotest.client import utils
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
@@ -88,7 +87,7 @@ def run(test, params, env):
                         (mem_addr['slot'], int(mem_addr['base'], 16)))
             cmd += "'"
         # Run the command
-        utils.run(cmd)
+        process.run(cmd, shell=True)
 
     def check_guest_meminfo(old_mem, check_option):
         """
@@ -114,15 +113,13 @@ def run(test, params, env):
             no_of_times = at_times
         if check_option == "attach":
             if new_mem != int(old_mem) + (int(tg_size) * no_of_times):
-                raise exceptions.TestFail("Total memory on guest couldn't"
-                                          " changed after attach memory "
-                                          "device")
+                test.fail("Total memory on guest couldn't changed after "
+                          "attach memory device")
 
         if check_option == "detach":
             if new_mem != int(old_mem) - (int(tg_size) * no_of_times):
-                raise exceptions.TestFail("Total memory on guest couldn't"
-                                          " changed after detach memory "
-                                          "device")
+                test.fail("Total memory on guest couldn't changed after "
+                          "detach memory device")
 
     def check_dom_xml(at_mem=False, dt_mem=False):
         """
@@ -161,8 +158,7 @@ def run(test, params, env):
                 if at_times:
                     memory_devices = at_times
                 if len(mem_dev) != memory_devices:
-                    raise exceptions.TestFail("Found wrong number of"
-                                              " memory device")
+                    test.fail("Found wrong number of memory device")
                 assert int(tg_size) == int(mem_dev[0].target.size)
                 assert int(tg_node) == int(mem_dev[0].target.node)
             elif dt_mem:
@@ -176,9 +172,8 @@ def run(test, params, env):
                     # Bug 1220702, skip the check for current memory
                     assert int(new_cur_mem) - int(tg_size) == xml_cur_mem
         except AssertionError:
-            utils.log_last_traceback()
-            raise exceptions.TestFail("Found unmatched memory setting"
-                                      " from domain xml")
+            utils_misc.log_last_traceback()
+            test.fail("Found unmatched memory setting from domain xml")
 
     def check_save_restore():
         """
@@ -349,8 +344,7 @@ def run(test, params, env):
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     if not libvirt_version.version_compare(1, 2, 14):
-        raise exceptions.TestSkipError("Memory hotplug not supported in"
-                                       "current libvirt version.")
+        test.cancel("Memory hotplug not supported in current libvirt version.")
 
     if align_mem_values:
         # Rounding the following values to 'align'
@@ -403,17 +397,16 @@ def run(test, params, env):
             if virsh.create(vmxml_for_test.xml,
                             **virsh_dargs).exit_status:
                 vmxml_backup.define()
-                raise exceptions.TestFail("Cann't create the domain")
+                test.fail("Cann't create the domain")
         elif vm.is_dead():
             try:
                 vm.start()
                 vm.wait_for_login().close()
-            except virt_vm.VMStartError:
+            except virt_vm.VMStartError as detail:
                 if start_error:
                     pass
                 else:
-                    raise exceptions.TestFail("VM Failed to start"
-                                              " for some reason!")
+                    test.fail(detail)
 
         # Set memory operation
         if set_max_mem:
@@ -446,8 +439,7 @@ def run(test, params, env):
             logging.debug("Numastat: %s", new_numastat)
             # Only check total memory which is the last element
             if float(new_numastat[-1]) - float(old_numastat[-1]) < 0:
-                raise exceptions.TestFail("Numa memory can't be consumed"
-                                          " on guest")
+                test.fail("Numa memory can't be consumed on guest")
 
         # Run managedsave command to check domain xml.
         if test_managedsave:
@@ -479,18 +471,38 @@ def run(test, params, env):
             for x in xrange(at_times):
                 ret = virsh.detach_device(vm_name, dev_xml.xml,
                                           flagstr=attach_option)
-                libvirt.check_exit_status(ret, detach_error)
+                try:
+                    libvirt.check_exit_status(ret, detach_error)
+                except Exception as detail:
+                    dmesg_file = tempfile.mktemp(dir=data_dir.get_tmp_dir())
+                    try:
+                        session = vm.wait_for_login()
+                        utils_misc.verify_dmesg(dmesg_log_file=dmesg_file, ignore_result=True, session=session,
+                                                level_check=5)
+                    except Exception:
+                        session.close()
+                        test.fail("After memory unplug Unable to connect to VM"
+                                  " or unable to collect dmesg")
+                    session.close()
+                    if os.path.exists(dmesg_file):
+                        if not re.findall(r'memory memory\d+?: Offline failed', open(dmesg_file, 'r').read()):
+                            # The attached memory is used by vm, and it could not be unplugged
+                            # The result is expected
+                            os.remove(dmesg_file)
+                            test.fail(detail)
+                        unplug_failed_with_known_error = True
+                        os.remove(dmesg_file)
             # Check whether a known error occured or not
             dmesg_file = tempfile.mktemp(dir=data_dir.get_tmp_dir())
             try:
                 session = vm.wait_for_login()
                 utils_misc.verify_dmesg(dmesg_log_file=dmesg_file, ignore_result=True, session=session, level_check=4)
-                session.close()
             except Exception:
-                raise exceptions.TestFail("After memory unplug"
-                                          " Unable to connect to VM"
-                                          " or unable to collect dmesg")
-            if known_unplug_errors:
+                session.close()
+                test.fail("After memory unplug Unable to connect to VM"
+                          " or unable to collect dmesg")
+            session.close()
+            if known_unplug_errors and os.path.exists(dmesg_file):
                 for known_error in known_unplug_errors:
                     if (known_error[0] == known_error[-1]) and \
                        known_error.startswith(("'")):
