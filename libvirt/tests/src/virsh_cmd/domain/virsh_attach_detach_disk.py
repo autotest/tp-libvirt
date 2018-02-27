@@ -274,6 +274,11 @@ def run(test, params, env):
         vm_ref = ""
 
     if test_cmd == "attach-disk":
+
+        #Since lock feature is introduced in libvirt 3.9.0 afterwards, disk shareable options
+        #need be set if disk needs be attached multitimes
+        if test_twice and libvirt_version.version_compare(3, 9, 0):
+            at_options += " --mode shareable"
         status = virsh.attach_disk(vm_ref, device_source, device_target,
                                    at_options, debug=True).exit_status
     elif test_cmd == "detach-disk":
