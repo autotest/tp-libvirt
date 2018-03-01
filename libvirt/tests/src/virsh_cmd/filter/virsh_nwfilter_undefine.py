@@ -1,9 +1,8 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import libvirt_xml
+from virttest.utils_test import libvirt as utlv
 
 from provider import libvirt_version
 
@@ -15,15 +14,11 @@ def check_list(filter_ref):
     :param filter_ref: filter name or uuid
     :return: True if found, False if not found
     """
-    filter_list = []
     cmd_result = virsh.nwfilter_list(options="",
                                      ignore_status=True, debug=True)
-    output = cmd_result.stdout.strip().split('\n')
-    for i in range(2, len(output)):
-        filter_list.append(output[i].split())
-    for i in range(len(filter_list)):
-        if filter_ref in filter_list[i]:
-            return True
+    output = cmd_result.stdout.strip()
+    if filter_ref in output:
+        return True
 
     return False
 
@@ -40,7 +35,7 @@ def run(test, params, env):
     # Prepare parameters
     filter_ref = params.get("undefine_filter_ref", "")
     options_ref = params.get("undefine_options_ref", "")
-    status_error = params.get("status_error", "no")
+    status_error = "yes" == params.get("status_error", "no")
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
@@ -51,35 +46,28 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.skip("API acl test not supported in current libvirt version.")
     # Backup filter xml
     if filter_ref:
         new_filter = libvirt_xml.NwfilterXML()
         filterxml = new_filter.new_from_filter_dumpxml(filter_ref)
-        logging.debug("the filter xml is: %s" % filterxml.xmltreefile)
+        logging.debug("the filter xml is: %s", filterxml.xmltreefile)
         filter_xml = filterxml.xmltreefile.name
 
-    # Run command
-    cmd_result = virsh.nwfilter_undefine(filter_ref, options=options_ref,
-                                         unprivileged_user=unprivileged_user,
-                                         uri=uri,
-                                         ignore_status=True, debug=True)
-    status = cmd_result.exit_status
-
-    # Check result
-    if status_error == "yes":
-        if status == 0:
-            raise error.TestFail("Run successfully with wrong command.")
-    elif status_error == "no":
-        if status:
-            raise error.TestFail("Run failed with right command.")
-        chk_result = check_list(filter_ref)
-        if chk_result:
-            raise error.TestFail("filter %s show up in filter list." %
-                                 filter_ref)
-
-    # Clean env
-    if status == 0:
-        virsh.nwfilter_define(filter_xml, options="",
-                              ignore_status=True, debug=True)
+    status = False
+    try:
+        # Run command
+        cmd_result = virsh.nwfilter_undefine(filter_ref, options=options_ref,
+                                             unprivileged_user=unprivileged_user,
+                                             uri=uri,
+                                             ignore_status=True, debug=True)
+        status = bool(cmd_result.exit_status)
+        utlv.check_exit_status(cmd_result, status_error)
+        if not status_error and check_list(filter_ref):
+            status = True
+            test.fail("filter %s show up in filter list." % filter_ref)
+    finally:
+        # Clean env
+        if not status:
+            virsh.nwfilter_define(filter_xml, options="",
+                                  ignore_status=True, debug=True)

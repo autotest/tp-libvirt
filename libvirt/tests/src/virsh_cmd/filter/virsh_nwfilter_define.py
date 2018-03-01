@@ -1,8 +1,6 @@
 import os
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import xml_utils
 from virttest import libvirt_xml
@@ -24,8 +22,8 @@ def check_list(uuid, name):
     cmd_result = virsh.nwfilter_list(options="",
                                      ignore_status=True, debug=True)
     output = cmd_result.stdout.strip().split('\n')
-    for i in range(2, len(output)):
-        if output[i].split() == [uuid, name]:
+    for line in output[2:]:
+        if line.split() == [uuid, name]:
             return True
     return False
 
@@ -47,10 +45,9 @@ def run(test, params, env):
     exist_filter = params.get("exist_filter", "no-mac-spoofing")
     filter_xml = params.get("filter_create_xml_file")
     options_ref = params.get("options_ref", "")
-    status_error = params.get("status_error", "no")
+    status_error = "yes" == params.get("status_error", "no")
     boundary_test_skip = "yes" == params.get("boundary_test_skip")
     new_uuid = "yes" == params.get("new_uuid", 'no')
-    bug_url = params.get("bug_url")
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
@@ -61,24 +58,24 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
-
+            test.skip("API acl test not supported in current libvirt"
+                      " version.")
+    if not libvirt_version.version_compare(1, 2, 6):
+        if boundary_test_skip:
+            test.skip("Boundary check commit 4f20943 not supported yet.")
     if exist_filter == filter_name and new_uuid:
         # Since commit 46a811d, update filter with new uuid will fail.
-        if libvirt_version.version_compare(1, 2, 7):
-            status_error = 'yes'
-        else:
-            status_error = 'no'
+        status_error = bool(libvirt_version.version_compare(1, 2, 7))
 
+    chk_result = False
     try:
         if filter_xml == "invalid-filter-xml":
             tmp_xml = xml_utils.TempXMLFile()
-            tmp_xml.write('"<filter><<<BAD>>><\'XML</name\>'
+            tmp_xml.write(r'"<filter><<<BAD>>><\'XML</name\>'
                           '!@#$%^&*)>(}>}{CORRUPTE|>!</filter>')
             tmp_xml.flush()
             filter_xml = tmp_xml.name
-            logging.info("Test invalid xml is: %s" % filter_xml)
+            logging.info("Test invalid xml is: %s", filter_xml)
         elif filter_xml:
             # Create filter xml
             new_filter = libvirt_xml.NwfilterXML()
@@ -96,34 +93,15 @@ def run(test, params, env):
                                            unprivileged_user=unprivileged_user,
                                            uri=uri,
                                            ignore_status=True, debug=True)
-        status = cmd_result.exit_status
-
-        # Check result
-        chk_result = check_list(filter_uuid, filter_name)
-        xml_path = "%s/%s.xml" % (NWFILTER_ETC_DIR, filter_name)
-        if status_error == "yes":
-            if status == 0:
-                if boundary_test_skip:
-                    raise error.TestNAError("Boundary check commit 4f20943 not"
-                                            " in this libvirt build yet.")
-                else:
-                    err_msg = "Run successfully with wrong command."
-                    if bug_url:
-                        err_msg += " Check more info in %s" % bug_url
-                    raise error.TestFail(err_msg)
-        elif status_error == "no":
-            if status:
-                err_msg = "Run failed with right command."
-                if bug_url:
-                    err_msg += " Check more info in %s" % bug_url
-                raise error.TestFail(err_msg)
+        utlv.check_exit_status(cmd_result, status_error)
+        if not status_error:
+            # Check result
+            chk_result = check_list(filter_uuid, filter_name)
+            xml_path = os.path.join(NWFILTER_ETC_DIR, "%s.xml" % filter_name)
             if not chk_result:
-                raise error.TestFail("Can't find filter in nwfilter-list" +
-                                     " output")
+                test.fail("Can't find filter in nwfilter-list output")
             if not os.path.exists(xml_path):
-                raise error.TestFail("Can't find filter xml under %s" %
-                                     NWFILTER_ETC_DIR)
-            logging.info("Dump the xml after define:")
+                test.fail("Can't find filter xml under %s" % NWFILTER_ETC_DIR)
             virsh.nwfilter_dumpxml(filter_name,
                                    ignore_status=True,
                                    debug=True)
@@ -131,11 +109,10 @@ def run(test, params, env):
     finally:
         # Clean env
         if exist_filter == filter_name:
-            logging.info("Restore exist filter: %s" % exist_filter)
+            logging.info("Restore exist filter: %s", exist_filter)
             virsh.nwfilter_undefine(filter_name, ignore_status=True)
             virsh.nwfilter_define(filterxml_backup.xml, ignore_status=True)
-        else:
-            if chk_result:
-                virsh.nwfilter_undefine(filter_name, ignore_status=True)
+        elif chk_result:
+            virsh.nwfilter_undefine(filter_name, ignore_status=True)
         if os.path.exists(filter_xml):
             os.remove(filter_xml)

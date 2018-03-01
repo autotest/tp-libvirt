@@ -1,12 +1,10 @@
 import logging
-
 import aexpect
-
-from autotest.client.shared import error
 
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import remote
+from virttest.utils_test import libvirt as utlv
 
 
 def edit_filter_xml(filter_name, edit_cmd):
@@ -15,6 +13,7 @@ def edit_filter_xml(filter_name, edit_cmd):
 
     :param filter_name: filter name or uuid
     :param edit_cmd: edit command list in interactive mode
+    :return: True or False
     """
     session = aexpect.ShellSession("sudo -s")
     try:
@@ -28,11 +27,12 @@ def edit_filter_xml(filter_name, edit_cmd):
         remote.handle_prompts(session, None, None, r"[\#\$]\s*$")
         session.close()
         logging.info("Succeed to do nwfilter edit")
+        return True
     except (aexpect.ShellError, aexpect.ExpectError), details:
         log = session.get_output()
         session.close()
-        raise error.TestFail("Failed to do nwfilter-edit: %s\n%s"
-                             % (details, log))
+        logging.error("Failed to do nwfilter-edit: %s\n%s", details, log)
+        return False
 
 
 def run(test, params, env):
@@ -49,63 +49,44 @@ def run(test, params, env):
     filter_ref = params.get("edit_filter_ref", "")
     edit_priority = params.get("edit_priority", "")
     extra_option = params.get("edit_extra_option", "")
-    status_error = params.get("status_error", "no")
-    status = True
+    status_error = "yes" == params.get("status_error", "no")
     edit_cmd = []
     edit_cmd.append(":1s/priority=.*$/priority='" + edit_priority + "'>")
 
-    # Backup filter xml
-    if filter_name and filter_ref.find("invalid") == -1:
+    if status_error:
+        edit_result = virsh.nwfilter_edit(filter_name, extra_option,
+                                          ignore_status=True, debug=True)
+        utlv.check_exit_status(edit_result, status_error)
+    else:
+        # Backup filter xml
         new_filter = libvirt_xml.NwfilterXML()
         filterxml = new_filter.new_from_filter_dumpxml(filter_name)
-        logging.debug("the filter xml is: %s" % filterxml.xmltreefile)
+        logging.debug("the filter xml is: %s", filterxml.xmltreefile)
         filter_xml = filterxml.xmltreefile.name
         uuid = filterxml.uuid
         pre_priority = filterxml.filter_priority
 
-    # Run command
-    if status_error == "no":
+        # Run command
         if filter_ref == "name":
-            edit_filter_xml(filter_name, edit_cmd)
+            ret = edit_filter_xml(filter_name, edit_cmd)
         elif filter_ref == "uuid":
-            edit_filter_xml(uuid, edit_cmd)
-        else:
-            raise error.TestNAError("For positive test, edit_filter_ref cloud"
-                                    " be either 'name' or 'uuid'.")
-    else:
-        if filter_ref.find("invalid") == 0:
-            if extra_option == "":
-                filter_name = filter_ref
-            edit_result = virsh.nwfilter_edit(filter_name, extra_option,
-                                              ignore_status=True, debug=True)
-            if edit_result.exit_status == 0:
-                raise error.TestFail("nwfilter-edit should fail but succeed")
-            else:
-                logging.info("Run command failed as expected")
-                status = False
-        else:
-            raise error.TestNAError("For negative test, string 'invalid' is"
-                                    " required in edit_filter_ref.")
+            ret = edit_filter_xml(uuid, edit_cmd)
+        if not ret:
+            test.fail("Fail to do nwfiter-edit with cmd: %s" % edit_cmd)
 
-    # no check and clean env if command fail
-    if status:
-        # Check result
-        if filter_name and filter_ref.find("invalid") == -1:
-            post_filter = libvirt_xml.NwfilterXML()
-            postxml = post_filter.new_from_filter_dumpxml(filter_name)
-            logging.debug("the filter xml after edit is: %s" %
-                          postxml.xmltreefile)
-            post_priority = postxml.filter_priority
-            if pre_priority == edit_priority:
-                if post_priority != pre_priority:
-                    raise error.TestFail("nwfilter-edit fail to update filter"
-                                         " priority")
-            else:
-                if post_priority == pre_priority:
-                    raise error.TestFail("nwfilter-edit fail to update filter"
-                                         " priority")
+        # check and clean env
+        post_filter = libvirt_xml.NwfilterXML()
+        postxml = post_filter.new_from_filter_dumpxml(filter_name)
+        logging.debug("the filter xml after edit is: %s",
+                      postxml.xmltreefile)
+        post_priority = postxml.filter_priority
+        if ((pre_priority == edit_priority and
+             post_priority != pre_priority) or
+                (pre_priority != edit_priority and
+                 post_priority == pre_priority)):
+            test.fail("nwfilter-edit fail to update filter priority")
 
-            # Clean env
-            if post_priority != pre_priority:
-                virsh.nwfilter_define(filter_xml, options="",
-                                      ignore_status=True, debug=True)
+        # Clean env
+        if post_priority != pre_priority:
+            virsh.nwfilter_define(filter_xml, options="",
+                                  ignore_status=True, debug=True)
