@@ -3,65 +3,14 @@ import os
 import logging
 import time
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import data_dir
 from virttest import utils_misc
-from virttest.utils_test import libvirt
+from virttest.utils_test import libvirt as libvirtut
 from virttest.libvirt_xml import vm_xml
 
-
-def manipulate_domain(vm_name, action, recover=False):
-    """
-    Save/managedsave/S3/S4 domain or recover it.
-    """
-    tmp_dir = data_dir.get_tmp_dir()
-    save_file = os.path.join(tmp_dir, vm_name + ".save")
-    if not recover:
-        if action == "save":
-            save_option = ""
-            result = virsh.save(vm_name, save_file, save_option,
-                                ignore_status=True, debug=True)
-            libvirt.check_exit_status(result)
-        elif action == "managedsave":
-            managedsave_option = ""
-            result = virsh.managedsave(vm_name, managedsave_option,
-                                       ignore_status=True, debug=True)
-            libvirt.check_exit_status(result)
-        elif action == "s3":
-            suspend_target = "mem"
-            result = virsh.dompmsuspend(vm_name, suspend_target,
-                                        ignore_status=True, debug=True)
-            libvirt.check_exit_status(result)
-        elif action == "s4":
-            suspend_target = "disk"
-            result = virsh.dompmsuspend(vm_name, suspend_target,
-                                        ignore_status=True, debug=True)
-            libvirt.check_exit_status(result)
-            # Wait domain state change: 'in shutdown' -> 'shut off'
-            utils_misc.wait_for(lambda: virsh.is_dead(vm_name), 5)
-        else:
-            logging.debug("No operation for the domain")
-
-    else:
-        if action == "save":
-            if os.path.exists(save_file):
-                result = virsh.restore(save_file, ignore_status=True, debug=True)
-                libvirt.check_exit_status(result)
-                os.remove(save_file)
-            else:
-                raise error.TestError("No save file for domain restore")
-        elif action in ["managedsave", "s4"]:
-            result = virsh.start(vm_name, ignore_status=True, debug=True)
-            libvirt.check_exit_status(result)
-        elif action == "s3":
-            suspend_target = "mem"
-            result = virsh.dompmwakeup(vm_name, ignore_status=True, debug=True)
-            libvirt.check_exit_status(result)
-        else:
-            logging.debug("No need recover the domain")
+from functools import reduce
 
 
 def run(test, params, env):
@@ -75,6 +24,56 @@ def run(test, params, env):
     5) Recover environment.
     4) Check result.
     """
+
+    def manipulate_domain(vm_name, action, recover=False):
+        """
+        Save/managedsave/S3/S4 domain or recover it.
+        """
+        tmp_dir = data_dir.get_tmp_dir()
+        save_file = os.path.join(tmp_dir, vm_name + ".save")
+        if not recover:
+            if action == "save":
+                save_option = ""
+                result = virsh.save(vm_name, save_file, save_option,
+                                    ignore_status=True, debug=True)
+                libvirtut.check_exit_status(result)
+            elif action == "managedsave":
+                managedsave_option = ""
+                result = virsh.managedsave(vm_name, managedsave_option,
+                                           ignore_status=True, debug=True)
+                libvirtut.check_exit_status(result)
+            elif action == "s3":
+                suspend_target = "mem"
+                result = virsh.dompmsuspend(vm_name, suspend_target,
+                                            ignore_status=True, debug=True)
+                libvirtut.check_exit_status(result)
+            elif action == "s4":
+                suspend_target = "disk"
+                result = virsh.dompmsuspend(vm_name, suspend_target,
+                                            ignore_status=True, debug=True)
+                libvirtut.check_exit_status(result)
+                # Wait domain state change: 'in shutdown' -> 'shut off'
+                utils_misc.wait_for(lambda: virsh.is_dead(vm_name), 5)
+            else:
+                logging.debug("No operation for the domain")
+
+        else:
+            if action == "save":
+                if os.path.exists(save_file):
+                    result = virsh.restore(save_file, ignore_status=True, debug=True)
+                    libvirtut.check_exit_status(result)
+                    os.remove(save_file)
+                else:
+                    test.fail("No save file for domain restore")
+            elif action in ["managedsave", "s4"]:
+                result = virsh.start(vm_name, ignore_status=True, debug=True)
+                libvirtut.check_exit_status(result)
+            elif action == "s3":
+                suspend_target = "mem"
+                result = virsh.dompmwakeup(vm_name, ignore_status=True, debug=True)
+                libvirtut.check_exit_status(result)
+            else:
+                logging.debug("No need recover the domain")
 
     def vm_usable_mem(session):
         """
@@ -351,21 +350,6 @@ def run(test, params, env):
 
         # Gather stats if not running error test
         if not status_error and not old_libvirt_fail:
-            if not memory_change:
-                test_inside_mem = original_inside_mem
-                test_outside_mem = original_outside_mem
-            else:
-                if vm.state() == "shut off":
-                    vm.start()
-                # Make sure it's never paused
-                vm.resume()
-                session = vm.wait_for_login()
-
-                # Actual results
-                test_inside_mem = vm_usable_mem(session)
-                session.close()
-                test_outside_mem = vm.get_used_mem()
-
             # Expected results for both inside and outside
             if remove_balloon_driver:
                 expected_mem = original_outside_mem
@@ -384,37 +368,76 @@ def run(test, params, env):
                 expected_inside_mem = expected_mem
                 expected_outside_mem = original_outside_mem
 
+            def get_vm_mem():
+                """
+                Test results for both inside and outside
+                :return: Get vm memory for both inside and outside
+                """
+                if not memory_change:
+                    test_inside_mem = original_inside_mem
+                    test_outside_mem = original_outside_mem
+                else:
+                    if vm.state() == "shut off":
+                        vm.start()
+                    elif vm.state() == "paused":
+                        # Make sure it's never paused
+                        vm.resume()
+                    session = vm.wait_for_login()
+
+                    # Actual results
+                    test_inside_mem = vm_usable_mem(session)
+                    session.close()
+                    test_outside_mem = vm.get_used_mem()
+                return (test_inside_mem, test_outside_mem)
+
+            # Don't care about memory comparison on error test
+            def verify_outside_result():
+                _, test_outside_mem = get_vm_mem()
+                outside_pass = cal_deviation(test_outside_mem,
+                                             expected_outside_mem) <= delta_percentage
+                if outside_pass:
+                    return True
+                else:
+                    return False
+
+            def verify_inside_result():
+                test_inside_mem, _ = get_vm_mem()
+                inside_pass = cal_deviation(test_inside_mem,
+                                            expected_inside_mem) <= delta_percentage
+                if inside_pass:
+                    return True
+                else:
+                    return False
+
+            msg = "test conditions not met: "
+            error_flag = 0
+            if status is not 0:
+                error_flag = 1
+                msg += "Non-zero virsh setmem exit code. "
+            if not utils_misc.wait_for(verify_outside_result, timeout=240):
+                error_flag = 1
+                msg += "Outside memory deviated. "
+            if not utils_misc.wait_for(verify_inside_result, timeout=240):
+                error_flag = 1
+                msg += "Inside memory deviated. "
+
+            test_inside_mem, test_outside_mem = get_vm_mem()
             print_debug_stats(original_inside_mem, original_outside_mem,
                               test_inside_mem, test_outside_mem,
                               expected_outside_mem, expected_inside_mem,
                               delta_percentage, unusable_mem)
-
-            # Don't care about memory comparison on error test
-            outside_pass = cal_deviation(test_outside_mem,
-                                         expected_outside_mem) <= delta_percentage
-            inside_pass = cal_deviation(test_inside_mem,
-                                        expected_inside_mem) <= delta_percentage
-            if status is not 0 or not outside_pass or not inside_pass:
-                msg = "test conditions not met: "
-                if status is not 0:
-                    msg += "Non-zero virsh setmem exit code. "
-                if not outside_pass:
-                    msg += "Outside memory deviated. "
-                if not inside_pass:
-                    msg += "Inside memory deviated. "
-                raise error.TestFail(msg)
-
-            return  # Normal test passed
+            if error_flag:
+                test.fail(msg)
         elif not status_error and old_libvirt_fail:
             if status is 0:
                 if old_libvirt:
-                    raise error.TestFail("Error test did not result in an error")
+                    test.fail("Error test did not result in an error")
             else:
                 if not old_libvirt:
-                    raise error.TestFail("Newer libvirt failed when it should not")
+                    test.fail("Newer libvirt failed when it should not")
         else:  # Verify an error test resulted in error
             if status is 0:
-                raise error.TestFail("Error test did not result in an error")
+                test.fail("Error test did not result in an error")
     finally:
         if need_mkswap:
             vm.cleanup_swap()
