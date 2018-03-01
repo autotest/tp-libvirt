@@ -34,7 +34,7 @@ def xml_recover(vmxml):
         vmxml.define()
         return True
 
-    except xcepts.LibvirtXMLError, detail:
+    except xcepts.LibvirtXMLError as detail:
         logging.error("Recover older xml failed:%s.", detail)
         return False
 
@@ -50,7 +50,11 @@ def check_snap_in_image(vm_name, snap_name):
     domxml = virsh.dumpxml(vm_name).stdout.strip()
     xtf_dom = xml_utils.XMLTreeFile(domxml)
 
-    cmd = "qemu-img info " + xtf_dom.find("devices/disk/source").get("file")
+    if utils_misc.compare_qemu_version(2, 9, 0):
+        cmd = "qemu-img info -U "
+    else:
+        cmd = "qemu-img info "
+    cmd += xtf_dom.find("devices/disk/source").get("file")
     img_info = commands.getoutput(cmd).strip()
 
     if re.search(snap_name, img_info):
