@@ -45,6 +45,8 @@ def run(test, params, env):
 
     vm = env.get_vm(vm_name)
     if error_type == "unspecified error":
+        if not vm.is_alive():
+            vm.start()
         session = vm.wait_for_login()
         if not ubuntu:
             nfs_service_package = "nfs"
