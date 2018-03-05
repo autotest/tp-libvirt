@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import libvirt_vm
 from virttest.libvirt_xml import network_xml
@@ -28,8 +26,8 @@ def run(test, params, env):
     # libvirt acl polkit related params
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     virsh_uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
@@ -45,7 +43,7 @@ def run(test, params, env):
         default_netxml = origin_nets['default']
     except KeyError:
         virsh_instance.close_session()
-        raise error.TestNAError("Test requires default network to exist")
+        test.cancel("Test requires default network to exist")
     # To confirm default network is active
     if not default_netxml.active:
         default_netxml.active = True
@@ -87,11 +85,11 @@ def run(test, params, env):
     # Check status_error
     if status_error:
         if not status:
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
     else:
         if status:
-            raise error.TestFail("Run failed with right command")
+            test.fail("Run failed with right command")
         else:
             if not is_default_active:
-                raise error.TestFail("Execute cmd successfully but "
-                                     "default is inactive actually.")
+                test.fail("Execute cmd successfully but "
+                          "default is inactive actually.")

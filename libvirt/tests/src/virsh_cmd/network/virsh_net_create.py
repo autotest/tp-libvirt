@@ -1,6 +1,5 @@
 import logging
 
-from autotest.client.shared import error
 from avocado.utils import process
 
 from virttest import libvirt_vm
@@ -112,7 +111,7 @@ def run(test, params, env):
         test_xml.write(str(backup['default']))
         test_xml.flush()
     except (KeyError, AttributeError):
-        raise error.TestNAError("Test requires default network to exist")
+        test.cancel("Test requires default network to exist")
     if corrupt:
         # find file size
         test_xml.seek(0, 2)  # end
@@ -169,7 +168,7 @@ def run(test, params, env):
     # Check Result
     if status_error:  # An error was expected
         if test_passed:  # Error was not produced
-            raise error.TestFail("Error test did not fail!")
+            test.fail("Error test did not fail!")
     else:  # no error expected
         if not test_passed:
-            raise error.TestFail("Normal test returned failure")
+            test.fail("Normal test returned failure")

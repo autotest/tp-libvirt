@@ -1,8 +1,6 @@
 import os
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
-
+from avocado.utils import process
 from virttest import virsh
 
 from provider import libvirt_version
@@ -36,8 +34,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     # Run test case
     if net_ref == "uuid":
@@ -50,13 +48,13 @@ def run(test, params, env):
         net_status_current = "inactive"
 
     if not virsh.net_state_dict()[net_name]['persistent']:
-        raise error.TestError("Network is transient!")
+        test.error("Network is transient!")
     try:
         if net_status == "inactive" and net_status_current == "active":
             status_destroy = virsh.net_destroy(net_name,
                                                ignore_status=True).exit_status
             if status_destroy != 0:
-                raise error.TestError("Network destroied failed!")
+                test.error("Network destroied failed!")
 
         virsh_dargs = {'ignore_status': True}
         if params.get('setup_libvirt_polkit') == 'yes':
@@ -67,7 +65,7 @@ def run(test, params, env):
         status = result.exit_status
         err = result.stderr.strip()
         xml_validate_cmd = "virt-xml-validate %s network" % network_xml
-        valid_s = utils.run(xml_validate_cmd, ignore_status=True).exit_status
+        valid_s = process.run(xml_validate_cmd, ignore_status=True, shell=True).exit_status
 
         # Check option valid or not.
         if extra.find("--") != -1:
@@ -78,27 +76,27 @@ def run(test, params, env):
                 if not virsh.has_command_help_match("net-dumpxml",
                                                     option.strip()) and\
                    status_error == "no":
-                    raise error.TestNAError("The current libvirt version"
-                                            " doesn't support '%s' option"
-                                            % option.strip())
+                    test.cancel("The current libvirt version"
+                                " doesn't support '%s' option"
+                                % option.strip())
     finally:
         # Recover network
         if net_status == "inactive" and net_status_current == "active":
             status_start = virsh.net_start(net_name,
                                            ignore_status=True).exit_status
             if status_start != 0:
-                raise error.TestError("Network started failed!")
+                test.error("Network started failed!")
 
     # Check status_error
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
         if err == "":
-            raise error.TestFail("The wrong command has no error outputed!")
+            test.fail("The wrong command has no error outputed!")
     elif status_error == "no":
         if status != 0:
-            raise error.TestFail("Run failed with right command!")
+            test.fail("Run failed with right command!")
         if valid_s != 0:
-            raise error.TestFail("Command output is invalid!")
+            test.fail("Command output is invalid!")
     else:
-        raise error.TestError("The status_error must be 'yes' or 'no'!")
+        test.error("The status_error must be 'yes' or 'no'!")

@@ -1,5 +1,3 @@
-from autotest.client.shared import error
-
 from virttest import remote
 from virttest import libvirt_vm
 from virttest import virsh
@@ -41,7 +39,7 @@ def run(test, params, env):
     local_ip = params.get("local_ip", "ENTER.YOUR.LOCAL.IP")
     if pre_operation == "remote" and (remote_ip.count("ENTER.YOUR.") or
                                       local_ip.count("ENTER.YOUR.")):
-        raise error.TestNAError("Remote test parameters not configured")
+        test.cancel("Remote test parameters not configured")
 
     try:
         # prepare before start vm
@@ -70,7 +68,7 @@ def run(test, params, env):
                 cmd = "virsh -c %s start %s" % (uri, vm_ref)
                 status, output = session.cmd_status_output(cmd)
                 if status:
-                    raise error.TestError(vm_ref, output)
+                    test.error(vm_ref, output)
             elif opt.count("console"):
                 # With --console, start command will print the
                 # dmesg of guest in starting and turn into the
@@ -93,7 +91,7 @@ def run(test, params, env):
                 cmd = "start %s --autodestroy" % vm_ref
                 status = virsh_session.cmd_status(cmd)
                 if status:
-                    raise error.TestFail("Failed to start vm with --autodestroy.")
+                    test.fail("Failed to start vm with --autodestroy.")
                 # Close the session, then the vm shoud be destroyed.
                 virsh_session.close()
             elif opt.count("force-boot"):
@@ -108,7 +106,7 @@ def run(test, params, env):
                 session = vm.wait_for_login()
                 status = session.cmd_status("sleep 1000&")
                 if status:
-                    raise error.TestError("Can not execute command in guest.")
+                    test.error("Can not execute command in guest.")
                 sleep_pid = session.cmd_output("echo $!").strip()
                 virsh.managedsave(vm_ref)
                 virsh.start(vm_ref, options=opt)
@@ -116,38 +114,38 @@ def run(test, params, env):
                 cmd_result = virsh.start(vm_ref, options=opt)
                 if cmd_result.exit_status:
                     if status_error == "no":
-                        raise error.TestFail("Start vm failed.\n Detail: %s"
-                                             % cmd_result)
+                        test.fail("Start vm failed.\n Detail: %s"
+                                  % cmd_result)
                 else:
                     # start vm successfully
                     if status_error == "yes":
-                        raise error.TestFail("Run successfully with wrong "
-                                             "command!\n Detail:%s"
-                                             % cmd_result)
+                        test.fail("Run successfully with wrong "
+                                  "command!\n Detail:%s"
+                                  % cmd_result)
 
             if opt.count("paused"):
                 if not (vm.state() == "paused"):
-                    raise error.TestFail("VM is not paused when started with "
-                                         "--paused.")
+                    test.fail("VM is not paused when started with "
+                              "--paused.")
             elif opt.count("autodestroy"):
                 if vm.is_alive():
-                    raise error.TestFail("VM was started with --autodestroy,"
-                                         "but not destroyed when virsh session "
-                                         "closed.")
+                    test.fail("VM was started with --autodestroy,"
+                              "but not destroyed when virsh session "
+                              "closed.")
             elif opt.count("force-boot"):
                 session = vm.wait_for_login()
                 status = session.cmd_status("ps %s |grep '[s]leep 1000'"
                                             % sleep_pid)
                 if not status:
-                    raise error.TestFail("VM was started with --force-boot,"
-                                         "but it is restored from a"
-                                         " managedsave.")
+                    test.fail("VM was started with --force-boot,"
+                              "but it is restored from a"
+                              " managedsave.")
             else:
                 if status_error == "no" and not vm.is_alive():
-                    raise error.TestFail("VM was started but it is not alive.")
+                    test.fail("VM was started but it is not alive.")
 
         except remote.LoginError, detail:
-            raise error.TestFail("Failed to login guest.")
+            test.fail("Failed to login guest.")
     finally:
         # clean up
         if libvirtd_state == "off":

@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -38,7 +36,7 @@ def run(test, params, env):
     """
     os_type = params.get("os_type")
     if os_type == "windows":
-        raise error.TestNAError("SKIP:Do not support Windows.")
+        test.cancel("SKIP:Do not support Windows.")
 
     # Get parameters
     vm_name = params.get("main_vm")
@@ -100,7 +98,7 @@ def run(test, params, env):
     status_error = params.get("status_error")
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successful with wrong command!")
+            test.fail("Run successful with wrong command!")
     elif status_error == "no":
         if status != 0:
-            raise error.TestFail("Run failed with right command.")
+            test.fail("Run failed with right command.")

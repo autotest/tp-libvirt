@@ -2,7 +2,7 @@ import logging
 import time
 import os
 import commands
-from autotest.client import utils
+
 from virttest import virsh
 from virttest.libvirt_xml import nodedev_xml
 from provider import libvirt_version
@@ -49,7 +49,8 @@ def run(test, params, env):
         # nodedev_dict_sys contain the all keys and values in sysfs.
         nodedev_dict_sys = {}
         for key, filepath in nodedev_syspath_dict.items():
-            value = utils.read_one_line(filepath)
+            with open(filepath, 'r') as f:
+                value = f.readline().rstrip('\n')
             nodedev_dict_sys[key] = value
 
         # Compare the value in xml and in syspath.

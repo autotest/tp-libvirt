@@ -1,6 +1,5 @@
 import re
 import logging
-
 import aexpect
 
 from avocado.utils import process

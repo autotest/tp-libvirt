@@ -1,5 +1,3 @@
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import libvirt_vm
 from virttest.libvirt_xml import network_xml
@@ -31,7 +29,7 @@ def run(test, params, env):
         netxml = origin_nets[net_name]
     except KeyError:
         virsh_instance.close_session()
-        raise error.TestNAError("'%s' virtual network doesn't exist." % net_name)
+        test.cancel("'%s' virtual network doesn't exist." % net_name)
 
     if net_ref == "name":
         net_ref = netxml.name
@@ -51,7 +49,7 @@ def run(test, params, env):
     # Check status_error
     if status_error == "yes":
         if status == 0 or err == "":
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if status != 0 or output == "":
-            raise error.TestFail("Run failed with right command")
+            test.fail("Run failed with right command")

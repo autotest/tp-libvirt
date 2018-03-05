@@ -1,8 +1,6 @@
 import os
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 
 from provider import libvirt_version
@@ -32,8 +30,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     virsh_dargs = {'ignore_status': True, 'debug': True}
     if params.get('setup_libvirt_polkit') == 'yes':
@@ -48,10 +46,10 @@ def run(test, params, env):
     # Check result
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successfully with wrong command.")
+            test.fail("Run successfully with wrong command.")
     elif status_error == "no":
         if status:
-            raise error.TestFail("Run failed with right command.")
+            test.fail("Run failed with right command.")
 
         # Retrieve filter name from output and check the cfg file
         output_list = output.split('\n')
@@ -60,8 +58,8 @@ def run(test, params, env):
         for i in range(len(filter_name)):
             xml_path = "%s/%s.xml" % (NWFILTER_ETC_DIR, filter_name[i])
             if not os.path.exists(xml_path):
-                raise error.TestFail("Can't find list filter %s xml under %s"
-                                     % (filter_name[i], NWFILTER_ETC_DIR))
+                test.fail("Can't find list filter %s xml under %s"
+                          % (filter_name[i], NWFILTER_ETC_DIR))
             else:
                 logging.debug("list filter %s xml found under %s" %
                               (filter_name[i], NWFILTER_ETC_DIR))

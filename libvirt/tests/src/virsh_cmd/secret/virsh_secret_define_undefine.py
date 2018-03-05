@@ -1,8 +1,7 @@
 import os
 import commands
 
-from autotest.client import utils
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
@@ -36,7 +35,7 @@ def run(test, params, env):
         cmd = "uuidgen"
         status, uuid = commands.getstatusoutput(cmd)
         if status:
-            raise error.TestNAError("Failed to generate valid uuid")
+            test.cancel("Failed to generate valid uuid")
 
     elif secret_ref == "secret_invalid_uuid":
         uuid = params.get(secret_ref)
@@ -57,8 +56,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     acl_dargs = {'uri': uri, 'unprivileged_user': unprivileged_user,
                  'debug': True}
@@ -77,7 +76,7 @@ def run(test, params, env):
     # Run the test
     try:
         if define_acl:
-            utils.run("chmod 666 %s" % secret_xml_obj.xml)
+            process.run("chmod 666 %s" % secret_xml_obj.xml, shell=True)
             cmd_result = virsh.secret_define(secret_xml_obj.xml, **acl_dargs)
         else:
             cmd_result = virsh.secret_define(secret_xml_obj.xml, debug=True)
@@ -89,7 +88,7 @@ def run(test, params, env):
         exist = os.path.exists(secret_obj_xmlfile)
         if (ephemeral == "yes" and exist) or \
            (ephemeral == "no" and not exist):
-            raise error.TestFail("The ephemeral attribute worked not expected")
+            test.fail("The ephemeral attribute worked not expected")
 
         # Check private attrbute
         virsh.secret_set_value(uuid, SECRET_BASE64, debug=True)
@@ -101,26 +100,26 @@ def run(test, params, env):
         status = cmd_result.exit_status
         err_msg = "The private attribute worked not expected"
         if private == "yes" and not status:
-            raise error.TestFail(err_msg)
+            test.fail(err_msg)
         if private == "no" and status:
             if not get_value_error:
-                raise error.TestFail(err_msg)
+                test.fail(err_msg)
 
         if modify_volume:
             volume_path = os.path.join(tmp_dir, "secret_volume_modify")
             secret_xml_obj.volume = volume_path
             cmd_result = virsh.secret_define(secret_xml_obj.xml, debug=True)
             if cmd_result.exit_status == 0:
-                raise error.TestFail("Expect fail on redefine after modify "
-                                     "volume, but success indeed")
+                test.fail("Expect fail on redefine after modify "
+                          "volume, but success indeed")
         if remove_uuid:
             secret_xml_obj2 = SecretXML(ephemeral, private)
             secret_xml_obj2.volume = volume_path
             secret_xml_obj2.usage = "volume"
             cmd_result = virsh.secret_define(secret_xml_obj2.xml, debug=True)
             if cmd_result.exit_status == 0:
-                raise error.TestFail("Expect fail on redefine after remove "
-                                     "uuid, but success indeed")
+                test.fail("Expect fail on redefine after remove "
+                          "uuid, but success indeed")
 
         if undefine_acl:
             cmd_result = virsh.secret_undefine(uuid, **acl_dargs)

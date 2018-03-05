@@ -2,8 +2,6 @@ import re
 import time
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import utils_test
 from virttest.libvirt_xml import vm_xml
@@ -26,7 +24,7 @@ def get_snap_createtime(vm_name, snap_name):
     return data.split("%s " % snap_name)[1].strip()
 
 
-def snapshot_dumpxml_check(output, opt_dict):
+def snapshot_dumpxml_check(test, output, opt_dict):
     """
     Check the snapshot dumpxml info, including
     1. snaphot name
@@ -59,23 +57,23 @@ def snapshot_dumpxml_check(output, opt_dict):
     for var in ["sname_snip", "desc_snip", "dname_snip", "time_snip",
                 "dstate_snip"]:
         if not re.search(var_match[var], output):
-            raise error.TestFail("Fail to match %s in xml %s" %
-                                 (var_match[var], output))
+            test.fail("Fail to match %s in xml %s" %
+                      (var_match[var], output))
         else:
             logging.info("XML check for %s success", var_match[var])
 
     if opt_dict.has_key('passwd'):
         passwd_match = "<graphic.*passwd='%s'.*>" % opt_dict['passwd']
         if not re.search(passwd_match, output):
-            raise error.TestFail("Fail to match passwd in xml %s" % output)
+            test.fail("Fail to match passwd in xml %s" % output)
         else:
             logging.info("XML check for %s success",
                          re.search(passwd_match, output).group())
     else:
         passwd_match = "<graphic.*passwd=.*>"
         if re.search(passwd_match, output):
-            raise error.TestFail("Have no --security-info option but find "
-                                 "passwd in xml")
+            test.fail("Have no --security-info option but find "
+                      "passwd in xml")
         else:
             logging.info("Do not have --security-info option and can not find "
                          "passwd in xml")
@@ -93,8 +91,8 @@ def run(test, params, env):
     """
 
     if not virsh.has_help_command('snapshot-dumpxml'):
-        raise error.TestNAError("This version of libvirt does not support "
-                                "the snapshot-dumpxml test")
+        test.cancel("This version of libvirt does not support "
+                    "the snapshot-dumpxml test")
 
     vm_name = params.get("main_vm")
     status_error = params.get("status_error", "no")
@@ -127,7 +125,7 @@ def run(test, params, env):
                 vm_xml.VMXML.add_security_info(
                     vm_xml.VMXML.new_from_dumpxml(vm_name), passwd)
             except Exception, info:
-                raise error.TestNAError(info)
+                test.cancel(info)
             vm.start()
             if secu_opt is not None:
                 opt_dict['passwd'] = passwd
@@ -145,8 +143,8 @@ def run(test, params, env):
                                                    readonly=readonly)
         if snapshot_result.exit_status:
             if status_error == "no":
-                raise error.TestFail("Failed to create snapshot. Error:%s."
-                                     % snapshot_result.stderr.strip())
+                test.fail("Failed to create snapshot. Error:%s."
+                          % snapshot_result.stderr.strip())
             elif status_error == "yes":
                 logging.info("Create snapshot failed as expected, Error:%s.",
                              snapshot_result.stderr.strip())
@@ -158,8 +156,8 @@ def run(test, params, env):
         dumpxml_result = virsh.snapshot_dumpxml(vm_name, snap_name, secu_opt)
         if dumpxml_result.exit_status:
             if status_error == "no":
-                raise error.TestFail("Failed to dump snapshot xml. Error:%s."
-                                     % dumpxml_result.stderr.strip())
+                test.fail("Failed to dump snapshot xml. Error:%s."
+                          % dumpxml_result.stderr.strip())
             elif status_error == "yes":
                 logging.info("Dumpxml snapshot failed as expected, Error:%s.",
                              dumpxml_result.stderr.strip())
@@ -174,7 +172,7 @@ def run(test, params, env):
 
         logging.debug("opt_dict is %s", opt_dict)
         output = dumpxml_result.stdout.strip()
-        snapshot_dumpxml_check(output, opt_dict)
+        snapshot_dumpxml_check(test, output, opt_dict)
 
     finally:
         # Recovery

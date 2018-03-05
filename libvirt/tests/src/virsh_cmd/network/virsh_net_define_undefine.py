@@ -1,6 +1,6 @@
 import logging
 
-from autotest.client.shared import utils, error
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import libvirt_vm
@@ -64,8 +64,8 @@ def run(test, params, env):
     # libvirt acl polkit related params
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     virsh_uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
@@ -85,7 +85,7 @@ def run(test, params, env):
         test_xml.write(str(backup['default']))
         test_xml.flush()
     except (KeyError, AttributeError):
-        raise error.TestNAError("Test requires default network to exist")
+        test.cancel("Test requires default network to exist")
 
     testnet_xml = get_network_xml_instance(virsh_dargs, test_xml, net_name,
                                            net_uuid, bridge=None)
@@ -118,7 +118,7 @@ def run(test, params, env):
         virsh_dargs = {'uri': virsh_uri, 'unprivileged_user': unprivileged_user,
                        'debug': False, 'ignore_status': True}
         cmd = "chmod 666 %s" % testnet_xml.xml
-        utils.system(cmd)
+        process.run(cmd, shell=True)
 
     try:
         # Run test case
@@ -229,8 +229,8 @@ def run(test, params, env):
     # Check status_error
     # If fail_flag is set, it must be transaction test.
     if fail_flag:
-        raise error.TestFail("Define network for transaction test "
-                             "failed:%s", result_info)
+        test.fail("Define network for transaction test "
+                  "failed:%s", result_info)
 
     # The logic to check result:
     # status_error&only undefine:it is negative undefine test only
@@ -240,24 +240,24 @@ def run(test, params, env):
     if status_error:
         if trans_ref == "undefine":
             if undefine_status == 0:
-                raise error.TestFail("Run successfully with wrong command.")
+                test.fail("Run successfully with wrong command.")
         else:
             if define_status == 0:
                 if start_status == 0:
-                    raise error.TestFail("Define an unexpected network, "
-                                         "and start it successfully.")
+                    test.fail("Define an unexpected network, "
+                              "and start it successfully.")
                 else:
-                    raise error.TestFail("Define an unexpected network, "
-                                         "but start it failed.")
+                    test.fail("Define an unexpected network, "
+                              "but start it failed.")
     else:
         if trans_ref == "undefine":
             if undefine_status:
-                raise error.TestFail("Define network for transaction "
-                                     "successfully, but undefine failed.")
+                test.fail("Define network for transaction "
+                          "successfully, but undefine failed.")
         else:
             if define_status != 0:
-                raise error.TestFail("Run failed with right command")
+                test.fail("Run failed with right command")
             else:
                 if start_status != 0:
-                    raise error.TestFail("Network is defined as expected, "
-                                         "but start it failed.")
+                    test.fail("Network is defined as expected, "
+                              "but start it failed.")
