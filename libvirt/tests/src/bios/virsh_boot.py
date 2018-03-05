@@ -346,9 +346,7 @@ def enable_secure_boot(vm, vmxml, test, **kwargs):
     vmxml.undefine()
     if vmxml.define():
         if vm.is_dead():
-            vm.start(autoconsole=False)
-        if vm.serial_console is not None:
-            vm.cleanup_serial_console()
+            vm.start()
         console_session = vm.wait_for_serial_login(timeout=240)
         set_secure_key(console_session, custom_codes, test)
         console_session.close()
