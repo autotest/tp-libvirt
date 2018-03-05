@@ -17,7 +17,7 @@ def run(test, params, env):
     """
     Convert a remote vm to remote ovirt node.
     """
-    for v in params.itervalues():
+    for v in list(params.values()):
         if "V2V_EXAMPLE" in v:
             test.cancel("Please set real value for %s" % v)
 
@@ -136,7 +136,7 @@ def run(test, params, env):
         err_list = []
         os_list = ['win8', 'win8.1', 'win10', 'win2012', 'win2012r2', 'win2008']
         win_version = ['6.2', '6.3', '10.0', '6.2', '6.3']
-        os_map = dict(zip(os_list, win_version))
+        os_map = dict(list(zip(os_list, win_version)))
         vm_arch = params.get('vm_arch')
         os_ver = params.get('os_version')
 

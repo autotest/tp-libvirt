@@ -19,7 +19,7 @@ def run(test, params, env):
     """
     Convert specific esx guest
     """
-    for v in params.itervalues():
+    for v in list(params.values()):
         if "V2V_EXAMPLE" in v:
             test.cancel("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
@@ -246,7 +246,7 @@ def run(test, params, env):
             v2v_result = remote_virsh.dumpxml(vm_name)
         else:
             v2v_result = utils_v2v.v2v_cmd(v2v_params)
-        if v2v_params.has_key('new_name'):
+        if 'new_name' in v2v_params:
             vm_name = params['main_vm'] = v2v_params['new_name']
         check_result(v2v_result, status_error)
 

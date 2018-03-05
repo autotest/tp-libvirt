@@ -19,7 +19,7 @@ def run(test, params, env):
     """
     Convert a remote vm to local libvirt(KVM).
     """
-    for v in params.itervalues():
+    for v in list(params.values()):
         if "V2V_EXAMPLE" in v:
             raise exceptions.TestSkipError("Please set real value for %s" % v)
 
