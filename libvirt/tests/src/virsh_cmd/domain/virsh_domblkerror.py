@@ -45,13 +45,10 @@ def run(test, params, env):
 
     vm = env.get_vm(vm_name)
     if error_type == "unspecified error":
-        session = vm.wait_for_login()
         if not ubuntu:
             nfs_service_package = "nfs"
-        if not utils_package.package_install(nfs_service_package, session):
-            session.close()
+        if not utils_package.package_install(nfs_service_package):
             test.cancel("NFS package not available in guest to test")
-        session.close()
         # backup /etc/exports
         shutil.copyfile(export_file, "%s.bak" % export_file)
     # backup xml
