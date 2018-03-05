@@ -116,8 +116,6 @@ def run(test, params, env):
         host_threads = int(re.findall('Threads per core:\s+(\d+)', output)[0])
     except:
         test.cancel("Unable to get the host threads")
-    if vm_threads > host_threads and not status_error:
-        test.cancel("Host threads is less than requested guest threads")
 
     logging.info("Guest: cores:%d, threads:%d, sockets:%d", vm_cores,
                  vm_threads, vm_sockets)

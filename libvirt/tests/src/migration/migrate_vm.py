@@ -1683,6 +1683,7 @@ def run(test, params, env):
 
                 vm_xml_cxt = process.system_output("virsh dumpxml %s" % vm_name, shell=True)
                 logging.debug("The VM XML with attached disk: \n%s", vm_xml_cxt)
+                source_file = None
 
         if local_image and not os.path.exists(local_image):
             image_fmt = test_dict.get("local_image_format", "raw")
@@ -2042,6 +2043,7 @@ def run(test, params, env):
                     if utils_misc.safe_kill(p.pid, signal.SIGINT):
                         logging.info("Succeed to cancel migration:"
                                      " [%s].", p.pid)
+                        time.sleep(delay)
                     else:
                         raise exceptions.TestError("Fail to cancel"
                                                    " migration: [%s]", p.pid)

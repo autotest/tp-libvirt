@@ -282,6 +282,9 @@ def run(test, params, env):
         if pre_vm_state == "paused":
             if not vm.pause():
                 raise exceptions.TestFail("Cann't pause the domain")
+        # Virsh detach will take effect if it's executed after vm booted up
+        if pre_vm_state == 'transient':
+            vm.wait_for_serial_login().close()
         ret = virsh.detach_interface(vm_ref, options,
                                      **virsh_dargs)
         if rhel6_host and pre_vm_state in ['paused', 'running']:

@@ -206,6 +206,10 @@ def run(test, params, env):
             # Add all disks into xml file.
             vmxml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             disks = vmxml.devices.by_device_tag('disk')
+            # Remove non-storage disk such as 'cdrom'
+            for disk in disks:
+                if disk.device != 'disk':
+                    disks.remove(disk)
             new_disks = []
             for src_disk_xml in disks:
                 disk_xml = snap_xml.SnapDiskXML()

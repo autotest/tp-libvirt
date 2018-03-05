@@ -11,6 +11,7 @@ from virttest import virsh
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest.utils_test import libvirt as utlv
+from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.vm_xml import VMXML
 
 
@@ -28,7 +29,7 @@ def check_ownership(file_path):
     stat_re = os.fstat(f)
     label = "%s:%s" % (stat_re.st_uid, stat_re.st_gid)
     os.close(f)
-    logging.debug("File %s ownership is: %s" % (file_path, label))
+    logging.debug("File %s ownership is: %s", file_path, label)
     return label
 
 
@@ -78,17 +79,29 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
+    vm_os_xml = vmxml.os
 
     # Backup domain disk label
     disks = vm.get_disk_devices()
     backup_labels_of_disks = {}
     for disk in disks.values():
         disk_path = disk['source']
-        f = os.open(disk_path, 0)
-        stat_re = os.fstat(f)
-        backup_labels_of_disks[disk_path] = "%s:%s" % (stat_re.st_uid,
-                                                       stat_re.st_gid)
-        os.close(f)
+        label = check_ownership(disk_path)
+        if label:
+            backup_labels_of_disks[disk_path] = label
+
+    try:
+        if vm_os_xml.nvram:
+            nvram_path = vm_os_xml.nvram
+            if not os.path.exists(nvram_path):
+                # Need libvirt automatically generate the path
+                vm.start()
+                vm.destroy(gracefully=False)
+            label = check_ownership(nvram_path)
+            if label:
+                backup_labels_of_disks[nvram_path] = label
+    except xcepts.LibvirtXMLNotFoundError:
+        logging.debug("vm xml don't have nvram element")
 
     # Backup selinux status of host.
     backup_sestatus = utils_selinux.get_status()
@@ -100,12 +113,13 @@ def run(test, params, env):
     libvirtd = utils_libvirtd.Libvirtd()
     try:
         # chown domain disk to qemu:qemu to avoid fail on local disk
-        for disk in disks.values():
-            disk_path = disk['source']
+        for file_path in backup_labels_of_disks.keys():
             if qemu_user == "root":
-                os.chown(disk_path, 0, 0)
+                os.chown(file_path, 0, 0)
             elif qemu_user == "qemu":
-                os.chown(disk_path, 107, 107)
+                os.chown(file_path, 107, 107)
+            else:
+                process.run('chown %s %s' % (qemu_user, file_path), shell=True)
 
         # Set selinux of host.
         if backup_sestatus == "disabled":
@@ -121,11 +135,11 @@ def run(test, params, env):
             qemu_conf.dynamic_ownership = 1
         else:
             qemu_conf.dynamic_ownership = 0
-        logging.debug("the qemu.conf content is: %s" % qemu_conf)
+        logging.debug("the qemu.conf content is: %s", qemu_conf)
         libvirtd.restart()
 
         # Create dst pool for create attach vol img
-        logging.debug("export_options is: %s" % export_options)
+        logging.debug("export_options is: %s", export_options)
         pvt = utlv.PoolVolumeTest(test, params)
         pvt.pre_pool(pool_name, pool_type, pool_target,
                      emulated_image, image_size="1G",
@@ -175,7 +189,7 @@ def run(test, params, env):
         img_label_before = check_ownership(server_img_path)
         if img_label_before:
             logging.debug("attached image ownership on nfs server before "
-                          "start: %s" % img_label_before)
+                          "start: %s", img_label_before)
 
         # Start VM to check the VM is able to access the image or not.
         try:
@@ -185,7 +199,7 @@ def run(test, params, env):
             img_label_after = check_ownership(server_img_path)
             if img_label_after:
                 logging.debug("attached image ownership on nfs server after"
-                              " start: %s" % img_label_after)
+                              " start: %s", img_label_after)
 
             if status_error:
                 test.fail('Test succeeded in negative case.')
@@ -223,6 +237,9 @@ def run(test, params, env):
         # clean up
         vm.destroy()
         qemu_conf.restore()
+        for path, label in backup_labels_of_disks.items():
+            label_list = label.split(":")
+            os.chown(path, int(label_list[0]), int(label_list[1]))
         if snapshot_name:
             backup_xml.sync("--snapshots-metadata")
         else:
@@ -230,9 +247,6 @@ def run(test, params, env):
         for i in disk_snap_path:
             if i and os.path.exists(i):
                 os.unlink(i)
-        for path, label in backup_labels_of_disks.items():
-            label_list = label.split(":")
-            os.chown(path, int(label_list[0]), int(label_list[1]))
         if pvt:
             try:
                 pvt.cleanup_pool(pool_name, pool_type, pool_target,
