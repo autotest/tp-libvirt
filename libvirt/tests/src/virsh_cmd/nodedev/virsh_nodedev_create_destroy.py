@@ -74,7 +74,36 @@ def create_nodedev_from_xml(test, params):
     Create a device defined by an XML file on the node
     :params: the parameter dictionary
     """
-    scsi_host = params.get("nodedev_scsi_host")
+    dev_name = params.get("nodedev_dev_name")
+    if dev_name == "nodedev_NIC_name":
+        device_xml = """
+<device>
+  <name>net_ens6f1_90_e2_ba_11_d7_a5</name>
+  <path>/sys/devices/pci0000:00/0000:00:07.0/0000:13:00.1/net/ens6f1</path>
+  <parent>pci_0000_13_00_1</parent>
+  <capability type='net'>
+    <interface>ens6f1</interface>
+    <address>90:e2:ba:11:d7:a5</address>
+    <link state='down'/>
+    <feature name='gro'/>
+    <capability type='80203'/>
+  </capability>
+</device>
+    """
+        logging.debug("Prepare the nodedev XML: %s", device_xml)
+    else:
+        scsi_host = params.get("nodedev_scsi_host")
+        device_xml = """
+<device>
+    <parent>%s</parent>
+    <capability type='scsi_host'>
+        <capability type='fc_host'>
+        </capability>
+    </capability>
+</device>
+""" % scsi_host
+        logging.debug("Prepare the nodedev XML: %s", device_xml)
+
     options = params.get("nodedev_options")
     status_error = params.get("status_error", "no")
 
@@ -84,30 +113,17 @@ def create_nodedev_from_xml(test, params):
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
             unprivileged_user = 'testacl'
+    device_file = mktemp()
+    with open(device_file, 'w') as xml_object:
+        xml_object.write(device_xml)
 
-    vhba_xml = """
-<device>
-    <parent>%s</parent>
-    <capability type='scsi_host'>
-        <capability type='fc_host'>
-        </capability>
-    </capability>
-</device>
-""" % scsi_host
-
-    logging.debug("Prepare the nodedev XML: %s", vhba_xml)
-
-    vhba_file = mktemp()
-    with open(vhba_file, 'w') as xml_object:
-        xml_object.write(vhba_xml)
-
-    result = virsh.nodedev_create(vhba_file, options, uri=uri,
+    result = virsh.nodedev_create(device_file, options, uri=uri,
                                   debug=True,
                                   unprivileged_user=unprivileged_user)
     status = result.exit_status
 
     # Remove temprorary file
-    os.unlink(vhba_file)
+    os.unlink(device_file)
 
     # Check status_error
     if status_error == "yes":
@@ -136,7 +152,15 @@ def destroy_nodedev(test, params):
     Destroy (stop) a device on the node
     :params: the parameter dictionary
     """
-    dev_name = params.get("nodedev_new_dev")
+    dev_name = params.get("nodedev_dev_name")
+    if dev_name == "nodedev_NIC_name":
+        dev_name = params.get("nodedev_NIC_name")
+    else:
+        # Check nodedev value
+        # if not check_nodedev(dev_name):
+        # logging.info(result.stdout)
+        dev_name = params.get("nodedev_new_dev")
+
     options = params.get("nodedev_options")
     status_error = params.get("status_error", "no")
 
@@ -171,7 +195,7 @@ def destroy_nodedev(test, params):
                           "or mismatch with result")
 
 
-def find_devices_by_cap(test, cap_type="scsi_host"):
+def find_devices_by_cap(test, cap_type):
     """
     Find device by capability
     :params cap_type: capability type
@@ -180,8 +204,8 @@ def find_devices_by_cap(test, cap_type="scsi_host"):
     if result.exit_status:
         test.fail(result.stderr)
 
-    scsi_hosts = result.stdout.strip().splitlines()
-    return scsi_hosts
+    device_name = result.stdout.strip().splitlines()
+    return device_name
 
 
 def check_vport_ops_cap(test, scsi_hosts):
@@ -257,7 +281,7 @@ def run(test, params, env):
                         " libvirt version.")
 
     # Find available HBAs
-    scsi_hosts = find_devices_by_cap(test)
+    scsi_hosts = find_devices_by_cap(test, "scsi_host")
 
     # Find available vHBA
     vport_ops_list = check_vport_ops_cap(test, scsi_hosts)
@@ -282,6 +306,10 @@ def run(test, params, env):
         params["nodedev_scsi_host"] = dev_name
         # Negative testing for destroying device
         params["nodedev_new_dev"] = dev_name
+        # Negative testing for NIC device
+        if dev_name == "nodedev_NIC_name":
+            nodedev_NIC_name = find_devices_by_cap(test, "net")
+            params["nodedev_NIC_name"] = nodedev_NIC_name[0]
     elif port_state == "online" or options:
         # Pick up one online port for positive testing
         params["nodedev_scsi_host"] = port_online_list[0]
