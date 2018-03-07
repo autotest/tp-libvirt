@@ -1,8 +1,6 @@
 import os
 import subprocess
 
-from autotest.client.shared import error
-
 from virttest import virsh
 
 
@@ -98,7 +96,7 @@ def run(test, params, env):
                     # of domain state change and focus on domcontrol command
                     # status while domain is running.
                     if vm.is_alive():
-                        raise error.TestFail("Run failed with right command")
+                        test.fail("Run failed with right command")
     else:
         # Check domain contorl interface state without job on domain.
         ret = virsh.domcontrol(vm_ref, options, readonly=readonly,
@@ -108,10 +106,10 @@ def run(test, params, env):
         # check status_error
         if status_error == "yes":
             if status == 0:
-                raise error.TestFail("Run successfully with wrong command!")
+                test.fail("Run successfully with wrong command!")
         elif status_error == "no":
             if status != 0:
-                raise error.TestFail("Run failed with right command")
+                test.fail("Run failed with right command")
 
     # Recover the environment.
     if action == "managedsave":

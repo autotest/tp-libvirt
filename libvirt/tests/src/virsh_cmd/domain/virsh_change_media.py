@@ -1,9 +1,7 @@
 import os
 import logging
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
-
+from avocado.utils import process
 from avocado.utils import path as utils_path
 
 from virttest import virsh
@@ -12,6 +10,7 @@ from virttest import virt_vm
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+from virttest import error_context
 
 
 def run(test, params, env):
@@ -26,7 +25,7 @@ def run(test, params, env):
     3. Recover test environment.
     4. Confirm the test result.
     """
-    @error.context_aware
+    @error_context.context_aware
     def env_pre(old_iso, new_iso):
         """
         Prepare ISO image for test
@@ -34,13 +33,13 @@ def run(test, params, env):
         :param old_iso: sourse file for insert
         :param new_iso: sourse file for update
         """
-        error.context("Preparing ISO images")
-        utils.run("dd if=/dev/urandom of=%s/old bs=1M count=1" % iso_dir)
-        utils.run("dd if=/dev/urandom of=%s/new bs=1M count=1" % iso_dir)
-        utils.run("mkisofs -o %s %s/old" % (old_iso, iso_dir))
-        utils.run("mkisofs -o %s %s/new" % (new_iso, iso_dir))
+        error_context.context("Preparing ISO images")
+        process.run("dd if=/dev/urandom of=%s/old bs=1M count=1" % iso_dir, shell=True)
+        process.run("dd if=/dev/urandom of=%s/new bs=1M count=1" % iso_dir, shell=True)
+        process.run("mkisofs -o %s %s/old" % (old_iso, iso_dir), shell=True)
+        process.run("mkisofs -o %s %s/new" % (new_iso, iso_dir), shell=True)
 
-    @error.context_aware
+    @error_context.context_aware
     def check_media(session, target_file, action, rw_test=False):
         """
         Check guest cdrom/floppy files
@@ -52,7 +51,7 @@ def run(test, params, env):
         if target_device == "hdc" or target_device == "sdc":
             drive_name = session.cmd("cat /proc/sys/dev/cdrom/info | grep -i 'drive name'", ignore_all_errors=True).split()[2]
         if action != "--eject ":
-            error.context("Checking guest %s files" % target_device)
+            error_context.context("Checking guest %s files" % target_device)
             if target_device == "hdc" or target_device == "sdc":
                 mount_cmd = "mount /dev/%s /media" % drive_name
             else:
@@ -71,7 +70,7 @@ def run(test, params, env):
             session.cmd("umount /media")
 
         else:
-            error.context("Ejecting guest cdrom files")
+            error_context.context("Ejecting guest cdrom files")
             if target_device == "hdc" or target_device == "sdc":
                 if session.cmd_status("mount /dev/%s /media -o loop" % drive_name) == 32:
                     logging.info("Eject succeeded")
@@ -113,9 +112,8 @@ def run(test, params, env):
 <readonly/>
 </disk>
 """ % (device_type, init_iso, target_device)
-        update_iso_file = open(update_iso_xml, "w")
-        update_iso_file.write(snippet)
-        update_iso_file.close()
+        with open(update_iso_xml, "w") as update_iso_file:
+            update_iso_file.write(snippet)
 
         cmd_options = "--force "
         if options == "--config" or start_vm == "no":
@@ -144,13 +142,13 @@ def run(test, params, env):
     source_path = params.get("change_media_source_path", "yes")
 
     if device_type not in ['cdrom', 'floppy']:
-        raise error.TestNAError("Got a invalid device type:/n%s" % device_type)
+        test.cancel("Got a invalid device type:/n%s" % device_type)
 
     try:
         utils_path.find_command("mkisofs")
     except utils_path.CmdNotFoundError:
-        raise error.TestNAError("Command 'mkisofs' is missing. You must "
-                                "install it (try 'genisoimage' package.")
+        test.cancel("Command 'mkisofs' is missing. You must "
+                    "install it (try 'genisoimage' package.")
 
     # Check virsh command option
     if options and not status_error:
@@ -210,7 +208,7 @@ def run(test, params, env):
         # For read&write floppy test, the iso media need a writeable fs
         rw_floppy_test = "yes" == params.get("rw_floppy_test", "no")
         if rw_floppy_test:
-            utils.run("mkfs.ext3 -F %s" % source)
+            process.run("mkfs.ext3 -F %s" % source, shell=True)
 
         all_options = action + options + " " + source
         result = virsh.change_media(vm_ref, target_device,
@@ -219,14 +217,14 @@ def run(test, params, env):
             if start_vm == "no" and vm.is_dead():
                 try:
                     vm.start()
-                except virt_vm.VMStartError, detail:
+                except virt_vm.VMStartError as detail:
                     result.exit_status = 1
                     result.stderr = str(detail)
             if start_vm == "yes" and vm.is_alive():
                 vm.destroy(gracefully=False)
                 try:
                     vm.start()
-                except virt_vm.VMStartError, detail:
+                except virt_vm.VMStartError as detail:
                     result.exit_status = 1
                     result.stderr = str(detail)
 
@@ -236,9 +234,9 @@ def run(test, params, env):
             if 'print-xml' in options:
                 vmxml_new = vm_xml.VMXML.new_from_dumpxml(vm_name)
                 if source in vmxml_new:
-                    raise error.TestFail("Run command with 'print-xml'"
-                                         " option, unexpected device was"
-                                         " found in domain xml")
+                    test.fail("Run command with 'print-xml'"
+                              " option, unexpected device was"
+                              " found in domain xml")
             else:
                 if options == "--config" and vm.is_alive():
                     vm.destroy()
@@ -248,7 +246,7 @@ def run(test, params, env):
                     vmxml_new = vm_xml.VMXML.new_from_dumpxml(vm_name)
                     logging.debug("vmxml: %s", vmxml_new)
                     if not vm_xml.VMXML.check_disk_type(vm_name, source, "block"):
-                        raise error.TestFail("Disk isn't a 'block' device")
+                        test.fail("Disk isn't a 'block' device")
                 session = vm.wait_for_login()
                 check_media(session, check_file, action, rw_floppy_test)
                 session.close()
@@ -258,18 +256,18 @@ def run(test, params, env):
                 logging.info("Expected error (negative testing). Output: %s",
                              result.stderr.strip())
             else:
-                raise error.TestFail("Unexpected return code %d "
-                                     "(negative testing)" % status)
+                test.fail("Unexpected return code %d "
+                          "(negative testing)" % status)
 
         # Positive testing
         else:
             if status:
                 if force_SKIP:
-                    raise error.TestNAError("SELinux is set to enforcing and has "
-                                            "resulted in this test failing to open "
-                                            "the iso file for a floppy.")
-                raise error.TestFail("Unexpected error (positive testing). "
-                                     "Output: %s" % result.stderr.strip())
+                    test.cancel("SELinux is set to enforcing and has "
+                                "resulted in this test failing to open "
+                                "the iso file for a floppy.")
+                test.fail("Unexpected error (positive testing). "
+                          "Output: %s" % result.stderr.strip())
             else:
                 logging.info("Expected success. Output: %s", result.stdout.strip())
     finally:
@@ -278,4 +276,4 @@ def run(test, params, env):
         vm.destroy(gracefully=False)
         # Recover xml of vm.
         vmxml_backup.sync()
-        utils.safe_rmdir(iso_dir)
+        utils_misc.safe_rmdir(iso_dir)

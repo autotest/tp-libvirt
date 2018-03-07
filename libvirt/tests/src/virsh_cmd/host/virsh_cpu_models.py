@@ -1,4 +1,5 @@
 import logging
+from six import itervalues
 
 from virttest import ssh_key
 from virttest import virsh
@@ -34,11 +35,11 @@ def run(test, params, env):
             capa = capability_xml.CapabilityXML()
             guest_map = capa.get_guest_capabilities()
             guest_arch = []
-            for v in guest_map.values():
-                guest_arch += v.keys()
+            for v in list(itervalues(guest_map)):
+                guest_arch += list(v.keys())
             for arch in set(guest_arch):
                 arch_list.append(arch)
-        except Exception, e:
+        except Exception as e:
             test.error("Fail to get guest arch list of the host"
                        " supported:\n%s" % e)
     else:

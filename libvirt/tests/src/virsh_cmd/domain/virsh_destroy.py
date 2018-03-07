@@ -1,12 +1,10 @@
-from autotest.client.shared import error
-from autotest.client.shared import ssh_key
-
 from avocado.utils import process
 
 from virttest import libvirt_vm
 from virttest import remote
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import ssh_key
 
 from provider import libvirt_version
 
@@ -36,7 +34,7 @@ def run(test, params, env):
     local_pwd = params.get("local_pwd", "LOCAL.EXAMPLE.COM")
     if vm_ref == "remote" and (remote_ip.count("EXAMPLE.COM") or
                                local_ip.count("EXAMPLE.COM")):
-        raise error.TestNAError(
+        test.cancel(
             "Remote test parameters unchanged from default")
 
     uri = params.get("virsh_uri")
@@ -47,8 +45,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     if vm_ref == "id":
         vm_ref = domid
@@ -94,9 +92,9 @@ def run(test, params, env):
     # check status_error
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successfully with wrong command! "
-                                 "Output:\n%s" % output)
+            test.fail("Run successfully with wrong command! "
+                      "Output:\n%s" % output)
     elif status_error == "no":
         if status != 0:
-            raise error.TestFail("Run failed with right command! Output:\n%s"
-                                 % output)
+            test.fail("Run failed with right command! Output:\n%s"
+                      % output)

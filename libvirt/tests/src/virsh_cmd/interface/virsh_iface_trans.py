@@ -1,17 +1,16 @@
 import os
 import re
 import logging
-import commands
 
-from autotest.client.shared import error
-
+from avocado.utils import process
 from avocado.utils import path as utils_path
+from avocado.core import exceptions
 
 from virttest import virsh
 from virttest import utils_libvirtd
 
 
-def netcf_trans_control(command="status"):
+def netcf_trans_control(test, command="status"):
     """
     Control current network configuration
     :param: command: it may be 'status', 'snapshot-dir', restart,
@@ -27,28 +26,27 @@ def netcf_trans_control(command="status"):
         if os.path.isfile(old_path):
             cmd = old_path
         else:
-            raise error.TestNAError("Cannot find netcf-transaction! "
-                                    "Make sure you have netcf-libs installed!")
+            test.cancel("Cannot find netcf-transaction! "
+                        "Make sure you have netcf-libs installed!")
     logging.debug(cmd)
 
-    return commands.getoutput(cmd + " " + command)
+    return process.system_output("%s %s" % (cmd, command), shell=True)
 
 
-def write_iface_cfg(iface_cfg):
+def write_iface_cfg(iface_cfg, test):
     """
     Create a temporary network configuration file
     :param: iface_cfg: the network configuration file name
     """
     content = "DEVICE='iface-test'\r\nBOOTPROTO='none'\r\nONBOOT='no'"
     try:
-        fp = open(iface_cfg, 'w+')
-        fp.write(content)
-        fp.close()
+        with open(iface_cfg, 'w+') as fp:
+            fp.write(content)
     except IOError:
-        raise error.TestFail("Failed to write %s to %s!" % (content, iface_cfg))
+        test.fail("Failed to write %s to %s!" % (content, iface_cfg))
 
 
-def cleanup(iface_cfg, exist_trans="no"):
+def cleanup(iface_cfg, test, exist_trans="no"):
     """
     Cleanup network transaction if there is already an open transaction
     and cleanup temporary network configuration file if it exists
@@ -60,10 +58,10 @@ def cleanup(iface_cfg, exist_trans="no"):
         os.unlink(iface_cfg)
     if exist_trans == "yes":
         logging.debug("Cleanup an open network transaction")
-        netcf_trans_control('restart')
+        netcf_trans_control(test, 'restart')
 
 
-def iface_trans_begin(params):
+def iface_trans_begin(params, test):
     """
     Take a snapshot of current network configuration
     :params: the parameter dictionary
@@ -80,26 +78,26 @@ def iface_trans_begin(params):
         if status:
             logging.info("It's an expected error")
         else:
-            raise error.TestFail("%d not a expected command"
-                                 "return value" % status)
+            test.fail("%d not a expected command"
+                      "return value" % status)
     elif status_error == "no":
         if status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
         else:
-            netcf_status = netcf_trans_control()
+            netcf_status = netcf_trans_control(test)
             logging.debug("%s", netcf_status)
 
             if not re.search("an open", netcf_status) or \
                     not os.access(netcf_snap_dir, os.R_OK):
-                raise error.TestFail("Failed to create snapshot for interface")
+                test.fail("Failed to create snapshot for interface")
 
             logging.info("Succeed to create snapshot of current network")
     else:
-        raise error.TestFail("The 'status_error' must be 'yes' or 'no': %s"
-                             % status_error)
+        test.fail("The 'status_error' must be 'yes' or 'no': %s"
+                  % status_error)
 
 
-def iface_trans_commit(params):
+def iface_trans_commit(params, test):
     """
     Commit the new network configuration
     :params: the parameter dictionary
@@ -115,26 +113,26 @@ def iface_trans_commit(params):
         if status:
             logging.info("It's an expected error")
         else:
-            raise error.TestFail("%d not a expected command"
-                                 "return value" % status)
+            test.fail("%d not a expected command"
+                      "return value" % status)
     elif status_error == "no":
         if status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
         else:
-            netcf_status = netcf_trans_control()
+            netcf_status = netcf_trans_control(test)
             logging.debug("%s", netcf_status)
 
             if not re.search("No open", netcf_status) or \
                     not os.access(iface_cfg, os.R_OK):
-                raise error.TestFail("Failed to commit snapshot")
+                test.fail("Failed to commit snapshot")
 
             logging.info("Succeed to commit snapshot of current network")
     else:
-        raise error.TestFail("The 'status_error' must be 'yes' or 'no': %s"
-                             % status_error)
+        test.fail("The 'status_error' must be 'yes' or 'no': %s"
+                  % status_error)
 
 
-def iface_trans_rollback(params):
+def iface_trans_rollback(params, test):
     """
     Rollback network configuration to last snapshot if one exist
     :params: the parameter dictionary
@@ -152,29 +150,29 @@ def iface_trans_rollback(params):
         if status:
             logging.info("It's an expected error")
         else:
-            raise error.TestFail("%d not a expected command"
-                                 "return value" % status)
+            test.fail("%d not a expected command"
+                      "return value" % status)
     elif status_error == "no":
         if status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
         else:
-            netcf_status = netcf_trans_control()
+            netcf_status = netcf_trans_control(test)
             logging.debug("%s", netcf_status)
 
             if not re.search("No open", netcf_status):
-                raise error.TestFail("Failed to rollback network to "
-                                     "last snapshot")
+                test.fail("Failed to rollback network to "
+                          "last snapshot")
 
             if os.access(netcf_snap_dir, os.R_OK):
-                raise error.TestFail("%s exists" % netcf_snap_dir)
+                test.fail("%s exists" % netcf_snap_dir)
 
             if os.access(iface_cfg, os.R_OK):
-                raise error.TestFail("%s exists" % iface_cfg)
+                test.fail("%s exists" % iface_cfg)
 
             logging.info("Succeed to rollback network to last snapshot")
     else:
-        raise error.TestFail("The 'status_error' must be 'yes' or 'no': %s"
-                             % status_error)
+        test.fail("The 'status_error' must be 'yes' or 'no': %s"
+                  % status_error)
 
 
 def run(test, params, env):
@@ -195,8 +193,8 @@ def run(test, params, env):
     try:
         utils_path.find_command("locate")
     except utils_path.CmdNotFoundError:
-        raise error.TestNAError("Command 'locate' is missing. You must "
-                                "install it.")
+        test.cancel("Command 'locate' is missing. You must "
+                    "install it.")
     # Run test case
     status_error = params.get("status_error", "no")
     libvirtd = params.get("libvirtd", "on")
@@ -207,7 +205,7 @@ def run(test, params, env):
     network_script_dir = "/etc/sysconfig/network-scripts"
 
     iface_cfg = os.path.join(network_script_dir, iface_name)
-    netcf_snap_dir = netcf_trans_control("snapshot-dir")
+    netcf_snap_dir = netcf_trans_control(test, "snapshot-dir")
 
     params['iface_cfg'] = iface_cfg
     params['netcf_snap_dir'] = netcf_snap_dir
@@ -218,43 +216,43 @@ def run(test, params, env):
         if status_error == "no":
             # Do begin-commit testing
             if transaction == "begin_commit":
-                iface_trans_begin(params)
-                write_iface_cfg(iface_cfg)
+                iface_trans_begin(params, test)
+                write_iface_cfg(iface_cfg, test)
                 # Break begin-commit operation
                 if libvirtd == "restart":
                     utils_libvirtd.service_libvirtd_control("restart")
                 try:
-                    iface_trans_commit(params)
-                except error.TestError:
-                    cleanup(iface_cfg, exist_trans)
+                    iface_trans_commit(params, test)
+                except exceptions.TestError:
+                    cleanup(iface_cfg, test, exist_trans)
 
                 # Only cleanup temporary network configuration file
-                cleanup(iface_cfg)
+                cleanup(iface_cfg, test)
 
             # Do begin-rollback testing
             elif transaction == "begin_rollback":
-                iface_trans_begin(params)
-                write_iface_cfg(iface_cfg)
+                iface_trans_begin(params, test)
+                write_iface_cfg(iface_cfg, test)
                 # Break begin-rollback operation
                 if libvirtd == "restart":
                     utils_libvirtd.service_libvirtd_control("restart")
                 try:
-                    iface_trans_rollback(params)
-                except error.TestError:
-                    cleanup(iface_cfg, exist_trans)
+                    iface_trans_rollback(params, test)
+                except exceptions.TestError:
+                    cleanup(iface_cfg, test, exist_trans)
             else:
-                raise error.TestFail("The 'transaction' must be 'begin_commit' or"
-                                     " 'begin_rollback': %s" % status_error)
+                test.fail("The 'transaction' must be 'begin_commit' or"
+                          " 'begin_rollback': %s" % status_error)
 
         if status_error == "yes":
             # No pending transaction
             if exist_trans != "yes":
-                iface_trans_commit(params)
-                iface_trans_rollback(params)
+                iface_trans_commit(params, test)
+                iface_trans_rollback(params, test)
             # There is already an open transaction
             else:
-                netcf_trans_control('change-begin')
-                iface_trans_begin(params)
+                netcf_trans_control(test, 'change-begin')
+                iface_trans_begin(params, test)
     finally:
         # Cleanup network transaction and temporary configuration file
-        cleanup(iface_cfg, exist_trans)
+        cleanup(iface_cfg, test, exist_trans)

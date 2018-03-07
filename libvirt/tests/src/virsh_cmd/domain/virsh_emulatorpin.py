@@ -2,8 +2,7 @@ import os
 import logging
 import random
 
-from autotest.client.shared import error
-from autotest.client import utils
+from avocado.utils import cpu
 
 from virttest.libvirt_xml import vm_xml
 from virttest import utils_libvirtd, virsh
@@ -12,7 +11,7 @@ from virttest.staging import utils_cgroup
 from virttest.virt_vm import VMStartError
 
 
-def get_emulatorpin_from_cgroup(params):
+def get_emulatorpin_from_cgroup(params, test):
     """
     Get a list of domain-specific per block stats from cgroup blkio controller.
     :params: the parameter dictionary
@@ -26,16 +25,15 @@ def get_emulatorpin_from_cgroup(params):
     cpuset_file = os.path.join(cpuset_path, "cpuset.cpus")
 
     try:
-        f_emulatorpin_params = open(cpuset_file, "rU")
-        emulatorpin_params_from_cgroup = f_emulatorpin_params.readline()
-        f_emulatorpin_params.close()
+        with open(cpuset_file, "rU") as f_emulatorpin_params:
+            emulatorpin_params_from_cgroup = f_emulatorpin_params.readline()
         return emulatorpin_params_from_cgroup
     except IOError:
-        raise error.TestError("Failed to get emulatorpin "
-                              "params from %s" % cpuset_file)
+        test.error("Failed to get emulatorpin "
+                   "params from %s" % cpuset_file)
 
 
-def check_emulatorpin(params):
+def check_emulatorpin(params, test):
     """
     Check emulator affinity
     :params: the parameter dictionary
@@ -73,7 +71,7 @@ def check_emulatorpin(params):
     # To get guest corresponding emulator/cpuset.cpus value
     # from cpuset controller of the cgroup.
     if cgconfig == "on" and vm and vm.is_alive():
-        emulatorpin_from_cgroup = get_emulatorpin_from_cgroup(params)
+        emulatorpin_from_cgroup = get_emulatorpin_from_cgroup(params, test)
         logging.debug("The emulatorpin value from "
                       "cgroup: %s", emulatorpin_from_cgroup)
 
@@ -95,7 +93,7 @@ def check_emulatorpin(params):
         return True
 
 
-def get_emulatorpin_parameter(params):
+def get_emulatorpin_parameter(params, test):
     """
     Get the emulatorpin parameters
     :params: the parameter dictionary
@@ -115,19 +113,19 @@ def get_emulatorpin_parameter(params):
     status_error = params.get("status_error", "no")
 
     if status_error == "yes":
-        if status or not check_emulatorpin(params):
+        if status or not check_emulatorpin(params, test):
             logging.info("It's an expected : %s", result.stderr)
         else:
-            raise error.TestFail("%d not a expected command "
-                                 "return value" % status)
+            test.fail("%d not a expected command "
+                      "return value" % status)
     elif status_error == "no":
         if status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
         else:
             logging.info(result.stdout)
 
 
-def set_emulatorpin_parameter(params):
+def set_emulatorpin_parameter(params, test):
     """
     Set the emulatorpin parameters
     :params: the parameter dictionary
@@ -148,22 +146,22 @@ def set_emulatorpin_parameter(params):
     status_error = params.get("status_error")
 
     if status_error == "yes":
-        if status or not check_emulatorpin(params):
+        if status or not check_emulatorpin(params, test):
             logging.info("It's an expected : %s", result.stderr)
         else:
-            raise error.TestFail("%d not a expected command "
-                                 "return value" % status)
+            test.fail("%d not a expected command "
+                      "return value" % status)
     elif status_error == "no":
         if status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
         else:
-            if check_emulatorpin(params):
+            if check_emulatorpin(params, test):
                 logging.info(result.stdout)
             else:
-                raise error.TestFail("The 'cpulist' is inconsistent with"
-                                     " 'cpulist' emulatorpin XML or/and is"
-                                     " different from emulator/cpuset.cpus"
-                                     " value from cgroup cpuset controller")
+                test.fail("The 'cpulist' is inconsistent with"
+                          " 'cpulist' emulatorpin XML or/and is"
+                          " different from emulator/cpuset.cpus"
+                          " value from cgroup cpuset controller")
 
 
 def run(test, params, env):
@@ -197,16 +195,16 @@ def run(test, params, env):
         vmxml.sync()
         try:
             vm.start()
-        except VMStartError, detail:
+        except VMStartError as detail:
             # Recover the VM and failout early
             vmxml_backup.sync()
             logging.debug("Used VM XML:\n %s", vmxml)
-            raise error.TestFail("VM Fails to start: %s", detail)
+            test.fail("VM Fails to start: %s", detail)
 
     test_dicts = dict(params)
     test_dicts['vm'] = vm
 
-    host_cpus = utils.count_cpus()
+    host_cpus = cpu.online_cpus_count()
     test_dicts['host_cpus'] = host_cpus
     cpu_max = int(host_cpus) - 1
 
@@ -217,7 +215,7 @@ def run(test, params, env):
         if cpulist is None:
             pass
         elif cpulist == "x":
-            cpulist = random.choice(utils.cpu_online_map())
+            cpulist = random.choice(cpu.cpu_online_list())
         elif cpulist == "x-y":
             # By default, emulator is pined to all cpus, and element
             # 'cputune/emulatorpin' may not exist in VM's XML.
@@ -229,7 +227,7 @@ def run(test, params, env):
             else:
                 cpulist = "0-%s" % (cpu_max - 1)
         elif cpulist == "x,y":
-            cpulist = ','.join(random.sample(utils.cpu_online_map(), 2))
+            cpulist = ','.join(random.sample(cpu.cpu_online_list(), 2))
         elif cpulist == "x-y,^z":
             cpulist = "0-%s,^%s" % (cpu_max, cpu_max)
         elif cpulist == "-1":
@@ -237,8 +235,8 @@ def run(test, params, env):
         elif cpulist == "out_of_max":
             cpulist = str(cpu_max + 1)
         else:
-            raise error.TestNAError("CPU-list=%s is not recognized."
-                                    % cpulist)
+            test.cancel("CPU-list=%s is not recognized."
+                        % cpulist)
     test_dicts['emulatorpin_cpulist'] = cpulist
     if cpulist:
         cpu_list = cpus_parser(cpulist)
@@ -255,15 +253,15 @@ def run(test, params, env):
     try:
         if status_error == "no":
             if change_parameters == "no":
-                get_emulatorpin_parameter(test_dicts)
+                get_emulatorpin_parameter(test_dicts, test)
             else:
-                set_emulatorpin_parameter(test_dicts)
+                set_emulatorpin_parameter(test_dicts, test)
 
         if status_error == "yes":
             if change_parameters == "no":
-                get_emulatorpin_parameter(test_dicts)
+                get_emulatorpin_parameter(test_dicts, test)
             else:
-                set_emulatorpin_parameter(test_dicts)
+                set_emulatorpin_parameter(test_dicts, test)
     finally:
         # Recover cgconfig and libvirtd service
         if not cg.cgconfig_is_running():

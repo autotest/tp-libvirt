@@ -4,8 +4,7 @@ import logging
 
 import aexpect
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
+from avocado.utils import process
 
 from virttest import virt_vm
 from virttest import virsh
@@ -182,7 +181,7 @@ def run(test, params, env):
         device_source = libvirt.setup_or_cleanup_iscsi(True)
         if not device_source:
             # We should skip this case
-            raise error.TestNAError("Can not get iscsi device name in host")
+            test.cancel("Can not get iscsi device name in host")
         if test_logcial_dev:
             lv_utils.vg_create(vg_name, device_source)
             device_source = libvirt.create_local_disk("lvm",
@@ -240,7 +239,7 @@ def run(test, params, env):
 
     # Add acpiphp module before testing if VM's os type is rhle5.*
     if not acpiphp_module_modprobe(vm, os_type):
-        raise error.TestError("Add acpiphp module failed before test.")
+        test.error("Add acpiphp module failed before test.")
 
     # Turn VM into certain state.
     if pre_vm_state == "paused":
@@ -316,7 +315,7 @@ def run(test, params, env):
                       % test_cmd.split("-")[0])
         cmd = (grep_audit + ' | ' + 'grep "%s" | tail -n1 | grep "res=success"'
                % device_source)
-        if utils.run(cmd).exit_status:
+        if process.run(cmd, shell=True).exit_status:
             logging.error("Audit check failed")
             check_audit_after_cmd = False
 
@@ -393,7 +392,8 @@ def run(test, params, env):
             eject_params = {'type_name': "file", 'device_type': "cdrom",
                             'target_dev': device_target, 'target_bus': device_disk_bus}
             eject_xml = libvirt.create_disk_xml(eject_params)
-            logging.debug("Eject CDROM by XML: %s", open(eject_xml).read())
+            with open(eject_xml) as eject_file:
+                logging.debug("Eject CDROM by XML: %s", eject_file.read())
             # Run command tiwce to make sure cdrom tray open first #BZ892289
             # Open tray
             virsh.attach_device(domainarg=vm_name, filearg=eject_xml, debug=True)
@@ -404,9 +404,9 @@ def run(test, params, env):
             result = virsh.attach_device(domainarg=vm_name, filearg=eject_xml,
                                          debug=True)
             if result.exit_status != 0:
-                raise error.TestFail("Eject CDROM failed")
+                test.fail("Eject CDROM failed")
             if vm_xml.VMXML.check_disk_exist(vm_name, device_source):
-                raise error.TestFail("Find %s after do eject" % device_source)
+                test.fail("Find %s after do eject" % device_source)
         # Save and restore VM
         if save_vm:
             result = virsh.save(vm_name, save_file, debug=True)
@@ -414,7 +414,7 @@ def run(test, params, env):
             result = virsh.restore(save_file, debug=True)
             libvirt.check_exit_status(result)
             if vm_xml.VMXML.check_disk_exist(vm_name, device_source):
-                raise error.TestFail("Find %s after do restore" % device_source)
+                test.fail("Find %s after do restore" % device_source)
 
         # Destroy VM.
         vm.destroy(gracefully=False)
@@ -441,7 +441,7 @@ def run(test, params, env):
             if test_logcial_dev:
                 libvirt.delete_local_disk("lvm", vgname=vg_name, lvname=lv_name)
                 lv_utils.vg_remove(vg_name)
-                utils.system("pvremove %s" % device_source, ignore_status=True)
+                process.run("pvremove %s" % device_source, shell=True, ignore_status=True)
             libvirt.setup_or_cleanup_iscsi(False)
         else:
             libvirt.delete_local_disk("file", device_source)
@@ -449,71 +449,71 @@ def run(test, params, env):
     # Check results.
     if status_error:
         if not status:
-            raise error.TestFail("virsh %s exit with unexpected value."
-                                 % test_cmd)
+            test.fail("virsh %s exit with unexpected value."
+                      % test_cmd)
     else:
         if status:
-            raise error.TestFail("virsh %s failed." % test_cmd)
+            test.fail("virsh %s failed." % test_cmd)
         if test_cmd == "attach-disk":
             if at_options.count("config"):
                 if not check_count_after_shutdown:
-                    raise error.TestFail("Cannot see config attached device "
-                                         "in xml file after VM shutdown.")
+                    test.fail("Cannot see config attached device "
+                              "in xml file after VM shutdown.")
                 if not check_disk_serial:
-                    raise error.TestFail("Serial set failed after attach")
+                    test.fail("Serial set failed after attach")
                 if not check_disk_address:
-                    raise error.TestFail("Address set failed after attach")
+                    test.fail("Address set failed after attach")
                 if not check_disk_address2:
-                    raise error.TestFail("Address(multifunction) set failed"
-                                         " after attach")
+                    test.fail("Address(multifunction) set failed"
+                              " after attach")
             else:
                 if not check_count_after_cmd:
-                    raise error.TestFail("Cannot see device in xml file"
-                                         " after attach.")
+                    test.fail("Cannot see device in xml file"
+                              " after attach.")
                 if not check_vm_after_cmd:
-                    raise error.TestFail("Cannot see device in VM after"
-                                         " attach.")
+                    test.fail("Cannot see device in VM after"
+                              " attach.")
                 if not check_disk_type:
-                    raise error.TestFail("Check disk type failed after"
-                                         " attach.")
+                    test.fail("Check disk type failed after"
+                              " attach.")
                 if not check_audit_after_cmd:
-                    raise error.TestFail("Audit hotplug failure after attach")
+                    test.fail("Audit hotplug failure after attach")
                 if not check_cache_after_cmd:
-                    raise error.TestFail("Check cache failure after attach")
+                    test.fail("Check cache failure after attach")
                 if at_options.count("persistent"):
                     if not check_count_after_shutdown:
-                        raise error.TestFail("Cannot see device attached "
-                                             "with persistent after "
-                                             "VM shutdown.")
+                        test.fail("Cannot see device attached "
+                                  "with persistent after "
+                                  "VM shutdown.")
                 else:
                     if check_count_after_shutdown:
-                        raise error.TestFail("See non-config attached device "
-                                             "in xml file after VM shutdown.")
+                        test.fail("See non-config attached device "
+                                  "in xml file after VM shutdown.")
         elif test_cmd == "detach-disk":
             if dt_options.count("config"):
                 if check_count_after_shutdown:
-                    raise error.TestFail("See config detached device in "
-                                         "xml file after VM shutdown.")
+                    test.fail("See config detached device in "
+                              "xml file after VM shutdown.")
             else:
                 if check_count_after_cmd:
-                    raise error.TestFail("See device in xml file "
-                                         "after detach.")
+                    test.fail("See device in xml file "
+                              "after detach.")
                 if check_vm_after_cmd:
-                    raise error.TestFail("See device in VM after detach.")
+                    test.fail("See device in VM after detach.")
                 if not check_audit_after_cmd:
-                    raise error.TestFail("Audit hotunplug failure "
-                                         "after detach")
+                    test.fail("Audit hotunplug failure "
+                              "after detach")
 
                 if dt_options.count("persistent"):
                     if check_count_after_shutdown:
-                        raise error.TestFail("See device deattached "
-                                             "with persistent after "
-                                             "VM shutdown.")
+                        test.fail("See device deattached "
+                                  "with persistent after "
+                                  "VM shutdown.")
                 else:
                     if not check_count_after_shutdown:
-                        raise error.TestFail("See non-config detached "
-                                             "device in xml file after "
-                                             "VM shutdown.")
+                        test.fail("See non-config detached "
+                                  "device in xml file after "
+                                  "VM shutdown.")
 
         else:
-            raise error.TestError("Unknown command %s." % test_cmd)
+            test.error("Unknown command %s." % test_cmd)

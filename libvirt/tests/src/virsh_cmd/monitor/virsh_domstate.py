@@ -222,7 +222,7 @@ def run(test, params, env):
             elif vm_action == "dump":
                 dump_file = dump_path + "*" + vm_name + "-*"
                 virsh.dump(vm_name, dump_file, dump_option, ignore_status=False)
-        except process.CmdError, detail:
+        except process.CmdError as detail:
             test.error("Guest prepare action error: %s" % detail)
 
         if libvirtd_state == "off":

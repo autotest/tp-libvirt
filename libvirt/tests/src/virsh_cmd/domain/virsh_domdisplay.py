@@ -3,8 +3,6 @@ import os
 import shutil
 import logging
 
-from autotest.client.shared import error
-
 from virttest import utils_misc
 from virttest import utils_libvirtd
 from virttest import virsh
@@ -22,8 +20,8 @@ def run(test, params, env):
     """
 
     if not virsh.has_help_command('domdisplay'):
-        raise error.TestNAError("This version of libvirt doesn't support "
-                                "domdisplay test")
+        test.cancel("This version of libvirt doesn't support "
+                    "domdisplay test")
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     status_error = ("yes" == params.get("status_error", "no"))
@@ -42,8 +40,8 @@ def run(test, params, env):
 
     if "--type" in options:
         if not libvirt_version.version_compare(1, 2, 6):
-            raise error.TestNAError("--type option is not supportted in this"
-                                    " libvirt version.")
+            test.cancel("--type option is not supportted in this"
+                        " libvirt version.")
         elif "vnc" in options and graphic != "vnc" or \
              "spice" in options and graphic != "spice":
             status_error = True
@@ -58,8 +56,8 @@ def run(test, params, env):
         Do prepare for ssl spice connection
         """
         # modify qemu.conf
-        f_obj = open(qemu_conf, "r")
-        cont = f_obj.read()
+        with open(qemu_conf, "r") as f_obj:
+            cont = f_obj.read()
 
         # remove the existing setting
         left_cont = re.sub(r'\s*spice_tls\s*=.*', '', cont)
@@ -67,9 +65,8 @@ def run(test, params, env):
                            left_cont)
 
         # write back to origin file with cut left content
-        f_obj = open(qemu_conf, "w")
-        f_obj.write(left_cont)
-        f_obj.close()
+        with open(qemu_conf, "w") as f_obj:
+            f_obj.write(left_cont)
 
     def prepare_ssl_env():
         """
@@ -78,10 +75,9 @@ def run(test, params, env):
         # modify qemu.conf
         clean_ssl_env()
         # Append ssl spice configuration
-        f_obj = open(qemu_conf, "a")
-        f_obj.write("spice_tls = 1\n")
-        f_obj.write("spice_tls_x509_cert_dir = \"/etc/pki/libvirt-spice\"")
-        f_obj.close()
+        with open(qemu_conf, "a") as f_obj:
+            f_obj.write("spice_tls = 1\n")
+            f_obj.write("spice_tls_x509_cert_dir = \"/etc/pki/libvirt-spice\"")
 
         # Generate CA cert
         utils_misc.create_x509_dir("/etc/pki/libvirt-spice",
@@ -124,14 +120,14 @@ def run(test, params, env):
         logging.debug("result is %s", result)
         if result.exit_status:
             if not status_error:
-                raise error.TestFail("Fail to get domain display info. Error:"
-                                     "%s." % result.stderr.strip())
+                test.fail("Fail to get domain display info. Error:"
+                          "%s." % result.stderr.strip())
             else:
                 logging.info("Get domain display info failed as expected. "
                              "Error:%s.", result.stderr.strip())
                 return
         elif status_error:
-            raise error.TestFail("Expect fail, but succeed indeed!")
+            test.fail("Expect fail, but succeed indeed!")
 
         output = result.stdout.strip()
         # Different result depends on the domain xml listen address
@@ -173,8 +169,8 @@ def run(test, params, env):
         if output == expect:
             logging.info("Get correct display:%s", output)
         else:
-            raise error.TestFail("Expect %s, but get %s"
-                                 % (expect, output))
+            test.fail("Expect %s, but get %s"
+                      % (expect, output))
 
     finally:
         # qemu.conf recovery

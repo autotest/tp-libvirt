@@ -4,8 +4,6 @@ import logging
 
 import aexpect
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
@@ -66,7 +64,7 @@ def run(test, params, env):
         tmpdir = data_dir.get_tmp_dir()
         save_path = os.path.join(tmpdir, "%s_event.save" % dom.name)
         new_disk = os.path.join(tmpdir, "%s_new_disk.img" % dom.name)
-        print dom.name
+        print(dom.name)
         try:
             for event in events_list:
                 if event in ['start', 'restore']:
@@ -120,7 +118,7 @@ def run(test, params, env):
                     expected_events_list.append("'device-removed' for %s:"
                                                 " virtio-disk1")
                 else:
-                    raise error.TestError("Unsupported event: %s" % event)
+                    test.error("Unsupported event: %s" % event)
                 # Event may not received immediately
                 time.sleep(3)
         finally:
@@ -153,9 +151,9 @@ def run(test, params, env):
             if event_str in output:
                 continue
             else:
-                raise error.TestFail("Not find expected event:%s. Is your "
-                                     "guest too slow to get started in %ss?" %
-                                     (event_str, event_timeout))
+                test.fail("Not find expected event:%s. Is your "
+                          "guest too slow to get started in %ss?" %
+                          (event_str, event_timeout))
 
     try:
         # Set vcpu placement to static to avoid emulatorpin fail

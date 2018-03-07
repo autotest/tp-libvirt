@@ -1,10 +1,9 @@
 import os
 import logging
 
-from autotest.client.shared import error
-from autotest.client import utils
-
 from avocado.utils import path as utils_path
+from avocado.utils import linux_modules
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_misc
@@ -60,14 +59,14 @@ def run(test, params, env):
         vmxml.sync()
 
     if not virsh.has_help_command('domfstrim'):
-        raise error.TestNAError("This version of libvirt does not support "
-                                "the domfstrim test")
+        test.cancel("This version of libvirt does not support "
+                    "the domfstrim test")
 
     try:
         utils_path.find_command("lsscsi")
     except utils_path.CmdNotFoundError:
-        raise error.TestNAError("Command 'lsscsi' is missing. You must "
-                                "install it.")
+        test.cancel("Command 'lsscsi' is missing. You must "
+                    "install it.")
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     status_error = ("yes" == params.get("status_error", "no"))
@@ -85,8 +84,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     # Do backup for origin xml
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -101,17 +100,19 @@ def run(test, params, env):
         vm.destroy()
 
         # Load module and get scsi disk name
-        utils.load_module("scsi_debug lbpu=1 lbpws=1")
-        scsi_disk = utils.run("lsscsi|grep scsi_debug|"
-                              "awk '{print $6}'").stdout.strip()
+        linux_modules.load_module("scsi_debug lbpu=1 lbpws=1")
+        scsi_disk = process.run("lsscsi|grep scsi_debug|"
+                                "awk '{print $6}'", shell=True).stdout.strip()
         # Create partition
-        open("/tmp/fdisk-cmd", "w").write("n\np\n\n\n\nw\n")
-        output = utils.run("fdisk %s < /tmp/fdisk-cmd"
-                           % scsi_disk).stdout.strip()
+        with open("/tmp/fdisk-cmd", "w") as cmd_file:
+            cmd_file.write("n\np\n\n\n\nw\n")
+
+        output = process.run("fdisk %s < /tmp/fdisk-cmd"
+                             % scsi_disk, shell=True).stdout.strip()
         logging.debug("fdisk output %s", output)
         os.remove("/tmp/fdisk-cmd")
         # Format disk
-        output = utils.run("mkfs.ext3 %s1" % scsi_disk).stdout.strip()
+        output = process.run("mkfs.ext3 %s1" % scsi_disk, shell=True).stdout.strip()
         logging.debug("output %s", output)
         # Add scsi disk in guest
         recompose_xml(vm_name, scsi_disk)
@@ -136,8 +137,8 @@ def run(test, params, env):
         cmd_result = virsh.domfstrim(vm_name)
         if cmd_result.exit_status != 0:
             if not status_error:
-                raise error.TestFail("Fail to do virsh domfstrim, error %s" %
-                                     cmd_result.stderr)
+                test.fail("Fail to do virsh domfstrim, error %s" %
+                          cmd_result.stderr)
 
         def get_diskmap_size():
             """
@@ -145,7 +146,7 @@ def run(test, params, env):
             :return: disk size
             """
             map_cmd = "cat /sys/bus/pseudo/drivers/scsi_debug/map"
-            diskmap = utils.run(map_cmd).stdout.strip('\n\x00')
+            diskmap = process.run(map_cmd, shell=True).stdout.strip('\n\x00')
             sum = 0
             for i in diskmap.split(","):
                 sum = sum + int(i.split("-")[1]) - int(i.split("-")[0])
@@ -167,7 +168,7 @@ def run(test, params, env):
             return (ori_size < full_size)
 
         if not utils_misc.wait_for(_full_mapped, timeout=30):
-            raise error.TestError("Scsi map is not updated after dd command.")
+            test.error("Scsi map is not updated after dd command.")
 
         full_size = get_diskmap_size()
 
@@ -185,8 +186,8 @@ def run(test, params, env):
                                          uri=uri)
             if cmd_result.exit_status != 0:
                 if not status_error:
-                    raise error.TestFail("Fail to do virsh domfstrim, error %s"
-                                         % cmd_result.stderr)
+                    test.fail("Fail to do virsh domfstrim, error %s"
+                              % cmd_result.stderr)
                 else:
                     logging.info("Fail to do virsh domfstrim as expected: %s",
                                  cmd_result.stderr)
@@ -208,13 +209,13 @@ def run(test, params, env):
                 if ori_size < empty_size <= full_size:
                     logging.info("Success to do fstrim partly")
                     return True
-            raise error.TestFail("Fail to do fstrim. (original size: %s), "
-                                 "(current size: %s), (full size: %s)" %
-                                 (ori_size, empty_size, full_size))
+            test.fail("Fail to do fstrim. (original size: %s), "
+                      "(current size: %s), (full size: %s)" %
+                      (ori_size, empty_size, full_size))
         logging.info("Success to do fstrim")
 
     finally:
         # Do domain recovery
         vm.shutdown()
         xml_backup.sync()
-        utils.unload_module("scsi_debug")
+        linux_modules.unload_module("scsi_debug")

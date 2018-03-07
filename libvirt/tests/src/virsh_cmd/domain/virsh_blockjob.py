@@ -2,8 +2,6 @@ import os
 import time
 import logging
 
-from autotest.client.shared import error
-
 from virttest import data_dir
 from virttest import utils_libvirtd
 from virttest import virsh
@@ -11,7 +9,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utl
 
 
-def finish_job(vm_name, target, timeout):
+def finish_job(vm_name, target, timeout, test):
     """
     Make sure the block copy job finish.
 
@@ -28,10 +26,10 @@ def finish_job(vm_name, target, timeout):
             job_time += 2
             time.sleep(2)
     if job_time >= timeout:
-        raise error.TestFail("Blockjob timeout in %s sec." % timeout)
+        test.fail("Blockjob timeout in %s sec." % timeout)
 
 
-def get_disk(vm_name):
+def get_disk(vm_name, test):
     """
     Get a disk target dev of the VM.
 
@@ -44,11 +42,11 @@ def get_disk(vm_name):
         dev = disks[0]
         logging.debug("Use %s of domain %s to do testing.", dev, vm_name)
     except IndexError:
-        raise error.TestFail("No disk in domain %s." % vm_name)
+        test.fail("No disk in domain %s." % vm_name)
     return dev
 
 
-def check_disk(vm_name, disk):
+def check_disk(vm_name, disk, test):
     """
     Check if given disk exist in VM.
 
@@ -59,7 +57,7 @@ def check_disk(vm_name, disk):
     if vm_xml.VMXML.check_disk_exist(vm_name, disk):
         logging.debug("Find %s in domain %s.", disk, vm_name)
     else:
-        raise error.TestFail("Can't find %s in domain %s." % (disk, vm_name))
+        test.fail("Can't find %s in domain %s." % (disk, vm_name))
 
 
 def run(test, params, env):
@@ -86,9 +84,9 @@ def run(test, params, env):
     persistent_vm = "yes" == params.get("persistent_vm", "no")
     status_error = "yes" == params.get("status_error", "no")
 
-    target = get_disk(vm_name)
+    target = get_disk(vm_name, test)
     if not target:
-        raise error.TestFail("Require target disk to copy.")
+        test.fail("Require target disk to copy.")
 
     # Prepare transient/persistent vm
     original_xml = vm.backup_xml()
@@ -105,12 +103,12 @@ def run(test, params, env):
                                      ignore_status=True, debug=True)
         status = cmd_result.exit_status
         if status != 0:
-            raise error.TestError("Fail to create blockcopy job.")
+            test.error("Fail to create blockcopy job.")
         # This option need blockjcopy job finish first
         if options.count("--pivot"):
             #Set default blockcopy timeout to 300 sec
             timeout = 300
-            finish_job(vm_name, target, timeout)
+            finish_job(vm_name, target, timeout, test)
 
     if len(bandwidth):
         options += "--bandwidth %s" % bandwidth
@@ -126,7 +124,7 @@ def run(test, params, env):
 
     # Check result
     if not utils_libvirtd.libvirtd_is_running():
-        raise error.TestFail("Libvirtd service is dead.")
+        test.fail("Libvirtd service is dead.")
     try:
         if not status_error:
             if status == 0:
@@ -136,24 +134,24 @@ def run(test, params, env):
                 #'pivot' option check
                 if options.count("--pivot"):
                     if utl.check_blockjob(vm_name, target, "no_job", 0):
-                        check_disk(vm_name, dest_path)
+                        check_disk(vm_name, dest_path, test)
                 #'bandwidth' option check
                 if options.count("--bandwidth"):
                     utl.check_blockjob(vm_name, target, "bandwidth", bandwidth)
             else:
-                raise error.TestFail(err)
+                test.fail(err)
         else:
             if status:
                 logging.debug("Expect error: %s", err)
             else:
-                raise error.TestFail("Expect fail, but run successfully.")
+                test.fail("Expect fail, but run successfully.")
         #cleanup
     finally:
         try:
             if vm.exists():
                 vm.destroy()
             else:
-                raise error.TestFail("Domain is disappeared.")
+                test.fail("Domain is disappeared.")
         finally:
             vm.define(original_xml)
             if os.path.exists(dest_path):

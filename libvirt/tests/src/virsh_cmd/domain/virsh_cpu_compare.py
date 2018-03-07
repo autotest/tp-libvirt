@@ -113,14 +113,13 @@ def run(test, params, env):
 
         # Prepare temp compare file.
         cpu_compare_xml = get_cpu_xml(target, mode)
-        cpu_compare_xml_f = open(tmp_file, 'w+b')
-        if mode == "clear":
-            cpu_compare_xml_f.truncate(0)
-        else:
-            cpu_compare_xml.xmltreefile.write(cpu_compare_xml_f)
-        cpu_compare_xml_f.seek(0)
-        logging.debug("CPU description XML:\n%s", cpu_compare_xml_f.read())
-        cpu_compare_xml_f.close()
+        with open(tmp_file, 'w+b') as cpu_compare_xml_f:
+            if mode == "clear":
+                cpu_compare_xml_f.truncate(0)
+            else:
+                cpu_compare_xml.xmltreefile.write(cpu_compare_xml_f)
+            cpu_compare_xml_f.seek(0)
+            logging.debug("CPU description XML:\n%s", cpu_compare_xml_f.read())
 
         # Expected possible result msg patterns and exit status
         msg_patterns = ""

@@ -1,9 +1,8 @@
-import commands
 import logging
 
 import aexpect
 
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import utils_test
 from virttest import virsh
@@ -39,10 +38,10 @@ def run(test, params, env):
     else:
         xmlfile = params.get("create_domain_xmlfile")
         if xmlfile is None:
-            raise error.TestFail("Please provide domain xml file for create or"
-                                 " existing domain name with main_vm = xx")
+            test.fail("Please provide domain xml file for create or"
+                      " existing domain name with main_vm = xx")
         #get vm name from xml file
-        xml_cut = commands.getoutput("grep '<name>.*</name>' %s" % xmlfile)
+        xml_cut = process.system_output("grep '<name>.*</name>' %s" % xmlfile, shell=True)
         vm_name = xml_cut.strip(' <>').strip("name").strip("<>/")
         logging.debug("vm_name is %s", vm_name)
         vm = env.get_vm(vm_name)
@@ -58,9 +57,9 @@ def run(test, params, env):
                 # make sure guest is paused
                 ret = utils_misc.wait_for(lambda: vm.is_paused(), 30)
                 if not ret:
-                    raise error.TestFail("Guest status is not paused with"
-                                         "options %s, state is %s" %
-                                         (options, vm.state()))
+                    test.fail("Guest status is not paused with"
+                              "options %s, state is %s" %
+                              (options, vm.state()))
                 else:
                     logging.info("Guest status is paused.")
                 vm.resume()
@@ -70,8 +69,8 @@ def run(test, params, env):
             if ret:
                 logging.info("Guest is running now.")
             else:
-                raise error.TestFail("Fail to create guest, guest state is %s"
-                                     % vm.state())
+                test.fail("Fail to create guest, guest state is %s"
+                          % vm.state())
 
         def create_autodestroy_check(vm):
             """
@@ -80,8 +79,8 @@ def run(test, params, env):
             # make sure guest is auto destroyed
             ret = utils_misc.wait_for(lambda: not vm.exists(), 30)
             if not ret:
-                raise error.TestFail("Guest still exist with options %s" %
-                                     options)
+                test.fail("Guest still exist with options %s" %
+                          options)
             else:
                 logging.info("Guest does not exist after session closed.")
 
@@ -92,7 +91,7 @@ def run(test, params, env):
                     logging.info("Fail to create guest as expect:%s",
                                  output.stderr)
                 if vm.state() == "running":
-                    raise error.TestFail("Expect fail, but succeed indeed")
+                    test.fail("Expect fail, but succeed indeed")
             elif "--console" in options:
                 # Use session for console
                 command = "virsh create %s %s" % (xmlfile, options)
@@ -102,7 +101,7 @@ def run(test, params, env):
                 status = utils_test.libvirt.verify_virsh_console(
                     session, c_user, c_passwd, timeout=90, debug=True)
                 if not status:
-                    raise error.TestFail("Fail to verify console")
+                    test.fail("Fail to verify console")
 
                 session.close()
                 # check if domain exist after session closed
@@ -134,16 +133,16 @@ def run(test, params, env):
                 # have --paused option or none options
                 output = virsh.create(xmlfile, options)
                 if output.exit_status:
-                    raise error.TestFail("Fail to create domain:%s" %
-                                         output.stderr)
+                    test.fail("Fail to create domain:%s" %
+                              output.stderr)
                 create_status_check(vm)
 
-        except (aexpect.ShellError, aexpect.ExpectError), detail:
+        except (aexpect.ShellError, aexpect.ExpectError) as detail:
             log = session.get_output()
             session.close()
             vm.define(xmlfile)
-            raise error.TestFail("Verify create failed:\n%s\n%s" %
-                                 (detail, log))
+            test.fail("Verify create failed:\n%s\n%s" %
+                      (detail, log))
     finally:
         #Guest recovery
         vm.define(xmlfile)

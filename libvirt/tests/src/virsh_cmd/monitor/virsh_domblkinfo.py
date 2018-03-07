@@ -1,7 +1,5 @@
 import os
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import virsh
@@ -28,10 +26,9 @@ def run(test, params, env):
         :return: Command status and output.
         """
         try:
-            source_file = open(test_disk_source, 'wb')
-            source_file.seek((512 * 1024 * 1024) - 1)
-            source_file.write(str(0))
-            source_file.close()
+            with open(test_disk_source, 'wb') as source_file:
+                source_file.seek((512 * 1024 * 1024) - 1)
+                source_file.write(str(0).encode())
             virsh.attach_disk(vm_name, test_disk_source, front_dev, debug=True)
             vm_ref = vm_name
             result_source = virsh.domblkinfo(vm_ref, test_disk_source,
@@ -56,17 +53,17 @@ def run(test, params, env):
         Ckeck virsh domblkinfo output.
         """
         if driver == "qemu" and output_source.strip() != output_target.strip():
-            raise error.TestFail("Command domblkinfo target/source"
-                                 " got different information!")
+            test.fail("Command domblkinfo target/source"
+                      " got different information!")
         if output_source != "":
             lines = output_source.splitlines()
             capacity_cols = lines[0].split(":")
             size = int(capacity_cols[1].strip())
             if disk_size != size and disk_size_check:
-                raise error.TestFail("Command domblkinfo output is wrong! "
-                                     "'%d' != '%d'" % (disk_size, size))
+                test.fail("Command domblkinfo output is wrong! "
+                          "'%d' != '%d'" % (disk_size, size))
         else:
-            raise error.TestFail("Command domblkinfo has no output!")
+            test.fail("Command domblkinfo has no output!")
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -136,11 +133,11 @@ def run(test, params, env):
     # Check status_error
     if status_error == "yes":
         if status_target == 0 or status_source == 0:
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if status_target != 0 or status_source != 0:
-            raise error.TestFail("Run failed with right command")
+            test.fail("Run failed with right command")
         # Check source information.
         check_disk_info()
     else:
-        raise error.TestFail("The status_error must be 'yes' or 'no'!")
+        test.fail("The status_error must be 'yes' or 'no'!")

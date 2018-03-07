@@ -168,7 +168,7 @@ def run(test, params, env):
         new_xml = backup_xml.copy()
         try:
             vm_xml.VMXML.add_security_info(new_xml, security_pwd)
-        except Exception, info:
+        except Exception as info:
             test.cancel(info)
     domuuid = vm.get_uuid()
     domid = vm.get_id()
