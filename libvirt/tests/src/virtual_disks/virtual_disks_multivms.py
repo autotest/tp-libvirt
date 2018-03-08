@@ -1,9 +1,6 @@
 import os
 import logging
-
 import aexpect
-
-from autotest.client.shared import error
 
 from virttest import utils_selinux
 from virttest import virt_vm
@@ -96,7 +93,7 @@ def run(test, params, env):
 
     vm_names = params.get("vms").split()
     if len(vm_names) < 2:
-        raise error.TestNAError("No multi vms provided.")
+        test.cancel("No multi vms provided.")
 
     # Disk specific attributes.
     vms_sgio = params.get("virt_disk_vms_sgio", "").split()
@@ -134,7 +131,7 @@ def run(test, params, env):
         if disk_format == "scsi":
             disk_source = libvirt.create_scsi_disk(scsi_options)
             if not disk_source:
-                raise error.TestNAError("Get scsi disk failed.")
+                test.cancel("Get scsi disk failed.")
             disks.append({"format": "scsi", "source": disk_source})
 
         elif disk_format == "iscsi":
@@ -213,7 +210,7 @@ def run(test, params, env):
                 vms_list[i]['vm'].start()
                 # Check if VM is started as expected.
                 if not vms_list[i]['status']:
-                    raise error.TestFail('VM started unexpectedly.')
+                    test.fail('VM started unexpectedly.')
 
                 session = vms_list[i]['vm'].wait_for_login()
                 # if we are testing hotplug, it need to start domain and
@@ -227,9 +224,9 @@ def run(test, params, env):
                     # Check if the return code of attach-device
                     # command is as expected.
                     if 0 != result and vms_list[i]['status']:
-                        raise error.TestFail('Failed to hotplug disk device')
+                        test.fail('Failed to hotplug disk device')
                     elif 0 == result and not vms_list[i]['status']:
-                        raise error.TestFail('Hotplug disk device unexpectedly.')
+                        test.fail('Hotplug disk device unexpectedly.')
 
                 # Check disk error_policy option in VMs.
                 if test_error_policy:
@@ -243,16 +240,16 @@ def run(test, params, env):
                             s, o = session.cmd_status_output(cmd)
                             logging.debug("error_policy in vm0 exit %s; output: %s", s, o)
                             if 0 != s:
-                                raise error.TestFail("Test error_policy %s: cann't see"
-                                                     " error messages")
+                                test.fail("Test error_policy %s: cann't see"
+                                          " error messages")
                             session.close()
                             break
 
                         if session.cmd_status("fdisk -l /dev/%s && mount /dev/%s /mnt; ls /mnt"
                                               % (disk_target, disk_target)):
                             session.close()
-                            raise error.TestFail("Test error_policy: "
-                                                 "failed to mount disk")
+                            test.fail("Test error_policy: "
+                                      "failed to mount disk")
                     if i == 1:
                         try:
                             session0 = vms_list[0]['vm'].wait_for_login(timeout=10)
@@ -267,22 +264,22 @@ def run(test, params, env):
                             logging.debug("session in vm0 exit %s; output: %s", s, o)
                             if error_policy == "report":
                                 if s:
-                                    raise error.TestFail("Test error_policy %s: cann't report"
-                                                         " error" % error_policy)
+                                    test.fail("Test error_policy %s: cann't report"
+                                              " error" % error_policy)
                             elif error_policy == "ignore":
                                 if 0 == s:
-                                    raise error.TestFail("Test error_policy %s: error cann't"
-                                                         " be ignored" % error_policy)
+                                    test.fail("Test error_policy %s: error cann't"
+                                              " be ignored" % error_policy)
                             session0.close()
                         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
                             if error_policy == "stop":
                                 if not vms_list[0]['vm'].is_paused():
-                                    raise error.TestFail("Test error_policy %s: cann't stop"
-                                                         " VM" % error_policy)
+                                    test.fail("Test error_policy %s: cann't stop"
+                                              " VM" % error_policy)
                             else:
                                 logging.error(str(e))
-                                raise error.TestFail("Test error_policy %s: login failed"
-                                                     % error_policy)
+                                test.fail("Test error_policy %s: login failed"
+                                          % error_policy)
 
                 if test_shareable:
                     # Check shared file selinux label with type and MCS as
@@ -292,8 +289,8 @@ def run(test, params, env):
                         logging.debug("Context of shared img '%s' is '%s'" %
                                       (disk_path, se_label))
                         if "svirt_image_t:s0" not in se_label:
-                            raise error.TestFail("Context of shared img is not"
-                                                 " expected.")
+                            test.fail("Context of shared img is not"
+                                      " expected.")
                     if i == 1:
                         try:
                             test_str = "teststring"
@@ -305,7 +302,7 @@ def run(test, params, env):
                             s, o = session0.cmd_status_output(cmd)
                             logging.debug("session in vm0 exit %s; output: %s", s, o)
                             if s:
-                                raise error.TestFail("Test disk shareable on VM0 failed")
+                                test.fail("Test disk shareable on VM0 failed")
                             session0.close()
                             # Try to read on vm1.
                             cmd = ("fdisk -l /dev/%s && mount /dev/%s /mnt && grep %s"
@@ -314,10 +311,10 @@ def run(test, params, env):
                             s, o = session.cmd_status_output(cmd)
                             logging.debug("session in vm1 exit %s; output: %s", s, o)
                             if s:
-                                raise error.TestFail("Test disk shareable on VM1 failed")
+                                test.fail("Test disk shareable on VM1 failed")
                         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
                             logging.error(str(e))
-                            raise error.TestFail("Test disk shareable: login failed")
+                            test.fail("Test disk shareable: login failed")
 
                 if test_readonly:
                     # Check shared file selinux label with type and MCS as
@@ -327,8 +324,8 @@ def run(test, params, env):
                         logging.debug("Context of shared iso '%s' is '%s'" %
                                       (disk_path, se_label))
                         if "virt_content_t:s0" not in se_label:
-                            raise error.TestFail("Context of shared iso is not"
-                                                 " expected.")
+                            test.fail("Context of shared iso is not"
+                                      " expected.")
                     if i == 1:
                         try:
                             test_str = "teststring"
@@ -340,20 +337,20 @@ def run(test, params, env):
                             logging.debug("session in vm0 exit %s; output: %s", s, o)
                             session0.close()
                             if s:
-                                raise error.TestFail("Test file not found in VM0 cdrom")
+                                test.fail("Test file not found in VM0 cdrom")
                             # Try to read on vm1.
                             s, o = session.cmd_status_output(cmd)
                             logging.debug("session in vm1 exit %s; output: %s", s, o)
                             if s:
-                                raise error.TestFail("Test file not found in VM1 cdrom")
+                                test.fail("Test file not found in VM1 cdrom")
                         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
                             logging.error(str(e))
-                            raise error.TestFail("Test disk shareable: login failed")
+                            test.fail("Test disk shareable: login failed")
                 session.close()
             except virt_vm.VMStartError, start_error:
                 if vms_list[i]['status']:
-                    raise error.TestFail("VM failed to start."
-                                         "Error: %s" % str(start_error))
+                    test.fail("VM failed to start."
+                              "Error: %s" % str(start_error))
     finally:
         # Stop VMs.
         for i in range(len(vms_list)):
