@@ -68,6 +68,7 @@ def run(test, params, env):
     suspend_operation = params.get("suspend_operation", "no")
     reboot_operation = params.get("reboot_operation", "no")
     virsh_dumpxml = params.get("virsh_dumpxml", "no")
+    guest_info = params.get("guest_info", "no")
     # Check the parameters from configuration file.
     for each_param in params.itervalues():
         if "ENTER_YOUR" in each_param:
@@ -242,7 +243,20 @@ def run(test, params, env):
         else:
             test.fail("passthroughed adapter not found after reboot")
 
+    def test_getinfo():
+        # get the guest information
+        # get domid
+        result = virsh.domid(vm_name, **dargs)
+        libvirt.check_exit_status(result)
+        # get dominfo
+        result = virsh.dominfo(vm_name, **dargs)
+        libvirt.check_exit_status(result)
+        # get domuuid
+        result = virsh.domuuid(vm_name, **dargs)
+        libvirt.check_exit_status(result)
+
     def test_dump():
+        # dump the xml
         cmd_result = virsh.dumpxml(vm_name, debug=True)
         if cmd_result.exit_status:
             test.fail("Failed to dump xml of domain %s" % vm_name)
@@ -256,6 +270,8 @@ def run(test, params, env):
                 test_reboot()
             if virsh_dumpxml == "yes":
                 test_dump()
+            if guest_info == "yes":
+                test_getinfo()
             device_hotunplug()
 
     finally:
