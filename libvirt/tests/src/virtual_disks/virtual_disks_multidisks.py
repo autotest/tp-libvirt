@@ -75,7 +75,7 @@ def run(test, params, env):
         # Disk's order on pci bus should keep the same with disk target name.
         s_dev = sorted(slot_dict.keys())
         s_slot = sorted(slot_dict.values())
-        for i in range(len(s_dev)):
+        for i in list(range(len(s_dev))):
             if s_dev[i] in targets_name and slot_dict[s_dev[i]] != s_slot[i]:
                 return False
         return True
@@ -163,7 +163,7 @@ def run(test, params, env):
                         iscsi_target, lun_num = libvirt.setup_or_cleanup_iscsi(
                             is_setup=True, is_login=False, image_size=image_size,
                             chap_user=chap_user, chap_passwd=chap_passwd)
-                    except Exception, iscsi_ex:
+                    except Exception as iscsi_ex:
                         logging.debug("Failed to create iscsi lun: %s", str(iscsi_ex))
                         libvirt.setup_or_cleanup_iscsi(is_setup=False)
                     disk.update({"format": disk_format,
@@ -240,7 +240,7 @@ def run(test, params, env):
             # Here the script needs wait for a while for the guest to
             # recognize the hotplugged disk on PPC
             add_sleep()
-            for i in range(len(devices)):
+            for i in list(range(len(devices))):
                 if devices[i] == "cdrom":
                     s, o = session.cmd_status_output(
                         "ls /dev/sr0 && mount /dev/sr0 /mnt &&"
@@ -268,7 +268,7 @@ def run(test, params, env):
                         return False
             session.close()
             return True
-        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
             logging.error(str(e))
             return False
 
@@ -302,7 +302,7 @@ def run(test, params, env):
                     return False
             session.close()
             return True
-        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
             logging.error(str(e))
             return False
 
@@ -340,7 +340,7 @@ def run(test, params, env):
             # After file is deleted,discard map number should be shorter.
             if discard_map_list_after >= discard_map_list_before:
                 test.fail("discard map number doesn't reduce after file is deleted.")
-        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
             logging.error(str(e))
             test.error("Check Vm discard failed")
 
@@ -380,7 +380,7 @@ def run(test, params, env):
                     return False
             session.close()
             return True
-        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
             logging.error(str(e))
             return False
 
@@ -451,7 +451,7 @@ def run(test, params, env):
         logging.debug("lines: %s", lines)
         if len(lines) != len(bootorders):
             return False
-        for i in range(len(bootorders)):
+        for i in list(range(len(bootorders))):
             if lines[i] != bootorders[i]:
                 return False
 
@@ -490,7 +490,7 @@ def run(test, params, env):
                 test.error("Failed to read/write disk in VM:"
                            " %s" % output)
             session.close()
-        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), detail:
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as detail:
             test.error(str(detail))
 
     def check_dom_iothread():
@@ -628,7 +628,7 @@ def run(test, params, env):
         try:
             if pool_type == "iscsi":
                 create_iscsi_pool()
-        except Exception, pool_exception:
+        except Exception as pool_exception:
             pvt.cleanup_pool(pool_name, pool_type, pool_target,
                              emulated_image, **virsh_dargs)
             test.error("Error occurred when prepare pool xml with message:%s\n",
@@ -852,7 +852,7 @@ def run(test, params, env):
     # Create virtual device file.
     disks = []
     try:
-        for i in range(len(device_source_names)):
+        for i in list(range(len(device_source_names))):
             if test_disk_type_dir:
                 # If we testing disk type dir option,
                 # it needn't to create disk image
@@ -865,7 +865,7 @@ def run(test, params, env):
                 if disk:
                     disks.append(disk)
 
-    except Exception, e:
+    except Exception as e:
         logging.error(repr(e))
         for img in disks:
             if img.has_key("disk_dev"):
@@ -886,7 +886,7 @@ def run(test, params, env):
     disks_img = []
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     try:
-        for i in range(len(disks)):
+        for i in list(range(len(disks))):
             disk_xml = Disk(type_name=device_types[i])
             # If we are testing image file on iscsi disk,
             # mount the disk and then create the image.
@@ -1086,7 +1086,7 @@ def run(test, params, env):
 
         # Create second controller,and add it to vmxml.
         if multi_ide_controller:
-            for i in range(1, 2):
+            for i in list(range(1, 2)):
                 ide_controller = Controller("controller")
                 ctl_type = params.get("virtio_scsi_controller_type")
                 ide_controller.type = ctl_type
@@ -1205,7 +1205,7 @@ def run(test, params, env):
 
         # Hotplug the disks.
         if device_at_dt_disk:
-            for i in range(len(disks)):
+            for i in list(range(len(disks))):
                 attach_option = ""
                 if len(device_attach_option) > i:
                     attach_option = device_attach_option[i]
@@ -1217,7 +1217,7 @@ def run(test, params, env):
                     disk_attach_error = "yes" == device_attach_error[i]
                 libvirt.check_exit_status(ret, disk_attach_error)
         elif hotplug:
-            for i in range(len(disks_xml)):
+            for i in list(range(len(disks_xml))):
                 disks_xml[i].xmltreefile.write()
                 attach_option = ""
                 if len(device_attach_option) > i:
@@ -1363,7 +1363,7 @@ def run(test, params, env):
 
         # Check the disk bootorder.
         if test_disk_bootorder:
-            for i in range(len(device_targets)):
+            for i in list(range(len(device_targets))):
                 if len(device_attach_error) > i:
                     if device_attach_error[i] == "yes":
                         continue
@@ -1480,7 +1480,7 @@ def run(test, params, env):
             vm.wait_for_login()
         # If we testing hotplug, detach the disk at last.
         if device_at_dt_disk:
-            for i in range(len(disks)):
+            for i in list(range(len(disks))):
                 dt_options = ""
                 if devices[i] == "cdrom":
                     dt_options = "--config"
@@ -1496,7 +1496,7 @@ def run(test, params, env):
                     test.fail("See device in VM after hotunplug")
 
         elif hotplug:
-            for i in range(len(disks_xml)):
+            for i in list(range(len(disks_xml))):
                 if len(device_attach_error) > i:
                     if device_attach_error[i] == "yes":
                         continue

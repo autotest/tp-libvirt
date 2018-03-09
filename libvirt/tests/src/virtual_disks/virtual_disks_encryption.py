@@ -95,7 +95,7 @@ def run(test, params, env):
         try:
             encryption_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
                                          ret.stdout)[0].lstrip()
-        except IndexError, e:
+        except IndexError as e:
             test.error("Fail to get newly created secret uuid")
         logging.debug("Secret uuid %s", encryption_uuid)
 
@@ -155,7 +155,7 @@ def run(test, params, env):
             if s != 0:
                 return False
             return True
-        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
             logging.error(str(e))
             return False
 
@@ -223,7 +223,7 @@ def run(test, params, env):
             # If Libvirt version is lower than 2.5.0
             # Creating luks encryption volume is not supported,so skip it.
             create_vol(pool_name, vol_encryption_params, vol_params)
-        except AssertionError, info:
+        except AssertionError as info:
             err_msgs = ("create: invalid option")
             if str(info).count(err_msgs):
                 test.error("Creating luks encryption volume "
@@ -298,7 +298,7 @@ def run(test, params, env):
                 else:
                     if not check_in_vm(vm, device_target, old_parts):
                         test.fail("Check encryption disk in VM failed")
-        except virt_vm.VMStartError, e:
+        except virt_vm.VMStartError as e:
             if status_error:
                 if hotplug:
                     test.fail("In hotplug scenario, VM should "

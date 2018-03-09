@@ -123,7 +123,7 @@ def run(test, params, env):
     # Backup vm xml files.
     vms_backup = []
     # We just use 2 VMs for testing.
-    for i in range(2):
+    for i in list(range(2)):
         vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[i])
         vms_backup.append(vmxml_backup)
     # Initialize VM list
@@ -167,7 +167,7 @@ def run(test, params, env):
             disks.append({"source": disk_source})
 
         # Compose the new domain xml
-        for i in range(2):
+        for i in list(range(2)):
             vm = env.get_vm(vm_names[i])
             # Destroy domain first.
             if vm.is_alive():
@@ -207,7 +207,7 @@ def run(test, params, env):
                              "disk": disk_xml})
             logging.debug("vms_list %s" % vms_list)
 
-        for i in range(len(vms_list)):
+        for i in list(range(len(vms_list))):
             try:
                 # Try to start the domain.
                 vms_list[i]['vm'].start()
@@ -274,7 +274,7 @@ def run(test, params, env):
                                     raise error.TestFail("Test error_policy %s: error cann't"
                                                          " be ignored" % error_policy)
                             session0.close()
-                        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+                        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
                             if error_policy == "stop":
                                 if not vms_list[0]['vm'].is_paused():
                                     raise error.TestFail("Test error_policy %s: cann't stop"
@@ -315,7 +315,7 @@ def run(test, params, env):
                             logging.debug("session in vm1 exit %s; output: %s", s, o)
                             if s:
                                 raise error.TestFail("Test disk shareable on VM1 failed")
-                        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+                        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
                             logging.error(str(e))
                             raise error.TestFail("Test disk shareable: login failed")
 
@@ -346,17 +346,17 @@ def run(test, params, env):
                             logging.debug("session in vm1 exit %s; output: %s", s, o)
                             if s:
                                 raise error.TestFail("Test file not found in VM1 cdrom")
-                        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+                        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
                             logging.error(str(e))
                             raise error.TestFail("Test disk shareable: login failed")
                 session.close()
-            except virt_vm.VMStartError, start_error:
+            except virt_vm.VMStartError as start_error:
                 if vms_list[i]['status']:
                     raise error.TestFail("VM failed to start."
                                          "Error: %s" % str(start_error))
     finally:
         # Stop VMs.
-        for i in range(len(vms_list)):
+        for i in list(range(len(vms_list))):
             if vms_list[i]['vm'].is_alive():
                 vms_list[i]['vm'].destroy(gracefully=False)
 
