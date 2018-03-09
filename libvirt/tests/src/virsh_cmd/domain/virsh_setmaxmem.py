@@ -53,7 +53,7 @@ def run(test, params, env):
             size_darg_key = "size"
 
         if mem_ref == "halfless":
-            size_darg_value = "%d" % (original_mem / 2)
+            size_darg_value = "%d" % (original_mem // 2)
         elif mem_ref == "halfmore":
             size_darg_value = "%d" % int(original_mem * 1.5)
         elif mem_ref == "same":
@@ -175,7 +175,7 @@ def run(test, params, env):
             if vm.state() == "shut off":
                 try:
                     vm.start()
-                except virt_vm.VMStartError, detail:
+                except virt_vm.VMStartError as detail:
                     start_status = 1
                     logging.error("Start after VM's maxmem modified failed:%s",
                                   detail)

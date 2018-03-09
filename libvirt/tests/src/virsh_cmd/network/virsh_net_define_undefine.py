@@ -91,7 +91,7 @@ def run(test, params, env):
                                            net_uuid, bridge=None)
 
     if remove_existing:
-        for netxml in backup.values():
+        for netxml in list(backup.values()):
             netxml.orbital_nuclear_strike()
 
     # Test both define and undefine, So collect info
@@ -211,11 +211,11 @@ def run(test, params, env):
         # Recover environment
         leftovers = network_xml.NetworkXML.new_all_networks_dict(
             virsh_instance)
-        for netxml in leftovers.values():
+        for netxml in list(leftovers.values()):
             netxml.orbital_nuclear_strike()
 
         # Recover from backup
-        for netxml in backup.values():
+        for netxml in list(backup.values()):
             netxml.sync(backup_state[netxml.name])
 
         # Close down persistent virsh session (including for all netxml copies)

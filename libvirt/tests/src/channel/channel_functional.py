@@ -205,7 +205,7 @@ def run(test, params, env):
                 try:
                     session.cmd_status('echo "%s" > %s' % (msg, guest_path),
                                        timeout=1)
-                except aexpect.ShellTimeoutError, detail:
+                except aexpect.ShellTimeoutError as detail:
                     pass
                 nc_session.read_until_last_line_matches(msg, timeout=1)
 
@@ -213,7 +213,7 @@ def run(test, params, env):
                 nc_session.sendline(msg)
                 try:
                     session.cmd_output('cat %s' % guest_path, timeout=1)
-                except aexpect.ShellTimeoutError, detail:
+                except aexpect.ShellTimeoutError as detail:
                     if detail.output.strip() != msg:
                         raise error.TestFail("Expect receive '%s' in guest, "
                                              "But got %s" %

@@ -55,7 +55,7 @@ def run(test, params, env):
             remote.handle_prompts(session, None, None, r"[\#\$]\s*$")
             session.close()
             logging.info("Succeed to do snapshot edit")
-        except (aexpect.ShellError, aexpect.ExpectError), details:
+        except (aexpect.ShellError, aexpect.ExpectError) as details:
             log = session.get_output()
             session.close()
             test.fail("Failed to do snapshot-edit: %s\n%s"
@@ -93,7 +93,7 @@ def run(test, params, env):
         else:
             # Print just the differences rather than printing both
             # files and forcing the eyeball comparison between lines
-            elems = map(None, pre_xml.splitlines(), after_xml.splitlines())
+            elems = list(map(None, pre_xml.splitlines(), after_xml.splitlines()))
             for pre_line, aft_line in elems:
                 if pre_line.lstrip().strip() != aft_line.lstrip().strip():
                     if pre_line is not None:

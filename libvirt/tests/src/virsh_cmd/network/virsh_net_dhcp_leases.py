@@ -70,7 +70,7 @@ def run(test, params, env):
             keys = re.findall(pat, lines[0])
             for line in lines[2:]:
                 values = re.findall(pat, line)
-                leases.append(dict(zip(keys, values)))
+                leases.append(dict(list(zip(keys, values))))
             return leases
         except:
             test.error("Fail to parse output: %s" % output)
@@ -140,7 +140,7 @@ def run(test, params, env):
     if prepare_net:
         create_network()
     nets = virsh.net_state_dict()
-    if net_name not in nets.keys() and not status_error:
+    if net_name not in list(nets.keys()) and not status_error:
         test.error("Not find network '%s'" % net_name)
     expected_find = False
     try:

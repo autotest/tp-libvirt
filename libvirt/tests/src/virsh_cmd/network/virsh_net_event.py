@@ -36,7 +36,7 @@ def run(test, params, env):
         """
         Trigger network start/stop actions in event_number times
         """
-        i = event_amount / 2
+        i = event_amount // 2
         event_list = []
         try:
             while i > 0:

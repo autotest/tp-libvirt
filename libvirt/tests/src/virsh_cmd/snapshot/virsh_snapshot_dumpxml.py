@@ -47,7 +47,7 @@ def snapshot_dumpxml_check(test, output, opt_dict):
     time_snip = "<creationTime>%s</creationTime>" % timestamp
 
     dom_state = "".join(opt_dict['dom_state'].split())
-    if opt_dict.has_key('disk_opt') and dom_state != "shutoff":
+    if 'disk_opt' in opt_dict and dom_state != "shutoff":
         dstate_snip = "<state>disk-snapshot</state>"
     else:
         dstate_snip = "<state>%s</state>" % dom_state
@@ -62,7 +62,7 @@ def snapshot_dumpxml_check(test, output, opt_dict):
         else:
             logging.info("XML check for %s success", var_match[var])
 
-    if opt_dict.has_key('passwd'):
+    if 'passwd' in opt_dict:
         passwd_match = "<graphic.*passwd='%s'.*>" % opt_dict['passwd']
         if not re.search(passwd_match, output):
             test.fail("Fail to match passwd in xml %s" % output)
@@ -124,7 +124,7 @@ def run(test, params, env):
             try:
                 vm_xml.VMXML.add_security_info(
                     vm_xml.VMXML.new_from_dumpxml(vm_name), passwd)
-            except Exception, info:
+            except Exception as info:
                 test.cancel(info)
             vm.start()
             if secu_opt is not None:

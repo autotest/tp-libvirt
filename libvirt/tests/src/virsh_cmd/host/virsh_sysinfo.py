@@ -62,7 +62,7 @@ def run(test, params, env):
                 processor_version = []
                 processor_dict = sysinfo_xml.get_all_processors()
                 for i in range(len(processor_dict)):
-                    if processor_dict[i].has_key('version'):
+                    if 'version' in processor_dict[i]:
                         # For some processing libvirt will trim leading
                         # spaces, while for others it trims trailing. This
                         # code compares against dmidecode output that was

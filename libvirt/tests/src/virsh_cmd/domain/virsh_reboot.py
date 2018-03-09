@@ -43,7 +43,7 @@ def run(test, params, env):
         # Add or remove qemu-agent from guest before test
         try:
             vm.prepare_guest_agent(channel=agent, start=agent)
-        except virt_vm.VMError, e:
+        except virt_vm.VMError as e:
             logging.debug(e)
             # qemu-guest-agent is not available on REHL5
             test.cancel("qemu-guest-agent package is not available")
@@ -83,7 +83,7 @@ def run(test, params, env):
                     # the operation before the end of reboot
                     # may result in data corruption
                     vm.wait_for_login().close()
-            except (remote.LoginError, process.CmdError, aexpect.ShellError), e:
+            except (remote.LoginError, process.CmdError, aexpect.ShellError) as e:
                 logging.error("Exception: %s", str(e))
                 status = -1
         if vm_ref != "remote_name":

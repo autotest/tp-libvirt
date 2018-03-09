@@ -45,7 +45,7 @@ def run(test, params, env):
                     timeout=5,
                     print_func=logging.debug)
         except (aexpect.ShellError, aexpect.ExpectError,
-                aexpect.ShellTimeoutError), details:
+                aexpect.ShellTimeoutError) as details:
             session.close()
             test.error("Failed to do save-image-edit: %s" % details)
 

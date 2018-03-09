@@ -25,7 +25,7 @@ def edit_filter_xml(test, filter_name, edit_cmd):
         remote.handle_prompts(session, None, None, r"[\#\$]\s*$")
         session.close()
         logging.info("Succeed to do nwfilter edit")
-    except (aexpect.ShellError, aexpect.ExpectError), details:
+    except (aexpect.ShellError, aexpect.ExpectError) as details:
         log = session.get_output()
         session.close()
         test.fail("Failed to do nwfilter-edit: %s\n%s"

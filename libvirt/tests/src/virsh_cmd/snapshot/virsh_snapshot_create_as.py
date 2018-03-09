@@ -33,7 +33,7 @@ def xml_recover(vmxml):
         vmxml.define()
         return True
 
-    except xcepts.LibvirtXMLError, detail:
+    except xcepts.LibvirtXMLError as detail:
         logging.error("Recover older xml failed:%s.", detail)
         return False
 
@@ -412,7 +412,8 @@ def run(test, params, env):
     # Generate empty image for negative test
     if bad_disk is not None:
         bad_disk = os.path.join(test.tmpdir, bad_disk)
-        os.open(bad_disk, os.O_RDWR | os.O_CREAT)
+        with open(bad_disk, 'w') as bad_file:
+            pass
 
     # Generate external disk
     if reuse_external:

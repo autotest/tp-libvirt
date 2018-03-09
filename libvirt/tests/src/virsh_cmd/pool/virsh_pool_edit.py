@@ -28,7 +28,7 @@ def edit_pool(test, pool, edit_cmd):
         remote.handle_prompts(session, None, None, r"[\#\$]\s*$")
         session.close()
         logging.info("Succeed to do pool edit.")
-    except (aexpect.ShellError, aexpect.ExpectError), details:
+    except (aexpect.ShellError, aexpect.ExpectError) as details:
         log = session.get_output()
         session.close()
         test.fail("Failed to do pool edit: %s\n%s"
@@ -58,7 +58,7 @@ def check_pool(pool_name, check_point, expect_value=""):
         else:
             logging.error("Unsupport check point %s", check_point)
             return False
-    except Exception, e:
+    except Exception as e:
         logging.error("Error occured: %s", e)
         return False
     if expect_value == actual_value:

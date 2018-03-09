@@ -30,7 +30,7 @@ def do_low_level_test(virsh_dargs, test_xml, options_ref, extra):
         # ignore_status==False
         virsh.net_create(alt_file, extra, **virsh_dargs)
         return True
-    except (process.CmdError), cmd_excpt:
+    except (process.CmdError) as cmd_excpt:
         # CmdError catches failing virsh commands
         logging.debug("Exception-thrown: " + str(cmd_excpt))
         return False
@@ -62,7 +62,7 @@ def do_high_level_test(virsh_dargs, test_xml, net_name, net_uuid, bridge):
     try:
         test_netxml.create()
         return test_netxml.defined
-    except (IOError, process.CmdError, LibvirtXMLError), cmd_excpt:
+    except (IOError, process.CmdError, LibvirtXMLError) as cmd_excpt:
         # CmdError catches failing virsh commands
         # IOError catches corrupt XML data
         # Invalid XML lead to LibvirtXMLError
@@ -116,7 +116,7 @@ def run(test, params, env):
         # find file size
         test_xml.seek(0, 2)  # end
         # write garbage at middle of file
-        test_xml.seek(test_xml.tell() / 2)
+        test_xml.seek(test_xml.tell() // 2)
         test_xml.write('"<network><<<BAD>>><\'XML</network\>'
                        '!@#$%^&*)>(}>}{CORRUPTE|>!')
         test_xml.flush()
@@ -124,7 +124,7 @@ def run(test, params, env):
         test_xml.seek(0)
 
     if remove_existing:
-        for netxml in backup.values():
+        for netxml in list(backup.values()):
             netxml.orbital_nuclear_strike()
 
     # Run test case
@@ -155,11 +155,11 @@ def run(test, params, env):
 
         # Recover environment
         leftovers = NetworkXML.new_all_networks_dict(vrsh)
-        for netxml in leftovers.values():
+        for netxml in list(leftovers.values()):
             netxml.orbital_nuclear_strike()
 
         # Recover from backup
-        for netxml in backup.values():
+        for netxml in list(backup.values()):
             netxml.sync(backup_state[netxml.name])
 
         # Close down persistent virsh session (including for all netxml copies)

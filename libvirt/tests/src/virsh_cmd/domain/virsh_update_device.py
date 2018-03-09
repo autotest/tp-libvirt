@@ -19,10 +19,9 @@ def create_disk(test, vm_name, orig_iso, disk_type, target_dev, mode=""):
     :param mode: readonly or shareable
     """
     try:
-        _file = open(orig_iso, 'wb')
-        _file.seek((1024 * 1024) - 1)
-        _file.write(str(0))
-        _file.close()
+        with open(orig_iso, 'wb') as _file:
+            _file.seek((1024 * 1024) - 1)
+            _file.write(str(0).encode())
     except IOError:
         test.fail("Create orig_iso failed!")
     options = "--type %s --sourcetype=file --config" % disk_type
@@ -48,10 +47,9 @@ def create_attach_xml(test, update_xmlfile, source_iso, disk_type, target_bus,
     :param disk_mode: readonly or shareable
     """
     try:
-        _file = open(source_iso, 'wb')
-        _file.seek((1024 * 1024) - 1)
-        _file.write(str(0))
-        _file.close()
+        with open(source_iso, 'wb') as _file:
+            _file.seek((1024 * 1024) - 1)
+            _file.write(str(0).encode())
     except IOError:
         test.fail("Create source_iso failed!")
     disk_class = VMXML.get_device_class('disk')
@@ -81,7 +79,8 @@ def is_attached(vmxml_devices, disk_type, source_file, target_dev):
     """
     disks = vmxml_devices.by_device_tag('disk')
     for disk in disks:
-        logging.debug("Check disk XML:\n%s", open(disk['xml']).read())
+        with open(disk['xml']) as _file:
+            logging.debug("Check disk XML:\n%s", _file.read())
         if disk.device != disk_type:
             continue
         if disk.target['dev'] != target_dev:
@@ -296,7 +295,8 @@ def run(test, params, env):
         logging.debug("active_attached: %s", str(active_attached))
         logging.debug("inctive_attached: %s", str(inactive_attached))
         logging.debug("Device XML:")
-        logging.debug(open(update_xmlfile, "r").read())
+        with open(update_xmlfile, "r") as _file:
+            logging.debug(_file.read())
 
     # clean up tmp files
     del vmxml

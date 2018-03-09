@@ -26,7 +26,8 @@ def check_secret(params):
     base64_file = os.path.join(_VIRT_SECRETS_PATH, "%s.base64" % uuid)
 
     if os.access(base64_file, os.R_OK):
-        base64_encoded_string = open(base64_file, 'r').read().strip()
+        with open(base64_file, 'rb') as base64file:
+            base64_encoded_string = base64file.read().strip().decode('utf-8')
         secret_decoded_string = base64.b64decode(base64_encoded_string)
     else:
         logging.error("Did not find base64_file: %s", base64_file)
@@ -62,9 +63,8 @@ def create_secret_volume(test, params):
 
     logging.debug("Prepare the secret XML: %s", sec_xml)
     sec_file = mktemp()
-    xml_object = open(sec_file, 'w')
-    xml_object.write(sec_xml)
-    xml_object.close()
+    with open(sec_file, 'w') as xml_object:
+        xml_object.write(sec_xml)
 
     result = virsh.secret_define(sec_file)
     status = result.exit_status
