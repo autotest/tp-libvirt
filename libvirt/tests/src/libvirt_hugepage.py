@@ -4,8 +4,7 @@ import time
 
 from aexpect import ShellError
 
-from autotest.client import utils
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
@@ -20,7 +19,6 @@ from virttest.staging import utils_memory
 
 
 def prepare_c_file():
-    output = file("/tmp/test.c", 'w')
     outputlines = """
     #include<stdio.h>
     #include<malloc.h>
@@ -40,8 +38,8 @@ def prepare_c_file():
         return 0;
     }
     """
-    output.writelines(outputlines)
-    output.close()
+    with open("/tmp/test.c", 'w') as output:
+        output.writelines(outputlines)
     return "/tmp/test.c"
 
 
@@ -68,11 +66,11 @@ def run(test, params, env):
     if test_type == "contrast":
         vm_names = params.get("vms").split()[:2]
         if len(vm_names) < 2:
-            raise error.TestNAError("This test requires two VMs")
+            test.cancel("This test requires two VMs")
         # confirm no VM running
         allvms = virsh.dom_list('--name').stdout.strip()
         if allvms != '':
-            raise error.TestNAError("one or more VMs are alive")
+            test.cancel("one or more VMs are alive")
         err_range = float(params.get("mem_error_range", 1.25))
     else:
         vm_names.append(params.get("main_vm"))
@@ -124,14 +122,14 @@ def run(test, params, env):
             try:
                 vm = env.get_vm(vm_name)
                 vm.start()
-            except VMError, e:
+            except VMError as e:
                 if mb_enable and not tlbfs_enable:
                     # if hugetlbfs not be mounted,
                     # VM start with memoryBacking tag will fail
                     logging.debug(e)
                 else:
                     error_msg = "Test failed in positive case. error: %s\n" % e
-                    raise error.TestFail(error_msg)
+                    test.fail(error_msg)
             if vm.is_alive() is not True:
                 break
             vms.append(vm)
@@ -139,9 +137,9 @@ def run(test, params, env):
             # try to login and run some program
             try:
                 session = vm.wait_for_login()
-            except (LoginError, ShellError), e:
+            except (LoginError, ShellError) as e:
                 error_msg = "Test failed in positive case.\n error: %s\n" % e
-                raise error.TestFail(error_msg)
+                test.fail(error_msg)
             sessions.append(session)
 
             if test_type == "stress":
@@ -175,10 +173,10 @@ def run(test, params, env):
                     cmd = "ps -ef | grep perl | grep Run"
                     return not session.cmd_status(cmd)
                 if not utils_misc.wait_for(_is_unixbench_running, timeout=240):
-                    raise error.TestNAError("Failed to run unixbench in guest,"
-                                            " please make sure some necessary"
-                                            " packages are installed in guest,"
-                                            " such as gcc, tar, bzip2")
+                    test.cancel("Failed to run unixbench in guest,"
+                                " please make sure some necessary"
+                                " packages are installed in guest,"
+                                " such as gcc, tar, bzip2")
                 logging.debug("Unixbench test is running in VM")
 
         if test_type == "contrast":
@@ -197,51 +195,51 @@ def run(test, params, env):
             if test_type == "contrast":
                 # get qemu-kvm memory consumption by top
                 cmd = "top -b -n 1|awk '$1 == %s {print $10}'" % pid
-                rate = utils.run(cmd, ignore_status=False,
-                                 verbose=True).stdout.strip()
+                rate = process.run(cmd, ignore_status=False,
+                                   verbose=True, shell=True).stdout.strip()
                 qemu_kvm_used = (utils_memory.memtotal() * float(rate)) / 100
                 logging.debug("rate: %s, used-by-qemu-kvm: %f, used-by-vm: %d",
                               rate, qemu_kvm_used, hugepage_used)
                 if abs(qemu_kvm_used - hugepage_used) > hugepage_used * (err_range - 1):
-                    raise error.TestFail("Error for hugepage usage")
+                    test.fail("Error for hugepage usage")
             if test_type == "stress":
                 if non_started_free <= started_free:
                     logging.debug("hugepage usage:%d -> %d", non_started_free,
                                   started_free)
-                    raise error.TestFail("Error for hugepage usage with stress")
+                    test.fail("Error for hugepage usage with stress")
             if mb_enable is not True:
                 if static_used > 0:
-                    raise error.TestFail("VM use static hugepage without"
-                                         " memoryBacking element")
+                    test.fail("VM use static hugepage without"
+                              " memoryBacking element")
                 if thp_enable is not True and started_anon > 0:
-                    raise error.TestFail("VM use transparent hugepage, while"
-                                         " it's disabled")
+                    test.fail("VM use transparent hugepage, while"
+                              " it's disabled")
             else:
                 if tlbfs_enable is not True:
                     if static_used > 0:
-                        error.TestFail("VM use static hugepage without tlbfs"
-                                       " mounted")
+                        test.fail("VM use static hugepage without tlbfs"
+                                  " mounted")
                     if thp_enable and started_anon <= 0:
-                        raise error.TestFail("VM doesn't use transparent"
-                                             " hugepage")
+                        test.fail("VM doesn't use transparent"
+                                  " hugepage")
                 else:
                     if shp_num > 0:
                         if static_used <= 0:
-                            raise error.TestFail("VM doesn't use static"
-                                                 " hugepage")
+                            test.fail("VM doesn't use static"
+                                      " hugepage")
                     else:
                         if static_used > 0:
-                            raise error.TestFail("VM use static hugepage,"
-                                                 " while it's set to zero")
+                            test.fail("VM use static hugepage,"
+                                      " while it's set to zero")
                     if thp_enable is not True:
                         if started_anon > 0:
-                            raise error.TestFail("VM use transparent hugepage,"
-                                                 " while it's disabled")
+                            test.fail("VM use transparent hugepage,"
+                                      " while it's disabled")
                     else:
                         if shp_num == 0 and started_anon <= 0:
-                            raise error.TestFail("VM doesn't use transparent"
-                                                 " hugepage, while static"
-                                                 " hugepage is disabled")
+                            test.fail("VM doesn't use transparent"
+                                      " hugepage, while static"
+                                      " hugepage is disabled")
     finally:
         # end up session
         for session in sessions:

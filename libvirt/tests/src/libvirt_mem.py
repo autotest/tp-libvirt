@@ -6,6 +6,8 @@ import tempfile
 
 from avocado.utils import process
 
+from six.moves import xrange
+
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
@@ -485,7 +487,9 @@ def run(test, params, env):
                                   " or unable to collect dmesg")
                     session.close()
                     if os.path.exists(dmesg_file):
-                        if not re.findall(r'memory memory\d+?: Offline failed', open(dmesg_file, 'r').read()):
+                        with open(dmesg_file, 'r') as f:
+                            flag = re.findall(r'memory memory\d+?: Offline failed', f.read())
+                        if not flag:
                             # The attached memory is used by vm, and it could not be unplugged
                             # The result is expected
                             os.remove(dmesg_file)
@@ -507,10 +511,11 @@ def run(test, params, env):
                     if (known_error[0] == known_error[-1]) and \
                        known_error.startswith(("'")):
                         known_error = known_error[1:-1]
-                    if known_error in open(dmesg_file).read():
-                        unplug_failed_with_known_error = True
-                        logging.debug("Known error occured, while hot unplug"
-                                      ": %s", known_error)
+                    with open(dmesg_file, 'r') as f:
+                        if known_error in f.read():
+                            unplug_failed_with_known_error = True
+                            logging.debug("Known error occured, while hot unplug"
+                                          ": %s", known_error)
             if test_dom_xml and not unplug_failed_with_known_error:
                 check_dom_xml(dt_mem=detach_device)
                 # Remove dmesg temp file

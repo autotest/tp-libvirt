@@ -181,7 +181,7 @@ def run(test, params, env):
                         test.fail("The disk label is not equal to "
                                   "'%s'." % sec_label_id)
 
-        except virt_vm.VMStartError, e:
+        except virt_vm.VMStartError as e:
             # Starting VM failed.
             if not status_error:
                 test.fail("Test failed in positive case."

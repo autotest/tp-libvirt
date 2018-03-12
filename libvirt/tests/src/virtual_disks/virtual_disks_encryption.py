@@ -100,7 +100,7 @@ def run(test, params, env):
         logging.debug("Secret uuid %s", encryption_uuid)
 
         # Set secret value.
-        secret_string = base64.b64encode(secret_password_no_encoded)
+        secret_string = base64.b64encode(secret_password_no_encoded.encode()).decode()
         ret = virsh.secret_set_value(encryption_uuid, secret_string,
                                      **virsh_dargs)
         libvirt.check_exit_status(ret)
@@ -118,8 +118,8 @@ def run(test, params, env):
             rpm_stat = session.cmd_status("rpm -q parted || "
                                           "yum install -y parted", 300)
             if rpm_stat != 0:
-                raise test.fail("Failed to query/install parted, make sure"
-                                " that you have usable repo in guest")
+                test.fail("Failed to query/install parted, make sure"
+                          " that you have usable repo in guest")
 
             new_parts = libvirt.get_parts_list(session)
             added_parts = list(set(new_parts).difference(set(old_parts)))
@@ -328,6 +328,6 @@ def run(test, params, env):
         for sec_uuid in set(sec_uuids):
             virsh.secret_undefine(sec_uuid, **virsh_dargs)
             virsh.vol_delete(volume_name, pool_name, **virsh_dargs)
-        if virsh.pool_state_dict().has_key(pool_name):
+        if pool_name in virsh.pool_state_dict():
             virsh.pool_destroy(pool_name, **virsh_dargs)
             virsh.pool_undefine(pool_name, **virsh_dargs)

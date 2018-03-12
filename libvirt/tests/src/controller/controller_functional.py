@@ -1,8 +1,6 @@
 import re
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virt_vm
 from virttest import virsh
 from virttest.utils_test import libvirt
@@ -183,8 +181,8 @@ def run(test, params, env):
             if addr_str is None:
                 return
             else:
-                raise error.TestFail('Expect controller do not have address, '
-                                     'but got "%s"' % addr_str)
+                test.fail('Expect controller do not have address, '
+                          'but got "%s"' % addr_str)
 
         exp_addr_patt = r'00:[0-9]{2}.[0-9]'
         if model in ['ehci']:
@@ -193,14 +191,15 @@ def run(test, params, env):
             exp_addr_patt = addr_str
 
         if not re.match(exp_addr_patt, addr_str):
-            raise error.TestFail('Expect get controller address "%s", '
-                                 'but got "%s"' % (exp_addr_patt, addr_str))
+            test.fail('Expect get controller address "%s", '
+                      'but got "%s"' % (exp_addr_patt, addr_str))
 
     def check_qemu_cmdline():
         """
         Check domain qemu command line against expectation.
         """
-        cmdline = open('/proc/%s/cmdline' % vm.get_pid()).read()
+        with open('/proc/%s/cmdline' % vm.get_pid()) as proc_file:
+            cmdline = proc_file.read()
         logging.debug('Qemu command line: %s', cmdline)
         options = cmdline.split('\x00')
 
@@ -221,8 +220,8 @@ def run(test, params, env):
 
         # Check options against expectation
         if pcihole_opt != exp_pcihole_opt:
-            raise error.TestFail('Expect get qemu command serial option "%s", '
-                                 'but got "%s"' % (exp_pcihole_opt, pcihole_opt))
+            test.fail('Expect get qemu command serial option "%s", '
+                      'but got "%s"' % (exp_pcihole_opt, pcihole_opt))
 
     def check_msi():
         """
@@ -231,7 +230,7 @@ def run(test, params, env):
         addr_str = get_controller_addr(cntlr_type='virtio-serial')
 
         if addr_str is None:
-            raise error.TestError("Can't find target controller in XML")
+            test.error("Can't find target controller in XML")
 
         session = vm.wait_for_login()
         status, output = session.cmd_status_output('lspci -vvv -s %s' % addr_str)
@@ -239,12 +238,12 @@ def run(test, params, env):
 
         if (vectors is not None and int(vectors) == 0):
             if 'MSI' in output:
-                raise error.TestFail('Expect MSI disable with zero vectors,'
-                                     ' but got %s' % output)
+                test.fail('Expect MSI disable with zero vectors,'
+                          ' but got %s' % output)
         if (vectors is None or int(vectors) != 0):
             if 'MSI' not in output:
-                raise error.TestFail('Expect MSI enable with non-zero vectors,'
-                                     ' but got %s' % output)
+                test.fail('Expect MSI enable with non-zero vectors,'
+                          ' but got %s' % output)
 
     os_machine = params.get('os_machine', 'i440fx')
     cntlr_type = params.get('controller_type', None)
@@ -278,8 +277,8 @@ def run(test, params, env):
             if not start_and_check():
                 logging.debug("Can't start the VM, exiting.")
                 return
-        except virt_vm.VMStartError, detail:
-            raise error.TestFail(detail)
+        except virt_vm.VMStartError as detail:
+            test.fail(detail)
 
         check_qemu_cmdline()
 

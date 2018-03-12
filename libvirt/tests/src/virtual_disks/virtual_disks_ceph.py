@@ -760,7 +760,7 @@ def run(test, params, env):
         # Clean up volume, pool
         if vol_name and vol_name in str(virsh.vol_list(pool_name).stdout):
             virsh.vol_delete(vol_name, pool_name)
-        if pool_name and virsh.pool_state_dict().has_key(pool_name):
+        if pool_name and pool_name in virsh.pool_state_dict():
             virsh.pool_destroy(pool_name, **virsh_dargs)
             virsh.pool_undefine(pool_name, **virsh_dargs)
 

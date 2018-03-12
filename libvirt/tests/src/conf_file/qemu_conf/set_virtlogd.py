@@ -175,7 +175,7 @@ def run(test, params, env):
         # Start VM.
         try:
             vm.start()
-        except virt_vm.VMStartError, detail:
+        except virt_vm.VMStartError as detail:
             test.fail("VM failed to start."
                       "Error: %s" % str(detail))
         # Check VM log file has right permission and owner.
@@ -212,7 +212,7 @@ def run(test, params, env):
         # Start VM again.
         try:
             vm.start()
-        except virt_vm.VMStartError, detail:
+        except virt_vm.VMStartError as detail:
             test.fail("VM failed to start."
                       "Error: %s" % str(detail))
         # Check the new VM start log is appended to the end of the VM log file.

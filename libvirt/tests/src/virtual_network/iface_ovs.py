@@ -1,7 +1,6 @@
 import logging
 
-from autotest.client.shared import error
-from autotest.client import utils
+from avocado.utils import process
 
 from virttest import virt_vm
 from virttest import virsh
@@ -59,7 +58,7 @@ def run(test, params, env):
         pg_vlan = params.get("portgroup_vlan", "").split()
         if_source = eval(iface_source)
         port_vlan = {}
-        if if_source.has_key("portgroup"):
+        if "portgroup" in if_source:
             pg = if_source["portgroup"]
             for (name, vlan) in zip(pg_name, pg_vlan):
                 if pg == name:
@@ -69,17 +68,17 @@ def run(test, params, env):
         assert bridge == brname
         # Get port info from ovs-vsctl output
         cmd = "ovs-vsctl list port %s" % ifname
-        output = utils.run(cmd).stdout
+        output = process.run(cmd, shell=True).stdout
         logging.debug("ovs port output: %s", output)
         for line in output.splitlines():
             if line.count("tag"):
                 tag_info = line.rsplit(':')
-                if (port_vlan.has_key("id") and
+                if ("id" in port_vlan and
                         tag_info[0] == "tag"):
                     assert port_vlan["id"] == tag_info[1]
             elif line.count("vlan_mode"):
                 mode_info = line.rsplit(':')
-                if (port_vlan.has_key("nativeMode") and
+                if ("nativeMode" in port_vlan and
                         mode_info[0] == "vlan_mode"):
                     assert (port_vlan["nativeMode"] ==
                             "native-%s" % mode_info[1])
@@ -119,7 +118,7 @@ def run(test, params, env):
             # Try to add bridge if needed
             source = eval(iface_source)
             if source:
-                if source.has_key("bridge"):
+                if "bridge" in source:
                     if not utils_net.ovs_br_exists(source["bridge"]):
                         utils_net.add_ovs_bridge(source["bridge"])
             modify_iface_xml()
@@ -128,7 +127,7 @@ def run(test, params, env):
             # Start the VM.
             vm.start()
             if start_error:
-                raise error.TestFail("VM started unexpectedly")
+                test.fail("VM started unexpectedly")
 
             iface_name = libvirt.get_ifname_host(vm_name, iface_mac)
             if test_ovs_port:
@@ -137,7 +136,7 @@ def run(test, params, env):
         except virt_vm.VMStartError as details:
             logging.info(str(details))
             if not start_error:
-                raise error.TestFail('VM failed to start:\n%s' % details)
+                test.fail('VM failed to start:\n%s' % details)
 
     finally:
         # Recover VM.

@@ -106,7 +106,7 @@ TIMEOUT 3"""
         # if it's not in host interface list, try to set
         # source device to first active interface of host
         if (iface.type_name == "direct" and
-            source.has_key('dev') and
+            'dev' in source and
                 source['dev'] not in net_ifs):
             logging.warn("Source device %s is not a interface"
                          " of host, reset to %s",
@@ -130,7 +130,7 @@ TIMEOUT 3"""
             test.cancel("Can't find default.conf file")
 
         configs = ""
-        with open(conf_file) as f:
+        with open(conf_file, 'r') as f:
             configs = f.read()
         logging.debug("configs in file %s: %s", conf_file, configs)
         if value:
@@ -152,7 +152,7 @@ TIMEOUT 3"""
         conf_file = "/var/lib/libvirt/dnsmasq/default.addnhosts"
         hosts_re = ".*".join(hostnames)
         configs = ""
-        with open(conf_file) as f:
+        with open(conf_file, 'r') as f:
             configs = f.read()
         logging.debug("configs in file %s: %s", conf_file, configs)
         if not re.search(r"%s.*%s" % (hostip, hosts_re), configs, re.M):
@@ -165,7 +165,7 @@ TIMEOUT 3"""
         conf_file = "/var/lib/libvirt/dnsmasq/default.hostsfile"
         config = "%s,%s,%s" % (iface_mac, guest_ip, guest_name)
         configs = ""
-        with open(conf_file) as f:
+        with open(conf_file, 'r') as f:
             configs = f.read()
         logging.debug("configs in file %s: %s", conf_file, configs)
         if not configs.count(config):
@@ -185,9 +185,9 @@ TIMEOUT 3"""
             test.fail("Can't find outbound setting for htb %s" % rule_id)
         logging.debug("bandwidth from tc output:%s" % str(se.groups()))
         rate = None
-        if bandwidth.has_key("floor"):
+        if "floor" in bandwidth:
             rate = int(bandwidth["floor"]) * 8
-        elif bandwidth.has_key("average"):
+        elif "average" in bandwidth:
             rate = int(bandwidth["average"]) * 8
         if rate:
             if se.group(2) == 'M':
@@ -195,13 +195,13 @@ TIMEOUT 3"""
             else:
                 rate_check = int(se.group(1))
             assert rate_check == rate
-        if bandwidth.has_key("peak"):
+        if "peak" in bandwidth:
             if se.group(4) == 'M':
                 ceil_check = int(se.group(3)) * 1000
             else:
                 ceil_check = int(se.group(3))
             assert ceil_check == int(bandwidth["peak"]) * 8
-        if bandwidth.has_key("burst"):
+        if "burst" in bandwidth:
             if se.group(6) == 'M':
                 tc_burst = int(se.group(5)) * 1024
             else:
@@ -223,9 +223,9 @@ TIMEOUT 3"""
             test.fail("Can't find any filter policy")
         logging.debug("bandwidth from tc output:%s" % str(se.groups()))
         logging.debug("bandwidth from setting:%s" % str(bandwidth))
-        if bandwidth.has_key("average"):
+        if "average" in bandwidth:
             assert int(se.group(1)) == int(bandwidth["average"]) * 8
-        if bandwidth.has_key("burst"):
+        if "burst" in bandwidth:
             if se.group(3) == 'M':
                 tc_burst = int(se.group(2)) * 1024
             else:
@@ -241,7 +241,7 @@ TIMEOUT 3"""
                 route = ast.literal_eval(rt)
                 addr = "%s/%s" % (route["address"], route["prefix"])
                 cmd = "ip route list %s" % addr
-                if route.has_key("family") and route["family"] == "ipv6":
+                if "family" in route and route["family"] == "ipv6":
                     cmd = "ip -6 route list %s" % addr
                 output = process.system_output(cmd)
                 match_obj = re.search(r"via (\S+).*metric (\d+)", output)
@@ -251,7 +251,7 @@ TIMEOUT 3"""
                     logging.debug("via address %s for %s, matric is %s"
                                   % (via_addr, addr, metric))
                     assert via_addr == route["gateway"]
-                    if route.has_key("metric"):
+                    if "metric" in route:
                         assert metric == route["metric"]
             except KeyError:
                 pass
@@ -290,7 +290,7 @@ TIMEOUT 3"""
                                   {'average': iface_inbound['average'],
                                    'peak': iface_inbound['peak'],
                                    'burst': iface_inbound['burst']})
-                if iface_inbound.has_key("floor"):
+                if "floor" in iface_inbound:
                     if not libvirt_version.version_compare(1, 0, 1):
                         test.cancel("Not supported Qos options 'floor'")
 
@@ -332,14 +332,14 @@ TIMEOUT 3"""
                      "FORWARD -i %s -j REJECT --reject-with icmp" % br_name)
         net_dev_in = ""
         net_dev_out = ""
-        if net_forward.has_key("dev"):
+        if "dev" in net_forward:
             net_dev_in = " -i %s" % net_forward["dev"]
             net_dev_out = " -o %s" % net_forward["dev"]
         if check_ipv4:
             ipv4_rules = list(ipt_rules)
             ctr_rule = ""
             nat_rules = []
-            if net_forward.has_key("mode") and net_forward["mode"] == "nat":
+            if "mode" in net_forward and net_forward["mode"] == "nat":
                 nat_port = ast.literal_eval(params.get("nat_port"))
                 p_start = nat_port["start"]
                 p_end = nat_port["end"]
@@ -352,7 +352,7 @@ TIMEOUT 3"""
                               " -j MASQUERADE".format(net_ipv4))]
             if nat_rules:
                 ipv4_rules.extend(nat_rules)
-            if (net_ipv4 and net_forward.has_key("mode") and
+            if (net_ipv4 and "mode" in net_forward and
                     net_forward["mode"] in ["nat", "route"]):
                 rules = [("FORWARD -d %s%s -o %s%s -j ACCEPT"
                           % (net_ipv4, net_dev_in, br_name, ctr_rule)),
@@ -367,7 +367,7 @@ TIMEOUT 3"""
                     test.fail("Can't find iptable rule:\n%s" % ipt)
         if check_ipv6:
             ipv6_rules = list(ipt_rules)
-            if (net_ipv6 and net_forward.has_key("mode") and
+            if (net_ipv6 and "mode" in net_forward and
                     net_forward["mode"] in ["nat", "route"]):
                 rules = [("FORWARD -d %s%s -o %s -j ACCEPT"
                           % (net_ipv6, net_dev_in, br_name)),
@@ -527,9 +527,9 @@ TIMEOUT 3"""
             # forward device to first active interface of host
             forward = ast.literal_eval(params.get("net_forward",
                                                   "{}"))
-            if (forward.has_key('mode') and forward['mode'] in
+            if ('mode' in forward and forward['mode'] in
                 ['passthrough', 'private', 'bridge', 'macvtap'] and
-                forward.has_key('dev') and
+                'dev' in forward and
                     forward['dev'] not in net_ifs):
                 logging.warn("Forward device %s is not a interface"
                              " of host, reset to %s",
@@ -553,7 +553,7 @@ TIMEOUT 3"""
             netxml = libvirt.create_net_xml(net_name, params)
             try:
                 netxml.sync()
-            except xcepts.LibvirtXMLError, details:
+            except xcepts.LibvirtXMLError as details:
                 logging.info(str(details))
                 if define_error:
                     pass
@@ -602,8 +602,8 @@ TIMEOUT 3"""
             if net_bridge:
                 bridge = ast.literal_eval(net_bridge)
                 run_dnsmasq_default_test("interface", bridge['name'])
-                if bridge.has_key('stp') and bridge['stp'] == 'on':
-                    if bridge.has_key('delay'):
+                if 'stp' in bridge and bridge['stp'] == 'on':
+                    if 'delay' in bridge:
                         br_delay = float(bridge['delay'])
                         cmd = ("brctl showstp %s | grep 'bridge forward delay'"
                                % bridge['name'])
@@ -720,7 +720,7 @@ TIMEOUT 3"""
                     iface_outbound = ast.literal_eval(iface_bandwidth_outbound)
                     iface_name = libvirt.get_ifname_host(vm_name, iface_mac)
                     if_source = ast.literal_eval(iface_source)
-                    if if_source.has_key("portgroup"):
+                    if "portgroup" in if_source:
                         pg = if_source["portgroup"]
                     else:
                         pg = "default"
