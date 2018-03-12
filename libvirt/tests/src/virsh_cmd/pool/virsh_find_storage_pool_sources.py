@@ -65,7 +65,7 @@ def run(test, params, env):
                 # Create vg by using iscsi device
                 try:
                     lv_utils.vg_create(vg_name, iscsi_device)
-                except Exception, detail:
+                except Exception as detail:
                     utils_test.libvirt.setup_or_cleanup_iscsi(False)
                     raise exceptions.TestFail("vg_create failed: %s" % detail)
                 cleanup_logical = True

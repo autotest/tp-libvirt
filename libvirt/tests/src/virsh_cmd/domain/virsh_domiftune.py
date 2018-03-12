@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 
@@ -63,7 +61,7 @@ def check_domiftune(params, test_clear):
     try:
         inbound_from_xml = domiftune_params.get("inbound").get("average")
         outbound_from_xml = domiftune_params.get("outbound").get("average")
-    except AttributeError, details:
+    except AttributeError as details:
         logging.error("Error in get inbound/outbound average: %s", details)
     logging.debug("inbound_from_xml=%s, outbound_from_xml=%s",
                   inbound_from_xml, outbound_from_xml)
@@ -114,7 +112,7 @@ def check_domiftune(params, test_clear):
     return True
 
 
-def get_domiftune_parameter(params):
+def get_domiftune_parameter(params, test):
     """
     Get the domiftune parameters
     :params: the parameter dictionary
@@ -133,17 +131,17 @@ def get_domiftune_parameter(params):
         if status:
             logging.info("It's an expected error: %s", result.stderr)
         else:
-            raise error.TestFail("%d not a expected command return value" %
-                                 status)
+            test.fail("%d not a expected command return value" %
+                      status)
     elif status_error == "no":
         if status:
-            raise error.TestFail("Unexpected result, get domiftune: %s" %
-                                 result.stderr)
+            test.fail("Unexpected result, get domiftune: %s" %
+                      result.stderr)
         else:
             logging.info("getdominfo return succesfully")
 
 
-def set_domiftune_parameter(params):
+def set_domiftune_parameter(params, test):
     """
     Set the domiftune parameters
     :params: the parameter dictionary
@@ -193,17 +191,17 @@ def set_domiftune_parameter(params):
         if status:
             logging.info("It's an expected error: %s", result.stderr)
         else:
-            raise error.TestFail("%d not a expected command return value" %
-                                 status)
+            test.fail("%d not a expected command return value" %
+                      status)
     elif status_error == "no":
         if status:
-            raise error.TestFail("Unexpected set domiftune error: %s" %
-                                 result.stderr)
+            test.fail("Unexpected set domiftune error: %s" %
+                      result.stderr)
         else:
             if not check_domiftune(params, False):
-                raise error.TestFail("The 'inbound' or/and 'outbound' are"
-                                     " inconsistent with domiftune XML"
-                                     " and/or virsh command output")
+                test.fail("The 'inbound' or/and 'outbound' are"
+                          " inconsistent with domiftune XML"
+                          " and/or virsh command output")
 
     # If supported, then here's where we reset the inbound/outbound
     # back to what they were input as and then run the same domiftune
@@ -219,12 +217,12 @@ def set_domiftune_parameter(params):
         result = virsh.domiftune(vm_name, interface, options, inbound, outbound)
         status = result.exit_status
         if status:
-            raise error.TestFail("Unexpected failure when clearing: %s" %
-                                 result.stderr)
+            test.fail("Unexpected failure when clearing: %s" %
+                      result.stderr)
         else:
             if not check_domiftune(params, True):
-                raise error.TestFail("The 'inbound' or/and 'outbound' were "
-                                     "not cleared.")
+                test.fail("The 'inbound' or/and 'outbound' were "
+                          "not cleared.")
 
 
 def run(test, params, env):
@@ -263,12 +261,12 @@ def run(test, params, env):
 
     if status_error == "no":
         if change_parameters == "no":
-            get_domiftune_parameter(test_dict)
+            get_domiftune_parameter(test_dict, test)
         else:
-            set_domiftune_parameter(test_dict)
+            set_domiftune_parameter(test_dict, test)
 
     if status_error == "yes":
         if change_parameters == "no":
-            get_domiftune_parameter(test_dict)
+            get_domiftune_parameter(test_dict, test)
         else:
-            set_domiftune_parameter(test_dict)
+            set_domiftune_parameter(test_dict, test)

@@ -1,8 +1,6 @@
 import logging
 import re
 
-from autotest.client.shared import error
-
 from avocado.utils import path as utils_path
 
 from virttest import libvirt_vm
@@ -58,7 +56,7 @@ def login_to_check(vm, checked_mac):
     """
     try:
         session = vm.wait_for_login()
-    except Exception, detail:  # Do not care Exception's type
+    except Exception as detail:  # Do not care Exception's type
         return (1, "Can not login to vm:%s" % detail)
     status, output = session.cmd_status_output("ip -4 -o link list")
     if status != 0:
@@ -105,8 +103,8 @@ def run(test, params, env):
         try:
             utils_path.find_command("brctl")
         except utils_path.CmdNotFoundError:
-            raise error.TestNAError("Command 'brctl' is missing. You must "
-                                    "install it.")
+            test.cancel("Command 'brctl' is missing. You must "
+                        "install it.")
 
     iface_source = params.get("at_detach_iface_source", "default")
     iface_mac = params.get("at_detach_iface_mac", "created")
@@ -126,8 +124,8 @@ def run(test, params, env):
         if len(bridge_list):
             iface_source = bridge_list[0]
         else:
-            raise error.TestNAError("No useful bridge on host "
-                                    "other than 'virbr0'.")
+            test.cancel("No useful bridge on host "
+                        "other than 'virbr0'.")
 
     dom_uuid = vm.get_uuid()
     dom_id = vm.get_id()
@@ -188,7 +186,7 @@ def run(test, params, env):
     if fail_flag and start_vm == "yes":
         vm.destroy()
         if len(result_info):
-            raise error.TestFail(result_info)
+            test.fail(result_info)
         else:
             # Exit because it is error_test for attach-interface.
             return
@@ -233,12 +231,12 @@ def run(test, params, env):
     # Check results.
     if status_error:
         if detach_status == 0:
-            raise error.TestFail("Detach Success with wrong command.")
+            test.fail("Detach Success with wrong command.")
     else:
         if detach_status != 0:
-            raise error.TestFail("Detach Failed.")
+            test.fail("Detach Failed.")
         else:
             if fail_flag:
-                raise error.TestFail("Attach-Detach Success but "
-                                     "something wrong with its "
-                                     "functional use:%s" % result_info)
+                test.fail("Attach-Detach Success but "
+                          "something wrong with its "
+                          "functional use:%s" % result_info)

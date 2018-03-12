@@ -3,8 +3,6 @@ import os.path
 import logging
 import multiprocessing
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest.staging import utils_cgroup
 
@@ -20,8 +18,8 @@ def run(test, params, env):
     """
 
     if not virsh.has_help_command('cpu-stats'):
-        raise error.TestNAError("This version of libvirt does not support "
-                                "the cpu-stats test")
+        test.cancel("This version of libvirt does not support "
+                    "the cpu-stats test")
 
     vm_name = params.get("main_vm", "vm1")
     vm_ref = params.get("cpu_stats_vm_ref")
@@ -68,10 +66,10 @@ def run(test, params, env):
     # check status_error
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if status != 0:
-            raise error.TestFail("Run failed with right command")
+            test.fail("Run failed with right command")
         else:
             # Get cgroup cpu_time
             if not get_totalonly:
@@ -83,7 +81,8 @@ def run(test, params, env):
                 if os.path.basename(cgpath) == "emulator":
                     cgpath = os.path.dirname(cgpath)
                 usage_file = os.path.join(cgpath, "cpuacct.usage_percpu")
-                cgtime = file(usage_file).read().strip().split()
+                with open(usage_file, 'r') as f:
+                    cgtime = f.read().strip().split()
                 logging.debug("cgtime get is %s", cgtime)
 
             # Cut CPUs from output and format to list
@@ -106,8 +105,8 @@ def run(test, params, env):
 
                 # check Total cpu_time >= User + System cpu_time
                 if user_time + system_time >= total_time:
-                    raise error.TestFail("total cpu_time < user_time + "
-                                         "system_time")
+                    test.fail("total cpu_time < user_time + "
+                              "system_time")
                 logging.debug("Check total cpu_time %d >= user + system "
                               "cpu_time %d",
                               total_time, user_time + system_time)
@@ -132,8 +131,8 @@ def run(test, params, env):
             logging.debug("start_num %d, end_num %d", start_num, end_num)
             for i in range(start_num, end_num):
                 if not re.search('CPU' + "%i" % i, output):
-                    raise error.TestFail("Fail to find CPU" + "%i" % i + "in "
-                                         "result")
+                    test.fail("Fail to find CPU" + "%i" % i + "in "
+                              "result")
                 logging.debug("Check CPU" + "%i" % i + " exist")
                 sum_cputime += int(cpus_list[i - start_num + 1].split()[1])
                 sum_cgtime += int(cgtime[i])
@@ -141,14 +140,14 @@ def run(test, params, env):
             # check cgroup cpu_time > sum of cpu_time
             if end_num >= 0:
                 if sum_cputime > sum_cgtime:
-                    raise error.TestFail("Check sum of cgroup cpu_time < sum "
-                                         "of output cpu_time")
+                    test.fail("Check sum of cgroup cpu_time < sum "
+                              "of output cpu_time")
                 logging.debug("Check sum of cgroup cpu_time %d >= cpu_time %d",
                               sum_cgtime, sum_cputime)
 
             # check Total cpu_time >= sum of cpu_time when no options
             if get_noopt:
                 if total_time < sum_cputime:
-                    raise error.TestFail("total time < sum of output cpu_time")
+                    test.fail("total time < sum of output cpu_time")
                 logging.debug("Check total time %d >= sum of output cpu_time"
                               " %d", total_time, sum_cputime)

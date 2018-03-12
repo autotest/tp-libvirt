@@ -1,7 +1,6 @@
 import os
 import logging
-
-from autotest.client.shared import error
+from six import iteritems
 
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -31,7 +30,7 @@ def get_disk_info(vm_name, options):
         new_disk['xml'] = ElementTree.tostring(sourcelist[i])
         logging.debug("Current disk xml is: %s" % new_disk.xmltreefile)
         if hasattr(new_disk, 'source'):
-            for key in new_disk.source.attrs.keys():
+            for key in list(new_disk.source.attrs.keys()):
                 if key in SOURCE_LIST:
                     source_path = new_disk.source.attrs[key]
         else:
@@ -67,10 +66,10 @@ def run(test, params, env):
         # Check status_error
         if status_error == "yes":
             if status == 0:
-                raise error.TestFail("Run successfully with wrong command!")
+                test.fail("Run successfully with wrong command!")
         elif status_error == "no":
             if status == 1:
-                raise error.TestFail("Run failed with right command")
+                test.fail("Run failed with right command")
             # Check disk information.
             disk_info = get_disk_info(vm_name, options)
             logging.debug("The disk info dict from xml is: %s" % disk_info)
@@ -81,14 +80,14 @@ def run(test, params, env):
             logging.debug("The disk info dict from command output is: %s"
                           % output_disk_info)
 
-            for (k, v) in output_disk_info.items():
+            for (k, v) in list(iteritems(output_disk_info)):
                 output_disk_info_list.append(v)
 
             if "--details" in options:
-                for (k, v) in disk_info.items():
+                for (k, v) in list(iteritems(disk_info)):
                     disk_info_list.append(v)
             else:
-                for (k, v) in disk_info.items():
+                for (k, v) in list(iteritems(disk_info)):
                     disk_info_list.append(v[2:])
 
             disk_info_list.sort()
@@ -98,8 +97,8 @@ def run(test, params, env):
                           % output_disk_info_list)
 
             if disk_info_list != output_disk_info_list:
-                raise error.TestFail("The output did not match with disk"
-                                     " info from xml")
+                test.fail("The output did not match with disk"
+                          " info from xml")
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -133,10 +132,9 @@ def run(test, params, env):
     if status_error == "no":
         try:
             # attach disk and check
-            source_file = open(test_attach_disk, 'wb')
-            source_file.seek((512 * 1024 * 1024) - 1)
-            source_file.write(str(0))
-            source_file.close()
+            with open(test_attach_disk, 'wb') as source_file:
+                source_file.seek((512 * 1024 * 1024) - 1)
+                source_file.write(str(0).encode())
             # since bug 1049529, --config will work with detach when
             # domain is running, so change it back using --config here
             if "--inactive" in options or vm_state == "shut off":

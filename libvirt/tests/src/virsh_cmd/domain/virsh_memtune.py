@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 
 from virttest.staging import utils_memory
@@ -37,8 +35,8 @@ def run(test, params, env):
         # Check 1
         actual_value = virsh.memtune_get(domname, limit_name)
         if actual_value == -1:
-            raise error.TestFail("the key %s not found in the "
-                                 "virsh memtune output" % limit_name)
+            test.fail("the key %s not found in the "
+                      "virsh memtune output" % limit_name)
         if actual_value != int(expected_value):
             status_value = False
             logging.error("%s virsh output:\n\tExpected value:%d"
@@ -56,22 +54,18 @@ def run(test, params, env):
 
         cg_file = None
         try:
-            try:
-                cg_file = open(cg_file_name)
+            with open(cg_file_name) as cg_file:
                 output = cg_file.read()
-                value = int(output) / 1024
-                if int(expected_value) != int(value):
-                    status_value = False
-                    logging.error("%s cgroup fs:\n\tExpected Value: %d"
-                                  "\n\tActual Value: "
-                                  "%d", limit_name,
-                                  int(expected_value), int(value))
-            except IOError:
+            value = int(output) / 1024
+            if int(expected_value) != int(value):
                 status_value = False
-                logging.error("Error while reading:\n%s", cg_file_name)
-        finally:
-            if cg_file is not None:
-                cg_file.close()
+                logging.error("%s cgroup fs:\n\tExpected Value: %d"
+                              "\n\tActual Value: "
+                              "%d", limit_name,
+                              int(expected_value), int(value))
+        except IOError:
+            status_value = False
+            logging.error("Error while reading:\n%s", cg_file_name)
 
         return status_value
 
@@ -102,7 +96,7 @@ def run(test, params, env):
 
     # Check for memtune command is available in the libvirt version under test
     if not virsh.has_help_command("memtune"):
-        raise error.TestNAError(
+        test.cancel(
             "Memtune not available in this libvirt version")
 
     # Run test case with 100kB increase in memory value for each iteration
@@ -114,8 +108,8 @@ def run(test, params, env):
             if not check_limit(path, hard_mem, "hard_limit"):
                 error_counter += 1
         else:
-            raise error.TestNAError("harlimit option not available in memtune "
-                                    "cmd in this libvirt version")
+            test.cancel("harlimit option not available in memtune "
+                        "cmd in this libvirt version")
 
         if virsh.has_command_help_match("memtune", "soft-limit"):
             soft_mem = Mem - int(params.get("memtune_soft_base_mem"))
@@ -124,8 +118,8 @@ def run(test, params, env):
             if not check_limit(path, soft_mem, "soft_limit"):
                 error_counter += 1
         else:
-            raise error.TestNAError("softlimit option not available in memtune "
-                                    "cmd in this libvirt version")
+            test.cancel("softlimit option not available in memtune "
+                        "cmd in this libvirt version")
 
         if virsh.has_command_help_match("memtune", "swap-hard-limit"):
             swaphard = Mem
@@ -134,11 +128,11 @@ def run(test, params, env):
             if not check_limit(path, swaphard, "swap_hard_limit"):
                 error_counter += 1
         else:
-            raise error.TestNAError("swaplimit option not available in memtune "
-                                    "cmd in this libvirt version")
+            test.cancel("swaplimit option not available in memtune "
+                        "cmd in this libvirt version")
         Mem += int(params.get("memtune_hard_base_mem"))
 
     # Raise error based on error_counter
     if error_counter > 0:
-        raise error.TestFail(
+        test.fail(
             "Test failed, consult the previous error messages")

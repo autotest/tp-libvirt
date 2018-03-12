@@ -1,6 +1,5 @@
 import os
 import logging
-import commands
 import multiprocessing
 import time
 import platform
@@ -91,7 +90,8 @@ def run(test, params, env):
                 continue
             cmd2 = ("cat /proc/$(%s |awk '/libvirt_i/{print $2}')/fdinfo/1"
                     "|grep flags|awk '{print $NF}'" % cmd1)
-            (status, output) = commands.getstatusoutput(cmd2)
+            ret = process.run(cmd2, shell=True)
+            status, output = ret.exit_status, ret.stdout.strip()
             if status:
                 error = "Fail to get the flags of dumped file"
                 logging.error(error)
@@ -108,7 +108,7 @@ def run(test, params, env):
                     error = "Bypass file system cache fail when dumping"
                     logging.error(error)
                     break
-            except (ValueError, IndexError), detail:
+            except (ValueError, IndexError) as detail:
                 error = detail
                 logging.error(error)
                 break
@@ -163,7 +163,8 @@ def run(test, params, env):
             return True
         else:
             file_cmd = "file %s" % dump_file
-            (status, output) = commands.getstatusoutput(file_cmd)
+            ret = process.run(file_cmd, shell=True)
+            status, output = ret.exit_status, ret.stdout.strip()
             if status:
                 logging.error("Fail to check dumped file %s", dump_file)
                 return False

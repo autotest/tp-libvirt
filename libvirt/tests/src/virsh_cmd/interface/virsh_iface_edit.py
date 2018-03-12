@@ -4,8 +4,6 @@ import logging
 
 import aexpect
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import remote
@@ -27,7 +25,7 @@ def get_ifstart_mode(iface_name):
     return start_mode
 
 
-def edit_ifstart_mode(iface_name, old_mode, new_mode):
+def edit_ifstart_mode(iface_name, old_mode, new_mode, test):
     """
     Set the start mode of a interface.
     """
@@ -41,11 +39,11 @@ def edit_ifstart_mode(iface_name, old_mode, new_mode):
         session.send('ZZ')
         remote.handle_prompts(session, None, None, r"[\#\$]\s*$")
         session.close()
-    except (aexpect.ShellError, aexpect.ExpectError), details:
+    except (aexpect.ShellError, aexpect.ExpectError) as details:
         log = session.get_output()
         session.close()
-        raise error.TestFail("Failed to do iface-edit: %s\n%s"
-                             % (details, log))
+        test.fail("Failed to do iface-edit: %s\n%s"
+                  % (details, log))
 
 
 def run(test, params, env):
@@ -57,7 +55,7 @@ def run(test, params, env):
     iface_name = params.get("iface_name", "lo")
     status_error = "yes" == params.get("status_error", "no")
     if not libvirt.check_iface(iface_name, "exists", "--all"):
-        raise error.TestError("Interface '%s' not exists" % iface_name)
+        test.error("Interface '%s' not exists" % iface_name)
     # get the interface script independent of distro
     iface_script = utils_net.get_network_cfg_file(iface_name)
     iface_script_bk = os.path.join(test.tmpdir, "iface-%s.bk" % iface_name)
@@ -65,7 +63,7 @@ def run(test, params, env):
     iface_is_up = net_iface.is_up()
     old_ifstart_mode = get_ifstart_mode(iface_name)
     if not old_ifstart_mode:
-        raise error.TestError("Get start mode fail")
+        test.error("Get start mode fail")
     if old_ifstart_mode == "onboot":
         new_ifstart_mode = "none"
     else:
@@ -75,7 +73,7 @@ def run(test, params, env):
         process.run("cp %s %s" % (iface_script, iface_script_bk), shell=True)
 
         # Edit interface
-        edit_ifstart_mode(iface_name, old_ifstart_mode, new_ifstart_mode)
+        edit_ifstart_mode(iface_name, old_ifstart_mode, new_ifstart_mode, test)
 
         # Restart interface
         if iface_is_up:
@@ -84,12 +82,12 @@ def run(test, params, env):
 
         after_edit_mode = get_ifstart_mode(iface_name)
         if not after_edit_mode:
-            raise error.TestError("Get start mode fail")
+            test.error("Get start mode fail")
         if new_ifstart_mode == after_edit_mode:
             logging.debug("Interface start mode change to %s", new_ifstart_mode)
         else:
-            raise error.TestFail("Unexpect interface start mode: %s"
-                                 % after_edit_mode)
+            test.fail("Unexpect interface start mode: %s"
+                      % after_edit_mode)
     finally:
         net_iface.down()
         process.run("mv %s %s" % (iface_script_bk, iface_script), shell=True)

@@ -1,7 +1,5 @@
 import re
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import utils_libvirtd
 
@@ -21,7 +19,7 @@ def run(test, params, env):
     option = params.get("virsh_freecell_opts")
 
     # Prepare libvirtd service
-    check_libvirtd = params.has_key("libvirtd")
+    check_libvirtd = "libvirtd" in params
     if check_libvirtd:
         libvirtd = params.get("libvirtd")
         if libvirtd == "off":
@@ -42,12 +40,12 @@ def run(test, params, env):
     else:
         OLD_LIBVIRT = True
         if option == '--all':
-            raise error.TestNAError("Older libvirt virsh freecell "
-                                    "doesn't support --all option")
+            test.cancel("Older libvirt virsh freecell "
+                        "doesn't support --all option")
 
     def output_check(freecell_output):
         if not re.search("ki?B", freecell_output, re.IGNORECASE):
-            raise error.TestFail(
+            test.fail(
                 "virsh freecell output invalid: " + freecell_output)
 
     # Check status_error
@@ -55,19 +53,19 @@ def run(test, params, env):
     if status_error == "yes":
         if status == 0:
             if libvirtd == "off":
-                raise error.TestFail("Command 'virsh freecell' succeeded "
-                                     "with libvirtd service stopped, incorrect")
+                test.fail("Command 'virsh freecell' succeeded "
+                          "with libvirtd service stopped, incorrect")
             else:
                 # newer libvirt
                 if not OLD_LIBVIRT:
-                    raise error.TestFail("Command 'virsh freecell %s' succeeded"
-                                         "(incorrect command)" % option)
+                    test.fail("Command 'virsh freecell %s' succeeded"
+                              "(incorrect command)" % option)
                 else:  # older libvirt
-                    raise error.TestNAError('Older libvirt virsh freecell '
-                                            'incorrectly processes extranious'
-                                            'command-line options')
+                    test.cancel('Older libvirt virsh freecell '
+                                'incorrectly processes extranious'
+                                'command-line options')
     elif status_error == "no":
         output_check(output)
         if status != 0:
-            raise error.TestFail("Command 'virsh freecell %s' failed "
-                                 "(correct command)" % option)
+            test.fail("Command 'virsh freecell %s' failed "
+                      "(correct command)" % option)

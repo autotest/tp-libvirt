@@ -298,7 +298,7 @@ def run(test, params, env):
 
             vmxml.sync()
             vm.start()
-        except Exception, e:
+        except Exception as e:
             logging.error(str(e))
             test.cancel("Build domain xml failed")
 

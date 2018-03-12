@@ -1,9 +1,8 @@
 import os
 import re
 import logging
-import commands
 
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
@@ -37,9 +36,9 @@ def run(test, params, env):
     # Skip 'qed' cases for libvirt version greater than 1.1.0
     if libvirt_version.version_compare(1, 1, 0):
         if image_format == "qed":
-            raise error.TestNAError("QED support changed, check bug: "
-                                    "https://bugzilla.redhat.com/show_bug.cgi"
-                                    "?id=731570")
+            test.cancel("QED support changed, check bug: "
+                        "https://bugzilla.redhat.com/show_bug.cgi"
+                        "?id=731570")
 
     # Create an image.
     tmp_dir = data_dir.get_tmp_dir()
@@ -50,17 +49,18 @@ def run(test, params, env):
 
     cmd = "qemu-img create -f %s %s %s" % (image_format, image_path,
                                            initial_disk_size)
-    status, output = commands.getstatusoutput(cmd)
+    ret = process.run(cmd, shell=True)
+    status, output = (ret.exit_status, ret.stdout.strip())
     if status:
-        raise error.TestError("Creating image file %s failed: %s"
-                              % (image_path, output))
+        test.error("Creating image file %s failed: %s"
+                   % (image_path, output))
 
     # Hotplug the image as disk device
     result = virsh.attach_disk(vm_name, source=image_path, target="vdd",
                                extra=" --subdriver %s" % image_format)
     if result.exit_status:
-        raise error.TestError("Failed to attach disk %s to VM: %s."
-                              % (image_path, result.stderr))
+        test.error("Failed to attach disk %s to VM: %s."
+                   % (image_path, result.stderr))
 
     if resize_value == "over_size":
         # Use byte unit for over_size test
@@ -76,7 +76,7 @@ def run(test, params, env):
         # Check status_error
         if status_error:
             if status == 0 or err == "":
-                raise error.TestFail("Expect failure, but run successfully!")
+                test.fail("Expect failure, but run successfully!")
             # No need to do more test
             return
         else:
@@ -84,10 +84,10 @@ def run(test, params, env):
                 # bz 1002813 will result in an error on this
                 err_str = "unable to execute QEMU command 'block_resize': Could not resize: Invalid argument"
                 if resize_value[-2] in "kb" and re.search(err_str, err):
-                    raise error.TestNAError("BZ 1002813 not yet applied")
+                    test.cancel("BZ 1002813 not yet applied")
                 else:
-                    raise error.TestFail("Run failed with right "
-                                         "virsh blockresize command")
+                    test.fail("Run failed with right "
+                              "virsh blockresize command")
 
         # Although kb should not be used, libvirt/virsh will accept it and
         # consider it as a 1000 bytes, which caused issues for qed & qcow2
@@ -123,7 +123,7 @@ def run(test, params, env):
             value = int(resize_value[:-1])
             expected_size = value * 1024 * 1024 * 1024
         else:
-            raise error.TestError("Unknown scale value")
+            test.error("Unknown scale value")
 
         image_info = utils_misc.get_image_info(image_path)
         actual_size = int(image_info['vsize'])
@@ -135,13 +135,13 @@ def run(test, params, env):
         # See comment above regarding Raw images
         if image_format == "raw" and resize_value[-2] in "kb":
             if abs(int(actual_size) - int(expected_size)) > 512:
-                raise error.TestFail("New raw blocksize set by blockresize do "
-                                     "not match the expected value")
+                test.fail("New raw blocksize set by blockresize do "
+                          "not match the expected value")
         else:
             if int(actual_size) != int(expected_size):
-                raise error.TestFail("New blocksize set by blockresize is "
-                                     "different from actual size from "
-                                     "'qemu-img info'")
+                test.fail("New blocksize set by blockresize is "
+                          "different from actual size from "
+                          "'qemu-img info'")
     finally:
         virsh.detach_disk(vm_name, target="vdd")
 

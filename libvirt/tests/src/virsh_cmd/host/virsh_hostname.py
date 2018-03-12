@@ -1,5 +1,4 @@
-from autotest.client.shared import utils
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
@@ -14,11 +13,11 @@ def run(test, params, env):
     (3) Call virsh hostname with libvirtd service stop
     """
 
-    hostname_result = utils.run("hostname -f", ignore_status=True)
+    hostname_result = process.run("hostname -f", shell=True, ignore_status=True)
     hostname = hostname_result.stdout.strip()
 
     # Prepare libvirtd service
-    check_libvirtd = params.has_key("libvirtd")
+    check_libvirtd = "libvirtd" in params
     if check_libvirtd:
         libvirtd = params.get("libvirtd")
         if libvirtd == "off":
@@ -42,12 +41,12 @@ def run(test, params, env):
     status_error = params.get("status_error")
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Command 'virsh hostname %s' succeeded "
-                                 "(incorrect command)" % option)
+            test.fail("Command 'virsh hostname %s' succeeded "
+                      "(incorrect command)" % option)
     elif status_error == "no":
         if cmp(hostname, hostname_test) != 0:
-            raise error.TestFail(
+            test.fail(
                 "Virsh cmd gives hostname %s != %s." % (hostname_test, hostname))
         if status != 0:
-            raise error.TestFail("Command 'virsh hostname %s' failed "
-                                 "(correct command)" % option)
+            test.fail("Command 'virsh hostname %s' failed "
+                      "(correct command)" % option)

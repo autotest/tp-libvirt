@@ -4,8 +4,6 @@ import re
 import uuid
 import aexpect
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import utils_net
 from virttest import utils_misc
@@ -58,7 +56,7 @@ def run(test, params, env):
             logging.info("exit: %s, output: %s",
                          cmd_status, output)
             return re.search(pattern, output)
-        except (aexpect.ShellTimeoutError, aexpect.ShellStatusError), e:
+        except (aexpect.ShellTimeoutError, aexpect.ShellStatusError) as e:
             logging.debug(e)
             return re.search(pattern, str(e.__str__))
 
@@ -194,8 +192,8 @@ def run(test, params, env):
         # Check the getlink command output
         if status_error == "no":
             if not re.search(if_operation, getlink_output):
-                raise error.TestFail("Getlink result should "
-                                     "equal with setlink operation")
+                test.fail("Getlink result should "
+                          "equal with setlink operation")
 
         logging.info("Getlink done")
         # If --config is given should restart the vm then test link status
@@ -251,7 +249,7 @@ def run(test, params, env):
             vm.destroy()
 
         if error_msg:
-            raise error.TestFail(error_msg)
+            test.fail(error_msg)
 
         # Check status_error
         if status_error == "yes":
@@ -260,11 +258,11 @@ def run(test, params, env):
                              result.stderr.strip())
 
             else:
-                raise error.TestFail("Unexpected return code %d "
-                                     "(negative testing)" % status)
+                test.fail("Unexpected return code %d "
+                          "(negative testing)" % status)
         elif status_error != "no":
-            raise error.TestError("Invalid value for status_error '%s' "
-                                  "(must be 'yes' or 'no')" % status_error)
+            test.error("Invalid value for status_error '%s' "
+                       "(must be 'yes' or 'no')" % status_error)
     finally:
         # Recover VM.
         if vm.is_alive():

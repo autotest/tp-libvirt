@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import utils_libvirtd
 
@@ -64,7 +62,7 @@ def run(test, params, env):
     status_error = (status_error == "no") and (addition_status_error == "no")
     if status_error:
         if result.exit_status != 0 or result.stdout.strip() != vm_name:
-            raise error.TestFail("Run failed because unexpected result.")
+            test.fail("Run failed because unexpected result.")
     else:
         if result.exit_status == 0 and result.stdout.strip() != vm_name:
-            raise error.TestFail("Run passed but result is unexpected.")
+            test.fail("Run passed but result is unexpected.")

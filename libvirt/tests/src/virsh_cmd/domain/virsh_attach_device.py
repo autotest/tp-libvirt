@@ -6,10 +6,9 @@ import os
 import os.path
 import logging
 import aexpect
+from six import iteritems
 
 from string import ascii_lowercase
-
-from autotest.client.shared import error
 
 from virttest import virt_vm, virsh, remote, utils_misc, data_dir
 from virttest.libvirt_xml import xcepts
@@ -116,7 +115,7 @@ class TestParams(object):
         object_params = self._p.object_params(class_name)
         # Return variable to hold modified key names
         device_params = {}
-        for prefixed_key, original_value in object_params.items():
+        for prefixed_key, original_value in list(iteritems(object_params)):
             # They get unrolled, but originals always left behind, skip them
             if prefixed_key.count(class_name):
                 continue
@@ -124,10 +123,10 @@ class TestParams(object):
                 stripped_key = prefixed_key[len(self.test_prefix):]
                 device_params[stripped_key] = original_value
         # The 'count' key required by all VADU AttachDeviceBase subclasses
-        if 'count' not in device_params.keys():
+        if 'count' not in list(device_params.keys()):
             # stick prefix back on so error message has meaning
-            raise error.TestError('%scount is a required parameter'
-                                  % (self.test_prefix))
+            self.test.error('%scount is a required parameter'
+                            % (self.test_prefix))
         return device_params
 
     @staticmethod
@@ -139,7 +138,7 @@ class TestParams(object):
                 # Attempt to finish entire list before raising
                 # any exceptions that occurred
             # ignore pylint W0703 - exception acumulated and raised below
-            except Exception, xcept_obj:
+            except Exception as xcept_obj:
                 xcpt_list.append(xcept_obj)
         if xcpt_list:
             raise RuntimeError("One or more exceptions occurred during "
@@ -159,7 +158,7 @@ class TestDeviceBase(object):
     # flag for use in test and by operate() & function() methods
     booted = False
 
-    def __init__(self, test_params):
+    def __init__(self, test_params, test):
         """
         Setup one or more device xml for a device based on TestParams instance
         """
@@ -168,10 +167,11 @@ class TestDeviceBase(object):
             self.__class__.identifier = identifier
         # how many of this type of device to make
         self.test_params = test_params
+        self.test = test
         # Copy params for this class into attributes
         cls_name = self.__class__.__name__
         # Already have test-prefix stripped off
-        for key, value in self.test_params.dev_params(cls_name).items():
+        for key, value in list(iteritems(self.test_params.dev_params(cls_name))):
             # Any keys with _anything are not used by this class
             if key.count('_') > 0:
                 logging.debug("Removing key: %s from params for class %s",
@@ -183,13 +183,13 @@ class TestDeviceBase(object):
             except ValueError:
                 setattr(self, key, value)
         if self.count < 1:
-            raise error.TestError("Configuration for class %s count must "
-                                  "be specified and greater than zero")
+            self.test.error("Configuration for class %s count must "
+                            "be specified and greater than zero")
         logging.info("Setting up %d %s device(s)", self.count, cls_name)
         # Setup each device_xml instance
         self._device_xml_list = [self.init_device(index)
                                  # test_params.dev_params() enforces count
-                                 for index in xrange(0, self.count)]
+                                 for index in range(0, self.count)]
 
     def cleanup(self):
         """
@@ -209,14 +209,14 @@ class TestDeviceBase(object):
         """
         Return a list of True/False lists for operation state per device
         """
-        return [self.operate(index) for index in xrange(self.count)]
+        return [self.operate(index) for index in range(self.count)]
 
     @property
     def function_results(self):
         """
         Return a list of True/False lists for functional state per device
         """
-        return [self.function(index) for index in xrange(self.count)]
+        return [self.function(index) for index in range(self.count)]
 
     @staticmethod
     def good_results(results_list):
@@ -262,7 +262,7 @@ class TestDeviceBase(object):
         raise NotImplementedError
 
 
-def make_vadu_dargs(test_params, xml_filepath):
+def make_vadu_dargs(test_params, xml_filepath, test):
     """
     Return keyword argument dict for virsh attach, detach, update functions
 
@@ -283,8 +283,8 @@ def make_vadu_dargs(test_params, xml_filepath):
         elif test_params.dom_ref == "none":
             domain = None
         else:
-            raise error.TestError("Parameter vadu_dom_ref or "
-                                  "vadu_dom_value are required")
+            test.error("Parameter vadu_dom_ref or "
+                       "vadu_dom_value are required")
     else:  # Config. specified a vadu_dom_value
         domain = test_params.dom_value
 
@@ -297,7 +297,7 @@ def make_vadu_dargs(test_params, xml_filepath):
     elif test_params.file_ref == "none":
         file_value = None  # No file specified
     else:
-        raise error.TestError("Parameter vadu_file_ref is reuqired")
+        test.error("Parameter vadu_file_ref is reuqired")
 
     if test_params.domain_positional:  # boolean
         dargs['domainarg'] = domain
@@ -330,7 +330,8 @@ class AttachDeviceBase(TestDeviceBase):
         Return True/False (good/bad) result of operating on a device
         """
         vadu_dargs = make_vadu_dargs(self.test_params,
-                                     self.device_xmls[index].xml)
+                                     self.device_xmls[index].xml,
+                                     self.test)
         # Acts as a dict for it's own API params
         self.test_params.virsh['debug'] = True
         vadu_dargs.update(self.test_params.virsh)
@@ -340,9 +341,9 @@ class AttachDeviceBase(TestDeviceBase):
             for opt in opt_list:
                 if not virsh.has_command_help_match("attach-device", opt) and\
                    not self.test_params.status_error:
-                    raise error.TestNAError("Current libvirt version doesn't "
-                                            "support '%s' for attach-device"
-                                            " command" % opt)
+                    self.test.cancel("Current libvirt version doesn't "
+                                     "support '%s' for attach-device"
+                                     " command" % opt)
         cmdresult = self.test_params.virsh.attach_device(**vadu_dargs)
         self.test_params.virsh['debug'] = False
         # Command success is not enough, must also confirm activity worked
@@ -400,7 +401,8 @@ class SerialFile(AttachDeviceBase):
     @staticmethod
     def make_source(filepath):
         """Create filepath on disk"""
-        open(filepath, "wb")
+        with open(filepath, "wb") as source_file:
+            return
 
     def init_device(self, index):
         filepath = self.make_filepath(index)
@@ -414,7 +416,7 @@ class SerialFile(AttachDeviceBase):
         return serial_device
 
     def cleanup(self):
-        for index in xrange(0, self.count):
+        for index in range(0, self.count):
             try:
                 os.unlink(self.make_filepath(index))
             except OSError:
@@ -547,7 +549,7 @@ class VirtualDiskBasic(AttachDeviceBase):
             for num in itertools.count(1):
                 for prod in itertools.product(ascii_lowercase, repeat=num):
                     yield ''.join(prod)
-        return itertools.islice(multiletters(), index, index + 1).next()
+        return next(itertools.islice(multiletters(), index, index + 1))
 
     def devname(self, index):
         """
@@ -577,8 +579,8 @@ class VirtualDiskBasic(AttachDeviceBase):
             devname_prefix = "hd"
             self.devidx = hd_count
         else:
-            raise error.TestNAError("Unsupport bus '%s' in this test" %
-                                    self.targetbus)
+            self.test.cancel("Unsupport bus '%s' in this test" %
+                             self.targetbus)
         return devname_prefix + self.devname_suffix(self.devidx + index)
 
     def make_image_file_path(self, index):
@@ -593,15 +595,14 @@ class VirtualDiskBasic(AttachDeviceBase):
         """Create sparse backing file by writing it's full path at it's end"""
         # Truncate file
         image_file_path = self.make_image_file_path(index)
-        image_file = open(image_file_path, 'wb')
-        byte_size = self.meg * 1024 * 1024
-        # Make sparse file byte_size long (starting from 0)
-        image_file.truncate(byte_size)
-        # Write simple unique data to file before end
-        image_file.seek(byte_size - len(image_file_path) - 1)
-        # newline required by aexpect in function()
-        image_file.write(image_file_path + '\n')
-        image_file.close()
+        with open(image_file_path, 'wb') as image_file:
+            byte_size = self.meg * 1024 * 1024
+            # Make sparse file byte_size long (starting from 0)
+            image_file.truncate(byte_size)
+            # Write simple unique data to file before end
+            image_file.seek(byte_size - len(image_file_path) - 1)
+            # newline required by aexpect in function()
+            image_file.write(image_file_path + '\n')
 
     def init_device(self, index):
         """
@@ -623,7 +624,7 @@ class VirtualDiskBasic(AttachDeviceBase):
         return disk_device
 
     def cleanup(self):
-        for index in xrange(0, self.count):
+        for index in range(0, self.count):
             try:
                 os.unlink(self.make_image_file_path(index))
             except OSError:
@@ -784,7 +785,7 @@ def analyze_positive_results(test_params, operational_results,
                 return ("Positive post-boot functionality test failed")
 
 
-def analyze_results(test_params, operational_results=None,
+def analyze_results(test_params, test, operational_results=None,
                     preboot_results=None, pstboot_results=None):
     """
     Analyze available results, raise error message if fail
@@ -797,7 +798,7 @@ def analyze_results(test_params, operational_results=None,
         fail_msg = analyze_positive_results(test_params, operational_results,
                                             preboot_results, pstboot_results)
     if fail_msg is not None:
-        raise error.TestFail(fail_msg)
+        test.fail(fail_msg)
 
 
 def run(test, params, env):
@@ -828,8 +829,8 @@ def run(test, params, env):
     # Skip chardev hotplug on rhel6 host as it is not supported
     if "Serial" in dev_obj:
         if not libvirt_version.version_compare(1, 1, 0):
-            raise error.TestNAError("You libvirt version not supported"
-                                    " attach/detach Serial devices")
+            test.cancel("You libvirt version not supported"
+                        " attach/detach Serial devices")
 
     logging.info("Preparing initial VM state")
     # Prepare test environment and its parameters
@@ -848,7 +849,7 @@ def run(test, params, env):
     test_params.virsh = virsh.Virsh(ignore_status=True)
     logging.info("Creating %d test device instances", len(test_params.devs))
     # Create test objects from cfg. class names via subclasses above
-    test_devices = [globals()[class_name](test_params)  # instantiate
+    test_devices = [globals()[class_name](test_params, test)  # instantiate
                     for class_name in test_params.devs]  # vadu_dev_objs
     operational_results = []
     preboot_results = []
@@ -856,7 +857,7 @@ def run(test, params, env):
     try:
         operational_action(test_params, test_devices, operational_results)
         # Fail early if attach-device return value is not expected
-        analyze_results(test_params=test_params,
+        analyze_results(test_params, test,
                         operational_results=operational_results)
 
         #  Can't do functional testing with a cold VM, only test hot-attach
@@ -870,13 +871,13 @@ def run(test, params, env):
         try:
             test_params.main_vm.start()
         except virt_vm.VMStartError as details:
-            raise error.TestFail('VM Failed to start for some reason!: %s' % details)
+            test.fail('VM Failed to start for some reason!: %s' % details)
         # Signal devices reboot is finished
         for test_device in test_devices:
             test_device.booted = True
         test_params.main_vm.wait_for_login().close()
         postboot_action(test_params, test_devices, pstboot_results)
-        analyze_results(test_params=test_params,
+        analyze_results(test_params, test,
                         preboot_results=preboot_results,
                         pstboot_results=pstboot_results)
     finally:

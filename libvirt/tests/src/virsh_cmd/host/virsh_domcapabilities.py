@@ -1,3 +1,5 @@
+from six import itervalues
+
 from virttest import ssh_key
 from virttest import libvirt_vm
 from virttest import virsh
@@ -39,15 +41,15 @@ def run(test, params, env):
         options_list = []
         capa_xml = capability_xml.CapabilityXML()
         guest_capa = capa_xml.get_guest_capabilities()
-        for arch_prop in guest_capa.values():
-            for arch in arch_prop.keys():
+        for arch_prop in list(itervalues(guest_capa)):
+            for arch in list(arch_prop.keys()):
                 machine_list = arch_prop[arch]['machine']
                 virttype_list = []
                 emulatorbin_list = [arch_prop[arch]['emulator']]
-                for key in arch_prop[arch].keys():
+                for key in list(arch_prop[arch].keys()):
                     if key.startswith("domain_"):
                         virttype_list.append(key[7:])
-                        if arch_prop[arch][key].values():
+                        if list(itervalues(arch_prop[arch][key])):
                             emulatorbin_list.append(arch_prop[arch][key]['emulator'])
                 for virttype in virttype_list:
                     for emulatorbin in emulatorbin_list:

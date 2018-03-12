@@ -75,7 +75,7 @@ def run(test, params, env):
                 maxvcpus = dom_capabilities.max
                 logging.debug("maxvcpus calculate from domcapabilities "
                               "is %s", maxvcpus)
-            except:
+            except Exception as details:
                 raise exceptions.TestFail("Failed to get maxvcpus from "
                                           "domcapabilities xml:\n%s"
                                           % dom_capabilities)
@@ -83,7 +83,7 @@ def run(test, params, env):
                 raise exceptions.TestFail("Failed to get max value for vcpu"
                                           "from domcapabilities "
                                           "xml:\n%s" % dom_capabilities)
-        except Exception, details:
+        except Exception as details:
             raise exceptions.TestFail("Failed get the virsh instance with uri: "
                                       "%s\n Details: %s" % (connect_uri, details))
 

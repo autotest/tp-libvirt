@@ -1,5 +1,3 @@
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import utils_libvirtd
@@ -23,7 +21,7 @@ def run(test, params, env):
     domuuid = vm.get_uuid()
     blklist = libvirt_xml.VMXML.get_disk_blk(vm_name)
     if blklist is None:
-        raise error.TestFail("Cannot find disk in %s" % vm_name)
+        test.fail("Cannot find disk in %s" % vm_name)
     # Select a block device from disks
     blk = blklist[0]
     libvirtd = params.get("libvirtd", "on")
@@ -47,8 +45,8 @@ def run(test, params, env):
     option_list = options.split(" ")
     for option in option_list:
         if virsh.has_command_help_match("domblkstat", option) is None:
-            raise error.TestNAError("The current libvirt doesn't support"
-                                    " '%s' option" % option)
+            test.cancel("The current libvirt doesn't support"
+                        " '%s' option" % option)
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()
 
@@ -63,7 +61,7 @@ def run(test, params, env):
     # check status_error
     if status_error == "yes":
         if status == 0 or err == "":
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if status != 0 or output == "":
-            raise error.TestFail("Run failed with right command")
+            test.fail("Run failed with right command")

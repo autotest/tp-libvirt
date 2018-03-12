@@ -2,8 +2,6 @@ import os
 import logging
 import tempfile
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
@@ -88,14 +86,14 @@ def run(test, params, env):
                 disk_xml.driver = driver_attr
 
                 new_attrs = disk_xml.source.attrs
-                if disk_xml.source.attrs.has_key('file'):
+                if 'file' in disk_xml.source.attrs:
                     file_name = disk_xml.source.attrs['file']
                     new_file = "%s.snap%s" % (file_name.split('.')[0],
                                               count)
                     snapshot_external_disks.append(new_file)
                     new_attrs.update({'file': new_file})
                     hosts = None
-                elif (disk_xml.source.attrs.has_key('name') and
+                elif ('name' in disk_xml.source.attrs and
                       disk_src_protocol == 'gluster'):
                     src_name = disk_xml.source.attrs['name']
                     new_name = "%s.snap%s" % (src_name.split('.')[0],
@@ -103,8 +101,8 @@ def run(test, params, env):
                     new_attrs.update({'name': new_name})
                     snapshot_external_disks.append(new_name)
                     hosts = disk_xml.source.hosts
-                elif (disk_xml.source.attrs.has_key('dev') or
-                      disk_xml.source.attrs.has_key('name')):
+                elif ('dev' in disk_xml.source.attrs or
+                      'name' in disk_xml.source.attrs):
                     if (disk_xml.type_name == 'block' or
                             disk_src_protocol in ['iscsi', 'rbd']):
                         # Use local file as external snapshot target for block
@@ -116,9 +114,9 @@ def run(test, params, env):
                         # And external active snapshots are not supported on
                         # 'network' disks using 'iscsi' protocol
                         disk_xml.type_name = 'file'
-                        if new_attrs.has_key('dev'):
+                        if 'dev' in new_attrs:
                             del new_attrs['dev']
-                        elif new_attrs.has_key('name'):
+                        elif 'name' in new_attrs:
                             del new_attrs['name']
                             del new_attrs['protocol']
                         new_file = "%s/blk_src_file.snap%s" % (tmp_dir, count)
@@ -143,7 +141,7 @@ def run(test, params, env):
                 vm_name, options, debug=True)
 
             if snapshot_result.exit_status != 0:
-                raise error.TestFail(snapshot_result.stderr)
+                test.fail(snapshot_result.stderr)
 
             # Create a file flag in VM after each snapshot
             flag_file = tempfile.NamedTemporaryFile(prefix=("snapshot_test_"),
@@ -153,7 +151,7 @@ def run(test, params, env):
 
             status, output = session.cmd_status_output("touch %s" % file_path)
             if status:
-                raise error.TestFail("Touch file in vm failed. %s" % output)
+                test.fail("Touch file in vm failed. %s" % output)
             snapshot_flag_files.append(file_path)
 
     # MAIN TEST CODE ###
@@ -188,22 +186,22 @@ def run(test, params, env):
     # Abort the test if there are snapshots already
     exsiting_snaps = virsh.snapshot_list(vm_name)
     if len(exsiting_snaps) != 0:
-        raise error.TestFail("There are snapshots created for %s already" % vm_name)
+        test.fail("There are snapshots created for %s already" % vm_name)
 
     snapshot_external_disks = []
     try:
         if disk_src_protocol == 'iscsi' and disk_type == 'network':
             if not libvirt_version.version_compare(1, 0, 4):
-                raise error.TestNAError("'iscsi' disk doesn't support in"
-                                        " current libvirt version.")
+                test.cancel("'iscsi' disk doesn't support in"
+                            " current libvirt version.")
         if disk_src_protocol == 'gluster':
             if not libvirt_version.version_compare(1, 2, 7):
-                raise error.TestNAError("Snapshot on glusterfs not"
-                                        " support in current "
-                                        "version. Check more info "
-                                        " with https://bugzilla.re"
-                                        "dhat.com/show_bug.cgi?id="
-                                        "1017289")
+                test.cancel("Snapshot on glusterfs not"
+                            " support in current "
+                            "version. Check more info "
+                            " with https://bugzilla.re"
+                            "dhat.com/show_bug.cgi?id="
+                            "1017289")
 
         # Set vm xml and guest agent
         if replace_vm_disk:
@@ -211,7 +209,7 @@ def run(test, params, env):
                 src_host = params.get("disk_source_host", "EXAMPLE_HOSTS")
                 mon_host = params.get("mon_host", "EXAMPLE_MON_HOST")
                 if src_host.count("EXAMPLE") or mon_host.count("EXAMPLE"):
-                    raise error.TestNAError("Please provide ceph host first.")
+                    test.cancel("Please provide ceph host first.")
             libvirt.set_vm_disk(vm, params, tmp_dir)
 
         if needs_agent:
@@ -322,7 +320,7 @@ def run(test, params, env):
                     chain_lst = snap_src_lst[-1:]
                     ret = check_chain_xml(disk_xml, chain_lst)
                     if not ret:
-                        raise error.TestFail(err_msg)
+                        test.fail(err_msg)
                 elif "base" or "shallow" in base_option:
                     chain_lst = snap_src_lst[::-1]
                     if not base_index and base_image:
@@ -334,7 +332,7 @@ def run(test, params, env):
                         chain_lst.remove(i)
                     ret = check_chain_xml(disk_xml, chain_lst)
                     if not ret:
-                        raise error.TestFail(err_msg)
+                        test.fail(err_msg)
 
         # If base image is the top layer of snapshot chain,
         # virsh blockpull should fail, return directly
@@ -345,7 +343,7 @@ def run(test, params, env):
         for flag in snapshot_flag_files:
             status, output = session.cmd_status_output("cat %s" % flag)
             if status:
-                raise error.TestFail("blockpull failed: %s" % output)
+                test.fail("blockpull failed: %s" % output)
 
     finally:
         if vm.is_alive():

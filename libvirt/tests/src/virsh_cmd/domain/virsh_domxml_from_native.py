@@ -34,9 +34,8 @@ def run(test, params, env):
         cmdline = process.run("cat -v /proc/%d/cmdline" % pid).stdout
         cmdline = re.sub(r'\^@', ' ', cmdline)
         cmdline_tmp = re.sub(r'\s-drive\s[^\s]+', '\s', cmdline)
-        guest_file = file(guest_args, 'w')
-        guest_file.write(cmdline_tmp)
-        guest_file.close()
+        with open(guest_args, 'w') as guest_file:
+            guest_file.write(cmdline_tmp)
 
     libvirtd = params.get("libvirtd")
     dfn_format = params.get("dfn_format")
