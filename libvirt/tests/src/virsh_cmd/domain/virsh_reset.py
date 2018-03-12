@@ -2,8 +2,6 @@ import logging
 import commands
 import time
 
-from autotest.client.shared import error
-
 from virttest import utils_misc
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -17,8 +15,8 @@ def run(test, params, env):
     """
 
     if not virsh.has_help_command('reset'):
-        raise error.TestNAError("This version of libvirt does not support "
-                                "the reset test")
+        test.cancel("This version of libvirt does not support "
+                    "the reset test")
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm_ref = params.get("reset_vm_ref")
@@ -46,8 +44,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     # change the disk cache to default
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -81,7 +79,7 @@ def run(test, params, env):
             if status == 0:
                 logging.info("Succeed generate file %s", tmpfile)
             else:
-                raise error.TestFail("Touch command failed!")
+                test.fail("Touch command failed!")
 
         # record the pid before reset for compare
         output = virsh.reset(vm_ref, readonly=readonly,
@@ -93,23 +91,23 @@ def run(test, params, env):
                              output.stderr)
                 return
             else:
-                raise error.TestFail("Failed to reset guest, Error:%s." %
-                                     output.stderr)
+                test.fail("Failed to reset guest, Error:%s." %
+                          output.stderr)
         elif status_error:
-            raise error.TestFail("Expect fail, but succeed indeed.")
+            test.fail("Expect fail, but succeed indeed.")
 
         session.close()
         time.sleep(5)
         session = vm.wait_for_login()
         status = session.get_command_status("ls %s" % tmpfile)
         if status == 0:
-            raise error.TestFail("Fail to reset guest, tmpfile still exist!")
+            test.fail("Fail to reset guest, tmpfile still exist!")
         else:
             aft_pid = commands.getoutput("pidof -s qemu-kvm")
             if bef_pid == aft_pid:
                 logging.info("Succeed to check reset, tmpfile is removed.")
             else:
-                raise error.TestFail("Domain pid changed after reset!")
+                test.fail("Domain pid changed after reset!")
         session.close()
 
     finally:

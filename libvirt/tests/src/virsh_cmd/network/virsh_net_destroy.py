@@ -1,11 +1,7 @@
 import re
 
-from autotest.client.shared import error
-
 from avocado.utils import process
-
 from virttest import virsh
-
 from provider import libvirt_version
 
 
@@ -31,8 +27,8 @@ def run(test, params, env):
     # libvirt acl polkit related params
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
@@ -43,7 +39,7 @@ def run(test, params, env):
     # Confirm the network exists.
     output_all = virsh.net_list("--all").stdout.strip()
     if not re.search(network_name, output_all):
-        raise error.TestNAError("Make sure the network exists!!")
+        test.cancel("Make sure the network exists!!")
 
     # Run test case
     if net_ref == "uuid":
@@ -62,7 +58,7 @@ def run(test, params, env):
             if network_status == "inactive":
                 virsh.net_destroy(network_name)
     except process.CmdError:
-        raise error.TestError("Prepare network status failed!")
+        test.error("Prepare network status failed!")
 
     status = virsh.net_destroy(net_ref, extra, uri=uri, debug=True,
                                unprivileged_user=unprivileged_user,
@@ -81,14 +77,14 @@ def run(test, params, env):
                 virsh.net_state_dict()[network_name]['active']):
             virsh.net_destroy(network_name)
     except process.CmdError:
-        raise error.TestError("Recover network status failed!")
+        test.error("Recover network status failed!")
 
     # Check status_error
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if status != 0:
-            raise error.TestFail("Run failed with right command")
+            test.fail("Run failed with right command")
     else:
-        raise error.TestError("The status_error must be 'yes' or 'no'!")
+        test.error("The status_error must be 'yes' or 'no'!")

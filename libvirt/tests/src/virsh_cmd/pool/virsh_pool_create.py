@@ -7,9 +7,9 @@ from virttest import xml_utils
 from virttest import libvirt_storage
 from virttest import libvirt_xml
 from virttest.utils_test import libvirt as utlv
+from virttest.libvirt_xml import pool_xml
 
 from provider import libvirt_version
-from virttest.libvirt_xml import pool_xml
 
 
 def run(test, params, env):
@@ -74,9 +74,9 @@ def run(test, params, env):
             elif duplicate_element == "source":
                 # Remove <uuid> and update <name>
                 cmd = "sed -i '/<uuid>/d' %s" % pool_xml_f
-                process.run(cmd)
+                process.run(cmd, shell=True)
                 cmd = "sed -i 's/<name>.*<\/name>/<name>%s<\/name>/g' %s" % (new_pool_name, pool_xml_f)
-                process.run(cmd)
+                process.run(cmd, shell=True)
             else:
                 # The transient pool will gone after destroyed
                 virsh.pool_destroy(pool_name)
@@ -84,10 +84,10 @@ def run(test, params, env):
             if new_source_format:
                 cmd = "sed -i s/type=\\\'%s\\\'/type=\\\'%s\\\'/g %s" % (
                     source_format, new_source_format, pool_xml_f)
-                process.run(cmd)
+                process.run(cmd, shell=True)
             # Remove uuid
             cmd = "sed -i '/<uuid>/d' %s" % pool_xml_f
-            process.run(cmd)
+            process.run(cmd, shell=True)
         except Exception, details:
             pvt.cleanup_pool(pool_name, pool_type, pool_target,
                              emulated_image, **kwargs)

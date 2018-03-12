@@ -1,7 +1,6 @@
 import logging
 import os
 import re
-
 import aexpect
 
 from virttest import data_dir

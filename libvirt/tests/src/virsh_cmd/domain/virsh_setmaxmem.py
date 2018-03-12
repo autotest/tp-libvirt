@@ -1,7 +1,6 @@
 import logging
 
-from autotest.client.shared import utils
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import virt_vm
@@ -80,7 +79,7 @@ def run(test, params, env):
 
     def is_xen_host():
         check_cmd = "ls /dev/kvm"
-        return utils.run(check_cmd, ignore_status=True).exit_status
+        return process.run(check_cmd, ignore_status=True, shell=True).exit_status
 
     def is_in_range(actual, expected, error_percent):
         deviation = 100 - (100 * (float(actual) / float(expected)))
@@ -118,7 +117,7 @@ def run(test, params, env):
 
     # FIXME: KVM does not support --live currently.
     if (flags.count('live') or (flags.count('current') and vm.is_alive())):
-        raise error.TestNAError("KVM does not support --live.")
+        test.cancel("KVM does not support --live.")
 
     # Backup original XML
     original_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -203,7 +202,7 @@ def run(test, params, env):
     # Don't care about memory comparison on error test
     if status_error:
         if status is 0:
-            raise error.TestFail("Error test did not result in an error.")
+            test.fail("Error test did not result in an error.")
     else:
         vmxml_match = (test_vmxml_mem == expected_mem)
         if xen_host:
@@ -221,6 +220,6 @@ def run(test, params, env):
                 msg += "Max memory in dominfo's output is not matched. "
             if start_status:
                 msg += "Start after VM's max mem is modified failed."
-            raise error.TestFail(msg)
+            test.fail(msg)
 
     logging.info("Test end normally.")

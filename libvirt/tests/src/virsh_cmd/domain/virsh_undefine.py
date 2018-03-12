@@ -6,8 +6,6 @@ import platform
 
 import aexpect
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import libvirt_vm
@@ -78,8 +76,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     # Back up xml file.Xen host has no guest xml file to define a guset.
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -131,15 +129,15 @@ def run(test, params, env):
                         snp_file_list.append(tmp_file)
             else:
                 if len(snp_list):
-                    raise error.TestNAError("This domain has snapshot(s), "
-                                            "cannot be undefined!")
+                    test.cancel("This domain has snapshot(s), "
+                                "cannot be undefined!")
         if option.count("remove-all-storage"):
             pvtest = utlv.PoolVolumeTest(test, params)
             pvtest.pre_pool(pool_name, pool_type, pool_target, emulated_img,
                             emulated_size=emulated_size)
             new_pool = libvirt_storage.PoolVolume(pool_name)
             if not new_pool.create_volume(vol_name, volume_size):
-                raise error.TestFail("Creation of volume %s failed." % vol_name)
+                test.fail("Creation of volume %s failed." % vol_name)
             volumes = new_pool.list_volumes()
             volume = volumes[vol_name]
             virsh.attach_disk(vm_name, volume, disk_target, "--config")
@@ -166,8 +164,8 @@ def run(test, params, env):
                                          ignore_status=True).exit_status
         else:
             if remote_ip.count("EXAMPLE.COM") or local_ip.count("EXAMPLE.COM"):
-                raise error.TestNAError("remote_ip and/or local_ip parameters"
-                                        " not changed from default values")
+                test.cancel("remote_ip and/or local_ip parameters"
+                            " not changed from default values")
             try:
                 local_user = params.get("username", "root")
                 uri = libvirt_vm.complete_uri(local_ip)
@@ -261,30 +259,30 @@ def run(test, params, env):
     # Check results.
     if status_error:
         if not status:
-            raise error.TestFail("virsh undefine return unexpected result.")
+            test.fail("virsh undefine return unexpected result.")
         if params.get('setup_libvirt_polkit') == 'yes':
             if status3 == 0:
-                raise error.TestFail("virsh define with false acl permission" +
-                                     " should failed.")
+                test.fail("virsh define with false acl permission" +
+                          " should failed.")
     else:
         if status:
-            raise error.TestFail("virsh undefine failed.")
+            test.fail("virsh undefine failed.")
         if undefine_twice:
             if not status2:
-                raise error.TestFail("Undefine the same VM twice succeeded.")
+                test.fail("Undefine the same VM twice succeeded.")
         if vm_exist:
-            raise error.TestFail("VM still exists after undefine.")
+            test.fail("VM still exists after undefine.")
         if xml_exist:
-            raise error.TestFail("Xml file still exists after undefine.")
+            test.fail("Xml file still exists after undefine.")
         if option.count("managedsave") and save_exist:
-            raise error.TestFail("Save file still exists after undefine.")
+            test.fail("Save file still exists after undefine.")
         if option.count("remove-all-storage") and volume_exist:
-            raise error.TestFail("Volume file '%s' still exists after"
-                                 " undefine." % volume)
+            test.fail("Volume file '%s' still exists after"
+                      " undefine." % volume)
         if wipe_data and option.count("remove-all-storage"):
             if not output.count("Wiping volume '%s'" % disk_target):
-                raise error.TestFail("Command didn't wipe volume storage!")
+                test.fail("Command didn't wipe volume storage!")
         if params.get('setup_libvirt_polkit') == 'yes':
             if status3:
-                raise error.TestFail("virsh define with right acl permission" +
-                                     " should succeeded")
+                test.fail("virsh define with right acl permission" +
+                          " should succeeded")

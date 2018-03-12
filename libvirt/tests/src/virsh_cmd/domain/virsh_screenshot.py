@@ -1,8 +1,6 @@
 import os
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.video import Video
@@ -62,8 +60,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     if vm.is_alive():
         vm.destroy()
@@ -76,7 +74,7 @@ def run(test, params, env):
         video_device_setup(vm_name, video_type)
     else:
         if screen_num == "1":
-            raise error.TestNAError("Multiple screen is not enabled")
+            test.cancel("Multiple screen is not enabled")
 
     # Prepare vm state for test
     if vm_state != "shutoff":
@@ -111,10 +109,10 @@ def run(test, params, env):
     # check status_error
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successful with wrong command!")
+            test.fail("Run successful with wrong command!")
     elif status_error == "no":
         if status != 0:
-            raise error.TestFail("Run failed with right command.")
+            test.fail("Run failed with right command.")
 
     # Recover state of vm.
     if vm_state == "paused":

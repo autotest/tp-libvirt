@@ -1,15 +1,12 @@
 import logging
-
 import aexpect
-
-from autotest.client.shared import error
 
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import remote
 
 
-def edit_filter_xml(filter_name, edit_cmd):
+def edit_filter_xml(test, filter_name, edit_cmd):
     """
     Edit network filter xml
 
@@ -31,8 +28,8 @@ def edit_filter_xml(filter_name, edit_cmd):
     except (aexpect.ShellError, aexpect.ExpectError), details:
         log = session.get_output()
         session.close()
-        raise error.TestFail("Failed to do nwfilter-edit: %s\n%s"
-                             % (details, log))
+        test.fail("Failed to do nwfilter-edit: %s\n%s"
+                  % (details, log))
 
 
 def run(test, params, env):
@@ -66,12 +63,12 @@ def run(test, params, env):
     # Run command
     if status_error == "no":
         if filter_ref == "name":
-            edit_filter_xml(filter_name, edit_cmd)
+            edit_filter_xml(test, filter_name, edit_cmd)
         elif filter_ref == "uuid":
             edit_filter_xml(uuid, edit_cmd)
         else:
-            raise error.TestNAError("For positive test, edit_filter_ref cloud"
-                                    " be either 'name' or 'uuid'.")
+            test.cancel("For positive test, edit_filter_ref cloud"
+                        " be either 'name' or 'uuid'.")
     else:
         if filter_ref.find("invalid") == 0:
             if extra_option == "":
@@ -79,13 +76,13 @@ def run(test, params, env):
             edit_result = virsh.nwfilter_edit(filter_name, extra_option,
                                               ignore_status=True, debug=True)
             if edit_result.exit_status == 0:
-                raise error.TestFail("nwfilter-edit should fail but succeed")
+                test.fail("nwfilter-edit should fail but succeed")
             else:
                 logging.info("Run command failed as expected")
                 status = False
         else:
-            raise error.TestNAError("For negative test, string 'invalid' is"
-                                    " required in edit_filter_ref.")
+            test.cancel("For negative test, string 'invalid' is"
+                        " required in edit_filter_ref.")
 
     # no check and clean env if command fail
     if status:
@@ -98,12 +95,12 @@ def run(test, params, env):
             post_priority = postxml.filter_priority
             if pre_priority == edit_priority:
                 if post_priority != pre_priority:
-                    raise error.TestFail("nwfilter-edit fail to update filter"
-                                         " priority")
+                    test.fail("nwfilter-edit fail to update filter"
+                              " priority")
             else:
                 if post_priority == pre_priority:
-                    raise error.TestFail("nwfilter-edit fail to update filter"
-                                         " priority")
+                    test.fail("nwfilter-edit fail to update filter"
+                              " priority")
 
             # Clean env
             if post_priority != pre_priority:

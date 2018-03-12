@@ -1,9 +1,6 @@
 import os
 import logging
-
 import aexpect
-
-from autotest.client.shared import error
 
 from virttest import virsh
 from virttest import libvirt_storage
@@ -13,7 +10,7 @@ from virttest.libvirt_xml import pool_xml
 from virttest.utils_test import libvirt
 
 
-def edit_pool(pool, edit_cmd):
+def edit_pool(test, pool, edit_cmd):
     """
     Edit libvirt storage pool.
 
@@ -34,8 +31,8 @@ def edit_pool(pool, edit_cmd):
     except (aexpect.ShellError, aexpect.ExpectError), details:
         log = session.get_output()
         session.close()
-        raise error.TestFail("Failed to do pool edit: %s\n%s"
-                             % (details, log))
+        test.fail("Failed to do pool edit: %s\n%s"
+                  % (details, log))
 
 
 def check_pool(pool_name, check_point, expect_value=""):
@@ -142,10 +139,10 @@ def run(test, params, env):
                 check_pool_name = new_pool_name
 
             else:
-                raise error.TestNAError("No edit method for %s" % edit_target)
+                test.cancel("No edit method for %s" % edit_target)
 
             # run test and check the result
-            edit_pool(pool, edit_cmd)
+            edit_pool(test, pool, edit_cmd)
             if libvirt_pool.is_pool_active(pool_name):
                 libvirt_pool.destroy_pool(pool_name)
             # After change the source format, we have to rebuild the pool to
@@ -153,9 +150,9 @@ def run(test, params, env):
             if edit_target == "pool_format_type":
                 virsh.pool_build(pool_name, '--overwrite', debug=True)
             if not libvirt_pool.start_pool(check_pool_name):
-                raise error.TestFail("Fail to start pool after edit it")
+                test.fail("Fail to start pool after edit it")
             if not check_pool(check_pool_name, edit_target, expect_value):
-                raise error.TestFail("Edit pool check fail")
+                test.fail("Edit pool check fail")
         else:
             # negative test
             result = virsh.pool_edit(pool)

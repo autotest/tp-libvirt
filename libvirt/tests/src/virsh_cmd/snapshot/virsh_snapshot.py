@@ -1,11 +1,10 @@
 import logging
 import re
 
-from autotest.client.shared import error
-
 from avocado.utils import process
-
+from avocado.core import exceptions
 from virttest import virt_vm
+
 from virttest import virsh
 
 
@@ -37,15 +36,15 @@ def run(test, params, env):
         cmd = "ls %s" % filename
         rv = session.cmd_status(cmd)
         if rv != result:
-            raise error.TestFail("Failed file existence test - %s" % filename)
+            test.fail("Failed file existence test - %s" % filename)
 
     def handle_error(errorstr, vm):
         rf = remove_snapshots(vm)
         if rf == 0:
-            raise error.TestFail(errorstr)
+            test.fail(errorstr)
         else:
-            raise error.TestFail("%s (Failed to remove %d snapshots)"
-                                 % (errorstr, rf))
+            test.fail("%s (Failed to remove %d snapshots)"
+                      % (errorstr, rf))
 
     def normalize_state(domstate):
         if domstate in ["offline", "shutoff", "shut off"]:
@@ -59,7 +58,7 @@ def run(test, params, env):
 
     def check_info(i1, i2, errorstr="Values differ"):
         if normalize_state(i1) != normalize_state(i2):
-            error.TestFail("%s (%s != %s)" % (errorstr, i1, i2))
+            test.fail("%s (%s != %s)" % (errorstr, i1, i2))
 
     vm_name = params.get("main_vm")
     offline = (params.get("snapshot_shutdown", "no") == "yes")
@@ -71,7 +70,7 @@ def run(test, params, env):
     snl = virsh.snapshot_list(vm_name)
     if len(snl) != 0:
         if bool(remove_snapshots(vm_name)):
-            raise error.TestFail("Snapshot on guest can not be removed.")
+            test.fail("Snapshot on guest can not be removed.")
 
     logging.info("Create snapshot hierarchy for %s", vm_name)
     snapshot_info = [{"Domain": vm_name, "State": normalize_state("running"),
@@ -105,11 +104,11 @@ def run(test, params, env):
 
         snapshot_result = virsh.snapshot_create(vm_name, options)
         if snapshot_result.exit_status:
-            raise error.TestFail("Failed to create snapshot. Error:%s."
-                                 % snapshot_result.stderr.strip())
+            test.fail("Failed to create snapshot. Error:%s."
+                      % snapshot_result.stderr.strip())
         if ((snapshot_halt) and (not vm.is_dead())):
-            raise error.TestFail("VM is not dead after virsh.snapshot_create"
-                                 "with '--halt'")
+            test.fail("VM is not dead after virsh.snapshot_create"
+                      "with '--halt'")
         if snapshot_halt:
             vm.start()
         last_snapshot = re.search(
@@ -140,7 +139,7 @@ def run(test, params, env):
 
         except process.CmdError:
             handle_error("Failed getting snapshots info", vm_name)
-        except error.TestFail, e:
+        except exceptions.TestFail as e:
             handle_error(str(e), vm_name)
         logging.info("Snapshot %s verified", sni["Name"])
 
@@ -151,12 +150,12 @@ def run(test, params, env):
             virsh.destroy(vm_name)
             result = virsh.snapshot_revert(vm_name, sni["Name"])
             if result.exit_status:
-                raise error.TestFail("Snapshot revert failed.\n"
-                                     "Error: %s." % result.stderr)
+                test.fail("Snapshot revert failed.\n"
+                          "Error: %s." % result.stderr)
             state = normalize_state(virsh.domstate(vm_name).stdout.strip())
             if state != sni["State"]:
-                raise error.TestFail("Incorrect state after revert - %s"
-                                     % (sni["Name"]))
+                test.fail("Incorrect state after revert - %s"
+                          % (sni["Name"]))
             if state == normalize_state('shutoff'):
                 vm.start()
             elif state == normalize_state('paused'):
@@ -167,11 +166,11 @@ def run(test, params, env):
             test_file(session, sni["to_delete"], 2)
         except process.CmdError:
             handle_error("Failed to revert snapshot", vm_name)
-        except (error.TestFail, virt_vm.VMDeadError), e:
+        except (exceptions.TestFail, virt_vm.VMDeadError) as e:
             handle_error(str(e), vm_name)
         logging.info("Snapshot %s successfully reverted", sni["Name"])
 
     logging.info("Remove all snapshots")
     rf = remove_snapshots(vm_name)
     if rf != 0:
-        error.TestFail("Failed to remove %d snapshots" % rf)
+        test.fail("Failed to remove %d snapshots" % rf)

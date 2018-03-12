@@ -3,8 +3,6 @@ import logging
 import re
 import tempfile
 
-from autotest.client.shared import error
-
 from virttest import data_dir
 from virttest import virsh
 from virttest.libvirt_xml import network_xml
@@ -64,8 +62,8 @@ def run(test, params, env):
         test_xml.debug_xml()
         virsh.net_dumpxml(net_name)
     except xcepts.LibvirtXMLError, detail:
-        raise error.TestError("Failed to define a test network.\n"
-                              "Detail: %s." % detail)
+        test.error("Failed to define a test network.\n"
+                   "Detail: %s." % detail)
 
     try:
         # Get a tmp_dir.
@@ -136,7 +134,7 @@ def run(test, params, env):
                     flag_list.append(new_ip_dhcp_mac)
                 logging.info("The new xml of forward-interface is %s", newxml)
             else:
-                raise error.TestFail("Unknown network section")
+                test.fail("Unknown network section")
 
         fd = open(xmlfile, 'w')
         fd.write(newxml)
@@ -150,10 +148,10 @@ def run(test, params, env):
         if cmd_result.exit_status:
             err = cmd_result.stderr.strip()
             if re.search("not supported", err):
-                raise error.TestNAError("Skip the test: %s" % err)
+                test.cancel("Skip the test: %s" % err)
             else:
-                raise error.TestFail("Failed to execute "
-                                     "virsh net-update command")
+                test.fail("Failed to execute "
+                          "virsh net-update command")
 
         # Check the actual xml
         virsh_option = ""
@@ -172,13 +170,13 @@ def run(test, params, env):
             except xcepts.LibvirtXMLNotFoundError:
                 section_str = None
             if section_str is not None:
-                raise error.TestFail("The actual net xml is not expected,"
-                                     "element still exists")
+                test.fail("The actual net xml is not expected,"
+                          "element still exists")
 
         else:
             for flag_string in flag_list:
                 if not re.search(flag_string, actual_net_xml):
-                    raise error.TestFail("The actual net xml failed to update")
+                    test.fail("The actual net xml failed to update")
 
     finally:
         test_xml.undefine()

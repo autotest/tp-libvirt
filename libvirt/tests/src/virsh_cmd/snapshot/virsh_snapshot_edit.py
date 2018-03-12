@@ -4,8 +4,6 @@ import logging
 
 import aexpect
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import utils_test
 from virttest import remote
@@ -60,8 +58,8 @@ def run(test, params, env):
         except (aexpect.ShellError, aexpect.ExpectError), details:
             log = session.get_output()
             session.close()
-            raise error.TestFail("Failed to do snapshot-edit: %s\n%s"
-                                 % (details, log))
+            test.fail("Failed to do snapshot-edit: %s\n%s"
+                      % (details, log))
 
     def snap_xml_compare(pre_xml, after_xml):
         """
@@ -104,7 +102,7 @@ def run(test, params, env):
                     if aft_line is not None:
                         logging.debug("diff  after='%s'",
                                       aft_line.lstrip().strip())
-            raise error.TestFail("Failed xml before/after comparison")
+            test.fail("Failed xml before/after comparison")
 
     snapshot_oldlist = None
     try:
@@ -112,16 +110,16 @@ def run(test, params, env):
         logging.debug("Create snap-temp --disk-only")
         ret = virsh.snapshot_create_as(vm_name, "snap-temp --disk-only")
         if ret.exit_status != 0:
-            raise error.TestFail("Fail to create temp snap, Error: %s"
-                                 % ret.stderr.strip())
+            test.fail("Fail to create temp snap, Error: %s"
+                      % ret.stderr.strip())
 
         # Create snapshots
         for opt in [snap_create_opt1, snap_create_opt2]:
             logging.debug("...use option %s", opt)
             result = virsh.snapshot_create_as(vm_name, opt)
             if result.exit_status:
-                raise error.TestFail("Failed to create snapshot. Error:%s."
-                                     % result.stderr.strip())
+                test.fail("Failed to create snapshot. Error:%s."
+                          % result.stderr.strip())
             time.sleep(1)
 
         snapshot_oldlist = virsh.snapshot_list(vm_name)
@@ -137,8 +135,8 @@ def run(test, params, env):
         if ret.exit_status == 0:
             pre_xml = ret.stdout
         else:
-            raise error.TestFail("Fail to dumpxml of snapshot %s:%s" %
-                                 (pre_name, ret.stderr.strip()))
+            test.fail("Fail to dumpxml of snapshot %s:%s" %
+                      (pre_name, ret.stderr.strip()))
 
         edit_cmd = []
         replace_cmd = '%s<\/name>/%s<\/name>' % (pre_name, pre_name)
@@ -156,8 +154,8 @@ def run(test, params, env):
         if status_error == "yes":
             output = virsh.snapshot_edit(vm_name, edit_opts)
             if output.exit_status == 0:
-                raise error.TestFail("Succeed to do the snapshot-edit but"
-                                     " expect fail")
+                test.fail("Succeed to do the snapshot-edit but"
+                          " expect fail")
             else:
                 logging.info("Fail to do snapshot-edit as expect: %s",
                              output.stderr.strip())
@@ -178,18 +176,18 @@ def run(test, params, env):
                     logging.debug("before xml=%s", pre_xml.split()[i].lstrip())
                     logging.debug(" after xml=%s",
                                   after_xml.split()[i].lstrip())
-                raise error.TestFail("Failed to edit snapshot description")
+                test.fail("Failed to edit snapshot description")
 
         # Check edit options --clone
         if snap_opt == "--clone":
             if pre_name not in snapshots:
-                raise error.TestFail("After clone, previous snapshot missing")
+                test.fail("After clone, previous snapshot missing")
             snap_xml_compare(pre_xml, after_xml)
 
         if snap_opt == "--rename":
             if pre_name in snapshots:
-                raise error.TestFail("After rename, snapshot %s still exist"
-                                     % pre_name)
+                test.fail("After rename, snapshot %s still exist"
+                          % pre_name)
             snap_xml_compare(pre_xml, after_xml)
 
         # Check if --current effect take effect
@@ -199,8 +197,8 @@ def run(test, params, env):
             if snap_cur == check_name:
                 logging.info("Check current is same as set %s", check_name)
             else:
-                raise error.TestFail("Fail to check --current, current is %s "
-                                     "but set is %s" % (snap_cur, check_name))
+                test.fail("Fail to check --current, current is %s "
+                          "but set is %s" % (snap_cur, check_name))
 
     finally:
         utils_test.libvirt.clean_up_snapshots(vm_name, snapshot_oldlist)

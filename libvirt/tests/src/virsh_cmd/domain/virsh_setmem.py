@@ -3,8 +3,6 @@ import os
 import logging
 import time
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import data_dir
@@ -13,7 +11,7 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 
 
-def manipulate_domain(vm_name, action, recover=False):
+def manipulate_domain(test, vm_name, action, recover=False):
     """
     Save/managedsave/S3/S4 domain or recover it.
     """
@@ -52,7 +50,7 @@ def manipulate_domain(vm_name, action, recover=False):
                 libvirt.check_exit_status(result)
                 os.remove(save_file)
             else:
-                raise error.TestError("No save file for domain restore")
+                test.error("No save file for domain restore")
         elif action in ["managedsave", "s4"]:
             result = virsh.start(vm_name, ignore_status=True, debug=True)
             libvirt.check_exit_status(result)
@@ -323,7 +321,7 @@ def run(test, params, env):
     try:
         memory_change = True
         if manipulate_dom_before_setmem:
-            manipulate_domain(vm_name, manipulate_action)
+            manipulate_domain(test, vm_name, manipulate_action)
             if manipulate_action in ['save', 'managedsave', 's4']:
                 memory_change = False
 
@@ -340,10 +338,10 @@ def run(test, params, env):
             time.sleep(quiesce_delay)
 
         if manipulate_dom_before_setmem:
-            manipulate_domain(vm_name, manipulate_action, True)
+            manipulate_domain(test, vm_name, manipulate_action, True)
         if manipulate_dom_after_setmem:
-            manipulate_domain(vm_name, manipulate_action)
-            manipulate_domain(vm_name, manipulate_action, True)
+            manipulate_domain(test, vm_name, manipulate_action)
+            manipulate_domain(test, vm_name, manipulate_action, True)
 
         # Recover libvirtd status
         if libvirt == "off":
@@ -402,19 +400,19 @@ def run(test, params, env):
                     msg += "Outside memory deviated. "
                 if not inside_pass:
                     msg += "Inside memory deviated. "
-                raise error.TestFail(msg)
+                test.fail(msg)
 
             return  # Normal test passed
         elif not status_error and old_libvirt_fail:
             if status is 0:
                 if old_libvirt:
-                    raise error.TestFail("Error test did not result in an error")
+                    test.fail("Error test did not result in an error")
             else:
                 if not old_libvirt:
-                    raise error.TestFail("Newer libvirt failed when it should not")
+                    test.fail("Newer libvirt failed when it should not")
         else:  # Verify an error test resulted in error
             if status is 0:
-                raise error.TestFail("Error test did not result in an error")
+                test.fail("Error test did not result in an error")
     finally:
         if need_mkswap:
             vm.cleanup_swap()
