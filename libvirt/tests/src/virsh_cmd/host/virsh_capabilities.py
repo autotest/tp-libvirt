@@ -97,7 +97,7 @@ def run(test, params, env):
             if set(exp_pms) != set(pms):
                 test.fail("Expected supported PMs are %s, got %s "
                           "instead." % (exp_pms, pms))
-        except ValueError:
+        except path.CmdNotFoundError:
             logging.debug('Power management checking is skipped, since command'
                           ' pm-is-supported is not found.')
 
