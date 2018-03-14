@@ -370,7 +370,7 @@ def run(test, params, env):
                 return False
             return True
 
-        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
             logging.error(str(e))
             return False
 
@@ -711,7 +711,7 @@ def run(test, params, env):
                           " after detachment")
             session.close()
 
-    except virt_vm.VMStartError, details:
+    except virt_vm.VMStartError as details:
         for msg in unsupported_err:
             if msg in str(details):
                 test.skip(details)
