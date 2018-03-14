@@ -65,7 +65,7 @@ def run(test, params, env):
         if filter_ref == "name":
             edit_filter_xml(test, filter_name, edit_cmd)
         elif filter_ref == "uuid":
-            edit_filter_xml(uuid, edit_cmd)
+            edit_filter_xml(test, uuid, edit_cmd)
         else:
             test.cancel("For positive test, edit_filter_ref cloud"
                         " be either 'name' or 'uuid'.")
