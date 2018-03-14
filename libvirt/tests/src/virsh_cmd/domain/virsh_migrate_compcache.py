@@ -2,13 +2,11 @@ import logging
 import subprocess
 import time
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
-from autotest.client.shared import ssh_key
-
+from avocado.utils import process
 from avocado.utils import path as utils_path
 
 from virttest import virsh
+from virttest import ssh_key
 from virttest.utils_test import libvirt as utlv
 
 
@@ -21,7 +19,7 @@ def get_page_size():
     """
     try:
         getconf_path = utils_path.find_command('getconf')
-        return int(utils.run(getconf_path + ' PAGESIZE').stdout)
+        return int(process.run(getconf_path + ' PAGESIZE', shell=True).stdout.strip())
     except utils_path.CmdNotFoundError:
         logging.warning('getconf not found! Assuming 4K for PAGESIZE')
         return 4096
@@ -44,8 +42,8 @@ def run(test, params, env):
 
     # Check if the virsh command migrate-compcache is available
     if not virsh.has_help_command('migrate-compcache'):
-        raise error.TestNAError("This version of libvirt does not support "
-                                "virsh command migrate-compcache")
+        test.cancel("This version of libvirt does not support "
+                    "virsh command migrate-compcache")
 
     # Prepare the VM state if it's not correct.
     if start_vm and not vm.is_alive():
@@ -151,8 +149,7 @@ def run(test, params, env):
     # Check test result
     if expect_succeed:
         if result.exit_status != 0:
-            raise error.TestFail(
-                'Expected succeed, but failed with result:\n%s' % result)
+            test.fail('Expected succeed, but failed with result:\n%s' % result)
         if check_job_compcache:
             value = compressed_size.split()[0].strip()
             unit = compressed_size.split()[-1].strip()
@@ -164,15 +161,14 @@ def run(test, params, env):
             elif unit == "GiB":
                 size = int(int(size) / 1073741824)
             if value != size:
-                raise error.TestFail("Compression cache is not match"
-                                     " with setted")
+                test.fail("Compression cache is not match"
+                          " with setted")
             else:
                 return
-            raise error.TestFail("Get compression cache in job failed.")
+            test.fail("Get compression cache in job failed.")
         else:
             logging.warn("The compressed size wasn't been verified "
                          "during migration.")
     elif not expect_succeed:
         if result.exit_status == 0:
-            raise error.TestFail(
-                'Expected fail, but succeed with result:\n%s' % result)
+            test.fail('Expected fail, but succeed with result:\n%s' % result)

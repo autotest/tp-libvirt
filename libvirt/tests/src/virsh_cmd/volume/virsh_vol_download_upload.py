@@ -22,22 +22,21 @@ def digest(path, offset, length):
     :param length: length will read
     :return: md5 result in hex
     """
-    read_fd = open(path, 'rb')
-    read_fd.seek(offset)
-    hash_md = hashlib.md5()
-    done = 0
-    while True:
-        want = 1024
-        if length and length - done < want:
-            want = length - done
-        outstr = read_fd.read(want)
-        got = len(outstr)
-        if got == 0:
-            break
-        done += got
-        hash_md.update(outstr)
+    with open(path, 'rb') as read_fd:
+        read_fd.seek(offset)
+        hash_md = hashlib.md5()
+        done = 0
+        while True:
+            want = 1024
+            if length and length - done < want:
+                want = length - done
+            outstr = read_fd.read(want)
+            got = len(outstr)
+            if got == 0:
+                break
+            done += got
+            hash_md.update(outstr)
 
-    read_fd.close()
     return hash_md.hexdigest()
 
 
@@ -46,12 +45,11 @@ def write_file(path):
     write 1M test data to file
     """
     logging.info("write data into file %s", path)
-    write_fd = open(path, 'wb')
-    datastr = ''.join(string.lowercase + string.uppercase +
-                      string.digits + '.' + '\n')
-    data = ''.join(16384 * datastr)
-    write_fd.write(data)
-    write_fd.close()
+    with open(path, 'wb') as write_fd:
+        datastr = ''.join(string.lowercase + string.uppercase +
+                          string.digits + '.' + '\n')
+        data = ''.join(16384 * datastr)
+        write_fd.write(data)
 
 
 def create_luks_vol(pool_name, vol_name, sec_uuid, vol_arg):
@@ -118,7 +116,6 @@ def run(test, params, env):
         if setup_libvirt_polkit:
             test.error("API acl test not supported in current"
                        " libvirt version.")
-
     try:
         pvt = utlv.PoolVolumeTest(test, params)
         pvt.pre_pool(pool_name, pool_type, pool_target, "volumetest",

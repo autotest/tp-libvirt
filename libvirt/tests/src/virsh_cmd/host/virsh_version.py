@@ -1,5 +1,3 @@
-from autotest.client.shared import error
-
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_libvirtd
@@ -34,11 +32,11 @@ def run(test, params, env):
     # Check status_error
     if status_error:
         if not result.exit_status:
-            raise error.TestFail("Command 'virsh version %s' succeeded "
-                                 "(incorrect command)" % option)
+            test.fail("Command 'virsh version %s' succeeded "
+                      "(incorrect command)" % option)
     else:
         if result.exit_status:
-            raise error.TestFail("Command 'virsh version %s' failed "
-                                 "(correct command)" % option)
+            test.fail("Command 'virsh version %s' failed "
+                      "(correct command)" % option)
         if option.count("daemon") and not result.stdout.count("daemon"):
-            raise error.TestFail("No daemon information outputed!")
+            test.fail("No daemon information outputed!")

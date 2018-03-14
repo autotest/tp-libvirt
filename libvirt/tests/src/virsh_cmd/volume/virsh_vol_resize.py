@@ -4,6 +4,7 @@ import os
 import base64
 
 from avocado.utils import process
+from avocado.core import exceptions
 
 from virttest import libvirt_storage
 from virttest import utils_misc
@@ -285,6 +286,7 @@ def run(test, params, env):
                              pool_name=pool_name)
         libv_vol = libvirt_storage.PoolVolume(pool_name)
         check_vol_info(libv_vol, vol_name, test)
+
         # The volume size may not accurate as we expect after resize, such as:
         # 1) vol_new_capacity = 1b with --delta option, the volume size will not
         #    change; run
@@ -322,5 +324,5 @@ def run(test, params, env):
                                   emulated_image)
             for secret_uuid in set(secret_uuids):
                 virsh.secret_undefine(secret_uuid)
-        except test.fail as detail:
+        except exceptions.TestFail as detail:
             logging.error(str(detail))

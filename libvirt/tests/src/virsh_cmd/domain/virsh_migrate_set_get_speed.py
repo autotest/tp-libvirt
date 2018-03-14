@@ -1,8 +1,6 @@
 import logging
 
-from autotest.client.shared import error
-from autotest.client.shared import ssh_key
-
+from virttest import ssh_key
 from virttest import virsh
 from virttest import libvirt_vm
 from virttest import utils_test
@@ -54,11 +52,11 @@ def run(test, params, env):
         dest_uri = params.get("migrate_dest_uri",
                               "qemu+ssh://EXAMPLE/system")
         if src_uri.count('///') or src_uri.count('EXAMPLE'):
-            raise error.TestNAError("The src_uri '%s' is invalid"
-                                    % src_uri)
+            test.cancel("The src_uri '%s' is invalid"
+                        % src_uri)
         if dest_uri.count('///') or dest_uri.count('EXAMPLE'):
-            raise error.TestNAError("The dest_uri '%s' is invalid"
-                                    % dest_uri)
+            test.cancel("The dest_uri '%s' is invalid"
+                        % dest_uri)
 
     bz1083483 = False
     if bandwidth == "zero":
@@ -99,16 +97,16 @@ def run(test, params, env):
                 # Without code for bz1083483 applied, this will succeed
                 # when it shouldn't be succeeding.
                 if bz1083483 and not libvirt_version.version_compare(1, 2, 4):
-                    raise error.TestNAError("bz1083483 should result in fail")
+                    test.cancel("bz1083483 should result in fail")
                 else:
-                    raise error.TestFail("Expect fail, but run successfully!")
+                    test.fail("Expect fail, but run successfully!")
 
             # no need to perform getspeed if status_error is true
             return
         else:
             if status != 0 or err != "":
-                raise error.TestFail("Run failed with right "
-                                     "virsh migrate-setspeed command")
+                test.fail("Run failed with right "
+                          "virsh migrate-setspeed command")
 
         result = virsh.migrate_getspeed(vm_name, **virsh_dargs)
         status = result.exit_status
@@ -116,16 +114,16 @@ def run(test, params, env):
         err = result.stderr.strip()
 
         if status != 0 or err != "":
-            raise error.TestFail("Run failed with virsh migrate-getspeed")
+            test.fail("Run failed with virsh migrate-getspeed")
 
         logging.info("The expected bandwidth is %s MiB/s, "
                      "the actual bandwidth is %s MiB/s"
                      % (expected_value, actual_value))
 
         if int(actual_value) != int(expected_value):
-            raise error.TestFail("Bandwidth value from getspeed "
-                                 "is different from expected value "
-                                 "set by setspeed")
+            test.fail("Bandwidth value from getspeed "
+                      "is different from expected value "
+                      "set by setspeed")
 
     def verify_migration_speed(test, params, env):
         """
@@ -136,13 +134,13 @@ def run(test, params, env):
         dest_uri = params.get("migrate_dest_uri", "qemu+ssh://EXAMPLE/system")
 
         if not len(vms):
-            raise error.TestNAError("Please provide migrate_vms for test.")
+            test.cancel("Please provide migrate_vms for test.")
 
         if src_uri.count('///') or src_uri.count('EXAMPLE'):
-            raise error.TestNAError("The src_uri '%s' is invalid" % src_uri)
+            test.cancel("The src_uri '%s' is invalid" % src_uri)
 
         if dest_uri.count('///') or dest_uri.count('EXAMPLE'):
-            raise error.TestNAError("The dest_uri '%s' is invalid" % dest_uri)
+            test.cancel("The dest_uri '%s' is invalid" % dest_uri)
 
         remote_host = params.get("migrate_dest_host")
         username = params.get("migrate_dest_user", "root")
@@ -214,7 +212,7 @@ def run(test, params, env):
         fail_info = []
         # Check whether migration failed
         if len(fail_info):
-            raise error.TestFail(fail_info)
+            test.fail(fail_info)
 
         for vm in vms:
             first_time = mig_first.mig_time[vm.name]
@@ -230,7 +228,7 @@ def run(test, params, env):
 
         # Check again for speed result
         if len(fail_info):
-            raise error.TestFail(fail_info)
+            test.fail(fail_info)
 
     # Run test case
     try:

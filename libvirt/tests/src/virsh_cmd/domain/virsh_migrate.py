@@ -5,6 +5,7 @@ import time
 import platform
 import threading
 
+from six import itervalues, string_types
 from avocado.utils import process
 from avocado.utils import path
 from avocado.core import exceptions
@@ -84,7 +85,7 @@ def run(test, params, env):
                 if vm.is_persistent():
                     vm.undefine()
 
-        except Exception, detail:
+        except Exception as detail:
             logging.error("Cleaning up destination failed.\n%s", detail)
 
         if src_uri:
@@ -342,12 +343,9 @@ def run(test, params, env):
         logging.debug(mem_xml)
         mem_xml_file = os.path.join(data_dir.get_tmp_dir(),
                                     'memory_hotplug.xml')
-        try:
-            fp = open(mem_xml_file, 'w')
-        except Exception, info:
-            test.error(info)
-        fp.write(str(mem_xml))
-        fp.close()
+        with open(mem_xml_file, 'w') as fp:
+            fp.write(str(mem_xml))
+
         return mem_xml_file
 
     def cpu_hotplug_hotunplug(vm, vm_addr, cpu_count, operation,
@@ -420,7 +418,7 @@ def run(test, params, env):
                 test.fail("CPU %s failed as cpus are not "
                           "reflected from inside guest" % operation)
             logging.debug("CPU %s successful !!!", operation)
-        except Exception, info:
+        except Exception as info:
             test.fail("CPU %s failed - %s" % (operation, info))
 
     def check_migration_timeout_suspend(timeout):
@@ -454,7 +452,7 @@ def run(test, params, env):
                                                 "--timeout 20s")
         try:
             vm_session.cmd('stress %s' % stress_args)
-        except Exception, detail:
+        except Exception as detail:
             logging.debug(detail)
 
     def ensure_migration_start():
@@ -510,7 +508,7 @@ def run(test, params, env):
     # let us use API to form complete uri
     extra = params.get("virsh_migrate_extra")
     migrate_dest_ip = params.get("migrate_dest_host")
-    if "virsh_migrate_desturi" not in params.keys():
+    if "virsh_migrate_desturi" not in list(params.keys()):
         params["virsh_migrate_desturi"] = libvirt_vm.complete_uri(migrate_dest_ip)
 
     migrate_uri = params.get("virsh_migrate_migrateuri", None)
@@ -548,8 +546,8 @@ def run(test, params, env):
             params["migrate_shared_storage"] = shared_storage = os.path.join(nfs_mount_path,
                                                                              (default_guest_asset))
 
-    for v in params.itervalues():
-        if isinstance(v, str) and v.count("EXAMPLE"):
+    for v in list(itervalues(params)):
+        if isinstance(v, string_types) and v.count("EXAMPLE"):
             test.cancel("Please set real value for %s" % v)
 
     options = params.get("virsh_migrate_options")
@@ -768,7 +766,7 @@ def run(test, params, env):
             if (int(utils_memory.get_num_huge_pages_free()) < no_of_HPs):
                 hugepage_assign(str(no_of_HPs))
             logging.debug("Hugepage support check done on host")
-        except Exception, info:
+        except Exception as info:
             test.cancel("HP not supported/configured: %s" % info)
 
     # To check mem hotplug should not exceed maxmem
@@ -1151,7 +1149,7 @@ def run(test, params, env):
                                            func=run_migration_cmd,
                                            func_params=cmd,
                                            shell=True)
-            except Exception, info:
+            except Exception as info:
                 test.fail(info)
             if obj_migration.RET_MIGRATION:
                 utils_test.check_dest_vm_network(vm, vm.get_address(),
@@ -1200,7 +1198,7 @@ def run(test, params, env):
                                                     ignore_status=True,
                                                     func=func,
                                                     func_params=params)
-                    except Exception, info:
+                    except Exception as info:
                         test.fail(info)
                     ret_migrate = migration_test.RET_MIGRATION
                 elif postcopy_cmd != "":
@@ -1212,7 +1210,7 @@ def run(test, params, env):
                                                    func=process.run,
                                                    func_params=cmd,
                                                    shell=True)
-                    except Exception, info:
+                    except Exception as info:
                         test.fail(info)
                     ret_migrate = obj_migration.RET_MIGRATION
                 logging.info("To check VM network connectivity after "
@@ -1331,11 +1329,11 @@ def run(test, params, env):
             if not re.search(new_nic_mac, vm_dest_xml):
                 check_dest_xml = False
 
-    except exceptions.TestCancel, detail:
+    except exceptions.TestCancel as detail:
         skip_exception = True
-    except exceptions.TestFail, detail:
+    except exceptions.TestFail as detail:
         fail_exception = True
-    except Exception, detail:
+    except Exception as detail:
         exception = True
         logging.error("%s: %s", detail.__class__, detail)
 
