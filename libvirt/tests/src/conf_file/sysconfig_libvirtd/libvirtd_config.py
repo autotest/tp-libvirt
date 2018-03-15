@@ -1,8 +1,6 @@
 import os
 import logging
 
-from autotest.client.shared import error
-
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import data_dir
@@ -24,10 +22,9 @@ def run(test, params, env):
         Internal function to determine what executable is PID 1,
         :return: executable name for PID 1, aka init
         """
-        fp = open('/proc/1/comm')
-        name = fp.read().strip()
-        fp.close()
-        return name
+        with open('/proc/1/comm') as fp:
+            name = fp.read().strip()
+            return name
 
     libvirtd_config = params.get('libvirtd_config', 'not_set')
     expected_result = params.get('expected_result', 'success')
@@ -57,22 +54,22 @@ def run(test, params, env):
 
         if not libvirtd.restart():
             if expected_result != 'unbootable':
-                raise error.TestFail('Libvirtd is expected to be started '
-                                     'with LIBVIRTD_CONFIG = '
-                                     '%s' % sysconfig.LIBVIRTD_CONFIG)
+                test.fail('Libvirtd is expected to be started '
+                          'with LIBVIRTD_CONFIG = '
+                          '%s' % sysconfig.LIBVIRTD_CONFIG)
         if expected_result == 'unbootable':
-            raise error.TestFail('Libvirtd is not expected to be started '
-                                 'with LIBVIRTD_CONFIG = '
-                                 '%s' % sysconfig.LIBVIRTD_CONFIG)
+            test.fail('Libvirtd is not expected to be started '
+                      'with LIBVIRTD_CONFIG = '
+                      '%s' % sysconfig.LIBVIRTD_CONFIG)
         cur_uuid = capability_xml.CapabilityXML()['uuid']
         if cur_uuid == check_uuid:
             if expected_result == 'unchange':
-                raise error.TestFail('Expected host UUID is not changed, '
-                                     'but got %s' % cur_uuid)
+                test.fail('Expected host UUID is not changed, '
+                          'but got %s' % cur_uuid)
         else:
             if expected_result == 'change':
-                raise error.TestFail('Expected host UUID is %s, but got %s' %
-                                     (check_uuid, cur_uuid))
+                test.fail('Expected host UUID is %s, but got %s' %
+                          (check_uuid, cur_uuid))
 
     finally:
         if libvirtd_config == 'exist_file':

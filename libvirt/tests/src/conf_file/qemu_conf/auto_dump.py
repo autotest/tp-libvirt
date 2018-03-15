@@ -94,16 +94,16 @@ def run(test, params, env):
         logging.error('%s', iohelper_pid)
 
         # Get file open flags containing bypass cache information.
-        fdinfo = open('/proc/%s/fdinfo/1' % iohelper_pid, 'r')
-        flags = 0
-        for line in fdinfo.readlines():
-            if line.startswith('flags:'):
-                flags = int(line.split()[1], 8)
-                logging.debug('File open flag is: %o', flags)
-        fdinfo.close()
+        with open('/proc/%s/fdinfo/1' % iohelper_pid, 'r') as fdinfo:
+            flags = 0
+            for line in fdinfo.readlines():
+                if line.startswith('flags:'):
+                    flags = int(line.split()[1], 8)
+                    logging.debug('file open flag is: %o', flags)
 
-        cmdline = open('/proc/%s/cmdline' % iohelper_pid).readline()
-        logging.debug(cmdline.split())
+        with open('/proc/%s/cmdline' % iohelper_pid) as cmdinfo:
+            cmdline = cmdinfo.readline()
+            logging.debug(cmdline.split())
 
         # Kill core dump process to speed up test
         process.run('kill %s' % iohelper_pid)
@@ -112,18 +112,18 @@ def run(test, params, env):
 
         if arch == 'x86_64':
                 # Check if bypass cache flag set or unset accordingly.
-            if (flags & 040000) and bypass_cache != '1':
+            if (flags & 0o40000) and bypass_cache != '1':
                 test.fail('auto_dump_bypass_cache is %s but flags '
                           'is %o' % (bypass_cache, flags))
-            if not (flags & 040000) and bypass_cache == '1':
+            if not (flags & 0o40000) and bypass_cache == '1':
                 test.fail('auto_dump_bypass_cache is %s but flags '
                           'is %o' % (bypass_cache, flags))
         elif arch == 'ppc64le':
             # Check if bypass cache flag set or unset accordingly.
-            if (flags & 0400000) and bypass_cache != '1':
+            if (flags & 0o400000) and bypass_cache != '1':
                 test.fail('auto_dump_bypass_cache is %s but flags '
                           'is %o' % (bypass_cache, flags))
-            if not (flags & 0400000) and bypass_cache == '1':
+            if not (flags & 0o400000) and bypass_cache == '1':
                 test.fail('auto_dump_bypass_cache is %s but flags '
                           'is %o' % (bypass_cache, flags))
         else:

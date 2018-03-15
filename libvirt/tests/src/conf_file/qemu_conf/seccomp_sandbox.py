@@ -1,8 +1,7 @@
 import re
 import logging
 
-from autotest.client import utils
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import utils_config
 from virttest import utils_libvirtd
@@ -30,10 +29,10 @@ def run(test, params, env):
 
         # Get qemu command line.
         pid = vm.get_pid()
-        res = utils.run("ps -p %s -o cmd h" % pid)
+        res = process.run("ps -p %s -o cmd h" % pid, shell=True)
 
         if res.exit_status == 0:
-            match = re.search(r'-sandbox\s*(\S*)', res.stdout)
+            match = re.search(r'-sandbox\s*(\S*)', res.stdout.strip())
             if match:
                 return match.groups()[0]
 
@@ -58,14 +57,14 @@ def run(test, params, env):
         # Restart libvirtd to make change valid.
         if not libvirtd.restart():
             if expected_result != 'unbootable':
-                raise error.TestFail('Libvirtd is expected to be started '
-                                     'with seccomp_sandbox = '
-                                     '%s' % seccomp_sandbox)
+                test.fail('Libvirtd is expected to be started '
+                          'with seccomp_sandbox = '
+                          '%s' % seccomp_sandbox)
             return
         if expected_result == 'unbootable':
-            raise error.TestFail('Libvirtd is not expected to be started '
-                                 'with seccomp_sandbox = '
-                                 '%s' % seccomp_sandbox)
+            test.fail('Libvirtd is not expected to be started '
+                      'with seccomp_sandbox = '
+                      '%s' % seccomp_sandbox)
 
         # Restart VM to create a new qemu command line.
         if vm.is_alive():
@@ -79,12 +78,12 @@ def run(test, params, env):
 
         if new_qemu_sandbox is None:
             if expected_result != 'not_set':
-                raise error.TestFail('Qemu sandbox option is expected to set '
-                                     'but %s found', new_qemu_sandbox)
+                test.fail('Qemu sandbox option is expected to set '
+                          'but %s found', new_qemu_sandbox)
         else:
             if expected_result != new_qemu_sandbox:
-                raise error.TestFail('Qemu sandbox option is expected to be '
-                                     '%s, but %s found' % (
+                test.fail('Qemu sandbox option is expected to be '
+                          '%s, but %s found' % (
                                          expected_result, new_qemu_sandbox))
     finally:
         config.restore()
