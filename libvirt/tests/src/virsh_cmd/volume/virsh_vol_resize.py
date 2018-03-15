@@ -1,17 +1,21 @@
 import re
 import logging
+import os
+import base64
 
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import libvirt_storage
 from virttest import utils_misc
 from virttest import virsh
+from virttest import libvirt_xml
 from virttest.utils_test import libvirt
+from virttest.libvirt_xml import secret_xml
 
 from provider import libvirt_version
 
 
-def get_expect_info(new_capacity, vol_path, resize_option=None):
+def get_expect_info(new_capacity, vol_path, test, resize_option=None):
     """
     Get the expect volume capacity and allocation size, for comparation
     after volume resize. As virsh vol-info return imprecise values, so we
@@ -36,13 +40,13 @@ def get_expect_info(new_capacity, vol_path, resize_option=None):
     try:
         suffix = re.findall(r"[\s\d](\D+)", new_capacity, re.I)[-1].strip()
     except IndexError:
-        raise error.TestError("Incorrect size format %s." % new_capacity)
+        test.error("Incorrect size format %s." % new_capacity)
     if suffix in suffixes_list1:
         factor = "1024"
     elif suffix in suffixes_list2:
         factor = "1000"
     else:
-        raise error.TestError("Unsupport size unit '%s'." % suffix)
+        test.error("Unsupport size unit '%s'." % suffix)
 
     try:
         # Transform the size to bytes
@@ -92,11 +96,78 @@ def get_expect_info(new_capacity, vol_path, resize_option=None):
         else:
             pass
         return expect_info
-    except (IndexError, ValueError), detail:
-        raise error.TestError("Fail to get expect volume info:\n%s" % detail)
+    except (IndexError, ValueError) as detail:
+        test.error("Fail to get expect volume info:\n%s" % detail)
 
 
-def check_vol_info(pool_vol, vol_name, expect_info=None):
+def create_luks_secret(vol_path, password, test):
+    """
+    Create secret for luks encryption
+    :param vol_path: volume path.
+    :return: secret id if create successfully.
+    """
+    sec_xml = secret_xml.SecretXML("no", "yes")
+    sec_xml.description = "volume secret"
+
+    sec_xml.usage = 'volume'
+    sec_xml.volume = vol_path
+    sec_xml.xmltreefile.write()
+
+    ret = virsh.secret_define(sec_xml.xml)
+    libvirt.check_exit_status(ret)
+    try:
+        encryption_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
+                                     ret.stdout)[0].lstrip()
+    except IndexError:
+        test.error("Fail to get newly created secret uuid")
+    logging.debug("Secret uuid %s", encryption_uuid)
+    # Set secret value.
+    secret_string = base64.b64encode(password)
+    ret = virsh.secret_set_value(encryption_uuid, secret_string)
+    libvirt.check_exit_status(ret)
+    return encryption_uuid
+
+
+def create_luks_vol(vol_name, sec_uuid, params):
+    """
+    Create a luks volume
+    :param vol_name: the name of the volume
+    :param sec_uuid: secret's uuid to be used for luks encryption
+    :param params: detailed params to create volume
+    """
+    pool_name = params.get("pool_name")
+    extra_option = params.get("extra_option", "")
+    unprivileged_user = params.get('unprivileged_user')
+    uri = params.get("virsh_uri")
+    vol_arg = {}
+    for key in list(params.keys()):
+        if (key.startswith('vol_') and not key.startswith('vol_new')):
+            if key[4:] in ['capacity', 'allocation']:
+                vol_arg[key[4:]] = int(float(utils_misc.normalize_data_size(params[key],
+                                       "B", 1024)))
+            elif key[4:] in ['owner', 'group']:
+                vol_arg[key[4:]] = int(params[key])
+            else:
+                vol_arg[key[4:]] = params[key]
+    vol_arg['name'] = vol_name
+    volxml = libvirt_xml.VolXML()
+    newvol = volxml.new_vol(**vol_arg)
+    luks_encryption_params = {}
+    luks_encryption_params.update({"format": "luks"})
+    luks_encryption_params.update({"secret": {"type": "passphrase",
+                                              "uuid": sec_uuid}})
+    newvol.encryption = volxml.new_encryption(**luks_encryption_params)
+    vol_xml = newvol['xml']
+    if params.get('setup_libvirt_polkit') == 'yes':
+        process.run("chmod 666 %s" % vol_xml, ignore_status=True,
+                    shell=True)
+    logging.debug("Create volume from XML: %s" % newvol.xmltreefile)
+    cmd_result = virsh.vol_create(pool_name, vol_xml, extra_option,
+                                  unprivileged_user=unprivileged_user, uri=uri,
+                                  ignore_status=True, debug=True)
+
+
+def check_vol_info(pool_vol, vol_name, test, expect_info=None):
     """
     Check the volume info, or/and compare with the expect_info.
 
@@ -129,8 +200,8 @@ def check_vol_info(pool_vol, vol_name, expect_info=None):
                               expect_info['Allocation'])
                 check_allocation_pass = False
             return check_capacity_pass & check_allocation_pass
-        except KeyError, detail:
-            raise error.TestError("Fail to check volume info:\n%s" % detail)
+        except KeyError as detail:
+            test.error("Fail to check volume info:\n%s" % detail)
 
 
 def run(test, params, env):
@@ -160,11 +231,14 @@ def run(test, params, env):
     resize_option = params.get("resize_option", "")
     check_vol_size = "yes" == params.get("check_vol_size", "yes")
     status_error = "yes" == params.get("status_error", "no")
+    b_luks_encrypt = "luks" == params.get("encryption_method")
+    encryption_password = params.get("encryption_password", "redhat")
+    secret_uuids = []
 
     if not libvirt_version.version_compare(1, 0, 0):
         if "--allocate" in resize_option:
-            raise error.TestNAError("'--allocate' flag is not supported in"
-                                    " current libvirt version.")
+            test.cancel("'--allocate' flag is not supported in"
+                        " current libvirt version.")
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
@@ -175,15 +249,15 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     libv_pvt = libvirt.PoolVolumeTest(test, params)
     try:
         libv_pool = libvirt_storage.StoragePool()
         # Raise error if given name pool already exist
         if libv_pool.pool_exists(pool_name):
-            raise error.TestError("Pool '%s' already exist", pool_name)
+            test.error("Pool '%s' already exist", pool_name)
         else:
             # Create a new pool
             libv_pvt.pre_pool(pool_name, pool_type, pool_target,
@@ -200,12 +274,17 @@ def run(test, params, env):
                 vol_new_capacity = pool_capa[0].split('.')[0] + pool_capa[1]
 
         # Create a volume
-        libv_pvt.pre_vol(vol_name=vol_name, vol_format=vol_format,
-                         capacity=vol_capacity, allocation=None,
-                         pool_name=pool_name)
+        if b_luks_encrypt:
+            luks_sec_uuid = create_luks_secret(os.path.join(pool_target, vol_name, test),
+                                               encryption_password)
+            secret_uuids.append(luks_sec_uuid)
+            create_luks_vol(vol_name, luks_sec_uuid, params)
+        else:
+            libv_pvt.pre_vol(vol_name=vol_name, vol_format=vol_format,
+                             capacity=vol_capacity, allocation=None,
+                             pool_name=pool_name)
         libv_vol = libvirt_storage.PoolVolume(pool_name)
-        check_vol_info(libv_vol, vol_name)
-
+        check_vol_info(libv_vol, vol_name, test)
         # The volume size may not accurate as we expect after resize, such as:
         # 1) vol_new_capacity = 1b with --delta option, the volume size will not
         #    change; run
@@ -214,7 +293,7 @@ def run(test, params, env):
         # So we can disable volume size check after resize
         if check_vol_size:
             vol_path = libv_vol.list_volumes()[vol_name]
-            expect_info = get_expect_info(vol_new_capacity, vol_path,
+            expect_info = get_expect_info(vol_new_capacity, vol_path, test,
                                           resize_option)
             logging.debug("Expect volume info: %s", expect_info)
         else:
@@ -227,19 +306,21 @@ def run(test, params, env):
                                   debug=True)
         if not status_error:
             if result.exit_status != 0:
-                raise error.TestFail(result.stdout.strip())
+                test.fail(result.stdout.strip())
             else:
-                if check_vol_info(libv_vol, vol_name, expect_info):
+                if check_vol_info(libv_vol, vol_name, test, expect_info):
                     logging.debug("Volume %s resize check pass.", vol_name)
                 else:
-                    raise error.TestFail("Volume %s resize check fail." %
-                                         vol_name)
+                    test.fail("Volume %s resize check fail." %
+                              vol_name)
         elif result.exit_status == 0:
-            raise error.TestFail("Expect resize fail but run successfully.")
+            test.fail("Expect resize fail but run successfully.")
     finally:
         # Clean up
         try:
             libv_pvt.cleanup_pool(pool_name, pool_type, pool_target,
                                   emulated_image)
-        except error.TestFail, detail:
+            for secret_uuid in set(secret_uuids):
+                virsh.secret_undefine(secret_uuid)
+        except test.fail as detail:
             logging.error(str(detail))
