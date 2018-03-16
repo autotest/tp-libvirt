@@ -106,7 +106,7 @@ def run(test, params, env):
 
             if offline_vcpus:
                 if (vm_cpu_info["Off-line CPU(s) list"] != offline_vcpus or
-                   vm_cpu_info["On-line CPU(s) list"] != online_vcpus):
+                        vm_cpu_info["On-line CPU(s) list"] != online_vcpus):
                     test.fail("CPUs in vm is different from"
                               " the %s command." % option)
             elif vm_cpu_info["On-line CPU(s) list"] != online_vcpus:

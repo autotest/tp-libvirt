@@ -2,7 +2,6 @@ import re
 import logging
 
 from avocado.core import exceptions
-
 from virttest import virsh
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import network_xml

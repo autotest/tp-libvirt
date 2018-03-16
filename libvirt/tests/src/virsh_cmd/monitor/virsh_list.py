@@ -52,7 +52,7 @@ def run(test, params, env):
             time.sleep(5)
             status, output = session.cmd_status_output(
                 command_on_remote, internal_timeout=30)
-        except Exception, info:
+        except Exception as info:
             logging.error("Shell failed to execute command from"
                           " remote")
             return 1, info
@@ -161,7 +161,7 @@ def run(test, params, env):
             status = result.exit_status
             output = result.stdout.strip()
 
-    except Exception, output:
+    except Exception as output:
         status = True
         logging.error("Exception: %s" % output)
 

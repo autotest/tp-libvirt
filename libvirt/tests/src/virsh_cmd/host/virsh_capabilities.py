@@ -1,9 +1,8 @@
 import logging
 import platform
+from six import itervalues, iteritems
 
-from autotest.client import os_dep
-from autotest.client.shared import error
-
+from avocado.utils import path
 from avocado.utils import process
 
 from virttest import libvirt_vm
@@ -28,16 +27,16 @@ def run(test, params, env):
         xml_uuid = cap_xml.uuid
         logging.debug("Host UUID (capabilities_xml): %s", xml_uuid)
         if xml_uuid == "":
-            raise error.TestFail("The host uuid in capabilities_xml is none!")
+            test.fail("The host uuid in capabilities_xml is none!")
 
         # Check the host arch.
         xml_arch = cap_xml.arch
         logging.debug("Host arch (capabilities_xml): %s", xml_arch)
         exp_arch = process.run("arch", shell=True).stdout.strip()
         if cmp(xml_arch, exp_arch) != 0:
-            raise error.TestFail("The host arch in capabilities_xml is "
-                                 "expected to be %s, but get %s" %
-                                 (exp_arch, xml_arch))
+            test.fail("The host arch in capabilities_xml is "
+                      "expected to be %s, but get %s" %
+                      (exp_arch, xml_arch))
 
         # Check the host cpu count.
         xml_cpu_count = cap_xml.cpu_count
@@ -48,9 +47,9 @@ def run(test, params, env):
         cmd = "grep '%s' /proc/cpuinfo | wc -l" % search_str
         exp_cpu_count = int(process.run(cmd, shell=True).stdout.strip())
         if xml_cpu_count != exp_cpu_count:
-            raise error.TestFail("Host cpus count is expected to be %s, "
-                                 "but get %s" %
-                                 (exp_cpu_count, xml_cpu_count))
+            test.fail("Host cpus count is expected to be %s, "
+                      "but get %s" %
+                      (exp_cpu_count, xml_cpu_count))
 
         # Check the arch of guest supported.
         guest_capa = cap_xml.get_guest_capabilities()
@@ -68,23 +67,23 @@ def run(test, params, env):
                           'xtensa', 'xtensaeb']
         uri_type = process.run("virsh uri", shell=True).stdout.split(':')[0]
         domain_type = "domain_" + uri_type
-        for arch_dict in guest_capa.values():
-            for arch, val_dict in arch_dict.items():
+        for arch_dict in list(itervalues(guest_capa)):
+            for arch, val_dict in list(iteritems(arch_dict)):
                 # Check wordsize
                 if arch not in wordsize[val_dict['wordsize']]:
-                    raise error.TestFail("'%s' wordsize '%s' in "
-                                         "capabilities_xml not expected" %
-                                         (arch, val_dict['wordsize']))
+                    test.fail("'%s' wordsize '%s' in "
+                              "capabilities_xml not expected" %
+                              (arch, val_dict['wordsize']))
                 # Check the type of hypervisor
-                if domain_type not in val_dict.keys():
-                    raise error.TestFail("domain type '%s' is not matched"
-                                         " under arch '%s' in "
-                                         "capabilities_xml" %
-                                         (uri_type, arch))
+                if domain_type not in list(val_dict.keys()):
+                    test.fail("domain type '%s' is not matched"
+                              " under arch '%s' in "
+                              "capabilities_xml" %
+                              (uri_type, arch))
 
         # check power management support.
         try:
-            pm_cmd = os_dep.command('pm-is-supported')
+            pm_cmd = path.find_command('pm-is-supported')
             pm_cap_map = {'suspend': 'suspend_mem',
                           'hibernate': 'suspend_disk',
                           'suspend-hybrid': 'suspend_hybrid'}
@@ -96,9 +95,9 @@ def run(test, params, env):
                     exp_pms.append(pm_cap_map[opt])
             pms = cap_xml.power_management_list
             if set(exp_pms) != set(pms):
-                raise error.TestFail("Expected supported PMs are %s, got %s "
-                                     "instead." % (exp_pms, pms))
-        except ValueError:
+                test.fail("Expected supported PMs are %s, got %s "
+                          "instead." % (exp_pms, pms))
+        except path.CmdNotFoundError:
             logging.debug('Power management checking is skipped, since command'
                           ' pm-is-supported is not found.')
 
@@ -130,14 +129,14 @@ def run(test, params, env):
     if status_error == "yes":
         if status == 0:
             if libvirtd == "off":
-                raise error.TestFail("Command 'virsh capabilities' succeeded "
-                                     "with libvirtd service stopped, "
-                                     "incorrect")
+                test.fail("Command 'virsh capabilities' succeeded "
+                          "with libvirtd service stopped, "
+                          "incorrect")
             else:
-                raise error.TestFail("Command 'virsh capabilities %s' "
-                                     "succeeded (incorrect command)" % option)
+                test.fail("Command 'virsh capabilities %s' "
+                          "succeeded (incorrect command)" % option)
     elif status_error == "no":
         compare_capabilities_xml(output)
         if status != 0:
-            raise error.TestFail("Command 'virsh capabilities %s' failed "
-                                 "(correct command)" % option)
+            test.fail("Command 'virsh capabilities %s' failed "
+                      "(correct command)" % option)

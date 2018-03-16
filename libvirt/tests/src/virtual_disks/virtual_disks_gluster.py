@@ -116,7 +116,7 @@ def run(test, params, env):
         # Prepare guest agent and start guest
         try:
             vm.prepare_guest_agent()
-        except (remote.LoginError, virt_vm.VMError), detail:
+        except (remote.LoginError, virt_vm.VMError) as detail:
             test.fail("failed to prepare agent:\n%s" % detail)
 
         #TODO This step may hang for rhel6 guest
@@ -226,7 +226,7 @@ def run(test, params, env):
             # Makesure the guest agent is started
             try:
                 vm.prepare_guest_agent()
-            except (remote.LoginError, virt_vm.VMError), detail:
+            except (remote.LoginError, virt_vm.VMError) as detail:
                 test.fail("failed to prepare agent: %s" % detail)
             # Run dompmsuspend command.
             test_pmsuspend(vm_name)

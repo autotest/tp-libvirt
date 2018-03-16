@@ -3,11 +3,9 @@ import subprocess
 import logging
 import time
 
-from autotest.client.shared import error
-from autotest.client.shared import ssh_key
-
 from virttest import virsh
 from virttest.utils_test import libvirt as utlv
+from virttest import ssh_key
 
 
 def run(test, params, env):
@@ -83,8 +81,8 @@ def run(test, params, env):
 
     if action == "migrate":
         if remote_host.count("EXAMPLE"):
-            raise error.TestNAError("Remote host should be configured "
-                                    "for migrate.")
+            test.cancel("Remote host should be configured "
+                        "for migrate.")
         else:
             # Config ssh autologin for remote host
             ssh_key.setup_ssh_key(remote_host, remote_user,
@@ -114,7 +112,8 @@ def run(test, params, env):
 
         saved_data = None
         if action == "restore":
-            saved_data = file(tmp_file, 'r').read(10 * 1024 * 1024)
+            with open(tmp_file, 'r') as tmp_f:
+                saved_data = tmp_f.read(10 * 1024 * 1024)
             f = open(tmp_pipe, 'w')
             f.write(saved_data[:1024 * 1024])
         elif action == "migrate":
@@ -174,7 +173,7 @@ def run(test, params, env):
     # check status_error
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if status != 0:
-            raise error.TestFail("Run failed with right command")
+            test.fail("Run failed with right command")

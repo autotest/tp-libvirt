@@ -1,7 +1,6 @@
 import logging
 import os
 
-from autotest.client.shared import error
 from virttest import virsh, utils_libvirtd
 
 
@@ -65,11 +64,11 @@ def run(test, params, env):
         utils_libvirtd.libvirtd_restart()
         if not status_error:
             if status:
-                raise error.TestFail(err)
+                test.fail(err)
             elif not autostart_check():
-                raise error.TestFail("Autostart check fail")
+                test.fail("Autostart check fail")
         elif status_error and status == 0:
-            raise error.TestFail("Expect fail, but run successfully.")
+            test.fail("Expect fail, but run successfully.")
     finally:
         # Recover env
         vm.destroy()

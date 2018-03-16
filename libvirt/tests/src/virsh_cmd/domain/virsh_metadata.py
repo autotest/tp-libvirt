@@ -3,8 +3,6 @@ import xml.dom.minidom
 
 import aexpect
 
-from autotest.client.shared import error
-
 from virttest import remote
 from virttest import virsh
 from virttest.utils_test import libvirt as utlv
@@ -35,7 +33,7 @@ def run(test, params, env):
     restart_libvirtd = "yes" == params.get("restart_libvirtd", "no")
     status_error = "yes" == params.get("status_error", "no")
     if not metadata_uri:
-        raise error.TestErrorr("'uri' is needed")
+        test.error("'uri' is needed")
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     # Start VM
     if vm.state() != "running":
@@ -57,7 +55,7 @@ def run(test, params, env):
             output = pretty_xml(output)
             logging.debug("Command get metadata: %s", output)
             if output != expect_output:
-                raise error.TestFail("Metadat is not expected")
+                test.fail("Metadat is not expected")
 
     def get_metadata(metadata_option=""):
         """
@@ -75,9 +73,9 @@ def run(test, params, env):
         # Set metadata XML
         if metadata_set:
             if not metadata_key:
-                raise error.TestErrorr("'key' is needed")
+                test.error("'key' is needed")
             if not metadata_value:
-                raise error.TestErrorr("New metadata is needed")
+                test.error("New metadata is needed")
             # Parse metadata value
             if "--edit" in metadata_option:
                 virsh_cmd = r"virsh metadata %s --uri %s --key %s %s"
@@ -93,7 +91,7 @@ def run(test, params, env):
                     session.send('ZZ')
                     remote.handle_prompts(session, None, None, r"[\#\$]\s*$",
                                           debug=True)
-                except Exception, e:
+                except Exception as e:
                     logging.error("Error occured: %s", e)
                 session.close()
             else:

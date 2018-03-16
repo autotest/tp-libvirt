@@ -4,8 +4,6 @@ import tempfile
 
 import aexpect
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
@@ -86,7 +84,7 @@ def run(test, params, env):
                                                   debug=True)
             status = cmd_result.exit_status
             if status != 0:
-                raise error.TestFail("Failed to make snapshots for disks!")
+                test.fail("Failed to make snapshots for disks!")
 
             # Create a file flag in VM after each snapshot
             flag_file = tempfile.NamedTemporaryFile(prefix=("snapshot_test_"),
@@ -96,7 +94,7 @@ def run(test, params, env):
 
             status, output = session.cmd_status_output("touch %s" % file_path)
             if status:
-                raise error.TestFail("Touch file in vm failed. %s" % output)
+                test.fail("Touch file in vm failed. %s" % output)
             snapshot_flag_files.append(file_path)
 
     # MAIN TEST CODE ###
@@ -129,8 +127,8 @@ def run(test, params, env):
 
     if not top_inactive:
         if not libvirt_version.version_compare(1, 2, 4):
-            raise error.TestNAError("live active block commit is not supported"
-                                    " in current libvirt version.")
+            test.cancel("live active block commit is not supported"
+                        " in current libvirt version.")
 
     # A backup of original vm
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -138,16 +136,16 @@ def run(test, params, env):
     # Abort the test if there are snapshots already
     exsiting_snaps = virsh.snapshot_list(vm_name)
     if len(exsiting_snaps) != 0:
-        raise error.TestFail("There are snapshots created for %s already" %
-                             vm_name)
+        test.fail("There are snapshots created for %s already" %
+                  vm_name)
 
     snapshot_external_disks = []
     cmd_session = None
     try:
         if disk_src_protocol == 'iscsi' and disk_type == 'network':
             if not libvirt_version.version_compare(1, 0, 4):
-                raise error.TestNAError("'iscsi' disk doesn't support in"
-                                        " current libvirt version.")
+                test.cancel("'iscsi' disk doesn't support in"
+                            " current libvirt version.")
 
         # Set vm xml and guest agent
         if replace_vm_disk:
@@ -155,7 +153,7 @@ def run(test, params, env):
                 src_host = params.get("disk_source_host", "EXAMPLE_HOSTS")
                 mon_host = params.get("mon_host", "EXAMPLE_MON_HOST")
                 if src_host.count("EXAMPLE") or mon_host.count("EXAMPLE"):
-                    raise error.TestNAError("Please provide rbd host first.")
+                    test.cancel("Please provide rbd host first.")
             libvirt.set_vm_disk(vm, params, tmp_dir)
 
         if needs_agent:
@@ -203,7 +201,7 @@ def run(test, params, env):
             # snapshot src file list
             snap_src_lst += snapshot_external_disks
         backing_chain = ''
-        for i in reversed(range(4)):
+        for i in reversed(list(range(4))):
             if i == 0:
                 backing_chain += "%s" % snap_src_lst[i]
             else:
@@ -225,14 +223,14 @@ def run(test, params, env):
                 break
 
         if not disk_xml:
-            raise error.TestFail("Can't find disk xml with target %s" %
-                                 blk_target)
+            test.fail("Can't find disk xml with target %s" %
+                      blk_target)
         elif libvirt_version.version_compare(1, 2, 4):
             # backingStore element introuduced in 1.2.4
             chain_lst = snap_src_lst[::-1]
             ret = check_chain_xml(disk_xml, chain_lst)
             if not ret:
-                raise error.TestFail("Domain image backing chain check failed")
+                test.fail("Domain image backing chain check failed")
 
         # set blockcommit_options
         top_image = None
@@ -306,19 +304,19 @@ def run(test, params, env):
                         if '--shallow' in blockcommit_options:
                             if not multiple_chain:
                                 if disk_src_file != snap_src_lst[2]:
-                                    raise error.TestFail(err_msg)
+                                    test.fail(err_msg)
                             else:
                                 if disk_src_file != snap_src_lst[3]:
-                                    raise error.TestFail(err_msg)
+                                    test.fail(err_msg)
                         else:
                             if disk_src_file != blk_source:
-                                raise error.TestFail(err_msg)
+                                test.fail(err_msg)
                         if libvirt_version.version_compare(1, 2, 7):
                             # The job attribute mentions which API started the
                             # operation since 1.2.7.
                             if job_type != 'active-commit':
-                                raise error.TestFail("blockcommit job type '%s'"
-                                                     " not expected" % job_type)
+                                test.fail("blockcommit job type '%s'"
+                                          " not expected" % job_type)
                             if job_ready != 'yes':
                                 # The attribute ready, if present, tracks
                                 # progress of the job: yes if the disk is known
@@ -343,16 +341,16 @@ def run(test, params, env):
                             chain_lst.pop(0)
                             ret = check_chain_xml(disk_xml, chain_lst)
                             if not ret:
-                                raise error.TestFail("Domain image backing "
-                                                     "chain check failed")
+                                test.fail("Domain image backing "
+                                          "chain check failed")
                         elif "--base" in blockcommit_options:
                             chain_lst = snap_src_lst[::-1]
                             base_index = chain_lst.index(blk_source)
                             chain_lst = chain_lst[base_index:]
                             ret = check_chain_xml(disk_xml, chain_lst)
                             if not ret:
-                                raise error.TestFail("Domain image backing "
-                                                     "chain check failed")
+                                test.fail("Domain image backing "
+                                          "chain check failed")
                         break
                     else:
                         # wait pivot after commit is synced
@@ -366,8 +364,8 @@ def run(test, params, env):
                         chain_lst.remove(top_image)
                         ret = check_chain_xml(disk_xml, chain_lst)
                         if not ret:
-                            raise error.TestFail("Domain image backing chain "
-                                                 "check failed")
+                            test.fail("Domain image backing chain "
+                                      "check failed")
                     elif "--base" in blockcommit_options:
                         chain_lst = snap_src_lst[::-1]
                         top_index = chain_lst.index(top_image)
@@ -379,8 +377,8 @@ def run(test, params, env):
                             chain_lst.remove(i)
                         ret = check_chain_xml(disk_xml, chain_lst)
                         if not ret:
-                            raise error.TestFail("Domain image backing chain "
-                                                 "check failed")
+                            test.fail("Domain image backing chain "
+                                      "check failed")
                     break
                 else:
                     break
@@ -390,7 +388,7 @@ def run(test, params, env):
             for flag in snapshot_flag_files:
                 status, output = session.cmd_status_output("cat %s" % flag)
                 if status:
-                    raise error.TestFail("blockcommit failed: %s" % output)
+                    test.fail("blockcommit failed: %s" % output)
 
         if not pivot_opt and snap_in_mirror:
             # do snapshot during mirror phase

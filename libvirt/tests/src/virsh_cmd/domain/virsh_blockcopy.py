@@ -138,7 +138,7 @@ def check_xml(vm_name, target, dest_path, blk_options):
                 if disk_mirror_src == dest_path:
                     logging.debug("Find %s in <mirror> element", dest_path)
                     re2 = 2
-        except Exception, detail:
+        except Exception as detail:
             logging.error(detail)
             return False
     finally:
@@ -387,21 +387,21 @@ def run(test, params, env):
         disk_xml.driver = driver_attr
 
         new_attrs = disk_xml.source.attrs
-        if disk_xml.source.attrs.has_key('file'):
+        if 'file' in disk_xml.source.attrs:
             new_file = os.path.join(tmp_dir, "blockcopy_shallow.snap")
             snapshot_external_disks.append(new_file)
             new_attrs.update({'file': new_file})
             hosts = None
-        elif (disk_xml.source.attrs.has_key('dev') or
-              disk_xml.source.attrs.has_key('name') or
-              disk_xml.source.attrs.has_key('pool')):
+        elif ('dev' in disk_xml.source.attrs or
+              'name' in disk_xml.source.attrs or
+              'pool' in disk_xml.source.attrs):
             if (disk_xml.type_name == 'block' or
                     disk_source_protocol == 'iscsi'):
                 disk_xml.type_name = 'block'
-                if new_attrs.has_key('name'):
+                if 'name' in new_attrs:
                     del new_attrs['name']
                     del new_attrs['protocol']
-                elif new_attrs.has_key('pool'):
+                elif 'pool' in new_attrs:
                     del new_attrs['pool']
                     del new_attrs['volume']
                     del new_attrs['mode']
@@ -527,7 +527,7 @@ def run(test, params, env):
                 if val == 0:
                     try:
                         finish_job(vm_name, target, timeout)
-                    except JobTimeout, excpt:
+                    except JobTimeout as excpt:
                         raise exceptions.TestFail("Run command failed: %s" %
                                                   excpt)
                 if options.count("--raw") and not with_blockdev:
@@ -600,7 +600,7 @@ def run(test, params, env):
                 original_xml.sync(option)
             else:
                 original_xml.define()
-        except Exception, e:
+        except Exception as e:
             logging.error(e)
         for disk in snapshot_external_disks:
             if os.path.exists(disk):
@@ -617,7 +617,7 @@ def run(test, params, env):
         try:
             if nfs_cleanup:
                 utl.setup_or_cleanup_nfs(is_setup=False)
-        except Exception, e:
+        except Exception as e:
             logging.error(e)
         # Clean up iSCSI
         try:
@@ -625,7 +625,7 @@ def run(test, params, env):
                 utl.setup_or_cleanup_iscsi(is_setup=False, emulated_image=iscsi_n)
                 # iscsid will be restarted, so give it a break before next loop
                 time.sleep(5)
-        except Exception, e:
+        except Exception as e:
             logging.error(e)
         if os.path.exists(dest_path):
             os.remove(dest_path)

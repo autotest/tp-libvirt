@@ -4,8 +4,7 @@ import base64
 import logging
 from tempfile import mktemp
 
-from autotest.client import utils
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import virsh
 from virttest.libvirt_xml.secret_xml import SecretXML
@@ -41,7 +40,7 @@ def check_secret(params):
     return True
 
 
-def create_secret_volume(params):
+def create_secret_volume(test, params):
     """
     Define a secret of the volume
     :params: the parameter dictionary
@@ -74,10 +73,10 @@ def create_secret_volume(params):
     os.unlink(sec_file)
 
     if status:
-        raise error.TestFail(result.stderr)
+        test.fail(result.stderr)
 
 
-def get_secret_value(params):
+def get_secret_value(test, params):
     """
     Get the secret value
     :params: the parameter dictionary
@@ -114,21 +113,21 @@ def get_secret_value(params):
             # Only raise error when the /path/to/$uuid.base64 file
             # doesn't exist
             if not os.access(base64_file, os.R_OK):
-                raise error.TestFail("%d not a expected command "
-                                     "return value", status)
+                test.fail("%d not a expected command "
+                          "return value", status)
     elif status_error == "no":
         if status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
         else:
             # Check secret value
             if base64_file and check_secret(params):
                 logging.info(result.stdout)
             else:
-                raise error.TestFail("The secret value "
-                                     "mismatch with result")
+                test.fail("The secret value "
+                          "mismatch with result")
 
 
-def set_secret_value(params):
+def set_secret_value(test, params):
     """
     Set the secet value
     :params: the parameter dictionary
@@ -154,21 +153,21 @@ def set_secret_value(params):
         if status:
             logging.info("It's an expected %s", result.stderr)
         else:
-            raise error.TestFail("%d not a expected command "
-                                 "return value", status)
+            test.fail("%d not a expected command "
+                      "return value", status)
     elif status_error == "no":
         if status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
         else:
             # Check secret value
             if check_secret(params):
                 logging.info(result.stdout)
             else:
-                raise error.TestFail("The secret value "
-                                     "mismatch with result")
+                test.fail("The secret value "
+                          "mismatch with result")
 
 
-def cleanup(params):
+def cleanup(test, params):
     """
     Cleanup secret and volume
     :params: the parameter dictionary
@@ -182,7 +181,7 @@ def cleanup(params):
         result = virsh.secret_undefine(uuid)
         status = result.exit_status
         if status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
 
 
 def run(test, params, env):
@@ -209,10 +208,10 @@ def run(test, params, env):
 
     # If storage volume doesn't exist then create it
     if not os.path.isfile(usage_volume):
-        utils.run("dd if=/dev/zero of=%s bs=1 count=1 seek=1M" % usage_volume)
+        process.run("dd if=/dev/zero of=%s bs=1 count=1 seek=1M" % usage_volume, shell=True)
 
     # Define secret based on storage volume
-    create_secret_volume(params)
+    create_secret_volume(test, params)
 
     # Get secret UUID from secret list
     output = virsh.secret_list(ignore_status=False).stdout.strip()
@@ -226,10 +225,10 @@ def run(test, params, env):
             logging.debug("Secret uuid is %s", uuid)
             params['secret_uuid'] = uuid
         else:
-            raise error.TestFail('Cannot find secret %s in:\n %s'
-                                 % (usage_volume, output))
+            test.fail('Cannot find secret %s in:\n %s'
+                      % (usage_volume, output))
     else:
-        raise error.TestFail('No secret found in:\n %s' % output)
+        test.fail('No secret found in:\n %s' % output)
 
     # Update parameters dictionary with automatically generated UUID
     if not params.get('secret_ref'):
@@ -238,8 +237,8 @@ def run(test, params, env):
     # positive and negative testing #########
     try:
         if set_secret == "yes":
-            set_secret_value(params)
+            set_secret_value(test, params)
         if get_secret == "yes":
-            get_secret_value(params)
+            get_secret_value(test, params)
     finally:
-        cleanup(params)
+        cleanup(test, params)

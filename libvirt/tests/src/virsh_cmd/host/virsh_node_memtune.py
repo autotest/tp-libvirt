@@ -1,8 +1,7 @@
 import os
 import logging
 
-from autotest.client.shared import error
-
+from avocado.core import exceptions
 from virttest import virsh
 
 _SYSFS_MEMORY_KSM_PATH = "/sys/kernel/mm/ksm"
@@ -74,7 +73,7 @@ def check_node_memtune(params, ksm_dicts):
     return True
 
 
-def get_node_memtune_parameter(params):
+def get_node_memtune_parameter(test, params):
     """
     Get the node memory parameters
     :params: the parameter dictionary
@@ -100,20 +99,20 @@ def get_node_memtune_parameter(params):
         if status:
             logging.info("It's an expected error: %s", result.stderr)
         else:
-            raise error.TestFail("%d not a expected command "
-                                 "return value" % status)
+            test.fail("%d not a expected command "
+                      "return value" % status)
     elif status_error == "no":
         if status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
         else:
             if check_node_memtune(_params, ksm_dicts):
                 logging.info(result)
             else:
-                raise error.TestFail("The memory parameters "
-                                     "mismatch with result")
+                test.fail("The memory parameters "
+                          "mismatch with result")
 
 
-def set_node_memtune_parameter(params):
+def set_node_memtune_parameter(test, params):
     """
     Set the node memory parameters
     :params: the parameter dictionary
@@ -143,17 +142,17 @@ def set_node_memtune_parameter(params):
         if status:
             logging.info("It's an expected error: %s", result.stderr)
         else:
-            raise error.TestFail("%d not a expected command "
-                                 "return value" % status)
+            test.fail("%d not a expected command "
+                      "return value" % status)
     elif status_error == "no":
         if status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
         else:
             if check_node_memtune(params, ksm_dicts):
                 logging.info(result)
             else:
-                raise error.TestFail("The memory parameters "
-                                     "mismatch with result")
+                test.fail("The memory parameters "
+                          "mismatch with result")
 
 
 def run(test, params, env):
@@ -184,38 +183,38 @@ def run(test, params, env):
     if status_error == "no":
         if change_parameters == "no":
             try:
-                get_node_memtune_parameter(params)
-            except error.TestFail, detail:
+                get_node_memtune_parameter(test, params)
+            except exceptions.TestFail as detail:
                 # Recovery ksm relevant files contents
                 recovery_ksm_files_contents(ksm_backup, change_list)
-                raise error.TestFail("Failed to get node memory parameters.\n"
-                                     "Detail: %s." % detail)
+                test.fail("Failed to get node memory parameters.\n"
+                          "Detail: %s." % detail)
         else:
             try:
-                set_node_memtune_parameter(params)
-            except error.TestFail, detail:
+                set_node_memtune_parameter(test, params)
+            except exceptions.TestFail as detail:
                 # Recovery ksm relevant files contents
                 recovery_ksm_files_contents(ksm_backup, change_list)
-                raise error.TestFail("Failed to set node memory parameters.\n"
-                                     "Detail: %s." % detail)
+                test.fail("Failed to set node memory parameters.\n"
+                          "Detail: %s." % detail)
 
     if status_error == "yes":
         if change_parameters == "no":
             try:
-                get_node_memtune_parameter(params)
-            except error.TestFail, detail:
+                get_node_memtune_parameter(test, params)
+            except exceptions.TestFail as detail:
                 # Recovery ksm relevant files contents
                 recovery_ksm_files_contents(ksm_backup, change_list)
-                raise error.TestFail("Failed to get node memory parameters.\n"
-                                     "Detail: %s." % detail)
+                test.fail("Failed to get node memory parameters.\n"
+                          "Detail: %s." % detail)
         else:
             try:
-                set_node_memtune_parameter(params)
-            except error.TestFail, detail:
+                set_node_memtune_parameter(test, params)
+            except exceptions.TestFail as detail:
                 # Recovery ksm relevant files contents
                 recovery_ksm_files_contents(ksm_backup, change_list)
-                raise error.TestFail("Failed to set node memory parameters.\n"
-                                     "Detail: %s." % detail)
+                test.fail("Failed to set node memory parameters.\n"
+                          "Detail: %s." % detail)
 
     # Recovery ksm relevant files contents
     recovery_ksm_files_contents(ksm_backup, change_list)

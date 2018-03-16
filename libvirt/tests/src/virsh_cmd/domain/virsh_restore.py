@@ -1,8 +1,6 @@
 import re
 import os
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import utils_libvirtd
 
@@ -39,8 +37,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     # run test
     if vm_ref == "" or vm_ref == "xyz":
@@ -56,7 +54,7 @@ def run(test, params, env):
             finally:
                 session.close()
             if not re.search("processor", output):
-                raise error.TestFail("Unable to read /proc/cpuinfo")
+                test.fail("Unable to read /proc/cpuinfo")
         tmp_file = os.path.join(test.tmpdir, "save.file")
         virsh.save(vm_name, tmp_file)
         if vm_ref == "saved_file":
@@ -87,22 +85,22 @@ def run(test, params, env):
     try:
         if status_error:
             if not status:
-                raise error.TestFail("Run successfully with wrong command!")
+                test.fail("Run successfully with wrong command!")
         else:
             if status:
-                raise error.TestFail("Run failed with right command")
+                test.fail("Run failed with right command")
             if not re.search(vm_name, list_output):
-                raise error.TestFail("Run failed with right command")
+                test.fail("Run failed with right command")
             if extra_param.count("paused"):
                 if not vm.is_paused():
-                    raise error.TestFail("Guest state should be"
-                                         " paused after restore"
-                                         " due to the option --paused")
+                    test.fail("Guest state should be"
+                              " paused after restore"
+                              " due to the option --paused")
             if extra_param.count("running"):
                 if vm.is_dead() or vm.is_paused():
-                    raise error.TestFail("Guest state should be"
-                                         " running after restore"
-                                         " due to the option --running")
+                    test.fail("Guest state should be"
+                              " running after restore"
+                              " due to the option --running")
     finally:
         if vm.is_paused():
             virsh.resume(vm_name)

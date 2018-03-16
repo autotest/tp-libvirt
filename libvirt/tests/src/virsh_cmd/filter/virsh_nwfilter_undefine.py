@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import libvirt_xml
 
@@ -51,8 +49,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
     # Backup filter xml
     if filter_ref:
         new_filter = libvirt_xml.NwfilterXML()
@@ -70,14 +68,14 @@ def run(test, params, env):
     # Check result
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successfully with wrong command.")
+            test.fail("Run successfully with wrong command.")
     elif status_error == "no":
         if status:
-            raise error.TestFail("Run failed with right command.")
+            test.fail("Run failed with right command.")
         chk_result = check_list(filter_ref)
         if chk_result:
-            raise error.TestFail("filter %s show up in filter list." %
-                                 filter_ref)
+            test.fail("filter %s show up in filter list." %
+                      filter_ref)
 
     # Clean env
     if status == 0:

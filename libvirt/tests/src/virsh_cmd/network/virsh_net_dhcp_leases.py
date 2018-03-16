@@ -1,8 +1,6 @@
 import re
 import logging
 
-from autotest.client.shared import error
-
 from virttest import utils_net
 from virttest import utils_misc
 from virttest import virsh
@@ -75,7 +73,7 @@ def run(test, params, env):
                 leases.append(dict(zip(keys, values)))
             return leases
         except:
-            raise error.TestError("Fail to parse output: %s" % output)
+            test.error("Fail to parse output: %s" % output)
 
     def get_ip_by_mac(mac_addr, try_dhclint=False, timeout=120):
         """
@@ -109,13 +107,13 @@ def run(test, params, env):
         """
         if not net_leases:
             if expected_find:
-                raise error.TestFail("Lease info is empty")
+                test.fail("Lease info is empty")
             else:
                 logging.debug("No dhcp lease info find as expected")
         else:
             if not expected_find:
-                raise error.TestFail("Find unexpected dhcp lease info: %s"
-                                     % net_leases)
+                test.fail("Find unexpected dhcp lease info: %s"
+                          % net_leases)
         find_mac = False
         for net_lease in net_leases:
             net_mac = net_lease['MAC address']
@@ -128,9 +126,9 @@ def run(test, params, env):
                 continue
             iface_ip = get_ip_by_mac(net_mac)
             if iface_ip and iface_ip != net_ip:
-                raise error.TestFail("Address '%s' is not expected" % iface_ip)
+                test.fail("Address '%s' is not expected" % iface_ip)
         if expected_find and not find_mac:
-            raise error.TestFail("No matched MAC address")
+            test.fail("No matched MAC address")
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
@@ -143,7 +141,7 @@ def run(test, params, env):
         create_network()
     nets = virsh.net_state_dict()
     if net_name not in nets.keys() and not status_error:
-        raise error.TestError("Not find network '%s'" % net_name)
+        test.error("Not find network '%s'" % net_name)
     expected_find = False
     try:
         result = virsh.net_dhcp_leases(net_name,

@@ -2,8 +2,6 @@ import os
 import re
 import commands
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import data_dir
 from virttest.libvirt_xml.secret_xml import SecretXML
@@ -32,8 +30,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     virsh_dargs = {'debug': True}
     if params.get('setup_libvirt_polkit') == 'yes':
@@ -47,7 +45,7 @@ def run(test, params, env):
             cmd = "uuidgen"
             status, uuid = commands.getstatusoutput(cmd)
             if status:
-                raise error.TestNAError("Failed to generate valid uuid")
+                test.cancel("Failed to generate valid uuid")
             uuid_list.append(uuid)
 
             # Get a full path of tmpfile, the tmpfile need not exist
@@ -67,9 +65,9 @@ def run(test, params, env):
         output = cmd_result.stdout.strip()
         exit_status = cmd_result.exit_status
         if not status_error and exit_status != 0:
-            raise error.TestFail("Run failed with right command")
+            test.fail("Run failed with right command")
         if status_error and exit_status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
 
         # Reture if secret-list failed
         if exit_status != 0:
@@ -83,68 +81,68 @@ def run(test, params, env):
 
         if secret_list_option.find("--no-ephemeral") >= 0:
             if m1 or m2:
-                raise error.TestFail("Secret object %s, %s shouldn't be listed"
-                                     " out" % (uuid_list[0], uuid_list[1]))
+                test.fail("Secret object %s, %s shouldn't be listed"
+                          " out" % (uuid_list[0], uuid_list[1]))
             if secret_list_option.find("--private") >= 0:
                 if not m3:
-                    raise error.TestFail("Failed list secret object %s" %
-                                         uuid_list[2])
+                    test.fail("Failed list secret object %s" %
+                              uuid_list[2])
                 if m4:
-                    raise error.TestFail("Secret object %s shouldn't be listed"
-                                         " out" % uuid_list[3])
+                    test.fail("Secret object %s shouldn't be listed"
+                              " out" % uuid_list[3])
             elif secret_list_option.find("--no-private") >= 0:
                 if not m4:
-                    raise error.TestFail("Failed list secret object %s" %
-                                         uuid_list[3])
+                    test.fail("Failed list secret object %s" %
+                              uuid_list[3])
                 if m3:
-                    raise error.TestFail("Secret object %s shouldn't be listed"
-                                         " out" % uuid_list[2])
+                    test.fail("Secret object %s shouldn't be listed"
+                              " out" % uuid_list[2])
             else:
                 if not m3 or not m4:
-                    raise error.TestFail("Failed list secret object %s, %s" %
-                                         (uuid_list[2], uuid_list[3]))
+                    test.fail("Failed list secret object %s, %s" %
+                              (uuid_list[2], uuid_list[3]))
         elif secret_list_option.find("--ephemeral") >= 0:
             if m3 or m4:
-                raise error.TestFail("Secret object %s, %s shouldn't be listed"
-                                     " out" % (uuid_list[2], uuid_list[3]))
+                test.fail("Secret object %s, %s shouldn't be listed"
+                          " out" % (uuid_list[2], uuid_list[3]))
             if secret_list_option.find("--private") >= 0:
                 if not m1:
-                    raise error.TestFail("Failed list secret object %s" %
-                                         uuid_list[0])
+                    test.fail("Failed list secret object %s" %
+                              uuid_list[0])
                 if m2:
-                    raise error.TestFail("Secret object %s shouldn't be listed"
-                                         " out" % uuid_list[1])
+                    test.fail("Secret object %s shouldn't be listed"
+                              " out" % uuid_list[1])
             elif secret_list_option.find("--no-private") >= 0:
                 if not m2:
-                    raise error.TestFail("Failed list secret object %s" %
-                                         uuid_list[1])
+                    test.fail("Failed list secret object %s" %
+                              uuid_list[1])
                 if m1:
-                    raise error.TestFail("Secret object %s shouldn't be listed"
-                                         " out" % uuid_list[0])
+                    test.fail("Secret object %s shouldn't be listed"
+                              " out" % uuid_list[0])
             else:
                 if not m1 or not m2:
-                    raise error.TestFail("Failed list secret object %s, %s" %
-                                         (uuid_list[0], uuid_list[1]))
+                    test.fail("Failed list secret object %s, %s" %
+                              (uuid_list[0], uuid_list[1]))
         elif secret_list_option.find("--private") >= 0:
             if not m1 or not m3:
-                raise error.TestFail("Failed list secret object %s, %s" %
-                                     (uuid_list[0], uuid_list[2]))
+                test.fail("Failed list secret object %s, %s" %
+                          (uuid_list[0], uuid_list[2]))
             if m2 or m4:
-                raise error.TestFail("Secret object %s and %s should't be "
-                                     "listed out"
-                                     % (uuid_list[1], uuid_list[3]))
+                test.fail("Secret object %s and %s should't be "
+                          "listed out"
+                          % (uuid_list[1], uuid_list[3]))
         elif secret_list_option.find("--no-private") >= 0:
             if not m2 or not m4:
-                raise error.TestFail("Failed list secret object %s, %s" %
-                                     (uuid_list[1], uuid_list[3]))
+                test.fail("Failed list secret object %s, %s" %
+                          (uuid_list[1], uuid_list[3]))
             if m1 or m3:
-                raise error.TestFail("Secret object %s and %s shouldn't be "
-                                     "listed out" %
-                                     (uuid_list[0], uuid_list[2]))
+                test.fail("Secret object %s and %s shouldn't be "
+                          "listed out" %
+                          (uuid_list[0], uuid_list[2]))
         elif secret_list_option is None:
             if not m1 or not m2 or not m3 or not m4:
-                raise error.TestFail("Fail to list all secret objects: %s" %
-                                     uuid_list)
+                test.fail("Fail to list all secret objects: %s" %
+                          uuid_list)
 
     finally:
         #Cleanup

@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
@@ -68,7 +66,7 @@ def run(test, params, env):
                 top_mode = {"edit": r":%s /<topology .*\/>/" + new_topology,
                             "recover": r":%s /<topology .*\/>/" + old_topology}
                 expected_vcpu = str(int(sockets) * int(cores) * int(threads))
-            except:
+            except Exception as details:
                 expected_vcpu = str(int(original_vcpu) + 1)
         dic_mode = {
             "edit": r":%s /[0-9]*<\/vcpu>/" + expected_vcpu + r"<\/vcpu>",
@@ -170,7 +168,7 @@ def run(test, params, env):
                 if new_mem - expected_mem > int(mem_delta):
                     logging.error("New max memory %s is not excepted", new_mem)
                     return False
-        except Exception, e:
+        except Exception as e:
             logging.error("Error occured when check domain memory: %s", e)
             return False
         return status
@@ -242,14 +240,14 @@ def run(test, params, env):
         elif edit_element == "rng":
             status = edit_rng(vm_name)
         else:
-            raise error.TestNAError("No edit method for %s" % edit_element)
+            test.cancel("No edit method for %s" % edit_element)
         # check status_error
         if status_error == "yes":
             if status:
-                raise error.TestFail("Run successfully with wrong command!")
+                test.fail("Run successfully with wrong command!")
         elif status_error == "no":
             if not status:
-                raise error.TestFail("Run failed with right command")
+                test.fail("Run failed with right command")
     finally:
         # recover libvirtd service start
         if libvirtd_stat == "off":

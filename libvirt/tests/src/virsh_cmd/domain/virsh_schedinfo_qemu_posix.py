@@ -2,8 +2,6 @@ import re
 import logging
 import os
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
@@ -54,8 +52,8 @@ def run(test, params, env):
                 cg_file = open(cgroup_file)
                 result = cg_file.read()
             except IOError:
-                raise error.TestError("Failed to open cgroup file %s"
-                                      % cgroup_file)
+                test.error("Failed to open cgroup file %s"
+                           % cgroup_file)
         finally:
             if cg_file is not None:
                 cg_file.close()
@@ -71,7 +69,7 @@ def run(test, params, env):
         """
         output = result.stdout.strip()
         if not re.search("Scheduler", output):
-            raise error.TestFail("Output is not standard:\n%s" % output)
+            test.fail("Output is not standard:\n%s" % output)
 
         result_lines = output.splitlines()
         set_value = None
@@ -81,8 +79,8 @@ def run(test, params, env):
             value = key_value[1].strip()
             if key == "Scheduler":
                 if value != scheduler:
-                    raise error.TestNAError("This test do not support"
-                                            " %s scheduler." % scheduler)
+                    test.cancel("This test do not support"
+                                " %s scheduler." % scheduler)
             elif key == set_ref:
                 set_value = value
                 break
@@ -175,7 +173,7 @@ def run(test, params, env):
     # Check result
     if status_error == "no":
         if status:
-            raise error.TestFail("Run failed with right command.")
+            test.fail("Run failed with right command.")
         else:
             if set_ref and set_value_expected:
                 logging.info("value will be set:%s\n"
@@ -185,7 +183,7 @@ def run(test, params, env):
                                  set_value, set_value_of_output,
                                  set_value_of_cgroup, set_value_expected))
                 if set_value_of_output is None:
-                    raise error.TestFail("Get parameter %s failed." % set_ref)
+                    test.fail("Get parameter %s failed." % set_ref)
                 # Value in output of virsh schedinfo is not guaranteed 'correct'
                 # when we use --config.
                 # This is my attempt to fix it
@@ -195,11 +193,11 @@ def run(test, params, env):
                 # when we use --config. So skip checking of output in this case.
                 if (not (set_value_expected == set_value_of_output) and
                         not (options_ref.count("config"))):
-                    raise error.TestFail("Run successful but value "
-                                         "in output is not expected.")
+                    test.fail("Run successful but value "
+                              "in output is not expected.")
                 if not (set_value_expected == set_value_of_cgroup):
-                    raise error.TestFail("Run successful but value "
-                                         "in cgroup is not expected.")
+                    test.fail("Run successful but value "
+                              "in cgroup is not expected.")
     else:
         if not status:
-            raise error.TestFail("Run successfully with wrong command.")
+            test.fail("Run successfully with wrong command.")

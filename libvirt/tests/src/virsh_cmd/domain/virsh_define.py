@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virt_vm
 from virttest.libvirt_xml import VMXML
 from virttest.libvirt_xml import LibvirtXMLError
@@ -23,14 +21,14 @@ def run(test, params, env):
         logging.info("Rename %s to %s.", vm.name, new_name)
         try:
             vm = VMXML.vm_rename(vm, new_name, uuid)  # give it a new uuid
-        except LibvirtXMLError, detail:
-            raise error.TestFail("Rename %s to %s failed:\n%s"
-                                 % (vm.name, new_name, detail))
+        except LibvirtXMLError as detail:
+            test.fail("Rename %s to %s failed:\n%s"
+                      % (vm.name, new_name, detail))
 
         # Exercize the defined XML
         try:
             vm.start()
-        except virt_vm.VMStartError, detail:
+        except virt_vm.VMStartError as detail:
             # Do not raise TestFail because vm should be restored
             fail_info.append("Start guest %s failed:%s" % (vm.name, detail))
         vm.destroy()
@@ -53,4 +51,4 @@ def run(test, params, env):
     logging.info("Final uuid: %s", vm.get_uuid())
 
     if len(fail_info):
-        raise error.TestFail(fail_info)
+        test.fail(fail_info)

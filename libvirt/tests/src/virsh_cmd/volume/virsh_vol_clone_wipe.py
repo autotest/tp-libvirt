@@ -1,18 +1,69 @@
 import os
 import random
 import logging
+import base64
+import re
 
-from autotest.client import utils
-from autotest.client.shared import error
-
+from avocado.utils import process
 from avocado.utils import path as utils_path
 
+from virttest.libvirt_xml import secret_xml
 from virttest.utils_test import libvirt as utlv
 from virttest import libvirt_storage
 from virttest import virsh
 from virttest import utils_misc
+from virttest import libvirt_xml
 
 from provider import libvirt_version
+
+
+def create_luks_secret(vol_path, password, test):
+    """
+    Create secret for luks encryption
+    :param vol_path: volume path.
+    :return: secret id if create successfully.
+    """
+    sec_xml = secret_xml.SecretXML("no", "yes")
+    sec_xml.description = "volume secret"
+
+    sec_xml.usage = 'volume'
+    sec_xml.volume = vol_path
+    sec_xml.xmltreefile.write()
+
+    ret = virsh.secret_define(sec_xml.xml)
+    utlv.check_exit_status(ret)
+    try:
+        encryption_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
+                                     ret.stdout)[0].lstrip()
+    except IndexError:
+        test.error("Fail to get newly created secret uuid")
+    logging.debug("Secret uuid %s", encryption_uuid)
+    # Set secret value.
+    secret_string = base64.b64encode(password)
+    ret = virsh.secret_set_value(encryption_uuid, secret_string)
+    utlv.check_exit_status(ret)
+    return encryption_uuid
+
+
+def create_luks_vol(pool_name, vol_name, sec_uuid, vol_arg):
+    """
+    Create a luks volume
+    :param pool_name: the pool in which a vol will be created
+    :param vol_name: the name of the volume
+    :param sec_uuid: secret's uuid to be used for luks encryption
+    :param vol_arg: detailed params to create volume
+    """
+    volxml = libvirt_xml.VolXML()
+    newvol = volxml.new_vol(**vol_arg)
+    luks_encryption_params = {}
+    luks_encryption_params.update({"format": "luks"})
+    luks_encryption_params.update({"secret": {"type": "passphrase",
+                                              "uuid": sec_uuid}})
+    newvol.encryption = volxml.new_encryption(**luks_encryption_params)
+    vol_xml = newvol['xml']
+    logging.debug("Create volume from XML: %s", newvol.xmltreefile)
+    cmd_result = virsh.vol_create(pool_name, vol_xml, ignore_status=True,
+                                  debug=True)
 
 
 def run(test, params, env):
@@ -36,14 +87,19 @@ def run(test, params, env):
     vol_name = params.get("vol_name")
     new_vol_name = params.get("new_vol_name")
     vol_capability = params.get("vol_capability")
+    vol_allocation = params.get("vol_allocation")
     vol_format = params.get("vol_format")
     clone_option = params.get("clone_option", "")
     wipe_algorithms = params.get("wipe_algorithms")
+    b_luks_encrypted = "luks" == params.get("encryption_method")
+    encryption_password = params.get("encryption_password", "redhat")
+    secret_uuids = []
+    wipe_old_vol = False
 
     if virsh.has_command_help_match("vol-clone", "--prealloc-metadata") is None:
         if "prealloc-metadata" in clone_option:
-            raise error.TestNAError("Option --prealloc-metadata "
-                                    "is not supported.")
+            test.cancel("Option --prealloc-metadata "
+                        "is not supported.")
 
     clone_status_error = "yes" == params.get("clone_status_error", "no")
     wipe_status_error = "yes" == params.get("wipe_status_error", "no")
@@ -58,8 +114,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if setup_libvirt_polkit:
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     # Using algorithms other than zero need scrub installed.
     try:
@@ -81,7 +137,7 @@ def run(test, params, env):
     libvirt_pvt = utlv.PoolVolumeTest(test, params)
     libvirt_pool = libvirt_storage.StoragePool()
     if libvirt_pool.pool_exists(pool_name):
-        raise error.TestError("Pool '%s' already exist" % pool_name)
+        test.error("Pool '%s' already exist" % pool_name)
     try:
         # Create a new pool
         disk_vol = []
@@ -97,28 +153,42 @@ def run(test, params, env):
         libvirt_vol = libvirt_storage.PoolVolume(pool_name)
         # Create a new volume
         if vol_format in ['raw', 'qcow2', 'qed', 'vmdk']:
-            libvirt_pvt.pre_vol(vol_name=vol_name,
-                                vol_format=vol_format,
-                                capacity=vol_capability,
-                                allocation=None,
-                                pool_name=pool_name)
+            if (b_luks_encrypted and vol_format in ['raw']):
+                if not libvirt_version.version_compare(2, 0, 0):
+                    test.cancel("LUKS is not supported in current"
+                                " libvirt version")
+                luks_sec_uuid = create_luks_secret(os.path.join(pool_target,
+                                                   vol_name),
+                                                   encryption_password, test)
+                secret_uuids.append(luks_sec_uuid)
+                vol_arg = {}
+                vol_arg['name'] = vol_name
+                vol_arg['capacity'] = int(vol_capability)
+                vol_arg['allocation'] = int(vol_allocation)
+                create_luks_vol(pool_name, vol_name, luks_sec_uuid, vol_arg)
+            else:
+                libvirt_pvt.pre_vol(vol_name=vol_name,
+                                    vol_format=vol_format,
+                                    capacity=vol_capability,
+                                    allocation=None,
+                                    pool_name=pool_name)
         elif vol_format == 'partition':
-            vol_name = utlv.get_vol_list(pool_name).keys()[0]
+            vol_name = list(utlv.get_vol_list(pool_name).keys())[0]
             logging.debug("Find partition %s in disk pool", vol_name)
         elif vol_format == 'sparse':
             # Create a sparse file in pool
             sparse_file = pool_target + '/' + vol_name
             cmd = "dd if=/dev/zero of=" + sparse_file
             cmd += " bs=1 count=0 seek=" + vol_capability
-            utils.run(cmd)
+            process.run(cmd, ignore_status=True, shell=True)
         else:
-            raise error.TestError("Unknown volume format %s" % vol_format)
+            test.error("Unknown volume format %s" % vol_format)
 
         # Refresh the pool
         virsh.pool_refresh(pool_name, debug=True)
         vol_info = libvirt_vol.volume_info(vol_name)
         if not vol_info:
-            raise error.TestError("Fail to get info of volume %s" % vol_name)
+            test.error("Fail to get info of volume %s" % vol_name)
 
         for key in vol_info:
             logging.debug("Original volume info: %s = %s", key, vol_info[key])
@@ -126,11 +196,14 @@ def run(test, params, env):
         # Metadata preallocation is not support for block volume
         if vol_info["Type"] == "block" and clone_option.count("prealloc-metadata"):
             clone_status_error = True
+        if b_luks_encrypted:
+            clone_status_error = True
+            wipe_old_vol = True
 
         if pool_type == "disk":
             new_vol_name = utlv.new_disk_vol_name(pool_name)
             if new_vol_name is None:
-                raise error.TestError("Fail to generate volume name")
+                test.error("Fail to generate volume name")
             # update polkit rule as the volume name changed
             if setup_libvirt_polkit:
                 vol_pat = r"lookup\('vol_name'\) == ('\S+')"
@@ -142,8 +215,8 @@ def run(test, params, env):
                                        clone_option, debug=True)
         if not clone_status_error:
             if clone_result.exit_status != 0:
-                raise error.TestFail("Clone volume fail:\n%s" %
-                                     clone_result.stderr.strip())
+                test.fail("Clone volume fail:\n%s" %
+                          clone_result.stderr.strip())
             else:
                 vol_info = libvirt_vol.volume_info(new_vol_name)
                 for key in vol_info:
@@ -161,9 +234,9 @@ def run(test, params, env):
                 if not wipe_status_error:
                     if wipe_result.exit_status != 0:
                         if any(err in wipe_result.stderr for err in unsupported_err):
-                            raise error.TestNAError(wipe_result.stderr)
-                        raise error.TestFail("Wipe volume fail:\n%s" %
-                                             clone_result.stdout.strip())
+                            test.cancel(wipe_result.stderr)
+                        test.fail("Wipe volume fail:\n%s" %
+                                  clone_result.stdout.strip())
                     else:
                         virsh_vol_info = libvirt_vol.volume_info(new_vol_name)
                         for key in virsh_vol_info:
@@ -176,18 +249,53 @@ def run(test, params, env):
                             logging.debug("Wiped volume info(qemu): %s = %s",
                                           key, qemu_vol_info[key])
                             if qemu_vol_info['format'] != 'raw':
-                                raise error.TestFail("Expect wiped volume "
-                                                     "format is raw")
+                                test.fail("Expect wiped volume "
+                                          "format is raw")
                 elif wipe_status_error and wipe_result.exit_status == 0:
-                    raise error.TestFail("Expect wipe volume fail, but run"
-                                         " successfully.")
+                    test.fail("Expect wipe volume fail, but run"
+                              " successfully.")
         elif clone_status_error and clone_result.exit_status == 0:
-            raise error.TestFail("Expect clone volume fail, but run"
-                                 " successfully.")
+            test.fail("Expect clone volume fail, but run"
+                      " successfully.")
+        if wipe_old_vol:
+            # Wipe the old volume
+            if alg:
+                logging.debug("Wiping volume by '%s' algorithm", alg)
+            wipe_result = virsh.vol_wipe(vol_name, pool_name, alg,
+                                         unprivileged_user=unpri_user,
+                                         uri=uri, debug=True)
+            unsupported_err = ["Unsupported algorithm",
+                               "no such pattern sequence"]
+            if not wipe_status_error:
+                if wipe_result.exit_status != 0:
+                    if any(err in wipe_result.stderr for err in unsupported_err):
+                        test.cancel(wipe_result.stderr)
+                    test.fail("Wipe volume fail:\n%s" %
+                              clone_result.stdout.strip())
+                else:
+                    virsh_vol_info = libvirt_vol.volume_info(vol_name)
+                    for key in virsh_vol_info:
+                        logging.debug("Wiped volume info(virsh): %s = %s",
+                                      key, virsh_vol_info[key])
+                    vol_path = virsh.vol_path(vol_name,
+                                              pool_name).stdout.strip()
+                    qemu_vol_info = utils_misc.get_image_info(vol_path)
+                    for key in qemu_vol_info:
+                        logging.debug("Wiped volume info(qemu): %s = %s",
+                                      key, qemu_vol_info[key])
+                        if qemu_vol_info['format'] != 'raw':
+                            test.fail("Expect wiped volume "
+                                      "format is raw")
+            elif wipe_status_error and wipe_result.exit_status == 0:
+                test.fail("Expect wipe volume fail, but run"
+                          " successfully.")
+
     finally:
         # Clean up
         try:
             libvirt_pvt.cleanup_pool(pool_name, pool_type, pool_target,
                                      emulated_image)
-        except error.TestFail, detail:
+            for secret_uuid in set(secret_uuids):
+                virsh.secret_undefine(secret_uuid)
+        except test.fail as detail:
             logging.error(str(detail))

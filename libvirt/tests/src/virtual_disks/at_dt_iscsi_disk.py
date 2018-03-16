@@ -90,7 +90,8 @@ def run(test, params, env):
             secret_xml.auth_username = chap_user
             secret_xml.usage = disk_src_protocol
             secret_xml.target = secret_usage_target
-            logging.debug("Define secret by XML: %s", open(secret_xml.xml).read())
+            with open(secret_xml.xml, 'r') as _file:
+                logging.debug("Define secret by XML: %s", _file.read().decode('utf-8'))
             # Define secret
             cmd_result = virsh.secret_define(secret_xml.xml, **virsh_dargs)
             libvirt.check_exit_status(cmd_result)
@@ -274,7 +275,7 @@ def run(test, params, env):
                     session.close()
                     if s == 0:
                         found_disk = True
-                except (LoginError, VMError, ShellError), e:
+                except (LoginError, VMError, ShellError) as e:
                     logging.error(str(e))
             if found_disk == expect:
                 logging.debug("Check disk inside the VM PASS as expected")

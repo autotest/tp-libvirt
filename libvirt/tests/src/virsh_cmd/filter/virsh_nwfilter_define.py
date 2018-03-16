@@ -1,8 +1,6 @@
 import os
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import xml_utils
 from virttest import libvirt_xml
@@ -61,8 +59,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     if exist_filter == filter_name and new_uuid:
         # Since commit 46a811d, update filter with new uuid will fail.
@@ -104,25 +102,25 @@ def run(test, params, env):
         if status_error == "yes":
             if status == 0:
                 if boundary_test_skip:
-                    raise error.TestNAError("Boundary check commit 4f20943 not"
-                                            " in this libvirt build yet.")
+                    test.cancel("Boundary check commit 4f20943 not"
+                                " in this libvirt build yet.")
                 else:
                     err_msg = "Run successfully with wrong command."
                     if bug_url:
                         err_msg += " Check more info in %s" % bug_url
-                    raise error.TestFail(err_msg)
+                    test.fail(err_msg)
         elif status_error == "no":
             if status:
                 err_msg = "Run failed with right command."
                 if bug_url:
                     err_msg += " Check more info in %s" % bug_url
-                raise error.TestFail(err_msg)
+                test.fail(err_msg)
             if not chk_result:
-                raise error.TestFail("Can't find filter in nwfilter-list" +
-                                     " output")
+                test.fail("Can't find filter in nwfilter-list" +
+                          " output")
             if not os.path.exists(xml_path):
-                raise error.TestFail("Can't find filter xml under %s" %
-                                     NWFILTER_ETC_DIR)
+                test.fail("Can't find filter xml under %s" %
+                          NWFILTER_ETC_DIR)
             logging.info("Dump the xml after define:")
             virsh.nwfilter_dumpxml(filter_name,
                                    ignore_status=True,

@@ -1,9 +1,7 @@
 import os
 import logging
 
-from autotest.client import utils
-from autotest.client.shared import error
-
+from avocado.utils import process
 from virttest import virsh
 
 SYSFS_SYSTEM_PATH = "/sys/devices/system/cpu"
@@ -17,7 +15,7 @@ def get_present_cpu():
     """
     if os.path.exists("%s/cpu0" % SYSFS_SYSTEM_PATH):
         cmd = "ls %s | grep cpu[0-9] | wc -l" % SYSFS_SYSTEM_PATH
-        cmd_result = utils.run(cmd, ignore_status=True)
+        cmd_result = process.run(cmd, ignore_status=True, shell=True)
         present = int(cmd_result.stdout.strip())
     else:
         present = None
@@ -77,7 +75,7 @@ def get_online_cpu(option=''):
 
     if os.path.exists("%s/online" % SYSFS_SYSTEM_PATH):
         cmd = "cat %s/online" % SYSFS_SYSTEM_PATH
-        cmd_result = utils.run(cmd, ignore_status=True)
+        cmd_result = process.run(cmd, ignore_status=True, shell=True)
         output = cmd_result.stdout.strip()
         if 'pretty' in option:
             return tuple(output)
@@ -93,7 +91,7 @@ def get_online_cpu(option=''):
             if i != 0:
                 if os.path.exists("%s/cpu%s/online" % (SYSFS_SYSTEM_PATH, i)):
                     cmd = "cat %s/cpu%s/online" % (SYSFS_SYSTEM_PATH, i)
-                    cmd_result = utils.run(cmd, ignore_status=True)
+                    cmd_result = process.run(cmd, ignore_status=True, shell=True)
                     output = cmd_result.stdout.strip()
                     if int(output) == 1:
                         cpu_map_list[i] = 'y'
@@ -123,7 +121,7 @@ def run(test, params, env):
     # Check result
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
         else:
             logging.info("Run failed as expected")
     else:
@@ -134,19 +132,19 @@ def run(test, params, env):
 
         present = get_present_cpu()
         if not present:
-            raise error.TestNAError("Host cpu counting not supported")
+            test.cancel("Host cpu counting not supported")
         else:
             if present != int(out_value[0]):
-                raise error.TestFail("Present cpu is not expected")
+                test.fail("Present cpu is not expected")
 
         cpu_map = get_online_cpu(option)
         if not cpu_map:
-            raise error.TestNAError("Host cpu map not supported")
+            test.cancel("Host cpu map not supported")
         else:
             if cpu_map != tuple(out_value[2]):
                 logging.info(cpu_map)
                 logging.info(tuple(out_value[2]))
-                raise error.TestFail("Cpu map is not expected")
+                test.fail("Cpu map is not expected")
 
         online = 0
         if 'pretty' in option:
@@ -155,4 +153,4 @@ def run(test, params, env):
             if cpu_map[i] == 'y':
                 online += 1
         if online != int(out_value[1]):
-            raise error.TestFail("Online cpu is not expected")
+            test.fail("Online cpu is not expected")

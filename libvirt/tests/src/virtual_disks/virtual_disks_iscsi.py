@@ -107,7 +107,7 @@ def run(test, params, env):
                 return False
             return True
 
-        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
             logging.error(str(e))
             return False
 
@@ -299,7 +299,7 @@ def run(test, params, env):
             if test_qemu_cmd:
                 check_qemu_cmd()
 
-        except virt_vm.VMStartError, e:
+        except virt_vm.VMStartError as e:
             if status_error:
                 if re.search(uuid, str(e)):
                     pass

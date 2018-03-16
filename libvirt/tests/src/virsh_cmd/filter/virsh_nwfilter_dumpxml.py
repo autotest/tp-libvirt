@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import libvirt_xml
 
@@ -47,8 +45,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     virsh_dargs = {'ignore_status': True, 'debug': True}
     if params.get('setup_libvirt_polkit') == 'yes':
@@ -64,10 +62,10 @@ def run(test, params, env):
     # Check result
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successfully with wrong command.")
+            test.fail("Run successfully with wrong command.")
     elif status_error == "no":
         if status:
-            raise error.TestFail("Run failed with right command.")
+            test.fail("Run failed with right command.")
         # Get uuid and name from output xml and compare with nwfilter-list
         # output
         new_filter = libvirt_xml.NwfilterXML()
@@ -79,9 +77,9 @@ def run(test, params, env):
                           " from nwfilter-dumpxml was found in"
                           " nwfilter-list output")
         else:
-            raise error.TestFail("The uuid %s with name %s from" % (uuid, name) +
-                                 " nwfilter-dumpxml did not match with"
-                                 " nwfilter-list output")
+            test.fail("The uuid %s with name %s from" % (uuid, name) +
+                      " nwfilter-dumpxml did not match with"
+                      " nwfilter-list output")
 
         # Run command second time with uuid
         cmd_result = virsh.nwfilter_dumpxml(uuid, options=options_ref,
@@ -90,10 +88,10 @@ def run(test, params, env):
         status1 = cmd_result.exit_status
         if status_error == "yes":
             if status1 == 0:
-                raise error.TestFail("Run successfully with wrong command.")
+                test.fail("Run successfully with wrong command.")
         elif status_error == "no":
             if status1:
-                raise error.TestFail("Run failed with right command.")
+                test.fail("Run failed with right command.")
         if output1 != output:
-            raise error.TestFail("nwfilter dumpxml output was different" +
-                                 " between using filter uuid and name")
+            test.fail("nwfilter dumpxml output was different" +
+                      " between using filter uuid and name")

@@ -3,8 +3,6 @@ import re
 import time
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import utils_test
 from virttest.libvirt_xml import vm_xml
@@ -57,7 +55,7 @@ def run(test, params, env):
         # If run fail with cstatus_error = no, then error will raise in command
         if cstatus_error == "yes":
             if output.exit_status == 0:
-                raise error.TestFail("Unexpected snapshot-current success")
+                test.fail("Unexpected snapshot-current success")
             else:
                 logging.info("Failed to run snapshot-current as expected:%s",
                              output.stderr)
@@ -74,9 +72,9 @@ def run(test, params, env):
                     logging.info("Success to check current snapshot with"
                                  " security info")
                 else:
-                    raise error.TestFail("Passwd is not same as set")
+                    test.fail("Passwd is not same as set")
             except KeyError:
-                raise error.TestFail("Can not find passwd in snapshot xml")
+                test.fail("Can not find passwd in snapshot xml")
 
         # Check if --snapshotname may change current snapshot
         if "--snapshotname" in snap_cur_opt:
@@ -89,9 +87,9 @@ def run(test, params, env):
                 logging.info("Success to check current snapshot changed to %s",
                              current_snap)
             else:
-                raise error.TestFail("Failed to change current snapshot to %s,"
-                                     "current is %s" %
-                                     (snap_cur_opt.split()[1], current_snap))
+                test.fail("Failed to change current snapshot to %s,"
+                          "current is %s" %
+                          (snap_cur_opt.split()[1], current_snap))
 
     def parent_snapshot_check(snap_parent):
         """
@@ -116,9 +114,9 @@ def run(test, params, env):
         if snap_parent == expect_name:
             logging.info("Success to check parent snapshot")
         else:
-            raise error.TestFail("Failed to check parent "
-                                 "snapshot, expect %s, get %s"
-                                 % (expect_name, snap_parent))
+            test.fail("Failed to check parent "
+                      "snapshot, expect %s, get %s"
+                      % (expect_name, snap_parent))
 
     def parent_snapshot_test():
         """
@@ -132,12 +130,12 @@ def run(test, params, env):
         # check status
         if pstatus_error == "yes":
             if cmd_result.exit_status == 0:
-                raise error.TestFail("Unexpected success")
+                test.fail("Unexpected success")
             else:
                 logging.info("Run failed as expected:%s", cmd_result.stderr)
         elif cmd_result.exit_status != 0:
-            raise error.TestFail("Run failed with right command:%s" %
-                                 cmd_result.stderr)
+            test.fail("Run failed with right command:%s" %
+                      cmd_result.stderr)
         else:
             parent_snapshot_check(cmd_result.stdout.strip())
 
@@ -146,15 +144,15 @@ def run(test, params, env):
             # Create disk snapshot before all to make the origin image clean
             ret = virsh.snapshot_create_as(vm_name, "snap-temp --disk-only")
             if ret.exit_status != 0:
-                raise error.TestFail("Fail to create temp snap, Error: %s"
-                                     % ret.stderr.strip())
+                test.fail("Fail to create temp snap, Error: %s"
+                          % ret.stderr.strip())
 
             # Create snapshots
             for opt in snap_opt:
                 result = virsh.snapshot_create_as(vm_name, opt)
                 if result.exit_status:
-                    raise error.TestFail("Failed to create snapshot. Error:%s."
-                                         % result.stderr.strip())
+                    test.fail("Failed to create snapshot. Error:%s."
+                              % result.stderr.strip())
                 time.sleep(1)
 
         # Do parent snapshot test

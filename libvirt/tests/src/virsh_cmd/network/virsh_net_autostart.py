@@ -29,8 +29,7 @@ def run(test, params, env):
     except (KeyError, AttributeError):
         pass  # Not found - good
     else:
-        test.cancel("Found network bridge '%s' - skipping" %
-                    (net_name))
+        test.cancel("Found network bridge '%s' - skipping" % net_name)
 
     # Define a very bare bones bridge, don't provide UUID - use whatever
     # libvirt ends up generating.  We need to define a persistent network
@@ -66,8 +65,7 @@ def run(test, params, env):
         try:
             testbr_xml = currents[net_name]
         except (KeyError, AttributeError):
-            test.error("Did not find newly defined bridge '%s'" %
-                       (net_name))
+            test.error("Did not find newly defined bridge '%s'" % net_name)
 
         # Prepare default property for network
         # Transient network can not be set autostart

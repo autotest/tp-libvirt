@@ -75,7 +75,7 @@ def run(test, params, env):
                 pvt.pre_vol(vol_name=created_vol_name, vol_format=vol_format,
                             capacity=capacity, allocation=None,
                             pool_name=pool_name)
-        except Exception, pool_exception:
+        except Exception as pool_exception:
             pvt.cleanup_pool(pool_name, pool_type, pool_target,
                              emulated_image, **virsh_dargs)
             test.error("Error occurred when prepare" +
@@ -188,7 +188,7 @@ def run(test, params, env):
                 if status != 0:
                     return False
             return True
-        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
             logging.error(str(e))
             return False
 
@@ -207,7 +207,7 @@ def run(test, params, env):
             try:
                 policy_item = xmltreefile.find('/source')
                 policy_item.set('startupPolicy', policy)
-            except AttributeError, elem_attr:
+            except AttributeError as elem_attr:
                 test.error("Fail to find startupPolicy attribute.%s", str(elem_attr))
             xmltreefile.write(xml_policy_file, encoding="UTF-8")
             ret = virsh.update_device(vm_name, xml_policy_file, flagstr=flag_str, debug=True)
@@ -293,16 +293,16 @@ def run(test, params, env):
                          configure_startup_policy, update_source_policy]
         function_parameter = [False, False, True, True]
         # Loop all above scenarios to update device.
-        for index in range(len(function_list)):
+        for index in list(range(len(function_list))):
             try:
                 func = function_list[index]
                 para = function_parameter[index]
                 flag_option, update_error = func(para)
                 ret = virsh.update_device(vm_name, xml_policy_file, flagstr=flag_option, debug=True)
                 libvirt.check_exit_status(ret, expect_error=update_error)
-            except AttributeError, elem_attr:
+            except AttributeError as elem_attr:
                 test.error("Fail to remove startupPolicy attribute:%s" % str(elem_attr))
-            except Exception, update_device_exception:
+            except Exception as update_device_exception:
                 test.error("Fail to update device:%s" % str(update_device_exception))
             finally:
                 source_file = policy_item.get('file')
@@ -325,7 +325,7 @@ def run(test, params, env):
             else:
                 os.rename(target_file, source_file)
                 logging.debug("Rename %s to %s", target_file, source_file)
-        except OSError, err:
+        except OSError as err:
             test.fail("Rename image failed: %s" % str(err))
 
     # Back VM XML
@@ -401,7 +401,7 @@ def run(test, params, env):
                 return
             else:
                 libvirt.check_exit_status(result, expect_error=False)
-        except Exception, attach_device_exception:
+        except Exception as attach_device_exception:
             logging.debug("Attach device throws exception:%s", str(attach_device_exception))
             os.remove(media_file)
             test.error("Attach %s fail" % device_type)

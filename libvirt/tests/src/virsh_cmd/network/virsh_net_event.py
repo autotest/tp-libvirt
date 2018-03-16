@@ -1,9 +1,6 @@
 import time
 import logging
-
 import aexpect
-
-from autotest.client.shared import error
 
 from virttest import virsh
 from virttest.utils_test import libvirt as utlv
@@ -84,7 +81,7 @@ def run(test, params, env):
             logging.debug("Expected output: %s", match_str)
             logging.debug("Actual output: %s", output[index])
             if not output[index].count(match_str):
-                raise error.TestFail("Event received not match")
+                test.fail("Event received not match")
             index += 1
 
     try:

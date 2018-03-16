@@ -4,8 +4,6 @@ import uuid
 
 import aexpect
 
-from autotest.client.shared import error
-
 from virttest import virsh
 
 
@@ -63,12 +61,12 @@ def run(test, params, env):
                 else:
                     status = 1
                     err = "virsh desc --edit fails"
-            except:
-                raise error.TestFail("Fail to create session.")
+            except Exception:
+                test.fail("Fail to create session.")
         if status_error == "no" and status:
-            raise error.TestFail(err)
+            test.fail(err)
         elif status_error == "yes" and status == 0:
-            raise error.TestFail("Expect fail, but run successfully.")
+            test.fail("Expect fail, but run successfully.")
         return output
 
     def vm_state_switch():
@@ -111,7 +109,7 @@ def run(test, params, env):
                 logging.debug("Domain desc check successfully.")
                 ret = True
             else:
-                raise error.TestFail("Expect fail, but run successfully.")
+                test.fail("Expect fail, but run successfully.")
 
         return ret
 

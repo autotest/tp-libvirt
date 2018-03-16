@@ -4,8 +4,6 @@ import shutil
 
 import aexpect
 
-from autotest.client.shared import error
-
 from virttest import virt_vm
 from virttest import virsh
 from virttest import remote
@@ -31,10 +29,9 @@ def run(test, params, env):
         :param device_source: Device source file.
         """
         try:
-            f = open(device_source, 'wb')
-            f.seek((512 * 1024 * 1024) - 1)
-            f.write(str(0))
-            f.close()
+            with open(device_source, 'wb') as device_file:
+                device_file.seek((512 * 1024 * 1024) - 1)
+                device_file.write(str(0).encode())
         except IOError:
             logging.error("Image file %s created failed.", device_source)
 
@@ -66,7 +63,7 @@ def run(test, params, env):
                 if s != 0:
                     return False
             return True
-        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
             logging.error(str(e))
             return False
 
@@ -99,7 +96,7 @@ def run(test, params, env):
                         return False
                 session.close()
             return True
-        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
             logging.error(str(e))
             return False
 
@@ -144,8 +141,8 @@ def run(test, params, env):
     test_cmd = "detach-device"
     if not virsh.has_command_help_match(test_cmd, dt_options) and\
        not status_error:
-        raise error.TestNAError("Current libvirt version doesn't support '%s'"
-                                " for %s" % (dt_options, test_cmd))
+        test.cancel("Current libvirt version doesn't support '%s'"
+                    " for %s" % (dt_options, test_cmd))
 
     # Disk specific attributes.
     device_source_name = params.get("dt_device_device_source", "attach.img")
@@ -172,7 +169,7 @@ def run(test, params, env):
         device_source = libvirt.setup_or_cleanup_iscsi(True)
         if not device_source:
             # We should skip this case
-            raise error.TestNAError("Can not get iscsi device name in host")
+            test.cancel("Can not get iscsi device name in host")
     else:
         create_device_file(device_source)
 
@@ -199,7 +196,7 @@ def run(test, params, env):
         # Add acpiphp module before testing if VM's os type is rhle5.*
         if device in ['disk', 'cdrom']:
             if not acpiphp_module_modprobe(vm, os_type):
-                raise error.TestError("Add acpiphp module failed before test.")
+                test.error("Add acpiphp module failed before test.")
 
         # Turn VM into certain state.
         if pre_vm_state == "paused":
@@ -291,49 +288,49 @@ def run(test, params, env):
     # Check results.
     if status_error:
         if not status:
-            raise error.TestFail("detach-device exit with unexpected value.")
+            test.fail("detach-device exit with unexpected value.")
     else:
         if status:
-            raise error.TestFail("virsh detach-device failed.")
+            test.fail("virsh detach-device failed.")
         if dt_options.count("config"):
             if check_count_after_shutdown:
-                raise error.TestFail("See config detached device in "
-                                     "xml file after VM shutdown.")
+                test.fail("See config detached device in "
+                          "xml file after VM shutdown.")
             if pre_vm_state == "shut off":
                 if check_count_after_cmd:
-                    raise error.TestFail("See device in xml after detach with"
-                                         " --config option")
+                    test.fail("See device in xml after detach with"
+                              " --config option")
             elif pre_vm_state == "running":
                 if not check_vm_after_cmd and device in ['disk', 'cdrom']:
-                    raise error.TestFail("Cannot see device in VM after"
-                                         " detach with '--config' option"
-                                         " when VM is running.")
+                    test.fail("Cannot see device in VM after"
+                              " detach with '--config' option"
+                              " when VM is running.")
 
         elif dt_options.count("live"):
             if check_count_after_cmd:
-                raise error.TestFail("See device in xml after detach with"
-                                     "--live option")
+                test.fail("See device in xml after detach with"
+                          "--live option")
             if not check_count_after_shutdown:
-                raise error.TestFail("Cannot see config detached device in"
-                                     " xml file after VM shutdown with"
-                                     " '--live' option.")
+                test.fail("Cannot see config detached device in"
+                          " xml file after VM shutdown with"
+                          " '--live' option.")
             if check_vm_after_cmd and device in ['disk', 'cdrom']:
-                raise error.TestFail("See device in VM with '--live' option"
-                                     " when VM is running")
+                test.fail("See device in VM with '--live' option"
+                          " when VM is running")
         elif dt_options.count("current"):
             if check_count_after_cmd:
-                raise error.TestFail("See device in xml after detach with"
-                                     " --current option")
+                test.fail("See device in xml after detach with"
+                          " --current option")
             if pre_vm_state == "running":
                 if not check_count_after_shutdown:
-                    raise error.TestFail("Cannot see config detached device in"
-                                         " xml file after VM shutdown with"
-                                         " '--current' option.")
+                    test.fail("Cannot see config detached device in"
+                              " xml file after VM shutdown with"
+                              " '--current' option.")
                 if check_vm_after_cmd and device in ['disk', 'cdrom']:
-                    raise error.TestFail("See device in VM with '--live'"
-                                         " option when VM is running")
+                    test.fail("See device in VM with '--live'"
+                              " option when VM is running")
         elif dt_options.count("persistent"):
             if check_count_after_shutdown:
-                raise error.TestFail("See device deattached with "
-                                     "'--persistent' option after "
-                                     "VM shutdown.")
+                test.fail("See device deattached with "
+                          "'--persistent' option after "
+                          "VM shutdown.")

@@ -1,7 +1,6 @@
 from xml.dom.minidom import parseString
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
@@ -30,7 +29,7 @@ def run(test, params, env):
         :return: interface device of VM.
         """
         interface = ""
-        domxml = utils.system_output("virsh dumpxml %s" % guest_name)
+        domxml = process.system_output("virsh dumpxml %s" % guest_name, shell=True)
         dom = parseString(domxml)
         root = dom.documentElement
         array = root.getElementsByTagName("interface")
@@ -83,7 +82,7 @@ def run(test, params, env):
     # check status_error
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if status != 0:
-            raise error.TestFail("Run failed with right command")
+            test.fail("Run failed with right command")

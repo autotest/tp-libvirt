@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import libvirt_xml
 from virttest import utils_libvirtd
 from virttest import virsh
@@ -61,7 +59,7 @@ def check_blkdeviotune(params):
     return True
 
 
-def get_blkdevio_parameter(params):
+def get_blkdevio_parameter(params, test):
     """
     Get the blkdevio parameters
     @params: the parameter dictionary
@@ -80,15 +78,15 @@ def get_blkdevio_parameter(params):
         if status:
             logging.info("It's an expected %s", result.stderr)
         else:
-            raise error.TestFail("Unexpected return code %d" % status)
+            test.fail("Unexpected return code %d" % status)
     elif status_error == "no":
         if status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
         else:
             logging.info(result.stdout)
 
 
-def set_blkdevio_parameter(params):
+def set_blkdevio_parameter(params, test):
     """
     Set the blkdevio parameters
     @params: the parameter dictionary
@@ -117,16 +115,16 @@ def set_blkdevio_parameter(params):
         if status:
             logging.info("It's an expected %s", result.stderr)
         else:
-            raise error.TestFail("Unexpected return code %d" % status)
+            test.fail("Unexpected return code %d" % status)
     elif status_error == "no":
         if status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
         else:
             if check_blkdeviotune(params):
                 logging.info(result.stdout)
             else:
-                raise error.TestFail("The result is inconsistent between "
-                                     "test input and command/XML output")
+                test.fail("The result is inconsistent between "
+                          "test input and command/XML output")
 
 
 def run(test, params, env):
@@ -177,14 +175,14 @@ def run(test, params, env):
 
     # Make sure libvirtd service is running
     if not utils_libvirtd.libvirtd_is_running():
-        raise error.TestNAError("libvirt service is not running!")
+        test.cancel("libvirt service is not running!")
 
     # Positive and negative testing
     try:
         if change_parameters == "no":
-            get_blkdevio_parameter(test_dict)
+            get_blkdevio_parameter(test_dict, test)
         else:
-            set_blkdevio_parameter(test_dict)
+            set_blkdevio_parameter(test_dict, test)
     finally:
         # Restore guest
         original_vm_xml.sync()

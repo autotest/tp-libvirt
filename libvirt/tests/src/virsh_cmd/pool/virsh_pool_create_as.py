@@ -1,8 +1,6 @@
 import os
 import logging
 
-from autotest.client.shared import error
-
 from virttest import libvirt_storage
 from virttest import virsh
 
@@ -40,19 +38,19 @@ def run(test, params, env):
     status_error = params.get('status_error')
     if status_error == 'yes':
         if status:
-            raise error.TestFail("%d not a expected command return value"
-                                 % status)
+            test.fail("%d not a expected command return value"
+                      % status)
         else:
             logging.info("It's an expected error")
     elif status_error == 'no':
         result = virsh.pool_info(pool_name, uri=virsh.canonical_uri())
         if result.exit_status:
-            raise error.TestFail('Failed to check pool information')
+            test.fail('Failed to check pool information')
         else:
             logging.info('Pool %s is running', pool_name)
         if not status:
-            raise error.TestFail('%d not a expected command return value'
-                                 % status)
+            test.fail('%d not a expected command return value'
+                      % status)
         else:
             logging.info('Succeed to create pool %s', pool_name)
     # Clean up

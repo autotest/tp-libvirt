@@ -2,8 +2,7 @@ import logging
 
 import aexpect
 
-from autotest.client.shared import utils
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import utils_test
 from virttest.libvirt_xml import vm_xml
@@ -32,7 +31,7 @@ def xml_console_recover(vmxml):
         return False
 
 
-def vm_console_config(vm, device='ttyS0', speed='115200'):
+def vm_console_config(vm, test, device='ttyS0', speed='115200'):
     """
     Login to config vm for virsh console.
     Three step:
@@ -51,11 +50,11 @@ def vm_console_config(vm, device='ttyS0', speed='115200'):
 
     # Step 2
     if not vm.set_kernel_console(device, speed):
-        raise error.TestFail("Config kernel for console failed.")
+        test.fail("Config kernel for console failed.")
 
     # Step 3
     if not vm.set_console_getty(device):
-        raise error.TestFail("Config getty for console failed.")
+        test.fail("Config getty for console failed.")
 
     vm.destroy()
     # Confirm vm is down
@@ -64,7 +63,7 @@ def vm_console_config(vm, device='ttyS0', speed='115200'):
 
 
 def check_duplicated_console(command, force_command, status_error, login_user,
-                             login_passwd):
+                             login_passwd, test):
     """
     Test opening a second console with another console active using --force
     option or not.
@@ -78,24 +77,24 @@ def check_duplicated_console(command, force_command, status_error, login_user,
     session = aexpect.ShellSession(command)
     if not status_error:
         # Test duplicated console session
-        res = utils.run(command, 10, ignore_status=True)
+        res = process.run(command, timeout=10, ignore_status=True, shell=True)
         logging.debug(res)
         if res.exit_status == 0:
-            raise error.TestFail("Duplicated console session should fail. "
-                                 "but succeeded with:\n%s" % res)
+            test.fail("Duplicated console session should fail. "
+                      "but succeeded with:\n%s" % res)
 
         # Test duplicated console session with force option
         force_session = aexpect.ShellSession(force_command)
         force_status = utils_test.libvirt.verify_virsh_console(
             force_session, login_user, login_passwd, timeout=10, debug=True)
         if not force_status:
-            raise error.TestFail("Expect force console session should succeed, "
-                                 "but failed.")
+            test.fail("Expect force console session should succeed, "
+                      "but failed.")
         force_session.close()
     session.close()
 
 
-def check_disconnect_on_shutdown(command, status_error, login_user, login_passwd):
+def check_disconnect_on_shutdown(command, status_error, login_user, login_passwd, test):
     """
     Test whether an active console will disconnect after shutting down the VM.
 
@@ -135,13 +134,13 @@ def check_disconnect_on_shutdown(command, status_error, login_user, login_passwd
             # exit before machine shutdown.
             session.cmd_output("echo $?")
             session.close()
-            raise error.TestError('Do not expect any command can be executed '
-                                  'after successfully shutdown')
+            test.error('Do not expect any command can be executed '
+                       'after successfully shutdown')
         except (aexpect.ShellError,
-                aexpect.ExpectError), detail:
+                aexpect.ExpectError) as detail:
             if 'Shell process terminated' not in str(detail):
-                raise error.TestFail('Expect shell terminated, but found %s'
-                                     % detail)
+                test.fail('Expect shell terminated, but found %s'
+                          % detail)
             log = session.get_output()
             logging.debug("Shell terminated on VM shutdown:\n%s\n%s", detail, log)
             session.close()
@@ -153,7 +152,7 @@ def run(test, params, env):
     """
     os_type = params.get("os_type")
     if os_type == "windows":
-        raise error.TestNAError("SKIP:Do not support Windows.")
+        test.cancel("SKIP:Do not support Windows.")
 
     # Get parameters for test
     vm_name = params.get("main_vm")
@@ -177,8 +176,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     # A backup of original vm
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -190,7 +189,7 @@ def run(test, params, env):
     try:
         # Guarantee cleanup after config vm console failed.
         if vm.is_qemu():
-            vm_console_config(vm)
+            vm_console_config(vm, test)
 
         # Prepare vm state for test
         if vm_state != "shutoff":
@@ -227,8 +226,9 @@ def run(test, params, env):
         console_session.close()
 
         check_duplicated_console(command, force_command, status_error,
-                                 login_user, login_passwd)
-        check_disconnect_on_shutdown(command, status_error, login_user, login_passwd)
+                                 login_user, login_passwd, test)
+        check_disconnect_on_shutdown(command, status_error, login_user,
+                                     login_passwd, test)
     finally:
         # Recover state of vm.
         if vm_state == "paused":
@@ -243,7 +243,7 @@ def run(test, params, env):
     # Check result
     if status_error:
         if status:
-            raise error.TestFail("Run successful with wrong command!")
+            test.fail("Run successful with wrong command!")
     else:
         if not status:
-            raise error.TestFail("Run failed with right command!")
+            test.fail("Run failed with right command!")

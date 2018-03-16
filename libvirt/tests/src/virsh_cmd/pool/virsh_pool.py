@@ -2,8 +2,7 @@ import re
 import os
 import logging
 
-from autotest.client.shared import error
-
+from avocado.core import exceptions
 from virttest import utils_libvirtd
 from virttest import libvirt_storage
 from virttest import virsh
@@ -67,8 +66,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 0, 0):
         if pool_type == "gluster":
-            raise error.TestNAError("Gluster pool is not supported in current"
-                                    " libvirt version.")
+            test.cancel("Gluster pool is not supported in current"
+                        " libvirt version.")
 
     def check_pool_list(pool_name, option="--all", expect_error=False):
         """
@@ -93,9 +92,9 @@ def run(test, params, env):
         else:
             logging.debug("Not find pool %s in pool list.", pool_name)
         if expect_error and found:
-            raise error.TestFail("Unexpect pool '%s' exist." % pool_name)
+            test.fail("Unexpect pool '%s' exist." % pool_name)
         if not expect_error and not found:
-            raise error.TestFail("Expect pool '%s' doesn't exist." % pool_name)
+            test.fail("Expect pool '%s' doesn't exist." % pool_name)
 
     def check_vol_list(vol_name, pool_name):
         """
@@ -118,7 +117,7 @@ def run(test, params, env):
             logging.debug(
                 "Find volume '%s' in pool '%s'.", vol_name, pool_name)
         else:
-            raise error.TestFail(
+            test.fail(
                 "Not find volume '%s' in pool '%s'." %
                 (vol_name, pool_name))
 
@@ -137,7 +136,7 @@ def run(test, params, env):
         :param value: Expect value of pool_info[key]
         """
         if pool_info is None:
-            raise error.TestFail("Pool info dictionary is needed.")
+            test.fail("Pool info dictionary is needed.")
         val_tup = ('Capacity', 'Allocation', 'Available')
         if check_point in val_tup and float(value.split()[0]):
             # As from bytes to GiB, could cause deviation, and it should not
@@ -146,14 +145,14 @@ def run(test, params, env):
                            float(value.split()[0]), 1):
                 logging.debug("Pool '%s' is '%s'.", check_point, value)
             else:
-                raise error.TestFail("Pool '%s' isn't '%s'." %
-                                     (check_point, value))
+                test.fail("Pool '%s' isn't '%s'." %
+                          (check_point, value))
         else:
             if pool_info[check_point] == value:
                 logging.debug("Pool '%s' is '%s'.", check_point, value)
             else:
-                raise error.TestFail("Pool '%s' isn't '%s'." %
-                                     (check_point, value))
+                test.fail("Pool '%s' isn't '%s'." %
+                          (check_point, value))
 
     # Stop multipathd to avoid start pool fail(For fs like pool, the new add
     # disk may in use by device-mapper, so start pool will report disk already
@@ -242,7 +241,7 @@ def run(test, params, env):
         if virsh.pool_destroy(pool_name):
             logging.debug("Pool %s destroyed.", pool_name)
         else:
-            raise error.TestFail("Destroy pool % failed." % pool_name)
+            test.fail("Destroy pool % failed." % pool_name)
 
         # Step (13)
         # Pool autostart disable
@@ -319,7 +318,7 @@ def run(test, params, env):
         if virsh.pool_destroy(pool_name):
             logging.debug("Pool %s destroyed.", pool_name)
         else:
-            raise error.TestFail("Destroy pool % failed." % pool_name)
+            test.fail("Destroy pool % failed." % pool_name)
 
         # Step (23)
         # Pool delete for 'dir' type pool
@@ -331,8 +330,8 @@ def run(test, params, env):
             option = "--inactive --type %s" % pool_type
             check_pool_list(pool_name, option)
             if os.path.exists(pool_target):
-                raise error.TestFail("The target path '%s' still exist." %
-                                     pool_target)
+                test.fail("The target path '%s' still exist." %
+                          pool_target)
             result = virsh.pool_start(pool_name, ignore_status=True)
             utlv.check_exit_status(result, True)
 
@@ -346,7 +345,7 @@ def run(test, params, env):
         try:
             pvt.cleanup_pool(pool_name, pool_type, pool_target,
                              emulated_image, **kwargs)
-        except error.TestFail, detail:
+        except exceptions.TestFail as detail:
             logging.error(str(detail))
         if multipathd_status:
             multipathd.start()
