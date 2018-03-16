@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import utils_misc
 from virttest.utils_libvirtd import LibvirtdSession
 
@@ -43,6 +41,6 @@ def run(test, params, env):
         libvirtd.start(wait_for_working=False)
 
         if not utils_misc.wait_for(lambda: bundle['recieved'], 20, 0.5):
-            raise error.TestFail("Expect recieve signal, but not.")
+            test.fail("Expect recieve signal, but not.")
     finally:
         libvirtd.exit()

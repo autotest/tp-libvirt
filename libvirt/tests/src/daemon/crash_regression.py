@@ -1,6 +1,8 @@
 import os
 import logging
 
+from six.moves import xrange
+
 from avocado.utils import path
 from avocado.utils import process
 

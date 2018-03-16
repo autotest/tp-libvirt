@@ -171,7 +171,7 @@ def run(test, params, env):
             logging.debug("String for address element %s is %s", addr, addr_str)
             return addr_str
 
-    def check_controller_addr():
+    def check_controller_addr(test):
         """
         Check test controller address against expectation.
         """
@@ -194,7 +194,7 @@ def run(test, params, env):
             test.fail('Expect get controller address "%s", '
                       'but got "%s"' % (exp_addr_patt, addr_str))
 
-    def check_qemu_cmdline():
+    def check_qemu_cmdline(test):
         """
         Check domain qemu command line against expectation.
         """
@@ -223,7 +223,7 @@ def run(test, params, env):
             test.fail('Expect get qemu command serial option "%s", '
                       'but got "%s"' % (exp_pcihole_opt, pcihole_opt))
 
-    def check_msi():
+    def check_msi(test):
         """
         Check MSI state against expectation.
         """
@@ -271,7 +271,7 @@ def run(test, params, env):
             logging.debug("Can't define the VM, exiting.")
             return
 
-        check_controller_addr()
+        check_controller_addr(test)
 
         try:
             if not start_and_check():
@@ -280,9 +280,9 @@ def run(test, params, env):
         except virt_vm.VMStartError as detail:
             test.fail(detail)
 
-        check_qemu_cmdline()
+        check_qemu_cmdline(test)
 
         if cntlr_type == 'virtio-serial':
-            check_msi()
+            check_msi(test)
     finally:
         vm_xml_backup.sync()

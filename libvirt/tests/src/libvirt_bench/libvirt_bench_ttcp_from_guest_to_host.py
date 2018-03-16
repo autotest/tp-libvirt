@@ -3,8 +3,7 @@ import logging
 
 import aexpect
 
-from autotest.client import os_dep
-from autotest.client.shared import error
+from avocado.utils import path
 
 from virttest import utils_net
 from virttest import remote
@@ -22,16 +21,16 @@ def run(test, params, env):
     """
     # Find the ttcp command.
     try:
-        os_dep.command("ttcp")
-    except ValueError:
-        raise error.TestNAError("Not find ttcp command on host.")
+        path.find_command("ttcp")
+    except path.CmdNotFoundError:
+        test.cancel("Not find ttcp command on host.")
     # Get VM.
     vms = env.get_all_vms()
     for vm in vms:
         session = vm.wait_for_login()
         status, _ = session.cmd_status_output("which ttcp")
         if status:
-            raise error.TestNAError("Not find ttcp command on guest.")
+            test.cancel("Not find ttcp command on guest.")
     # Get parameters from params.
     timeout = int(params.get("LB_ttcp_timeout", "300"))
     ttcp_server_command = params.get("LB_ttcp_server_command",
@@ -62,8 +61,8 @@ def run(test, params, env):
                 if not utils_misc.wait_for(_ttcp_good, timeout=60):
                     status, output = session.cmd_status_output(cmd)
                     if status:
-                        raise error.TestFail("Failed to run ttcp command on guest.\n"
-                                             "Detail: %s." % output)
+                        test.fail("Failed to run ttcp command on guest.\n"
+                                  "Detail: %s." % output)
                 remote.handle_prompts(host_session, None, None, r"[\#\$]\s*$")
                 current_time = int(time.time())
     finally:

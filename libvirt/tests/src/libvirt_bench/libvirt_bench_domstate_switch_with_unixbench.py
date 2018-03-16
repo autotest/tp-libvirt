@@ -4,15 +4,13 @@ import logging
 import shutil
 import subprocess
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import utils_test
 from virttest import utils_misc
 from virttest import data_dir
 
 
-def func_in_thread(vm, timeout):
+def func_in_thread(vm, timeout, test):
     """
     Function run in thread to switch domstate.
     """
@@ -22,7 +20,7 @@ def func_in_thread(vm, timeout):
         """
         result = func(params)
         if result.exit_status:
-            raise error.TestFail(result)
+            test.fail(result)
     # Get current time.
     current_time = time.time()
     end_time = current_time + timeout
@@ -73,10 +71,10 @@ def run(test, params, env):
         def _is_unixbench_running():
             return (not session.cmd_status("ps -ef|grep perl|grep Run"))
         if not utils_misc.wait_for(_is_unixbench_running, timeout=120):
-            raise error.TestNAError("Failed to run unixbench in guest.\n"
-                                    "Since we need to run a autotest of unixbench "
-                                    "in guest, so please make sure there are some "
-                                    "necessary packages in guest, such as gcc, tar, bzip2")
+            test.cancel("Failed to run unixbench in guest.\n"
+                        "Since we need to run a autotest of unixbench "
+                        "in guest, so please make sure there are some "
+                        "necessary packages in guest, such as gcc, tar, bzip2")
     logging.debug("Unixbench is already running in VMs.")
 
     # Run unixbench on host.
@@ -94,7 +92,7 @@ def run(test, params, env):
         # Create a BackgroundTest for each vm to run test domstate_switch.
         backgroud_tests = []
         for vm in vms:
-            bt = utils_test.BackgroundTest(func_in_thread, [vm, timeout])
+            bt = utils_test.BackgroundTest(func_in_thread, [vm, timeout, test])
             bt.start()
             backgroud_tests.append(bt)
 

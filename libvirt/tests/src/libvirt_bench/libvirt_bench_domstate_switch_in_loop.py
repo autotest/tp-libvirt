@@ -1,7 +1,7 @@
 import time
 import logging
 
-from autotest.client.shared import error
+from avocado.core import exceptions
 
 from virttest import virsh
 
@@ -35,15 +35,15 @@ def run(test, params, env):
         for vm_name in vm_names:
             cmd_result = virsh_func(vm_name)
             if cmd_result.exit_status:
-                raise error.TestFail(cmd_result)
+                test.fail(cmd_result)
             if state_list is None:
                 continue
             actual_state = virsh.domstate(vm_name).stdout.strip()
             if actual_state not in state_list:
-                raise error.TestFail("Command %s succeed, but the state is %s,"
-                                     "but not %s." %
-                                     (virsh_func.__name__, actual_state,
-                                      str(state_list)))
+                test.fail("Command %s succeed, but the state is %s,"
+                          "but not %s." %
+                          (virsh_func.__name__, actual_state,
+                           str(state_list)))
         logging.debug("Operation %s on %s succeed.",
                       virsh_func.__name__, vm_names)
 
@@ -80,21 +80,21 @@ def run(test, params, env):
             # Start the loop from current_time to end_time.
             while current_time < end_time:
                 if loop_counter > (len(vms) * 1000 * loop_time):
-                    raise error.TestFail("Loop ")
+                    test.fail("Loop ")
                 if shutdown_in_loop:
                     for_each_vm(vms, virsh.shutdown, shutdown_post_state)
                     for vm in vms:
                         if not vm.wait_for_shutdown(count=240):
-                            raise error.TestFail("Command shutdown succeed, but "
-                                                 "failed to wait for shutdown.")
+                            test.fail("Command shutdown succeed, but "
+                                      "failed to wait for shutdown.")
                 if destroy_in_loop:
                     for_each_vm(vms, virsh.destroy, destroy_post_state)
                 if start_in_loop:
                     for_each_vm(vms, virsh.start, start_post_state)
                     for vm in vms:
                         if not vm.wait_for_login():
-                            raise error.TestFail("Command start succeed, but "
-                                                 "failed to wait for login.")
+                            test.fail("Command start succeed, but "
+                                      "failed to wait for login.")
                 if suspend_in_loop:
                     for_each_vm(vms, virsh.suspend, suspend_post_state)
                 if resume_in_loop:
@@ -103,9 +103,9 @@ def run(test, params, env):
                 # Update the current_time and loop_counter.
                 current_time = int(time.time())
                 loop_counter += 1
-        except error.TestFail, detail:
-            raise error.TestFail("Succeed for %s loop, and got an error.\n"
-                                 "Detail: %s." % (loop_counter, detail))
+        except exceptions.TestFail as detail:
+            test.fail("Succeed for %s loop, and got an error.\n"
+                      "Detail: %s." % (loop_counter, detail))
     finally:
         # Resume vm if vm is paused.
         for vm in vms:

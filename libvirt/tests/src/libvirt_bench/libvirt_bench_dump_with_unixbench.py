@@ -1,8 +1,6 @@
 import os
 import logging
 
-from autotest.client.shared import error
-
 from virttest import utils_test
 from virttest import utils_misc
 
@@ -39,10 +37,10 @@ def run(test, params, env):
         def _is_unixbench_running():
             return (not session.cmd_status("ps -ef|grep perl|grep Run"))
         if not utils_misc.wait_for(_is_unixbench_running, timeout=120):
-            raise error.TestNAError("Failed to run unixbench in guest.\n"
-                                    "Since we need to run a autotest of unixbench "
-                                    "in guest, so please make sure there are some "
-                                    "necessary packages in guest, such as gcc, tar, bzip2")
+            test.cancel("Failed to run unixbench in guest.\n"
+                        "Since we need to run a autotest of unixbench "
+                        "in guest, so please make sure there are some "
+                        "necessary packages in guest, such as gcc, tar, bzip2")
 
     logging.debug("Unixbench is already running in VMs.")
 
@@ -52,9 +50,9 @@ def run(test, params, env):
             vm.dump(dump_path)
             # Check the status after vm.dump()
             if not vm.is_alive():
-                raise error.TestFail("VM is shutoff after dump.")
+                test.fail("VM is shutoff after dump.")
             if vm.wait_for_shutdown():
-                raise error.TestFail("VM is going to shutdown after dump.")
+                test.fail("VM is going to shutdown after dump.")
             # Check VM is running normally.
             vm.wait_for_login()
     finally:

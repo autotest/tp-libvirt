@@ -2,12 +2,10 @@ import logging
 
 from virttest import virsh
 
-from autotest.client.shared import error
-
 from provider import libvirt_version
 
 
-def run_cmd_in_guest(vm, cmd):
+def run_cmd_in_guest(vm, cmd, test):
     """
     Run command in the guest
     :params vm: vm object
@@ -18,7 +16,7 @@ def run_cmd_in_guest(vm, cmd):
     logging.debug("The '%s' output: %s", cmd, output)
     if status:
         session.close()
-        raise error.TestError("Can not run '%s' in guest: %s", cmd, output)
+        test.error("Can not run '%s' in guest: %s", cmd, output)
     else:
         session.close()
         return output
@@ -33,8 +31,8 @@ def run(test, params, env):
     """
     for cmd in 'inject-nmi', 'qemu-monitor-command':
         if not virsh.has_help_command(cmd):
-            raise error.TestNAError("This version of libvirt does not "
-                                    " support the %s test", cmd)
+            test.cancel("This version of libvirt does not "
+                        " support the %s test", cmd)
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
@@ -47,33 +45,33 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     if start_vm == "yes":
         # start kdump service in the guest
         cmd = "which kdump"
         try:
-            run_cmd_in_guest(vm, cmd)
-        except:
+            run_cmd_in_guest(vm, cmd, test)
+        except Exception:
             try:
                 # try to install kexec-tools on fedoraX/rhelx.y guest
-                run_cmd_in_guest(vm, "yum install -y kexec-tools")
-            except:
-                raise error.TestNAError("Requires kexec-tools(or the "
-                                        "equivalent for your distro)")
+                run_cmd_in_guest(vm, "yum install -y kexec-tools", test)
+            except Exception:
+                test.cancel("Requires kexec-tools(or the "
+                            "equivalent for your distro)")
 
         # enable kdump service in the guest
         cmd = "service kdump start"
-        run_cmd_in_guest(vm, cmd)
+        run_cmd_in_guest(vm, cmd, test)
 
         # filter original 'NMI' information from the /proc/interrupts
         cmd = "grep NMI /proc/interrupts"
-        nmi_str = run_cmd_in_guest(vm, cmd)
+        nmi_str = run_cmd_in_guest(vm, cmd, test)
 
         # filter CPU from the /proc/cpuinfo and count number
         cmd = "grep -E '^process' /proc/cpuinfo | wc -l"
-        vcpu_num = run_cmd_in_guest(vm, cmd).strip()
+        vcpu_num = run_cmd_in_guest(vm, cmd, test).strip()
 
         logging.info("Inject NMI to the guest via virsh inject_nmi")
         virsh.inject_nmi(vm_name, debug=True, ignore_status=False)
@@ -84,11 +82,11 @@ def run(test, params, env):
         # injects a Non-Maskable Interrupt into the default CPU (x86/s390)
         # or all CPUs (ppc64), as usual, the default CPU index is 0
         cmd = "grep NMI /proc/interrupts | awk '{print $2}'"
-        nmi_from_default_vcpu = run_cmd_in_guest(vm, cmd)
+        nmi_from_default_vcpu = run_cmd_in_guest(vm, cmd, test)
         real_nmi_times = nmi_from_default_vcpu.splitlines()[0]
         logging.debug("The current Non-Maskable Interrupts: %s", real_nmi_times)
 
         # check Non-maskable interrupts times
         if real_nmi_times != expected_nmi_times:
-            raise error.TestFail("NMI times aren't expected %s:%s"
-                                 % (real_nmi_times, expected_nmi_times))
+            test.fail("NMI times aren't expected %s:%s"
+                      % (real_nmi_times, expected_nmi_times))

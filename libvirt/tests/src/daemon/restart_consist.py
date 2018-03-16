@@ -4,8 +4,6 @@ import difflib
 from aexpect import ExpectTimeoutError
 from aexpect import ShellTimeoutError
 
-from autotest.client.shared import error
-
 from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import remote
@@ -46,8 +44,8 @@ def run(test, params, env):
         session = vm.wait_for_serial_login(60, username=username,
                                            password=password)
     except remote.LoginError:
-        raise error.TestNAError('Serial console might needed to be '
-                                'configured before test.')
+        test.cancel('Serial console might needed to be '
+                    'configured before test.')
     # Send a command line without waiting result
     try:
         session.cmd('sleep 30; echo hello', timeout=0)
@@ -63,8 +61,8 @@ def run(test, params, env):
     try:
         vm.serial_console.read_until_any_line_matches(['hello'], timeout=60)
     except ExpectTimeoutError:
-        raise error.TestFail('Timeout when waiting for command output. '
-                             'Maybe your guest is refreshed.')
+        test.fail('Timeout when waiting for command output. '
+                  'Maybe your guest is refreshed.')
 
     # Wait guest agent channel to be reconnected to avoid XML differ
     try:
@@ -84,5 +82,5 @@ def run(test, params, env):
                 lineterm='',
             )
         )
-        raise error.TestFail("XML changed after libvirtd restart:\n%s"
-                             % diff_txt)
+        test.fail("XML changed after libvirtd restart:\n%s"
+                  % diff_txt)

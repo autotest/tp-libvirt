@@ -1,8 +1,6 @@
 import os
 import signal
 
-from autotest.client.shared import error
-
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 
@@ -33,14 +31,14 @@ def run(test, params, env):
             vm.prepare_guest_agent()
             vm.pmsuspend()
         else:
-            raise error.TestError("Unhandled VM state %s" % vm_state)
+            test.error("Unhandled VM state %s" % vm_state)
 
         os.kill(vm.get_pid(), getattr(signal, sig_name))
 
         stopped = bool(
             utils_misc.wait_for(lambda: vm.state() == 'shut off', 60))
         if stopped != expect_stop:
-            raise error.TestFail('Expected VM stop is "%s", got "%s"'
-                                 % (expect_stop, vm.state()))
+            test.fail('Expected VM stop is "%s", got "%s"'
+                      % (expect_stop, vm.state()))
     finally:
         xml_backup.sync()
