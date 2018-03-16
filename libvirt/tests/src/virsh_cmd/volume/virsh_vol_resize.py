@@ -275,8 +275,8 @@ def run(test, params, env):
 
         # Create a volume
         if b_luks_encrypt:
-            luks_sec_uuid = create_luks_secret(os.path.join(pool_target, vol_name, test),
-                                               encryption_password)
+            luks_sec_uuid = create_luks_secret(os.path.join(pool_target, vol_name),
+                                               encryption_password, test)
             secret_uuids.append(luks_sec_uuid)
             create_luks_vol(vol_name, luks_sec_uuid, params)
         else:
