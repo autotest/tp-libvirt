@@ -158,7 +158,11 @@ def run(test, params, env):
                     test.fail("Expected failed with one of %s, but "
                               "failed with:\n%s" % (fail_pat, result))
 
-            utils_misc.wait_for(lambda: vm.state() == 'pmsuspended', 30)
+            # check whether the state changes to pmsuspended
+            if not utils_misc.wait_for(lambda: vm.state() == 'pmsuspended', 30):
+                test.fail("VM failed to change its state, expected state: "
+                          "pmsuspended, but actual state: %s" % vm.state)
+
             if agent_error_test:
                 ret = virsh.dompmsuspend(vm_name, "mem", **virsh_dargs)
                 libvirt.check_result(ret, fail_pat)
