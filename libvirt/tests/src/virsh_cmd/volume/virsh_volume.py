@@ -2,8 +2,7 @@ import os
 import re
 import logging
 
-from autotest.client.shared import error
-from autotest.client import utils
+from avocado.utils import process
 
 from virttest import utils_misc
 from virttest import virsh
@@ -41,7 +40,7 @@ def run(test, params, env):
         vol_name = expected_vol['name']
         pv = libvirt_storage.PoolVolume(pool_name)
         if not pv.delete_volume(vol_name):
-            raise error.TestFail("Delete volume failed." % vol_name)
+            test.fail("Delete volume failed." % vol_name)
         else:
             logging.debug("Volume: %s successfully deleted on pool: %s",
                           vol_name, pool_name)
@@ -98,8 +97,8 @@ def run(test, params, env):
             norm = val[des[match_list.group(2)]]
             norm_capacity['list'] = int(mem_value * norm)
         else:
-            raise error.TestFail("Error in parsing capacity value in"
-                                 " virsh vol-list")
+            test.fail("Error in parsing capacity value in"
+                      " virsh vol-list")
 
         match_info = re.search(reg_list, capacity['info'])
         if match_info is not None:
@@ -107,8 +106,8 @@ def run(test, params, env):
             norm = val[des[match_list.group(2)]]
             norm_capacity['info'] = int(mem_value * norm)
         else:
-            raise error.TestFail("Error in parsing capacity value "
-                                 "in virsh vol-info")
+            test.fail("Error in parsing capacity value "
+                      "in virsh vol-info")
 
         norm_capacity['qemu_img'] = capacity['qemu_img']
         norm_capacity['xml'] = int(capacity['xml'])
@@ -385,19 +384,19 @@ def run(test, params, env):
     emulated_image_size = params.get("emulated_image_size")
     if not libvirt_version.version_compare(1, 0, 0):
         if pool_type == "gluster":
-            raise error.TestNAError("Gluster pool is not supported in current"
-                                    " libvirt version.")
+            test.cancel("Gluster pool is not supported in current"
+                        " libvirt version.")
 
     try:
         str_capa = utils_misc.normalize_data_size(capacity, "B")
         int_capa = int(str(str_capa).split('.')[0])
     except ValueError:
-        raise error.TestError("Translate size %s to 'B' failed" % capacity)
+        test.error("Translate size %s to 'B' failed" % capacity)
     try:
         str_capa = utils_misc.normalize_data_size(allocation, "B")
         int_allo = int(str(str_capa).split('.')[0])
     except ValueError:
-        raise error.TestError("Translate size %s to 'B' failed" % allocation)
+        test.error("Translate size %s to 'B' failed" % allocation)
 
     # Stop multipathd to avoid start pool fail(For fs like pool, the new add
     # disk may in use by device-mapper, so start pool will report disk already
@@ -467,9 +466,9 @@ def run(test, params, env):
                 expected_vol['path'] = "gluster://%s/%s/%s" % (ip_addr,
                                                                source_name,
                                                                volume_name)
-                utils.run("qemu-img create -f %s %s %s" % (vol_format,
-                                                           expected_vol['path'],
-                                                           capacity))
+                process.run("qemu-img create -f %s %s %s" % (vol_format,
+                                                             expected_vol['path'],
+                                                             capacity), shell=True)
             virsh.pool_refresh(pool_name)
             # Check volumes
             total_err_count += check_vol(expected_vol)
@@ -477,7 +476,7 @@ def run(test, params, env):
             delete_volume(expected_vol)
             total_err_count += check_vol(expected_vol, False)
         if total_err_count > 0:
-            raise error.TestFail("Get %s errors when checking volume" % total_err_count)
+            test.fail("Get %s errors when checking volume" % total_err_count)
     finally:
         # Clean up
         for sec in get_all_secrets():
@@ -486,7 +485,7 @@ def run(test, params, env):
         try:
             libv_pvt.cleanup_pool(pool_name, pool_type, pool_target,
                                   emulated_image, source_name=source_name)
-        except error.TestFail, detail:
+        except test.fail as detail:
             logging.error(str(detail))
         if multipathd_status:
             multipathd.start()

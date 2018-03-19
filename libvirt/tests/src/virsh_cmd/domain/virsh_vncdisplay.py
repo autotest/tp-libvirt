@@ -1,5 +1,3 @@
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import libvirt_vm
@@ -40,8 +38,8 @@ def run(test, params, env):
         output = ""
         try:
             if remote_ip.count("EXAMPLE.COM") or local_ip.count("EXAMPLE.COM"):
-                raise error.TestNAError("remote_ip and/or local_ip parameters "
-                                        "not changed from default values.")
+                test.cancel("remote_ip and/or local_ip parameters "
+                            "not changed from default values.")
             uri = libvirt_vm.complete_uri(local_ip)
             session = remote.remote_login("ssh", remote_ip, "22", "root",
                                           remote_pwd, "#")
@@ -98,7 +96,7 @@ def run(test, params, env):
     # check status_error
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if status != 0 or output == "":
-            raise error.TestFail("Run failed with right command")
+            test.fail("Run failed with right command")

@@ -4,8 +4,9 @@ import logging
 import base64
 import re
 
-from avocado.utils import process
 from avocado.utils import path as utils_path
+from avocado.utils import process
+from avocado.core import exceptions
 
 from virttest.libvirt_xml import secret_xml
 from virttest.utils_test import libvirt as utlv
@@ -289,7 +290,6 @@ def run(test, params, env):
             elif wipe_status_error and wipe_result.exit_status == 0:
                 test.fail("Expect wipe volume fail, but run"
                           " successfully.")
-
     finally:
         # Clean up
         try:
@@ -297,5 +297,6 @@ def run(test, params, env):
                                      emulated_image)
             for secret_uuid in set(secret_uuids):
                 virsh.secret_undefine(secret_uuid)
-        except test.fail as detail:
+
+        except exceptions.TestFail as detail:
             logging.error(str(detail))
