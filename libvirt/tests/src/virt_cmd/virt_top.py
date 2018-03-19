@@ -24,7 +24,7 @@ def run(test, params, env):
     # Get the full path of virt-top command.
     try:
         VIRT_TOP = path.find_command("virt-top")
-    except path.CmdNotFoundError, info:
+    except path.CmdNotFoundError as info:
         raise exceptions.TestSkipError("No virt-top command found - %s" % info)
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
@@ -49,8 +49,8 @@ def run(test, params, env):
     if not status_error:
         # Read and analyse the output of virt-top.
         success = False
-        output_file = open(output_path)
-        lines = output_file.readlines()
+        with open(output_path) as output_file:
+            lines = output_file.readlines()
         for line in lines:
             if line.count(vm_name):
                 sub_string = line.split()

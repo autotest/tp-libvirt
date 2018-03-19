@@ -36,7 +36,7 @@ def check_echo_shell(escaped_str, result):
     :return: True or False due to match of the output
     """
     cmd = "echo %s" % escaped_str
-    cmd_result = process.run(cmd, ignore_status=True)
+    cmd_result = process.run(cmd, ignore_status=True, shell=True)
     output = cmd_result.stdout.strip()
     logging.debug("Shell echo result is: %s", output)
     return (output == result)

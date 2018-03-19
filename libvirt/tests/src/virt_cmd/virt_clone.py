@@ -1,7 +1,6 @@
 import os
 
-from autotest.client import os_dep, utils
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
@@ -19,9 +18,9 @@ def run(test, params, env):
     """
     # Get the full path of virt-clone command.
     try:
-        VIRT_CLONE = os_dep.command("virt-clone")
+        VIRT_CLONE = process.run("which virt-clone", shell=True).stdout.strip()
     except ValueError:
-        raise error.TestNAError("Not find virt-clone command on host.")
+        test.cancel("Not find virt-clone command on host.")
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
@@ -51,11 +50,11 @@ def run(test, params, env):
         cmd = "%s -f %s" % (cmd, dest_guest_path)
 
     try:
-        cmd_result = utils.run(cmd, ignore_status=True)
+        cmd_result = process.run(cmd, ignore_status=True, shell=True)
 
         if cmd_result.exit_status:
-            raise error.TestFail("command of virt-clone failed.\n"
-                                 "output: %s." % cmd_result)
+            test.fail("command of virt-clone failed.\n"
+                      "output: %s." % cmd_result)
 
         start_result = None
         # We will get an error of "error: monitor socket did not show up:"
@@ -68,9 +67,9 @@ def run(test, params, env):
             return True
 
         if not utils_misc.wait_for(_start_success, timeout=5):
-            raise error.TestFail("command virt-clone exit successfully.\n"
-                                 "but start it failed.\n Detail: %s." %
-                                 start_result)
+            test.fail("command virt-clone exit successfully.\n"
+                      "but start it failed.\n Detail: %s." %
+                      start_result)
     finally:
         # cleanup remove the dest guest.
         virsh.remove_domain(dest_guest_name)
