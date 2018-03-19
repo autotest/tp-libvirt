@@ -1,8 +1,7 @@
 import re
 import logging
 
-from autotest.client.shared import utils
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import libvirt_xml
@@ -68,22 +67,22 @@ def run(test, params, env):
         if "DEVNAME" in check_cmd:
             check_cmd = check_cmd.replace("DEVNAME", iface_target)
         ret = utils_misc.wait_for(lambda: not
-                                  utils.system(check_cmd, ignore_status=True),
+                                  process.system(check_cmd, ignore_status=True, shell=True),
                                   timeout=30)
         if not ret:
-            raise error.TestFail("Rum command '%s' failed" % check_cmd)
-        out = utils.system_output(check_cmd, ignore_status=False)
+            test.fail("Rum command '%s' failed" % check_cmd)
+        out = process.system_output(check_cmd, ignore_status=False, shell=True)
         if expect_match and not re.search(expect_match, out):
-            raise error.TestFail("'%s' not found in output: %s"
-                                 % (expect_match, out))
+            test.fail("'%s' not found in output: %s"
+                      % (expect_match, out))
 
         # Check in vm
         if check_vm_cmd:
             output = session.cmd_output(check_vm_cmd)
             logging.debug("cmd output: %s", output)
             if vm_expect_match and not re.search(vm_expect_match, output):
-                raise error.TestFail("'%s' not found in output: %s"
-                                     % (vm_expect_match, output))
+                test.fail("'%s' not found in output: %s"
+                          % (vm_expect_match, output))
     finally:
         # Clean env
         if vm.is_alive():

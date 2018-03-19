@@ -1,10 +1,8 @@
 """
 svirt virt-clone test.
 """
-from autotest.client import utils
-from autotest.client.shared import error
-
 from avocado.utils import path as utils_path
+from avocado.utils import process
 
 from virttest import utils_selinux
 from virttest.utils_test import libvirt as utils_libvirt
@@ -21,7 +19,7 @@ def run(test, params, env):
     try:
         VIRT_CLONE = utils_path.find_command("virt-clone")
     except utils_path.CmdNotFoundError:
-        raise error.TestNAError("No virt-clone command found.")
+        test.cancel("No virt-clone command found.")
 
     # Get general variables.
     status_error = ('yes' == params.get("status_error", 'no'))
@@ -44,7 +42,7 @@ def run(test, params, env):
     # Label the disks of VM with img_label.
     disks = vm.get_disk_devices()
     backup_labels_of_disks = {}
-    for disk in disks.values():
+    for disk in list(disks.values()):
         disk_path = disk['source']
         backup_labels_of_disks[disk_path] = utils_selinux.get_context_of_file(
             filename=disk_path)
@@ -61,11 +59,11 @@ def run(test, params, env):
     try:
         cmd = ("%s --original %s --name %s --auto-clone" %
                (VIRT_CLONE, vm.name, clone_name))
-        cmd_result = utils.run(cmd, ignore_status=True)
+        cmd_result = process.run(cmd, ignore_status=True, shell=True)
         utils_libvirt.check_exit_status(cmd_result, status_error)
     finally:
         # clean up
-        for path, label in backup_labels_of_disks.items():
+        for path, label in list(backup_labels_of_disks.items()):
             utils_selinux.set_context_of_file(filename=path, context=label)
         backup_xml.sync()
         utils_selinux.set_status(backup_sestatus)

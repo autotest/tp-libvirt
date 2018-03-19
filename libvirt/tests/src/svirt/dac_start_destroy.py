@@ -131,7 +131,7 @@ def run(test, params, env):
     disks = vm.get_disk_devices()
     backup_labels_of_disks = {}
     qemu_disk_mod = False
-    for disk in disks.values():
+    for disk in list(disks.values()):
         disk_path = disk['source']
         f = os.open(disk_path, 0)
         stat_re = os.fstat(f)
@@ -243,7 +243,7 @@ def run(test, params, env):
             vm_context = "%s:%s" % (vm_process_uid, vm_process_gid)
 
             # Get vm image label when VM is running
-            f = os.open(disks.values()[0]['source'], 0)
+            f = os.open(list(disks.values())[0]['source'], 0)
             stat_re = os.fstat(f)
             disk_context = "%s:%s" % (stat_re.st_uid, stat_re.st_gid)
             os.close(f)
@@ -298,7 +298,7 @@ def run(test, params, env):
 
             # Check the label of disk after VM being destroyed.
             vm.destroy()
-            f = os.open(disks.values()[0]['source'], 0)
+            f = os.open(list(disks.values())[0]['source'], 0)
             stat_re = os.fstat(f)
             img_label_after = "%s:%s" % (stat_re.st_uid, stat_re.st_gid)
             os.close(f)
@@ -326,7 +326,7 @@ def run(test, params, env):
                                   "Detail: img_label_after=%s, "
                                   "img_label=%s.\n"
                                   % (img_label_after, img_label))
-        except virt_vm.VMStartError, e:
+        except virt_vm.VMStartError as e:
             # Starting VM failed.
             # VM with seclabel can not access the image with the context.
             if not status_error:
@@ -347,7 +347,7 @@ def run(test, params, env):
                               "error: %s" % e)
     finally:
         # clean up
-        for path, label in backup_labels_of_disks.items():
+        for path, label in list(backup_labels_of_disks.items()):
             label_list = label.split(":")
             os.chown(path, int(label_list[0]), int(label_list[1]))
             if qemu_disk_mod:

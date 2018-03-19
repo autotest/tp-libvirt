@@ -254,7 +254,7 @@ def run(test, params, env):
             vmxml_new = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
             logging.debug("vm xml after start is %s", vmxml_new)
 
-        except virt_vm.VMStartError, e:
+        except virt_vm.VMStartError as e:
             # Starting VM failed.
             if status_error:
                 return
@@ -265,9 +265,8 @@ def run(test, params, env):
         vm_pid = vm.get_pid()
         # numa hugepage check
         if page_list:
-            numa_maps = open("/proc/%s/numa_maps" % vm_pid)
-            numa_map_info = numa_maps.read()
-            numa_maps.close()
+            with open("/proc/%s/numa_maps" % vm_pid) as numa_maps:
+                numa_map_info = numa_maps.read()
             hugepage_info = re.findall(".*file=\S*hugepages.*", numa_map_info)
             if not hugepage_info:
                 test.fail("Can't find hugepages usage info in vm "
@@ -303,9 +302,8 @@ def run(test, params, env):
                                           " not expected" % map_dict)
 
         # qemu command line check
-        f_cmdline = open("/proc/%s/cmdline" % vm_pid)
-        q_cmdline_list = f_cmdline.read().split("\x00")
-        f_cmdline.close()
+        with open("/proc/%s/cmdline" % vm_pid) as f_cmdline:
+            q_cmdline_list = f_cmdline.read().split("\x00")
         logging.debug("vm qemu cmdline list is %s" % q_cmdline_list)
         for cmd in cmdline_list:
             logging.debug("checking '%s' in qemu cmdline", cmd['cmdline'])

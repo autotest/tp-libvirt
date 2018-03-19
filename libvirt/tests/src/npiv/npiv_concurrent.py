@@ -33,7 +33,7 @@ def convert_img_to_dev(test, src_fmt, dest_fmt, img_src, blk_dev):
            (src_fmt, dest_fmt, img_src, blk_dev))
     try:
         result = process.run(cmd, shell=True)
-    except process.cmdError, detail:
+    except process.cmdError as detail:
         test.fail("Failed to convert img with exception %s",
                   detail)
 
@@ -51,7 +51,7 @@ def create_file_in_vm(vm, file_name, content, repeat):
         time.sleep(_TIMEOUT)
         try:
             status, output = client_session.cmd_status_output(cmd_echo)
-        except process.cmdError, detail:
+        except process.cmdError as detail:
             logging.error("Fail to echo '%s' to '%s' in vm with"
                           " exception %s", content, file_name, detail)
             client_session = vm.wait_for_login()
@@ -126,8 +126,8 @@ def get_blks_by_scsi(test, scsi_bus, blk_prefix="sd"):
     cmd %= (scsi_bus, blk_prefix)
     try:
         result = process.run(cmd, shell=True)
-        logging.debug("multipath result: %s", result.stdout)
-    except process.cmdError, detail:
+        logging.debug("multipath result: %s", result.stdout.strip())
+    except process.cmdError as detail:
         test.error("Error happend for multipath: %s",
                    str(detail))
     blk_names = result.stdout.strip().splitlines()
@@ -155,7 +155,7 @@ def get_symbols_by_blk(test, blkdev, method="by-path"):
         cmd += "{if ($f ~ /pci/){print $f}}}'"
         cmd %= (dir_path, blkdev, blkdev)
         result = process.run(cmd, shell=True)
-    except process.cmdError, detail:
+    except process.cmdError as detail:
         test.error("cmd wrong with error %s", str(detail))
     symbolic_links = result.stdout.strip().splitlines()
     return symbolic_links
@@ -302,7 +302,7 @@ def run(test, params, env):
             else:
                 test.fail("Failed to check the test file in vm")
             session.close()
-    except Exception, detail:
+    except Exception as detail:
         test.fail("Test failed with exception: %s", detail)
     finally:
         logging.debug("Start to clean up env...")

@@ -1,7 +1,6 @@
 import os
 
 from avocado.utils import process
-from autotest.client.shared import error
 
 from virttest import data_dir
 from virttest import utils_selinux
@@ -75,10 +74,10 @@ def run(test, params, env):
             return virsh.is_alive(vm_name)
         if (utils_misc.wait_for(_vm_alive, timeout=5)):
             if status_error:
-                raise error.TestFail('Test succeeded in negative case.')
+                test.fail('Test succeeded in negative case.')
         else:
             if not status_error:
-                raise error.TestFail("Test failed in positive case.")
+                test.fail("Test failed in positive case.")
     finally:
         # cleanup
         utils_selinux.set_status(backup_sestatus)

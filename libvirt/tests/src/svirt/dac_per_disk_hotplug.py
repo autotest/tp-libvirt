@@ -3,8 +3,6 @@ import pwd
 import grp
 import logging
 
-from autotest.client.shared import error
-
 from virttest import qemu_storage
 from virttest import data_dir
 from virttest import virsh
@@ -93,8 +91,8 @@ def run(test, params, env):
     relabel = 'yes' == params.get('relabel', 'yes')
 
     if not libvirt_version.version_compare(1, 2, 7):
-        raise error.TestNAError("per-image DAC only supported on version 1.2.7"
-                                " and after.")
+        test.cancel("per-image DAC only supported on version 1.2.7"
+                    " and after.")
 
     # Get variables about VM and get a VM object and VMXML instance.
     vm_name = params.get("main_vm")
@@ -157,8 +155,8 @@ def run(test, params, env):
             img_label_after = check_ownership(img_path)
             if dynamic_ownership and relabel:
                 if img_label_after != sec_label_id:
-                    raise error.TestFail("The image dac label %s is not "
-                                         "expected." % img_label_after)
+                    test.fail("The image dac label %s is not "
+                              "expected." % img_label_after)
 
             ret = virsh.detach_disk(vm_name, target=target_dev,
                                     extra=option,

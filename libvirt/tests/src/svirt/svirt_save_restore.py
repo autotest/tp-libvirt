@@ -3,8 +3,6 @@ svirt guest_save_restore test.
 """
 import os
 
-from autotest.client.shared import error
-
 from virttest import utils_selinux
 from virttest import virt_vm
 from virttest.libvirt_xml.vm_xml import VMXML
@@ -40,7 +38,7 @@ def run(test, params, env):
     # Label the disks of VM with img_label.
     disks = vm.get_disk_devices()
     backup_labels_of_disks = {}
-    for disk in disks.values():
+    for disk in list(disks.values()):
         disk_path = disk['source']
         backup_labels_of_disks[disk_path] = utils_selinux.get_context_of_file(
             filename=disk_path)
@@ -63,17 +61,17 @@ def run(test, params, env):
             vm.restore_from_file(path=save_path)
             # Save and restore VM successfully.
             if status_error:
-                raise error.TestFail("Test succeeded in negative case.")
-        except virt_vm.VMError, e:
+                test.fail("Test succeeded in negative case.")
+        except virt_vm.VMError as e:
             if not status_error:
                 error_msg = "Test failed in positive case.\n error: %s\n" % e
                 if str(e).count("getfd"):
                     error_msg += ("More info pleass refer to"
                                   " https://bugzilla.redhat.com/show_bug.cgi?id=976632")
-                raise error.TestFail(error_msg)
+                test.fail(error_msg)
     finally:
         # clean up
-        for path, label in backup_labels_of_disks.items():
+        for path, label in list(backup_labels_of_disks.items()):
             utils_selinux.set_context_of_file(filename=path, context=label)
         backup_xml.sync()
         utils_selinux.set_status(backup_sestatus)

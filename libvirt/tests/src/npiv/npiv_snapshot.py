@@ -40,7 +40,7 @@ def get_symbols_by_blk(blkdev, method="by-path"):
         cmd += "{if ($f ~ /pci/){print $f}}}'"
         cmd %= (dir_path, blkdev, blkdev)
         result = process.run(cmd, shell=True)
-    except process.cmdError, detail:
+    except process.cmdError as detail:
         raise exceptions.TestError(str(detail))
     symbolic_links = result.stdout.strip().splitlines()
     return symbolic_links
@@ -63,8 +63,8 @@ def get_blks_by_scsi(scsi_bus, blk_prefix="sd"):
     cmd %= (scsi_bus, blk_prefix)
     try:
         result = process.run(cmd, shell=True)
-        logging.debug("multipath result: %s", result.stdout)
-    except process.cmdError, detail:
+        logging.debug("multipath result: %s", result.stdout.strip())
+    except process.cmdError as detail:
         raise exceptions.TestError(str(detail))
     blk_names = result.stdout.strip().splitlines()
     return blk_names
@@ -97,7 +97,7 @@ def create_qcow2_blk(path_to_dev, size):
     cmd = "qemu-img create -f qcow2 %s %s" % (path_to_dev, size)
     try:
         process.run(cmd, shell=True)
-    except process.cmdError, detail:
+    except process.cmdError as detail:
         raise exceptions.TestError("Failed to create qcow2 with %s: %s"
                                    % (path_to_dev, str(detail)))
 
@@ -319,7 +319,7 @@ def run(test, params, env):
             cmd = "qemu-img create -f qcow2 %s %s" % (path_to_blk, disk_size)
             try:
                 process.run(cmd, shell=True)
-            except process.cmdError, detail:
+            except process.cmdError as detail:
                 raise exceptions.TestFail("Fail to create qcow2 on blk dev: %s",
                                           detail)
         else:
@@ -329,7 +329,7 @@ def run(test, params, env):
         if "vol" in vd_format:
             vol_list = utlv.get_vol_list(pool_name, vol_check=True,
                                          timeout=_TIMEOUT*3)
-            test_vol = vol_list.keys()[0]
+            test_vol = list(vol_list.keys())[0]
             disk_params = {'type_name': disk_type,
                            'target_dev': device_target,
                            'target_bus': target_bus,
@@ -429,7 +429,7 @@ def run(test, params, env):
         snapshot_list = virsh.snapshot_list(vm_name)
         if snapshot_list:
             raise exceptions.TestFail("Snapshot not deleted: %s", snapshot_list)
-    except Exception, detail:
+    except Exception as detail:
         raise exceptions.TestFail("exception happens: %s", detail)
     finally:
         logging.debug("Start to clean up env...")

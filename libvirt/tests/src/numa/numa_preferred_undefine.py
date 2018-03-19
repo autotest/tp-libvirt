@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import libvirt_xml
 from virttest import virsh
 from virttest import utils_libvirtd
@@ -33,7 +31,7 @@ def run(test, params, env):
         vmxml.sync()
         result = virsh.undefine(vm_name, debug=True, ignore_status=True)
         if result.exit_status:
-            raise error.TestFail("Undefine vm failed, check %s" % bug_url)
+            test.fail("Undefine vm failed, check %s" % bug_url)
     finally:
         libvirtd.restart()
         backup_xml.sync()

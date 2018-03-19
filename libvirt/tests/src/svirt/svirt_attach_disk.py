@@ -1,8 +1,7 @@
 import logging
 
-from autotest.client.shared import error
-
 from avocado.utils import process
+from avocado.core import exceptions
 
 from virttest import qemu_storage
 from virttest import data_dir
@@ -63,7 +62,7 @@ def run(test, params, env):
     utils_selinux.set_status(host_sestatus)
     # Set the default label to other disks of vm.
     disks = vm.get_disk_devices()
-    for disk in disks.values():
+    for disk in list(disks.values()):
         utils_selinux.set_context_of_file(filename=disk['source'],
                                           context=default_label)
 
@@ -96,11 +95,11 @@ def run(test, params, env):
                 # logical pool could use libvirt to create volume but volume
                 # format is not supported and will be 'raw' as default.
                 pv = libvirt_storage.PoolVolume(pool_name)
-                vols = pv.list_volumes().keys()
+                vols = list(pv.list_volumes().keys())
                 if vols:
                     vol_name = vols[0]
                 else:
-                    raise error.TestNAError("No volume in pool: %s" % pool_name)
+                    test.cancel("No volume in pool: %s" % pool_name)
             else:
                 vol_arg = {'name': vol_name, 'format': vol_format,
                            'capacity': 1073741824,
@@ -116,11 +115,11 @@ def run(test, params, env):
                                               ignore_status=True,
                                               debug=True)
                 if cmd_result.exit_status:
-                    raise error.TestNAError("Failed to create attach volume.")
+                    test.cancel("Failed to create attach volume.")
 
             cmd_result = virsh.vol_path(vol_name, pool_name, debug=True)
             if cmd_result.exit_status:
-                raise error.TestNAError("Failed to get volume path from pool.")
+                test.cancel("Failed to get volume path from pool.")
             img_path = cmd_result.stdout.strip()
 
             if pool_type in ["iscsi", "disk"]:
@@ -134,7 +133,7 @@ def run(test, params, env):
             result = process.run("setsebool virt_use_nfs %s" % virt_use_nfs,
                                  shell=True)
             if result.exit_status:
-                raise error.TestNAError("Failed to set virt_use_nfs value")
+                test.cancel("Failed to set virt_use_nfs value")
         else:
             # Init a QemuImg instance.
             params['image_name'] = img_name
@@ -150,8 +149,8 @@ def run(test, params, env):
         result = virsh.attach_disk(vm_name, source=img_path, target="vdf",
                                    extra=extra, debug=True)
         if result.exit_status:
-            raise error.TestFail("Failed to attach disk %s to VM."
-                                 "Detail: %s." % (img_path, result.stderr))
+            test.fail("Failed to attach disk %s to VM."
+                      "Detail: %s." % (img_path, result.stderr))
 
         # Start VM to check the VM is able to access the image or not.
         try:
@@ -160,7 +159,7 @@ def run(test, params, env):
             # VM with set seclabel can access the image with the
             # set context.
             if status_error:
-                raise error.TestFail('Test succeeded in negative case.')
+                test.fail('Test succeeded in negative case.')
 
             if check_cap_rawio:
                 cap_list = ['CapPrm', 'CapEff', 'CapBnd']
@@ -180,26 +179,26 @@ def run(test, params, env):
                     if not cap_rawio_val & cap_dict[i]:
                         err_msg = "vm process with %s: 0x%x" % (i, cap_dict[i])
                         err_msg += " lack cap_sys_rawio capabilities"
-                        raise error.TestFail(err_msg)
+                        test.fail(err_msg)
                     else:
                         inf_msg = "vm process with %s: 0x%x" % (i, cap_dict[i])
                         inf_msg += " have cap_sys_rawio capabilities"
                         logging.debug(inf_msg)
 
-        except virt_vm.VMStartError, e:
+        except virt_vm.VMStartError as e:
             # Starting VM failed.
             # VM with set seclabel can not access the image with the
             # set context.
             if not status_error:
-                raise error.TestFail("Test failed in positive case."
-                                     "error: %s" % e)
+                test.fail("Test failed in positive case."
+                          "error: %s" % e)
 
         try:
             virsh.detach_disk(vm_name, target="vdf", extra="--persistent",
                               debug=True)
         except process.CmdError:
-            raise error.TestFail("Detach disk 'vdf' from VM %s failed."
-                                 % vm.name)
+            test.fail("Detach disk 'vdf' from VM %s failed."
+                      % vm.name)
     finally:
         # clean up
         vm.destroy()
@@ -209,7 +208,7 @@ def run(test, params, env):
             try:
                 pvt.cleanup_pool(pool_name, pool_type, pool_target,
                                  emulated_image)
-            except error.TestFail, detail:
+            except exceptions.TestFail as detail:
                 logging.error(str(detail))
         backup_xml.sync()
         utils_selinux.set_status(backup_sestatus)

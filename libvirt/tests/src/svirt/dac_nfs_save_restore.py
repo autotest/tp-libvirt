@@ -1,8 +1,8 @@
 import os
 import logging
 
-from autotest.client.shared import error
-from autotest.client import utils
+from avocado.core import exceptions
+from avocado.utils import process
 
 from virttest import data_dir
 from virttest import utils_selinux
@@ -69,8 +69,8 @@ def run(test, params, env):
         try:
             file_val.append(int(params.get(i)))
         except ValueError:
-            raise error.TestNAError("%s value '%s' is not a number." %
-                                    (i, params.get(i)))
+            test.cancel("%s value '%s' is not a number." %
+                        (i, params.get(i)))
     # False positive - file_val was filled in the for loop above.
     # pylint: disable=E0632
     file_user, file_group, file_mode = file_val
@@ -84,7 +84,7 @@ def run(test, params, env):
     # Backup domain disk label
     disks = vm.get_disk_devices()
     backup_labels_of_disks = {}
-    for disk in disks.values():
+    for disk in list(disks.values()):
         disk_path = disk['source']
         f = os.open(disk_path, 0)
         stat_re = os.fstat(f)
@@ -100,7 +100,7 @@ def run(test, params, env):
     libvirtd = utils_libvirtd.Libvirtd()
     try:
         # chown domain disk mode to avoid fail on local disk
-        for disk in disks.values():
+        for disk in list(disks.values()):
             disk_path = disk['source']
             if qemu_user == "root":
                 os.chown(disk_path, 0, 0)
@@ -129,9 +129,9 @@ def run(test, params, env):
                      export_options=export_options)
 
         # Set virt_use_nfs
-        result = utils.run("setsebool virt_use_nfs %s" % virt_use_nfs)
+        result = process.run("setsebool virt_use_nfs %s" % virt_use_nfs, shell=True)
         if result.exit_status:
-            raise error.TestNAError("Failed to set virt_use_nfs value")
+            test.cancel("Failed to set virt_use_nfs value")
 
         # Create a file on nfs server dir.
         tmp_dir = data_dir.get_tmp_dir()
@@ -140,8 +140,8 @@ def run(test, params, env):
         if pre_file and not os.path.exists(server_file_path):
             open(server_file_path, 'a').close()
         if not pre_file and os.path.exists(server_file_path):
-            raise error.TestNAError("File %s already exist in pool %s" %
-                                    (server_file_path, pool_name))
+            test.cancel("File %s already exist in pool %s" %
+                        (server_file_path, pool_name))
 
         # Get nfs mount file path
         mnt_path = os.path.join(tmp_dir, pool_target)
@@ -156,10 +156,10 @@ def run(test, params, env):
         try:
             vm.start()
             # Start VM successfully.
-        except virt_vm.VMStartError, e:
+        except virt_vm.VMStartError as e:
             # Starting VM failed.
-            raise error.TestFail("Domain failed to start. "
-                                 "error: %s" % e)
+            test.fail("Domain failed to start. "
+                      "error: %s" % e)
 
         label_before = check_ownership(server_file_path)
         if label_before:
@@ -170,11 +170,11 @@ def run(test, params, env):
         save_re = virsh.save(vm_name, mnt_file_path, debug=True)
         if save_re.exit_status:
             if not status_error:
-                raise error.TestFail("Failed to save domain to nfs pool file.")
+                test.fail("Failed to save domain to nfs pool file.")
         else:
             if status_error:
-                raise error.TestFail("Save domain to nfs pool file succeeded, "
-                                     "expected Fail.")
+                test.fail("Save domain to nfs pool file succeeded, "
+                          "expected Fail.")
 
         label_after = check_ownership(server_file_path)
         if label_after:
@@ -186,12 +186,12 @@ def run(test, params, env):
             restore_re = virsh.restore(mnt_file_path, debug=True)
             if restore_re.exit_status:
                 if not status_error:
-                    raise error.TestFail("Failed to restore domain from nfs "
-                                         "pool file.")
+                    test.fail("Failed to restore domain from nfs "
+                              "pool file.")
             else:
                 if status_error:
-                    raise error.TestFail("Restore domain from nfs pool file "
-                                         "succeeded, expected Fail.")
+                    test.fail("Restore domain from nfs pool file "
+                              "succeeded, expected Fail.")
 
             label_after_rs = check_ownership(server_file_path)
             if label_after_rs:
@@ -200,14 +200,14 @@ def run(test, params, env):
 
     finally:
         # clean up
-        for path, label in backup_labels_of_disks.items():
+        for path, label in list(backup_labels_of_disks.items()):
             label_list = label.split(":")
             os.chown(path, int(label_list[0]), int(label_list[1]))
         if pvt:
             try:
                 pvt.cleanup_pool(pool_name, pool_type, pool_target,
                                  emulated_image)
-            except error.TestFail, detail:
+            except exceptions.TestFail as detail:
                 logging.error(str(detail))
         utils_selinux.set_status(backup_sestatus)
         qemu_conf.restore()

@@ -84,7 +84,7 @@ def run(test, params, env):
     # Backup domain disk label
     disks = vm.get_disk_devices()
     backup_labels_of_disks = {}
-    for disk in disks.values():
+    for disk in list(disks.values()):
         disk_path = disk['source']
         label = check_ownership(disk_path)
         if label:
@@ -113,7 +113,7 @@ def run(test, params, env):
     libvirtd = utils_libvirtd.Libvirtd()
     try:
         # chown domain disk to qemu:qemu to avoid fail on local disk
-        for file_path in backup_labels_of_disks.keys():
+        for file_path in list(backup_labels_of_disks.keys()):
             if qemu_user == "root":
                 os.chown(file_path, 0, 0)
             elif qemu_user == "qemu":
@@ -203,7 +203,7 @@ def run(test, params, env):
 
             if status_error:
                 test.fail('Test succeeded in negative case.')
-        except virt_vm.VMStartError, e:
+        except virt_vm.VMStartError as e:
             # Starting VM failed.
             if not status_error:
                 test.fail("Test failed in positive case."
@@ -222,7 +222,7 @@ def run(test, params, env):
 
         if snapshot_name:
             disks_snap = vm.get_disk_devices()
-            for disk in disks_snap.values():
+            for disk in list(disks_snap.values()):
                 disk_snap_path.append(disk['source'])
             virsh.snapshot_delete(vm_name, snapshot_name, "--metadata",
                                   debug=True)
@@ -237,7 +237,7 @@ def run(test, params, env):
         # clean up
         vm.destroy()
         qemu_conf.restore()
-        for path, label in backup_labels_of_disks.items():
+        for path, label in list(backup_labels_of_disks.items()):
             label_list = label.split(":")
             os.chown(path, int(label_list[0]), int(label_list[1]))
         if snapshot_name:
@@ -251,7 +251,7 @@ def run(test, params, env):
             try:
                 pvt.cleanup_pool(pool_name, pool_type, pool_target,
                                  emulated_image)
-            except test.fail, detail:
+            except test.fail as detail:
                 logging.error(str(detail))
         utils_selinux.set_status(backup_sestatus)
         libvirtd.restart()
