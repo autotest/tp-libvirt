@@ -391,7 +391,7 @@ def run(test, params, env):
                     # tests if domain not resume successfully
                     try:
                         vm.wait_for_login(timeout=600)
-                    except Exception, e:
+                    except Exception as e:
                         test.warn("Skip remaining test steps as domain"
                                   " not resume in 10 mins: %s" % e)
                     # For hotplug/unplug vcpu without '--config flag, after
@@ -489,7 +489,7 @@ def run(test, params, env):
                     # remaining part of tests if domain not resume successfully
                     try:
                         vm.wait_for_login(timeout=600)
-                    except Exception, e:
+                    except Exception as e:
                         test.warn("Skip remaining test steps as domain"
                                   " not resume in 10 mins: %s" % e)
                     # For hotplug/unplug vcpu without '--config flag, after

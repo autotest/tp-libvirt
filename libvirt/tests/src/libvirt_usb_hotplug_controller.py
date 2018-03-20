@@ -1,7 +1,5 @@
 from aexpect import ShellError
 
-from autotest.client.shared import error
-
 from virttest.virt_vm import VMStartError
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.controller import Controller
@@ -50,20 +48,20 @@ def run(test, params, env):
             vm.start()
 
             if status_error:
-                raise error.TestFail("Add controller successfully in negative case.")
+                test.fail("Add controller successfully in negative case.")
             else:
                 try:
                     session = vm.wait_for_login()
-                except (LoginError, ShellError), e:
+                except (LoginError, ShellError) as e:
                     error_msg = "Test failed in positive case.\n error: %s\n" % e
-                    raise error.TestFail(error_msg)
+                    test.fail(error_msg)
                 cmd = "dmesg -c | grep %s" % model.split('-')[-1]
                 stat_dmesg = session.cmd_status(cmd)
                 if stat_dmesg != 0:
-                    raise error.TestNAError("Fail to run dmesg in guest")
+                    test.cancel("Fail to run dmesg in guest")
                 session.close()
-        except (LibvirtXMLError, VMStartError), e:
+        except (LibvirtXMLError, VMStartError) as e:
             if not status_error:
-                raise error.TestFail("Add controller failed. Detail: %s" % e)
+                test.fail("Add controller failed. Detail: %s" % e)
     finally:
         vm_xml_backup.sync()

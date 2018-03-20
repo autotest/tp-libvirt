@@ -51,7 +51,8 @@ def run(test, params, env):
         # Configure libvirtd log
         if config_libvirtd:
             config_path = os.path.join(data_dir.get_tmp_dir(), log_file)
-            open(config_path, 'a').close()
+            with open(config_path, 'a') as f:
+                pass
             config = utils_config.LibvirtdConfig()
             log_outputs = "1:file:%s" % config_path
             config.log_outputs = log_outputs
@@ -78,7 +79,7 @@ def run(test, params, env):
             vcpu['id'] = str(vcpu_id)
             if str(vcpu_id) in en_list:
                 vcpu['enabled'] = 'yes'
-                if order_dict.has_key(str(vcpu_id)):
+                if str(vcpu_id) in order_dict:
                     vcpu['order'] = order_dict[str(vcpu_id)]
             else:
                 vcpu['enabled'] = 'no'

@@ -197,7 +197,7 @@ def run(test, params, env):
                 test.error("Failed to get secret uuid")
 
             # Set secret value
-            secret_string = base64.b64encode(chap_passwd)
+            secret_string = base64.b64encode(chap_passwd.encode()).decode()
             ret = virsh.secret_set_value(secret_uuid, secret_string,
                                          **virsh_dargs)
             libvirt.check_exit_status(ret)

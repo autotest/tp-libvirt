@@ -73,9 +73,9 @@ def run(test, params, env):
                 slot_dict[disk.target['dev']] = int(
                     disk.address.attrs['slot'], base=16)
         # Disk's order on pci bus should keep the same with disk target name.
-        s_dev = sorted(slot_dict.keys())
-        s_slot = sorted(slot_dict.values())
-        for i in list(range(len(s_dev))):
+        s_dev = sorted(list(slot_dict.keys()))
+        s_slot = sorted(list(slot_dict.values()))
+        for i in range(len(s_dev)):
             if s_dev[i] in targets_name and slot_dict[s_dev[i]] != s_slot[i]:
                 return False
         return True
@@ -586,7 +586,7 @@ def run(test, params, env):
             test.error("Failed to get secret uuid")
 
         # Set secret value
-        secret_string = base64.b64encode(chap_passwd)
+        secret_string = base64.b64encode(chap_passwd.encode()).decode()
         ret = virsh.secret_set_value(secet_uuid_value, secret_string,
                                      **virsh_dargs)
         libvirt.check_exit_status(ret)
@@ -868,7 +868,7 @@ def run(test, params, env):
     except Exception as e:
         logging.error(repr(e))
         for img in disks:
-            if img.has_key("disk_dev"):
+            if "disk_dev" in img:
                 if img["format"] == "nfs":
                     img["disk_dev"].cleanup()
             else:
@@ -1435,12 +1435,12 @@ def run(test, params, env):
                     cmd += (" | grep usb-storage,bus=%s,port=%s,"
                             "drive=drive-%s,id=%s"
                             % (usb_bus_str, dev_port, dev_id, dev_id))
-                if usb_devices.has_key("input"):
+                if "input" in usb_devices:
                     input_addr = get_device_addr('input', 'tablet')
                     cmd += (" | grep usb-tablet,id=input[0-9],bus=usb.%s,"
                             "port=%s" % (input_addr["bus"],
                                          input_addr["port"]))
-                if usb_devices.has_key("hub"):
+                if "hub" in usb_devices:
                     hub_addr = get_device_addr('hub', 'usb')
                     cmd += (" | grep usb-hub,id=hub0,bus=usb.%s,"
                             "port=%s" % (hub_addr["bus"],
@@ -1536,7 +1536,7 @@ def run(test, params, env):
                             % (img["path"], img["path"]), ignore_status=True, shell=True)
 
         for img in disks:
-            if img.has_key("disk_dev"):
+            if "disk_dev" in img:
                 if img["format"] == "nfs":
                     img["disk_dev"].cleanup()
 

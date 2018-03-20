@@ -67,7 +67,8 @@ def run(test, params, env):
 
     # Prepare libvirtd session with log level as 1
     config_path = os.path.join(data_dir.get_tmp_dir(), "virt-test.conf")
-    open(config_path, 'a').close()
+    with open(config_path, 'a') as f:
+        pass
     config = utils_config.LibvirtdConfig(config_path)
     config.log_level = 1
     arg_str = "--config %s" % config_path
@@ -81,8 +82,8 @@ def run(test, params, env):
         # and start it as daemon to fix selinux denial
         try:
             path.find_command('virtlogd')
-            process.run("service virtlogd stop", ignore_status=True)
-            process.run("virtlogd -d")
+            process.run("service virtlogd stop", ignore_status=True, shell=True)
+            process.run("virtlogd -d", shell=True)
         except path.CmdNotFoundError:
             pass
 
@@ -154,8 +155,8 @@ def run(test, params, env):
     finally:
         try:
             path.find_command('virtlogd')
-            process.run('pkill virtlogd', ignore_status=True)
-            process.run('systemctl restart virtlogd.socket', ignore_status=True)
+            process.run('pkill virtlogd', ignore_status=True, shell=True)
+            process.run('systemctl restart virtlogd.socket', ignore_status=True, shell=True)
         except path.CmdNotFoundError:
             pass
         libvirtd.exit()
