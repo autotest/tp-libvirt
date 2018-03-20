@@ -1,5 +1,3 @@
-from autotest.client.shared import error
-
 
 def run(test, params, env):
     """
@@ -22,11 +20,11 @@ def run(test, params, env):
     status = session.cmd_status("which virt-what")
     if status:
         # Skip if virt-what is not available on guest.
-        raise error.TestNAError("No virt-what command in guest.")
+        test.cancel("No virt-what command in guest.")
 
     # Execute virt-what on guest.
     output = session.cmd_output("virt-what").strip()
 
     if not output == expect_output:
-        raise error.TestFail("Output of virt-what in guest is <%s>,"
-                             "but we expect <%s>.\n" % (output, expect_output))
+        test.fail("Output of virt-what in guest is <%s>,"
+                  "but we expect <%s>.\n" % (output, expect_output))

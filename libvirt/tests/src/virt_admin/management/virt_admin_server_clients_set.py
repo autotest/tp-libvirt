@@ -73,7 +73,7 @@ def run(test, params, env):
 
             try:
                 virsh_instance.append(virsh.VirshPersistent(uri='qemu:///system'))
-            except Exception, info:
+            except Exception as info:
                 if connect_able == "yes":
                     test.fail("Connection not success, error:\n %s" % info)
                 else:
