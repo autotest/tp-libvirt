@@ -4,6 +4,7 @@ import shutil
 import logging
 import platform
 import signal
+import time
 
 from aexpect import ShellTimeoutError
 from aexpect import ShellProcessTerminatedError
@@ -227,6 +228,11 @@ def run(test, params, env):
 
         if libvirtd_state == "off":
             libvirtd.stop()
+
+        # Timing issue cause test to check domstate before prior action
+        # kill gets completed
+        if vm_action == "kill":
+            time.sleep(2)
 
         if vm_ref == "remote":
             remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
