@@ -413,6 +413,8 @@ class SerialFile(AttachDeviceBase):
         serial_device.add_source(path=filepath)
         # Assume default domain serial device on port 0 and index starts at 0
         serial_device.add_target(port=str(index + 1))
+        if hasattr(self, 'alias') and libvirt_version.version_compare(3, 9, 0):
+            serial_device.alias = {'name': self.alias + str(index)}
         return serial_device
 
     def cleanup(self):
@@ -464,6 +466,8 @@ class Console(AttachDeviceBase):
                                       virsh_instance=self.test_params.virsh)
         # Assume default domain console device on port 0 and index starts at 0
         console_device.add_target(type=self.targettype, port=str(index + 1))
+        if hasattr(self, 'alias') and libvirt_version.version_compare(3, 9, 0):
+            console_device.alias = {'name': self.alias + str(index)}
         return console_device
 
     def function(self, index):
@@ -486,6 +490,8 @@ class Channel(AttachDeviceBase):
         if hasattr(self, 'targettype') and hasattr(self, 'targetname'):
             channel_device.add_target(type=self.targettype,
                                       name=self.targetname)
+        if hasattr(self, 'alias') and libvirt_version.version_compare(3, 9, 0):
+            channel_device.alias = {'name': self.alias + str(index)}
         return channel_device
 
     def function(self, index):
@@ -517,6 +523,8 @@ class Controller(AttachDeviceBase):
                 if controller['type'] == controller_device.type:
                     controller_device.index = str(int(controller_device.index) + 1)
 
+        if hasattr(self, 'alias') and libvirt_version.version_compare(3, 9, 0):
+            controller_device.alias = {'name': self.alias + str(index)}
         return controller_device
 
     def function(self, index):
@@ -621,6 +629,8 @@ class VirtualDiskBasic(AttachDeviceBase):
         dev_name = self.devname(index)
         disk_device.target = {'dev': dev_name, 'bus': self.targetbus}
         # libvirt will automatically add <address> element
+        if hasattr(self, 'alias') and libvirt_version.version_compare(3, 9, 0):
+            disk_device.alias = {'name': self.alias + str(index)}
         return disk_device
 
     def cleanup(self):
