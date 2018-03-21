@@ -3,9 +3,7 @@ import glob
 import shutil
 import logging
 
-from autotest.client import os_dep
-from autotest.client import utils
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import utils_libvirtd
 
@@ -23,11 +21,7 @@ def run(test, params, env):
         :return: True if init system avaiable or False if not.
         """
         if cmd in ['initctl', 'systemctl']:
-            try:
-                os_dep.command(cmd)
-                return True
-            except ValueError:
-                return False
+            return process.run('which %s' % cmd, shell=True).exit_status == 0
         elif cmd == 'initscripts':
             return os.path.exists('/etc/rc.d/init.d/libvirtd')
 
@@ -38,16 +32,15 @@ def run(test, params, env):
         :param cmd: service name. Can be initctl, systemctl or initscripts
         """
         if cmd == 'systemctl':
-            res = utils.run('systemctl list-unit-files')
+            res = process.run('systemctl list-unit-files', shell=True)
             for ufile in ["libvirt-guests.service",
                           "libvirtd.service", "libvirtd.socket"]:
                 if ufile not in res.stdout:
-                    raise error.TestFail('Missing systemd unit file %s'
-                                         % ufile)
+                    test.fail('Missing systemd unit file %s' % ufile)
         elif cmd == 'initctl':
             script = glob.glob('/usr/share/doc/*/libvirtd.upstart')
             if not script:
-                raise error.TestFail('Cannot find libvirtd.upstart script')
+                test.fail('Cannot find libvirtd.upstart script')
             if not os.path.exists('/etc/init/libvirtd.conf'):
                 shutil.copyfile(script[0], '/etc/init/libvirtd.conf')
 
@@ -71,12 +64,12 @@ def run(test, params, env):
         if user:
             cmdline = 'su - %s -c "%s"' % (user, cmdline)
 
-        res = utils.run(cmdline, ignore_status=True)
+        res = process.run(cmdline, ignore_status=True, shell=True)
         logging.debug(res)
 
         if res.exit_status != expected_exit_code:
-            raise error.TestFail("Expected exit status is %s, but got %s." %
-                                 (expected_exit_code, res.exit_status))
+            test.fail("Expected exit status is %s, but got %s." %
+                      (expected_exit_code, res.exit_status))
         return res
 
     commands = ['initctl', 'initscripts', 'systemctl']
@@ -90,8 +83,8 @@ def run(test, params, env):
     libvirtd.stop()
 
     username = 'virt-test'
-    utils.run('useradd %s' % username, ignore_status=True)
-    utils.run('usermod -s /bin/bash %s' % username, ignore_status=True)
+    process.run('useradd %s' % username, shell=True)
+    process.run('usermod -s /bin/bash %s' % username, shell=True)
     try:
         for command in avail_commands:
             if command == 'systemctl':
@@ -126,5 +119,5 @@ def run(test, params, env):
                 service_call(command, 'status',
                              expected_exit_code=3)
     finally:
-        utils.run('userdel -r virt-test', ignore_status=True)
+        process.run('userdel -r virt-test', ignore_status=True, shell=True)
         libvirtd.restart()
