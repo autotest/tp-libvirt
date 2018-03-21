@@ -1,7 +1,6 @@
 import logging
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_test
@@ -60,7 +59,7 @@ def run(test, params, env):
         test_block_dev = True
         if not device_source:
             # We should skip this case
-            raise error.TestNAError("Can not get iscsi device name in host")
+            test.cancel("Can not get iscsi device name in host")
 
     if vm.is_alive():
         vm.destroy(gracefully=False)
@@ -152,7 +151,7 @@ def run(test, params, env):
                       % test_cmd.split("-")[0])
         cmd = (grep_audit + ' | ' + 'grep "%s" | tail -n1 | grep "res=success"'
                % device_source)
-        if utils.run(cmd).exit_status:
+        if process.run(cmd, shell=True).exit_status:
             logging.error("Audit check failed")
             check_audit_after_cmd = False
 
@@ -226,64 +225,64 @@ def run(test, params, env):
     # Check results.
     if status_error:
         if not status:
-            raise error.TestFail("virsh %s exit with unexpected value."
-                                 % test_cmd)
+            test.fail("virsh %s exit with unexpected value."
+                      % test_cmd)
     else:
         if status:
-            raise error.TestFail("virsh %s failed." % test_cmd)
+            test.fail("virsh %s failed." % test_cmd)
         if test_cmd == "attach-disk":
             if at_options.count("config"):
                 if not check_count_after_shutdown:
-                    raise error.TestFail("Cannot see config attached device "
-                                         "in xml file after VM shutdown.")
+                    test.fail("Cannot see config attached device "
+                              "in xml file after VM shutdown.")
                 if not check_disk_serial:
-                    raise error.TestFail("Serial set failed after attach")
+                    test.fail("Serial set failed after attach")
                 if not check_disk_address:
-                    raise error.TestFail("Address set failed after attach")
+                    test.fail("Address set failed after attach")
                 if not check_disk_address2:
-                    raise error.TestFail("Address(multifunction) set failed"
-                                         " after attach")
+                    test.fail("Address(multifunction) set failed"
+                              " after attach")
             else:
                 if not check_count_after_cmd:
-                    raise error.TestFail("Cannot see device in xml file"
-                                         " after attach.")
+                    test.fail("Cannot see device in xml file"
+                              " after attach.")
                 if not check_disk_type:
-                    raise error.TestFail("Check disk type failed after"
-                                         " attach.")
+                    test.fail("Check disk type failed after"
+                              " attach.")
                 if not check_audit_after_cmd:
-                    raise error.TestFail("Audit hotplug failure after attach")
+                    test.fail("Audit hotplug failure after attach")
                 if at_options.count("persistent"):
                     if not check_count_after_shutdown:
-                        raise error.TestFail("Cannot see device attached "
-                                             "with persistent after "
-                                             "VM shutdown.")
+                        test.fail("Cannot see device attached "
+                                  "with persistent after "
+                                  "VM shutdown.")
                 else:
                     if check_count_after_shutdown:
-                        raise error.TestFail("See non-config attached device "
-                                             "in xml file after VM shutdown.")
+                        test.fail("See non-config attached device "
+                                  "in xml file after VM shutdown.")
         elif test_cmd == "detach-disk":
             if dt_options.count("config"):
                 if check_count_after_shutdown:
-                    raise error.TestFail("See config detached device in "
-                                         "xml file after VM shutdown.")
+                    test.fail("See config detached device in "
+                              "xml file after VM shutdown.")
             else:
                 if check_count_after_cmd:
-                    raise error.TestFail("See device in xml file "
-                                         "after detach.")
+                    test.fail("See device in xml file "
+                              "after detach.")
                 if not check_audit_after_cmd:
-                    raise error.TestFail("Audit hotunplug failure "
-                                         "after detach")
+                    test.fail("Audit hotunplug failure "
+                              "after detach")
 
                 if dt_options.count("persistent"):
                     if check_count_after_shutdown:
-                        raise error.TestFail("See device deattached "
-                                             "with persistent after "
-                                             "VM shutdown.")
+                        test.fail("See device deattached "
+                                  "with persistent after "
+                                  "VM shutdown.")
                 else:
                     if not check_count_after_shutdown:
-                        raise error.TestFail("See non-config detached "
-                                             "device in xml file after "
-                                             "VM shutdown.")
+                        test.fail("See non-config detached "
+                                  "device in xml file after "
+                                  "VM shutdown.")
 
         else:
-            raise error.TestError("Unknown command %s." % test_cmd)
+            test.error("Unknown command %s." % test_cmd)

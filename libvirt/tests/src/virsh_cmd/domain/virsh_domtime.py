@@ -3,14 +3,15 @@ import logging
 import re
 import time
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
+from avocado.utils import process
+
 from virttest import virsh
+from virttest import error_context
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
 
-@error.context_aware
+@error_context.context_aware
 def run(test, params, env):
     """
     This test virsh domtime command and its options.
@@ -43,13 +44,13 @@ def run(test, params, env):
             logging.debug("Failed to init time to 1234567890:\n%s", res)
         status, output = session.cmd_status_output('date -s "1 day"')
         if status:
-            raise error.TestError("Failed to set guest time:\n%s" % output)
+            test.error("Failed to set guest time:\n%s" % output)
 
     def get_host_utc_time():
         """
         Get host UTC time from date command.
         """
-        res = utils.run("date -u")
+        res = process.run("date -u", shell=True)
         # Strip timezone info from output
         # e.g. 'Sun Feb 15 07:31:40 CST 2009' -> 'Sun Feb 15 07:31:40 2009'
         time_str = re.sub(r'\S+ (?=\S+$)', '', res.stdout.strip())
@@ -152,9 +153,9 @@ def run(test, params, env):
         logging.debug("Time shift is %s", time_shift)
         result_diff = (domtime - expected_times['domtime']).total_seconds()
         if abs(result_diff) > 2.0:
-            raise error.TestFail("Expect get time %s, but got %s, time "
-                                 "diff: %s" % (org_times['domtime'],
-                                               domtime, result_diff))
+            test.fail("Expect get time %s, but got %s, time "
+                      "diff: %s" % (org_times['domtime'],
+                                    domtime, result_diff))
 
     def check_guest_times(expected_times, cur_times):
         """
@@ -178,7 +179,7 @@ def run(test, params, env):
                 if abs(diff) > 2.0:
                     error_msgs.append(msg)
         if error_msgs:
-            raise error.TestFail('\n'.join(error_msgs))
+            test.fail('\n'.join(error_msgs))
 
     def check_time(result, org_times, cur_times):
         """
@@ -193,7 +194,7 @@ def run(test, params, env):
 
         tz_diff = org_times['local_sys'] - org_times['utc_sys']
         logging.debug("Timezone diff on guest is %d hours.",
-                      (tz_diff.total_seconds() / 3600))
+                      (tz_diff.total_seconds() // 3600))
 
         # Hardware time will never stop
         logging.info('Add %ss to expected guest time', interval)
@@ -300,8 +301,8 @@ def run(test, params, env):
 
     # Check availability of virsh command domtime
     if not virsh.has_help_command('domtime'):
-        raise error.TestNAError("This version of libvirt does not support "
-                                "the domtime test")
+        test.cancel("This version of libvirt does not support "
+                    "the domtime test")
 
     channel = (params.get("prepare_channel", "yes") == 'yes')
     agent = (params.get("start_agent", "yes") == 'yes')
@@ -370,8 +371,8 @@ def run(test, params, env):
                 res = virsh.domtime(vm_name, now=True)
                 if res.exit_status:
                     session.close()
-                    raise error.TestError("Failed to recover guest time:\n%s"
-                                          % res)
+                    test.error("Failed to recover guest time:\n%s"
+                               % res)
             session.close()
     finally:
         # Restore VM XML

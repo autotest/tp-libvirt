@@ -3,10 +3,8 @@ import logging
 import threading
 import time
 
-from autotest.client.shared import error
-from autotest.client.shared import ssh_key
-
 from avocado.utils import process
+from avocado.core import exceptions
 
 from virttest import utils_test
 from virttest import virsh
@@ -14,6 +12,7 @@ from virttest import utils_misc
 from virttest import libvirt_vm
 from virttest import virt_vm
 from virttest import remote
+from virttest import ssh_key
 from virttest.utils_test import libvirt as utlv
 
 
@@ -48,7 +47,7 @@ def run(test, params, env):
                 try:
                     logging.debug(runner.run(check_cmd))
                     continue
-                except process.CmdError, detail:
+                except process.CmdError as detail:
                     logging.debug("Remote checking failed:%s", detail)
                     fail_list.append(disk)
             else:
@@ -59,8 +58,8 @@ def run(test, params, env):
                     fail_list.append(disk)
                 session.close()
         if len(fail_list):
-            raise error.TestFail("Checking attached devices failed:%s"
-                                 % fail_list)
+            test.fail("Checking attached devices failed:%s"
+                      % fail_list)
 
     def get_disk_id(device):
         """
@@ -98,7 +97,7 @@ def run(test, params, env):
             remote_user = params.get("migrate_dest_user", "root")
             remote_passwd = params.get("migrate_dest_pwd")
             if remote_host.count("EXAMPLE") or local_host.count("EXAMPLE"):
-                raise error.TestNAError("Config remote or local host first.")
+                test.cancel("Config remote or local host first.")
             rdm_params = {'remote_ip': remote_host,
                           'remote_user': remote_user,
                           'remote_pwd': remote_passwd}
@@ -111,17 +110,17 @@ def run(test, params, env):
             try:
                 # Attach this iscsi device both local and remote
                 remote_device = rdm.iscsi_login_setup(local_host, target)
-            except Exception, detail:
+            except Exception as detail:
                 utlv.setup_or_cleanup_iscsi(is_setup=False)
-                raise error.TestError("Attach iscsi device on remote failed:%s"
-                                      % detail)
+                test.error("Attach iscsi device on remote failed:%s"
+                           % detail)
 
             # Use id to get same path on local and remote
             block_device = get_disk_id(target)
             if block_device is None:
                 rdm.iscsi_login_setup(local_host, target, is_login=False)
                 utlv.setup_or_cleanup_iscsi(is_setup=False)
-                raise error.TestError("Set iscsi device couldn't find id?")
+                test.error("Set iscsi device couldn't find id?")
 
     srcuri = params.get("virsh_migrate_srcuri")
     dsturi = params.get("virsh_migrate_dsturi")
@@ -137,10 +136,10 @@ def run(test, params, env):
                     "fully-qualified network-based style.")
 
     if srcuri.count('///') or srcuri.count('EXAMPLE'):
-        raise error.TestNAError(warning_text % ('source', srcuri))
+        test.cancel(warning_text % ('source', srcuri))
 
     if dsturi.count('///') or dsturi.count('EXAMPLE'):
-        raise error.TestNAError(warning_text % ('destination', dsturi))
+        test.cancel(warning_text % ('destination', dsturi))
 
     # Config auto-login to remote host for migration
     ssh_key.setup_ssh_key(remote_ip, username, host_pwd)
@@ -176,7 +175,7 @@ def run(test, params, env):
             s_detach = virsh.detach_disk(vm.name, device, "--config",
                                          debug=True)
             if not s_detach:
-                raise error.TestError("Detach %s failed before test.", device)
+                test.error("Detach %s failed before test.", device)
 
         # Attach system image as vda
         # Then added scsi disks will be sda,sdb...
@@ -189,7 +188,7 @@ def run(test, params, env):
         def start_check_vm(vm):
             try:
                 vm.start()
-            except virt_vm.VMStartError, detail:
+            except virt_vm.VMStartError as detail:
                 if status_error:
                     logging.debug("Expected failure:%s", detail)
                     return None, None
@@ -204,9 +203,9 @@ def run(test, params, env):
             s_ping, o_ping = utils_test.ping(vm_ip, count=2, timeout=60)
             logging.info(o_ping)
             if s_ping != 0:
-                raise error.TestFail("%s did not respond after several "
-                                     "seconds with attaching new devices."
-                                     % vm.name)
+                test.fail("%s did not respond after several "
+                          "seconds with attaching new devices."
+                          % vm.name)
             return vm_ip, vm_pwd
 
         options = "--live --unsafe"
@@ -240,8 +239,8 @@ def run(test, params, env):
                 ret = utlv.attach_additional_device(vm.name, "sda", block_device,
                                                     params, config=attach_disk_config)
                 if ret.exit_status:
-                    raise error.TestFail(ret)
-        except (error.TestFail, process.CmdError), detail:
+                    test.fail(ret)
+        except (exceptions.TestFail, process.CmdError) as detail:
             if status_error:
                 logging.debug("Expected failure:%s", detail)
                 return
@@ -263,13 +262,13 @@ def run(test, params, env):
 
         # Start checking before migration and go on checking after migration
         disks = []
-        for target in vm.get_disk_devices().keys():
+        for target in list(vm.get_disk_devices().keys()):
             if target != "vda":
                 disks.append("/dev/%s" % target)
 
         checked_count = int(params.get("checked_count", 0))
-        disks_before = disks[:(checked_count / 2)]
-        disks_after = disks[(checked_count / 2):checked_count]
+        disks_before = disks[:(checked_count // 2)]
+        disks_after = disks[(checked_count // 2):checked_count]
         logging.debug("Disks to be checked:\nBefore migration:%s\n"
                       "After migration:%s", disks_before, disks_after)
 
@@ -288,8 +287,8 @@ def run(test, params, env):
             check_disks_in_vm(vm, vm_ip, disks_after, runner)
 
             if migrate_in_advance:
-                raise error.TestFail("Migration before attaching successfully, "
-                                     "but not expected.")
+                test.fail("Migration before attaching successfully, "
+                          "but not expected.")
 
     finally:
         # Cleanup remote vm

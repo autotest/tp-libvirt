@@ -1,7 +1,6 @@
 import aexpect
 
 from virttest import virsh
-from autotest.client.shared import error
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
@@ -28,8 +27,8 @@ def run(test, params, env):
         try:
             output = session.cmd_output('touch freeze_test',
                                         timeout=10)
-            raise error.TestFail("Failed to freeze file system. "
-                                 "Create file succeeded:\n%s" % output)
+            test.fail("Failed to freeze file system. "
+                      "Create file succeeded:\n%s" % output)
         except aexpect.ShellTimeoutError:
             pass
 
@@ -43,14 +42,14 @@ def run(test, params, env):
         """
         status, output = session.cmd_status_output('ls freeze_test')
         if status:
-            raise error.TestFail("Failed to thaw file system. "
-                                 "Find created file failed:\n%s" % output)
+            test.fail("Failed to thaw file system. "
+                      "Find created file failed:\n%s" % output)
 
         try:
             output = session.cmd_output('touch freeze_test', timeout=10)
         except aexpect.ShellTimeoutError:
-            raise error.TestFail("Failed to freeze file system. "
-                                 "Touch file timeout:\n%s" % output)
+            test.fail("Failed to freeze file system. "
+                      "Touch file timeout:\n%s" % output)
 
     def cleanup(session):
         """
@@ -60,12 +59,12 @@ def run(test, params, env):
         """
         status, output = session.cmd_status_output('rm -f freeze_test')
         if status:
-            raise error.TestError("Failed to cleanup test file"
-                                  "Find created file failed:\n%s" % output)
+            test.error("Failed to cleanup test file"
+                       "Find created file failed:\n%s" % output)
 
     if not virsh.has_help_command('domfsfreeze'):
-        raise error.TestNAError("This version of libvirt does not support "
-                                "the domfsfreeze/domfsthaw test")
+        test.cancel("This version of libvirt does not support "
+                    "the domfsfreeze/domfsthaw test")
 
     channel = ("yes" == params.get("prepare_channel", "yes"))
     agent = ("yes" == params.get("start_agent", "yes"))

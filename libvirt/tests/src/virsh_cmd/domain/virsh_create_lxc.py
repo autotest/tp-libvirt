@@ -4,8 +4,6 @@ import commands
 import time
 import aexpect
 
-from autotest.client.shared import error
-
 from virttest.libvirt_xml import vm_xml
 from virttest import virsh
 from virttest.libvirt_xml.devices.emulator import Emulator
@@ -72,8 +70,8 @@ def run(test, params, env):
         if "--console" not in options:
             output = virsh.create(vmxml.xml, options, uri=uri)
             if output.exit_status:
-                raise error.TestFail("Create %s domain failed:%s" %
-                                     (dom_type, output.stderr))
+                test.fail("Create %s domain failed:%s" %
+                          (dom_type, output.stderr))
             logging.info("Domain %s created, will check with console", vm_name)
             command = "virsh -c %s console %s" % (uri, vm_name)
         else:
@@ -85,7 +83,7 @@ def run(test, params, env):
             lsofcmd = "lsof|grep '^sh.*%s'" % i
             cmd_status, cmd_output = session.cmd_status_output(lsofcmd)
             if cmd_status != 0:
-                raise error.TestFail("Can not find file %s in container" % i)
+                test.fail("Can not find file %s in container" % i)
             else:
                 logging.info("Find open file in guest: %s", cmd_output)
 
@@ -93,11 +91,11 @@ def run(test, params, env):
         vm = env.get_vm(vm_name)
         if "--autodestroy" in options:
             if vm.is_alive():
-                raise error.TestFail("Guest still exist after close session "
-                                     "with option --autodestroy")
+                test.fail("Guest still exist after close session "
+                          "with option --autodestroy")
             logging.info("Guest already destroyed after session closed")
         elif not vm.is_alive():
-            raise error.TestFail("Guest is not running after close session!")
+            test.fail("Guest is not running after close session!")
         else:
             logging.info("Guest still exist after session closed")
 

@@ -2,14 +2,13 @@ import logging
 import time
 import threading
 
-from autotest.client.shared import error
-from autotest.client.shared import ssh_key
-
 from avocado.utils import process
+from avocado.core import exceptions
 
 from virttest import utils_test
 from virttest import libvirt_vm
 from virttest import virsh
+from virttest import ssh_key
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
@@ -30,7 +29,7 @@ def set_cpu_memory(vm_name, cpu, memory):
     vmxml.define()
 
 
-def copied_migration(vm, params, blockjob_type=None, block_target="vda"):
+def copied_migration(test, vm, params, blockjob_type=None, block_target="vda"):
     """
     Migrate vms with storage copied under some stress.
     And during it, some qemu-monitor-command will be sent.
@@ -68,7 +67,7 @@ def copied_migration(vm, params, blockjob_type=None, block_target="vda"):
     time.sleep(5)
     job_ret = virsh.domjobinfo(vm.name, debug=True)
     if job_ret.exit_status:
-        raise error.TestError("Prepare migration for blockjob failed.")
+        test.error("Prepare migration for blockjob failed.")
 
     # Execute some qemu monitor commands
     pause_cmd = "block-job-pause %s" % block_target
@@ -90,7 +89,7 @@ def copied_migration(vm, params, blockjob_type=None, block_target="vda"):
         elif blockjob_type == "complete":
             virsh.qemu_monitor_command(vm.name, complete_cmd, debug=True,
                                        ignore_status=False)
-    except process.CmdError, detail:
+    except process.CmdError as detail:
         blockjob_failures.append(str(detail))
 
     # Job info FYI
@@ -108,8 +107,8 @@ def copied_migration(vm, params, blockjob_type=None, block_target="vda"):
 
     if len(blockjob_failures):
         cp_mig.cleanup_dest_vm(vm, None, dest_uri)
-        raise error.TestFail("Run qemu monitor command failed %s"
-                             % blockjob_failures)
+        test.fail("Run qemu monitor command failed %s"
+                  % blockjob_failures)
 
     check_ip_failures = []
     if cp_mig.RET_MIGRATION:
@@ -117,23 +116,23 @@ def copied_migration(vm, params, blockjob_type=None, block_target="vda"):
             utils_test.check_dest_vm_network(vm, vms_ip[vm.name],
                                              remote_host, username,
                                              password)
-        except error.TestFail, detail:
+        except exceptions.TestFail as detail:
             check_ip_failures.append(str(detail))
         cp_mig.cleanup_dest_vm(vm, None, dest_uri)
         if blockjob_type in ["cancel", "complete"]:
-            raise error.TestFail("Storage migration passed even after "
-                                 "cancellation.")
+            test.fail("Storage migration passed even after "
+                      "cancellation.")
     else:
         cp_mig.cleanup_dest_vm(vm, None, dest_uri)
         if blockjob_type in ["cancel", "complete"]:
             logging.error("Expected Migration Error for %s", blockjob_type)
             return
         else:
-            raise error.TestFail("Command blockjob does not work well under "
-                                 "storage copied migration.")
+            test.fail("Command blockjob does not work well under "
+                      "storage copied migration.")
 
     if len(check_ip_failures):
-        raise error.TestFail("Check IP failed:%s" % check_ip_failures)
+        test.fail("Check IP failed:%s" % check_ip_failures)
 
 
 def run(test, params, env):
@@ -142,9 +141,9 @@ def run(test, params, env):
     --copy-storage-all or --copy-storage-inc.
     """
     if not libvirt_version.version_compare(1, 0, 1):
-        raise error.TestNAError("Blockjob functions - "
-                                "complete,pause,resume are"
-                                "not supported in current libvirt version.")
+        test.cancel("Blockjob functions - "
+                    "complete,pause,resume are"
+                    "not supported in current libvirt version.")
 
     vm = env.get_vm(params.get("main_vm"))
     cpu_size = int(params.get("cpu_size", "1"))
@@ -152,14 +151,14 @@ def run(test, params, env):
     primary_target = vm.get_first_disk_devices()["target"]
     file_path, file_size = vm.get_device_size(primary_target)
     # Convert to Gib
-    file_size = int(file_size) / 1073741824
+    file_size = int(file_size) // 1073741824
     image_format = utils_test.get_image_info(file_path)["format"]
 
     remote_host = params.get("migrate_dest_host", "REMOTE.EXAMPLE")
     remote_user = params.get("remote_user", "root")
     remote_passwd = params.get("migrate_dest_pwd", "PASSWORD.EXAMPLE")
     if remote_host.count("EXAMPLE"):
-        raise error.TestNAError("Config remote or local host first.")
+        test.cancel("Config remote or local host first.")
     # Config ssh autologin for it
     ssh_key.setup_ssh_key(remote_host, remote_user, remote_passwd, port=22)
 
@@ -189,7 +188,7 @@ def run(test, params, env):
                          img_frmt=image_format)
 
         logging.debug("Start migration...")
-        copied_migration(vm, params, params.get("qmp_blockjob_type"),
+        copied_migration(test, vm, params, params.get("qmp_blockjob_type"),
                          primary_target)
     finally:
         # Recover created vm

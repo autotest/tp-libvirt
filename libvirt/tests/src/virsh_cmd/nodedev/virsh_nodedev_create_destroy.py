@@ -3,7 +3,7 @@ import re
 import logging
 from tempfile import mktemp
 
-from autotest.client.shared import error
+from avocado.core import exceptions
 
 from virttest import virsh
 from virttest.libvirt_xml.nodedev_xml import NodedevXML
@@ -46,7 +46,8 @@ def check_nodedev(dev_name, dev_parent=None):
     name_list = ["node_name", "port_name", "fabric_name"]
     for name in name_list:
         fc_file = os.path.join(fc_host_path, name)
-        fc_dict[name] = open(fc_file, "r").read().strip().split("0x")[1]
+        with open(fc_file, "r") as f:
+            fc_dict[name] = f.read().strip().split("0x")[1]
 
     # Check wwnn, wwpn and fabric_wwn
     if len(wwnn_from_xml) != 16 or \
@@ -68,7 +69,7 @@ def check_nodedev(dev_name, dev_parent=None):
     return True
 
 
-def create_nodedev_from_xml(params):
+def create_nodedev_from_xml(test, params):
     """
     Create a device defined by an XML file on the node
     :params: the parameter dictionary
@@ -97,9 +98,8 @@ def create_nodedev_from_xml(params):
     logging.debug("Prepare the nodedev XML: %s", vhba_xml)
 
     vhba_file = mktemp()
-    xml_object = open(vhba_file, 'w')
-    xml_object.write(vhba_xml)
-    xml_object.close()
+    with open(vhba_file, 'w') as xml_object:
+        xml_object.write(vhba_xml)
 
     result = virsh.nodedev_create(vhba_file, options, uri=uri,
                                   debug=True,
@@ -114,11 +114,11 @@ def create_nodedev_from_xml(params):
         if status:
             logging.info("It's an expected %s", result.stderr)
         else:
-            raise error.TestFail("%d not a expected command "
-                                 "return value", status)
+            test.fail("%d not a expected command "
+                      "return value", status)
     elif status_error == "no":
         if status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
         else:
             output = result.stdout
             logging.info(output)
@@ -128,10 +128,10 @@ def create_nodedev_from_xml(params):
                     if check_nodedev(scsi, scsi_host):
                         return scsi
                     else:
-                        raise error.TestFail("Can't find %s" % scsi)
+                        test.fail("Can't find %s" % scsi)
 
 
-def destroy_nodedev(params):
+def destroy_nodedev(test, params):
     """
     Destroy (stop) a device on the node
     :params: the parameter dictionary
@@ -157,34 +157,34 @@ def destroy_nodedev(params):
         if status:
             logging.info("It's an expected %s", result.stderr)
         else:
-            raise error.TestFail("%d not a expected command "
-                                 "return value", status)
+            test.fail("%d not a expected command "
+                      "return value", status)
     elif status_error == "no":
         if status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
         else:
             # Check nodedev value
             if not check_nodedev(dev_name):
                 logging.info(result.stdout)
             else:
-                raise error.TestFail("The relevant directory still exists"
-                                     "or mismatch with result")
+                test.fail("The relevant directory still exists"
+                          "or mismatch with result")
 
 
-def find_devices_by_cap(cap_type="scsi_host"):
+def find_devices_by_cap(test, cap_type="scsi_host"):
     """
     Find device by capability
     :params cap_type: capability type
     """
     result = virsh.nodedev_list(cap=cap_type)
     if result.exit_status:
-        raise error.TestFail(result.stderr)
+        test.fail(result.stderr)
 
     scsi_hosts = result.stdout.strip().splitlines()
     return scsi_hosts
 
 
-def check_vport_ops_cap(scsi_hosts):
+def check_vport_ops_cap(test, scsi_hosts):
     """
     Check vport operation capability
     :params scsi_hosts: list of the scsi_host
@@ -193,7 +193,7 @@ def check_vport_ops_cap(scsi_hosts):
     for scsi_host in scsi_hosts:
         result = virsh.nodedev_dumpxml(scsi_host)
         if result.exit_status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
         if re.search('vport_ops', result.stdout.strip()):
             vport_ops_list.append(scsi_host)
 
@@ -214,7 +214,8 @@ def check_port_connectivity(vport_ops_list):
         port_state = scsi_host.split('_')[1] + "/port_state"
         port_state_file = os.path.join(fc_path, port_state)
         logging.debug("The port_state file: %s", port_state_file)
-        state = open(port_state_file).read().strip()
+        with open(port_state_file) as f:
+            state = f.read().strip()
         logging.debug("The port state: %s", state)
         if state == "Online" or state == "Linkup":
             port_linkup.append(scsi_host)
@@ -252,18 +253,18 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise error.TestNAError("API acl test not supported in current"
-                                    " libvirt version.")
+            test.cancel("API acl test not supported in current"
+                        " libvirt version.")
 
     # Find available HBAs
-    scsi_hosts = find_devices_by_cap()
+    scsi_hosts = find_devices_by_cap(test)
 
     # Find available vHBA
-    vport_ops_list = check_vport_ops_cap(scsi_hosts)
+    vport_ops_list = check_vport_ops_cap(test, scsi_hosts)
 
     # No HBA or no vHBA supporting
     if not vport_ops_list:
-        raise error.TestNAError("No HBAs to support vHBA on the host!")
+        test.cancel("No HBAs to support vHBA on the host!")
 
     # Check ports connectivity
     port_state_dict = check_port_connectivity(vport_ops_list)
@@ -274,7 +275,7 @@ def run(test, params, env):
 
     # No online port is available
     if not port_online_list:
-        raise error.TestNAError("No port is active!")
+        test.cancel("No port is active!")
 
     if dev_name:
         # Negative testing for creating device
@@ -300,17 +301,17 @@ def run(test, params, env):
     if status_error == "no":
         try:
             # Create device from XML
-            params["nodedev_new_dev"] = create_nodedev_from_xml(params)
+            params["nodedev_new_dev"] = create_nodedev_from_xml(test, params)
             # Destroy the device
-            destroy_nodedev(params)
-        except error.TestFail, detail:
-            raise error.TestFail("Failed to create/destroy node device.\n"
-                                 "Detail: %s." % detail)
+            destroy_nodedev(test, params)
+        except exceptions.TestFail as detail:
+            test.fail("Failed to create/destroy node device.\n"
+                      "Detail: %s." % detail)
 
     if status_error == "yes":
         if create_device == "yes":
             # Create device from XML
-            create_nodedev_from_xml(params)
+            create_nodedev_from_xml(test, params)
         if create_device == "no":
             # Destroy the device
-            destroy_nodedev(params)
+            destroy_nodedev(test, params)

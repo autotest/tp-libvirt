@@ -1,8 +1,6 @@
 import re
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 
 
@@ -30,7 +28,7 @@ def run(test, params, env):
         """
         output = result.stdout.strip()
         if not re.search("Scheduler", output):
-            raise error.TestFail("Output is not standard:\n%s" % output)
+            test.fail("Output is not standard:\n%s" % output)
 
         result_lines = output.splitlines()
         set_value = None
@@ -40,8 +38,8 @@ def run(test, params, env):
             value = key_value[1].strip()
             if key == "Scheduler":
                 if value != scheduler:
-                    raise error.TestNAError("This test do not support"
-                                            " %s scheduler." % scheduler)
+                    test.cancel("This test do not support"
+                                " %s scheduler." % scheduler)
             elif key == set_ref:
                 set_value = value
                 break
@@ -102,7 +100,7 @@ def run(test, params, env):
     # Check result
     if status_error == "no":
         if status:
-            raise error.TestFail("Run failed with right command.")
+            test.fail("Run failed with right command.")
         else:
             if set_ref and set_value_expected:
                 logging.info("value will be set:%s\n"
@@ -110,10 +108,10 @@ def run(test, params, env):
                              "expected value:%s" % (set_value,
                                                     set_value_of_output, set_value_expected))
                 if set_value_of_output is None:
-                    raise error.TestFail("Get parameter %s failed." % set_ref)
+                    test.fail("Get parameter %s failed." % set_ref)
                 if not (set_value_expected == set_value_of_output):
-                    raise error.TestFail("Run successful but value "
-                                         "in output is not expected.")
+                    test.fail("Run successful but value "
+                              "in output is not expected.")
     else:
         if not status:
-            raise error.TestFail("Run successfully with wrong command.")
+            test.fail("Run successfully with wrong command.")

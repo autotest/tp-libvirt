@@ -1,8 +1,7 @@
 import logging
 import aexpect
 
-from autotest.client import utils
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import element_tree
@@ -36,7 +35,7 @@ def check_echo_shell(escaped_str, result):
     :return: True or False due to match of the output
     """
     cmd = "echo %s" % escaped_str
-    cmd_result = utils.run(cmd, ignore_status=True)
+    cmd_result = process.run(cmd, ignore_status=True, shell=True)
     output = cmd_result.stdout.strip()
     logging.debug("Shell echo result is: %s" % output)
     return (output == result)
@@ -76,24 +75,24 @@ def run(test, params, env):
     status = result.exit_status
     if invalid_status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successful with wrong command!")
+            test.fail("Run successful with wrong command!")
         else:
             logging.info("Run command failed as expected.")
     else:
         if status != 0:
-            raise error.TestFail("Run failed with right command!")
+            test.fail("Run failed with right command!")
 
     # Run cd command
     result = vp.cd(cd_option, cd_extra, ignore_status=True, debug=True)
     cd_status = result.exit_status
     if cd_status_error == "yes":
         if cd_status == 0:
-            raise error.TestFail("Run successful with wrong command!")
+            test.fail("Run successful with wrong command!")
         else:
             logging.info("Run command failed as expected.")
     else:
         if cd_status != 0:
-            raise error.TestFail("Run failed with right command!")
+            test.fail("Run failed with right command!")
 
     # Run pwd command
     result = vp.pwd(pwd_extra, ignore_status=True, debug=True)
@@ -101,15 +100,15 @@ def run(test, params, env):
     output = result.stdout.strip()
     if pwd_status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successful with wrong command!")
+            test.fail("Run successful with wrong command!")
         else:
             logging.info("Run command failed as expected.")
     else:
         if status != 0:
-            raise error.TestFail("Run failed with right command!")
+            test.fail("Run failed with right command!")
         elif cd_option and cd_status == 0:
             if output != cd_option:
-                raise error.TestFail("The pwd is not right with set!")
+                test.fail("The pwd is not right with set!")
 
     # Run echo command
     options = "%s %s" % (echo_option, echo_extra)
@@ -118,21 +117,21 @@ def run(test, params, env):
     output = result.stdout.strip()
     if echo_status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successful with wrong command!")
+            test.fail("Run successful with wrong command!")
         else:
             logging.info("Run command failed as expected.")
     else:
         if status != 0:
-            raise error.TestFail("Run failed with right command!")
+            test.fail("Run failed with right command!")
         elif "--xml" in echo_option:
             escape_out = element_tree._escape_attrib(echo_str)
             if escape_out != output:
-                raise error.TestFail("%s did not match with expected output %s"
-                                     % (output, escape_out))
+                test.fail("%s did not match with expected output %s"
+                          % (output, escape_out))
         else:
             escaped_str = sh_escape(echo_str)
             if not check_echo_shell(escaped_str, output):
-                raise error.TestFail("Command output is not expected.")
+                test.fail("Command output is not expected.")
 
     # Run exit commnad and close the session
     try:
