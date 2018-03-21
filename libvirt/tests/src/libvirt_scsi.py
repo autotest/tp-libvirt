@@ -5,8 +5,6 @@ libvirt scsi test
 """
 import os
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import virt_vm
@@ -50,8 +48,8 @@ def run(test, params, env):
     # Add disk with bus of scsi into vmxml.
     if partition_type:
         if partition.count("ENTER.YOUR"):
-            raise error.TestNAError("Partition for partition test "
-                                    "is not configured.")
+            test.cancel("Partition for partition test "
+                        "is not configured.")
         partition_disk = Disk(type_name="block")
         partition_disk.device = "disk"
         partition_disk.target = {'dev': "vdg",
@@ -79,8 +77,8 @@ def run(test, params, env):
         try:
             cdrom = CdromDisk(cdrom_path, data_dir.get_tmp_dir())
             cdrom.close()
-        except process.CmdError, detail:
-            raise error.TestNAError("Failed to create cdrom disk: %s" % detail)
+        except process.CmdError as detail:
+            test.cancel("Failed to create cdrom disk: %s" % detail)
 
         cdrom_disk = Disk(type_name="file")
         cdrom_disk.device = "cdrom"
@@ -94,19 +92,19 @@ def run(test, params, env):
         # sync the vmxml with VM.
         try:
             vmxml.sync()
-        except LibvirtXMLError, e:
-            raise error.TestFail("Test failed in vmxml.sync(), detail:%s." % e)
+        except LibvirtXMLError as e:
+            test.fail("Test failed in vmxml.sync(), detail:%s." % e)
 
         try:
             vm.start()
             # Start VM successfully.
             if status_error:
-                raise error.TestFail('Starting VM successed in negative case.')
-        except virt_vm.VMStartError, e:
+                test.fail('Starting VM successed in negative case.')
+        except virt_vm.VMStartError as e:
             # Starting VM failed.
             if not status_error:
-                raise error.TestFail("Test failed in positive case."
-                                     "error: %s" % e)
+                test.fail("Test failed in positive case."
+                          "error: %s" % e)
     finally:
         if img_type:
             if os.path.isfile(img_path):

@@ -3,10 +3,13 @@ import os
 import ast
 import shutil
 import logging
+
+from six.moves import xrange
+
 from avocado.utils import process
-from autotest.client import utils
 from virttest import virt_vm, virsh
 from virttest import utils_package
+from virttest import utils_misc
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import rng
@@ -156,7 +159,7 @@ def run(test, params, env):
             # Add random server
             if params.get("backend_type") == "tcp":
                 cmd = "cat /dev/random | nc -4 -l localhost 1024"
-                bgjob = utils.AsyncJob(cmd)
+                bgjob = utils_misc.AsyncJob(cmd)
             vm.start()
             vm.wait_for_login().close()
         err_msgs = ("live disk snapshot not supported"
@@ -200,7 +203,7 @@ def run(test, params, env):
             test.fail("Failed to read the random device")
         rng_rate = params.get("rng_rate")
         if rng_rate:
-            rate_bytes, rate_period = ast.literal_eval(rng_rate).values()
+            rate_bytes, rate_period = list(ast.literal_eval(rng_rate).values())
             rate_conf = float(rate_bytes) / (float(rate_period)/1000)
             ret = re.search(r"(\d+) bytes.*copied, (\d+.\d+) s",
                             output, re.M)
@@ -305,7 +308,7 @@ def run(test, params, env):
             # Add random server
             if params.get("backend_type") == "tcp":
                 cmd = "cat /dev/random | nc -4 -l localhost 1024"
-                bgjob = utils.AsyncJob(cmd)
+                bgjob = utils_misc.AsyncJob(cmd)
 
             # Start the VM.
             vm.start()

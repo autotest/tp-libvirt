@@ -2,8 +2,9 @@ import os
 import shutil
 import logging
 import platform
-from autotest.client.shared import error
-from autotest.client import utils
+
+from avocado.utils import process
+
 from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_misc
@@ -38,7 +39,7 @@ def run(test, params, env):
             os.mkdir(hook_dir)
         with open(hook_file, 'w') as hf:
             hf.write('\n'.join(hook_lines))
-        os.chmod(hook_file, 0755)
+        os.chmod(hook_file, 0o755)
 
         # restart libvirtd
         libvirtd.restart()
@@ -89,9 +90,9 @@ def run(test, params, env):
             hook_str = hook_para + " release end -"
             assert check_hooks(hook_str)
         except AssertionError:
-            utils.log_last_traceback()
-            raise error.TestFail("Failed to check "
-                                 "start/stop hooks.")
+            utils_misc.log_last_traceback()
+            test.fail("Failed to check "
+                      "start/stop hooks.")
 
     def save_restore_hook():
         """
@@ -115,8 +116,8 @@ def run(test, params, env):
         if domainxml_test:
             disk_src_save = vm.get_first_disk_devices()['source']
             if disk_src != disk_src_save:
-                raise error.TestFail("Failed to check hooks for"
-                                     " save operation")
+                test.fail("Failed to check hooks for"
+                          " save operation")
         ret = virsh.restore(save_file, **virsh_dargs)
         libvirt.check_exit_status(ret)
         if os.path.exists(save_file):
@@ -124,8 +125,8 @@ def run(test, params, env):
         if domainxml_test:
             disk_src_restore = vm.get_first_disk_devices()['source']
             if disk_dist != disk_src_restore:
-                raise error.TestFail("Failed to check hooks for"
-                                     " restore operation")
+                test.fail("Failed to check hooks for"
+                          " restore operation")
             vm.destroy()
             if os.path.exists(disk_dist):
                 os.remove(disk_dist)
@@ -133,8 +134,8 @@ def run(test, params, env):
         if basic_test:
             hook_str = hook_para + " restore begin -"
             if not check_hooks(hook_str):
-                raise error.TestFail("Failed to check "
-                                     "restore hooks.")
+                test.fail("Failed to check "
+                          "restore hooks.")
 
     def managedsave_hook():
         """
@@ -158,16 +159,16 @@ def run(test, params, env):
         if domainxml_test:
             disk_src_save = vm.get_first_disk_devices()['source']
             if disk_src != disk_src_save:
-                raise error.TestFail("Failed to check hooks for"
-                                     " managedsave operation")
+                test.fail("Failed to check hooks for"
+                          " managedsave operation")
         vm.start()
         if os.path.exists(save_file):
             os.remove(save_file)
         if domainxml_test:
             disk_src_restore = vm.get_first_disk_devices()['source']
             if disk_dist != disk_src_restore:
-                raise error.TestFail("Failed to check hooks for"
-                                     " managedsave operation")
+                test.fail("Failed to check hooks for"
+                          " managedsave operation")
             vm.destroy()
             if os.path.exists(disk_dist):
                 os.remove(disk_dist)
@@ -176,8 +177,8 @@ def run(test, params, env):
         if basic_test:
             hook_str = hook_para + " restore begin -"
             if not check_hooks(hook_str):
-                raise error.TestFail("Failed to check "
-                                     "managedsave hooks.")
+                test.fail("Failed to check "
+                          "managedsave hooks.")
 
     def libvirtd_hook():
         """
@@ -191,9 +192,9 @@ def run(test, params, env):
             hook_str = hook_para + " reconnect begin -"
             assert check_hooks(hook_str)
         except AssertionError:
-            utils.log_last_traceback()
-            raise error.TestFail("Failed to check"
-                                 " libvirtd hooks")
+            utils_misc.log_last_traceback()
+            test.fail("Failed to check"
+                      " libvirtd hooks")
 
     def daemon_hook():
         """
@@ -224,9 +225,9 @@ def run(test, params, env):
             assert check_hooks(hook_str)
 
         except AssertionError:
-            utils.log_last_traceback()
-            raise error.TestFail("Failed to check"
-                                 " daemon hooks")
+            utils_misc.log_last_traceback()
+            test.fail("Failed to check"
+                      " daemon hooks")
 
     def attach_hook():
         """
@@ -244,21 +245,21 @@ def run(test, params, env):
                     " -monitor unix:/tmp/demo,"
                     "server,nowait -name %s" %
                     (qemu_bin, disk_src, vm_test))
-        ret = utils.run("%s &" % qemu_cmd)
-        pid = utils.run("ps -ef | grep '%s' | grep -v grep | awk"
-                        " '{print $2}'" % qemu_cmd).stdout.strip()
+        ret = process.run("%s &" % qemu_cmd, shell=True)
+        pid = process.run("ps -ef | grep '%s' | grep -v grep | awk"
+                          " '{print $2}'" % qemu_cmd, shell=True).stdout.strip()
         if not pid:
-            raise error.TestFail("Cannot get pid of qemu command")
+            test.fail("Cannot get pid of qemu command")
         ret = virsh.qemu_attach(pid, **virsh_dargs)
         if ret.exit_status:
             utils_misc.kill_process_tree(pid)
-            raise error.TestFail("Cannot attach qemu process")
+            test.fail("Cannot attach qemu process")
         else:
             virsh.destroy(vm_test)
         hook_str = hook_file + " " + vm_test + " attach begin -"
         if not check_hooks(hook_str):
-            raise error.TestFail("Failed to check"
-                                 " attach hooks")
+            test.fail("Failed to check"
+                      " attach hooks")
 
     def edit_iface(net_name):
         """
@@ -321,9 +322,9 @@ def run(test, params, env):
             hook_str = hook_file + " " + net_name + " unplugged begin -"
             assert check_hooks(hook_str)
         except AssertionError:
-            utils.log_last_traceback()
-            raise error.TestFail("Failed to check"
-                                 " network hooks")
+            utils_misc.log_last_traceback()
+            test.fail("Failed to check"
+                      " network hooks")
 
     def run_scale_test():
         """
@@ -338,7 +339,7 @@ def run(test, params, env):
                 % (loop_num, vm_name, vm_name))
         cmd2 = ("for i in {1..%s};do virsh list;sleep 1;done;"
                 % loop_num * 2)
-        utils.run_parallel([cmd1, cmd2], timeout=loop_timeout)
+        utils_misc.run_parallel([cmd1, cmd2], timeout=loop_timeout)
 
     start_error = "yes" == params.get("start_error", "no")
     test_start_stop = "yes" == params.get("test_start_stop", "no")
@@ -389,15 +390,15 @@ def run(test, params, env):
             elif test_managedsave:
                 managedsave_hook()
 
-        except virt_vm.VMStartError, e:
+        except virt_vm.VMStartError as e:
             logging.info(str(e))
             if start_error:
                 pass
             else:
-                raise error.TestFail('VM Failed to start for some reason!')
+                test.fail('VM Failed to start for some reason!')
         else:
             if start_error:
-                raise error.TestFail('VM started unexpected')
+                test.fail('VM started unexpected')
 
     finally:
         # Recover VM.

@@ -4,9 +4,9 @@ import ast
 import logging
 import tempfile
 
-from avocado.utils import process
-
 from six.moves import xrange
+
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
