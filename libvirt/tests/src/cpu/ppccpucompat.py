@@ -95,7 +95,7 @@ def run(test, params, env):
         libvirt_xml.VMXML.set_cpu_mode(vm_name, model=guest_version)
         try:
             vm.start()
-        except virt_vm.VMStartError, detail:
+        except virt_vm.VMStartError as detail:
             if not status_error:
                 test.fail("%s" % detail)
             else:

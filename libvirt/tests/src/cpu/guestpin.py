@@ -167,7 +167,7 @@ def run(test, params, env):
             libvirt.check_exit_status(result)
         try:
             vm.start()
-        except virt_vm.VMStartError, detail:
+        except virt_vm.VMStartError as detail:
             test.fail("%s" % detail)
 
         cpucount = vm.get_cpu_count()
