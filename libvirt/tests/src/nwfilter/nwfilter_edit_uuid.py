@@ -2,8 +2,6 @@ import logging
 
 import aexpect
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import remote
@@ -53,15 +51,15 @@ def run(test, params, env):
             if not status_error:
                 logging.info("Succeed to do nwfilter edit")
             else:
-                raise error.TestFail("edit uuid should fail but got succeed.")
-        except (aexpect.ShellError, aexpect.ExpectError, remote.LoginTimeoutError), details:
+                test.fail("edit uuid should fail but got succeed.")
+        except (aexpect.ShellError, aexpect.ExpectError, remote.LoginTimeoutError) as details:
             log = session.get_output()
             session.close()
             if "Try again? [y,n,f,?]:" in log and status_error:
                 logging.debug("edit uuid failed as expected.")
             else:
-                raise error.TestFail("Failed to do nwfilter-edit: %s\n%s"
-                                     % (details, log))
+                test.fail("Failed to do nwfilter-edit: %s\n%s"
+                          % (details, log))
     finally:
         # Clean env
         virsh.nwfilter_undefine(filter_name, debug=True)

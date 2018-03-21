@@ -1,10 +1,8 @@
 import re
 import os
 import logging
-import commands
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
+from avocado.utils import process
 
 from virttest import remote
 from virttest.utils_sasl import SASL
@@ -20,7 +18,7 @@ from virttest.utils_test.libvirt import connect_libvirtd
 from provider import libvirt_version
 
 
-def remote_access(params):
+def remote_access(params, test):
     """
     Connect libvirt daemon
     """
@@ -49,19 +47,19 @@ def remote_access(params):
                 fp = open(logfile, "r")
                 if not re.findall(pattern, fp.read()):
                     fp.close()
-                    raise error.TestFail("Failed to find %s in log!!" % pattern)
+                    test.fail("Failed to find %s in log!!" % pattern)
                 fp.close()
             logging.info("Succeed to connect libvirt daemon.")
         else:
-            raise error.TestFail("Failed to connect libvirt daemon!!")
+            test.fail("Failed to connect libvirt daemon!!")
     else:
         if not ret:
             logging.info("It's an expected error!!")
         else:
-            raise error.TestFail("Unexpected return result")
+            test.fail("Unexpected return result")
 
 
-def check_parameters(params):
+def check_parameters(params, test):
     """
     Make sure all of parameters are assigned a valid value
     """
@@ -82,10 +80,10 @@ def check_parameters(params):
 
     for arg in args_list:
         if arg and arg.count("ENTER.YOUR."):
-            raise error.TestNAError("Please assign a value for %s!" % arg)
+            test.cancel("Please assign a value for %s!" % arg)
 
 
-def compare_virt_version(server_ip, server_user, server_pwd):
+def compare_virt_version(server_ip, server_user, server_pwd, test):
     """
     Make sure libvirt version is different
     """
@@ -94,19 +92,20 @@ def compare_virt_version(server_ip, server_user, server_pwd):
     prompt = r"[\#\$]\s*$"
     query_cmd = "rpm -q libvirt"
     # query libvirt version on local host
-    status, output_local = commands.getstatusoutput(query_cmd)
+    ret = process.run(query_cmd, allow_output_check='combined', shell=True)
+    status, output_local = ret.exit_status, ret.stdout.strip()
     if status:
-        raise error.TestError(output_local)
+        test.error(output_local)
     # query libvirt version on remote host
     session = remote.wait_for_login(client, server_ip, port,
                                     server_user, server_pwd, prompt)
     status, output_remote = session.cmd_status_output(query_cmd)
     if status:
-        raise error.TestError(output_remote)
+        test.error(output_remote)
     # compare libvirt version between local and remote host
     if output_local == output_remote.strip():
-        raise error.TestNAError("To expect different libvirt version "
-                                "<%s>:<%s>", output_local, output_remote)
+        test.cancel("To expect different libvirt version "
+                    "<%s>:<%s>", output_local, output_remote)
 
 
 def cleanup(objs_list):
@@ -193,12 +192,12 @@ def run(test, params, env):
     test_dict["logfile"] = test.logfile
 
     # Make sure all of parameters are assigned a valid value
-    check_parameters(test_dict)
+    check_parameters(test_dict, test)
 
     # only simply connect libvirt daemon then return
     if no_any_config == "yes":
         test_dict["uri"] = "%s%s%s://%s" % (driver, plus, transport, uri_path)
-        remote_access(test_dict)
+        remote_access(test_dict, test)
         return
 
     # append extra 'pkipath' argument to URI if exists
@@ -216,13 +215,13 @@ def run(test, params, env):
     # generate auth.conf and default under the '/etc/libvirt'
     if auth_conf_cxt and auth_conf:
         cmd = "echo -e '%s' > %s" % (auth_conf_cxt, auth_conf)
-        utils.system(cmd, ignore_status=True)
+        process.system(cmd, ignore_status=True, shell=True)
 
     # generate polkit_pkla and default under the
     # '/etc/polkit-1/localauthority/50-local.d/'
     if polkit_pkla_cxt and polkit_pkla:
         cmd = "echo -e '%s' > %s" % (polkit_pkla_cxt, polkit_pkla)
-        utils.system(cmd, ignore_status=True)
+        process.system(cmd, ignore_status=True, shell=True)
 
     # generate remote IP
     if config_ipv6 == "yes" and ipv6_addr_des:
@@ -260,7 +259,7 @@ def run(test, params, env):
         status, output = session.cmd_status_output(cmd)
         if status:
             session.close()
-            raise error.TestNAError(output)
+            test.cancel(output)
 
         session.close()
 
@@ -273,7 +272,7 @@ def run(test, params, env):
 
         # compare libvirt version if needs
         if diff_virt_ver == "yes":
-            compare_virt_version(server_ip, server_user, server_pwd)
+            compare_virt_version(server_ip, server_user, server_pwd, test)
 
         # setup SSH
         if transport == "ssh" or ssh_setup == "yes":
@@ -309,7 +308,7 @@ def run(test, params, env):
 
         # create a directory if needs
         if mkdir_cmd:
-            utils.system(mkdir_cmd, ignore_status=True)
+            process.system(mkdir_cmd, ignore_status=True, shell=True)
 
         # setup UNIX
         if transport == "unix" or unix_setup == "yes":
@@ -336,14 +335,14 @@ def run(test, params, env):
 
         # remove client certifications if exist, only for TLS negative testing
         if rm_client_key_cmd:
-            utils.system(rm_client_key_cmd, ignore_status=True)
+            process.system(rm_client_key_cmd, ignore_status=True, shell=True)
 
         if rm_client_cert_cmd:
-            utils.system(rm_client_cert_cmd, ignore_status=True)
+            process.system(rm_client_cert_cmd, ignore_status=True, shell=True)
 
         # add user to specific group
         if adduser_cmd:
-            utils.system(adduser_cmd, ignore_status=True)
+            process.system(adduser_cmd, ignore_status=True, shell=True)
 
         # change /etc/pki/libvirt/servercert.pem then
         # restart libvirt service on the remote host
@@ -383,9 +382,9 @@ def run(test, params, env):
                     test_dict["status_error"] = "yes"
                 patterns_extra_dict = {"authentication name": sasl_user}
                 test_dict["patterns_extra_dict"] = patterns_extra_dict
-                remote_access(test_dict)
+                remote_access(test_dict, test)
         else:
-            remote_access(test_dict)
+            remote_access(test_dict, test)
 
     finally:
         # recovery test environment
@@ -396,10 +395,10 @@ def run(test, params, env):
                 vm.destroy(gracefully=False)
 
         if rmdir_cmd:
-            utils.system(rmdir_cmd, ignore_status=True)
+            process.system(rmdir_cmd, ignore_status=True, shell=True)
 
         if deluser_cmd:
-            utils.system(deluser_cmd, ignore_status=True)
+            process.system(deluser_cmd, ignore_status=True, shell=True)
 
         if auth_conf and os.path.isfile(auth_conf):
             os.unlink(auth_conf)

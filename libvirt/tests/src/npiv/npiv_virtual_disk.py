@@ -38,7 +38,7 @@ def get_symbols_by_blk(blkdev, method="by-path"):
                awk '{FS=\" \"} {for (f=1; f<=NF; f+=1) \
                {if ($f ~ /pci/){print $f}}}'" % (dir_path, blkdev, blkdev)
         result = process.run(cmd, shell=True)
-    except Exception, e:
+    except Exception as e:
         raise exceptions.TestError(str(e))
     symbolic_links = result.stdout.strip().splitlines()
     return symbolic_links
@@ -59,7 +59,7 @@ def get_blks_by_scsi(scsi_bus, blk_prefix="sd"):
            {if ($f ~ /%s/) {print $f}}}'" % (scsi_bus, blk_prefix)
     try:
         result = process.run(cmd, shell=True)
-    except Exception, e:
+    except Exception as e:
         raise exceptions.TestError(str(e))
     blk_names = result.stdout.strip().splitlines()
     return blk_names

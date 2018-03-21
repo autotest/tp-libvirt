@@ -3,8 +3,6 @@ svirt guest_undefine_define test.
 """
 import os
 
-from autotest.client.shared import error
-
 from virttest import utils_selinux
 from virttest import virsh
 from virttest import data_dir
@@ -42,7 +40,7 @@ def run(test, params, env):
     # Label the disks of VM with img_label.
     disks = vm.get_disk_devices()
     backup_labels_of_disks = {}
-    for disk in disks.values():
+    for disk in list(disks.values()):
         disk_path = disk['source']
         backup_labels_of_disks[disk_path] = utils_selinux.get_context_of_file(
             filename=disk_path)
@@ -62,15 +60,15 @@ def run(test, params, env):
         virsh.dumpxml(vm.name, to_file=xml_file)
         cmd_result = virsh.undefine(vm.name)
         if cmd_result.exit_status:
-            raise error.TestFail("Failed to undefine vm."
-                                 "Detail: %s" % cmd_result)
+            test.fail("Failed to undefine vm."
+                      "Detail: %s" % cmd_result)
         cmd_result = virsh.define(xml_file)
         if cmd_result.exit_status:
-            raise error.TestFail("Failed to define vm."
-                                 "Detail: %s" % cmd_result)
+            test.fail("Failed to define vm."
+                      "Detail: %s" % cmd_result)
     finally:
         # clean up
-        for path, label in backup_labels_of_disks.items():
+        for path, label in list(backup_labels_of_disks.items()):
             utils_selinux.set_context_of_file(filename=path, context=label)
         backup_xml.sync()
         utils_selinux.set_status(backup_sestatus)

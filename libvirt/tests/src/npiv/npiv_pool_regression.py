@@ -105,17 +105,14 @@ def run(test, params, env):
             lambda: nodedev.is_vhbas_added(old_vhbas), _DELAY_TIME)
         virsh.pool_dumpxml(pool_name, to_file=pool_xml_f)
         virsh.pool_destroy(pool_name)
-    except Exception, e:
+    except Exception as e:
         pvt.cleanup_pool(pool_name, pool_type, pool_target,
                          emulated_image, **kwargs)
         raise exceptions.TestError(
             "Error occurred when prepare pool xml:\n %s" % e)
     if os.path.exists(pool_xml_f):
-        f = open(pool_xml_f, 'r')
-        try:
+        with open(pool_xml_f, 'r') as f:
             logging.debug("Create pool from file:\n %s", f.read())
-        finally:
-            f.close()
 
     try:
         cmd_result = virsh.pool_define(pool_xml_f, ignore_status=True,
@@ -129,7 +126,7 @@ def run(test, params, env):
         logging.debug("Pool detail: %s", pool_detail)
 
         vol_list = utlv.get_vol_list(pool_name, timeout=10)
-        test_unit = vol_list.keys()[0]
+        test_unit = list(vol_list.keys())[0]
         logging.info(
             "Using the first LUN unit %s to attach to a guest", test_unit)
 

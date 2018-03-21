@@ -1,8 +1,6 @@
 import os
 import logging
 
-from autotest.client.shared import error
-
 from virttest import utils_selinux
 from virttest import virt_vm
 from virttest import utils_config
@@ -74,7 +72,7 @@ def run(test, params, env):
     disks = vm.get_disk_devices()
     backup_labels_of_disks = {}
     backup_ownership_of_disks = {}
-    for disk in disks.values():
+    for disk in list(disks.values()):
         disk_path = disk['source']
         backup_labels_of_disks[disk_path] = utils_selinux.get_context_of_file(
             filename=disk_path)
@@ -110,7 +108,7 @@ def run(test, params, env):
     try:
         # Set disk label
         (img_label_type, img_label_range) = _resolve_label(img_label)
-        for disk in disks.values():
+        for disk in list(disks.values()):
             disk_path = disk['source']
             dir_path = "%s(/.*)?" % os.path.dirname(disk_path)
             # Using semanage set context persistently
@@ -122,7 +120,7 @@ def run(test, params, env):
                                               forcedesc=True)
             orig_label_type = backup_labels_of_disks[disk_path].split(":")[2]
             if o_r and (orig_label_type != img_label_type):
-                raise error.TestFail("change disk label(%s) failed" % img_label_type)
+                test.fail("change disk label(%s) failed" % img_label_type)
             os.chown(disk_path, 107, 107)
 
         # Set selinux of host.
@@ -154,21 +152,21 @@ def run(test, params, env):
             # Start VM successfully.
             # VM with seclabel can access the image with the context.
             if status_error:
-                raise error.TestFail("Test succeeded in negative case.")
+                test.fail("Test succeeded in negative case.")
             # Check the label of VM and image when VM is running.
             vm_context = utils_selinux.get_context_of_process(vm.get_pid())
             if (sec_type == "static") and (not vm_context == sec_label):
-                raise error.TestFail("Label of VM is not expected after "
-                                     "starting.\n"
-                                     "Detail: vm_context=%s, sec_label=%s"
-                                     % (vm_context, sec_label))
+                test.fail("Label of VM is not expected after "
+                          "starting.\n"
+                          "Detail: vm_context=%s, sec_label=%s"
+                          % (vm_context, sec_label))
             disk_context = utils_selinux.get_context_of_file(
-                filename=disks.values()[0]['source'])
+                filename=list(disks.values())[0]['source'])
             if (sec_relabel == "no") and (not disk_context == img_label):
-                raise error.TestFail("Label of disk is not expected after VM "
-                                     "starting.\n"
-                                     "Detail: disk_context=%s, img_label=%s."
-                                     % (disk_context, img_label))
+                test.fail("Label of disk is not expected after VM "
+                          "starting.\n"
+                          "Detail: disk_context=%s, img_label=%s."
+                          % (disk_context, img_label))
             if sec_relabel == "yes" and not no_sec_model:
                 vmxml = VMXML.new_from_dumpxml(vm_name)
                 imagelabel = vmxml.get_seclabel()[0]['imagelabel']
@@ -177,10 +175,10 @@ def run(test, params, env):
                 # imagelabel turns to be 'system_u:object_r:svirt_image_t:s0:cxx,cxxx'
                 # but we shouldn't check the MCS range.
                 if not _check_label_equal(disk_context, imagelabel):
-                    raise error.TestFail("Label of disk is not relabeled by "
-                                         "VM\nDetal: disk_context="
-                                         "%s, imagelabel=%s"
-                                         % (disk_context, imagelabel))
+                    test.fail("Label of disk is not relabeled by "
+                              "VM\nDetal: disk_context="
+                              "%s, imagelabel=%s"
+                              % (disk_context, imagelabel))
             # Check the label of disk after VM being destroyed.
             if poweroff_with_destroy:
                 vm.destroy(gracefully=False)
@@ -188,7 +186,7 @@ def run(test, params, env):
                 vm.wait_for_login()
                 vm.shutdown()
             img_label_after = utils_selinux.get_context_of_file(
-                filename=disks.values()[0]['source'])
+                filename=list(disks.values())[0]['source'])
             if (not img_label_after == img_label):
                 # Bug 547546 - RFE: the security drivers must remember original
                 # permissions/labels and restore them after
@@ -199,16 +197,16 @@ def run(test, params, env):
                 err_msg += "img_label_before=%s.\n" % img_label
                 err_msg += "More info in https://bugzilla.redhat.com/show_bug"
                 err_msg += ".cgi?id=547546"
-                raise error.TestFail(err_msg)
-        except virt_vm.VMStartError, e:
+                test.fail(err_msg)
+        except virt_vm.VMStartError as e:
             # Starting VM failed.
             # VM with seclabel can not access the image with the context.
             if not status_error:
-                raise error.TestFail("Test failed in positive case."
-                                     "error: %s" % e)
+                test.fail("Test failed in positive case."
+                          "error: %s" % e)
     finally:
         # clean up
-        for path, label in backup_labels_of_disks.items():
+        for path, label in list(backup_labels_of_disks.items()):
             # Using semanage set context persistently
             dir_path = "%s(/.*)?" % os.path.dirname(path)
             (img_label_type, img_label_range) = _resolve_label(label)
@@ -218,7 +216,7 @@ def run(test, params, env):
             utils_selinux.verify_defcon(pathname=path,
                                         readonly=False,
                                         forcedesc=True)
-        for path, label in backup_ownership_of_disks.items():
+        for path, label in list(backup_ownership_of_disks.items()):
             label_list = label.split(":")
             os.chown(path, int(label_list[0]), int(label_list[1]))
         backup_xml.sync()

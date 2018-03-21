@@ -2,8 +2,6 @@ import time
 import threading
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import utils_libvirtd
@@ -28,7 +26,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
 
     if not libvirt_version.version_compare(1, 2, 6):
-        raise error.TestNAError("Bug %s not fixed on current build" % bug_url)
+        test.cancel("Bug %s not fixed on current build" % bug_url)
 
     vm = env.get_vm(vm_name)
     # Prepare vm filterref parameters dict list
@@ -88,7 +86,7 @@ def run(test, params, env):
         filter_thread.join()
         vm_thread.join()
         if ret:
-            raise error.TestFail("Libvirtd hang, %s" % bug_url)
+            test.fail("Libvirtd hang, %s" % bug_url)
 
     finally:
         libvirtd.exit()

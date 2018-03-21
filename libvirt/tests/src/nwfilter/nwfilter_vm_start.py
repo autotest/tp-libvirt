@@ -1,9 +1,8 @@
 import re
 import logging
 
-from autotest.client import os_dep
-from autotest.client.shared import utils
-from autotest.client.shared import error
+from avocado.utils import process
+from avocado.utils import path
 
 from virttest import virsh
 from virttest import virt_vm
@@ -83,16 +82,16 @@ def run(test, params, env):
             device_name = utlv.setup_or_cleanup_iscsi(is_setup=True)
             utlv.mkfs(device_name, 'ext4')
             cmd = "mount %s /tmp -o noexec,nosuid" % device_name
-            utils.run(cmd)
+            process.run(cmd, shell=True)
 
         if ipset_command:
             try:
-                os_dep.command("ipset")
-            except ValueError:
-                ret = utils.run("yum install ipset -y")
+                path.find_command("ipset")
+            except path.CmdNotFoundError:
+                ret = process.run("yum install ipset -y", shell=True)
                 if ret.exit_status:
-                    raise error.TestNAError("Can't install ipset on host")
-            utils.run(ipset_command)
+                    test.cancel("Can't install ipset on host")
+            process.run(ipset_command, shell=True)
 
         # Run command
         try:
@@ -109,29 +108,30 @@ def run(test, params, env):
                 if "DEVNAME" in check_cmd:
                     check_cmd = check_cmd.replace("DEVNAME", iface_target)
                 ret = utils_misc.wait_for(lambda: not
-                                          utils.system(check_cmd,
-                                                       ignore_status=True),
+                                          process.system(check_cmd,
+                                                         ignore_status=True,
+                                                         shell=True),
                                           timeout=30)
                 if not ret:
-                    raise error.TestFail("Rum command '%s' failed" % check_cmd)
-                out = utils.system_output(check_cmd, ignore_status=False)
+                    test.fail("Rum command '%s' failed" % check_cmd)
+                out = process.system_output(check_cmd, ignore_status=False, shell=True)
                 if expect_match and not re.search(expect_match, out):
-                    raise error.TestFail("'%s' not found in output: %s"
-                                         % (expect_match, out))
+                    test.fail("'%s' not found in output: %s"
+                              % (expect_match, out))
 
-        except virt_vm.VMStartError, e:
+        except virt_vm.VMStartError as e:
             # Starting VM failed.
             if not status_error:
-                raise error.TestFail("Test failed in positive case.\n error:"
-                                     " %s\n%s" % (e, bug_url))
+                test.fail("Test failed in positive case.\n error:"
+                          " %s\n%s" % (e, bug_url))
 
         if kill_libvirtd:
             cmd = "kill -SIGTERM `pidof libvirtd`"
-            utils.run(cmd)
+            process.run(cmd, shell=True)
             ret = utils_misc.wait_for(lambda: not libvirtd.is_running(),
                                       timeout=30)
             if not ret:
-                raise error.TestFail("Failed to kill libvirtd. %s" % bug_url)
+                test.fail("Failed to kill libvirtd. %s" % bug_url)
 
     finally:
         if kill_libvirtd:
@@ -146,7 +146,7 @@ def run(test, params, env):
             virsh.nwfilter_undefine(filter_name, debug=True)
         if mount_noexec_tmp:
             if device_name:
-                utils.run("umount -l %s" % device_name, ignore_status=True)
+                process.run("umount -l %s" % device_name, ignore_status=True, shell=True)
             utlv.setup_or_cleanup_iscsi(is_setup=False)
         if ipset_command:
-            utils.run("ipset destroy blacklist")
+            process.run("ipset destroy blacklist", shell=True)

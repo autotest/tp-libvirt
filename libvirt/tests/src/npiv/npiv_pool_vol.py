@@ -146,7 +146,7 @@ def run(test, params, env):
         try:
             cmd = "parted %s mklabel msdos -s" % source_dev
             cmd_result = process.run(cmd, shell=True)
-        except Exception, e:
+        except Exception as e:
             raise exceptions.TestError("Error occurred when parted mklable")
         if define_pool_as == "yes":
             pool_extra_args = ""
@@ -178,7 +178,7 @@ def run(test, params, env):
         try:
             cmd = "parted %s mklabel msdos -s" % mpath_vol_path
             cmd_result = process.run(cmd, shell=True)
-        except Exception, e:
+        except Exception as e:
             raise exceptions.TestError("Error occurred when parted mklable")
     if pre_def_pool == "yes":
         try:
@@ -191,17 +191,14 @@ def run(test, params, env):
                     _DELAY_TIME*2)
             virsh.pool_dumpxml(pool_name, to_file=pool_xml_f)
             virsh.pool_destroy(pool_name)
-        except Exception, e:
+        except Exception as e:
             pvt.cleanup_pool(pool_name, pool_type, pool_target,
                              emulated_image, **pool_kwargs)
             raise exceptions.TestError(
                 "Error occurred when prepare pool xml:\n %s" % e)
         if os.path.exists(pool_xml_f):
-            try:
-                f = open(pool_xml_f, 'r')
+            with open(pool_xml_f, 'r') as f:
                 logging.debug("Create pool from file: %s", f.read())
-            finally:
-                f.close()
     try:
         # define/create/start the pool
         if (pre_def_pool == "yes") and (define_pool == "yes"):
@@ -272,7 +269,7 @@ def run(test, params, env):
             logging.info(
                 "Using %s to attach to a guest", test_unit)
         else:
-            test_unit = vol_list.keys()[0]
+            test_unit = list(vol_list.keys())[0]
             logging.info(
                 "Using the first volume %s to attach to a guest", test_unit)
 
@@ -318,7 +315,7 @@ def run(test, params, env):
             logging.debug(vmxml)
             try:
                 vm.start()
-            except virt_vm.VMStartError, e:
+            except virt_vm.VMStartError as e:
                 logging.debug(e)
                 if pool_type == "mpath":
                     raise exceptions.TestSkipError("'mpath' pools for backing "
