@@ -1,4 +1,4 @@
-from autotest.client.shared import error
+from avocado.core import exceptions
 
 from virttest import utils_test
 
@@ -14,7 +14,7 @@ def run(test, params, env):
     # Get VMs.
     vms = env.get_all_vms()
     if len(vms) < 2:
-        raise error.TestNAError("We need at least 2 vms for this test.")
+        test.cancel("We need at least 2 vms for this test.")
     timeout = params.get("LB_domstate_switch_loop_time", 600)
     # Divide vms into two groups.
     odd_group_vms = []
@@ -49,13 +49,13 @@ def run(test, params, env):
     err_msg = ""
     try:
         odd_bt.join(int(timeout) * 2)
-    except error.TestFail, detail:
+    except exceptions.TestFail as detail:
         err_msg += ("Group odd_group failed to run sub test.\n"
                     "Detail: %s." % detail)
     try:
         even_bt.join(int(timeout) * 2)
-    except error.TestFail, detail:
+    except exceptions.TestFail as detail:
         err_msg += ("Group even_group failed to run sub test.\n"
                     "Detail: %s." % detail)
     if err_msg:
-        raise error.TestFail(err_msg)
+        test.fail(err_msg)

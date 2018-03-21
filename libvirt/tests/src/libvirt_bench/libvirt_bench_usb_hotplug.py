@@ -2,8 +2,6 @@ import os
 import shutil
 import logging
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import data_dir
@@ -61,18 +59,18 @@ def run(test, params, env):
             return (not session_tmp.cmd_status("ps -ef|grep stress|grep -v grep"))
         if bench_type == "stress":
             if not utils_misc.wait_for(_is_stress_running, timeout=160):
-                raise error.TestNAError("Failed to run stress in guest.\n"
-                                        "Since we need to run a autotest of iozone "
-                                        "in guest, so please make sure there are "
-                                        "some necessary packages in guest,"
-                                        "such as gcc, tar, bzip2")
+                test.cancel("Failed to run stress in guest.\n"
+                            "Since we need to run a autotest of iozone "
+                            "in guest, so please make sure there are "
+                            "some necessary packages in guest,"
+                            "such as gcc, tar, bzip2")
         elif bench_type == "iozone":
             if not utils_misc.wait_for(_is_iozone_running, timeout=160):
-                raise error.TestNAError("Failed to run iozone in guest.\n"
-                                        "Since we need to run a autotest of iozone "
-                                        "in guest, so please make sure there are "
-                                        "some necessary packages in guest,"
-                                        "such as gcc, tar, bzip2")
+                test.cancel("Failed to run iozone in guest.\n"
+                            "Since we need to run a autotest of iozone "
+                            "in guest, so please make sure there are "
+                            "some necessary packages in guest,"
+                            "such as gcc, tar, bzip2")
         logging.debug("bench is already running in guest.")
     try:
         try:
@@ -118,7 +116,7 @@ def run(test, params, env):
                 else:
                     if disk:
                         utils_test.libvirt.create_local_disk("file", path, size="1M")
-                        os.chmod(path, 0666)
+                        os.chmod(path, 0o666)
                         disk_xml = Disk(type_name="file")
                         disk_xml.device = "disk"
                         disk_xml.source = disk_xml.new_disk_source(**{"attrs": {'file': path}})
@@ -206,10 +204,10 @@ def run(test, params, env):
                         result = virsh.detach_device(vm_name, tablet_xml.xml)
                         if result.exit_status:
                             raise process.CmdError(result.command, result)
-        except process.CmdError, e:
+        except process.CmdError as e:
             if not status_error:
-                raise error.TestFail("failed to attach device.\n"
-                                     "Detail: %s." % result)
+                test.fail("failed to attach device.\n"
+                          "Detail: %s." % result)
     finally:
         if os.path.isdir(tmp_dir):
             shutil.rmtree(tmp_dir)

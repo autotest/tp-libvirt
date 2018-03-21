@@ -8,8 +8,8 @@ import socket
 import shutil
 import logging
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
+from avocado.core import exceptions
+from avocado.utils import process
 
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest import virt_vm
@@ -206,7 +206,7 @@ class EnvState(object):
         self.libvirtd.restart()
 
 
-def check_addr_port(all_ips, expected_ips, ports):
+def check_addr_port(all_ips, expected_ips, ports, test):
     """
     Check whether current listening IPs and ports consists with prediction.
     """
@@ -217,10 +217,10 @@ def check_addr_port(all_ips, expected_ips, ports):
                 continue
             logging.debug("Checking %s %s:%s", ip.iface, ip, port)
             if not ip.listening_on(port) and ip in expected_ips:
-                raise error.TestFail(
+                test.fail(
                     'Expect listening on %s:%s but not.' % (ip, port))
             if ip.listening_on(port) and ip not in expected_ips:
-                raise error.TestFail(
+                test.fail(
                     'Expect not listening on %s:%s but true.' % (ip, port))
 
 
@@ -229,7 +229,7 @@ def qemu_spice_options(libvirt_vm):
     Get spice options from VM's qemu command line as dicts.
     """
     pid = libvirt_vm.get_pid()
-    res = utils.run("ps -p %s -o cmd h" % pid)
+    res = process.run("ps -p %s -o cmd h" % pid, shell=True)
     match = re.search(r'-spice\s*(\S*)', res.stdout)
     if match:
         spice_opt = match.groups()[0]
@@ -259,7 +259,7 @@ def qemu_vnc_options(libvirt_vm):
     Get VNC options from VM's qemu command line as dicts.
     """
     pid = libvirt_vm.get_pid()
-    res = utils.run("ps -p %s -o cmd h" % pid)
+    res = process.run("ps -p %s -o cmd h" % pid, shell=True)
     match = re.search(r'-vnc\s*(\S*)', res.stdout)
     if match:
         vnc_opt = match.groups()[0]
@@ -754,7 +754,7 @@ def get_expected_results(params, networks):
     return expected_result
 
 
-def compare_opts(opts, exp_opts):
+def compare_opts(opts, exp_opts, test):
     """
     Compare two containers.
     """
@@ -772,8 +772,8 @@ def compare_opts(opts, exp_opts):
     if len(created) or len(deleted):
         logging.debug("Created: %s", created)
         logging.debug("Deleted: %s", deleted)
-        raise error.TestFail("Expect qemu spice options is %s, but get %s"
-                             % (exp_opts, opts))
+        test.fail("Expect qemu spice options is %s, but get %s"
+                  % (exp_opts, opts))
     else:
         if type(opts) == dict:
             for key in opts:
@@ -782,30 +782,30 @@ def compare_opts(opts, exp_opts):
                                for opt in exp_opts[key] if opt is not None):
                         logging.debug("Key %s expected one in %s, but got %s",
                                       key, exp_opts[key], opts[key])
-                        raise error.TestFail(
+                        test.fail(
                             "Expect qemu options is %s, but get %s"
                             % (exp_opts, opts))
                 else:
                     if not re.match(exp_opts[key], opts[key]):
                         logging.debug("Key %s expected %s, but got %s",
                                       key, exp_opts[key], opts[key])
-                        raise error.TestFail(
+                        test.fail(
                             "Expect qemu options is %s, but get %s"
                             % (exp_opts, opts))
 
 
 def check_spice_result(spice_opts,
                        opt_plaintext_channels, opt_tls_channels,
-                       expected_result, all_ips):
+                       expected_result, all_ips, test):
     """
     Check test results by comparison with expected results.
     """
 
     expected_spice_ips = expected_result['spice_ips']
 
-    compare_opts(spice_opts, expected_result['spice_options'])
-    compare_opts(opt_plaintext_channels, expected_result['plaintext_channels'])
-    compare_opts(opt_tls_channels, expected_result['tls_channels'])
+    compare_opts(spice_opts, expected_result['spice_options'], test)
+    compare_opts(opt_plaintext_channels, expected_result['plaintext_channels'], test)
+    compare_opts(opt_tls_channels, expected_result['tls_channels'], test)
 
     expected_spice_ports = [
         expected_result['spice_port'],
@@ -813,21 +813,21 @@ def check_spice_result(spice_opts,
     ]
     expected_spice_ports = [p for p in expected_spice_ports if p != 'not_set']
     logging.info('==\n%s', expected_spice_ports)
-    check_addr_port(all_ips, expected_spice_ips, expected_spice_ports)
+    check_addr_port(all_ips, expected_spice_ips, expected_spice_ports, test)
 
 
-def check_vnc_result(vnc_opts, expected_result, all_ips):
+def check_vnc_result(vnc_opts, expected_result, all_ips, test):
     """
     Check test results by comparison with expected results.
     """
 
     expected_vnc_ips = expected_result['vnc_ips']
 
-    compare_opts(vnc_opts, expected_result['vnc_options'])
+    compare_opts(vnc_opts, expected_result['vnc_options'], test)
 
     expected_vnc_ports = [expected_result['vnc_port']]
     expected_vnc_ports = [p for p in expected_vnc_ports if p != 'not_set']
-    check_addr_port(all_ips, expected_vnc_ips, expected_vnc_ports)
+    check_addr_port(all_ips, expected_vnc_ips, expected_vnc_ports, test)
 
 
 def generate_spice_graphic_xml(params, expected_result):
@@ -921,7 +921,7 @@ def generate_vnc_graphic_xml(params, expected_result):
     return graphic
 
 
-def setup_networks(params):
+def setup_networks(params, test):
     """
     Create network according to parameters. return Network instance if
     succeeded or None if no network need to be created.
@@ -950,13 +950,13 @@ def setup_networks(params):
         elif net_type == 'macvtap':
             iface = params.get('macvtap_device', 'EXAMPLE.MACVTAP.DEVICE')
             if 'EXAMPLE' in iface:
-                raise error.TestNAError('Need to setup macvtap_device first.')
+                test.cancel('Need to setup macvtap_device first.')
             networks[net_type] = LibvirtNetwork(
                 net_type, iface=iface, persistent=True)
         elif net_type == 'bridge':
             iface = params.get('bridge_device', 'EXAMPLE.BRIDGE.DEVICE')
             if 'EXAMPLE' in iface:
-                raise error.TestNAError('Need to setup bridge_device first.')
+                test.cancel('Need to setup bridge_device first.')
             networks[net_type] = LibvirtNetwork(
                 net_type, iface=iface, persistent=True)
 
@@ -1029,7 +1029,7 @@ def run(test, params, env):
     is_negative = params.get("negative_test", "no") == 'yes'
 
     sockets = block_ports(params)
-    networks = setup_networks(params)
+    networks = setup_networks(params, test)
 
     expected_result = get_expected_results(params, networks)
     env_state = EnvState(params, expected_result)
@@ -1053,33 +1053,33 @@ def run(test, params, env):
         fail_patts = expected_result['fail_patts']
         try:
             vm.start()
-        except virt_vm.VMStartError, detail:
+        except virt_vm.VMStartError as detail:
             if not fail_patts:
-                raise error.TestFail(
+                test.fail(
                     "Expect VM can be started, but failed with: %s" % detail)
             for patt in fail_patts:
                 if re.search(patt, str(detail)):
                     return
-            raise error.TestFail(
+            test.fail(
                 "Expect fail with error in %s, but failed with: %s"
                 % (fail_patts, detail))
         else:
             if fail_patts:
-                raise error.TestFail(
+                test.fail(
                     "Expect VM can't be started with %s, but started."
                     % fail_patts)
 
         if spice_xml:
             spice_opts, plaintext_channels, tls_channels = qemu_spice_options(vm)
             check_spice_result(spice_opts, plaintext_channels, tls_channels,
-                               expected_result, all_ips)
+                               expected_result, all_ips, test)
         if vnc_xml:
             vnc_opts = qemu_vnc_options(vm)
-            check_vnc_result(vnc_opts, expected_result, all_ips)
+            check_vnc_result(vnc_opts, expected_result, all_ips, test)
 
         if is_negative:
-            raise error.TestFail("Expect negative result. But start succeed!")
-    except error.TestFail, detail:
+            test.fail("Expect negative result. But start succeed!")
+    except exceptions.TestFail as detail:
         bug_url = params.get('bug_url', None)
         if bug_url:
             logging.error("You probably encountered a known bug. "
@@ -1089,7 +1089,7 @@ def run(test, params, env):
         for sock in sockets:
             sock.close()
         if networks:
-            for network in networks.values():
+            for network in list(networks.values()):
                 network.cleanup()
         vm_xml_backup.sync()
         os.system('rm -f /dev/shm/spice*')

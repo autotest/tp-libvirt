@@ -3,8 +3,6 @@ import time
 import signal
 import logging
 
-from autotest.client.shared import error
-
 from virttest.utils_libvirtd import Libvirtd
 
 
@@ -48,18 +46,18 @@ def run(test, params, env):
 
         if libvirtd.is_running():
             if not should_restart:
-                raise error.TestFail(
+                test.fail(
                     "libvirtd should stop running after signal %s"
                     % signal_name)
             new_pid = get_pid(libvirtd)
             logging.debug("New pid of libvirtd is %d" % new_pid)
             if pid == new_pid and pid_should_change:
-                raise error.TestFail("Pid should have been changed.")
+                test.fail("Pid should have been changed.")
             if pid != new_pid and not pid_should_change:
-                raise error.TestFail("Pid should not have been changed.")
+                test.fail("Pid should not have been changed.")
         else:
             if should_restart:
-                raise error.TestFail(
+                test.fail(
                     "libvirtd should still running after signal %s"
                     % signal_name)
 
@@ -68,5 +66,5 @@ def run(test, params, env):
             if os.path.exists(pid_file):
                 os.remove(pid_file)
                 libvirtd.start()
-                raise error.TestFail("Pid file should not reside")
+                test.fail("Pid file should not reside")
             libvirtd.start()
