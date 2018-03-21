@@ -2,7 +2,6 @@ import os
 import logging
 import aexpect
 
-from autotest.client.shared import error
 from virttest import virsh
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
@@ -90,7 +89,7 @@ def run(test, params, env):
         else:
             return base_path + '(null)'
 
-    def _check_xml():
+    def _check_xml(test):
         """
         Check defined XML against expectation
         """
@@ -143,8 +142,8 @@ def run(test, params, env):
         channel_elem = current_xml.xmltreefile.find('devices/channel')
         cur_channel = Channel.new_from_element(channel_elem)
         if not (expected_channel == cur_channel):
-            raise error.TestFail("Expect generate channel:\n%s\nBut got:\n%s" %
-                                 (expected_channel, cur_channel))
+            test.fail("Expect generate channel:\n%s\nBut got:\n%s" %
+                      (expected_channel, cur_channel))
 
     def _start_and_check():
         """
@@ -159,7 +158,7 @@ def run(test, params, env):
         libvirt.check_result(res, expected_fails=fail_patts)
         return not res.exit_status
 
-    def _check_virtio_guest_channel():
+    def _check_virtio_guest_channel(test):
         """
         Check virtio guest channel state against expectation.
         """
@@ -182,8 +181,8 @@ def run(test, params, env):
                     name_port_map[name] = vport
 
                 if expect_name not in name_port_map:
-                    raise error.TestFail("Expect get vport name %s, got %s" %
-                                         (expect_name, name_port_map))
+                    test.fail("Expect get vport name %s, got %s" %
+                              (expect_name, name_port_map))
                 vport = name_port_map[expect_name]
             else:
                 active_xml = VMXML.new_from_dumpxml(vm_name)
@@ -193,7 +192,7 @@ def run(test, params, env):
             guest_path = '/dev/%s' % vport
             return guest_path, host_path
 
-        def _test_unix_communication(session, guest_path, host_path):
+        def _test_unix_communication(session, guest_path, host_path, test):
             """
             Test unix socket communication between host and guest through
             channel
@@ -205,7 +204,7 @@ def run(test, params, env):
                 try:
                     session.cmd_status('echo "%s" > %s' % (msg, guest_path),
                                        timeout=1)
-                except aexpect.ShellTimeoutError, detail:
+                except aexpect.ShellTimeoutError as detail:
                     pass
                 nc_session.read_until_last_line_matches(msg, timeout=1)
 
@@ -213,11 +212,11 @@ def run(test, params, env):
                 nc_session.sendline(msg)
                 try:
                     session.cmd_output('cat %s' % guest_path, timeout=1)
-                except aexpect.ShellTimeoutError, detail:
+                except aexpect.ShellTimeoutError as detail:
                     if detail.output.strip() != msg:
-                        raise error.TestFail("Expect receive '%s' in guest, "
-                                             "But got %s" %
-                                             (msg, detail.output))
+                        test.fail("Expect receive '%s' in guest, "
+                                  "But got %s" %
+                                  (msg, detail.output))
             finally:
                 nc_session.close()
 
@@ -230,7 +229,7 @@ def run(test, params, env):
             session = vm.wait_for_login()
             try:
                 guest_path, host_path = _find_comm_paths(session)
-                _test_unix_communication(session, guest_path, host_path)
+                _test_unix_communication(session, guest_path, host_path, test)
             finally:
                 session.close()
 
@@ -260,13 +259,13 @@ def run(test, params, env):
             logging.debug("Can't define the VM, exiting.")
             return
 
-        _check_xml()
+        _check_xml(test)
 
         if not _start_and_check():
             logging.debug("Can't start the VM, exiting.")
             return
 
         if target_type == 'virtio':
-            _check_virtio_guest_channel()
+            _check_virtio_guest_channel(test)
     finally:
         vm_xml_backup.sync()

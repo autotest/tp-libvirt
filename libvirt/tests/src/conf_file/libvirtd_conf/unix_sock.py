@@ -82,11 +82,8 @@ def run(test, params, env):
         net_name = "unix_sock_test"
         xml_cont = "<network><name>%s</name></network>" % net_name
         xml_path = os.path.join(data_dir.get_tmp_dir(), net_name + '.xml')
-        xml_file = open(xml_path, 'w')
-        try:
+        with open(xml_path, 'w') as xml_file:
             xml_file.write(xml_cont)
-        finally:
-            xml_file.close()
 
         result = virsh.net_define(xml_path, uri=uri, ignore_status=True)
         logging.debug('Result of virsh test run is:\n %s' % result)

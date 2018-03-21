@@ -37,15 +37,12 @@ def run(test, params, env):
             vm.start()
 
         pid = vm.get_pid()
-        proc_stat_fp = open('/proc/%s/status' % pid)
-        caps = {}
-        try:
+        with open('/proc/%s/status' % pid) as proc_stat_fp:
+            caps = {}
             for line in proc_stat_fp:
                 if line.startswith('Cap'):
                     set_name, cap_str = line.split(':\t')
                     caps[set_name] = int(cap_str, 16)
-        finally:
-            proc_stat_fp.close()
 
         if len(caps) == 5:
             return caps

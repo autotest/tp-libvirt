@@ -2,8 +2,6 @@ import logging
 import uuid
 import os
 
-from autotest.client.shared import error
-
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import capability_xml
@@ -31,12 +29,9 @@ def run(test, params, env):
         ]
         for path in uuid_paths:
             if os.path.isfile(path):
-                dmi_fp = open(path)
-                try:
+                with open(path) as dmi_fp:
                     uuid = dmi_fp.readline().strip().lower()
                     return uuid
-                finally:
-                    dmi_fp.close()
 
     uuid_type = params.get("uuid_type", "lowercase")
     expected_result = params.get("expected_result", "success")
@@ -69,20 +64,20 @@ def run(test, params, env):
         # if not succeed.
         if not libvirtd.restart():
             if expected_result != 'unbootable':
-                raise error.TestFail('Libvirtd is expected to be started '
-                                     'with host_uuid = %s' % config['host_uuid'])
+                test.fail('Libvirtd is expected to be started '
+                          'with host_uuid = %s' % config['host_uuid'])
             return
 
         if expected_result == 'unbootable':
-            raise error.TestFail('Libvirtd is not expected to be started '
-                                 'with host_uuid = %s' % config['host_uuid'])
+            test.fail('Libvirtd is not expected to be started '
+                      'with host_uuid = %s' % config['host_uuid'])
 
         cur_uuid = capability_xml.CapabilityXML()['uuid']
         logging.debug('Current host UUID is %s' % cur_uuid)
 
         if expected_result == 'success':
             if cur_uuid != expected_uuid:
-                raise error.TestFail(
+                test.fail(
                     "Host UUID doesn't changed as expected"
                     " from %s to %s, but %s" % (orig_uuid, expected_uuid,
                                                 cur_uuid))
@@ -93,7 +88,7 @@ def run(test, params, env):
             logging.debug("DMI UUID is %s." % dmi_uuid)
 
             if dmi_uuid is not None and cur_uuid != dmi_uuid:
-                raise error.TestFail(
+                test.fail(
                     "Host UUID doesn't changed from "
                     "%s to DMI UUID %s as expected, but %s" % (
                         orig_uuid, dmi_uuid, cur_uuid))
