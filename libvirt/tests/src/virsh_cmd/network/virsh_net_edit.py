@@ -32,7 +32,7 @@ def run(test, params, env):
             session.send('ZZ')
             remote.handle_prompts(session, None, None, r"[\#\$]\s*$")
             session.close()
-        except (aexpect.ShellError, aexpect.ExpectError), details:
+        except (aexpect.ShellError, aexpect.ExpectError) as details:
             log = session.get_output()
             session.close()
             test.fail("Failed to do net-edit: %s\n%s"
@@ -80,7 +80,7 @@ def run(test, params, env):
             test_xml.create()
         else:
             test_xml.define()
-    except xcepts.LibvirtXMLError, detail:
+    except xcepts.LibvirtXMLError as detail:
         test.cancel("Failed to define a test network.\n"
                     "Detail: %s." % detail)
 

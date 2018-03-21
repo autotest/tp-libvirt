@@ -92,9 +92,8 @@ def run(test, params, env):
         xmlfile = tmp_file.name
         tmp_file.close()
 
-        fd = open(xmlfile, 'w')
-        fd.write(newxml)
-        fd.close()
+        with open(xmlfile, 'w') as fd:
+            fd.write(newxml)
 
         # Redefine new xml for domain's saved state file
         redefine_new_xml()

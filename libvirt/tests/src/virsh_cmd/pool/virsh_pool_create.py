@@ -88,7 +88,7 @@ def run(test, params, env):
             # Remove uuid
             cmd = "sed -i '/<uuid>/d' %s" % pool_xml_f
             process.run(cmd, shell=True)
-        except Exception, details:
+        except Exception as details:
             pvt.cleanup_pool(pool_name, pool_type, pool_target,
                              emulated_image, **kwargs)
             if new_device_name:
@@ -109,11 +109,8 @@ def run(test, params, env):
         ro_flag = True
     # Run virsh test
     if os.path.exists(pool_xml_f):
-        f = open(pool_xml_f, 'r')
-        try:
+        with open(pool_xml_f, 'r') as f:
             logging.debug("Create pool from file:\n %s", f.read())
-        finally:
-            f.close()
     try:
         cmd_result = virsh.pool_create(pool_xml_f, option, ignore_status=True,
                                        debug=True, readonly=ro_flag)

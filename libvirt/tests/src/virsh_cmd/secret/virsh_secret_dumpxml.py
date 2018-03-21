@@ -64,9 +64,8 @@ def run(test, params, env):
     xmlfile = tmp_file.name
     tmp_file.close()
 
-    fd = open(xmlfile, 'w')
-    fd.write(secret_xml)
-    fd.close()
+    with open(xmlfile, 'w') as fd:
+        fd.write(secret_xml)
 
     try:
         virsh.secret_define(xmlfile, debug=True)

@@ -30,11 +30,10 @@ def run(test, params, env):
         """
         stats = {}
         cpu_stat = []
-        fl = open("/proc/stat", "r")
-        for line in fl.readlines():
-            if line.startswith("cpu"):
-                cpu_stat.append(line.strip().split(" ")[1:])
-        fl.close()
+        with open("/proc/stat", "r") as fl:
+            for line in fl.readlines():
+                if line.startswith("cpu"):
+                    cpu_stat.append(line.strip().split(" ")[1:])
         # Delete additional space in the total cpu stats line
         del cpu_stat[0][0]
         if cpu is None:

@@ -42,7 +42,7 @@ def run(test, params, env):
         cmd = "virsh uri %s" % option
 
     # Prepare libvirtd service
-    check_libvirtd = "libvirtd" in params.keys()
+    check_libvirtd = "libvirtd" in list(params.keys())
     if check_libvirtd:
         libvirtd = params.get("libvirtd")
         if libvirtd == "off":

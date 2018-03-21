@@ -49,7 +49,7 @@ def run(test, params, env):
         return delta_stats
 
     # Prepare libvirtd service
-    check_libvirtd = params.has_key("libvirtd")
+    check_libvirtd = "libvirtd" in params
     if check_libvirtd:
         libvirtd = params.get("libvirtd")
         if libvirtd == "off":
@@ -59,7 +59,7 @@ def run(test, params, env):
     option = params.get("virsh_nodememstats_options")
     if option == "max":
         cell_dict = utils_test.libvirt.get_all_cells()
-        option = len(cell_dict.keys())
+        option = len(list(cell_dict.keys()))
 
     # Run test case for 10 iterations
     # (default can be changed in subtests.cfg file)
@@ -107,15 +107,15 @@ def run(test, params, env):
                     if match_obj is not None:
                         name = match_obj.group(1)
                         value = match_obj.group(2)
-                        expected[name] = int(value) / 1024
+                        expected[name] = int(value) // 1024
 
                 # Get the actual value from /proc/meminfo and normalise to MBs
-                actual['total'] = int(utils_memory.memtotal()) / 1024
-                actual['free'] = int(utils_memory.freememtotal()) / 1024
+                actual['total'] = int(utils_memory.memtotal()) // 1024
+                actual['free'] = int(utils_memory.freememtotal()) // 1024
                 actual['buffers'] = int(
-                    utils_memory.read_from_meminfo('Buffers')) / 1024
+                    utils_memory.read_from_meminfo('Buffers')) // 1024
                 actual['cached'] = int(
-                    utils_memory.read_from_meminfo('Cached')) / 1024
+                    utils_memory.read_from_meminfo('Cached')) // 1024
 
                 # Currently the delta value is kept at 200 MB this can be
                 # tuned based on the accuracy

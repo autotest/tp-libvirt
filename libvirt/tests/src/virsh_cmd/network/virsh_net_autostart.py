@@ -50,7 +50,7 @@ def run(test, params, env):
         test_xml = network_xml.NetworkXML(network_name=net_name)
         test_xml.xml = temp_bridge
         test_xml.define()
-    except xcepts.LibvirtXMLError, detail:
+    except xcepts.LibvirtXMLError as detail:
         test.error("Failed to define a test network.\n"
                    "Detail: %s." % detail)
 

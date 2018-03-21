@@ -38,10 +38,11 @@ def get_ksm_values_and_change_list():
                  'shm_full_scans': 'full_scans',
                  'shm_merge_across_nodes': 'merge_across_nodes'}
 
-    for k, v in ksm_files.items():
+    for k, v in list(ksm_files.items()):
         sharing_file = os.path.join(_SYSFS_MEMORY_KSM_PATH, v)
         if os.access(sharing_file, os.R_OK):
-            ksm_params[k] = open(sharing_file, 'r').read().strip()
+            with open(sharing_file, 'r') as ksm_file:
+                ksm_params[k] = ksm_file.read().strip()
         else:
             # The 'merge_across_nodes' is supported by specific kernel
             if v in change_list:
@@ -59,7 +60,7 @@ def check_node_memtune(params, ksm_dicts):
     change_list = ksm_dicts.get('change_list')
 
     if change_parameters == "no":
-        for k in params.keys():
+        for k in list(params.keys()):
             if params[k] != ksm_dicts[k]:
                 logging.error("To expect %s value is %s", k, ksm_dicts[k])
                 return False

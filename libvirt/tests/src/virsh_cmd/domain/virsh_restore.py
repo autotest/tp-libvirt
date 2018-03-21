@@ -61,7 +61,8 @@ def run(test, params, env):
             vm_ref = tmp_file
         elif vm_ref == "empty_new_file":
             tmp_file = os.path.join(test.tmpdir, "new.file")
-            open(tmp_file, 'w').close()
+            with open(tmp_file, 'w') as tmp:
+                pass
             vm_ref = tmp_file
         if vm.is_alive():
             vm.destroy()

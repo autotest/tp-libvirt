@@ -3,6 +3,8 @@ import os
 import logging
 import time
 
+from functools import reduce
+
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import data_dir
@@ -131,7 +133,7 @@ def run(test, params, env):
             size_darg_key = "size"
 
         if mem_ref == "halfless":
-            size_darg_value = "%d" % (original_mem / 2)
+            size_darg_value = "%d" % (original_mem // 2)
         elif mem_ref == "halfmore":
             size_darg_value = "%d" % int(original_mem * 1.5)  # no fraction
         elif mem_ref == "same":

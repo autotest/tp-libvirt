@@ -48,7 +48,7 @@ def run(test, params, env):
         # Get the values contained in files.
         # nodedev_dict_sys contain the all keys and values in sysfs.
         nodedev_dict_sys = {}
-        for key, filepath in nodedev_syspath_dict.items():
+        for key, filepath in list(nodedev_syspath_dict.items()):
             with open(filepath, 'r') as f:
                 value = f.readline().rstrip('\n')
             nodedev_dict_sys[key] = value
@@ -121,7 +121,7 @@ def run(test, params, env):
                          **virsh_dargs)
         if status_error:
             test.fail('Nodedev dumpxml successed in negative test.')
-    except Exception, e:
+    except Exception as e:
         if not status_error:
             test.fail('Nodedev dumpxml failed in positive test.'
                       'Error: %s' % e)

@@ -15,7 +15,7 @@ def run(test, params, env):
     '''
 
     # Run test case
-    if not params.has_key('pool_name') or not params.has_key('pool_target'):
+    if 'pool_name' not in params or 'pool_target' not in params:
         logging.error("Please give a 'name' and 'target'")
 
     pool_options = params.get('pool_options', '')

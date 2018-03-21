@@ -181,7 +181,7 @@ def run(test, params, env):
                 cmd_undefine = "virsh -c %s undefine %s" % (uri, vm_name)
                 status, output = session.cmd_status_output(cmd_undefine)
                 logging.info("Undefine output: %s", output)
-            except (process.CmdError, remote.LoginError, aexpect.ShellError), de:
+            except (process.CmdError, remote.LoginError, aexpect.ShellError) as de:
                 logging.error("Detail: %s", de)
                 status = 1
 
@@ -194,7 +194,7 @@ def run(test, params, env):
             try:
                 if vm.is_alive():
                     vm.destroy(gracefully=False)
-            except process.CmdError, detail:
+            except process.CmdError as detail:
                 logging.error("Detail: %s", detail)
 
         # After vm.destroy, virsh.domain_exists returns True due to

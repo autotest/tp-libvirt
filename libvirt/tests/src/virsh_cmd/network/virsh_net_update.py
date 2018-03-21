@@ -61,7 +61,7 @@ def run(test, params, env):
             test_xml.start()
         test_xml.debug_xml()
         virsh.net_dumpxml(net_name)
-    except xcepts.LibvirtXMLError, detail:
+    except xcepts.LibvirtXMLError as detail:
         test.error("Failed to define a test network.\n"
                    "Detail: %s." % detail)
 

@@ -144,7 +144,7 @@ def run(test, params, env):
                 if status_error == "no" and not vm.is_alive():
                     test.fail("VM was started but it is not alive.")
 
-        except remote.LoginError, detail:
+        except remote.LoginError as detail:
             test.fail("Failed to login guest.")
     finally:
         # clean up
