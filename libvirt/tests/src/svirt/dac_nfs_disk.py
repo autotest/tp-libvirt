@@ -23,8 +23,7 @@ def check_ownership(file_path):
     :return: ownership string user:group or false when file not exist
     """
     try:
-        with open(file_path, 'r') as f:
-            pass
+        f = os.open(file_path, os.O_RDONLY)
     except OSError:
         return False
     stat_re = os.fstat(f)
