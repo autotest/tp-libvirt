@@ -8,6 +8,7 @@ from avocado.core import exceptions
 
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import utils_package
 
 
 def netcf_trans_control(test, command="status"):
@@ -190,11 +191,13 @@ def run(test, params, env):
            2.3.2 begin and rollback testing with libvirtd restart
     """
 
-    try:
-        utils_path.find_command("locate")
-    except utils_path.CmdNotFoundError:
-        test.cancel("Command 'locate' is missing. You must "
-                    "install it.")
+    if not utils_package.package_install(["mlocate"]):
+        test.cancel("Failed to install dependency package mlocate"
+                    " on host")
+
+    if process.system("updatedb", shell=True):
+        test.cancel("update a database for mlocate failed")
+
     # Run test case
     status_error = params.get("status_error", "no")
     libvirtd = params.get("libvirtd", "on")
