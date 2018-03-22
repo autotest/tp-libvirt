@@ -149,8 +149,8 @@ def run(test, params, env):
         logging.debug("VM XML: \n%s", vmxml)
         try:
             vm.start()
-        except virt_vm.VMStartError, detail:
-            for msg in failures.items():
+        except virt_vm.VMStartError as detail:
+            for msg in list(failures.items()):
                 if msg[0] in detail:
                     test.cancel("%s", msg[1])
             test.fail("%s" % detail)

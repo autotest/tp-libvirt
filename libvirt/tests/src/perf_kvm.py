@@ -4,12 +4,11 @@ import shutil
 
 import aexpect
 
-from autotest.client import os_dep
-from autotest.client import utils
-from autotest.client.shared import error
-from autotest.client.shared import ssh_key
+from avocado.utils import process
+from avocado.utils import path
 
 from virttest import data_dir
+from virttest import ssh_key
 
 
 def _perf_kvm_help():
@@ -17,7 +16,7 @@ def _perf_kvm_help():
     Execute the perf kvm --help to verify perf kvm is available
     on this host.
     """
-    result = utils.run("perf kvm --help", ignore_status=True)
+    result = process.run("perf kvm --help", ignore_status=True, shell=True)
     if result.exit_status:
         return None
     return "perf kvm"
@@ -31,8 +30,8 @@ def find_first_kernel_symbol(filename, symbol_type):
     of "^[[H^[[2J" to clean screen in the file, then we have to
     truncate the file for the last content of perf top.
     """
-    result_file = open(filename)
-    lines = result_file.readlines()
+    with open(filename) as result_file:
+        lines = result_file.readlines()
     trunc_start = 0
     trunc_end = 0
     for index in range(len(lines)):
@@ -47,7 +46,7 @@ def find_first_kernel_symbol(filename, symbol_type):
         if not sub_lines:
             continue
         if re.match(r"[\d|\.]*%", sub_lines[0]):
-            print line
+            print(line)
             if not (sub_lines[-2] == ("[%s]" % symbol_type)):
                 continue
             else:
@@ -58,8 +57,8 @@ def find_symbol_in_result(filename, symbol_name):
     """
     Find symbol in file, return the index of symbol.
     """
-    result_file = open(filename)
-    lines = result_file.readlines()
+    with open(filename) as result_file:
+        lines = result_file.readlines()
     trunc_start = 0
     trunc_end = 0
     for index in range(len(lines)):
@@ -77,7 +76,7 @@ def find_symbol_in_result(filename, symbol_name):
             continue
         if re.match(r"[\d|\.]*%", sub_lines[0]):
             if not (sub_lines[-1] == (symbol_name)):
-                print line
+                print(line)
                 result = result + 1
                 continue
             else:
@@ -85,7 +84,7 @@ def find_symbol_in_result(filename, symbol_name):
     return -1
 
 
-def mount_guestfs_with_sshfs(vms):
+def mount_guestfs_with_sshfs(test, vms):
     """
     Mount the guest filesystem with sshfs.
     """
@@ -102,10 +101,10 @@ def mount_guestfs_with_sshfs(vms):
                               password=vm.params.get("password", ""),
                               port=22)
         cmd = "%s %s:/ %s" % (sshfs_cmd, vm.get_address(), specific_path)
-        result = utils.run(cmd, ignore_status=True)
+        result = process.run(cmd, ignore_status=True, shell=True)
         if result.exit_status:
-            raise error.TestFail("Failed to use sshfs for guestmount.\n"
-                                 "Detail:%s." % result)
+            test.fail("Failed to use sshfs for guestmount.\n"
+                      "Detail:%s." % result)
     return guestmount_path
 
 
@@ -118,7 +117,7 @@ def umount_guestfs_with_sshfs(vms):
         specific_path = os.path.join(guestmount_path, str(vm.get_pid()))
         if (os.path.isdir(specific_path)):
             cmd = "umount %s" % specific_path
-            utils.run(cmd, ignore_status=True)
+            process.run(cmd, ignore_status=True, shell=True)
             shutil.rmtree(specific_path)
 
 
@@ -153,7 +152,7 @@ def run(test, params, env):
     """
     perf_kvm_exec = _perf_kvm_help()
     if not perf_kvm_exec:
-        raise error.TestNAError("No perf-kvm found in your host.")
+        test.cancel("No perf-kvm found in your host.")
     vm = env.get_vm(params.get("main_vm", "avocado-vt-vm1"))
     vms = env.get_all_vms()
     guestmount = ("yes" == params.get("perf_kvm_guestmount", "no"))
@@ -192,15 +191,15 @@ def run(test, params, env):
 
         if guestmount:
             try:
-                os_dep.command("sshfs")
-            except ValueError:
-                raise error.TestNAError("Please install fuse-sshfs for perf kvm "
-                                        "with --guestmount.")
+                path.find_command("sshfs")
+            except path.CmdNotFoundError:
+                test.cancel("Please install fuse-sshfs for perf kvm "
+                            "with --guestmount.")
             if multi_guest:
                 if len(vms) < 2:
-                    raise error.TestNAError("Only one vm here, skipping "
-                                            "this case for multi-guest.")
-            guestmount_path = mount_guestfs_with_sshfs(vms)
+                    test.cancel("Only one vm here, skipping "
+                                "this case for multi-guest.")
+            guestmount_path = mount_guestfs_with_sshfs(test, vms)
             command = "%s --guestmount %s" % (command, guestmount_path)
         else:
             guestkallsyms_path, guestmodules_path = get_kernel_file(vm)
@@ -227,23 +226,23 @@ def run(test, params, env):
                 host_first = find_first_kernel_symbol(host_result_file, "g")
                 index_in_guest = find_symbol_in_result(guest_result_file, host_first)
                 if index_in_guest < 0:
-                    raise error.TestFail("Not find symbol %s in guest result." % host_first)
+                    test.fail("Not find symbol %s in guest result." % host_first)
                 if index_in_guest > 5:
-                    raise error.TestFail("Perf information for guest is not correct."
-                                         "The first symbol in host_result is %s, "
-                                         "but this symbol is in %s index in result "
-                                         "from guest.\n" % (host_first, index_in_guest))
+                    test.fail("Perf information for guest is not correct."
+                              "The first symbol in host_result is %s, "
+                              "but this symbol is in %s index in result "
+                              "from guest.\n" % (host_first, index_in_guest))
         if record:
             session = vm.wait_for_login()
             host_command = "%s record -a sleep 10 " % (command)
             guest_command = "perf record -a sleep 10 &"
             status, output = session.cmd_status_output(guest_command)
             if status:
-                raise error.TestNAError("Please make sure there is perf command "
-                                        "on guest.\n Detail: %s." % output)
-            result = utils.run(host_command, ignore_status=True)
+                test.cancel("Please make sure there is perf command "
+                            "on guest.\n Detail: %s." % output)
+            result = process.run(host_command, ignore_status=True, shell=True)
             if result.exit_status:
-                raise error.TestFail(result)
+                test.fail(result)
 
         if report:
             session = vm.wait_for_login()
@@ -251,44 +250,44 @@ def run(test, params, env):
             guest_command = "perf report 1>%s" % (result_on_guest)
             status, output = session.cmd_status_output(guest_command)
             if status:
-                raise error.TestNAError("Please make sure there is perf command "
-                                        "on guest.\n Detail: %s." % output)
-            result = utils.run(host_command, ignore_status=True)
+                test.cancel("Please make sure there is perf command "
+                            "on guest.\n Detail: %s." % output)
+            result = process.run(host_command, ignore_status=True, shell=True)
             if result.exit_status:
-                raise error.TestFail(result)
+                test.fail(result)
 
             if (host and guest):
                 vm.copy_files_from(result_on_guest, guest_result_file)
                 host_first = find_first_kernel_symbol(host_result_file, "g")
                 index_in_guest = find_symbol_in_result(guest_result_file, host_first)
                 if index_in_guest < 0:
-                    raise error.TestFail("Not find symbol %s in guest result." % host_first)
+                    test.fail("Not find symbol %s in guest result." % host_first)
                 if index_in_guest > 5:
-                    raise error.TestFail("Perf information for guest is not correct."
-                                         "The first symbol in host_result is %s, "
-                                         "but this symbol is in %s index in result "
-                                         "from guest.\n" % (host_first, index_in_guest))
+                    test.fail("Perf information for guest is not correct."
+                              "The first symbol in host_result is %s, "
+                              "but this symbol is in %s index in result "
+                              "from guest.\n" % (host_first, index_in_guest))
         if diff:
             session = vm.wait_for_login()
             host_command = "%s record -o %s -a sleep 10" % (command, output_of_record)
             # Run twice to capture two perf data files for diff.
-            result = utils.run(host_command, ignore_status=True)
+            result = process.run(host_command, ignore_status=True, shell=True)
             if result.exit_status:
-                raise error.TestFail(result)
+                test.fail(result)
             host_command = "%s record -o %s -a sleep 10" % (command, output_for_diff)
-            result = utils.run(host_command, ignore_status=True)
+            result = process.run(host_command, ignore_status=True, shell=True)
             if result.exit_status:
-                raise error.TestFail(result)
+                test.fail(result)
             host_command = "%s diff %s %s" % (command, output_of_record, output_for_diff)
-            result = utils.run(host_command, ignore_status=True)
+            result = process.run(host_command, ignore_status=True, shell=True)
             if result.exit_status:
-                raise error.TestFail(result)
+                test.fail(result)
 
         if buildid_list:
             host_command = "%s buildid-list" % command
-            result = utils.run(host_command, ignore_status=True)
+            result = process.run(host_command, ignore_status=True, shell=True)
             if result.exit_status:
-                raise error.TestFail(result)
+                test.fail(result)
     finally:
         if session:
             session.close()

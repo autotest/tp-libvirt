@@ -114,7 +114,7 @@ def run(test, params, env):
     output = process.system_output(smt_threads_per_core_cmd, shell=True)
     try:
         host_threads = int(re.findall('Threads per core:\s+(\d+)', output)[0])
-    except:
+    except Exception:
         test.cancel("Unable to get the host threads")
 
     logging.info("Guest: cores:%d, threads:%d, sockets:%d", vm_cores,
@@ -127,7 +127,7 @@ def run(test, params, env):
             session = vm.wait_for_login()
             utils_package.package_install(["powerpc-utils"], session, 360)
             session.close()
-        except:
+        except Exception:
             test.cancel("Unable to install powerpc-utils package in guest")
 
         # Initial Setup of vm
