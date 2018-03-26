@@ -1,8 +1,7 @@
 import time
 import logging
 
-from autotest.client.shared import error
-from autotest.client import utils
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import libvirt_vm
@@ -44,7 +43,7 @@ def check_host_down_time(remote_ip, timeout=300):
             raise TimeoutError(
                 'Downtime %s exceeds maximum allowed %s' %
                 (time.time() - start_time, timeout))
-        res = utils.run(ping_cmd, ignore_status=True, verbose=False)
+        res = process.run(ping_cmd, ignore_status=True, verbose=False, shell=True)
         if res.exit_status:
             logging.debug('Host %s is down.', remote_ip)
             break
@@ -60,7 +59,7 @@ def check_host_down_time(remote_ip, timeout=300):
             raise TimeoutError(
                 'Downtime %s exceeds maximum allowed %s' %
                 (time.time() - start_time, timeout))
-        res = utils.run(ping_cmd, ignore_status=True, verbose=False)
+        res = process.run(ping_cmd, ignore_status=True, verbose=False, shell=True)
         if res.exit_status:
             logging.debug('Host %s is down.', remote_ip)
         else:
@@ -98,7 +97,7 @@ def run(test, params, env):
     if 'EXAMPLE' in remote_ip:
         msg = ('Configuration parameter `nodesuspend_remote_ip` need to be '
                'changed to the ip of host to be tested')
-        raise error.TestNAError(msg)
+        test.cancel(msg)
 
     # Create remote virsh session
     remote_uri = libvirt_vm.get_uri_with_transport(
@@ -110,7 +109,7 @@ def run(test, params, env):
     try:
         vrsh = virsh.VirshPersistent(**virsh_dargs)
     except (LoginTimeoutError, LoginProcessTerminatedError):
-        raise error.TestNAError('Cannot login to remote host, Skipping')
+        test.cancel('Cannot login to remote host, Skipping')
 
     # Run test
     result = vrsh.nodesuspend(suspend_target, suspend_time, ignore_status=True)
@@ -130,18 +129,18 @@ def run(test, params, env):
             if not (suspend_time - lower_tolerance <
                     down_time <
                     suspend_time + upper_tolerance):
-                raise error.TestFail('Down time (%.2fs) not in range (%ds)'
-                                     '+ (%ds) - (%ds).'
-                                     % (down_time, suspend_time,
-                                        upper_tolerance, lower_tolerance))
-        except TimeoutError, e:
+                test.fail('Down time (%.2fs) not in range (%ds)'
+                          '+ (%ds) - (%ds).'
+                          % (down_time, suspend_time,
+                             upper_tolerance, lower_tolerance))
+        except TimeoutError as e:
             # Mark test FAIL if down time exceeds expectation
             logging.debug(e)
             vrsh.close_session()
-            raise error.TestFail('Timeout when checking host down time.')
+            test.fail('Timeout when checking host down time.')
 
     # Check whether exit code match expectation.
     if (result.exit_status == 0) != (expect_succeed == 'yes'):
-        raise error.TestFail(
+        test.fail(
             'Result do not meet expect_succeed (%s). Result:\n %s' %
             (expect_succeed, result))

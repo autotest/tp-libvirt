@@ -2,8 +2,7 @@ import re
 import os
 import logging
 
-from autotest.client.shared import error
-from autotest.client import utils
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
@@ -107,7 +106,7 @@ def run(test, params, env):
                  vm's information.
         """
         pid = vm.get_pid()
-        cmdline_tmp = utils.system_output("cat -v /proc/%d/cmdline" % pid)
+        cmdline_tmp = process.system_output("cat -v /proc/%d/cmdline" % pid, shell=True)
 
         # Output has a trailing '^@' which gets converted into an empty
         # element when spliting by '\x20', so strip it on the end.
@@ -180,9 +179,9 @@ def run(test, params, env):
     # check status_error
     if status_error == "yes":
         if status == 0:
-            raise error.TestFail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if status != 0:
-            raise error.TestFail("Run failed with right command")
+            test.fail("Run failed with right command")
         if compare(conv_arg) is not True:
-            raise error.TestFail("Test failed!")
+            test.fail("Test failed!")

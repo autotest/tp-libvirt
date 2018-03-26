@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 
 
@@ -34,7 +32,7 @@ def run(test, params, env):
             help_list = virsh.help_command_group("", False,
                                                  ignore_status=True)
         if len(help_list) == 0:
-            raise error.TestError("Cannot get any virsh command/group!")
+            test.error("Cannot get any virsh command/group!")
         fail_list = []
         # If any command or group's check failed, the test failed
         check_result = True
@@ -71,14 +69,14 @@ def run(test, params, env):
     if status_error == "yes":
         if test_target == "":
             if status == 0:
-                raise error.TestFail("Run successfully with wrong command!")
+                test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if test_target == "":
             if status != 0:
-                raise error.TestFail("Run failed with right command")
+                test.fail("Run failed with right command")
             if output == "":
-                raise error.TestFail("Cannot see help information")
+                test.fail("Cannot see help information")
         else:
             if not check_result:
-                raise error.TestFail(
+                test.fail(
                     "virsh help command or groups test failed")

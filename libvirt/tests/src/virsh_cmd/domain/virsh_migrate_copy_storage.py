@@ -1,20 +1,19 @@
 import os
 import logging
 
-from autotest.client import lv_utils
-from autotest.client.shared import error
 from avocado.core import exceptions
 
 from virttest import ssh_key
 from virttest import utils_test
 from virttest import libvirt_vm
 from virttest.utils_test import libvirt as utlv
+from virttest.staging import lv_utils
 from virttest import virsh
 from virttest.utils_misc import is_qemu_capability_supported as qemu_test
 from virttest import remote
 
 
-def create_destroy_pool_on_remote(action, params):
+def create_destroy_pool_on_remote(test, action, params):
     """
     This is to create or destroy a specified pool on remote.
 
@@ -57,8 +56,8 @@ def create_destroy_pool_on_remote(action, params):
         session.close()
         if status:
             new_session.close_session()
-            raise error.TestFail("Run '%s' on remote host '%s' failed: %s."
-                                 % (cmd, remote_ip, output))
+            test.fail("Run '%s' on remote host '%s' failed: %s."
+                      % (cmd, remote_ip, output))
         ret = new_session.pool_create_as(pool_name, pool_type, pool_target)
     else:  # suppose it is to destroy
         ret = new_session.pool_destroy(pool_name)
@@ -67,7 +66,7 @@ def create_destroy_pool_on_remote(action, params):
     return ret
 
 
-def check_output(output_msg, params):
+def check_output(test, output_msg, params):
     """
     Check if known messages exist in the given output messages.
 
@@ -84,7 +83,7 @@ def check_output(output_msg, params):
                    "execute QEMU command 'migrate': " +
                    "this feature or command is not currently supported"}
 
-    for (key, value) in ERR_MSGDICT.items():
+    for (key, value) in list(ERR_MSGDICT.items()):
         logging.debug("%s: %s", key, value)
         if output_msg.find(value) >= 0:
             if (key == "ERROR 1" and
@@ -93,11 +92,11 @@ def check_output(output_msg, params):
             else:
                 logging.info("The known error was found: %s --- %s",
                              key, value)
-                raise error.TestNAError("Known error: %s --- %s in %s" %
-                                        (key, value, output_msg))
+                test.cancel("Known error: %s --- %s in %s" %
+                            (key, value, output_msg))
 
 
-def copied_migration(vms, params):
+def copied_migration(test, vms, params):
     """
     Migrate vms with storage copied.
     """
@@ -128,16 +127,16 @@ def copied_migration(vms, params):
                 utils_test.check_dest_vm_network(vm, vms_ip[vm.name],
                                                  remote_host, username,
                                                  password)
-            except error.TestFail, detail:
+            except exceptions.TestFail as detail:
                 check_ip_failures.append(str(detail))
             cp_mig.cleanup_dest_vm(vm, None, dest_uri)
     else:
         for vm in vms:
             cp_mig.cleanup_dest_vm(vm, None, dest_uri)
-        check_output(str(cp_mig.ret), params)
-        raise error.TestFail("Migrate vms with storage copied failed.")
+        check_output(test, str(cp_mig.ret), params)
+        test.fail("Migrate vms with storage copied failed.")
     if len(check_ip_failures):
-        raise error.TestFail("Check IP failed:%s" % check_ip_failures)
+        test.fail("Check IP failed:%s" % check_ip_failures)
 
 
 def run(test, params, env):
@@ -153,7 +152,7 @@ def run(test, params, env):
     primary_target = vm.get_first_disk_devices()["target"]
     file_path, file_size = vm.get_device_size(primary_target)
     # Convert to Gib
-    file_size = int(file_size) / 1073741824
+    file_size = int(file_size) // 1073741824
 
     # Set the pool target using the source of the first disk
     params["precreation_pool_target"] = os.path.dirname(file_path)
@@ -163,7 +162,7 @@ def run(test, params, env):
     remote_user = params.get("migrate_dest_user", "root")
     remote_passwd = params.get("migrate_dest_pwd")
     if remote_host.count("EXAMPLE") or local_host.count("EXAMPLE"):
-        raise error.TestNAError("Config remote or local host first.")
+        test.cancel("Config remote or local host first.")
     # Config ssh autologin for it
     ssh_key.setup_ssh_key(remote_host, remote_user, remote_passwd, port=22)
 
@@ -185,7 +184,7 @@ def run(test, params, env):
     try:
         if qemu_test("drive-mirror") and qemu_test("nbd-server"):
             support_precreation = True
-    except exceptions.TestError, e:
+    except exceptions.TestError as e:
         logging.debug(e)
     params["support_precreation"] = support_precreation
     # Abnormal parameters
@@ -213,12 +212,12 @@ def run(test, params, env):
             # Login on remote host
             remote_device = rdm.iscsi_login_setup(local_host, target2)
             if not rdm.create_vg(vgname, remote_device):
-                raise error.TestError("Create VG %s on %s failed."
-                                      % (vgname, remote_host))
+                test.error("Create VG %s on %s failed."
+                           % (vgname, remote_host))
 
         all_disks = utlv.attach_disks(vm, file_path, vgname, params)
         # Reserve for cleanup
-        added_disks_list = all_disks.keys()
+        added_disks_list = list(all_disks.keys())
         all_disks[file_path] = file_size
         logging.debug("All disks need to be migrated:%s", all_disks)
 
@@ -226,15 +225,15 @@ def run(test, params, env):
             occupied_path = rdm.occupy_space(disk_type, file_size,
                                              file_path, vgname, timeout=600)
         if abnormal_type != "not_exist_file":
-            for disk, size in all_disks.items():
+            for disk, size in list(all_disks.items()):
                 if disk == file_path:
                     if support_precreation:
-                        pool_created = create_destroy_pool_on_remote("create",
+                        pool_created = create_destroy_pool_on_remote(test, "create",
                                                                      params)
                         if not pool_created:
-                            raise error.TestError("Create pool on remote " +
-                                                  "host '%s' failed."
-                                                  % remote_host)
+                            test.error("Create pool on remote " +
+                                       "host '%s' failed."
+                                       % remote_host)
                     else:
                         rdm.create_image("file", disk, size, None,
                                          None, img_frmt='qcow2')
@@ -245,20 +244,20 @@ def run(test, params, env):
         fail_flag = False
         try:
             logging.debug("Start migration...")
-            copied_migration(vms, params)
+            copied_migration(test, vms, params)
             if migrate_again:
                 fail_flag = True
-                raise error.TestFail("Migration succeed, but not expected!")
+                test.fail("Migration succeed, but not expected!")
             else:
                 return
-        except error.TestFail:
+        except exceptions.TestFail:
             if not migrate_again:
                 raise
 
             if abnormal_type == "occupied_disk":
                 rdm.remove_path(disk_type, occupied_path)
             elif abnormal_type == "not_exist_file":
-                for disk, size in all_disks.items():
+                for disk, size in list(all_disks.items()):
                     if disk == file_path:
                         rdm.create_image("file", disk, size, None, None)
                     else:
@@ -271,7 +270,7 @@ def run(test, params, env):
                 raise
 
             # Migrate it again to confirm failed reason
-            copied_migration(vms, params)
+            copied_migration(test, vms, params)
     finally:
         # Recover created vm
         if vm.is_alive():
@@ -283,10 +282,10 @@ def run(test, params, env):
             rdm.remove_path(disk_type, disk)
         rdm.remove_path("file", file_path)
         if pool_created:
-            pool_destroyed = create_destroy_pool_on_remote("destroy", params)
+            pool_destroyed = create_destroy_pool_on_remote(test, "destroy", params)
             if not pool_destroyed:
-                raise error.TestError("Destroy pool on remote host '%s' failed."
-                                      % remote_host)
+                test.error("Destroy pool on remote host '%s' failed."
+                           % remote_host)
 
         if disk_type == "lvm":
             rdm.remove_vg(vgname)

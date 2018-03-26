@@ -2,8 +2,6 @@ import os
 import time
 import logging
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import libvirt_storage
@@ -14,7 +12,7 @@ from virttest.utils_test import libvirt as utlv
 from virttest.tests import unattended_install
 
 
-def create_volumes(new_pool, volume_count, volume_size):
+def create_volumes(test, new_pool, volume_count, volume_size):
     """
     Create some volumes and return them, not including
     existed volumes
@@ -26,10 +24,10 @@ def create_volumes(new_pool, volume_count, volume_size):
         count += 1
         # TODO: Check whether there is sufficient space.
         if not new_pool.create_volume(vol_name, volume_size):
-            raise error.TestFail("Create volume %s failed." % vol_name)
+            test.fail("Create volume %s failed." % vol_name)
         volumes = new_pool.list_volumes()
         logging.debug("Current volumes:%s", volumes)
-        if vol_name in volumes.keys():
+        if vol_name in list(volumes.keys()):
             created_volumes[vol_name] = volumes[vol_name]
     return created_volumes
 
@@ -55,8 +53,8 @@ def run(test, params, env):
         cdrom_path = os.path.join(data_dir.get_data_dir(),
                                   params.get("cdrom_cd1"))
         if not os.path.exists(cdrom_path):
-            raise error.TestNAError("Can't find installation cdrom:%s"
-                                    % cdrom_path)
+            test.cancel("Can't find installation cdrom:%s"
+                        % cdrom_path)
         # Get a nonexist domain name
         vm_name = "vol_install_test"
 
@@ -74,18 +72,18 @@ def run(test, params, env):
             volumes = new_pool.list_volumes()
             logging.debug("Current volumes:%s", volumes)
         else:
-            volumes = create_volumes(new_pool, volume_count, volume_size)
+            volumes = create_volumes(test, new_pool, volume_count, volume_size)
         if application == "attach":
             vm = env.get_vm(vm_name)
             session = vm.wait_for_login()
-            virsh.attach_disk(vm_name, volumes.values()[volume_count - 1],
+            virsh.attach_disk(vm_name, list(volumes.values())[volume_count - 1],
                               disk_target, extra="--subdriver raw")
             vm_attach_device = "/dev/%s" % disk_target
             if session.cmd_status("which parted"):
                 # No parted command, check device only
                 if session.cmd_status("ls %s" % vm_attach_device):
-                    raise error.TestFail("Didn't find attached device:%s"
-                                         % vm_attach_device)
+                    test.fail("Didn't find attached device:%s"
+                              % vm_attach_device)
                 return
             # Test if attached disk can be used normally
             time.sleep(10)  # Need seconds for the new disk to be recognized
@@ -95,8 +93,8 @@ def run(test, params, env):
             session.cmd("echo %s > /mnt/test" % test_message)
             output = session.cmd_output("cat /mnt/test").strip()
             if output != test_message:
-                raise error.TestFail("%s cannot be used normally!"
-                                     % vm_attach_device)
+                test.fail("%s cannot be used normally!"
+                          % vm_attach_device)
         elif application == "install":
             # Get a nonexist domain name anyway
             while virsh.domain_exists(vm_name):
@@ -106,7 +104,7 @@ def run(test, params, env):
             vm = env.create_vm("libvirt", None, vm_name, params,
                                test.bindir)
             env.register_vm(vm_name, vm)
-            params["image_name"] = volumes.values()[volume_count - 1]
+            params["image_name"] = list(volumes.values())[volume_count - 1]
             params["image_format"] = "raw"
             params['force_create_image'] = "yes"
             params['remove_image'] = "yes"
@@ -134,8 +132,8 @@ def run(test, params, env):
                 utils_selinux.set_status("permissive")
                 try:
                     unattended_install.run(test, params, env)
-                except process.CmdError, detail:
-                    raise error.TestFail("Guest install failed:%s" % detail)
+                except process.CmdError as detail:
+                    test.fail("Guest install failed:%s" % detail)
             finally:
                 if selinux_mode is not None:
                     utils_selinux.set_status(selinux_mode)

@@ -3,8 +3,6 @@ import threading
 import time
 import os
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import nfs
@@ -89,7 +87,7 @@ def config_libvirt(params):
     """
     libvirtd_conf = utils_config.LibvirtdConfig()
 
-    for k, v in params.items():
+    for k, v in list(params.items()):
         libvirtd_conf[k] = v
 
     logging.debug("The libvirtd config file content is:\n%s" % libvirtd_conf)
@@ -111,11 +109,11 @@ def run(test, params, env):
     src_uri = params.get(
         "virsh_migrate_src_uri", "qemu+ssh://MIGRATE_EXAMPLE/system")
     if dest_uri.count('///') or dest_uri.count('MIGRATE_EXAMPLE'):
-        raise error.TestNAError("Set your destination uri first.")
+        test.cancel("Set your destination uri first.")
     if src_uri.count('MIGRATE_EXAMPLE'):
-        raise error.TestNAError("Set your source uri first.")
+        test.cancel("Set your source uri first.")
     if src_uri == dest_uri:
-        raise error.TestNAError("You should not set dest uri same as local.")
+        test.cancel("You should not set dest uri same as local.")
     vm_ref = params.get("setmmdt_vm_ref", "domname")
     pre_vm_state = params.get("pre_vm_state", "running")
     status_error = "yes" == params.get("status_error", "no")
@@ -144,7 +142,7 @@ def run(test, params, env):
     # For safety reasons, we'd better back up original guest xml
     orig_config_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     if not orig_config_xml:
-        raise error.TestError("Backing up xmlfile failed.")
+        test.error("Backing up xmlfile failed.")
 
     # Params to configure libvirtd.conf
     log_file = "/var/log/libvirt/libvirtd.log"
@@ -300,11 +298,11 @@ def run(test, params, env):
                 logging.info("Libvirt version is newer than 1.2.9,"
                              "Allow set maxdowntime while VM isn't migrating")
             else:
-                raise error.TestFail("virsh migrate-setmaxdowntime succeed "
-                                     "but not expected.")
+                test.fail("virsh migrate-setmaxdowntime succeed "
+                          "but not expected.")
     else:
         if do_migrate and not ret_migration:
-            raise error.TestFail("Migration failed.")
+            test.fail("Migration failed.")
 
         if not ret_setmmdt:
-            raise error.TestFail("virsh migrate-setmaxdowntime failed.")
+            test.fail("virsh migrate-setmaxdowntime failed.")

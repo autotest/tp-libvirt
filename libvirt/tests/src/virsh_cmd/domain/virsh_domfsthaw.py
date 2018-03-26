@@ -1,5 +1,3 @@
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 
@@ -16,8 +14,8 @@ def run(test, params, env):
     """
 
     if not virsh.has_help_command('domfsthaw'):
-        raise error.TestNAError("This version of libvirt does not support "
-                                "the domfsthaw test")
+        test.cancel("This version of libvirt does not support "
+                    "the domfsthaw test")
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     start_vm = ("yes" == params.get("start_vm", "no"))
@@ -44,8 +42,8 @@ def run(test, params, env):
             vm.prepare_guest_agent()
             cmd_result = virsh.domfsfreeze(vm_name, debug=True)
             if cmd_result.exit_status != 0:
-                raise error.TestFail("Fail to do virsh domfsfreeze, error %s" %
-                                     cmd_result.stderr)
+                test.fail("Fail to do virsh domfsfreeze, error %s" %
+                          cmd_result.stderr)
 
         if has_qemu_ga:
             vm.prepare_guest_agent(start=start_qemu_ga)
@@ -65,11 +63,11 @@ def run(test, params, env):
         cmd_result = virsh.domfsthaw(vm_name, options=options, debug=True)
         if not status_error:
             if cmd_result.exit_status != 0:
-                raise error.TestFail("Fail to do virsh domfsthaw, error %s" %
-                                     cmd_result.stderr)
+                test.fail("Fail to do virsh domfsthaw, error %s" %
+                          cmd_result.stderr)
         else:
             if cmd_result.exit_status == 0:
-                raise error.TestFail("Command 'virsh domfsthaw' failed ")
+                test.fail("Command 'virsh domfsthaw' failed ")
 
     finally:
         # Do domain recovery

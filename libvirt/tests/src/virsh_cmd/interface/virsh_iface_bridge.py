@@ -1,8 +1,7 @@
 import os
 import logging
 
-from autotest.client.shared import error
-from autotest.client import utils
+from avocado.utils import process
 
 from avocado.utils import path as utils_path
 
@@ -40,19 +39,19 @@ def run(test, params, env):
     if check_iface:
         # Make sure the interface exists
         if not libvirt.check_iface(iface_name, "exists", "--all"):
-            raise error.TestNAError("Interface '%s' not exists" % iface_name)
+            test.cancel("Interface '%s' not exists" % iface_name)
 
         net_iface = utils_net.Interface(name=iface_name)
         iface_is_up = net_iface.is_up()
         iface_ip = net_iface.get_ip()
 
         # Back up the interface script
-        utils.run("cp %s %s" % (iface_script, iface_script_bk))
+        process.run("cp %s %s" % (iface_script, iface_script_bk), shell=True)
 
     # Make sure the bridge name not exists
     net_bridge = utils_net.Bridge()
     if bridge_name in net_bridge.list_br():
-        raise error.TestNAError("Bridge '%s' already exists" % bridge_name)
+        test.cancel("Bridge '%s' already exists" % bridge_name)
 
     # Stop NetworkManager service
     try:
@@ -73,11 +72,11 @@ def run(test, params, env):
         """
         list_option = "--all"
         if libvirt.check_iface(bridge_name, "exists", list_option):
-            raise error.TestFail("%s is still present." % bridge_name)
+            test.fail("%s is still present." % bridge_name)
         if "no-start" in unbridge_option:
             list_option = "--inactive"
         if not libvirt.check_iface(iface_name, "exists", list_option):
-            raise error.TestFail("%s is not present." % iface_name)
+            test.fail("%s is not present." % iface_name)
 
     if bridge_delay:
         bridge_option += " --delay %s" % delay_num
@@ -95,19 +94,19 @@ def run(test, params, env):
                     br_ip = ""
                 # check IP of new bridge
                 if check_iface and br_ip and br_ip != iface_ip:
-                    raise error.Testfail("bridge IP(%s) isn't the same as iface IP(%s)."
-                                         % (br_ip, iface_ip))
+                    test.fail("bridge IP(%s) isn't the same as iface IP(%s)."
+                              % (br_ip, iface_ip))
                 # check the status of STP feature
                 if "no-start" not in bridge_option:
                     if "no-stp" not in bridge_option:
                         if "yes" != net_bridge.get_stp_status(bridge_name):
-                            raise error.Testfail("Fail to enable STP.")
+                            test.fail("Fail to enable STP.")
                 # Do ping test only bridge has IP address and ping_ip not empty
                 if br_ip and ping_ip:
                     if not libvirt.check_iface(bridge_name, "ping", ping_ip,
                                                count=ping_count, timeout=ping_timeout):
-                        raise error.TestFail("Fail to ping %s from %s."
-                                             % (ping_ip, bridge_name))
+                        test.fail("Fail to ping %s from %s."
+                                  % (ping_ip, bridge_name))
                 else:
                     # Skip ping test
                     logging.debug("Skip ping test as %s has no IP address",
@@ -122,7 +121,7 @@ def run(test, params, env):
                     if not unbridge_status_error:
                         unbridge_check()
                 else:
-                    raise error.TestFail("%s is not present." % bridge_name)
+                    test.fail("%s is not present." % bridge_name)
         else:
             # Unbridge without creating bridge, only for negative test now
             result = virsh.iface_unbridge(bridge_name, unbridge_option)
@@ -134,17 +133,17 @@ def run(test, params, env):
             if libvirt.check_iface(bridge_name, "exists", "--all"):
                 virsh.iface_unbridge(bridge_name)
             if os.path.exists(iface_script_bk):
-                utils.run("mv %s %s" % (iface_script_bk, iface_script))
+                process.run("mv %s %s" % (iface_script_bk, iface_script), shell=True)
             if iface_is_up:
                 # Need reload script
-                utils.run("ifdown %s" % iface_name)
-                utils.run("ifup %s" % iface_name)
+                process.run("ifdown %s" % iface_name, shell=True)
+                process.run("ifup %s" % iface_name, shell=True)
             else:
                 net_iface.down()
             # Clear the new create bridge if it exists
             try:
                 utils_net.bring_down_ifname(bridge_name)
-                utils.run("brctl delbr %s" % bridge_name)
+                process.run("brctl delbr %s" % bridge_name, shell=True)
             except utils_net.TAPBringDownError:
                 pass
         if NM_is_running:

@@ -3,8 +3,6 @@ import os
 import re
 import shutil
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import libvirt_vm
@@ -45,8 +43,8 @@ def run(test, params, env):
         """
         shutil.copy(libvirtd_conf_path, libvirtd_conf_bak_path)
 
-        libvirtdconf_file = open(libvirtd_conf_path, 'r')
-        line_list = libvirtdconf_file.readlines()
+        with open(libvirtd_conf_path, 'r') as libvirtdconf_file:
+            line_list = libvirtdconf_file.readlines()
         conf_dict = {r'auth_unix_rw\s*=': 'auth_unix_rw="none"\n', }
         for key in conf_dict:
             pattern = key
@@ -63,10 +61,8 @@ def run(test, params, env):
             if not flag:
                 line_list.append(conf_line)
 
-        libvirtdconf_file.close()
-        libvirtdconf_file = open(libvirtd_conf_path, 'w')
-        libvirtdconf_file.writelines(line_list)
-        libvirtdconf_file.close()
+        with open(libvirtd_conf_path, 'w') as libvirtdconf_file:
+            libvirtdconf_file.writelines(line_list)
 
         # restart libvirtd service
         utils_libvirtd.libvirtd_restart()
@@ -110,25 +106,25 @@ def run(test, params, env):
     if (connect_arg == "transport" and
             transport_type == "remote" and
             local_ip.count("ENTER")):
-        raise error.TestNAError("Parameter local_ip is not configured"
-                                "in remote test.")
+        test.cancel("Parameter local_ip is not configured"
+                    "in remote test.")
     if (connect_arg == "transport" and
             transport_type == "remote" and
             local_pwd.count("ENTER")):
-        raise error.TestNAError("Parameter local_pwd is not configured"
-                                "in remote test.")
+        test.cancel("Parameter local_pwd is not configured"
+                    "in remote test.")
     # In Ubuntu libvirt_lxc available in /usr/lib/libvirt
     if (connect_arg.count("lxc") and
             (not (os.path.exists("/usr/libexec/libvirt_lxc") or
                   os.path.exists("/usr/lib/libvirt/libvirt_lxc")))):
-        raise error.TestNAError("Connect test of lxc:/// is not suggested on "
-                                "the host with no lxc driver.")
+        test.cancel("Connect test of lxc:/// is not suggested on "
+                    "the host with no lxc driver.")
     if connect_arg.count("xen") and (not os.path.exists("/var/run/xend")):
-        raise error.TestNAError("Connect test of xen:/// is not suggested on "
-                                "the host with no xen driver.")
+        test.cancel("Connect test of xen:/// is not suggested on "
+                    "the host with no xen driver.")
     if connect_arg.count("qemu") and (not os.path.exists("/dev/kvm")):
-        raise error.TestNAError("Connect test of qemu:/// is not suggested"
-                                "on the host with no qemu driver.")
+        test.cancel("Connect test of qemu:/// is not suggested"
+                    "on the host with no qemu driver.")
 
     if connect_arg == "transport":
         canonical_uri_type = virsh.driver()
@@ -177,8 +173,8 @@ def run(test, params, env):
                 transport=transport,
                 dest_ip="")
         else:
-            raise error.TestNAError("Configuration of transport=%s is "
-                                    "not recognized." % transport)
+            test.cancel("Configuration of transport=%s is "
+                        "not recognized." % transport)
     else:
         connect_uri = connect_arg
 
@@ -187,8 +183,8 @@ def run(test, params, env):
             uri = do_virsh_connect(connect_uri, connect_opt)
             # connect successfully
             if status_error == "yes":
-                raise error.TestFail("Connect successfully in the "
-                                     "case expected to fail.")
+                test.fail("Connect successfully in the "
+                          "case expected to fail.")
             # get the expect uri when connect argument is ""
             if connect_uri == "":
                 connect_uri = virsh.canonical_uri().split()[-1]
@@ -196,13 +192,13 @@ def run(test, params, env):
             logging.debug("expected uri is: %s", connect_uri)
             logging.debug("actual uri after connect is: %s", uri)
             if not uri == connect_uri:
-                raise error.TestFail("Command exit normally but the uri is "
-                                     "not setted as expected.")
-        except process.CmdError, detail:
+                test.fail("Command exit normally but the uri is "
+                          "not setted as expected.")
+        except process.CmdError as detail:
             if status_error == "no":
-                raise error.TestFail("Connect failed in the case expected"
-                                     "to success.\n"
-                                     "Error: %s" % detail)
+                test.fail("Connect failed in the case expected"
+                          "to success.\n"
+                          "Error: %s" % detail)
     finally:
         if transport == "unix":
             unix_transport_recover()

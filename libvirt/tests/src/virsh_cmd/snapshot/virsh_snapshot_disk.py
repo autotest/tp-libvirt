@@ -3,8 +3,8 @@ import logging
 import re
 import tempfile
 
-from autotest.client.shared import error
-from autotest.client import utils
+from avocado.core import exceptions
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import qemu_storage
@@ -61,7 +61,7 @@ def run(test, params, env):
     # Set volume xml attribute dictionary, extract all params start with 'vol_'
     # which are for setting volume xml, except 'lazy_refcounts'.
     vol_arg = {}
-    for key in params.keys():
+    for key in list(params.keys()):
         if key.startswith('vol_'):
             if key[4:] in ['capacity', 'allocation', 'owner', 'group']:
                 vol_arg[key[4:]] = int(params[key])
@@ -73,8 +73,8 @@ def run(test, params, env):
                            "disk", "gluster"]
     if snapshot_with_pool:
         if pool_type not in supported_pool_list:
-            raise error.TestNAError("%s not in support list %s" %
-                                    (pool_target, supported_pool_list))
+            test.cancel("%s not in support list %s" %
+                        (pool_target, supported_pool_list))
 
     # Do xml backup for final recovery
     vmxml_backup = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -86,18 +86,18 @@ def run(test, params, env):
     # Skip 'qed' cases for libvirt version greater than 1.1.0
     if libvirt_version.version_compare(1, 1, 0):
         if vol_format == "qed" or image_format == "qed":
-            raise error.TestNAError("QED support changed, check bug: "
-                                    "https://bugzilla.redhat.com/show_bug.cgi"
-                                    "?id=731570")
+            test.cancel("QED support changed, check bug: "
+                        "https://bugzilla.redhat.com/show_bug.cgi"
+                        "?id=731570")
 
     if not libvirt_version.version_compare(1, 2, 7):
         # As bug 1017289 closed as WONTFIX, the support only
         # exist on 1.2.7 and higher
         if disk_source_protocol == 'gluster':
-            raise error.TestNAError("Snapshot on glusterfs not support in "
-                                    "current version. Check more info with "
-                                    "https://bugzilla.redhat.com/buglist.cgi?"
-                                    "bug_id=1017289,1032370")
+            test.cancel("Snapshot on glusterfs not support in "
+                        "current version. Check more info with "
+                        "https://bugzilla.redhat.com/buglist.cgi?"
+                        "bug_id=1017289,1032370")
 
     # Init snapshot_name
     snapshot_name = None
@@ -133,11 +133,11 @@ def run(test, params, env):
                 # logical pool could use libvirt to create volume but volume
                 # format is not supported and will be 'raw' as default.
                 pv = libvirt_storage.PoolVolume(pool_name)
-                vols = pv.list_volumes().keys()
+                vols = list(pv.list_volumes().keys())
                 if vols:
                     vol_name = vols[0]
                 else:
-                    raise error.TestNAError("No volume in pool: %s" % pool_name)
+                    test.cancel("No volume in pool: %s" % pool_name)
             else:
                 # Set volume xml file
                 volxml = libvirt_xml.VolXML()
@@ -150,11 +150,11 @@ def run(test, params, env):
                                               ignore_status=True,
                                               debug=True)
                 if cmd_result.exit_status:
-                    raise error.TestNAError("Failed to create attach volume.")
+                    test.cancel("Failed to create attach volume.")
 
             cmd_result = virsh.vol_path(vol_name, pool_name, debug=True)
             if cmd_result.exit_status:
-                raise error.TestNAError("Failed to get volume path from pool.")
+                test.cancel("Failed to get volume path from pool.")
             img_path = cmd_result.stdout.strip()
 
             if pool_type in ["logical", "iscsi", "disk"]:
@@ -162,10 +162,10 @@ def run(test, params, env):
                 if vol_format != "raw":
                     cmd = "qemu-img create -f %s %s 10M" % (vol_format,
                                                             img_path)
-                    cmd_result = utils.run(cmd, ignore_status=True)
+                    cmd_result = process.run(cmd, ignore_status=True, shell=True)
                     if cmd_result.exit_status:
-                        raise error.TestNAError("Failed to format volume, %s" %
-                                                cmd_result.stdout.strip())
+                        test.cancel("Failed to format volume, %s" %
+                                    cmd_result.stdout.strip())
             extra = "--persistent --subdriver %s" % vol_format
         else:
             # Create a image.
@@ -178,13 +178,13 @@ def run(test, params, env):
 
         if not multi_gluster_disks:
             # Do the attach action.
-            out = utils.run("qemu-img info %s" % img_path)
+            out = process.run("qemu-img info %s" % img_path, shell=True)
             logging.debug("The img info is:\n%s" % out.stdout.strip())
             result = virsh.attach_disk(vm_name, source=img_path, target="vdf",
                                        extra=extra, debug=True)
             if result.exit_status:
-                raise error.TestNAError("Failed to attach disk %s to VM."
-                                        "Detail: %s." % (img_path, result.stderr))
+                test.cancel("Failed to attach disk %s to VM."
+                            "Detail: %s." % (img_path, result.stderr))
 
         # Create snapshot.
         if snapshot_from_xml:
@@ -227,16 +227,16 @@ def run(test, params, env):
 
                 if snapshot_disk == 'external':
                     new_attrs = disk_xml.source.attrs
-                    if disk_xml.source.attrs.has_key('file'):
+                    if 'file' in disk_xml.source.attrs:
                         new_file = "%s.snap" % disk_xml.source.attrs['file']
                         snapshot_external_disk.append(new_file)
                         new_attrs.update({'file': new_file})
                         hosts = None
-                    elif disk_xml.source.attrs.has_key('name'):
+                    elif 'name' in disk_xml.source.attrs:
                         new_name = "%s.snap" % disk_xml.source.attrs['name']
                         new_attrs.update({'name': new_name})
                         hosts = disk_xml.source.hosts
-                    elif (disk_xml.source.attrs.has_key('dev') and
+                    elif ('dev' in disk_xml.source.attrs and
                           disk_xml.type_name == 'block'):
                         # Use local file as external snapshot target for block type.
                         # As block device will be treat as raw format by default,
@@ -276,7 +276,7 @@ def run(test, params, env):
                 else:
                     if re.search("live disk snapshot not supported with this "
                                  "QEMU binary", out_err):
-                        raise error.TestNAError(out_err)
+                        test.cancel(out_err)
 
                     if libvirt_version.version_compare(1, 2, 5):
                         # As commit d2e668e in 1.2.5, internal active snapshot
@@ -286,11 +286,11 @@ def run(test, params, env):
                         if re.search("internal snapshot of a running VM" +
                                      " must include the memory state",
                                      out_err):
-                            raise error.TestNAError("Check Bug #1083345, %s" %
-                                                    out_err)
+                            test.cancel("Check Bug #1083345, %s" %
+                                        out_err)
 
-                    raise error.TestFail("Failed to create snapshot. Error:%s."
-                                         % out_err)
+                    test.fail("Failed to create snapshot. Error:%s."
+                              % out_err)
         else:
             snapshot_result = virsh.snapshot_create(vm_name, options,
                                                     debug=True)
@@ -298,8 +298,8 @@ def run(test, params, env):
                 if status_error:
                     return
                 else:
-                    raise error.TestFail("Failed to create snapshot. Error:%s."
-                                         % snapshot_result.stderr.strip())
+                    test.fail("Failed to create snapshot. Error:%s."
+                              % snapshot_result.stderr.strip())
             snapshot_name = re.search(
                 "\d+", snapshot_result.stdout.strip()).group(0)
 
@@ -314,14 +314,14 @@ def run(test, params, env):
                 snapshot_result = virsh.snapshot_create(vm_name,
                                                         options, debug=True)
                 if snapshot_result.exit_status:
-                    raise error.TestFail("Failed to create snapshot --current."
-                                         "Error:%s." %
-                                         snapshot_result.stderr.strip())
+                    test.fail("Failed to create snapshot --current."
+                              "Error:%s." %
+                              snapshot_result.stderr.strip())
 
         if status_error:
             if not snapshot_del_test:
-                raise error.TestFail("Success to create snapshot in negative"
-                                     " case\nDetail: %s" % snapshot_result)
+                test.fail("Success to create snapshot in negative"
+                          " case\nDetail: %s" % snapshot_result)
 
         # Touch a file in VM.
         if vm.is_dead():
@@ -338,8 +338,8 @@ def run(test, params, env):
         status, output = session.cmd_status_output(echo_cmd)
         logging.debug("The echo output in domain is: '%s'", output)
         if status:
-            raise error.TestFail("'%s' run failed with '%s'" %
-                                 (tmp_file_path, output))
+            test.fail("'%s' run failed with '%s'" %
+                      (tmp_file_path, output))
         status, output = session.cmd_status_output("cat %s" % tmp_file_path)
         logging.debug("File created with content: '%s'", output)
 
@@ -367,28 +367,28 @@ def run(test, params, env):
                 # https://bugzilla.redhat.com/show_bug.cgi?id=1071264
                 if re.search("revert to external \w* ?snapshot not supported yet",
                              revert_result.stderr):
-                    raise error.TestNAError(revert_result.stderr.strip())
+                    test.cancel(revert_result.stderr.strip())
                 else:
-                    raise error.TestFail("Revert snapshot failed. %s" %
-                                         revert_result.stderr.strip())
+                    test.fail("Revert snapshot failed. %s" %
+                              revert_result.stderr.strip())
 
             if vm.is_dead():
-                raise error.TestFail("Revert snapshot failed.")
+                test.fail("Revert snapshot failed.")
 
             if snapshot_revert_paused:
                 if vm.is_paused():
                     vm.resume()
                 else:
-                    raise error.TestFail("Revert command successed, but VM is not "
-                                         "paused after reverting with --paused"
-                                         "  option.")
+                    test.fail("Revert command successed, but VM is not "
+                              "paused after reverting with --paused"
+                              "  option.")
             # login vm.
             session = vm.wait_for_login()
             # Check the result of revert.
             status, output = session.cmd_status_output("cat %s" % tmp_file_path)
             logging.debug("After revert cat file output='%s'", output)
             if not status:
-                raise error.TestFail("Tmp file exists, revert failed.")
+                test.fail("Tmp file exists, revert failed.")
 
             # Close the session.
             session.close()
@@ -405,19 +405,19 @@ def run(test, params, env):
                 snap_xml_path = snap_cfg_path + "%s.xml" % snapshot_name
                 if del_status:
                     if not status_error:
-                        raise error.TestFail("Failed to delete snapshot.")
+                        test.fail("Failed to delete snapshot.")
                     else:
                         if not os.path.exists(snap_xml_path):
-                            raise error.TestFail("Snapshot xml file %s missing"
-                                                 % snap_xml_path)
+                            test.fail("Snapshot xml file %s missing"
+                                      % snap_xml_path)
                 else:
                     if status_error:
                         err_msg = "Snapshot delete succeed but expect fail."
-                        raise error.TestFail(err_msg)
+                        test.fail(err_msg)
                     else:
                         if os.path.exists(snap_xml_path):
-                            raise error.TestFail("Snapshot xml file %s still"
-                                                 % snap_xml_path + " exist")
+                            test.fail("Snapshot xml file %s still"
+                                      % snap_xml_path + " exist")
 
     finally:
         if vm.is_alive():
@@ -447,6 +447,6 @@ def run(test, params, env):
             try:
                 pvt.cleanup_pool(pool_name, pool_type, pool_target,
                                  emulated_image, source_name=vol_name)
-            except error.TestFail, detail:
+            except exceptions.TestFail as detail:
                 libvirtd.restart()
                 logging.error(str(detail))
