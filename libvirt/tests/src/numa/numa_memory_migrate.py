@@ -147,8 +147,12 @@ def run(test, params, env):
             # If there are inconsistent node numbers on host,
             # convert it into sequence number so that it can be used
             # in mem_compare
-            left_node_new = [node_list.index(i) for i in node_list if i != node]
-            used_node = [node_list.index(node)]
+            # memory_status is a total numa list. node_list could not
+            # match the count of nodes
+            total_online_node_list = host_numa_node.online_nodes
+            left_node_new = [total_online_node_list.index(i)
+                             for i in total_online_node_list if i != node]
+            used_node = [total_online_node_list.index(node)]
 
             mem_compare(used_node, left_node_new)
 
