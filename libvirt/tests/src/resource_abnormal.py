@@ -5,8 +5,8 @@ import signal
 import logging
 import threading
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
+from avocado.utils import process
+from avocado.core import exceptions
 
 from avocado.utils import path as utils_path
 from avocado.utils import service as avocado_service
@@ -56,7 +56,7 @@ class Vol_clone(object):
         """
         emulated_size = "%sG" % (int(self.volume_size[:-1]) + 1)
         if int(self.volume_size[:-1]) <= 1:
-            raise error.TestNAError("Volume size must large than 1G")
+            self.test.cancel("Volume size must large than 1G")
         self.pvtest = libvirt.PoolVolumeTest(self.test, self.params)
         self.pvtest.pre_pool(self.pool_name,
                              self.pool_type,
@@ -73,7 +73,7 @@ class Vol_clone(object):
         """
         if self.pool:
             if not self.pool.clone_volume(self.vol_name, self.vol_new_name):
-                raise error.TestFail("Clone volume failed!")
+                self.test.fail("Clone volume failed!")
 
     def recover(self, params=None):
         """
@@ -109,7 +109,7 @@ class Vol_create(object):
         """
         emulated_size = "%sG" % (int(self.volume_size[:-1]) + 1)
         if int(self.volume_size[:-1]) <= 1:
-            raise error.TestNAError("Volume size must large than 1G")
+            self.test.cancel("Volume size must large than 1G")
         self.pvtest = libvirt.PoolVolumeTest(self.test, self.params)
         self.pvtest.pre_pool(self.pool_name,
                              self.pool_type,
@@ -129,13 +129,13 @@ class Vol_create(object):
                                                          self.pool_name)
             volxml.name = self.vol_new_name
             if volxml.create(self.pool_name):
-                raise error.TestFail("Volume '%s' created succeed but"
-                                     " expect failed!" % self.vol_new_name)
+                self.test.fail("Volume '%s' created succeed but"
+                               " expect failed!" % self.vol_new_name)
             volxml.capacity = 1024 * 1024 * 1024 / 2
             volxml.allocation = 1024 * 1024 * 1024 / 2
             if not volxml.create(self.pool_name):
-                raise error.TestFail("Volume '%s' created failed!"
-                                     % self.vol_new_name)
+                self.test.fail("Volume '%s' created failed!"
+                               % self.vol_new_name)
 
     def recover(self, params=None):
         """
@@ -183,10 +183,10 @@ class Virt_clone(object):
                                                    "iscsi")
             try:
                 device_source = self.iscsi_dev.setup()
-            except (error.TestError, ValueError), detail:
+            except (exceptions.TestError, ValueError) as detail:
                 self.iscsi_dev.cleanup()
-                raise error.TestNAError("Cannot get iscsi device on this"
-                                        " host:%s\n" % detail)
+                self.test.cancel("Cannot get iscsi device on this"
+                                 " host:%s\n" % detail)
             libvirt.mk_label(device_source)
             libvirt.mk_part(device_source, iscsi_size)
             self.mount_dir = os.path.join(test.virtdir,
@@ -204,9 +204,9 @@ class Virt_clone(object):
         Start test, clone a guest in a cgroup
         """
         if virsh.domain_exists(self.vm_new_name):
-            raise error.TestNAError("'%s' already exists! Please"
-                                    " select another domain name!"
-                                    % self.vm_new_name)
+            self.test.cancel("'%s' already exists! Please"
+                             " select another domain name!"
+                             % self.vm_new_name)
         if os.path.exists(self.new_image_file):
             os.remove(self.new_image_file)
         modules = utils_cgroup.CgroupModules(self.cgroup_dir)
@@ -256,28 +256,28 @@ class Virt_clone(object):
         abnormal_type = params.get("abnormal_type")
         if abnormal_type == "cpu_lack":
             if not virsh.domain_exists(self.vm_new_name):
-                raise error.TestFail("Clone '%s' failed" % self.vm_new_name)
+                self.test.fail("Clone '%s' failed" % self.vm_new_name)
             else:
                 result = virsh.start(self.vm_new_name, ignore_status=True)
                 if result.exit_status:
-                    raise error.TestFail("Cloned domain cannot be started!")
+                    self.test.fail("Cloned domain cannot be started!")
         elif abnormal_type == "disk_lack":
             if virsh.domain_exists(self.vm_new_name):
-                raise error.TestFail("Clone '%s' succeed but expect failed!"
-                                     % self.vm_new_name)
+                self.test.fail("Clone '%s' succeed but expect failed!"
+                               % self.vm_new_name)
         else:
             if self.twice_execute and not self.kill_first:
                 if virsh.domain_exists(self.vm_new_name):
-                    raise error.TestFail("Clone '%s' succeed but expect"
-                                         " failed!" % self.vm_new_name)
+                    self.test.fail("Clone '%s' succeed but expect"
+                                   " failed!" % self.vm_new_name)
                 if virsh.domain_exists(self.vm_new_name1):
-                    raise error.TestFail("Clone '%s' succeed but expect"
-                                         " failed!" % self.vm_new_name1)
+                    self.test.fail("Clone '%s' succeed but expect"
+                                   " failed!" % self.vm_new_name1)
 
             elif self.twice_execute and self.kill_first:
                 if not virsh.domain_exists(self.vm_new_name):
-                    raise error.TestFail("Clone '%s' failed!"
-                                         % self.vm_new_name)
+                    self.test.fail("Clone '%s' failed!"
+                                   % self.vm_new_name)
 
     def recover(self, params):
         """
@@ -296,10 +296,10 @@ class Virt_clone(object):
             if os.path.exists(self.new_image_file1):
                 os.remove(self.new_image_file1)
         if abnormal_type == "memory_lack":
-            if params.has_key('memory_pid'):
+            if 'memory_pid' in params:
                 pid = params.get('memory_pid')
                 utils_misc.safe_kill(pid, signal.SIGKILL)
-                utils.run("swapon -a")
+                process.run("swapon -a", shell=True)
             tmp_c_file = params.get("tmp_c_file", "/tmp/test.c")
             tmp_exe_file = params.get("tmp_exe_file", "/tmp/test")
             if os.path.exists(tmp_c_file):
@@ -337,13 +337,14 @@ class Snapshot_create(object):
         self.time_out = int(params.get("time_out", "600"))
         self.twice_execute = "yes" == params.get("twice_execute", "no")
         self.kill_first = "yes" == params.get("kill_first", "no")
+        self.test = test
         xml_file = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm_name)
         disk_node = xml_file.get_disk_all()['vda']
         source_file = disk_node.find('source').get('file')
         image_type = utils_misc.get_image_info(source_file)['format']
         if image_type != "qcow2":
-            raise error.TestNAError("Disk image format is not qcow2, "
-                                    "ignore snapshot test!")
+            self.test.cancel("Disk image format is not qcow2, "
+                             "ignore snapshot test!")
         self.cpu_status = utils_misc.get_cpu_status(self.cpu_num)
         self.current_snp_list = []
         self.snp_list = virsh.snapshot_list(self.vm_name)
@@ -384,7 +385,7 @@ class Snapshot_create(object):
         """
         Confirm if snapshot has been created.
         """
-        if params.has_key('cpu_pid'):
+        if 'cpu_pid' in params:
             cpu_id = params.get('cpu_pid')
             self.cgroup.cgclassify_cgroup(int(cpu_id), self.cgroup_name)
         if self.kill_first:
@@ -401,7 +402,7 @@ class Snapshot_create(object):
         self.td0.join(self.time_out)
         self.current_snp_list = virsh.snapshot_list(self.vm_name)
         if len(self.snp_list) >= len(self.current_snp_list):
-            raise error.TestFail("Create snapshot failed for low memory!")
+            self.test.fail("Create snapshot failed for low memory!")
 
     def recover(self, params=None):
         """
@@ -415,11 +416,11 @@ class Snapshot_create(object):
             os.remove(tmp_c_file)
         if os.path.exists(tmp_exe_file):
             os.remove(tmp_exe_file)
-        if params.has_key('memory_pid'):
+        if 'memory_pid' in params:
             pid = int(params.get('memory_pid'))
             utils_misc.safe_kill(pid, signal.SIGKILL)
-            utils.run("swapon -a")
-        if params.has_key('cpu_pid'):
+            process.run("swapon -a", shell=True)
+        if 'cpu_pid' in params:
             pid = int(params.get('cpu_pid'))
             utils_misc.safe_kill(pid, signal.SIGKILL)
             tmp_sh_file = params.get("tmp_sh_file")
@@ -453,6 +454,7 @@ class Virsh_dump(object):
         self.dump_file = os.path.join(test.virtdir,
                                       params.get("dump_file", "dump.info"))
         self.dump_file1 = self.dump_file + "1"
+        self.test = test
         env = params.get("env")
         vm = env.get_vm(self.vm_name)
         vm.wait_for_login()
@@ -491,7 +493,7 @@ class Virsh_dump(object):
         """
         Confirm if dump file has been created.
         """
-        if params.has_key('cpu_pid'):
+        if 'cpu_pid' in params:
             cpu_id = params.get('cpu_pid')
             self.cgroup.cgclassify_cgroup(int(cpu_id), self.cgroup_name)
         if self.kill_first:
@@ -506,11 +508,11 @@ class Virsh_dump(object):
                 self.td1.join(self.time_out)
         self.td0.join(self.time_out)
         if not os.path.join(self.dump_file1):
-            raise error.TestFail("Dump file %s doesn't exist!"
-                                 % self.dump_file)
+            self.test.fail("Dump file %s doesn't exist!"
+                           % self.dump_file)
         if self.twice_execute and not os.path.join(self.dump_file1):
-            raise error.TestFail("Dump file %s doesn't exist!"
-                                 % self.dump_file1)
+            self.test.fail("Dump file %s doesn't exist!"
+                           % self.dump_file1)
 
     def recover(self, params=None):
         """
@@ -519,7 +521,7 @@ class Virsh_dump(object):
         cpu_enable = True if self.cpu_status else False
         utils_misc.set_cpu_status(self.cpu_num, cpu_enable)
         virsh.destroy(self.vm_name)
-        if params.has_key('cpu_pid'):
+        if 'cpu_pid' in params:
             pid = int(params.get('cpu_pid'))
             utils_misc.safe_kill(pid, signal.SIGKILL)
             tmp_sh_file = params.get("tmp_sh_file")
@@ -540,13 +542,14 @@ class Virt_install(object):
 
     def __init__(self, test, params):
         self.vm_name = params.get("vm_name", "test-vm1")
+        self.test = test
         while virsh.domain_exists(self.vm_name):
             self.vm_name += ".test"
         params["main_vm"] = self.vm_name
         ios_file = os.path.join(data_dir.get_data_dir(),
                                 params.get('cdrom_cd1'))
         if not os.path.exists(ios_file):
-            raise error.TestNAError("Please prepare ios file:%s" % ios_file)
+            self.test.cancel("Please prepare ios file:%s" % ios_file)
         self.env = params.get('env')
         self.vm = self.env.create_vm("libvirt", None, self.vm_name, params,
                                      test.bindir)
@@ -587,7 +590,6 @@ class Virt_install(object):
         params['redirs'] += " unattended_install"
 
         self.params = params
-        self.test = test
 
     def run_test(self):
         """
@@ -606,31 +608,31 @@ class Virt_install(object):
         if self.twice_execute and self.kill_first:
             get_pid_cmd = "ps -ef | grep '%s' | grep qemu-kvm | grep -v grep"\
                           % self.vm_name
-            result = utils.run(get_pid_cmd, ignore_status=True)
+            result = process.run(get_pid_cmd, ignore_status=True, shell=True)
             if result.exit_status:
-                raise error.TestFail("First install failed!")
+                self.test.fail("First install failed!")
             install_pid = result.stdout.strip().split()[1]
             utils_misc.safe_kill(int(install_pid), signal.SIGKILL)
         self.td.join()
         if self.read_only:
             if virsh.domain_exists(self.vm_name):
-                raise error.TestFail("Domain '%s' should not exist"
-                                     % self.vm_name)
+                self.test.fail("Domain '%s' should not exist"
+                               % self.vm_name)
             os.chmod(self.image_path,
                      stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
         else:
             if not virsh.domain_exists(self.vm_name):
-                raise error.TestFail("Domain '%s' should exists, no matter its"
-                                     " installation is succeed or failed!"
-                                     % self.vm_name)
+                self.test.fail("Domain '%s' should exists, no matter its"
+                               " installation is succeed or failed!"
+                               % self.vm_name)
             else:
                 if not self.kill_first:
                     if self.vm.is_dead():
                         self.vm.start()
                     try:
                         self.vm.wait_for_login()
-                    except remote.LoginTimeoutError, detail:
-                        raise error.TestFail(str(detail))
+                    except remote.LoginTimeoutError as detail:
+                        self.test.fail(str(detail))
                 else:
                     virsh.remove_domain(self.vm_name)
         if self.twice_execute or self.read_only:
@@ -639,8 +641,8 @@ class Virt_install(object):
             self.td1.start()
             self.td1.join()
             if not virsh.domain_exists(self.vm_name):
-                raise error.TestFail("Domain '%s' installation failed!"
-                                     % self.vm_name)
+                self.test.fail("Domain '%s' installation failed!"
+                               % self.vm_name)
 
     def recover(self, params=None):
         """
@@ -666,6 +668,7 @@ class Migration(object):
 
     def __init__(self, test, params):
         self.vm_name = params.get("main_vm", "test-vm1")
+        self.test = test
         self.env = params.get('env')
         self.time_out = int(params.get('time_out'))
         self.time_out_test = "yes" == params.get('time_out_test')
@@ -673,7 +676,7 @@ class Migration(object):
         self.remote_user = params.get('remote_user')
         self.local_ip = params.get('local_ip')
         if self.remote_ip.count("ENTER") or self.local_ip.count("ENTER"):
-            raise error.TestNAError("Please set remote/local ip in base.cfg")
+            self.test.cancel("Please set remote/local ip in base.cfg")
         self.remote_pwd = params.get('remote_pwd')
         self.local_mnt = params.get('local_mnt')
         self.remote_mnt = params.get('remote_mnt')
@@ -681,7 +684,7 @@ class Migration(object):
                                            self.remote_user,
                                            self.remote_pwd, "#")
         self.session.cmd("setsebool virt_use_nfs on")
-        local_hostname = utils.run("hostname").stdout.strip()
+        local_hostname = process.run("hostname", shell=True).stdout.strip()
         remote_hostname = self.session.cmd_output("hostname")
 
         def file_add(a_str, a_file, session=None):
@@ -692,11 +695,11 @@ class Migration(object):
             if session:
                 session.cmd(write_cmd)
             else:
-                utils.run(write_cmd)
+                process.run(write_cmd, shell=True)
 
         # Edit /etc/hosts file on local and remote host
         backup_hosts_cmd = "cat /etc/hosts > /etc/hosts.bak"
-        utils.run(backup_hosts_cmd)
+        process.run(backup_hosts_cmd, shell=True)
         self.session.cmd(backup_hosts_cmd)
         hosts_local_str = "%s %s" % (self.local_ip, local_hostname)
         hosts_remote_str = "%s %s" % (self.remote_ip, remote_hostname)
@@ -706,7 +709,7 @@ class Migration(object):
         file_add(hosts_remote_str, "/etc/hosts", self.session)
 
         # Edit /etc/exports file on local host
-        utils.run("cat /etc/exports > /etc/exports.bak")
+        process.run("cat /etc/exports > /etc/exports.bak", shell=True)
         exports_str = "%s *(insecure,rw,sync,no_root_squash)" % self.local_mnt
         file_add(exports_str, "/etc/exports")
         nfs_mount_cmd = "mount -t nfs %s:%s %s"\
@@ -737,17 +740,17 @@ class Migration(object):
             domain_state = self.session.cmd_output("virsh domstate %s"
                                                    % self.vm_name)
             if not domain_state.count("paused"):
-                raise error.TestFail("Guest should suspend with time out!")
+                self.test.fail("Guest should suspend with time out!")
         self.td.join(self.time_out)
         domain_info = self.session.cmd_output("virsh list")
         abnormal_type = params.get("abnormal_type")
         if not abnormal_type:
             if not domain_info.count(self.vm_name):
-                raise error.TestFail("Guest migration failed!")
+                self.test.fail("Guest migration failed!")
         else:
             if domain_info.count(self.vm_name):
-                raise error.TestFail("Guest migration succeed but expect"
-                                     " with %s!" % abnormal_type)
+                self.test.fail("Guest migration succeed but expect"
+                               " with %s!" % abnormal_type)
 
     def recover(self, params=None):
         """
@@ -759,9 +762,9 @@ class Migration(object):
         if not abnormal_type:
             self.session.cmd("umount %s -l" % self.remote_mnt)
         recover_hosts_cmd = "mv -f /etc/hosts.bak /etc/hosts"
-        utils.run(recover_hosts_cmd)
+        process.run(recover_hosts_cmd, shell=True)
         self.session.cmd_status(recover_hosts_cmd)
-        utils.run("mv -f /etc/exports.bak /etc/exports")
+        process.run("mv -f /etc/exports.bak /etc/exports", shell=True)
         self.session.close()
 
 
@@ -788,7 +791,8 @@ class Dom_opterations_nfs(object):
         self.iptable_rule = params.get("iptable_rule")
         self.vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(
             self.vm_name)
-        self.disk_tgt = self.vmxml_backup.get_disk_all().keys()[0]
+        self.disk_tgt = list(self.vmxml_backup.get_disk_all().keys())[0]
+        self.test = test
 
         def setup_nfs_disk(vm_name):
             """
@@ -862,7 +866,7 @@ class Dom_opterations_nfs(object):
         Iptables.setup_or_cleanup_iptables_rules([self.iptable_rule], cleanup=True)
         if self.operation == "save":
             if not check_nfs_response():
-                raise error.TestFail("No nfs not response sign in dmesg")
+                self.test.fail("No nfs not response sign in dmesg")
 
     def recover(self, params=None):
         """
@@ -879,16 +883,16 @@ class Dom_opterations_nfs(object):
         process.run("dmesg -c")
 
 
-def cpu_lack(params):
+def cpu_lack(test, params):
     """
     Disable assigned cpu.
     """
     cpu_num = int(params.get("cpu_num", "0"))
     if not utils_misc.set_cpu_status(cpu_num, False):
-        raise error.TestError("Set cpu '%s' failed!" % cpu_num)
+        test.error("Set cpu '%s' failed!" % cpu_num)
 
 
-def memory_lack(params):
+def memory_lack(test, params):
     """
     Lower the available memory of host
     """
@@ -910,21 +914,20 @@ int main(void){
     }
     return 0;
 }"""
-    c_file = open(tmp_c_file, 'w')
-    c_file.write(c_str)
-    c_file.close()
+    with open(tmp_c_file, 'w') as c_file:
+        c_file.write(c_str)
     try:
         utils_path.find_command('gcc')
     except utils_path.CmdNotFoundError:
-        raise error.TestNAError('gcc command is needed!')
-    result = utils.run("gcc %s -o %s" % (tmp_c_file, tmp_exe_file))
+        test.cancel('gcc command is needed!')
+    result = process.run("gcc %s -o %s" % (tmp_c_file, tmp_exe_file), shell=True)
     if result.exit_status:
-        raise error.TestError("Compile C file failed: %s"
-                              % result.stderr.strip())
+        test.error("Compile C file failed: %s"
+                   % result.stderr.strip())
     # Set swap off before fill memory
-    utils.run("swapoff -a")
-    utils.run("%s &" % tmp_exe_file)
-    result = utils.run("ps -ef | grep %s | grep -v grep" % tmp_exe_file)
+    process.run("swapoff -a", shell=True)
+    process.run("%s &" % tmp_exe_file, shell=True)
+    result = process.run("ps -ef | grep %s | grep -v grep" % tmp_exe_file, shell=True)
     pid = result.stdout.strip().split()[1]
     params['memory_pid'] = pid
 
@@ -938,7 +941,7 @@ def disk_lack(params):
     # Will use 2/3 space of disk
     use_size = int(disk_size[0:-1]) * 2 / 3
     tmp_file = os.path.join(mount_dir, "tmp")
-    utils.run('dd if=/dev/zero of=%s bs=1G count=%s &' % (tmp_file, use_size))
+    process.run('dd if=/dev/zero of=%s bs=1G count=%s &' % (tmp_file, use_size), shell=True)
 
 
 def cpu_busy(params):
@@ -952,17 +955,16 @@ do
     j==${j:+1}
     j==${j:-1}
 done"""
-    sh_file = open(tmp_sh_file, 'w')
-    sh_file.write(shell_str)
-    sh_file.close()
+    with open(tmp_sh_file, 'w') as sh_file:
+        sh_file.write(shell_str)
     os.chmod(tmp_sh_file, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
-    result = utils.run("%s &" % tmp_sh_file)
-    result = utils.run("ps -ef | grep %s | grep -v grep" % tmp_sh_file)
+    result = process.run("%s &" % tmp_sh_file, shell=True)
+    result = process.run("ps -ef | grep %s | grep -v grep" % tmp_sh_file, shell=True)
     pid = result.stdout.strip().split()[1]
     params['cpu_pid'] = pid
 
 
-def network_restart(params):
+def network_restart(test, params):
     """
     Restart remote network
     """
@@ -979,8 +981,8 @@ def network_restart(params):
     try:
         remote.wait_for_login("ssh", remote_ip, "22", remote_user,
                               remote_pwd, "#", timeout=time_out)
-    except remote.LoginTimeoutError, detail:
-        raise error.TestError(str(detail))
+    except remote.LoginTimeoutError as detail:
+        test.error(str(detail))
 
 
 def remove_machine_cgroup():
@@ -1022,7 +1024,7 @@ def run(test, params, env):
 
         # Make resource abnormal
         if abnormal_type:
-            globals()[abnormal_type](params)
+            globals()[abnormal_type](test, params)
 
         # Confirm test result
         test_case.result_confirm(params)

@@ -1,8 +1,7 @@
 import logging
 import re
 
-from autotest.client import utils
-from autotest.client.shared import error
+from avocado.utils import process
 
 from virttest.libvirt_xml.vm_xml import VMXML
 
@@ -26,9 +25,9 @@ def run(test, params, env):
         session = vm.wait_for_login(timeout=timeout)
         if (session.cmd_status("lsusb")):
             session.close()
-            raise error.TestNAError("SKIP:lsusb command has errored out,"
-                                    "please fix any issues with lsusb command"
-                                    " on guest")
+            test.cancel("SKIP:lsusb command has errored out,"
+                        "please fix any issues with lsusb command"
+                        " on guest")
         usb_list = session.cmd_output("lsusb|awk '{print $6}'")
         session.close()
         return (usb_list)
@@ -38,12 +37,12 @@ def run(test, params, env):
         This function returns the usb devices found
         on host system as a list variable
         """
-        existing_usb = utils.run(
-            "lsusb", timeout=10, ignore_status='True', verbose=False)
+        existing_usb = process.run(
+            "lsusb", timeout=10, ignore_status='True', verbose=False, shell=True)
         if existing_usb.exit_status != 0:
-            raise error.TestNAError("SKIP: lsusb command has errored out,"
-                                    "please fix any issues with lsusb command"
-                                    " on host")
+            test.cancel("SKIP: lsusb command has errored out,"
+                        "please fix any issues with lsusb command"
+                        " on host")
         return ((existing_usb.stdout.strip()).splitlines())
 
     device_type = params.get("usb_dev_label", 'all')
@@ -65,11 +64,11 @@ def run(test, params, env):
                 continue
             pass_usbs.append(usb)
         if pass_usbs == '':
-            raise error.TestNAError("No USB device found.")
+            test.cancel("No USB device found.")
     elif re.match(r'\w{4}:\w{4}', device_type):
         pass_usbs = []
         if not ([usb for usb in existing_usbs if device_type in usb]):
-            raise error.TestNAError("Device passed is not a USB device")
+            test.cancel("Device passed is not a USB device")
         for usb in existing_usbs:
             if (((usb.split())[5]) == device_type):
                 if ((usb.split())[5]) in lsusb_op_bef:
@@ -78,11 +77,11 @@ def run(test, params, env):
                 else:
                     pass_usbs.append(usb)
     elif 'ENTER' in device_type:
-        raise error.TestNAError("Please enter your device name for test.")
+        test.cancel("Please enter your device name for test.")
     else:
-        raise error.TestNAError("Please enter proper value for device name")
+        test.cancel("Please enter proper value for device name")
     if pass_usbs == []:
-        raise error.TestNAError(
+        test.cancel(
             "No usb devices available or already in use within guest")
     logging.info(
         "Passthrough will occur for following USB devices : %s", pass_usbs)
@@ -128,5 +127,5 @@ def run(test, params, env):
     logging.info("Passthrough failed for USB devices %s", fail_reported)
     logging.info("Passthrough passed for USB devices %s", pass_reported)
     if failures_reported:
-        raise error.TestFail("USB device passthrough failed for one or more"
-                             "devices, see above output for more details")
+        test.fail("USB device passthrough failed for one or more"
+                  "devices, see above output for more details")

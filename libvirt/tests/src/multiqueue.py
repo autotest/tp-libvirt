@@ -3,8 +3,8 @@ import time
 import threading
 import re
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
+from avocado.core import exceptions
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import remote
@@ -22,7 +22,7 @@ def config_xml_multiqueue(vm_name, vcpu=1, multiqueue=4):
     logging.debug("XML:%s", virsh.dumpxml(vm_name))
 
 
-def get_channel_info(vm, interface="eth0"):
+def get_channel_info(test, vm, interface="eth0"):
     """
     Get channel parameters of interface in vm.
     """
@@ -31,8 +31,8 @@ def get_channel_info(vm, interface="eth0"):
     s, o = session.cmd_status_output(cmd)
     session.close()
     if s:
-        raise error.TestFail("Get channel parameters for vm failed:%s"
-                             % o)
+        test.fail("Get channel parameters for vm failed:%s"
+                  % o)
     maximum = {}
     current = {}
     # Just for temp
@@ -48,7 +48,7 @@ def get_channel_info(vm, interface="eth0"):
     return maximum, current
 
 
-def setting_channel(vm, interface, parameter, value):
+def setting_channel(test, vm, interface, parameter, value):
     """
     Setting channel parameters for interface.
     """
@@ -59,7 +59,7 @@ def setting_channel(vm, interface, parameter, value):
     if s:
         logging.debug("Setting %s to %s failed:%s", parameter, value, o)
         return False
-    maximum, current = get_channel_info(vm, interface)
+    maximum, current = get_channel_info(test, vm, interface)
     try:
         if int(current['Combined']) == int(value):
             return True
@@ -69,17 +69,17 @@ def setting_channel(vm, interface, parameter, value):
     return False
 
 
-def get_vhost_pids(vm):
+def get_vhost_pids(test, vm):
     vmpid = vm.get_pid()
     if vmpid is None:
-        raise error.TestFail("Couldn't get vm's pid, its state: %s"
-                             % vm.state())
-    output = utils.run("ps aux | grep [v]host-%s | awk '{print $2}'"
-                       % vmpid).stdout
+        test.fail("Couldn't get vm's pid, its state: %s"
+                  % vm.state())
+    output = process.run("ps aux | grep [v]host-%s | awk '{print $2}'"
+                         % vmpid, shell=True).stdout.strip()
     return output.splitlines()
 
 
-def top_vhost(pids, expected_running_vhosts=1, timeout=15):
+def top_vhost(test, pids, expected_running_vhosts=1, timeout=15):
     """
     Use top tool to get vhost state.
     """
@@ -87,14 +87,14 @@ def top_vhost(pids, expected_running_vhosts=1, timeout=15):
     top_cmd = "top -n 1 -p %s -b" % pids_str
     timeout = int(timeout)
     while True:
-        output = utils.run(top_cmd).stdout
+        output = process.run(top_cmd, shell=True).stdout.strip()
         logging.debug(output)
         process_cpus = []
         for line in output.splitlines():
             if line.count("vhost"):
                 process_cpus.append(line.split()[8])
         if len(process_cpus) != len(pids):
-            raise error.TestFail("Couldn't get enough vhost processes.")
+            test.fail("Couldn't get enough vhost processes.")
         running_vhosts = 0
         for cpu in process_cpus:
             if float(cpu):
@@ -108,10 +108,10 @@ def top_vhost(pids, expected_running_vhosts=1, timeout=15):
                 logging.debug("Trying again to avoid occassional...")
                 continue
             else:
-                raise error.TestFail("Couldn't get enough running vhosts:%s "
-                                     "from all vhosts:%s, other CPU status of "
-                                     "vhost is 0."
-                                     % (running_vhosts, len(pids)))
+                test.fail("Couldn't get enough running vhosts:%s "
+                          "from all vhosts:%s, other CPU status of "
+                          "vhost is 0."
+                          % (running_vhosts, len(pids)))
 
 
 def set_cpu_affinity(vm, affinity_cpu=0):
@@ -155,7 +155,7 @@ def get_cpu_affinity(vm):
     return cpu_state
 
 
-def check_cpu_affinity(vm, affinity_cpu_number):
+def check_cpu_affinity(test, vm, affinity_cpu_number):
     """
     Compare the distance of cpu usage to verify whether it's affinity.
     """
@@ -165,11 +165,11 @@ def check_cpu_affinity(vm, affinity_cpu_number):
     logging.debug("Before:%s", cpu_state_before)
     logging.debug("After:%s", cpu_state_after)
     if len(cpu_state_before) != len(cpu_state_after):
-        raise error.TestFail("Get unmatched virtio input interrupts.")
+        test.fail("Get unmatched virtio input interrupts.")
 
     # Count cpu expanded size
     expand_cpu = {}
-    for interrupt in cpu_state_before.keys():
+    for interrupt in list(cpu_state_before.keys()):
         before = cpu_state_before[interrupt]
         after = cpu_state_after[interrupt]
         expand_ipt = []
@@ -179,11 +179,11 @@ def check_cpu_affinity(vm, affinity_cpu_number):
     logging.debug("Distance: %s", expand_cpu)
 
     # Check affinity
-    for interrupt in expand_cpu.keys():
+    for interrupt in list(expand_cpu.keys()):
         expand_ipt = expand_cpu[interrupt]
         if max(expand_ipt) != expand_ipt[int(affinity_cpu_number)]:
-            raise error.TestFail("Not affinity cpu to number %s: %s"
-                                 % (affinity_cpu_number, expand_ipt))
+            test.fail("Not affinity cpu to number %s: %s"
+                      % (affinity_cpu_number, expand_ipt))
 
 
 def get_vm_interface(vm, mac):
@@ -203,7 +203,7 @@ def get_vm_interface(vm, mac):
     return None
 
 
-def prepare_vm_queue(vm, params):
+def prepare_vm_queue(test, vm, params):
     """
     Set vm queue for following test.
     """
@@ -216,16 +216,16 @@ def prepare_vm_queue(vm, params):
         vm.start()
     mac = vm.get_mac_address()
     interface = get_vm_interface(vm, mac)
-    maximum, _ = get_channel_info(vm, interface)
+    maximum, _ = get_channel_info(test, vm, interface)
     if int(maximum.get("Combined")) is not int(queue):
-        raise error.TestFail("Set maximum queue is not effective:%s" % maximum)
-    setting_channel(vm, interface, "combined", queue)
-    _, current = get_channel_info(vm, interface)
+        test.fail("Set maximum queue is not effective:%s" % maximum)
+    setting_channel(test, vm, interface, "combined", queue)
+    _, current = get_channel_info(test, vm, interface)
     if int(current.get("Combined")) is not int(queue):
-        raise error.TestFail("Set current queue is not effective:%s" % current)
+        test.fail("Set current queue is not effective:%s" % current)
 
 
-def start_iperf(vm, params):
+def start_iperf(test, vm, params):
     """
     Start iperf server on host and run client in vm.
     """
@@ -275,11 +275,11 @@ def start_iperf(vm, params):
     # Wait for iperf running
     try:
         if not host_t.isAlive():
-            raise error.TestFail("Start iperf on server failed.")
+            test.fail("Start iperf on server failed.")
         for client_t in client_ts:
             if not client_t.isAlive():
-                raise error.TestFail("Start iperf on client failed.")
-    except error.TestFail:
+                test.fail("Start iperf on client failed.")
+    except exceptions.TestFail:
         host_session.close()
         for client_session in client_sessions:
             client_session.close()
@@ -312,17 +312,17 @@ def run(test, params, env):
     try:
         # Config new vm for multiqueue
         try:
-            prepare_vm_queue(new_vm, params)
+            prepare_vm_queue(test, new_vm, params)
         except Exception:
             if int(params.get("queue_count")) > 8:
                 params["queue_count"] = 8
-                prepare_vm_queue(new_vm, params)
+                prepare_vm_queue(test, new_vm, params)
 
         # Start checking
-        vhost_pids = get_vhost_pids(new_vm)
+        vhost_pids = get_vhost_pids(test, new_vm)
         logging.debug("vhosts: %s", vhost_pids)
         if len(vhost_pids) != int(params.get("queue_count")):
-            raise error.TestFail("Vhost count is not matched with queue.")
+            test.fail("Vhost count is not matched with queue.")
 
         affinity_cpu_number = params.get("affinity_cpu_number", '1')
         # Here, cpu affinity should be in this format:
@@ -335,15 +335,15 @@ def run(test, params, env):
         # Run iperf
         # Use iperf to make interface busy, otherwise we may not get
         # expected results
-        host_session, client_sessions = start_iperf(vm, params)
+        host_session, client_sessions = start_iperf(test, vm, params)
         # Wait for cpu consumed
         time.sleep(10)
 
         # Top to get vhost state or get cpu affinity
         if params.get("application") == "iperf":
-            top_vhost(vhost_pids, params.get("vcpu_count", 1))
+            top_vhost(test, vhost_pids, params.get("vcpu_count", 1))
         elif params.get("application") == "affinity":
-            check_cpu_affinity(vm, affinity_cpu_number)
+            check_cpu_affinity(test, vm, affinity_cpu_number)
     finally:
         if host_session:
             host_session.close()

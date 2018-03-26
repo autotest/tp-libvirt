@@ -6,8 +6,6 @@ import time
 import socket
 import shutil
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest import utils_misc
 from virttest.libvirt_xml.vm_xml import VMXML
@@ -91,12 +89,12 @@ def run(test, params, env):
                 dev_add_opt += "pty,name=pty,bus=virtio-serial0.0,id=pty"
             result = virsh.qemu_monitor_command(vm_name, char_add_opt, "--hmp")
             if result.exit_status:
-                raise error.TestError('Failed to add chardev %s to %s. Result:\n %s'
-                                      % (char_dev, vm_name, result))
+                test.error('Failed to add chardev %s to %s. Result:\n %s'
+                           % (char_dev, vm_name, result))
             result = virsh.qemu_monitor_command(vm_name, dev_add_opt, "--hmp")
             if result.exit_status:
-                raise error.TestError('Failed to add device %s to %s. Result:\n %s'
-                                      % (char_dev, vm_name, result))
+                test.error('Failed to add device %s to %s. Result:\n %s'
+                           % (char_dev, vm_name, result))
         elif type == "attach":
             xml_file = os.path.join(tmp_dir, "xml_%s" % char_dev)
             if char_dev in ["file", "socket"]:
@@ -108,8 +106,8 @@ def run(test, params, env):
             # http://libvirt.org/git/?
             # p=libvirt.git;a=commit;h=b63ea467617e3cbee4282ab2e5e780b4119cef3d
             if "unknown device type" in result.stderr:
-                raise error.TestNAError('Failed to attach %s to %s. Result:\n %s'
-                                        % (char_dev, vm_name, result))
+                test.cancel('Failed to attach %s to %s. Result:\n %s'
+                            % (char_dev, vm_name, result))
         return result
 
     def dup_hotplug(type, char_dev, id, dup_charid=False, dup_devid=False, diff_devid=False):
@@ -153,12 +151,11 @@ def run(test, params, env):
         result = virsh.qemu_monitor_command(vm_name, "info qtree", "--hmp")
         h_o = result.stdout.strip()
         if not h_o.count("name = \"%s\"" % char_dev):
-            raise error.TestFail("Cann't find device(%s) from:\n%s" % (char_dev, h_o))
+            test.fail("Cann't find device(%s) from:\n%s" % (char_dev, h_o))
         if char_dev == "file":
             session.cmd("echo test > %s" % serial_file)
-            f = open(tmp_file, "r")
-            r_o = f.read()
-            f.close()
+            with open(tmp_file, "r") as f:
+                r_o = f.read()
         elif char_dev == "socket":
             session.cmd("echo test > /tmp/file")
             sock = socket.socket(socket.AF_UNIX)
@@ -170,9 +167,9 @@ def run(test, params, env):
             session.cmd("dd if=/tmp/file of=%s &" % serial_file)
             dev_file = "/dev/pts/%s" % id
             if not os.path.exists(dev_file):
-                raise error.TestFail("%s doesn't exist." % dev_file)
-            p = subprocess.Popen(["/usr/bin/cat", dev_file],
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                test.fail("%s doesn't exist." % dev_file)
+            p = subprocess.Popen(["/usr/bin/cat", dev_file], universal_newlines=True,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
             session.cmd("echo test >> /tmp/file &")
             while True:
                 r_o = p.stdout.readline()
@@ -182,7 +179,7 @@ def run(test, params, env):
             p.kill()
         if not r_o.count("test"):
             err_info = "%s device file doesn't match 'test':%s" % (char_dev, r_o)
-            raise error.TestFail(err_info)
+            test.fail(err_info)
 
     def unhotplug_serial_device(type, char_dev):
         if type == "qmp":
@@ -190,8 +187,8 @@ def run(test, params, env):
             del_char_opt = "chardev-remove %s" % char_dev
             result = virsh.qemu_monitor_command(vm_name, del_dev_opt, "--hmp")
             if result.exit_status:
-                raise error.TestError('Failed to del device %s from %s.Result:\n%s'
-                                      % (char_dev, vm_name, result))
+                test.error('Failed to del device %s from %s.Result:\n%s'
+                           % (char_dev, vm_name, result))
             result = virsh.qemu_monitor_command(vm_name, del_char_opt, "--hmp")
         elif type == "attach":
             xml_file = os.path.join(tmp_dir, "xml_%s" % char_dev)
@@ -202,10 +199,10 @@ def run(test, params, env):
         result = virsh.qemu_monitor_command(vm_name, "info qtree", "--hmp")
         uh_o = result.stdout.strip()
         if uh_o.count("chardev = \"%s\"" % char_dev):
-            raise error.TestFail("Still can get serial device(%s) from: '%s'"
-                                 % (char_dev, uh_o))
+            test.fail("Still can get serial device(%s) from: '%s'"
+                      % (char_dev, uh_o))
         if os.path.exists(serial_file):
-            raise error.TestFail("File '%s' still exists after unhotplug" % serial_file)
+            test.fail("File '%s' still exists after unhotplug" % serial_file)
 
     # run test case
     try:
@@ -215,7 +212,7 @@ def run(test, params, env):
         else:
             pts_id = str(utils_misc.aton(utils_misc.get_dev_pts_max_id()) + 1)
             if os.path.exists("/dev/pts/%s" % pts_id):
-                raise error.TestError('invalid pts index(%s) provided.' % pts_id)
+                test.error('invalid pts index(%s) provided.' % pts_id)
         if status_error:
             hotplug_device(hotplug_type, char_dev, pts_id)
             ret = dup_hotplug(hotplug_type, char_dev, pts_id, dup_charid, dup_devid, diff_devid)
@@ -226,7 +223,7 @@ def run(test, params, env):
                 err_o2 = "Parsing chardev args failed"
                 err_o3 = "Property 'virtserialport.chardev' can't"
                 if (err_o1 not in dup_o) and (err_o2 not in dup_o) and (err_o3 not in dup_o):
-                    raise error.TestFail("Expect fail, but run successfully:\n%s" % ret)
+                    test.fail("Expect fail, but run successfully:\n%s" % ret)
             else:
                 if "chardev already exists" not in dup_o:
                     logging.info("Expect fail,but run successfully:\n%s" % ret)

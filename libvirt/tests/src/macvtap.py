@@ -2,8 +2,6 @@ import os
 
 import aexpect
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import remote
@@ -39,8 +37,8 @@ def run(test, params, env):
                     eth_config_file, persistent_net_file]
     for key, value in zip(param_keys, param_values):
         if value.count("ENTER.YOUR"):
-            raise error.TestNAError("Parameter '%s'(%s) is not configured."
-                                    % (key, value))
+            test.cancel("Parameter '%s'(%s) is not configured."
+                        % (key, value))
 
     vm1 = env.get_vm(vm_names[0])
     vm2 = None
@@ -48,17 +46,17 @@ def run(test, params, env):
         vm2 = env.get_vm(vm_names[1])
 
     if eth_card_no not in utils_net.get_net_if():
-        raise error.TestNAError("Device %s do not exists." % eth_card_no)
+        test.cancel("Device %s do not exists." % eth_card_no)
     try:
         iface_cls = utils_net.Interface(eth_card_no)
         origin_status = iface_cls.is_up()
         if not origin_status:
             iface_cls.up()
-    except process.CmdError, detail:
-        raise error.TestNAError(str(detail))
+    except process.CmdError as detail:
+        test.cancel(str(detail))
     br_cls = utils_net.Bridge()
     if eth_card_no in br_cls.list_iface():
-        raise error.TestNAError("%s has been used!" % eth_card_no)
+        test.cancel("%s has been used!" % eth_card_no)
     vmxml1 = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[0])
     if vm2:
         vmxml2 = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[1])
@@ -103,12 +101,12 @@ def run(test, params, env):
             # Attached interface maybe already active
             session.cmd("ifdown %s" % eth_name)
         except aexpect.ShellCmdError:
-            raise error.TestFail("ifdown %s failed." % eth_name)
+            test.fail("ifdown %s failed." % eth_name)
 
         try:
             session.cmd("ifup %s" % eth_name)
         except aexpect.ShellCmdError:
-            raise error.TestFail("ifup %s failed." % eth_name)
+            test.fail("ifup %s failed." % eth_name)
         return session
 
     def guest_clean(vm, vmxml):
@@ -140,7 +138,7 @@ def run(test, params, env):
         """
         ping_s, _ = ping(remote_ip, count=1, timeout=5, session=session)
         if ping_s:
-            raise error.TestFail("%s ping %s failed." % (vm1.name, remote_ip))
+            test.fail("%s ping %s failed." % (vm1.name, remote_ip))
 
     def private_test(session):
         """
@@ -149,19 +147,19 @@ def run(test, params, env):
         """
         ping_s, _ = ping(remote_ip, count=1, timeout=5, session=session)
         if ping_s:
-            raise error.TestFail("%s ping %s failed." % (vm1.name, remote_ip))
+            test.fail("%s ping %s failed." % (vm1.name, remote_ip))
         ping_s, _ = ping(vm2_ip, count=1, timeout=5, session=session)
         if not ping_s:
-            raise error.TestFail("%s ping %s succeed, but expect failed."
-                                 % (vm1.name, vm2.name))
+            test.fail("%s ping %s succeed, but expect failed."
+                      % (vm1.name, vm2.name))
         try:
             iface_cls.down()
-        except process.CmdError, detail:
-            raise error.TestNAError(str(detail))
+        except process.CmdError as detail:
+            test.cancel(str(detail))
         ping_s, _ = ping(vm2_ip, count=1, timeout=5, session=session)
         if not ping_s:
-            raise error.TestFail("%s ping %s succeed, but expect failed."
-                                 % (vm1.name, remote_ip))
+            test.fail("%s ping %s succeed, but expect failed."
+                      % (vm1.name, remote_ip))
 
     def passthrough_test(session):
         """
@@ -172,17 +170,17 @@ def run(test, params, env):
         """
         ping_s, _ = ping(remote_ip, count=1, timeout=5, session=session)
         if ping_s:
-            raise error.TestFail("%s ping %s failed."
-                                 % (vm1.name, remote_ip))
+            test.fail("%s ping %s failed."
+                      % (vm1.name, remote_ip))
         ping_s, _ = ping(remote_ip, count=1, timeout=5)
         if not ping_s:
-            raise error.TestFail("host ping %s succeed, but expect fail."
-                                 % remote_ip)
+            test.fail("host ping %s succeed, but expect fail."
+                      % remote_ip)
         vm1.destroy(gracefully=False)
         ping_s, _ = ping(remote_ip, count=1, timeout=5)
         if ping_s:
-            raise error.TestFail("host ping %s failed."
-                                 % remote_ip)
+            test.fail("host ping %s failed."
+                      % remote_ip)
 
     def bridge_test(session):
         """
@@ -193,31 +191,31 @@ def run(test, params, env):
         """
         ping_s, _ = ping(remote_ip, count=1, timeout=5, session=session)
         if ping_s:
-            raise error.TestFail("%s ping %s failed."
-                                 % (vm1.name, remote_ip))
+            test.fail("%s ping %s failed."
+                      % (vm1.name, remote_ip))
         ping_s, _ = ping(vm2_ip, count=1, timeout=5, session=session)
         if ping_s:
-            raise error.TestFail("%s ping %s failed."
-                                 % (vm1.name, vm2.name))
+            test.fail("%s ping %s failed."
+                      % (vm1.name, vm2.name))
         try:
             iface_cls.down()
-        except process.CmdError, detail:
-            raise error.TestNAError(str(detail))
+        except process.CmdError as detail:
+            test.cancel(str(detail))
         ping_s, _ = ping(remote_ip, count=1, timeout=5, session=session)
         if not ping_s:
-            raise error.TestFail("%s ping %s success, but expected fail."
-                                 % (vm1.name, remote_ip))
+            test.fail("%s ping %s success, but expected fail."
+                      % (vm1.name, remote_ip))
     # Test start
     try:
         try:
             session = guest_config(vm1, vm1_ip)
-        except remote.LoginTimeoutError, fail:
-            raise error.TestFail(str(fail))
+        except remote.LoginTimeoutError as fail:
+            test.fail(str(fail))
         if vm2:
             try:
                 guest_config(vm2, vm2_ip)
-            except remote.LoginTimeoutError, fail:
-                raise error.TestFail(str(fail))
+            except remote.LoginTimeoutError as fail:
+                test.fail(str(fail))
 
         # Four mode test
         if iface_mode == "vepa":

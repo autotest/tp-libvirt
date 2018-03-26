@@ -1,8 +1,7 @@
 import logging
 import os
-import commands
 
-from autotest.client.shared import error
+from avocado.utils import process
 
 from avocado.utils import process
 
@@ -61,12 +60,12 @@ def prepare_disk_params(target_list, params):
     # func_metric: the metric which func will increase.
     try:
         slot_metric = int(params.get("mf_slot_metric", 0))
-    except ValueError, detail:    # illegal metric
+    except ValueError as detail:    # illegal metric
         logging.warn(detail)
         slot_metric = 0
     try:
         func_metric = int(params.get("mf_func_metric", 0))
-    except ValueError, detail:    # illegal metric
+    except ValueError as detail:    # illegal metric
         logging.warn(detail)
         func_metric = 0
 
@@ -92,12 +91,12 @@ def prepare_disk_params(target_list, params):
         if slot_metric:
             try:
                 base_slot += slot_metric
-            except TypeError, detail:
+            except TypeError as detail:
                 logging.warn(detail)
         if func_metric:
             try:
                 base_function += func_metric
-            except TypeError, detail:
+            except TypeError as detail:
                 logging.warn(detail)
 
         # Convert number hex back to string hex if necessary
@@ -154,7 +153,7 @@ def device_exists(vm, target_dev):
     """
     Check if given target device exists on vm.
     """
-    targets = vm.get_blk_devices().keys()
+    targets = list(vm.get_blk_devices().keys())
     if target_dev in targets:
         return True
     return False
@@ -171,7 +170,8 @@ def attach_additional_device(vm_name, disksize, targetdev, params):
     logging.info("Attaching disk...")
     disk_path = os.path.join(data_dir.get_tmp_dir(), targetdev)
     cmd = "qemu-img create %s %s" % (disk_path, disksize)
-    status, output = commands.getstatusoutput(cmd)
+    ret = process.run(cmd, shell=True, allow_output_check='combine')
+    status, output = ret.exit_status, ret.stdout.strip()
     if status:
         return (False, output)
 
@@ -199,7 +199,7 @@ def define_new_vm(vm_name, new_name):
         del vmxml.uuid
         vmxml.define()
         return True
-    except xcepts.LibvirtXMLError, detail:
+    except xcepts.LibvirtXMLError as detail:
         logging.error(detail)
         return False
 
@@ -281,28 +281,28 @@ def run(test, params, env):
                     logging.info("Failed as expected.")
                     return
                 else:
-                    raise error.TestFail("Attach device %s failed."
-                                         % target_dev)
+                    test.fail("Attach device %s failed."
+                              % target_dev)
             else:
                 if status_error and not check_disk_error:
                     fail_info.append("Attach %s successfully "
                                      "but not expected." % target_dev)
         if len(fail_info):
-            raise error.TestFail(fail_info)
+            test.fail(fail_info)
         logging.debug("New VM XML:\n%s", new_vm.get_xml())
 
         # Login to check attached devices
         for target_dev in target_list:
             try:
                 check_disk(new_vm, target_dev, disk_size)
-            except MFCheckDiskError, detail:
+            except MFCheckDiskError as detail:
                 if check_disk_error:
                     logging.debug("Check disk failed as expected:\n%s", detail)
                     return
                 else:
                     raise
             if check_disk_error:
-                raise error.TestFail("Check disk didn't fail as expected.")
+                test.fail("Check disk didn't fail as expected.")
     finally:
         if new_vm.is_alive():
             new_vm.destroy()

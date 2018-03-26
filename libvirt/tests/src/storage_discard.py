@@ -7,9 +7,8 @@ import logging
 import time
 
 from avocado.utils import lv_utils
-from autotest.client.shared import error
-
 from avocado.utils import process
+from avocado.core import exceptions
 
 from virttest import virsh
 from virttest import data_dir
@@ -25,12 +24,12 @@ def volumes_capacity(lv_name):
     Get volume's information about its capacity percentage.
     """
     volumes = lv_utils.lv_list()
-    if lv_name in volumes.keys():
+    if lv_name in list(volumes.keys()):
         return volumes[lv_name]["Origin_Data"]
     return None
 
 
-def get_disk_capacity(disk_type, imagefile=None, lvname=None):
+def get_disk_capacity(test, disk_type, imagefile=None, lvname=None):
     """
     Get disk capacity space on host.
     Take attention: for file image, it's Metabytes
@@ -41,14 +40,14 @@ def get_disk_capacity(disk_type, imagefile=None, lvname=None):
         return result.stdout.split()[0].strip()
     elif disk_type == "block":
         if lvname is None:
-            raise error.TestFail("No volume name provided.")
+            test.fail("No volume name provided.")
         lv_cap = volumes_capacity(lvname)
         if lv_cap is None:
-            raise error.TestFail("Get volume capacity failed.")
+            test.fail("Get volume capacity failed.")
         return lv_cap
 
 
-def create_iscsi_device(device_size="2G"):
+def create_iscsi_device(test, device_size="2G"):
     """
     Create a iscsi device.
     """
@@ -64,11 +63,11 @@ def create_iscsi_device(device_size="2G"):
             iscsi_device = (ip_addr, iscsi_node[1])
             break
     if iscsi_device == ():
-        raise error.TestFail("No matched iscsi device.")
+        test.fail("No matched iscsi device.")
 
     check_ret = process.run("ls %s" % device_name, shell=True)
     if check_ret.exit_status:
-        raise error.TestFail("Can not find provided device:%s" % check_ret)
+        test.fail("Can not find provided device:%s" % check_ret)
     return device_name
 
 
@@ -174,7 +173,7 @@ def sig_delta(size1, size2, tolerable_shift=0.8):
     return ((abs(s1 - s2) / s2) > tolerable_shift)
 
 
-def do_fstrim(fstrim_type, vm, status_error=False):
+def do_fstrim(test, fstrim_type, vm, status_error=False):
     """
     Execute fstrim in different ways, and check its result.
     """
@@ -192,17 +191,17 @@ def do_fstrim(fstrim_type, vm, status_error=False):
                 logging.debug("Expected failure: virtio do not support fstrim")
                 return
             else:
-                raise error.TestFail("Not supported fstrim on supported "
-                                     "envrionment.Bug?")
+                test.fail("Not supported fstrim on supported "
+                          "envrionment.Bug?")
         try:
             trimmed_bytes = re.search("\d+\sbytes",
                                       output).group(0).split()[0]
             trimmed = int(trimmed_bytes)
             logging.debug("Trimmed size is:%s bytes", trimmed)
-        except (AttributeError, IndexError), detail:
-            raise error.TestFail("Do fstrim failed:%s" % detail)
+        except (AttributeError, IndexError) as detail:
+            test.fail("Do fstrim failed:%s" % detail)
         if trimmed == 0:
-            raise error.TestFail("Trimmed size is 0.")
+            test.fail("Trimmed size is 0.")
     elif fstrim_type == "mount_with_discard":
         pass
     elif fstrim_type == "qemu-guest-agent":
@@ -211,7 +210,7 @@ def do_fstrim(fstrim_type, vm, status_error=False):
         try:
             virsh.command(cmd, debug=True, ignore_status=False)
         except process.CmdError:
-            raise error.TestFail("Execute qemu-agent-command failed.")
+            test.fail("Execute qemu-agent-command failed.")
 
 
 def run(test, params, env):
@@ -231,12 +230,12 @@ def run(test, params, env):
     # Create a new vm for test, undefine it at last
     new_vm_name = "%s_discardtest" % vm.name
     if not utlv.define_new_vm(vm.name, new_vm_name):
-        raise error.TestError("Define new vm failed.")
+        test.error("Define new vm failed.")
     try:
         new_vm = libvirt_vm.VM(new_vm_name, vm.params, vm.root_dir,
                                vm.address_cache)
-    except Exception, detail:
-        raise error.TestError("Create new vm failed:%s" % detail)
+    except Exception as detail:
+        test.error("Create new vm failed:%s" % detail)
 
     disk_type = params.get("disk_type", "file")
     discard_device = params.get("discard_device", "/DEV/EXAMPLE")
@@ -254,7 +253,7 @@ def run(test, params, env):
                 create_iscsi = False
             else:
                 create_iscsi = True
-                discard_device = create_iscsi_device()
+                discard_device = create_iscsi_device(test)
             device_path = create_volume(discard_device)
 
         discard_type = params.get("discard_type", "ignore")
@@ -280,7 +279,7 @@ def run(test, params, env):
         # Get new disk name in vm
         new_disk = "".join(list(set(bf_disks) ^ set(af_disks)))
         if not new_disk:
-            raise error.TestFail("Can not get attached device in vm.")
+            test.fail("Can not get attached device in vm.")
         logging.debug("Attached device in vm:%s", new_disk)
 
         # Occupt space of new disk
@@ -290,15 +289,15 @@ def run(test, params, env):
         else:
             mount_options = None
 
-        bf_cpy = get_disk_capacity(disk_type, imagefile=device_path,
+        bf_cpy = get_disk_capacity(test, disk_type, imagefile=device_path,
                                    lvname="lvthin")
         logging.debug("Disk size before using:%s", bf_cpy)
         occupy_disk(new_vm, new_disk, "500", frmt_type, mount_options)
-        bf_fstrim_cpy = get_disk_capacity(disk_type, imagefile=device_path,
+        bf_fstrim_cpy = get_disk_capacity(test, disk_type, imagefile=device_path,
                                           lvname="lvthin")
         logging.debug("Disk size after used:%s", bf_fstrim_cpy)
-        do_fstrim(fstrim_type, new_vm, status_error)
-        af_fstrim_cpy = get_disk_capacity(disk_type, imagefile=device_path,
+        do_fstrim(test, fstrim_type, new_vm, status_error)
+        af_fstrim_cpy = get_disk_capacity(test, disk_type, imagefile=device_path,
                                           lvname="lvthin")
         logging.debug("\nBefore occupying disk:%s\n"
                       "After occupied disk:%s\n"
@@ -308,10 +307,10 @@ def run(test, params, env):
         if fstrim_type in ["fstrim_cmd", "qemu-guest-agent"]:
             if not sig_delta(bf_fstrim_cpy, af_fstrim_cpy) and \
                     not status_error:
-                raise error.TestFail("Manual 'fstrims' didn't work.")
+                test.fail("Manual 'fstrims' didn't work.")
         elif fstrim_type == "mount_with_discard":
             if sig_delta(bf_cpy, bf_fstrim_cpy) and not status_error:
-                raise error.TestFail("Automatical 'fstrims' didn't work.")
+                test.fail("Automatical 'fstrims' didn't work.")
     finally:
         if new_vm.is_alive():
             new_vm.destroy()
@@ -319,11 +318,11 @@ def run(test, params, env):
         if disk_type == "block":
             try:
                 lv_utils.lv_remove("vgthin", "lvthin")
-            except error.TestError, detail:
+            except exceptions.TestError as detail:
                 logging.debug(str(detail))
             try:
                 lv_utils.vg_remove("vgthin")
-            except error.TestError, detail:
+            except exceptions.TestError as detail:
                 logging.debug(str(detail))
             process.run("pvremove -f %s" % discard_device, ignore_status=True,
                         shell=True)

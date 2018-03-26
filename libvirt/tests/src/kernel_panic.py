@@ -2,8 +2,6 @@ import logging
 
 import aexpect
 
-from autotest.client.shared import error
-
 from virttest import virt_vm
 from virttest import virsh
 
@@ -40,7 +38,7 @@ def run(test, params, env):
                                                    internal_timeout=5)
     except aexpect.ShellTimeoutError:
         pass  # This is expected
-    except:
+    except Exception:
         # This is unexpected
         raise
 
@@ -57,4 +55,4 @@ def run(test, params, env):
 
     # check status_error
     if status:
-        raise error.TestFail("Panic command failed to cause panic")
+        test.fail("Panic command failed to cause panic")
