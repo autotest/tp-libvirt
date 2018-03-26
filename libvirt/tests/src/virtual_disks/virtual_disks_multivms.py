@@ -1,6 +1,5 @@
 import os
 import logging
-
 import aexpect
 
 from virttest import utils_selinux
