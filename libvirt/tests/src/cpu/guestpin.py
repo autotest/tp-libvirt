@@ -109,13 +109,21 @@ def run(test, params, env):
                 # Work around due to known cgroup issue after cpu hot(un)plug
                 # sequence
                 root_cpuset_path = utils_cgroup.get_cgroup_mountpoint("cpuset")
-                machine_cpuset_path = os.path.join(root_cpuset_path,
-                                                   "machine.slice")
-                if os.path.isdir(machine_cpuset_path):
-                    root_cpuset_cpus = os.path.join(root_cpuset_path,
-                                                    "cpuset.cpus")
-                    machine_cpuset_cpus = os.path.join(machine_cpuset_path,
-                                                       "cpuset.cpus")
+                machine_cpuset_paths = []
+                if os.path.isdir(os.path.join(root_cpuset_path,
+                                 "machine.slice")):
+                    machine_cpuset_paths.append(os.path.join(root_cpuset_path,
+                                                             "machine.slice"))
+                if os.path.isdir(os.path.join(root_cpuset_path, "machine")):
+                    machine_cpuset_paths.append(os.path.join(root_cpuset_path,
+                                                             "machine"))
+                if not machine_cpuset_paths:
+                    logging.warning("cgroup cpuset might not recover properly "
+                                    "for guests after host smt changes, "
+                                    "restore it manually")
+                root_cpuset_cpus = os.path.join(root_cpuset_path, "cpuset.cpus")
+                for path in machine_cpuset_paths:
+                    machine_cpuset_cpus = os.path.join(path, "cpuset.cpus")
                     # check if file content differs
                     cmd = "diff %s %s" % (root_cpuset_cpus,
                                           machine_cpuset_cpus)
@@ -123,10 +131,6 @@ def run(test, params, env):
                         cmd = "cp %s %s" % (root_cpuset_cpus,
                                             machine_cpuset_cpus)
                         process.system(cmd, verbose=True)
-                else:
-                    logging.warning("cgroup cpuset might not recover properly "
-                                    "for guests after host smt changes, "
-                                    "restore it manually")
 
             else:
                 logging.debug("No need recover the domain")
