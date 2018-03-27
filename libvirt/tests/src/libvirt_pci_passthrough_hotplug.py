@@ -68,6 +68,7 @@ def run(test, params, env):
     suspend_operation = params.get("suspend_operation", "no")
     reboot_operation = params.get("reboot_operation", "no")
     virsh_dumpxml = params.get("virsh_dumpxml", "no")
+    virsh_dump = params.get("virsh_dump", "no")
     # Check the parameters from configuration file.
     for each_param in params.itervalues():
         if "ENTER_YOUR" in each_param:
@@ -92,11 +93,8 @@ def run(test, params, env):
                                           "librtas", "powerpc-utils"],
                                          session, 360):
         test.cancel('Fail on dependencies installing')
-    save_file = os.path.join(data_dir.get_tmp_dir(), "attach.xml")
-    try:
-        fp = open(save_file, "w")
-    except IOError:
-        logging.debug("Error: File does not appear to exist. %s", save_file)
+    if virsh_dump == "yes":
+        dump_file = os.path.join(data_dir.get_tmp_dir(), "virshdump.xml")
     output = session.cmd_output("ip link")
     logging.debug("checking for output - %s", output)
     nic_list_before = str(output.splitlines())
@@ -115,10 +113,6 @@ def run(test, params, env):
     dev.hostdev_type = 'pci'
     dev.managed = 'no'
     dev.source = dev.new_source(**pci_address)
-    dev = str(dev)
-    temp, dev = dev.split("?>", 1)
-    fp.write(dev)
-    fp.close()
 
     def detach_device(pci_devs, pci_ids):
         # detaching the device from host
@@ -163,7 +157,7 @@ def run(test, params, env):
         if not libvirt_version.version_compare(3, 10, 0):
             detach_device(pci_devs, pci_ids)
         # attach the device in hotplug mode
-        result = virsh.attach_device(vm_name, save_file,
+        result = virsh.attach_device(vm_name, dev.xml,
                                      flagstr="--live", debug=True)
         if result.exit_status:
             test.error(result.stdout)
@@ -174,7 +168,7 @@ def run(test, params, env):
 
     # detach hot plugged device
     def device_hotunplug():
-        result = virsh.detach_device(vm_name, save_file,
+        result = virsh.detach_device(vm_name, dev.xml,
                                      flagstr="--live", debug=True)
         if result.exit_status:
             test.fail(result.stdout)
@@ -242,10 +236,19 @@ def run(test, params, env):
         else:
             test.fail("passthroughed adapter not found after reboot")
 
-    def test_dump():
+    def test_dumpxml():
+        # test dumpxml
         cmd_result = virsh.dumpxml(vm_name, debug=True)
         if cmd_result.exit_status:
             test.fail("Failed to dump xml of domain %s" % vm_name)
+
+    def test_dump():
+        # test virsh_dump
+        cmd_result = virsh.dump(vm_name, dump_file,
+                                option="--memory-only", **dargs)
+        if cmd_result.exit_status:
+            test.fail("Failed to virsh dump of domain %s" % vm_name)
+
     try:
         for stress_value in range(0, int(stress_val)):
             device_hotplug()
@@ -255,13 +258,14 @@ def run(test, params, env):
             if reboot_operation == "yes":
                 test_reboot()
             if virsh_dumpxml == "yes":
+                test_dumpxml()
+            if virsh_dump == "yes":
                 test_dump()
             device_hotunplug()
 
     finally:
         # clean up
-        if os.path.exists(save_file):
-            os.remove(save_file)
+        data_dir.clean_tmp_files()
         backup_xml.sync()
         if not libvirt_version.version_compare(3, 10, 0):
             pci_devs.sort()
