@@ -69,6 +69,7 @@ def run(test, params, env):
     reboot_operation = params.get("reboot_operation", "no")
     virsh_dumpxml = params.get("virsh_dumpxml", "no")
     virsh_dump = params.get("virsh_dump", "no")
+    flood_ping = params.get("flood_ping", "no")
     # Check the parameters from configuration file.
     for each_param in params.itervalues():
         if "ENTER_YOUR" in each_param:
@@ -194,15 +195,23 @@ def run(test, params, env):
             session.cmd("ip link set %s up" % nic_name)
             s_ping, o_ping = utils_net.ping(dest=server_ip, count=5,
                                             interface=net_ip)
-            logging.info(o_ping)
-            # Test Flood Ping
-            s_ping, o_ping = utils_net.ping(dest=server_ip, count=5,
-                                            interface=net_ip, flood=True)
             logging.info(s_ping)
+            logging.info(o_ping)
+            if s_ping:
+                test.fail("Ping test failed")
         except aexpect.ShellError, detail:
             test.error("Succeed to set ip on guest, but failed "
                        "to bring up interface.\n"
                        "Detail: %s." % detail)
+
+    def test_flood_ping():
+        # Test Flood Ping
+        s_ping, o_ping = utils_net.ping(dest=server_ip, count=5,
+                                        interface=net_ip, flood=True)
+        logging.info(s_ping)
+        logging.info(o_ping)
+        if s_ping:
+            test.fail("Flood ping test failed")
 
     def test_suspend():
         # Suspend
@@ -253,6 +262,8 @@ def run(test, params, env):
         for stress_value in range(0, int(stress_val)):
             device_hotplug()
             test_ping()
+            if flood_ping == "yes":
+                test_flood_ping()
             if suspend_operation == "yes":
                 test_suspend()
             if reboot_operation == "yes":
