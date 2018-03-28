@@ -4,8 +4,6 @@ import shutil
 from aexpect import ShellError
 from aexpect import ShellTimeoutError
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import data_dir
@@ -59,8 +57,8 @@ def run(test, params, env):
 
     try:
         session = vm.wait_for_login()
-    except (LoginError, VMError, ShellError), e:
-        raise error.TestFail("Test failed: %s" % str(e))
+    except (LoginError, VMError, ShellError) as e:
+        test.fail("Test failed: %s" % str(e))
 
     def is_hotplug_ok():
         try:
@@ -69,8 +67,8 @@ def run(test, params, env):
                 return False
             else:
                 return True
-        except ShellTimeoutError, detail:
-            raise error.TestFail("unhotplug failed: %s, " % detail)
+        except ShellTimeoutError as detail:
+            test.fail("unhotplug failed: %s, " % detail)
 
     tmp_dir = os.path.join(data_dir.get_tmp_dir(), "usb_hotplug_files")
     if not os.path.isdir(tmp_dir):
@@ -84,7 +82,7 @@ def run(test, params, env):
             if usb_type == "storage":
                 path = os.path.join(tmp_dir, "%s.img" % i)
                 libvirt.create_local_disk("file", path, size="1M", disk_format="qcow2")
-                os.chmod(path, 0666)
+                os.chmod(path, 0o666)
 
             if attach_type == "qemu_monitor":
                 if usb_type == "storage":
@@ -131,9 +129,9 @@ def run(test, params, env):
         if status_error and usb_type == "storage":
             if utils_misc.wait_for(is_hotplug_ok, timeout=30):
                 # Sometimes we meet an error but the ret in $? is 0.
-                raise error.TestFail("\nAttach device successfully in negative case."
-                                     "\nExcept it fail when attach count exceed maximum."
-                                     "\nDetail: %s" % result)
+                test.fail("\nAttach device successfully in negative case."
+                          "\nExcept it fail when attach count exceed maximum."
+                          "\nDetail: %s" % result)
 
         for i in range(attach_count):
             attach_cmd = "device_del"
@@ -155,14 +153,14 @@ def run(test, params, env):
                 result = virsh.detach_device(vm_name, dev_xml.xml)
                 if result.exit_status:
                     raise process.CmdError(result.command, result)
-    except process.CmdError, e:
+    except process.CmdError as e:
         if not status_error:
             # live attach of device 'input' is not supported
             ret = result.stderr.find("Operation not supported")
             if usb_type != "storage" and ret > -1:
                 pass
             else:
-                raise error.TestFail("failed to attach device.\nDetail: %s." % result)
+                test.fail("failed to attach device.\nDetail: %s." % result)
     finally:
         session.close()
         if os.path.isdir(tmp_dir):

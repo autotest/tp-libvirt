@@ -4,8 +4,6 @@ BTW it not limited to hypervisors CPU/machine features.
 """
 import logging
 
-from autotest.client.shared import error
-
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -13,7 +11,7 @@ from virttest.utils_test import libvirt
 from provider import libvirt_version
 
 
-def config_feature_pv_eoi(vmxml, **kwargs):
+def config_feature_pv_eoi(test, vmxml, **kwargs):
     """
     Config libvirt VM XML to enable/disable PV EOI feature.
 
@@ -23,8 +21,8 @@ def config_feature_pv_eoi(vmxml, **kwargs):
     """
     # This attribute supported since 0.10.2 (QEMU only)
     if not libvirt_version.version_compare(0, 10, 2):
-        raise error.TestNAError("PV eoi is not supported in current"
-                                " libvirt version")
+        test.cancel("PV eoi is not supported in current"
+                    " libvirt version")
     qemu_flags = []
     eoi_enable = kwargs.get('eoi_enable', 'on')
     if eoi_enable == 'on':
@@ -42,12 +40,12 @@ def config_feature_pv_eoi(vmxml, **kwargs):
         vmxml.features = vmxml_feature
         logging.debug("Update VM XML:\n%s", vmxml)
         vmxml.sync()
-    except Exception, detail:
+    except Exception as detail:
         logging.error("Update VM XML fail: %s", detail)
     return qemu_flags
 
 
-def config_feature_memory_backing(vmxml, **kwargs):
+def config_feature_memory_backing(test, vmxml, **kwargs):
     """
     Config libvirt VM XML to influence how virtual memory pages are backed
     by host pages.
@@ -58,8 +56,8 @@ def config_feature_memory_backing(vmxml, **kwargs):
     """
     # Both 'nosharepages' and 'locked' are supported since 1.0.6
     if not libvirt_version.version_compare(1, 0, 6):
-        raise error.TestNAError("Element is not supported in current"
-                                " libvirt version")
+        test.cancel("Element is not supported in current"
+                    " libvirt version")
     qemu_flags = []
     no_sharepages = "yes" == kwargs.get("nosharepages", "no")
     locked = "yes" == kwargs.get("locked", "no")
@@ -79,7 +77,7 @@ def config_feature_memory_backing(vmxml, **kwargs):
                                            nosp=no_sharepages,
                                            locked=locked)
         logging.debug("xml updated to %s", vmxml.xmltreefile)
-    except Exception, detail:
+    except Exception as detail:
         logging.error("Update VM XML fail: %s", detail)
     return qemu_flags
 
@@ -103,8 +101,8 @@ def run(test, params, env):
     test_feature_valu = params.get("test_feature_valu", '').split(",")
     # Paramters for test case
     if len(test_feature_attr) != len(test_feature_valu):
-        raise error.TestError("Attribute number not match with value number")
-    test_dargs = dict(zip(test_feature_attr, test_feature_valu))
+        test.error("Attribute number not match with value number")
+    test_dargs = dict(list(zip(test_feature_attr, test_feature_valu)))
     if vm.is_alive():
         vm.destroy()
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -118,9 +116,8 @@ def run(test, params, env):
 
         # Check qemu flag
         vm_pid = vm.get_pid()
-        cmdline_f = open("/proc/%s/cmdline" % vm_pid)
-        cmdline_content = cmdline_f.read()
-        cmdline_f.close()
+        with open("/proc/%s/cmdline" % vm_pid) as cmdline_f:
+            cmdline_content = cmdline_f.read()
         logging.debug("VM cmdline:\n%s",
                       cmdline_content.replace('\x00', ' '))
         msg = "Find '%s' in qemu cmdline? %s"
@@ -143,6 +140,6 @@ def run(test, params, env):
             logging.info(msg % (flag, found_flags[index]))
             index += 1
         if False in found_flags:
-            raise error.TestFail("Not find all flags")
+            test.fail("Not find all flags")
     finally:
         vmxml_backup.sync()

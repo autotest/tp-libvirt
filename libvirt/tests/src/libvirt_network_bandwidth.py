@@ -1,8 +1,7 @@
 import os
 import time
 
-from autotest.client.shared import error
-from autotest.client import utils
+from avocado.utils import process
 
 from virttest import data_dir
 from virttest import virsh
@@ -59,8 +58,8 @@ def run(test, params, env):
             default_interface = interface
             break
     if not default_interface:
-        raise error.TestNAError("VM is not using default network,"
-                                "skip this test.")
+        test.cancel("VM is not using default network,"
+                    "skip this test.")
 
     bandwidth_inbound = {'average': inbound_average,
                          'peak': inbound_peak,
@@ -76,7 +75,7 @@ def run(test, params, env):
     file_path = os.path.join(tmp_dir, "scp_file")
     # Init a QemuImg instance.
     cmd = "dd if=/dev/zero of=%s bs=1M count=%s" % (file_path, file_size)
-    utils.run(cmd)
+    process.run(cmd, shell=True)
     try:
         if config_type == "network":
             network_xml.bandwidth_inbound = bandwidth_inbound
@@ -98,8 +97,8 @@ def run(test, params, env):
             vm_xml.sync()
         elif config_type == "portgroup":
             if nettype != 'network':
-                raise error.TestNAError("Portgroup is only applicable with "
-                                        "virtual network")
+                test.cancel("Portgroup is only applicable with "
+                            "virtual network")
             # Add a portgroup into default network
             portgroup_name = "test_portgroup"
             portgroup = PortgroupXML()
@@ -122,8 +121,8 @@ def run(test, params, env):
             vm_xml.devices = devices
             vm_xml.sync()
         else:
-            raise error.TestNAError("Unsupported parameter config_type=%s." %
-                                    config_type)
+            test.cancel("Unsupported parameter config_type=%s." %
+                        config_type)
 
         # SCP to check the network bandwidth.
         if vm.is_alive():
@@ -135,23 +134,23 @@ def run(test, params, env):
         time_after = time.time()
 
         speed_expected = int(inbound_average)
-        speed_actual = (10 * 1024 / (time_after - time_before))
+        speed_actual = (10 * 1024 // (time_after - time_before))
         if not (abs(speed_actual - speed_expected) <=
                 speed_expected * bandwidth_tolerance):
-            raise error.TestFail("Speed from host to guest is %s.\n"
-                                 "But the average of bandwidth.inbound is %s.\n"
-                                 % (speed_actual, speed_expected))
+            test.fail("Speed from host to guest is %s.\n"
+                      "But the average of bandwidth.inbound is %s.\n"
+                      % (speed_actual, speed_expected))
         time_before = time.time()
         vm.copy_files_from(host_path=file_path, guest_path="/root/scp_file")
         time_after = time.time()
 
         speed_expected = int(outbound_average)
-        speed_actual = (10 * 1024 / (time_after - time_before))
+        speed_actual = (10 * 1024 // (time_after - time_before))
         if not (abs(speed_actual - speed_expected) <=
                 speed_expected * bandwidth_tolerance):
-            raise error.TestFail("Speed from guest to host is %s.\n"
-                                 "But the average of bandwidth.outbound is %s\n"
-                                 % (speed_actual, speed_expected))
+            test.fail("Speed from guest to host is %s.\n"
+                      "But the average of bandwidth.outbound is %s\n"
+                      % (speed_actual, speed_expected))
 
     finally:
         if os.path.exists(file_path):

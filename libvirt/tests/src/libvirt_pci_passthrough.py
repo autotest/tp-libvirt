@@ -167,7 +167,7 @@ def run(test, params, env):
                                 % (net_ip, netmask, nic_name))
                     session.cmd("ip link set %s up" % nic_name)
                     session.cmd("ping -I %s %s -c 5" % (nic_name, server_ip))
-                except aexpect.ShellError, detail:
+                except aexpect.ShellError as detail:
                     test.error("Succeed to set ip on guest, but failed "
                                "to ping server ip from guest. %s \n" % detail)
             else:
@@ -190,7 +190,7 @@ def run(test, params, env):
                                     % (net_ip, netmask, nic_name))
                         session.cmd("ip link set %s up" % nic_name)
                         session.cmd("ping -I %s %s -c 5" % (nic_name, server_ip))
-                    except aexpect.ShellError, detail:
+                    except aexpect.ShellError as detail:
                         test.error("Succeed to set ip on guest, but failed "
                                    "to ping server ip from guest. %s\n" % detail)
         elif device_type == "STORAGE":
