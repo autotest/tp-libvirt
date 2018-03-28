@@ -37,6 +37,10 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     virsh_dargs = {'debug': True, 'ignore_status': False}
 
+    if not utils_package.package_install(["lsof"]):
+        test.cancel("Failed to install dependency package lsof"
+                    " on host")
+
     def create_iface_xml(iface_mac):
         """
         Create interface xml file
