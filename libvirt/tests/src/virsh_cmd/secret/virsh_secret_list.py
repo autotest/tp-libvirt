@@ -1,6 +1,7 @@
 import os
 import re
-import commands
+
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
@@ -43,7 +44,7 @@ def run(test, params, env):
         for j in ['yes', 'no']:
             # Generate valid uuid
             cmd = "uuidgen"
-            status, uuid = commands.getstatusoutput(cmd)
+            status, uuid = process.getstatusoutput(cmd)
             if status:
                 test.cancel("Failed to generate valid uuid")
             uuid_list.append(uuid)

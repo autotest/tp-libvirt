@@ -1,5 +1,4 @@
 import os
-import commands
 
 from avocado.utils import process
 
@@ -33,7 +32,7 @@ def run(test, params, env):
     if secret_ref == "secret_valid_uuid":
         # Generate valid uuid
         cmd = "uuidgen"
-        status, uuid = commands.getstatusoutput(cmd)
+        status, uuid = process.getstatusoutput(cmd)
         if status:
             test.cancel("Failed to generate valid uuid")
 

@@ -1,7 +1,6 @@
 import re
 import os
 import time
-import commands
 import string
 import logging
 
@@ -50,7 +49,7 @@ def check_snap_in_image(vm_name, snap_name):
     xtf_dom = xml_utils.XMLTreeFile(domxml)
 
     cmd = "qemu-img info " + xtf_dom.find("devices/disk/source").get("file")
-    img_info = commands.getoutput(cmd).strip()
+    img_info = process.getoutput(cmd).strip()
 
     if re.search(snap_name, img_info):
         logging.info("Find snapshot info in image")
