@@ -41,7 +41,7 @@ def run(test, params, env):
             test.fail("Please provide domain xml file for create or"
                       " existing domain name with main_vm = xx")
         #get vm name from xml file
-        xml_cut = process.system_output("grep '<name>.*</name>' %s" % xmlfile, shell=True)
+        xml_cut = process.getoutput("grep '<name>.*</name>' %s" % xmlfile, shell=True)
         vm_name = xml_cut.strip(' <>').strip("name").strip("<>/")
         logging.debug("vm_name is %s", vm_name)
         vm = env.get_vm(vm_name)

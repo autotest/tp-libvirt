@@ -31,7 +31,7 @@ def netcf_trans_control(test, command="status"):
                         "Make sure you have netcf-libs installed!")
     logging.debug(cmd)
 
-    return process.system_output("%s %s" % (cmd, command), shell=True)
+    return process.getoutput("%s %s" % (cmd, command), shell=True)
 
 
 def write_iface_cfg(iface_cfg, test):
