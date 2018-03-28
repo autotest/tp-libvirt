@@ -3,7 +3,6 @@ import re
 import copy
 import ast
 import logging
-import time
 
 from avocado.utils import process
 
@@ -103,8 +102,8 @@ def run(test, params, env):
         if err_msg:
             libvirt.check_result(ret, err_msg)
         else:
-            # Wait for domain is stable
-            time.sleep(20)
+            # Wait for domain
+            vm.wait_for_login()
 
             if set_live_vcpus:
                 ret = virsh.setvcpus(vm_name, set_live_vcpus, ignore_status=True,
