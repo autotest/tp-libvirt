@@ -1,7 +1,5 @@
 import logging
 
-from autotest.client.shared import error
-
 from virttest.lvsb import make_sandboxes
 
 
@@ -14,8 +12,8 @@ def run(test, params, env):
     # list of sandbox agregation managers
     sb_list = make_sandboxes(params, env)
     if not sb_list:
-        raise error.TestFail("Failed to return list of instantiated "
-                             "lvsb_testsandboxes classes")
+        test.fail("Failed to return list of instantiated "
+                  "lvsb_testsandboxes classes")
 
     # Run a sandbox until timeout or finished w/ output
     # store list of stdout's for the sandbox in aggregate type
@@ -29,7 +27,7 @@ def run(test, params, env):
     # positive and negative testing #########
     if not status_error:
         if status != 0:
-            raise error.TestFail("%d not a expected command "
-                                 "return value", status)
+            test.fail("%d not a expected command "
+                      "return value" % status)
         else:
             logging.info(cmd_outputs)

@@ -4,8 +4,6 @@ Simple test that executes date command in a sanbox and verifies it is correct
 
 import datetime
 
-from autotest.client.shared import error
-
 from virttest.lvsb import make_sandboxes
 
 
@@ -69,11 +67,11 @@ def run(test, params, env):
         if not some_failed(failed_list) and verify_datetime(start_time,
                                                             stop_time,
                                                             result_list) < 1:
-            raise error.TestFail("Error test failed on only %s of %s sandboxes"
-                                 % (failed_list, agg_count))
+            test.fail("Error test failed on only %s of %s sandboxes"
+                      % (failed_list, agg_count))
     else:  # Positive test
         if some_failed(failed_list):
-            raise error.TestFail("Some sandboxes had non-zero exit codes")
+            test.fail("Some sandboxes had non-zero exit codes")
         if verify_datetime(start_time, stop_time, result_list) > 0:
-            raise error.TestFail("Some sandboxes reported invalid date/time")
+            test.fail("Some sandboxes reported invalid date/time")
     # Otherwise test passed
