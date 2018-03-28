@@ -1,6 +1,7 @@
 import logging
-import commands
 import time
+
+from avocado.utils import process
 
 from virttest import utils_misc
 from virttest import virsh
@@ -27,7 +28,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     domid = vm.get_id()
     domuuid = vm.get_uuid()
-    bef_pid = commands.getoutput("pidof -s qemu-kvm")
+    bef_pid = process.getoutput("pidof -s qemu-kvm")
 
     if vm_ref == 'id':
         vm_ref = domid
@@ -103,7 +104,7 @@ def run(test, params, env):
         if status == 0:
             test.fail("Fail to reset guest, tmpfile still exist!")
         else:
-            aft_pid = commands.getoutput("pidof -s qemu-kvm")
+            aft_pid = process.getoutput("pidof -s qemu-kvm")
             if bef_pid == aft_pid:
                 logging.info("Succeed to check reset, tmpfile is removed.")
             else:

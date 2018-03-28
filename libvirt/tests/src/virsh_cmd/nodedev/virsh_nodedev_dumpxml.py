@@ -1,7 +1,8 @@
 import logging
 import time
 import os
-import commands
+
+from avocado.utils import process
 
 from virttest import virsh
 from virttest.libvirt_xml import nodedev_xml
@@ -111,8 +112,8 @@ def run(test, params, env):
     if os.path.exists(polkit_file):
         replace_cmd = "sed -i 's/'ENTER.YOUR.PCI.DEVICE'/%s/g' /etc/polkit-1/rules.d/500-libvirt-acl-virttest.rules" % device_name
         cat_cmd = "cat /etc/polkit-1/rules.d/500-libvirt-acl-virttest.rules"
-        replace_output = commands.getoutput(replace_cmd)
-        cat_output = commands.getoutput(cat_cmd)
+        replace_output = process.getoutput(replace_cmd)
+        cat_output = process.getoutput(cat_cmd)
 
     # do nodedev dumpxml.
     try:

@@ -1,8 +1,9 @@
 import os
 import logging
-import commands
 import time
 import aexpect
+
+from avocado.utils import process
 
 from virttest.libvirt_xml import vm_xml
 from virttest import virsh
@@ -66,7 +67,7 @@ def run(test, params, env):
         options = "%s %s,%s,%s %s" % (fds_options, fd1.fileno(), fd2.fileno(),
                                       fd3.fileno(), other_options)
         vmxml = container_xml_generator()
-        logging.debug("xml is %s", commands.getoutput("cat %s" % vmxml.xml))
+        logging.debug("xml is %s", process.getoutput("cat %s" % vmxml.xml))
         if "--console" not in options:
             output = virsh.create(vmxml.xml, options, uri=uri)
             if output.exit_status:
