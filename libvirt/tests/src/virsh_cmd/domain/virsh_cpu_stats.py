@@ -57,6 +57,12 @@ def run(test, params, env):
             if get_start or get_count:
                 option_dict[match.split(' ')[0]] = match.split(' ')[1]
 
+    # check if cpu is enough,if not cancel the test
+    cpu_start = int(option_dict.get("start", "-1"))
+    if not (cpu_start == -1) and (status_error == "no"):
+        if (cpu_start > cpus):
+            test.cancel("Host cpus are not enough")
+
     # Run virsh command
     cmd_result = virsh.cpu_stats(vm_ref, options,
                                  ignore_status=True, debug=True)
