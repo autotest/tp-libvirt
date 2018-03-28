@@ -3,8 +3,6 @@ import os
 
 import aexpect
 
-from autotest.client.shared import error
-
 from avocado.utils import process
 
 from virttest import libvirt_vm
@@ -47,14 +45,14 @@ def run(test, params, env):
                     hname_out.strip() != tmp_hostname):
                 logging.debug("log:%s\nmail:%s\nhostname:%s"
                               % (log_out, mail_out, hname_out))
-                raise error.TestFail("Prepare action failed!")
+                test.fail("Prepare action failed!")
             session.close()
             vm.destroy()
         except (remote.LoginError, virt_vm.VMError,
-                aexpect.ShellError), detail:
+                aexpect.ShellError) as detail:
             if "session" in dir():
                 session.close()
-            raise error.TestFail("Prepare action failed: %s" % detail)
+            test.fail("Prepare action failed: %s" % detail)
 
     def sysprep_action(vm_name, image_name, sysprep_target, hostname):
         """
@@ -81,8 +79,8 @@ def run(test, params, env):
             virsh.attach_disk(vm_name, dst_image, target, extra=options,
                               ignore_status=False)
         except (remote.LoginError, virt_vm.VMError,
-                aexpect.ShellError, process.CmdError), detail:
-            raise error.TestFail("Modify guest source failed: %s" % detail)
+                aexpect.ShellError, process.CmdError) as detail:
+            test.fail("Modify guest source failed: %s" % detail)
 
     def modify_network(vm_name, first_nic):
         """
@@ -99,8 +97,8 @@ def run(test, params, env):
                                    % (iface_type, iface_source, mac_address),
                                    ignore_status=False)
         except (remote.LoginError, virt_vm.VMError,
-                aexpect.ShellError), detail:
-            raise error.TestFail("Modify network failed:%s" % detail)
+                aexpect.ShellError) as detail:
+            test.fail("Modify network failed:%s" % detail)
 
     def result_confirm(vm):
         """
@@ -125,7 +123,7 @@ def run(test, params, env):
                 return False
             return True
         except (remote.LoginError, virt_vm.VMError,
-                aexpect.ShellError), detail:
+                aexpect.ShellError) as detail:
             logging.error(str(detail))
             if "session" in dir():
                 session.close()
@@ -142,8 +140,8 @@ def run(test, params, env):
                 virsh.undefine(vm_clone_name, ignore_status=False)
             if os.path.exists(clone_image):
                 os.remove(clone_image)
-        except process.CmdError, detail:
-            raise error.TestFail("Clean clone guest failed!:%s" % detail)
+        except process.CmdError as detail:
+            test.fail("Clean clone guest failed!:%s" % detail)
 
     sysprep_type = params.get("sysprep_type", 'clone')
     sysprep_target = params.get("sysprep_target", 'guest')
@@ -153,20 +151,20 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     disks = vm.get_disk_devices()
     if len(disks):
-        disk = disks.values()[0]
+        disk = list(disks.values())[0]
         image = disk['source']
-        target = disks.keys()[0]
+        target = list(disks.keys())[0]
         image_info_dict = utils_test.get_image_info(image)
         if sysprep_type == "sparsify" and image_info_dict['format'] != 'qcow2':
-            raise error.TestNAError("This test case needs qcow2 format image.")
+            test.cancel("This test case needs qcow2 format image.")
     else:
-        raise error.TestError("Can not get disk of %s" % vm_name)
+        test.error("Can not get disk of %s" % vm_name)
     vt = utils_test.libguestfs.VirtTools(vm, params)
     fs_type = vt.get_primary_disk_fs_type()
     if fs_type != file_system:
-        raise error.TestNAError("This test case gets wrong disk file system."
-                                "get: %s, expected: %s" % (fs_type,
-                                                           file_system))
+        test.cancel("This test case gets wrong disk file system."
+                    "get: %s, expected: %s" % (fs_type,
+                                               file_system))
 
     # Do some prepare action
     vm_clone_name = "%s_clone" % vm_name
@@ -181,8 +179,8 @@ def run(test, params, env):
     dargs['ignore_status'] = True
     clone_result = lgf.virt_clone_cmd(vm_name, newname=vm_clone_name, **dargs)
     if clone_result.exit_status:
-        raise error.TestFail("virt-clone failed:%s"
-                             % clone_result.stderr.strip())
+        test.fail("virt-clone failed:%s"
+                  % clone_result.stderr.strip())
     try:
         # Modify network to make sure the clone guest can be logging.
         modify_network(vm_clone_name, first_nic)
@@ -210,7 +208,7 @@ def run(test, params, env):
         sysprep_action(vm_clone_name, test_image, sysprep_target,
                        sysprep_hostname)
         if not result_confirm(new_vm):
-            raise error.TestFail("Test Falied!")
+            test.fail("Test Falied!")
     finally:
         clean_clone_vm()
         if "resize_image" in dir():

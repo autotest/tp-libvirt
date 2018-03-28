@@ -1,8 +1,6 @@
 import os
 import stat
 
-from autotest.client.shared import error
-
 from virttest import data_dir
 from virttest import remote
 import virttest.utils_libguestfs as lgf
@@ -126,36 +124,34 @@ def run(test, params, env):
     sysprep_target = params.get("sysprep_target", "guest")
     status_error = "yes" == params.get("status_error", "no")
     if not lgf.virt_cmd_contain_opt("virt-sysprep", sysprep_opt):
-        raise error.TestNAError("The '%s' isn't supported in this version"
-                                % sysprep_opt)
+        test.cancel("The '%s' isn't supported in this version"
+                    % sysprep_opt)
     if sysprep_opt.count('enable'):
         if action not in lgf.virt_sysprep_operations():
-            raise error.TestNAError("The operation '%s' isn't support in"
-                                    " this version" % action)
+            test.cancel("The operation '%s' isn't support in"
+                        " this version" % action)
     disks = vm.get_disk_devices()
     if len(disks):
-        disk = disks.values()[0]
+        disk = list(disks.values())[0]
         image_name = disk['source']
     else:
-        raise error.TestError("Can not get disk of %s" % vm_name)
+        test.error("Can not get disk of %s" % vm_name)
     if sysprep_target == "guest":
         disk_or_domain = vm_name
     else:
         disk_or_domain = image_name
     if sysprep_path:
         sh_file1 = os.path.join(data_dir.get_tmp_dir(), sh_file1)
-        f1 = open(sh_file1, 'w')
         tmp_file1 = "tmp/test1.img"
         if sysprep_opt.count("first-boot"):
             tmp_file1 = "/tmp/test1.img"
-        f1.write("dd if=/dev/zero of=%s bs=1M count=10" % tmp_file1)
-        f1.close()
+        with open(sh_file1, 'w') as f1:
+            f1.write("dd if=/dev/zero of=%s bs=1M count=10" % tmp_file1)
         os.chmod(sh_file1, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
         if sysprep_opt.count("first-boot"):
             sh_file2 = os.path.join(data_dir.get_tmp_dir(), sh_file2)
-            f2 = open(sh_file2, 'w')
-            f2.write("dd if=/dev/zero of=/tmp/test2.img bs=1M count=10")
-            f2.close()
+            with open(sh_file2, 'w') as f2:
+                f2.write("dd if=/dev/zero of=/tmp/test2.img bs=1M count=10")
             os.chmod(sh_file2, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
 
     if vm.is_dead():
@@ -164,9 +160,9 @@ def run(test, params, env):
     try:
         try:
             prepare_action(session)
-        except Exception, detail:
-            raise error.TestNAError("Enviroment doesn't support this test:%s"
-                                    % str(detail))
+        except Exception as detail:
+            test.cancel("Enviroment doesn't support this test:%s"
+                        % str(detail))
         session.close()
         vm.destroy(gracefully=False)
 
@@ -190,11 +186,11 @@ def run(test, params, env):
                 options = sysprep_opt + " " + sh_file2
                 lgf.virt_sysprep_cmd(disk_or_domain, options,
                                      ignore_status=False, debug=True)
-        except Exception, detail:
+        except Exception as detail:
             if status_error:
                 pass
             else:
-                raise error.TestFail(detail)
+                test.fail(detail)
         if not status_error:
             if not sysprep_opt.count("enable"):
                 vm.start()
@@ -204,20 +200,20 @@ def run(test, params, env):
                 else:
                     session = vm.wait_for_login()
                 if result_confirm_vm(session):
-                    raise error.TestFail("'%s' check falied in guest!"
-                                         % sysprep_opt)
+                    test.fail("'%s' check falied in guest!"
+                              % sysprep_opt)
             else:
                 if result_confirm_host():
-                    raise error.TestFail("'%s' check falied in host!"
-                                         % sysprep_opt)
+                    test.fail("'%s' check falied in host!"
+                              % sysprep_opt)
         else:
             try:
                 if sysprep_opt == "--password":
                     vm.start()
                     vm.wait_for_login(username=user, password=test_password,
                                       timeout=30)
-                    raise error.TestFail("Should not login in guest via %s"
-                                         % user)
+                    test.fail("Should not login in guest via %s"
+                              % user)
             except Exception:
                 pass
     finally:

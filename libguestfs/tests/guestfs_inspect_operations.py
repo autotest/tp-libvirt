@@ -1,13 +1,12 @@
 import logging
 import re
 
-from autotest.client.shared import error
 from virttest import virt_vm
 from virttest import remote
 from virttest import utils_test
 
 
-def test_inspect_get(vm, params):
+def test_inspect_get(test, vm, params):
     """
     1) Fall into guestfish session w/ inspector
     2) Get release info
@@ -25,8 +24,8 @@ def test_inspect_get(vm, params):
     # inspect-os will umount filesystems,reopen it later
     gf.close_session()
     if roots is False:
-        raise error.TestError("Can not get root filesystem "
-                              "in guestfish before test")
+        test.error("Can not get root filesystem "
+                   "in guestfish before test")
 
     fail_info = []
     gf = utils_test.libguestfs.GuestfishTools(params)
@@ -127,16 +126,16 @@ def test_inspect_get(vm, params):
     try:
         vm.start()
         session = vm.wait_for_login()
-    except (virt_vm.VMError, remote.LoginError), detail:
+    except (virt_vm.VMError, remote.LoginError) as detail:
         vm.destroy()
-        raise error.TestFail(str(detail))
+        test.fail(str(detail))
 
     try:
         uname2 = session.cmd_output("uname -a")
         logging.debug(uname2)
         vm.destroy()
         vm.wait_for_shutdown()
-    except (virt_vm.VMError, remote.LoginError), detail:
+    except (virt_vm.VMError, remote.LoginError) as detail:
         if vm.is_alive():
             vm.destroy()
 
@@ -144,7 +143,7 @@ def test_inspect_get(vm, params):
         fail_info.append("Got arch do not match.")
 
     if len(fail_info):
-        raise error.TestFail(fail_info)
+        test.fail(fail_info)
 
 
 def run(test, params, env):
@@ -158,4 +157,4 @@ def run(test, params, env):
 
     operation = params.get("gf_inspect_operation")
     testcase = globals()["test_%s" % operation]
-    testcase(vm, params)
+    testcase(test, vm, params)

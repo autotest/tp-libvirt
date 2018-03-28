@@ -3,13 +3,12 @@ import os
 import logging
 import tarfile
 
-from autotest.client.shared import utils
-from autotest.client.shared import error
+from avocado.utils import process
 from virttest import data_dir
 from virttest import utils_test
 
 
-def test_tar_in(vm, params):
+def test_tar_in(test, vm, params):
     """
     1) Fall into guestfish session w/ inspector
     2) Write a tempfile on host
@@ -23,15 +22,16 @@ def test_tar_in(vm, params):
 
     # Create a file on host
     try:
-        open(path, 'w').write(content)
-    except IOError, detail:
-        raise error.TestNAError("Prepare file on host failed:%s" % detail)
+        with open(path, 'w') as fd:
+            fd.write(content)
+    except IOError as detail:
+        test.cancel("Prepare file on host failed:%s" % detail)
     try:
         tar = tarfile.open(path_on_host, "w")
         tar.add(path)
         tar.close()
-    except tarfile.TarError, detail:
-        raise error.TestNAError("Prepare tar file on host failed:%s" % detail)
+    except tarfile.TarError as detail:
+        test.cancel("Prepare tar file on host failed:%s" % detail)
 
     params['libvirt_domain'] = vm.name
     params['gf_inspector'] = True
@@ -45,13 +45,13 @@ def test_tar_in(vm, params):
     try:
         os.remove(path)
         os.remove(path_on_host)
-    except OSError, detail:
+    except OSError as detail:
         # Let it go because file maybe not exist
         logging.warning(detail)
 
     if tar_in_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Tar in failed.")
+        test.fail("Tar in failed.")
     logging.info("Tar in successfully.")
 
     # Cat file on guest
@@ -61,16 +61,16 @@ def test_tar_in(vm, params):
     logging.debug(cat_result)
     logging.debug(rm_result)
     if cat_result.exit_status:
-        raise error.TestFail("Cat file failed.")
+        test.fail("Cat file failed.")
     else:
         if not re.search(content, cat_result.stdout):
-            raise error.TestFail("Catted file do not match")
+            test.fail("Catted file do not match")
     if rm_result.exit_status:
-        raise error.TestFail("Rm file failed.")
+        test.fail("Rm file failed.")
     logging.info("Rm %s successfully.", path)
 
 
-def test_tar_out(vm, params):
+def test_tar_out(test, vm, params):
     """
     1) Fall into guestfish session w/ inspector
     2) Write a tempfile to guest
@@ -90,7 +90,7 @@ def test_tar_out(vm, params):
     # Create file
     if gf.write_file(path, content) is False:
         gf.close_session()
-        raise error.TestFail("Create file failed.")
+        test.fail("Create file failed.")
     logging.info("Create file successfully.")
 
     # Copy file to host
@@ -98,7 +98,7 @@ def test_tar_out(vm, params):
     logging.debug(tar_out_result)
     if tar_out_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Tar out failed.")
+        test.fail("Tar out failed.")
     logging.info("Tar out successfully.")
 
     # Delete temp file
@@ -106,35 +106,36 @@ def test_tar_out(vm, params):
     logging.debug(rm_result)
     gf.close_session()
     if rm_result.exit_status:
-        raise error.TestFail("Rm %s failed." % path)
+        test.fail("Rm %s failed." % path)
     logging.info("Rm %s successfully.", path)
 
     # Uncompress file and check file in it.
-    uc_result = utils.run("cd %s && tar xf %s" % (file_dir, path_on_host))
+    uc_result = process.run("cd %s && tar xf %s" % (file_dir, path_on_host),
+                            shell=True)
     logging.debug(uc_result)
     try:
         os.remove(path_on_host)
-    except IOError, detail:
-        raise error.TestFail(str(detail))
+    except IOError as detail:
+        test.fail(str(detail))
     if uc_result.exit_status:
-        raise error.TestFail("Uncompress file on host failed.")
+        test.fail("Uncompress file on host failed.")
     logging.info("Uncompress file on host successfully.")
 
     # Check file
-    cat_result = utils.run("cat %s" % path, ignore_status=True)
+    cat_result = process.run("cat %s" % path, ignore_status=True, shell=True)
     logging.debug(cat_result)
     try:
         os.remove(path)
-    except IOError, detail:
+    except IOError as detail:
         logging.error(detail)
     if cat_result.exit_status:
-        raise error.TestFail("Cat file failed.")
+        test.fail("Cat file failed.")
     else:
         if not re.search(content, cat_result.stdout):
-            raise error.TestFail("Catted file do not match.")
+            test.fail("Catted file do not match.")
 
 
-def test_copy_in(vm, params):
+def test_copy_in(test, vm, params):
     """
     1) Fall into guestfish session w/ inspector
     2) Write a tempfile on host
@@ -148,9 +149,10 @@ def test_copy_in(vm, params):
 
     # Create a file on host
     try:
-        open(path, 'w').write(content)
-    except IOError, detail:
-        raise error.TestNAError("Prepare file on host failed:%s" % detail)
+        with open(path, 'w') as fd:
+            fd.write(content)
+    except IOError as detail:
+        test.cancel("Prepare file on host failed:%s" % detail)
 
     params['libvirt_domain'] = vm.name
     params['gf_inspector'] = True
@@ -163,12 +165,12 @@ def test_copy_in(vm, params):
     # Delete file on host
     try:
         os.remove(path)
-    except IOError, detail:
+    except IOError as detail:
         logging.error(detail)
 
     if copy_in_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Copy in failed.")
+        test.fail("Copy in failed.")
     logging.info("Copy in successfully.")
 
     # Cat file on guest
@@ -178,16 +180,16 @@ def test_copy_in(vm, params):
     logging.debug(cat_result)
     logging.debug(rm_result)
     if cat_result.exit_status:
-        raise error.TestFail("Cat file failed.")
+        test.fail("Cat file failed.")
     else:
         if not re.search(content, cat_result.stdout):
-            raise error.TestFail("Catted file do not match")
+            test.fail("Catted file do not match")
     if rm_result.exit_status:
-        raise error.TestFail("Rm file failed.")
+        test.fail("Rm file failed.")
     logging.info("Rm %s successfully.", path)
 
 
-def test_copy_out(vm, params):
+def test_copy_out(test, vm, params):
     """
     1) Fall into guestfish session w/ inspector
     2) Write a tempfile to guest
@@ -206,7 +208,7 @@ def test_copy_out(vm, params):
     # Create file
     if gf.write_file(path, content) is False:
         gf.close_session()
-        raise error.TestFail("Create file failed.")
+        test.fail("Create file failed.")
     logging.info("Create file successfully.")
 
     # Copy file to host
@@ -214,7 +216,7 @@ def test_copy_out(vm, params):
     logging.debug(copy_out_result)
     if copy_out_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Copy out failed.")
+        test.fail("Copy out failed.")
     logging.info("Copy out successfully.")
 
     # Delete temp file
@@ -222,21 +224,21 @@ def test_copy_out(vm, params):
     logging.debug(rm_result)
     gf.close_session()
     if rm_result.exit_status:
-        raise error.TestFail("Rm %s failed." % path)
+        test.fail("Rm %s failed." % path)
     logging.info("Rm %s successfully.", path)
 
     # Check file
-    cat_result = utils.run("cat %s" % path, ignore_status=True)
+    cat_result = process.run("cat %s" % path, ignore_status=True, shell=True)
     logging.debug(cat_result.stdout)
     try:
         os.remove(path)
-    except IOError, detail:
+    except IOError as detail:
         logging.error(detail)
     if cat_result.exit_status:
-        raise error.TestFail("Cat file failed.")
+        test.fail("Cat file failed.")
     else:
         if not re.search(content, cat_result.stdout):
-            raise error.TestFail("Catted file do not match.")
+            test.fail("Catted file do not match.")
 
 
 def run(test, params, env):
@@ -250,4 +252,4 @@ def run(test, params, env):
 
     operation = params.get("gf_file_operation")
     testcase = globals()["test_%s" % operation]
-    testcase(vm, params)
+    testcase(test, vm, params)

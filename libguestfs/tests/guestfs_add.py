@@ -1,11 +1,11 @@
 import logging
 import re
-import commands
 
 import aexpect
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
+from avocado.core import exceptions
+from avocado.utils import process
+
 from virttest import utils_libguestfs as lgf
 
 
@@ -16,7 +16,7 @@ def primary_disk_virtio(vm):
     :param vm: Libvirt VM object.
     """
     vmdisks = vm.get_disk_devices()
-    if "vda" in vmdisks.keys():
+    if "vda" in list(vmdisks.keys()):
         return True
     return False
 
@@ -30,7 +30,7 @@ def set_guestfs_args(guestfs, ignore_status=True, debug=False, timeout=60):
     guestfs.set_timeout(timeout)
 
 
-def add_disk_or_domain(guestfs, disk_or_domain, add_ref="domain",
+def add_disk_or_domain(test, guestfs, disk_or_domain, add_ref="domain",
                        readonly=False):
     """
     Add disk or domain to guestfish
@@ -47,33 +47,33 @@ def add_disk_or_domain(guestfs, disk_or_domain, add_ref="domain",
 
     if add_result.exit_status:
         guestfs.close_session()
-        raise error.TestFail("Add %s failed:%s" % (add_ref, add_result))
+        test.fail("Add %s failed:%s" % (add_ref, add_result))
     logging.debug("Add %s successfully.", add_ref)
 
 
-def launch_disk(guestfs):
+def launch_disk(test, guestfs):
     # Launch added disk or domain
     launch_result = guestfs.run()
     if launch_result.exit_status:
         guestfs.close_session()
-        raise error.TestFail("Launch failed:%s" % launch_result)
+        test.fail("Launch failed:%s" % launch_result)
     logging.debug("Launch successfully.")
 
 
-def get_root(guestfs):
+def get_root(test, guestfs):
     getroot_result = guestfs.inspect_os()
     roots_list = getroot_result.stdout.splitlines()
     if getroot_result.exit_status or not len(roots_list):
         guestfs.close_session()
-        raise error.TestFail("Get root failed:%s" % getroot_result)
+        test.fail("Get root failed:%s" % getroot_result)
     return roots_list[0]
 
 
-def mount_filesystem(guestfs, filesystem, mountpoint):
+def mount_filesystem(test, guestfs, filesystem, mountpoint):
     mount_result = guestfs.mount(filesystem, mountpoint)
     if mount_result.exit_status:
         guestfs.close_session()
-        raise error.TestFail("Mount filesystem failed:%s" % mount_result)
+        test.fail("Mount filesystem failed:%s" % mount_result)
     logging.debug("Mount filesystem successfully.")
 
 
@@ -114,11 +114,11 @@ def run(test, params, env):
         # Get system disk path of tested domain
         disks = vm.get_disk_devices()
         if len(disks):
-            disk = disks.values()[0]
+            disk = list(disks.values())[0]
             disk_or_domain = disk['source']
         else:
             # No need to test since getting vm's disk failed.
-            raise error.TestFail("Can not get disk of %s" % vm_name)
+            test.fail("Can not get disk of %s" % vm_name)
     else:
         # If adding an unknown disk or domain
         disk_or_domain = add_ref
@@ -130,8 +130,8 @@ def run(test, params, env):
     add_error = params.get("guestfs_add_error", "no")
     # Add tested disk or domain
     try:
-        add_disk_or_domain(guestfs, disk_or_domain, add_ref, add_readonly)
-    except error.TestFail, detail:
+        add_disk_or_domain(test, guestfs, disk_or_domain, add_ref, add_readonly)
+    except exceptions.TestFail as detail:
         guestfs.close_session()
         if add_error:
             logging.debug("Add failed as expected:%s", str(detail))
@@ -139,14 +139,14 @@ def run(test, params, env):
         raise
 
     # Launch added disk or domain
-    launch_disk(guestfs)
+    launch_disk(test, guestfs)
 
     # Mount root filesystem
-    root = get_root(guestfs)
-    mount_filesystem(guestfs, root, '/')
+    root = get_root(test, guestfs)
+    mount_filesystem(test, guestfs, root, '/')
 
     # Write content to file
-    status, content = commands.getstatusoutput("uuidgen")
+    status, content = process.getstatusoutput("uuidgen")
     write_result = guestfs.write("/guestfs_temp", content)
     if write_result.exit_status:
         fail_flag = 1
@@ -159,9 +159,9 @@ def run(test, params, env):
     # Check writed file in a new guestfish session
     guestfs.new_session()
     set_guestfs_args(guestfs)
-    add_disk_or_domain(guestfs, disk_or_domain, add_ref, add_readonly)
-    launch_disk(guestfs)
-    mount_filesystem(guestfs, root, '/')
+    add_disk_or_domain(test, guestfs, disk_or_domain, add_ref, add_readonly)
+    launch_disk(test, guestfs)
+    mount_filesystem(test, guestfs, root, '/')
     cat_result = guestfs.cat("/guestfs_temp")
     if cat_result.exit_status:
         fail_flag = 1
@@ -182,8 +182,8 @@ def run(test, params, env):
     guestfs.close_session()
     # Convert sdx in root to vdx for virtio system disk
     if primary_disk_virtio(vm):
-        root = utils.run("echo %s | sed -e 's/sd/vd/g'" % root,
-                         ignore_status=True).stdout.strip()
+        root = process.run("echo %s | sed -e 's/sd/vd/g'" % root,
+                           ignore_status=True, shell=True).stdout.strip()
     if login_to_check:
         try:
             vm.start()
@@ -192,7 +192,7 @@ def run(test, params, env):
             try:
                 login_wrote_text = session.cmd_output("cat /mnt/guestfs_temp",
                                                       timeout=5)
-            except aexpect.ShellTimeoutError, detail:
+            except aexpect.ShellTimeoutError as detail:
                 # written content with guestfs.write won't contain line break
                 # Is is a bug of guestfish.write?
                 login_wrote_text = str(detail)
@@ -204,15 +204,15 @@ def run(test, params, env):
                 logging.debug("Login to check successfully.")
                 fail_info['login_to_check'] = "Login to check successfully."
             session.close()
-        except aexpect.ShellError, detail:
+        except aexpect.ShellError as detail:
             fail_flag = 1
             fail_info['login_to_check'] = detail
         vm.destroy()
 
     if status_error:
         if not fail_flag:
-            raise error.TestFail("Expected error is successful:"
-                                 "%s" % fail_info)
+            test.fail("Expected error is successful:"
+                      "%s" % fail_info)
     else:
         if fail_flag:
-            raise error.TestFail(fail_info)
+            test.fail(fail_info)

@@ -2,14 +2,12 @@ import logging
 import re
 import os
 
-from autotest.client.shared import error
-
 from virttest import virt_vm
 from virttest import remote
 from virttest import utils_test
 
 
-def test_inspect_get(vm, params):
+def test_inspect_get(test, vm, params):
     """
     Inspect os information with virt-inspector,virt-df,virt-cat...
 
@@ -136,11 +134,11 @@ def test_inspect_get(vm, params):
     try:
         vm.start()
         session = vm.wait_for_login()
-    except (virt_vm.VMError, remote.LoginError), detail:
+    except (virt_vm.VMError, remote.LoginError) as detail:
         if session is not None:
             session.close()
         vm.destroy()
-        raise error.TestFail(str(detail))
+        test.fail(str(detail))
 
     try:
         if is_redhat:
@@ -164,12 +162,12 @@ def test_inspect_get(vm, params):
                                  % mountpoint)
         vm.destroy()
         vm.wait_for_shutdown()
-    except (virt_vm.VMError, remote.LoginError), detail:
+    except (virt_vm.VMError, remote.LoginError) as detail:
         if vm.is_alive():
             vm.destroy()
 
     if len(fail_info):
-        raise error.TestFail(fail_info)
+        test.fail(fail_info)
 
 
 def run_virt_inspect_operations(test, params, env):
@@ -183,4 +181,4 @@ def run_virt_inspect_operations(test, params, env):
 
     operation = params.get("vt_inspect_operation")
     testcase = globals()["test_%s" % operation]
-    testcase(vm, params)
+    testcase(test, vm, params)

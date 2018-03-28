@@ -1,14 +1,13 @@
 import logging
 import os
 import re
-import commands
+from avocado.utils import process
 
-from autotest.client.shared import error
 from virttest import utils_test
 from virttest import data_dir
 
 
-def prepare_image(params):
+def prepare_image(test, params):
     """
     (1) Create a image
     (2) Create file system on the image
@@ -16,17 +15,17 @@ def prepare_image(params):
     params["image_path"] = utils_test.libguestfs.preprocess_image(params)
 
     if not params.get("image_path"):
-        raise error.TestFail("Image could not be created for some reason.")
+        test.fail("Image could not be created for some reason.")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     status, output = gf.create_fs()
     if status is False:
         gf.close_session()
-        raise error.TestFail(output)
+        test.fail(output)
     gf.close_session()
 
 
-def test_swap_device(vm, params):
+def test_swap_device(test, vm, params):
     """
     Test mkswap, swapon_device and swapoff_device:
     """
@@ -79,19 +78,19 @@ def test_swap_device(vm, params):
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(mkswap_result)
         logging.error(file_result)
-        raise error.TestFail("test_mkswap failed")
+        test.fail("test_mkswap failed")
     if label not in file_result.stdout:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error("swap file label created not match")
         logging.error(file_result)
-        raise error.TestFail("test_mkswap failed")
+        test.fail("test_mkswap failed")
     if uuid not in file_result.stdout:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error("swap file uuid created not match")
         logging.error(file_result)
-        raise error.TestFail("test_mkswap failed")
+        test.fail("test_mkswap failed")
 
     gf.swapon_device(test_mountpoint)
     active_swapdevice = gf.inner_cmd("debug sh \"swapon -sv\" | sed -n '2p' ")
@@ -99,7 +98,7 @@ def test_swap_device(vm, params):
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(active_swapdevice)
-        raise error.TestFail("test_swapon_device failed")
+        test.fail("test_swapon_device failed")
 
     gf.swapoff_device(test_mountpoint)
     active_swapdevice = gf.inner_cmd("debug sh \"swapon -sv\" | sed -n '2p' ")
@@ -108,13 +107,13 @@ def test_swap_device(vm, params):
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(active_swapdevice)
-        raise error.TestFail("test_swapoff_device failed")
+        test.fail("test_swapoff_device failed")
 
     os.system('rm -f ' + test_img + ' > /dev/null')
     gf.close_session()
 
 
-def test_swap_label(vm, params):
+def test_swap_label(test, vm, params):
     """
     Test mkswap_L, swapon_label and swapoff_label:
     """
@@ -166,13 +165,13 @@ def test_swap_label(vm, params):
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(mkswap_L_result)
         logging.error(file_result)
-        raise error.TestFail("test_mkswap_L failed")
+        test.fail("test_mkswap_L failed")
     if label not in file_result.stdout:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error("swap file label created not match")
         logging.error(file_result)
-        raise error.TestFail("test_mkswap_L failed")
+        test.fail("test_mkswap_L failed")
 
     gf.swapon_label(label)
     active_swapdevice = gf.inner_cmd("debug sh \"swapon -sv\" | sed -n '2p' ")
@@ -180,7 +179,7 @@ def test_swap_label(vm, params):
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(active_swapdevice)
-        raise error.TestFail("test_swapon_label failed")
+        test.fail("test_swapon_label failed")
 
     gf.swapoff_label(label)
     active_swapdevice = gf.inner_cmd("debug sh \"swapon -sv\" | sed -n '2p' ")
@@ -189,13 +188,13 @@ def test_swap_label(vm, params):
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(active_swapdevice)
-        raise error.TestFail("test_swapoff_label failed")
+        test.fail("test_swapoff_label failed")
 
     os.system('rm -f ' + test_img + ' > /dev/null')
     gf.close_session()
 
 
-def test_swap_uuid(vm, params):
+def test_swap_uuid(test, vm, params):
     """
     Test mkswap_L, swapon_uuid and swapoff_uuid:
     """
@@ -239,7 +238,7 @@ def test_swap_uuid(vm, params):
         gf.part_disk(test_pv, "mbr")
         gf.part_list(test_pv)
 
-    temp, uuid = commands.getstatusoutput("uuidgen")
+    temp, uuid = process.getstatusoutput("uuidgen")
     mkswap_U_result = gf.mkswap_U(uuid, test_mountpoint)
     file_result = gf.file(test_mountpoint)
     if "swap file" not in file_result.stdout:
@@ -247,13 +246,13 @@ def test_swap_uuid(vm, params):
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(mkswap_U_result)
         logging.error(file_result)
-        raise error.TestFail("test_mkswap_U failed")
+        test.fail("test_mkswap_U failed")
     if uuid not in file_result.stdout:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error("swap file uuid created not match")
         logging.error(file_result)
-        raise error.TestFail("test_mkswap_U failed")
+        test.fail("test_mkswap_U failed")
 
     gf.swapon_uuid(uuid)
     active_swapdevice = gf.inner_cmd("debug sh \"swapon -sv\" | sed -n '2p' ")
@@ -261,7 +260,7 @@ def test_swap_uuid(vm, params):
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(active_swapdevice)
-        raise error.TestFail("test_swapon_uuid failed")
+        test.fail("test_swapon_uuid failed")
 
     gf.swapoff_uuid(uuid)
     active_swapdevice = gf.inner_cmd("debug sh \"swapon -sv\" | sed -n '2p' ")
@@ -270,13 +269,13 @@ def test_swap_uuid(vm, params):
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(active_swapdevice)
-        raise error.TestFail("test_swapoff_uuid failed")
+        test.fail("test_swapoff_uuid failed")
 
     os.system('rm -f ' + test_img + ' > /dev/null')
     gf.close_session()
 
 
-def test_swap_file(vm, params):
+def test_swap_file(test, vm, params):
     """
     Test mkswap_L, swapon_label and swapoff_label:
     """
@@ -332,7 +331,7 @@ def test_swap_file(vm, params):
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(mkswap_file_result)
         logging.error(file_result)
-        raise error.TestFail("test_mkswap_file failed")
+        test.fail("test_mkswap_file failed")
 
     gf.swapon_file(swapfile)
     active_swapdevice = gf.inner_cmd("debug sh \"swapon -sv\" | sed -n '2p' ")
@@ -340,7 +339,7 @@ def test_swap_file(vm, params):
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(active_swapdevice)
-        raise error.TestFail("test_swapon_file failed")
+        test.fail("test_swapon_file failed")
 
     gf.swapoff_file(swapfile)
     active_swapdevice = gf.inner_cmd("debug sh \"swapon -sv\" | sed -n '2p' ")
@@ -349,7 +348,7 @@ def test_swap_file(vm, params):
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(active_swapdevice)
-        raise error.TestFail("test_swapoff_file failed")
+        test.fail("test_swapoff_file failed")
 
     os.system('rm -f ' + test_img + ' > /dev/null')
     gf.close_session()
@@ -408,5 +407,5 @@ def run(test, params, env):
 
                 logging.debug("Skip preparing image, " + image_path + " exists")
             else:
-                prepare_image(params)
-            testcase(vm, params)
+                prepare_image(test, params)
+            testcase(test, vm, params)

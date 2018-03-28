@@ -1,11 +1,10 @@
 import logging
 import re
 
-from autotest.client.shared import error
 from virttest import utils_test
 
 
-def test_list_with_mount(vm, params):
+def test_list_with_mount(test, vm, params):
     """
     1) Fall into guestfish session w/o inspector
     2) Do some necessary check
@@ -19,50 +18,50 @@ def test_list_with_mount(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch:%s" % run_result)
+        test.fail("Can not launch:%s" % run_result)
     logging.info("Launch successfully.")
 
     # List filesystems
     list_fs_result = gf.list_filesystems()
     if list_fs_result.exit_status:
         gf.close_session()
-        raise error.TestFail("List filesystems failed:%s" % list_fs_result)
+        test.fail("List filesystems failed:%s" % list_fs_result)
     logging.info("List filesystems successfully.")
 
     # List partitions
     list_part_result = gf.list_partitions()
     if list_part_result.exit_status:
         gf.close_session()
-        raise error.TestFail("List partitions failed:%s" % list_part_result)
+        test.fail("List partitions failed:%s" % list_part_result)
     logging.info("List partitions successfully.")
 
     # List devices
     list_dev_result = gf.list_devices()
     if list_dev_result.exit_status:
         gf.close_session()
-        raise error.TestFail("List devices failed:%s" % list_dev_result)
+        test.fail("List devices failed:%s" % list_dev_result)
     logging.info("List devices successfully.")
 
     # Mount root filesystem
     roots, rooto = gf.get_root()
     if roots is False:
         gf.close_session()
-        raise error.TestFail("Can not get root filesystem in guestfish.")
+        test.fail("Can not get root filesystem in guestfish.")
     mount_result = gf.mount(rooto.strip(), "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Mount filesystem failed:%s" % mount_result)
+        test.fail("Mount filesystem failed:%s" % mount_result)
     logging.debug("Mount filesystem successfully.")
 
     # List mounts
     list_df_result = gf.df()
     if list_df_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Df failed:%s" % list_df_result)
+        test.fail("Df failed:%s" % list_df_result)
     logging.info("Df successfully.")
 
 
-def test_list_without_mount(vm, params):
+def test_list_without_mount(test, vm, params):
     """
     1) Fall into guestfish session w/o inspector
     2) Do some necessary check
@@ -76,28 +75,28 @@ def test_list_without_mount(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch:%s" % run_result)
+        test.fail("Can not launch:%s" % run_result)
     logging.info("Launch successfully.")
 
     # List filesystems
     list_fs_result = gf.list_filesystems()
     if list_fs_result.exit_status:
         gf.close_session()
-        raise error.TestFail("List filesystems failed:%s" % list_fs_result)
+        test.fail("List filesystems failed:%s" % list_fs_result)
     logging.info("List filesystems successfully.")
 
     # List partitions
     list_part_result = gf.list_partitions()
     if list_part_result.exit_status:
         gf.close_session()
-        raise error.TestFail("List partitions failed:%s" % list_part_result)
+        test.fail("List partitions failed:%s" % list_part_result)
     logging.info("List partitions successfully.")
 
     # List devices
     list_dev_result = gf.list_devices()
     if list_dev_result.exit_status:
         gf.close_session()
-        raise error.TestFail("List devices failed:%s" % list_dev_result)
+        test.fail("List devices failed:%s" % list_dev_result)
     logging.info("List devices successfully.")
 
     # List mounts
@@ -105,16 +104,16 @@ def test_list_without_mount(vm, params):
     gf.close_session()
     logging.debug(list_df_result)
     if list_df_result.exit_status == 0:
-        raise error.TestFail("Df successfully unexpected.")
+        test.fail("Df successfully unexpected.")
     else:
         if not re.search("call.*mount.*first", list_df_result.stdout):
-            raise error.TestFail("Unknown error.")
+            test.fail("Unknown error.")
     logging.info("Df failed as expected.")
 
     logging.info("Test end as expected.")
 
 
-def test_list_without_launch(vm, params):
+def test_list_without_launch(test, vm, params):
     """
     1) Fall into guestfish session w/o inspector
     2) Do some necessary check w/o launch
@@ -127,8 +126,8 @@ def test_list_without_launch(vm, params):
     roots, rootfs = gf.get_root()
     gf.close_session()
     if roots is False:
-        raise error.TestError("Can not get root filesystem "
-                              "in guestfish before test")
+        test.error("Can not get root filesystem "
+                   "in guestfish before test")
 
     params['gf_inspector'] = False
     gf = utils_test.libguestfs.GuestfishTools(params)
@@ -140,48 +139,48 @@ def test_list_without_launch(vm, params):
     logging.debug(list_fs_result)
     if list_fs_result.exit_status == 0:
         gf.close_session()
-        raise error.TestFail("List filesystems successfully")
+        test.fail("List filesystems successfully")
     else:
         if not re.search("call\slaunch\sbefore", list_fs_result.stdout):
             gf.close_session()
-            raise error.TestFail("Unknown error.")
+            test.fail("Unknown error.")
 
     # List partitions
     list_part_result = gf.list_partitions()
     logging.debug(list_part_result)
     if list_part_result.exit_status == 0:
         gf.close_session()
-        raise error.TestFail("List partitions successfully")
+        test.fail("List partitions successfully")
     else:
         if not re.search("call\slaunch\sbefore", list_part_result.stdout):
             gf.close_session()
-            raise error.TestFail("Unknown error.")
+            test.fail("Unknown error.")
 
     # List devices
     list_dev_result = gf.list_devices()
     logging.debug(list_dev_result)
     if list_dev_result.exit_status == 0:
         gf.close_session()
-        raise error.TestFail("List devices successfully")
+        test.fail("List devices successfully")
     else:
         if not re.search("call\slaunch\sbefore", list_dev_result.stdout):
             gf.close_session()
-            raise error.TestFail("Unknown error.")
+            test.fail("Unknown error.")
 
     # Mount root filesystem
     mount_result = gf.mount(rootfs, "/")
     logging.debug(mount_result)
     gf.close_session()
     if mount_result.exit_status == 0:
-        raise error.TestFail("Mount filesystem successfully")
+        test.fail("Mount filesystem successfully")
     else:
         if not re.search("call\slaunch\sbefore", mount_result.stdout):
-            raise error.TestFail("Unknown error.")
+            test.fail("Unknown error.")
 
     logging.info("Test end as expected.")
 
 
-def test_list_with_inspector(vm, params):
+def test_list_with_inspector(test, vm, params):
     """
     1) Fall into guestfish session w/ mounting root filesystem
     2) Do some necessary check
@@ -193,8 +192,8 @@ def test_list_with_inspector(vm, params):
     roots, rootfs = gf.get_root()
     gf.close_session()
     if roots is False:
-        raise error.TestError("Can not get root filesystem "
-                              "in guestfish before test")
+        test.error("Can not get root filesystem "
+                   "in guestfish before test")
 
     params['gf_inspector'] = False
     params['mount_options'] = "%s:/" % rootfs
@@ -205,7 +204,7 @@ def test_list_with_inspector(vm, params):
     logging.debug(list_fs_result)
     if list_fs_result.exit_status:
         gf.close_session()
-        raise error.TestFail("List filesystems failed")
+        test.fail("List filesystems failed")
     logging.info("List filesystems successfully.")
 
     # List partitions
@@ -213,7 +212,7 @@ def test_list_with_inspector(vm, params):
     logging.debug(list_part_result)
     if list_part_result.exit_status:
         gf.close_session()
-        raise error.TestFail("List partitions failed")
+        test.fail("List partitions failed")
     logging.info("List partitions successfully.")
 
     # List devices
@@ -221,7 +220,7 @@ def test_list_with_inspector(vm, params):
     logging.debug(list_dev_result)
     if list_dev_result.exit_status:
         gf.close_session()
-        raise error.TestFail("List devices failed")
+        test.fail("List devices failed")
     logging.info("List devices successfully.")
 
     # List mounts
@@ -229,7 +228,7 @@ def test_list_with_inspector(vm, params):
     gf.close_session()
     logging.debug(list_df_result)
     if list_df_result.exit_status:
-        raise error.TestFail("Df failed")
+        test.fail("Df failed")
     logging.info("Df successfully.")
 
 

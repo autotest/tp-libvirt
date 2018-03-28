@@ -4,11 +4,10 @@ This file is used to run autotest cases related to augeas
 import re
 import logging
 
-from autotest.client.shared import error
 from virttest import utils_test
 
 
-def prepare_image(params):
+def prepare_image(test, params):
     """
     1) Create a image
     2) Create file system on the image
@@ -17,17 +16,17 @@ def prepare_image(params):
     params["image_path"] = utils_test.libguestfs.preprocess_image(params)
 
     if not params.get("image_path"):
-        raise error.TestFail("Image could not be created for some reason")
+        test.fail("Image could not be created for some reason")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     status, output = gf.create_fs()
     if status is False:
         gf.close_session()
-        raise error.TestFail(output)
+        test.fail(output)
     gf.close_session()
 
 
-def test_aug_clear(vm, params):
+def test_aug_clear(test, vm, params):
     """
     Clear augeas path
 
@@ -48,7 +47,7 @@ def test_aug_clear(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch. GSERROR_MSG: %s" % run_result)
+        test.fail("Can not launch. GSERROR_MSG: %s" % run_result)
     logging.info("Launch successfully")
 
     # mount the device
@@ -56,36 +55,36 @@ def test_aug_clear(vm, params):
     mount_result = gf.mount_options("noatime", mount_point, "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
+        test.fail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
     aug_init_result = gf.aug_init("/", "0 ")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle successfully")
 
     aug_set_result = gf.aug_set("/files/etc/passwd/root/home", "/root")
     if aug_set_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not set /files/etc/passwd/root/home to /root. GSERROR_MSG: %s" % aug_set_result)
+        test.fail("Can not set /files/etc/passwd/root/home to /root. GSERROR_MSG: %s" % aug_set_result)
     logging.info("Set /files/etc/passwd/root/home to /root successfully")
 
     aug_clear_result = gf.aug_clear("/files/etc/passwd/root/home")
     if aug_clear_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not clean /files/etc/passwd/root/home. GSERROR_MSG: %s" % aug_clear_result)
+        test.fail("Can not clean /files/etc/passwd/root/home. GSERROR_MSG: %s" % aug_clear_result)
     logging.info("Clear augeas /files/etc/passwd/root/home successfully")
 
     aug_get_result = gf.aug_get("/files/etc/passwd/root/home")
     if not aug_get_result.exit_status:
         gf.close_session()
-        raise error.TestFail("The home directory of root user should be cleared after aug-clear")
+        test.fail("The home directory of root user should be cleared after aug-clear")
     logging.info("Clean the home directory of root user successfully")
     gf.close_session()
 
 
-def test_aug_close(vm, params):
+def test_aug_close(test, vm, params):
     """
     Close the current augeas handle and free up any resources used by it.
     After calling this, you have to call "aug_init" again before you can use
@@ -106,7 +105,7 @@ def test_aug_close(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch. GSERROR_MSG: %s" % run_result)
+        test.fail("Can not launch. GSERROR_MSG: %s" % run_result)
     logging.info("Launch successfully")
 
     # mount the device
@@ -114,24 +113,24 @@ def test_aug_close(vm, params):
     mount_result = gf.mount_options("noatime", mount_point, "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
+        test.fail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
     aug_init_result = gf.aug_init("/", "0")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle successfully")
 
     aug_close_result = gf.aug_close()
     if aug_close_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not close augeas handle. GSERROR_MSG: %s" % aug_close_result)
+        test.fail("Can not close augeas handle. GSERROR_MSG: %s" % aug_close_result)
     logging.info("Close augeas handle successfully")
     gf.close_session()
 
 
-def test_aug_defnode(vm, params):
+def test_aug_defnode(test, vm, params):
     """
     Defines a variable "name" whose value is the result of evaluating
     "expr".
@@ -152,7 +151,7 @@ def test_aug_defnode(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch. GSERROR_MSG: %s" % run_result)
+        test.fail("Can not launch. GSERROR_MSG: %s" % run_result)
     logging.info("Launch successfully")
 
     # mount the device
@@ -160,41 +159,41 @@ def test_aug_defnode(vm, params):
     mount_result = gf.mount_options("noatime", mount_point, "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
+        test.fail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
     aug_init_result = gf.aug_init("/", "0")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle successfully")
 
     aug_defnode_result = gf.aug_defnode("node", "/files/etc/passwd/test/uid", "9999")
     if aug_defnode_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not define node. GSERROR_MSG: %s" % aug_defnode_result)
+        test.fail("Can not define node. GSERROR_MSG: %s" % aug_defnode_result)
     logging.info("Define node successfully")
 
     aug_defnode_result = gf.aug_defnode("node", "/files/etc/passwd/test/gid", "9999")
     if aug_defnode_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not define node /files/etc/passwd/test/gid. GSERROR_MSG: %s" % aug_defnode_result)
+        test.fail("Can not define node /files/etc/passwd/test/gid. GSERROR_MSG: %s" % aug_defnode_result)
     logging.info("Define node /files/etc/passwd/test/gid successfully")
 
     aug_ls_result = gf.aug_ls("/files/etc/passwd/test")
     if aug_ls_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not list augeas nodes under /files/etc/passwd/test. GSERROR_MSG: %s" % aug_ls_result)
+        test.fail("Can not list augeas nodes under /files/etc/passwd/test. GSERROR_MSG: %s" % aug_ls_result)
     logging.info("List augeas nodes under /files/etc/passwd/test successfully")
 
     if aug_ls_result.stdout.strip('\n') != '/files/etc/passwd/test/gid\n/files/etc/passwd/test/uid':
         gf.close_session()
-        raise error.TestFail("The node value is not correct: %s" % aug_ls_result.stdout)
+        test.fail("The node value is not correct: %s" % aug_ls_result.stdout)
     logging.info("The node value is correct")
     gf.close_session()
 
 
-def test_aug_defvar(vm, params):
+def test_aug_defvar(test, vm, params):
     """
     Define an augeas variable
 
@@ -214,7 +213,7 @@ def test_aug_defvar(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch. GSERROR_MSG: %s" % run_result)
+        test.fail("Can not launch. GSERROR_MSG: %s" % run_result)
     logging.info("Launch successfully")
 
     # mount the device
@@ -222,35 +221,35 @@ def test_aug_defvar(vm, params):
     mount_result = gf.mount_options("noatime", mount_point, "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
+        test.fail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
     aug_init_result = gf.aug_init("/", "0")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle successfully")
 
     aug_defvar_result = gf.aug_defvar("test", "'This is a test'")
     if aug_defvar_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not define variable. GSERROR_MSG: %s" % aug_defvar_result)
+        test.fail("Can not define variable. GSERROR_MSG: %s" % aug_defvar_result)
     logging.info("Define variable successfully")
 
     aug_get_result = gf.aug_get("/augeas/variables/test")
     if aug_get_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not look up the value of /augeas/variables/test. GSERROR_MSG:%s" % aug_get_result)
+        test.fail("Can not look up the value of /augeas/variables/test. GSERROR_MSG:%s" % aug_get_result)
     logging.info("Look up the value of /augeas/variables/test successfully")
 
     if aug_get_result.stdout.strip('\n') != 'This is a test':
         gf.close_session()
-        raise error.TestFail("The variable value is not correct %s != This is a test" % aug_get_result.stdout.strip('\n'))
+        test.fail("The variable value is not correct %s != This is a test" % aug_get_result.stdout.strip('\n'))
     logging.info("The variable value is correct")
     gf.close_session()
 
 
-def test_aug_set_get(vm, params):
+def test_aug_set_get(test, vm, params):
     """
     Look up the value of an augeas path
 
@@ -271,7 +270,7 @@ def test_aug_set_get(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch. GSERROR_MSG: %s" % run_result)
+        test.fail("Can not launch. GSERROR_MSG: %s" % run_result)
     logging.info("Launch successfully")
 
     # mount the device
@@ -279,47 +278,47 @@ def test_aug_set_get(vm, params):
     mount_result = gf.mount_options("noatime", mount_point, "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
+        test.fail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
     aug_init_result = gf.aug_init("/", "0")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle successfully")
 
     aug_set_result = gf.aug_set("/files/etc/passwd/root/password", "9999")
     if aug_set_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not set /files/etc/passwd/root/password to 9999. GSERROR_MSG: %s" % aug_set_result)
+        test.fail("Can not set /files/etc/passwd/root/password to 9999. GSERROR_MSG: %s" % aug_set_result)
     logging.info("Set /files/etc/passwd/root/password to 9999 successfully")
 
     aug_set_result = gf.aug_set("/files/etc/passwd/root/home", "/root")
     if aug_set_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not set /files/etc/passwd/root/home to /root. GSERROR_MSG: %s" % aug_set_result)
+        test.fail("Can not set /files/etc/passwd/root/home to /root. GSERROR_MSG: %s" % aug_set_result)
     logging.info("Set /files/etc/passwd/root/home to /root successfully")
 
     aug_get_result_password = gf.aug_get("/files/etc/passwd/root/password")
     if aug_get_result_password.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not get the value of /files/etc/passwd/root/password. GSERROR_MSG: %s" % aug_get_result_password)
+        test.fail("Can not get the value of /files/etc/passwd/root/password. GSERROR_MSG: %s" % aug_get_result_password)
     logging.info("Get the value of /files/etc/passwd/root/password successfully")
 
     aug_get_result_home = gf.aug_get("/files/etc/passwd/root/home")
     if aug_get_result_home.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not get the value of /files/etc/passwd/root/home. GSERROR_MSG: %s" % aug_get_result_home)
+        test.fail("Can not get the value of /files/etc/passwd/root/home. GSERROR_MSG: %s" % aug_get_result_home)
     logging.info("Get the value of /files/etc/passwd/root/home successfully")
 
     if aug_get_result_password.stdout.strip('\n') != "9999" or aug_get_result_home.stdout.strip('\n') != '/root':
         gf.close_session()
-        raise error.TestFail("The value of /files/etc/passwd/root/password and /files/etc/passwd/root/home is not correct. root password %s != 9999, root home %s != /root" % (aug_get_result_password.stdout.strip('\n'), aug_get_result_home.stdout.strip('\n')))
+        test.fail("The value of /files/etc/passwd/root/password and /files/etc/passwd/root/home is not correct. root password %s != 9999, root home %s != /root" % (aug_get_result_password.stdout.strip('\n'), aug_get_result_home.stdout.strip('\n')))
     logging.info("The value of /files/etc/passwd/root/password and /files/etc/passwd/root/home is correct")
     gf.close_session()
 
 
-def test_aug_init(vm, params):
+def test_aug_init(test, vm, params):
     """
     Create a new augeas handle
 
@@ -341,7 +340,7 @@ def test_aug_init(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch. GSERROR_MSG: %s" % run_result)
+        test.fail("Can not launch. GSERROR_MSG: %s" % run_result)
     logging.info("Launch successfully")
 
     # mount the device
@@ -349,42 +348,42 @@ def test_aug_init(vm, params):
     mount_result = gf.mount_options("noatime", mount_point, "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
+        test.fail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
     aug_init_result = gf.aug_init("/", "0")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle with flag = 0. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle with flag = 0. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle with flag = 0 successfully")
 
     aug_init_result = gf.aug_init("/", "1")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle with flag = 1. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle with flag = 1. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle with flag = 1 successfully")
 
     aug_init_result = gf.aug_init("/", "8")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle with flag = 8. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle with flag = 8. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle with flag = 8 successfully")
 
     aug_init_result = gf.aug_init("/", "16")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle with flag = 16. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle with flag = 16. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle with flag = 16 successfully")
 
     aug_init_result = gf.aug_init("/", "32")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle with flag = 32. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle with flag = 32. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle with flag = 32 successfully")
     gf.close_session()
 
 
-def test_aug_insert(vm, params):
+def test_aug_insert(test, vm, params):
     """
     Look up the value of an augeas path
 
@@ -405,7 +404,7 @@ def test_aug_insert(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch. GSERROR_MSG: %s" % run_result)
+        test.fail("Can not launch. GSERROR_MSG: %s" % run_result)
     logging.info("Launch successfully")
 
     # mount the device
@@ -413,63 +412,63 @@ def test_aug_insert(vm, params):
     mount_result = gf.mount_options("noatime", mount_point, "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
+        test.fail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
     mkdir_p_result = gf.mkdir_p('/usr/share/augeas/lenses/dist')
     if mkdir_p_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create directory /usr/share/augeas/lenses/dist. GSERROR_MSG: %s" % mkdir_p_result)
+        test.fail("Can not create directory /usr/share/augeas/lenses/dist. GSERROR_MSG: %s" % mkdir_p_result)
     logging.info("Create directory /usr/share/augeas/lenses/dist successfully")
 
     mkdir_result = gf.mkdir('/etc')
     if mkdir_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create directory /etc. GSERROR_MSG: %s" % mkdir_result)
+        test.fail("Can not create directory /etc. GSERROR_MSG: %s" % mkdir_result)
     logging.info("Create directory /etc successfully")
 
     upload_result = gf.upload('/usr/share/augeas/lenses/dist/passwd.aug', '/usr/share/augeas/lenses/dist/passwd.aug')
     if upload_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not upload file /usr/share/augeas/lenses/dist/passwd.aug. GSERROR_MSG: %s" % upload_result)
+        test.fail("Can not upload file /usr/share/augeas/lenses/dist/passwd.aug. GSERROR_MSG: %s" % upload_result)
     logging.info("upload file /usr/share/augeas/lenses/dist/passwd.aug successfully")
 
     upload_result = gf.upload('/etc/passwd', '/etc/passwd')
     if upload_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not upload file /etc/passwd. GSERROR_MSG: %s" % upload_result)
+        test.fail("Can not upload file /etc/passwd. GSERROR_MSG: %s" % upload_result)
     logging.info("upload file /etc/passwd successfully")
 
     aug_init_result = gf.aug_init("/", "0")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle successfully")
 
     aug_insert_result = gf.aug_insert("/files/etc/passwd/root/name", "testbefore", "true")
     if aug_insert_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not insert testbefore before /files/etc/passwd/root/name. GSERROR_MSG: %s" % aug_insert_result)
+        test.fail("Can not insert testbefore before /files/etc/passwd/root/name. GSERROR_MSG: %s" % aug_insert_result)
     logging.info("Insert testbefore before /files/etc/passwd/root/name successfully")
 
     aug_insert_result = gf.aug_insert("/files/etc/passwd/root/name", "testafter", "false")
     if aug_insert_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not insert testafter after /files/etc/passwd/root/name. GSERROR_MSG: %s" % aug_insert_result)
+        test.fail("Can not insert testafter after /files/etc/passwd/root/name. GSERROR_MSG: %s" % aug_insert_result)
     logging.info("Insert testafter after /files/etc/passwd/root/name successfully")
 
     command_result = gf.inner_cmd("aug-match /files/etc/passwd/root/* |egrep 'name|test'")
     if command_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Failed to run the command. GSERROR_MSG: %s" % command_result)
+        test.fail("Failed to run the command. GSERROR_MSG: %s" % command_result)
 
     if command_result.stdout.strip('\n') != '/files/etc/passwd/root/testbefore\n/files/etc/passwd/root/name\n/files/etc/passwd/root/testafter':
         gf.close_session()
-        raise error.TestFail("The match results is not correct. GSERROR_MSG: %s" % command_result.stdout)
+        test.fail("The match results is not correct. GSERROR_MSG: %s" % command_result.stdout)
     gf.close_session()
 
 
-def test_aug_ls(vm, params):
+def test_aug_ls(test, vm, params):
     """
     List augeas nodes under augpath
 
@@ -490,7 +489,7 @@ def test_aug_ls(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch. GSERROR_MSG: %s" % run_result)
+        test.fail("Can not launch. GSERROR_MSG: %s" % run_result)
     logging.info("Launch successfully")
 
     # mount the device
@@ -498,56 +497,56 @@ def test_aug_ls(vm, params):
     mount_result = gf.mount_options("noatime", mount_point, "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
+        test.fail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
     aug_init_result = gf.aug_init("/", "0")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle successfully")
 
     aug_set_result = gf.aug_set("/files/etc/passwd/root", "0")
     if aug_set_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not set /files/etc/passwd/root to 0. GSERROR_MSG: %s" % aug_set_result)
+        test.fail("Can not set /files/etc/passwd/root to 0. GSERROR_MSG: %s" % aug_set_result)
     logging.info("Set /files/etc/passwd/root to 0 successfully")
 
     aug_set_result = gf.aug_set("/files/etc/passwd/mysql", "1")
     if aug_set_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not set /files/etc/passwd/mysql to 1. GSERROR_MSG: %s" % aug_set_result)
+        test.fail("Can not set /files/etc/passwd/mysql to 1. GSERROR_MSG: %s" % aug_set_result)
     logging.info("Set /files/etc/passwd/mysql to 1 successfully")
 
     aug_ls_result = gf.aug_ls("/files/etc/passwd")
     if aug_ls_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not list path /files/etc/passwd. GSERROR_MSG: %s" % aug_ls_result)
+        test.fail("Can not list path /files/etc/passwd. GSERROR_MSG: %s" % aug_ls_result)
     logging.info("List path /files/etc/passwd successfully")
 
     if aug_ls_result.stdout.strip('\n') != '/files/etc/passwd/mysql\n/files/etc/passwd/root':
         gf.close_session()
-        raise error.TestFail("aug-ls list the wrong results. GSERROR_MSG: %s" % aug_ls_result.stdout)
+        test.fail("aug-ls list the wrong results. GSERROR_MSG: %s" % aug_ls_result.stdout)
     logging.info("aug-ls list the right results")
 
     aug_ls_result = gf.aug_ls("/files/etc/passwd/")
     if not aug_ls_result.exit_status:
         gf.close_session()
-        raise error.TestFail("aug_ls: can use aug-ls with a path that ends with /")
+        test.fail("aug_ls: can use aug-ls with a path that ends with /")
 
     aug_ls_result = gf.aug_ls("/files/etc/passwd/*")
     if not aug_ls_result.exit_status:
         gf.close_session()
-        raise error.TestFail("aug_ls: can use aug-ls with a path that ends with *")
+        test.fail("aug_ls: can use aug-ls with a path that ends with *")
 
     aug_ls_result = gf.aug_ls("/files/etc/passwd/node[1]")
     if not aug_ls_result.exit_status:
         gf.close_session()
-        raise error.TestFail("aug_ls: can use aug-ls with a path that ends with ]")
+        test.fail("aug_ls: can use aug-ls with a path that ends with ]")
     gf.close_session()
 
 
-def test_aug_match(vm, params):
+def test_aug_match(test, vm, params):
     """
     List augeas nodes under augpath
 
@@ -568,7 +567,7 @@ def test_aug_match(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch. GSERROR_MSG: %s" % run_result)
+        test.fail("Can not launch. GSERROR_MSG: %s" % run_result)
     logging.info("Launch successfully")
 
     # mount the device
@@ -576,46 +575,46 @@ def test_aug_match(vm, params):
     mount_result = gf.mount_options("noatime", mount_point, "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
+        test.fail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
     aug_init_result = gf.aug_init("/", "0")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle successfully")
 
     aug_set_result = gf.aug_set("/files/etc/passwd/root", "0")
     if aug_set_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not set /files/etc/passwd/root to 0. GSERROR_MSG: %s" % aug_set_result)
+        test.fail("Can not set /files/etc/passwd/root to 0. GSERROR_MSG: %s" % aug_set_result)
     logging.info("Set /files/etc/passwd/root to 0 successfully")
 
     aug_set_result = gf.aug_set("/files/etc/host/home", "1")
     if aug_set_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not set /files/etc/host/home to 1. GSERROR_MSG: %s" % aug_set_result)
+        test.fail("Can not set /files/etc/host/home to 1. GSERROR_MSG: %s" % aug_set_result)
     logging.info("Set /files/etc/host/home to 1 successfully")
 
     aug_set_result = gf.aug_set("/files/etc/config/root", "2")
     if aug_set_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not set /files/etc/config/root to 2. GSERROR_MSG: %s" % aug_set_result)
+        test.fail("Can not set /files/etc/config/root to 2. GSERROR_MSG: %s" % aug_set_result)
     logging.info("Set /files/etc/config/root to 2 successfully")
 
     aug_match_result = gf.aug_match("/files/etc/*/root")
     if aug_match_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not return augeas nodes which match /files/etc/*/root. GSERROR_MSG: %s" % aug_match_result)
+        test.fail("Can not return augeas nodes which match /files/etc/*/root. GSERROR_MSG: %s" % aug_match_result)
     logging.info("Can return augeas nodes which match /files/etc/*/root successfully")
 
     if aug_match_result.stdout.strip('\n') != '/files/etc/passwd/root\n/files/etc/config/root':
         gf.close_session()
-        raise error.TestFail("The match results is not correct. GSERROR_MSG: %s" % aug_match_result.stdout)
+        test.fail("The match results is not correct. GSERROR_MSG: %s" % aug_match_result.stdout)
     gf.close_session()
 
 
-def test_aug_mv(vm, params):
+def test_aug_mv(test, vm, params):
     """
     Move augeas node
 
@@ -636,7 +635,7 @@ def test_aug_mv(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch. GSERROR_MSG: %s" % run_result)
+        test.fail("Can not launch. GSERROR_MSG: %s" % run_result)
     logging.info("Launch successfully")
 
     # mount the device
@@ -644,39 +643,39 @@ def test_aug_mv(vm, params):
     mount_result = gf.mount_options("noatime", mount_point, "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
+        test.fail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
     aug_init_result = gf.aug_init("/", "0")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle successfully")
 
     aug_set_result = gf.aug_set("/files/etc/passwd/root", "0")
     if aug_set_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not set /files/etc/passwd/root to 0. GSERROR_MSG: %s" % aug_set_result)
+        test.fail("Can not set /files/etc/passwd/root to 0. GSERROR_MSG: %s" % aug_set_result)
     logging.info("Set /files/etc/passwd/root to 0 successfully")
 
     aug_mv_result = gf.aug_mv("/files/etc/passwd/root", "/files/etc/passwd/other_none_root")
     if aug_mv_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not move /files/etc/passwd/root to /files/etc/passwd/other_none_root. GSERROR_MSG: %s" % aug_mv_result)
+        test.fail("Can not move /files/etc/passwd/root to /files/etc/passwd/other_none_root. GSERROR_MSG: %s" % aug_mv_result)
 
     aug_ls_result = gf.aug_ls("/files/etc/passwd")
     if aug_ls_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not list augeas nodes under /files/etc/passwd. GSERROR_MSG: %s" % aug_ls_result)
+        test.fail("Can not list augeas nodes under /files/etc/passwd. GSERROR_MSG: %s" % aug_ls_result)
     logging.info("List augeas nodes under /files/etc/passwd successfully")
 
     if aug_ls_result.stdout.strip('\n') != '/files/etc/passwd/other_none_root':
         gf.close_session()
-        raise error.TestFail("aug-mv: can not find the new node /files/etc/passwd/other_none_root")
+        test.fail("aug-mv: can not find the new node /files/etc/passwd/other_none_root")
     gf.close_session()
 
 
-def test_aug_rm(vm, params):
+def test_aug_rm(test, vm, params):
     """
     Move augeas node
 
@@ -697,7 +696,7 @@ def test_aug_rm(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch. GSERROR_MSG: %s" % run_result)
+        test.fail("Can not launch. GSERROR_MSG: %s" % run_result)
     logging.info("Launch successfully")
 
     # mount the device
@@ -705,39 +704,39 @@ def test_aug_rm(vm, params):
     mount_result = gf.mount_options("noatime", mount_point, "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
+        test.fail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
     aug_init_result = gf.aug_init("/", "0")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle successfully")
 
     aug_set_result = gf.aug_set("/files/etc/passwd/root", "0")
     if aug_set_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not set /files/etc/passwd/root to 0. GSERROR_MSG: %s" % aug_set_result)
+        test.fail("Can not set /files/etc/passwd/root to 0. GSERROR_MSG: %s" % aug_set_result)
     logging.info("Set /files/etc/passwd/root to 0 successfully")
 
     aug_rm_result = gf.aug_rm("/files/etc/passwd/root")
     if aug_rm_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not remove /files/etc/passwd/root. GSERROR_MSG: %s" % aug_rm_result)
+        test.fail("Can not remove /files/etc/passwd/root. GSERROR_MSG: %s" % aug_rm_result)
 
     aug_ls_result = gf.aug_ls("/files/etc/passwd")
     if aug_ls_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not list augeas nodes under /files/etc/passwd. GSERROR_MSG: %s" % aug_ls_result)
+        test.fail("Can not list augeas nodes under /files/etc/passwd. GSERROR_MSG: %s" % aug_ls_result)
     logging.info("List augeas nodes under /files/etc/passwd successfully")
 
     if aug_ls_result.stdout.strip('\n') == '/files/etc/passwd/root':
         gf.close_session()
-        raise error.TestFail("aug-rm: failed to remove node /files/etc/passwd/root")
+        test.fail("aug-rm: failed to remove node /files/etc/passwd/root")
     gf.close_session()
 
 
-def test_aug_label(vm, params):
+def test_aug_label(test, vm, params):
     """
     Return the label from an augeas path expression
 
@@ -758,7 +757,7 @@ def test_aug_label(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch. GSERROR_MSG: %s" % run_result)
+        test.fail("Can not launch. GSERROR_MSG: %s" % run_result)
     logging.info("Launch successfully")
 
     # mount the device
@@ -766,33 +765,33 @@ def test_aug_label(vm, params):
     mount_result = gf.mount_options("noatime", mount_point, "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
+        test.fail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
     aug_init_result = gf.aug_init("/", "0")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle successfully")
 
     aug_set_result = gf.aug_set("/files/etc/passwd/root", "0")
     if aug_set_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not set /files/etc/passwd/root to 0. GSERROR_MSG: %s" % aug_set_result)
+        test.fail("Can not set /files/etc/passwd/root to 0. GSERROR_MSG: %s" % aug_set_result)
     logging.info("Set /files/etc/passwd/root to 0 successfully")
 
     aug_label_result = gf.aug_label("/files/etc/passwd/root")
     if aug_label_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not get the label of /files/etc/passwd/root. GSERROR_MSG: %s" % aug_label_result)
+        test.fail("Can not get the label of /files/etc/passwd/root. GSERROR_MSG: %s" % aug_label_result)
 
     if aug_label_result.stdout.strip('\n') != 'root':
         gf.close_session()
-        raise error.TestFail("aug-label return the wrong lable")
+        test.fail("aug-label return the wrong lable")
     gf.close_session()
 
 
-def test_aug_setm(vm, params):
+def test_aug_setm(test, vm, params):
     """
     Set multiple augeas nodes
 
@@ -813,7 +812,7 @@ def test_aug_setm(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch. GSERROR_MSG: %s" % run_result)
+        test.fail("Can not launch. GSERROR_MSG: %s" % run_result)
     logging.info("Launch successfully")
 
     # mount the device
@@ -821,49 +820,49 @@ def test_aug_setm(vm, params):
     mount_result = gf.mount_options("noatime", mount_point, "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
+        test.fail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
     aug_init_result = gf.aug_init("/", "0")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle successfully")
 
     aug_set_result = gf.aug_set("/files/etc/passwd/root/uid", "0")
     if aug_set_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not set /files/etc/passwd/root/uid to 0. GSERROR_MSG: %s" % aug_set_result)
+        test.fail("Can not set /files/etc/passwd/root/uid to 0. GSERROR_MSG: %s" % aug_set_result)
     logging.info("Set /files/etc/passwd/root/uid to 0 successfully")
 
     aug_set_result = gf.aug_set("/files/etc/passwd/mysql/uid", "1")
     if aug_set_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not set /files/etc/passwd/mysql/uid to 1. GSERROR_MSG: %s" % aug_set_result)
+        test.fail("Can not set /files/etc/passwd/mysql/uid to 1. GSERROR_MSG: %s" % aug_set_result)
     logging.info("Set /files/etc/passwd/mysql/uid to 1 successfully")
 
     aug_setm_result = gf.aug_setm("/files/etc/passwd/*", "uid", "2")
     if aug_setm_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not set multiple augeas nodes. GSERROR_MSG: %s" % aug_setm_result)
+        test.fail("Can not set multiple augeas nodes. GSERROR_MSG: %s" % aug_setm_result)
 
     aug_get_result_root = gf.aug_get("/files/etc/passwd/root/uid")
     if aug_get_result_root.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not get the value of /files/etc/passwd/root/uid. GSERROR_MSG: %s" % aug_get_result_root)
+        test.fail("Can not get the value of /files/etc/passwd/root/uid. GSERROR_MSG: %s" % aug_get_result_root)
 
     aug_get_result_mysql = gf.aug_get("/files/etc/passwd/mysql/uid")
     if aug_get_result_mysql.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not get the value of /files/etc/passwd/mysql/uid. GSERROR_MSG: %s" % aug_get_result_mysql)
+        test.fail("Can not get the value of /files/etc/passwd/mysql/uid. GSERROR_MSG: %s" % aug_get_result_mysql)
 
     if aug_get_result_root.stdout.strip('\n') != '2' or aug_get_result_mysql.stdout.strip('\n') != '2':
         gf.close_session()
-        raise error.TestFail("aug-setm set the wrong value. GSERROR_MSG: root = %s, mysql = %s" % (aug_get_result_root.stdout.strip('\n'), aug_get_result_mysql.stdout.strip('\n')))
+        test.fail("aug-setm set the wrong value. GSERROR_MSG: root = %s, mysql = %s" % (aug_get_result_root.stdout.strip('\n'), aug_get_result_mysql.stdout.strip('\n')))
     gf.close_session()
 
 
-def test_aug_load(vm, params):
+def test_aug_load(test, vm, params):
     """
     Load files into the tree
 
@@ -884,7 +883,7 @@ def test_aug_load(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch. GSERROR_MSG: %s" % run_result)
+        test.fail("Can not launch. GSERROR_MSG: %s" % run_result)
     logging.info("Launch successfully")
 
     # mount the device
@@ -892,64 +891,64 @@ def test_aug_load(vm, params):
     mount_result = gf.mount_options("noatime", mount_point, "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
+        test.fail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
     aug_init_result = gf.aug_init("/", "0")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle successfully")
 
     aug_ls_result = gf.aug_ls("/files/etc")
     if aug_ls_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not list augeas nodes under /files/etc. GSERROR_MSG: %s" % aug_ls_result)
+        test.fail("Can not list augeas nodes under /files/etc. GSERROR_MSG: %s" % aug_ls_result)
     logging.info("List augeas nodes under /files/etc successfully")
 
     mkdir_p_result = gf.mkdir_p('/usr/share/augeas/lenses/dist')
     if mkdir_p_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create directory /usr/share/augeas/lenses/dist. GSERROR_MSG: %s" % mkdir_p_result)
+        test.fail("Can not create directory /usr/share/augeas/lenses/dist. GSERROR_MSG: %s" % mkdir_p_result)
     logging.info("Create directory /usr/share/augeas/lenses/dist successfully")
 
     mkdir_result = gf.mkdir('/etc')
     if mkdir_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create directory /etc. GSERROR_MSG: %s" % mkdir_result)
+        test.fail("Can not create directory /etc. GSERROR_MSG: %s" % mkdir_result)
     logging.info("Create directory /etc successfully")
 
     upload_result = gf.upload('/usr/share/augeas/lenses/dist/passwd.aug', '/usr/share/augeas/lenses/dist/passwd.aug')
     if upload_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not upload file /usr/share/augeas/lenses/dist/passwd.aug. GSERROR_MSG: %s" % upload_result)
+        test.fail("Can not upload file /usr/share/augeas/lenses/dist/passwd.aug. GSERROR_MSG: %s" % upload_result)
     logging.info("upload file /usr/share/augeas/lenses/dist/passwd.aug successfully")
 
     upload_result = gf.upload('/etc/passwd', '/etc/passwd')
     if upload_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not upload file /etc/passwd. GSERROR_MSG: %s" % upload_result)
+        test.fail("Can not upload file /etc/passwd. GSERROR_MSG: %s" % upload_result)
     logging.info("upload file /etc/passwd successfully")
 
     aug_load_result = gf.aug_load()
     if aug_load_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not load files into the tree. GSERROR_MSG: %s" % aug_load_result)
+        test.fail("Can not load files into the tree. GSERROR_MSG: %s" % aug_load_result)
     logging.info("Load files into tree successfully")
 
     aug_ls_load_result = gf.aug_ls("/files/etc")
     if aug_ls_load_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not list augeas nodes under /files/etc. GSERROR_MSG: %s" % aug_ls_load_result)
+        test.fail("Can not list augeas nodes under /files/etc. GSERROR_MSG: %s" % aug_ls_load_result)
     logging.info("List augeas nodes under /files/etc successfully")
 
     if aug_ls_result.stdout.strip('\n') != '' or aug_ls_load_result.stdout.strip('\n') != '/files/etc/passwd':
         gf.close_session()
-        raise error.TestFail("Failed to load the tree.")
+        test.fail("Failed to load the tree.")
     gf.close_session()
 
 
-def test_aug_save(vm, params):
+def test_aug_save(test, vm, params):
     """
     Write all pending augeas changes to disk
 
@@ -975,7 +974,7 @@ def test_aug_save(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch. GSERROR_MSG: %s" % run_result)
+        test.fail("Can not launch. GSERROR_MSG: %s" % run_result)
     logging.info("Launch successfully")
 
     # mount the device
@@ -983,49 +982,49 @@ def test_aug_save(vm, params):
     mount_result = gf.mount_options("noatime", mount_point, "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
+        test.fail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
     mkdir_p_result = gf.mkdir_p('/usr/share/augeas/lenses/dist')
     if mkdir_p_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create directory /usr/share/augeas/lenses/dist. GSERROR_MSG: %s" % mkdir_p_result)
+        test.fail("Can not create directory /usr/share/augeas/lenses/dist. GSERROR_MSG: %s" % mkdir_p_result)
     logging.info("Create directory /usr/share/augeas/lenses/dist successfully")
 
     mkdir_result = gf.mkdir('/etc')
     if mkdir_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create directory /etc. GSERROR_MSG: %s" % mkdir_result)
+        test.fail("Can not create directory /etc. GSERROR_MSG: %s" % mkdir_result)
     logging.info("Create directory /etc successfully")
 
     upload_result = gf.upload('/usr/share/augeas/lenses/dist/passwd.aug', '/usr/share/augeas/lenses/dist/passwd.aug')
     if upload_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not upload file /usr/share/augeas/lenses/dist/passwd.aug. GSERROR_MSG: %s" % upload_result)
+        test.fail("Can not upload file /usr/share/augeas/lenses/dist/passwd.aug. GSERROR_MSG: %s" % upload_result)
     logging.info("upload file /usr/share/augeas/lenses/dist/passwd.aug successfully")
 
     upload_result = gf.upload('/etc/passwd', '/etc/passwd')
     if upload_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not upload file /etc/passwd. GSERROR_MSG: %s" % upload_result)
+        test.fail("Can not upload file /etc/passwd. GSERROR_MSG: %s" % upload_result)
     logging.info("upload file /etc/passwd successfully")
 
     aug_init_result = gf.aug_init("/", "0")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle successfully")
 
     aug_set_result = gf.aug_set("/files/etc/passwd/root/home", "/tmp/root")
     if aug_set_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not set /files/etc/passwd/root/home to /tmp/root. GSERROR_MSG: %s" % aug_set_result)
+        test.fail("Can not set /files/etc/passwd/root/home to /tmp/root. GSERROR_MSG: %s" % aug_set_result)
     logging.info("Set /files/etc/passwd/root/home to /tmp/root successfully")
 
     aug_save_result = gf.aug_save()
     if aug_save_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not save changes to disk. GSERROR_MSG: %s" % aug_save_result)
+        test.fail("Can not save changes to disk. GSERROR_MSG: %s" % aug_save_result)
     logging.info("Save changes to disk successfully")
     gf.close_session()
 
@@ -1036,31 +1035,31 @@ def test_aug_save(vm, params):
     run_result = gf.run()
     if run_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not launch. GSERROR_MSG: %s" % run_result)
+        test.fail("Can not launch. GSERROR_MSG: %s" % run_result)
     logging.info("Launch successfully")
 
     # mount the device
     mount_result = gf.mount_options("noatime", mount_point, "/")
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
+        test.fail("Can not mount %s to /. GSERROR_MSG: %s" % (mount_point, mount_result))
     logging.info("mount %s to / successfully" % mount_point)
 
     aug_init_result = gf.aug_init("/", "0")
     if aug_init_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
+        test.fail("Can not create a augeas handle. GSERROR_MSG: %s" % aug_init_result)
     logging.info("Create augeas handle successfully")
 
     aug_get_result = gf.aug_get("/files/etc/passwd/root/home")
     if aug_get_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Can not get the home directory of root user. GSERROR_MSG: %s" % aug_get_result)
+        test.fail("Can not get the home directory of root user. GSERROR_MSG: %s" % aug_get_result)
     logging.info("Get the home directory of root user successfully. root directory is %s" % aug_get_result.stdout.strip('\n'))
 
     if aug_get_result.stdout.strip('\n') != '/tmp/root':
         gf.close_session()
-        raise error.TestFail("The home directory of root user is not correct")
+        test.fail("The home directory of root user is not correct")
     gf.close_session()
 
 
@@ -1096,5 +1095,5 @@ def run(test, params, env):
             params["partition_type"] = partition_type
             for fs_type in re.findall(r"\w+", fs_types):
                 params["fs_type"] = fs_type
-                prepare_image(params)
-                testcase(vm, params)
+                prepare_image(test, params)
+                testcase(test, vm, params)

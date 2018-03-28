@@ -1,8 +1,7 @@
 import logging
 import os
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
+from avocado.utils import process
 
 from virttest import data_dir
 from virttest import utils_test
@@ -10,7 +9,8 @@ from virttest import utils_test
 
 def umount_fs(mountpoint):
     if os.path.ismount(mountpoint):
-        result = utils.run("umount -l %s" % mountpoint, ignore_status=True)
+        result = process.run("umount -l %s" % mountpoint, ignore_status=True,
+                             shell=True)
         if result.exit_status:
             logging.debug("Umount %s failed", mountpoint)
             return False
@@ -53,8 +53,8 @@ def run(test, params, env):
         roots, rootfs = gf.get_root()
         gf.close_session()
         if roots is False:
-            raise error.TestError("Can not get root filesystem "
-                                  "in guestfish before test")
+            test.error("Can not get root filesystem "
+                       "in guestfish before test")
         logging.info("Root filesystem is:%s", rootfs)
         params['special_mountpoints'] = [rootfs]
 
@@ -66,11 +66,11 @@ def run(test, params, env):
     if status_error:
         if writes:
             if readonly:
-                raise error.TestFail("Write file to readonly mounted "
-                                     "filesystem successfully.Not expected.")
+                test.fail("Write file to readonly mounted "
+                          "filesystem successfully.Not expected.")
             else:
-                raise error.TestFail("Write file with guestmount "
-                                     "successfully.Not expected.")
+                test.fail("Write file with guestmount "
+                          "successfully.Not expected.")
     else:
         if not writes:
-            raise error.TestFail("Write file to mounted filesystem failed.")
+            test.fail("Write file to mounted filesystem failed.")
