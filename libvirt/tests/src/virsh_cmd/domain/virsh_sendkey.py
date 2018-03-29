@@ -58,6 +58,16 @@ def run(test, params, env):
     session = vm.wait_for_login()
 
     if sysrq_test:
+        # In postprocess of previous testcase would pause and resume the VM
+        # that would change the domstate to running (unpaused) and cause
+        # sysrq reboot testcase to fail as the domstate persist across reboot
+        # so it is better to destroy and start VM before the test starts
+        if "KEY_B" in keystrokes:
+            cmd_result = virsh.domstate(vm_name, '--reason', ignore_status=True)
+            if "unpaused" in cmd_result.stdout.strip():
+                vm.destroy()
+                vm.start()
+                session = vm.wait_for_login()
         LOG_FILE = "/var/log/messages"
         if "ubuntu" in vm.get_distro().lower():
             LOG_FILE = "/var/log/syslog"
@@ -153,6 +163,12 @@ def run(test, params, env):
                 elif "KEY_T" in keystrokes:
                     cmd = "cat %s | grep 'SysRq.*Show State'" % LOG_FILE
                     get_status = session.cmd_status(cmd)
+                    # Sometimes SysRq.*Show State string missed in LOG_FILE
+                    # as a fall back check for runnable tasks logged
+                    if get_status != 0:
+                        cmd = "cat %s | grep 'runnable tasks:'" % LOG_FILE
+                        get_status = session.cmd_status(cmd)
+
                 elif "KEY_B" in keystrokes:
                     session = vm.wait_for_login()
                     result = virsh.domstate(vm_name, '--reason', ignore_status=True)
