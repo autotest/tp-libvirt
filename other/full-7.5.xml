@@ -1,0 +1,351 @@
+<domain type='kvm'>
+  <name>rhel7.4-simple</name>
+  <uuid>f0ae725b-eb1c-4d3b-9e99-1468b5fdc5f8</uuid>
+  <title>rhel7.4 full xml that doesn't need special env setup</title>
+  <description>Some human readable description</description>
+  <metadata>
+    <app1:foo xmlns:app1="http://app1.org/app1/">..</app1:foo>
+    <app2:bar xmlns:app2="http://app1.org/app2/">..</app2:bar>
+  </metadata>
+  <maxMemory slots='8' unit='KiB'>4194304</maxMemory>
+  <memory unit='KiB'>1572864</memory>
+  <currentMemory unit='KiB'>1048576</currentMemory>
+  <memtune>
+    <hard_limit unit='KiB'>28943040</hard_limit>
+    <soft_limit unit='KiB'>23107200</soft_limit>
+    <swap_hard_limit unit='KiB'>30971520</swap_hard_limit>
+  </memtune>
+  <memoryBacking>
+    <nosharepages/>
+    <source type='file'/>
+    <access mode='shared'/>
+    <allocation mode='immediate'/>
+  </memoryBacking>
+  <vcpu placement='static' cpuset='0-3'>16</vcpu>
+  <iothreads>4</iothreads>
+  <iothreadids>
+    <iothread id='1'/>
+    <iothread id='2'/>
+    <iothread id='6'/>
+    <iothread id='8'/>
+  </iothreadids>
+  <cputune>
+    <shares>2048</shares>
+    <period>1000000</period>
+    <quota>-1</quota>
+    <global_period>1000000</global_period>
+    <global_quota>-1</global_quota>
+    <emulator_period>1000000</emulator_period>
+    <emulator_quota>-1</emulator_quota>
+    <vcpupin vcpu='0' cpuset='1-2'/>
+    <emulatorpin cpuset='3'/>
+    <iothreadpin iothread='1' cpuset='0'/>
+    <iothreadpin iothread='2' cpuset='1'/>
+    <vcpusched vcpus='0' scheduler='batch'/>
+    <vcpusched vcpus='1' scheduler='batch'/>
+    <vcpusched vcpus='2' scheduler='batch'/>
+    <vcpusched vcpus='3' scheduler='batch'/>
+    <vcpusched vcpus='4' scheduler='batch'/>
+    <vcpusched vcpus='5' scheduler='batch'/>
+    <vcpusched vcpus='6' scheduler='batch'/>
+    <vcpusched vcpus='7' scheduler='batch'/>
+    <vcpusched vcpus='8' scheduler='batch'/>
+    <vcpusched vcpus='9' scheduler='batch'/>
+    <vcpusched vcpus='10' scheduler='batch'/>
+    <vcpusched vcpus='11' scheduler='batch'/>
+    <vcpusched vcpus='12' scheduler='batch'/>
+    <vcpusched vcpus='13' scheduler='batch'/>
+    <vcpusched vcpus='14' scheduler='batch'/>
+    <vcpusched vcpus='15' scheduler='batch'/>
+    <iothreadsched iothreads='2' scheduler='batch'/>
+  </cputune>
+  <numatune>
+    <memory mode='strict' nodeset='0'/>
+    <memnode cellid='0' mode='interleave' nodeset='0'/>
+    <memnode cellid='1' mode='strict' nodeset='0'/>
+  </numatune>
+  <resource>
+    <partition>/machine</partition>
+  </resource>
+  <os>
+    <type arch='x86_64' machine='pc-i440fx-rhel7.4.0'>hvm</type>
+    <loader readonly='yes' type='rom'>/usr/share/seabios/bios.bin</loader>
+    <boot dev='hd'/>
+    <boot dev='cdrom'/>
+    <bootmenu enable='yes' timeout='3000'/>
+    <bios useserial='yes' rebootTimeout='0'/>
+    <smbios mode='emulate'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+    <pae/>
+    <hap state='on'/>
+    <viridian/>
+    <kvm>
+      <hidden state='off'/>
+    </kvm>
+    <pvspinlock state='on'/>
+    <pmu state='off'/>
+    <vmport state='on'/>
+  </features>
+  <cpu mode='custom' match='exact' check='full'>
+    <model fallback='forbid'>Penryn</model>
+    <topology sockets='2' cores='4' threads='2'/>
+    <feature policy='disable' name='hypervisor'/>
+    <feature policy='disable' name='x2apic'/>
+    <feature policy='require' name='vme'/>
+    <numa>
+      <cell id='0' cpus='0-7' memory='524288' unit='KiB' memAccess='shared'/>
+      <cell id='1' cpus='8-15' memory='524288' unit='KiB'/>
+    </numa>
+  </cpu>
+  <clock offset='utc'>
+    <timer name='rtc' tickpolicy='catchup' track='guest'>
+      <catchup threshold='123' slew='120' limit='10000'/>
+    </timer>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='hpet' tickpolicy='delay'/>
+  </clock>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>restart</on_crash>
+  <pm>
+    <suspend-to-mem enabled='yes'/>
+    <suspend-to-disk enabled='no'/>
+  </pm>
+  <perf>
+    <event name='cmt' enabled='no'/>
+    <event name='mbmt' enabled='no'/>
+    <event name='mbml' enabled='no'/>
+    <event name='cpu_cycles' enabled='no'/>
+    <event name='instructions' enabled='yes'/>
+    <event name='cache_references' enabled='no'/>
+    <event name='cache_misses' enabled='no'/>
+    <event name='branch_instructions' enabled='no'/>
+    <event name='branch_misses' enabled='no'/>
+    <event name='bus_cycles' enabled='no'/>
+    <event name='stalled_cycles_frontend' enabled='no'/>
+    <event name='stalled_cycles_backend' enabled='no'/>
+    <event name='ref_cpu_cycles' enabled='no'/>
+    <event name='cpu_clock' enabled='no'/>
+    <event name='task_clock' enabled='no'/>
+    <event name='page_faults' enabled='no'/>
+    <event name='context_switches' enabled='no'/>
+    <event name='cpu_migrations' enabled='no'/>
+    <event name='page_faults_min' enabled='no'/>
+    <event name='page_faults_maj' enabled='no'/>
+    <event name='alignment_faults' enabled='no'/>
+    <event name='emulation_faults' enabled='no'/>
+  </perf>
+  <devices>
+    <emulator>/usr/libexec/qemu-kvm</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' cache='none' error_policy='stop' rerror_policy='stop' io='threads' discard='unmap'/>
+      <source file='/var/lib/libvirt/images/RHEL-7.5-x86_64-latest.qcow2'/>
+      <target dev='vda' bus='virtio'/>
+      <iotune>
+        <total_bytes_sec>1000000000000</total_bytes_sec>
+        <read_iops_sec>400000000000</read_iops_sec>
+        <write_iops_sec>100000000000</write_iops_sec>
+        <group_name>group1</group_name>
+      </iotune>
+      <serial>f65effa5-90a6-47f2-8487-a9f64c95d4f5</serial>
+      <encryption format='qcow'>
+        <secret type='passphrase' uuid='e0f8d7d9-9e90-4a71-b7ef-e6cb05457dba'/>
+      </encryption>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x05' function='0x0'/>
+    </disk>
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+      <address type='drive' controller='0' bus='0' target='0' unit='0'/>
+    </disk>
+    <controller type='usb' index='0' model='piix3-uhci'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x01' function='0x2'/>
+    </controller>
+    <controller type='usb' index='1' model='ich9-ehci1'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x09' function='0x7'/>
+    </controller>
+    <controller type='usb' index='1' model='ich9-uhci1'>
+      <master startport='0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x09' function='0x0' multifunction='on'/>
+    </controller>
+    <controller type='usb' index='1' model='ich9-uhci2'>
+      <master startport='2'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x09' function='0x1'/>
+    </controller>
+    <controller type='usb' index='1' model='ich9-uhci3'>
+      <master startport='4'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x09' function='0x2'/>
+    </controller>
+    <controller type='usb' index='2' model='nec-xhci' ports='4'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x0a' function='0x0'/>
+    </controller>
+    <controller type='usb' index='3' model='qemu-xhci' ports='15'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x0d' function='0x0'/>
+    </controller>
+    <controller type='pci' index='0' model='pci-root'/>
+    <controller type='pci' index='1' model='pci-bridge'>
+      <model name='pci-bridge'/>
+      <target chassisNr='1'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x06' function='0x0'/>
+    </controller>
+    <controller type='pci' index='2' model='pci-bridge'>
+      <model name='pci-bridge'/>
+      <target chassisNr='2'/>
+      <address type='pci' domain='0x0000' bus='0x01' slot='0x08' function='0x0'/>
+    </controller>
+    <controller type='pci' index='3' model='pci-expander-bus'>
+      <model name='pxb'/>
+      <target busNr='254'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x0e' function='0x0'/>
+    </controller>
+    <controller type='virtio-serial' index='0' ports='16'>
+      <address type='pci' domain='0x0000' bus='0x01' slot='0x05' function='0x0'/>
+    </controller>
+    <controller type='fdc' index='0'/>
+    <controller type='ide' index='0'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x01' function='0x1'/>
+    </controller>
+    <controller type='scsi' index='0' model='virtio-scsi'>
+      <driver cmd_per_lun='5' max_sectors='10000' ioeventfd='on' iothread='6'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x08' function='0x0'/>
+    </controller>
+    <controller type='ccid' index='0'>
+      <address type='usb' bus='0' port='1'/>
+    </controller>
+    <interface type='network'>
+      <mac address='52:54:00:c6:3b:95'/>
+      <source network='default'/>
+      <bandwidth>
+        <inbound average='1000' peak='5000' burst='1024'/>
+        <outbound average='128' peak='256' burst='256'/>
+      </bandwidth>
+      <model type='virtio'/>
+      <driver name='vhost' txmode='iothread' ioeventfd='on' event_idx='off' queues='5'>
+        <host csum='off' gso='off' tso4='off' tso6='off' ecn='off' ufo='off' mrg_rxbuf='off'/>
+        <guest csum='off' tso4='off' tso6='off' ecn='off' ufo='off'/>
+      </driver>
+      <link state='up'/>
+      <mtu size='9000'/>
+      <coalesce>
+        <rx>
+          <frames max='7'/>
+        </rx>
+      </coalesce>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0'/>
+    </interface>
+    <smartcard mode='passthrough' type='spicevmc'>
+      <address type='ccid' controller='0' slot='0'/>
+    </smartcard>
+    <serial type='pty'>
+      <log file='/var/log/libvirt/qemu/rhel7.3-serial0.log' append='off'/>
+      <target type='isa-serial' port='0'/>
+    </serial>
+    <serial type='file'>
+      <source path='/var/log/libvirt/qemu/rhel7.3-serial1.log' append='on'/>
+      <target type='isa-serial' port='1'/>
+    </serial>
+    <console type='pty'>
+      <log file='/var/log/libvirt/qemu/rhel7.3-serial0.log' append='off'/>
+      <target type='serial' port='0'/>
+    </console>
+    <channel type='spicevmc'>
+      <target type='virtio' name='com.redhat.spice.0'/>
+      <address type='virtio-serial' controller='0' bus='0' port='1'/>
+    </channel>
+    <channel type='unix'>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+      <address type='virtio-serial' controller='0' bus='0' port='2'/>
+    </channel>
+    <channel type='pty'>
+      <target type='virtio' name='org.qemu.guest_agent.1'/>
+      <address type='virtio-serial' controller='0' bus='0' port='3'/>
+    </channel>
+    <input type='tablet' bus='usb'>
+      <address type='usb' bus='0' port='2'/>
+    </input>
+    <input type='mouse' bus='ps2'/>
+    <input type='keyboard' bus='usb'>
+      <address type='usb' bus='1' port='1'/>
+    </input>
+    <input type='keyboard' bus='ps2'/>
+    <graphics type='spice' autoport='yes'>
+      <listen type='network' network='default'/>
+      <channel name='usbredir' mode='insecure'/>
+      <image compression='auto_glz'/>
+      <streaming mode='filter'/>
+      <mouse mode='client'/>
+      <clipboard copypaste='yes'/>
+      <filetransfer enable='yes'/>
+    </graphics>
+    <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'>
+      <listen type='address' address='0.0.0.0'/>
+    </graphics>
+    <sound model='ac97'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x04' function='0x0'/>
+    </sound>
+    <video>
+      <model type='qxl' ram='65536' vram='65536' vram64='131072' vgamem='16384' heads='1' primary='yes'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x07' function='0x0'/>
+    </video>
+    <video>
+      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x02' function='0x0'/>
+    </video>
+    <video>
+      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x0b' function='0x0'/>
+    </video>
+    <hostdev mode='subsystem' type='usb' managed='no'>
+      <source startupPolicy='optional'>
+        <vendor id='0x1234'/>
+        <product id='0xbeef'/>
+      </source>
+      <address type='usb' bus='1' port='2'/>
+    </hostdev>
+    <redirdev bus='usb' type='spicevmc'>
+      <address type='usb' bus='1' port='4'/>
+    </redirdev>
+    <hub type='usb'>
+      <address type='usb' bus='1' port='3'/>
+    </hub>
+    <watchdog model='ib700' action='none'/>
+    <memballoon model='virtio' autodeflate='on'>
+      <stats period='10'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x0c' function='0x0'/>
+    </memballoon>
+    <panic model='isa'>
+      <address type='isa' iobase='0x505'/>
+    </panic>
+    <shmem name='my_shmem1'>
+      <model type='ivshmem-plain'/>
+      <size unit='M'>4</size>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x10' function='0x0'/>
+    </shmem>
+    <memory model='dimm' access='private'>
+      <source>
+        <nodemask>0</nodemask>
+      </source>
+      <target>
+        <size unit='KiB'>262144</size>
+        <node>0</node>
+      </target>
+      <address type='dimm' slot='0'/>
+    </memory>
+    <memory model='dimm' access='private'>
+      <source>
+        <nodemask>0</nodemask>
+      </source>
+      <target>
+        <size unit='KiB'>262144</size>
+        <node>1</node>
+      </target>
+      <address type='dimm' slot='1'/>
+    </memory>
+  </devices>
+  <seclabel type='dynamic' model='selinux' relabel='yes'/>
+  <seclabel type='dynamic' model='dac' relabel='yes'/>
+</domain>

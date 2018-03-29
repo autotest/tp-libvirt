@@ -67,3 +67,7 @@ Enhancement(Best practice):
 	-- without timeout value in infinite loop
 	-- use with to open files
         -- make sure this is run before sending patch:inspekt checkall --no-license-check <*>.py
+
+======================================================================
+Test your code:
+    -- make sure you tests run pass the 'full xml' that we provided at other/full-7.5.xml except for bugs or nonsupport, which should produce fail/cancel
