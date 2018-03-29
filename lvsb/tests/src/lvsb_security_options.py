@@ -5,8 +5,6 @@ This case is used for testing security option of the virt-sandbox command.
 import re
 import logging
 
-from autotest.client.shared import error
-
 from virttest.lvsb import make_sandboxes
 
 # The default base context, please check virt-sandbox man page.
@@ -102,8 +100,8 @@ def run(test, params, env):
     # list of sandbox agregation managers
     sb_list = make_sandboxes(params, env)
     if not sb_list:
-        raise error.TestFail("Failed to return list of instantiated "
-                             "lvsb_testsandboxes classes")
+        test.fail("Failed to return list of instantiated "
+                  "lvsb_testsandboxes classes")
 
     # Run a sandbox until timeout or finished w/ output
     # store list of stdout's for the sandbox in aggregate type
@@ -125,15 +123,15 @@ def run(test, params, env):
     # positive and negative testing #########
     if status_error:
         if status == 0:
-            raise error.TestFail("%d not an expected command "
-                                 "return value" % status)
+            test.fail("%d not an expected command "
+                      "return value" % status)
         elif verify_selinux_label(_params):
-            raise error.TestFail("To expect selinux context is different!!")
+            test.fail("To expect selinux context is different!!")
         else:
             logging.info("It's an expected error: %s", _params['lvsb_result'])
     else:
         if status != 0:
-            raise error.TestFail("%d not an expected command "
-                                 "return value" % status)
+            test.fail("%d not an expected command "
+                      "return value" % status)
         if not verify_selinux_label(_params):
-            raise error.TestFail("The selinux context doesn't match!!")
+            test.fail("The selinux context doesn't match!!")
