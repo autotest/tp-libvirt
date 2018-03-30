@@ -13,7 +13,7 @@ def run(test, params, env):
 
     For normal sendkey test, we create a file to check the command
     execute by send-key. For sysrq test, check the /var/log/messages
-    and guest status
+    in RHEL or /var/log/syslog in Ubuntu and guest status
     """
 
     if not virsh.has_help_command('send-key'):
@@ -58,14 +58,27 @@ def run(test, params, env):
     session = vm.wait_for_login()
 
     if sysrq_test:
+        # In postprocess of previous testcase would pause and resume the VM
+        # that would change the domstate to running (unpaused) and cause
+        # sysrq reboot testcase to fail as the domstate persist across reboot
+        # so it is better to destroy and start VM before the test starts
+        if "KEY_B" in keystrokes:
+            cmd_result = virsh.domstate(vm_name, '--reason', ignore_status=True)
+            if "unpaused" in cmd_result.stdout.strip():
+                vm.destroy()
+                vm.start()
+                session = vm.wait_for_login()
+        LOG_FILE = "/var/log/messages"
+        if "ubuntu" in vm.get_distro().lower():
+            LOG_FILE = "/var/log/syslog"
         # Is 'rsyslog' installed on guest? It'll be what writes out
-        # to /var/log/messages
+        # to LOG_FILE
         if not utils_package.package_install("rsyslog", session):
             test.fail("Fail to install rsyslog, make sure that you have "
                       "usable repo in guest")
 
         # clear messages, restart rsyslog, and make sure it's running
-        session.cmd("echo '' > /var/log/messages")
+        session.cmd("echo '' > %s" % LOG_FILE)
         session.cmd("service rsyslog restart")
         ps_stat = session.cmd_status("ps aux |grep rsyslog")
         if ps_stat != 0:
@@ -135,21 +148,27 @@ def run(test, params, env):
                 test.fail("Fail to create file with send key, Error:%s" %
                           sec_output)
         elif sysrq_test:
-            # check /var/log/message info according to different key
+            # check LOG_FILE info according to different key
 
             # Since there's no guarantee when messages will be written
             # we'll do a check and wait loop for up to 60 seconds
             timeout = 60
             while timeout >= 0:
                 if "KEY_H" in keystrokes:
-                    get_status = session.cmd_status("cat /var/log/messages|"
-                                                    "grep 'SysRq.*HELP'")
+                    cmd = "cat %s | grep 'SysRq.*HELP'" % LOG_FILE
+                    get_status = session.cmd_status(cmd)
                 elif "KEY_M" in keystrokes:
-                    get_status = session.cmd_status("cat /var/log/messages|"
-                                                    "grep 'SysRq.*Show Memory'")
+                    cmd = "cat %s | grep 'SysRq.*Show Memory'" % LOG_FILE
+                    get_status = session.cmd_status(cmd)
                 elif "KEY_T" in keystrokes:
-                    get_status = session.cmd_status("cat /var/log/messages|"
-                                                    "grep 'SysRq.*Show State'")
+                    cmd = "cat %s | grep 'SysRq.*Show State'" % LOG_FILE
+                    get_status = session.cmd_status(cmd)
+                    # Sometimes SysRq.*Show State string missed in LOG_FILE
+                    # as a fall back check for runnable tasks logged
+                    if get_status != 0:
+                        cmd = "cat %s | grep 'runnable tasks:'" % LOG_FILE
+                        get_status = session.cmd_status(cmd)
+
                 elif "KEY_B" in keystrokes:
                     session = vm.wait_for_login()
                     result = virsh.domstate(vm_name, '--reason', ignore_status=True)
@@ -164,7 +183,7 @@ def run(test, params, env):
                 if get_status == 0:
                     timeout = -1
                 else:
-                    session.cmd("echo \"virsh sendkey waiting\" >> /var/log/messages")
+                    session.cmd("echo \"virsh sendkey waiting\" >> %s" % LOG_FILE)
                     time.sleep(1)
                     timeout = timeout - 1
 
