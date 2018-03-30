@@ -1,12 +1,12 @@
-import commands
 import re
 
-from autotest.client.shared import error
+from avocado.utils import process
+
 from virttest import utils_test
 from virttest import data_dir
 
 
-def prepare_image(params):
+def prepare_image(test, params):
     """
     (1) Create a image
     (2) Create file system on the image
@@ -14,17 +14,17 @@ def prepare_image(params):
     params["image_path"] = utils_test.libguestfs.preprocess_image(params)
 
     if not params.get("image_path"):
-        raise error.TestFail("Image could not be created for some reason.")
+        test.fail("Image could not be created for some reason.")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     status, output = gf.create_fs()
     if status is False:
         gf.close_session()
-        raise error.TestFail(output)
+        test.fail(output)
     gf.close_session()
 
 
-def test_df(vm, params):
+def test_df(test, vm, params):
     """
     Test command df
     """
@@ -50,10 +50,10 @@ def test_df(vm, params):
     lvm_name = "/dev/mapper/vol_test-vol_file"
 
     if physical_name not in result and lvm_name not in result:
-        raise error.TestFail("Could not find df output")
+        test.fail("Could not find df output")
 
 
-def test_df_h(vm, params):
+def test_df_h(test, vm, params):
     """
     Test command df-h
     """
@@ -79,13 +79,13 @@ def test_df_h(vm, params):
     lvm_name = "/dev/mapper/vol_test-vol_file"
 
     if physical_name not in result and lvm_name not in result:
-        raise error.TestFail("Could not find df output")
+        test.fail("Could not find df output")
 
     if not re.search("\d+[MKG]", result):
-        raise error.TestFail("It's not a human-readable format")
+        test.fail("It's not a human-readable format")
 
 
-def test_dd(vm, params):
+def test_dd(test, vm, params):
     """
     Test command dd
     """
@@ -114,10 +114,10 @@ def test_dd(vm, params):
     gf.close_session()
 
     if src_size != dest_size or dest_content != "Hello World":
-        raise error.TestFail("Content or filesize is not match")
+        test.fail("Content or filesize is not match")
 
 
-def test_copy_size(vm, params):
+def test_copy_size(test, vm, params):
     """
     Test command copy-size
     """
@@ -146,10 +146,10 @@ def test_copy_size(vm, params):
     gf.close_session()
 
     if src_size != dest_size or dest_content != "Hello World":
-        raise error.TestFail("Content or filesize is not match")
+        test.fail("Content or filesize is not match")
 
 
-def test_download(vm, params):
+def test_download(test, vm, params):
     """
     Test command download
     """
@@ -175,14 +175,14 @@ def test_download(vm, params):
     gf.download("/src.txt", "%s" % dest)
     gf.close_session()
 
-    content = commands.getoutput("cat %s" % dest)
-    commands.getstatus("rm %s" % dest)
+    content = process.getoutput("cat %s" % dest)
+    process.system("rm %s" % dest)
 
     if content != "Hello World":
-        raise error.TestFail("Content or filesize is not match")
+        test.fail("Content or filesize is not match")
 
 
-def test_download_offset(vm, params):
+def test_download_offset(test, vm, params):
     """
     Test command download-offset
     """
@@ -210,14 +210,14 @@ def test_download_offset(vm, params):
     gf.download_offset("/src.txt", "%s" % dest, 0, len(string))
     gf.close_session()
 
-    content = commands.getoutput("cat %s" % dest)
-    commands.getstatus("rm %s" % dest)
+    content = process.getoutput("cat %s" % dest)
+    process.system("rm %s" % dest)
 
     if content != "Hello World":
-        raise error.TestFail("Content or filesize is not match")
+        test.fail("Content or filesize is not match")
 
 
-def test_upload(vm, params):
+def test_upload(test, vm, params):
     """
     Test command upload
     """
@@ -237,20 +237,19 @@ def test_upload(vm, params):
     gf.do_mount("/")
 
     filename = "%s/src.txt" % data_dir.get_tmp_dir()
-    fd = open(filename, "w+")
-    fd.write("Hello World")
-    fd.close()
+    with open(filename, "w+") as fd:
+        fd.write("Hello World")
 
     gf.upload(filename, "/dest.txt")
     content = gf.cat("/dest.txt").stdout.strip()
     gf.close_session()
-    commands.getoutput("rm %s" % filename)
+    process.getoutput("rm %s" % filename)
 
     if content != "Hello World":
-        raise error.TestFail("Content is not correct")
+        test.fail("Content is not correct")
 
 
-def test_upload_offset(vm, params):
+def test_upload_offset(test, vm, params):
     """
     Test command upload_offset
     """
@@ -271,18 +270,18 @@ def test_upload_offset(vm, params):
 
     filename = "%s/src.txt" % data_dir.get_tmp_dir()
     string = "Hello World"
-    commands.getoutput("echo %s > %s" % (string, filename))
+    process.getoutput("echo %s > %s" % (string, filename))
 
     gf.upload_offset(filename, "/dest.txt", 0)
     content = gf.cat("/dest.txt").stdout.strip()
     gf.close_session()
-    commands.getoutput("rm %s" % filename)
+    process.getoutput("rm %s" % filename)
 
     if content != string:
-        raise error.TestFail("Content is not correct")
+        test.fail("Content is not correct")
 
 
-def test_fallocate(vm, params):
+def test_fallocate(test, vm, params):
     """
     Test command fallocate
     """
@@ -307,7 +306,7 @@ def test_fallocate(vm, params):
 
     if int(size) != 100:
         gf.close_session()
-        raise error.TestFail("File size is not correct")
+        test.fail("File size is not correct")
 
     # overwriteen a existed file
     string = "Hello World"
@@ -318,12 +317,12 @@ def test_fallocate(vm, params):
     gf.close_session()
 
     if content != "":
-        raise error.TestFail("Content is not empty")
+        test.fail("Content is not empty")
     if int(size) != 200:
-        raise error.TestFail("File size is not correct")
+        test.fail("File size is not correct")
 
 
-def test_fallocate64(vm, params):
+def test_fallocate64(test, vm, params):
     """
     Test command fallocate64
     """
@@ -348,7 +347,7 @@ def test_fallocate64(vm, params):
 
     if int(size) != 100:
         gf.close_session()
-        raise error.TestFail("File size is not correct")
+        test.fail("File size is not correct")
 
     # overwriteen a existed file
     string = "Hello World"
@@ -359,9 +358,9 @@ def test_fallocate64(vm, params):
     gf.close_session()
 
     if content != "":
-        raise error.TestFail("Content is not empty")
+        test.fail("Content is not empty")
     if int(size) != 200:
-        raise error.TestFail("File size is not correct")
+        test.fail("File size is not correct")
 
 
 def run(test, params, env):
@@ -394,5 +393,5 @@ def run(test, params, env):
         params["image_format"] = image_format
         for partition_type in re.findall("\w+", partition_types):
             params["partition_type"] = partition_type
-            prepare_image(params)
-            testcase(vm, params)
+            prepare_image(test, params)
+            testcase(test, vm, params)

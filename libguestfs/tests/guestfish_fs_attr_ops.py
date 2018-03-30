@@ -1,14 +1,14 @@
 import logging
 import os
 import re
-import commands
 
-from autotest.client.shared import error
+from avocado.utils import process
+
 from virttest import utils_test
 from virttest import data_dir
 
 
-def prepare_image(params):
+def prepare_image(test, params):
     """
     (1) Create a image
     (2) Create file system on the image
@@ -16,17 +16,17 @@ def prepare_image(params):
     params["image_path"] = utils_test.libguestfs.preprocess_image(params)
 
     if not params.get("image_path"):
-        raise error.TestFail("Image could not be created for some reason.")
+        test.fail("Image could not be created for some reason.")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     status, output = gf.create_fs()
     if status is False:
         gf.close_session()
-        raise error.TestFail(output)
+        test.fail(output)
     gf.close_session()
 
 
-def test_set_get_e2uuid(vm, params):
+def test_set_get_e2uuid(test, vm, params):
     """
     Test command set_e2uuid, get_e2uuid, vfs_uuid and findfs-uuid:
     """
@@ -46,31 +46,31 @@ def test_set_get_e2uuid(vm, params):
 
     mount_point = params.get("mount_point")
     # set_e2uuid
-    temp, uuid = commands.getstatusoutput("uuidgen")
+    temp, uuid = process.getstatusoutput("uuidgen")
     gf.set_e2uuid(mount_point, uuid)
 
     # get_e2uuid
     gf_result = gf.get_e2uuid(mount_point)
     if gf_result.stdout.split()[0] != uuid:
         gf.close_session()
-        raise error.TestFail("set_get_e2uuid failed.")
+        test.fail("set_get_e2uuid failed.")
 
     # vfs_uuid
     gf_result = gf.vfs_uuid(mount_point)
     if gf_result.stdout.split()[0] != uuid:
         gf.close_session()
-        raise error.TestFail("set_get_e2uuid failed.")
+        test.fail("set_get_e2uuid failed.")
 
     # find_uuid
     gf_result = gf.findfs_uuid(uuid)
     if gf_result.stdout.split()[0] != mount_point:
         gf.close_session()
-        raise error.TestFail("set_get_e2uuid failed.")
+        test.fail("set_get_e2uuid failed.")
 
     gf.close_session()
 
 
-def test_set_uuid(vm, params):
+def test_set_uuid(test, vm, params):
     """
     Test command set_uuid
     """
@@ -91,17 +91,17 @@ def test_set_uuid(vm, params):
     mount_point = params.get("mount_point")
 
     # set_uuid
-    temp, uuid = commands.getstatusoutput("uuidgen")
+    temp, uuid = process.getstatusoutput("uuidgen")
     gf.set_uuid(mount_point, uuid)
 
     gf_result = gf.vfs_uuid(mount_point)
     if gf_result.stdout.split()[0] != uuid:
         gf.close_session()
-        raise error.TestFail("set_uuid failed.")
+        test.fail("set_uuid failed.")
     gf.close_session()
 
 
-def test_set_get_e2label(vm, params):
+def test_set_get_e2label(test, vm, params):
     """
     Test command set_e2label, get_e2label, vfs_label and findfs_label
     """
@@ -129,24 +129,24 @@ def test_set_get_e2label(vm, params):
     gf_result = gf.get_e2label(mount_point)
     if gf_result.stdout.split()[0] != label:
         gf.close_session()
-        raise error.TestFail("set_get_e2label failed.")
+        test.fail("set_get_e2label failed.")
 
     # vfs_label
     gf_result = gf.vfs_label(mount_point)
     if gf_result.stdout.split()[0] != label:
         gf.close_session()
-        raise error.TestFail("set_get_e2label failed.")
+        test.fail("set_get_e2label failed.")
 
     # findfs_label
     gf_result = gf.findfs_label(label)
     if gf_result.stdout.split()[0] != mount_point:
         gf.close_session()
-        raise error.TestFail("set_get_e2label failed.")
+        test.fail("set_get_e2label failed.")
 
     gf.close_session()
 
 
-def test_set_label(vm, params):
+def test_set_label(test, vm, params):
     """
     Test command set_label
     """
@@ -173,11 +173,11 @@ def test_set_label(vm, params):
     gf_result = gf.vfs_label(mount_point)
     if gf_result.stdout.split()[0] != label:
         gf.close_session()
-        raise error.TestFail("set_label failed.")
+        test.fail("set_label failed.")
     gf.close_session()
 
 
-def test_set_get_e2attrs(vm, params):
+def test_set_get_e2attrs(test, vm, params):
     """
     Test command set_e2attrs and get_e2attrs
     """
@@ -210,7 +210,7 @@ def test_set_get_e2attrs(vm, params):
     gf_result = gf.get_e2attrs(filename)
     if gf_result.stdout.split()[0] != expected_attrs:
         gf.close_session()
-        raise error.TestFail("set_get_e2attrs failed.")
+        test.fail("set_get_e2attrs failed.")
     # set_e2attrs 'u'
     gf.set_e2attrs(filename, 'u')
     # get_e2attrs
@@ -220,7 +220,7 @@ def test_set_get_e2attrs(vm, params):
     gf_result = gf.get_e2attrs(filename)
     if gf_result.stdout.split()[0] != expected_attrs:
         gf.close_session()
-        raise error.TestFail("set_get_e2attrs failed.")
+        test.fail("set_get_e2attrs failed.")
     # set_e2attrs 'a', 'c'
     gf.set_e2attrs(filename, 'a')
     gf.set_e2attrs(filename, 'c')
@@ -231,7 +231,7 @@ def test_set_get_e2attrs(vm, params):
     gf_result = gf.get_e2attrs(filename)
     if gf_result.stdout.split()[0] != expected_attrs:
         gf.close_session()
-        raise error.TestFail("set_get_e2attrs failed.")
+        test.fail("set_get_e2attrs failed.")
     # set_e2attrs 'c' clear:true
     gf.set_e2attrs(filename, 'c', 'true')
     # get_e2attrs
@@ -241,7 +241,7 @@ def test_set_get_e2attrs(vm, params):
     gf_result = gf.get_e2attrs(filename)
     if gf_result.stdout.split()[0] != expected_attrs:
         gf.close_session()
-        raise error.TestFail("set_get_e2attrs failed.")
+        test.fail("set_get_e2attrs failed.")
 
     # set_e2attrs 't' clear:false
     gf.set_e2attrs(filename, 't', 'false')
@@ -249,11 +249,11 @@ def test_set_get_e2attrs(vm, params):
     gf_result = gf.get_e2attrs(filename)
     if gf_result.stdout.split()[0] != expected_attrs:
         gf.close_session()
-        raise error.TestFail("set_get_e2attrs failed.")
+        test.fail("set_get_e2attrs failed.")
     gf.close_session()
 
 
-def test_set_get_e2generation(vm, params):
+def test_set_get_e2generation(test, vm, params):
     """
     Test command set_e2generation and get_e2generation
     """
@@ -284,11 +284,11 @@ def test_set_get_e2generation(vm, params):
     gf_result = gf.get_e2generation(filename)
     if gf_result.stdout.split()[0] != generation:
         gf.close_session()
-        raise error.TestFail("set_get_e2generation failed.")
+        test.fail("set_get_e2generation failed.")
     gf.close_session()
 
 
-def test_statvfs(vm, params):
+def test_statvfs(test, vm, params):
     """
     Test command statvfs
     """
@@ -317,7 +317,7 @@ def test_statvfs(vm, params):
     for atti in atti_list:
         if atti not in List:
             gf.close_session()
-            raise error.TestFail("statvfs failed.")
+            test.fail("statvfs failed.")
 
     # don't do further free-inodes test for vfat/ntfs as they behave
     # very different from ext2/3/4.
@@ -338,12 +338,12 @@ def test_statvfs(vm, params):
     new_ffree_value = int(List[ffree_index + 1])
     if new_ffree_value != (ffree_value - 1):
         gf.close_session()
-        raise error.TestFail("statvfs failed.")
+        test.fail("statvfs failed.")
 
     gf.close_session()
 
 
-def test_tune2fs_l(vm, params):
+def test_tune2fs_l(test, vm, params):
     """
     Test command tune2fs_l
     """
@@ -374,12 +374,12 @@ def test_tune2fs_l(vm, params):
 
     if inodes_tune2fs_str not in gf_result.stdout:
         gf.close_session()
-        raise error.TestFail("tune2fs_l failed.")
+        test.fail("tune2fs_l failed.")
 
     gf.close_session()
 
 
-def test_tune2fs(vm, params):
+def test_tune2fs(test, vm, params):
     """
     Test command tune2fs
     """
@@ -419,12 +419,12 @@ def test_tune2fs(vm, params):
     for expect_str in str_list:
         if expect_str not in gf_result.stdout:
             gf.close_session()
-            raise error.TestFail("tune2fs failed.")
+            test.fail("tune2fs failed.")
 
     gf.close_session()
 
 
-def test_checkfs(vm, params):
+def test_checkfs(test, vm, params):
     """
     Test command vfs_type, fsck
     """
@@ -449,7 +449,7 @@ def test_checkfs(vm, params):
     gf_result = gf.vfs_type(mount_point)
     if gf_result.stdout.split()[0] not in type_list:
         gf.close_session()
-        raise error.TestFail("checkfs failed.")
+        test.fail("checkfs failed.")
 
     # fsck
     fsck_result = gf.fsck(gf_result.stdout.split()[0], mount_point)
@@ -459,7 +459,7 @@ def test_checkfs(vm, params):
     gf.close_session()
 
 
-def test_mkfs_opts(vm, params):
+def test_mkfs_opts(test, vm, params):
     """
     Test command mkfs/mkfs_opts
     """
@@ -519,7 +519,7 @@ def test_mkfs_opts(vm, params):
         if fstype != vfs_type_result:
             os.system('rm -f ' + test_img + ' > /dev/null')
             gf.close_session()
-            raise error.TestFail("test_mkfs-opts failed.")
+            test.fail("test_mkfs-opts failed.")
         # check blocksize
         if fstype == 'btrfs':
             os.system('rm -f ' + test_img + ' > /dev/null')
@@ -532,14 +532,14 @@ def test_mkfs_opts(vm, params):
         if blocksize_str not in statvfs_result.stdout:
             gf.close_session()
             os.system('rm -f ' + test_img + ' > /dev/null')
-            raise error.TestFail("test_mkfs_opts failed.")
+            test.fail("test_mkfs_opts failed.")
 
         gf.umount('/')
     os.system('rm -f ' + test_img + ' > /dev/null')
     gf.close_session()
 
 
-def test_blkid(vm, params):
+def test_blkid(test, vm, params):
     """
     Test command blkid
     """
@@ -566,22 +566,22 @@ def test_blkid(vm, params):
         key_value = pair.strip().split(':')
         if len(key_value) < 2:
             gf.close_session()
-            raise error.TestFail("blkid failed.")
+            test.fail("blkid failed.")
         key, value = key_value[0].strip(), key_value[1].strip()
         if key == '' or value == '':
             gf.close_session()
-            raise error.TestFail("blkid failed.")
+            test.fail("blkid failed.")
     # check filesystem output by blkid is correct
 
     fstype = gf.vfs_type(mount_point).stdout.split()[0]
     fstype_str = 'TYPE: %s' % fstype
     if fstype not in blkid_result.stdout:
         gf.close_session()
-        raise error.TestFail("blkid failed.")
+        test.fail("blkid failed.")
     gf.close_session()
 
 
-def test_filesystem_available(vm, params):
+def test_filesystem_available(test, vm, params):
     """
     Test command filesystem_available
     """
@@ -604,16 +604,16 @@ def test_filesystem_available(vm, params):
     fs_dic = {'ext2': 'true', 'ext3': 'true', 'ext4': 'true', 'xfs': 'true',
               'btrfs': 'true', 'msdos': 'true', 'ntfs': 'false',
               'unknown': 'false'}
-    for key, value in fs_dic.items():
+    for key, value in list(fs_dic.items()):
         gf_result = gf.filesystem_available(key)
         if gf_result.stdout.split()[0] != value:
             gf.close_session()
-            raise error.TestFail("test_filesystem_available failed.")
+            test.fail("test_filesystem_available failed.")
 
     gf.close_session()
 
 
-def test_e2fsck(vm, params):
+def test_e2fsck(test, vm, params):
     """
     Test command e2fsck
     """
@@ -639,11 +639,11 @@ def test_e2fsck(vm, params):
     gf_result = gf.mount(mount_point, '/')
     if gf_result.exit_status != 0:
         gf.close_session()
-        raise error.TestFail("test_e2fsck failed.")
+        test.fail("test_e2fsck failed.")
     gf.close_session()
 
 
-def test_list_filesystems(vm, params):
+def test_list_filesystems(test, vm, params):
     """
     Test command list-filesystems
     """
@@ -670,11 +670,11 @@ def test_list_filesystems(vm, params):
     fstype_str = '%s: %s' % (mount_point, fstype)
     if fstype_str not in gf_result.stdout:
         gf.close_session()
-        raise error.TestFail("test_list_filesystems failed.")
+        test.fail("test_list_filesystems failed.")
     gf.close_session()
 
 
-def test_mkfifo(vm, params):
+def test_mkfifo(test, vm, params):
     """
     Test command test_mkfifo
     """
@@ -702,11 +702,11 @@ def test_mkfifo(vm, params):
     mode_str = 'mode: 4589'
     if mode_str not in gf_result.stdout:
         gf.close_session()
-        raise error.TestFail("test_mkfifo failed.")
+        test.fail("test_mkfifo failed.")
     gf.close_session()
 
 
-def test_sync(vm, params):
+def test_sync(test, vm, params):
     """
     Test command sync
     """
@@ -731,11 +731,11 @@ def test_sync(vm, params):
     gf_result = gf.sync()
     if gf_result.exit_status != 0:
         gf.close_session()
-        raise error.TestFail("test_sync failed.")
+        test.fail("test_sync failed.")
     gf.close_session()
 
 
-def test_mklost_and_found(vm, params):
+def test_mklost_and_found(test, vm, params):
     """
     Test command mklost_and_found
     """
@@ -762,11 +762,11 @@ def test_mklost_and_found(vm, params):
     ll_result = gf.ll(lost_and_found_file)
     if ll_result.exit_status != 0:
         gf.close_session()
-        raise error.TestFail("test_mklost_and_found failed.")
+        test.fail("test_mklost_and_found failed.")
     gf.close_session()
 
 
-def test_mknod(vm, params):
+def test_mknod(test, vm, params):
     """
     Test command mknod
     """
@@ -816,12 +816,12 @@ def test_mknod(vm, params):
         ll_result = gf.ll(nodename)
         if permission not in ll_result.stdout:
             gf.close_session()
-            raise error.TestFail("test_mknod failed.")
+            test.fail("test_mknod failed.")
         gf.rm_rf(nodename)
     gf.close_session()
 
 
-def test_mknod_b(vm, params):
+def test_mknod_b(test, vm, params):
     """
     Test command mknod_b
     """
@@ -856,12 +856,12 @@ def test_mknod_b(vm, params):
     ll_result = gf.ll(nodename)
     if permission not in ll_result.stdout:
         gf.close_session()
-        raise error.TestFail("test_mknod_b failed.")
+        test.fail("test_mknod_b failed.")
     gf.rm_rf(nodename)
     gf.close_session()
 
 
-def test_mknod_c(vm, params):
+def test_mknod_c(test, vm, params):
     """
     Test command mknod_c
     """
@@ -896,12 +896,12 @@ def test_mknod_c(vm, params):
     ll_result = gf.ll(nodename)
     if permission not in ll_result.stdout:
         gf.close_session()
-        raise error.TestFail("test_mknod_c failed.")
+        test.fail("test_mknod_c failed.")
     gf.rm_rf(nodename)
     gf.close_session()
 
 
-def test_ntfsresize_opts(vm, params):
+def test_ntfsresize_opts(test, vm, params):
     """
     Test command ntfsresize_opts
     """
@@ -947,7 +947,7 @@ def test_ntfsresize_opts(vm, params):
     new_blocks = int(List[new_blocks_index + 1])
     if abs(new_blocks - expected_blocks) >= 2:
         gf.close_session()
-        raise error.TestFail("test_ntfsresize_opts failed.")
+        test.fail("test_ntfsresize_opts failed.")
 
     # ntfsresize_opts: expand
     gf.umount('/')
@@ -959,12 +959,12 @@ def test_ntfsresize_opts(vm, params):
     new_blocks = int(List[new_blocks_index + 1])
     if abs(new_blocks - blocks) >= 2:
         gf.close_session()
-        raise error.TestFail("test_ntfsresize_opts failed.")
+        test.fail("test_ntfsresize_opts failed.")
 
     gf.close_session()
 
 
-def test_resize2fs(vm, params):
+def test_resize2fs(test, vm, params):
     """
     Test command resize2fs
     """
@@ -1019,12 +1019,12 @@ def test_resize2fs(vm, params):
     os.system('rm -rf %s ' % tmpdir)
     if block_count * block_size <= getsize64 * 0.99:
         gf.close_session()
-        raise error.TestFail("test_resize2fs failed, device size: %s, block_count: %s\
+        test.fail("test_resize2fs failed, device size: %s, block_count: %s\
                              block_size: %s" % (getsize64, block_count, block_size))
     gf.close_session()
 
 
-def test_resize2fs_M(vm, params):
+def test_resize2fs_M(test, vm, params):
     """
     Test command resize2fs_M
     """
@@ -1069,11 +1069,11 @@ def test_resize2fs_M(vm, params):
 
     if mount_result.exit_status != 0 and resize_result.exit_status != 0:
         gf.close_session()
-        raise error.TestFail("test_resize2fs_M failed.")
+        test.fail("test_resize2fs_M failed.")
     gf.close_session()
 
 
-def test_resize2fs_size(vm, params):
+def test_resize2fs_size(test, vm, params):
     """
     Test command resize2fs_size
     """
@@ -1109,7 +1109,7 @@ def test_resize2fs_size(vm, params):
     expected_blockcount = block_count / 2
     if expected_blockcount != new_block_count:
         gf.close_session()
-        raise error.TestFail("test_resize2fs_size failed.")
+        test.fail("test_resize2fs_size failed.")
     gf.close_session()
 
 
@@ -1166,5 +1166,5 @@ def run(test, params, env):
 
                 logging.debug("Skip preparing image, " + image_path + " exists")
             else:
-                prepare_image(params)
-            testcase(vm, params)
+                prepare_image(test, params)
+            testcase(test, vm, params)

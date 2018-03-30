@@ -1,9 +1,8 @@
 import os
 import logging
 
-from autotest.client import os_dep
-from autotest.client import utils
-from autotest.client.shared import error
+from avocado.utils import path
+from avocado.utils import process
 
 from virttest import data_dir
 
@@ -48,9 +47,9 @@ def run(test, params, env):
     (7).Clean up.
     """
     try:
-        virt_win_reg_exec = os_dep.command("virt-win-reg")
+        virt_win_reg_exec = path.command("virt-win-reg")
     except ValueError:
-        raise error.TestNAError("Not find virt-win-reg command.")
+        test.cancel("Not find virt-win-reg command.")
     # Get parameters.
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -59,7 +58,7 @@ def run(test, params, env):
     remote_yes = (params.get("virt_win_reg_remote", "no") == "yes")
     remote_uri = params.get("virt_win_reg_remote_uri", "ENTER.YOUR.REMOTE")
     if remote_yes and remote_uri.count("ENTER"):
-        raise error.TestNAError("Remote Test is skipped.")
+        test.cancel("Remote Test is skipped.")
 
     # Get parameters about reg value.
     computer_name = params.get("virt_win_reg_computer_name")
@@ -73,7 +72,7 @@ def run(test, params, env):
         vm_ref = vm_name
     elif vm_ref == "image_name":
         disks = vm.get_disk_devices()
-        vm_ref = disks.values()[0]['source']
+        vm_ref = list(disks.values())[0]['source']
 
     # Get information about operations.
     operation = params.get("virt_win_reg_operation")
@@ -81,8 +80,8 @@ def run(test, params, env):
     prepare_reg_cmd = params.get("prepare_reg_cmd")
     verify_reg_cmd = params.get("verify_reg_cmd")
     if not (virt_win_reg_cmd and prepare_reg_cmd and verify_reg_cmd):
-        raise error.TestNAError("Missing command for virt_win_reg or"
-                                " cmd in guest to check result.")
+        test.cancel("Missing command for virt_win_reg or"
+                    " cmd in guest to check result.")
 
     # Build a command.
     command = virt_win_reg_exec
@@ -96,7 +95,6 @@ def run(test, params, env):
     reg_file = None
     if not operation == "query":
         # Prepare a file for virt-win-reg --merge
-        reg_file = open(os.path.join(data_dir.get_tmp_dir(), "merge.reg"), "w")
         lines = []
         lines.append("[%s]\n" % key_path)
         if operation == "add":
@@ -105,8 +103,8 @@ def run(test, params, env):
             lines.append("\"%s\"=-" % (value_name))
         elif operation == "modify":
             lines.append("\"%s\"=\"%s\"" % (value_name, computer_name_v2))
-        reg_file.writelines(lines)
-        reg_file.close()
+        with open(os.path.join(data_dir.get_tmp_dir(), "merge.reg"), "w") as reg_file:
+            reg_file.writelines(lines)
 
         command += " %s" % reg_file.name
 
@@ -118,9 +116,9 @@ def run(test, params, env):
             logging.debug("Preparation is already done.")
 
         vm.destroy()
-        result = utils.run(command, ignore_status=True)
+        result = process.run(command, ignore_status=True, shell=True)
         if result.exit_status:
-            raise error.TestFail(result)
+            test.fail(result)
 
         output_virt_win_reg = result.stdout.strip()
 
@@ -131,28 +129,28 @@ def run(test, params, env):
         if operation == "query":
             output_in_guest = output.split()[-1].strip()
             if not output_in_guest == output_virt_win_reg:
-                raise error.TestFail("Informations are not equal from "
-                                     "virt_win_reg and from cmd in guest.\n"
-                                     "virt_win_reg: %s\n"
-                                     "cmd_in_guest: %s" %
-                                     (output_virt_win_reg, output_in_guest))
+                test.fail("Informations are not equal from "
+                          "virt_win_reg and from cmd in guest.\n"
+                          "virt_win_reg: %s\n"
+                          "cmd_in_guest: %s" %
+                          (output_virt_win_reg, output_in_guest))
         elif operation == "remove":
             if not status:
-                raise error.TestFail("Get the value of computer %s in remove"
-                                     " test.\nSo it means the virt-win-reg"
-                                     "to remove it failed." % output)
+                test.fail("Get the value of computer %s in remove"
+                          " test.\nSo it means the virt-win-reg"
+                          "to remove it failed." % output)
         elif operation == "modify":
             output_in_guest = output.split()[-1].strip()
             if not output_in_guest == computer_name_v2:
-                raise error.TestFail("Modify test failed. The value of"
-                                     "computer after virt-win-reg is %s."
-                                     "But our expected value is %s." %
-                                     (output_in_guest, computer_name_v2))
+                test.fail("Modify test failed. The value of"
+                          "computer after virt-win-reg is %s."
+                          "But our expected value is %s." %
+                          (output_in_guest, computer_name_v2))
         elif operation == "add":
             if status:
-                raise error.TestFail("Add test failed. Get the computer_name"
-                                     "failed after virt-win-reg command."
-                                     "Detail: %s." % output)
+                test.fail("Add test failed. Get the computer_name"
+                          "failed after virt-win-reg command."
+                          "Detail: %s." % output)
     finally:
         # Clean up.
         session.close()

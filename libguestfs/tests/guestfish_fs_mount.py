@@ -2,12 +2,11 @@ import logging
 import os
 import re
 
-from autotest.client.shared import error
 from virttest import utils_test
 from virttest import data_dir
 
 
-def prepare_image(params):
+def prepare_image(test, params):
     """
     (1) Create a image
     (2) Create file system on the image
@@ -15,17 +14,17 @@ def prepare_image(params):
     params["image_path"] = utils_test.libguestfs.preprocess_image(params)
 
     if not params.get("image_path"):
-        raise error.TestFail("Image could not be created for some reason.")
+        test.fail("Image could not be created for some reason.")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     status, output = gf.create_fs()
     if status is False:
         gf.close_session()
-        raise error.TestFail(output)
+        test.fail(output)
     gf.close_session()
 
 
-def test_mount(vm, params):
+def test_mount(test, vm, params):
     """
     Test command mount:
     """
@@ -52,16 +51,16 @@ def test_mount(vm, params):
         abs_mount_point = '%s1' % pv_name
     else:
         gf.close_session()
-        raise error.TestFail("test_mount failed, Wrong partition type")
+        test.fail("test_mount failed, Wrong partition type")
 
     gf_result = gf.inner_cmd("debug sh 'mount|grep %s'" % abs_mount_point)
     if gf_result.exit_status != 0 or ('/sysroot' not in gf_result.stdout):
         gf.close_session()
-        raise error.TestFail("test_mount failed")
+        test.fail("test_mount failed")
     gf.close_session()
 
 
-def test_mount_options(vm, params):
+def test_mount_options(test, vm, params):
     """
     Test command mount_options:
     """
@@ -88,17 +87,17 @@ def test_mount_options(vm, params):
         abs_mount_point = '%s1' % pv_name
     else:
         gf.close_session()
-        raise error.TestFail("test_mount_options failed, Wrong partition type")
+        test.fail("test_mount_options failed, Wrong partition type")
 
     gf_result = gf.inner_cmd("debug sh 'mount|grep %s'" % abs_mount_point)
     if gf_result.exit_status != 0 or ('/sysroot' not in gf_result.stdout) or (
        'noatime' not in gf_result.stdout):
         gf.close_session()
-        raise error.TestFail("test_mount_options failed")
+        test.fail("test_mount_options failed")
     gf.close_session()
 
 
-def test_mount_ro(vm, params):
+def test_mount_ro(test, vm, params):
     """
     Test command mount_ro:
     """
@@ -125,17 +124,17 @@ def test_mount_ro(vm, params):
         abs_mount_point = '%s1' % pv_name
     else:
         gf.close_session()
-        raise error.TestFail("test_mount_ro failed, Wrong partition type")
+        test.fail("test_mount_ro failed, Wrong partition type")
 
     gf_result = gf.inner_cmd("debug sh 'mount|grep %s'" % abs_mount_point)
     if gf_result.exit_status != 0 or ('/sysroot' not in gf_result.stdout) or (
        'ro' not in gf_result.stdout):
         gf.close_session()
-        raise error.TestFail("test_mount_ro failed")
+        test.fail("test_mount_ro failed")
     gf.close_session()
 
 
-def test_mounts(vm, params):
+def test_mounts(test, vm, params):
     """
     Test command mounts:
     """
@@ -156,11 +155,11 @@ def test_mounts(vm, params):
     gf_result = gf.mounts()
     if gf_result.exit_status != 0 or (mount_point not in gf_result.stdout):
         gf.close_session()
-        raise error.TestFail("test_mounts failed")
+        test.fail("test_mounts failed")
     gf.close_session()
 
 
-def test_mount_loop(vm, params):
+def test_mount_loop(test, vm, params):
     """
     Test command mount_loop:
     """
@@ -198,11 +197,11 @@ def test_mount_loop(vm, params):
         logging.error(mount_loop_result)
         logging.error("readdir /loop:")
         logging.error(readdir_result)
-        raise error.TestFail("test_mount_loop failed")
+        test.fail("test_mount_loop failed")
     gf.close_session()
 
 
-def test_mountpoints(vm, params):
+def test_mountpoints(test, vm, params):
     """
     Test command mountpoints:
     """
@@ -227,11 +226,11 @@ def test_mountpoints(vm, params):
         logging.error("Expected string: %s" % expected_str)
         logging.error('mountpoints:')
         logging.error(gf_result)
-        raise error.TestFail("test_mountpoints failed")
+        test.fail("test_mountpoints failed")
     gf.close_session()
 
 
-def test_umount(vm, params):
+def test_umount(test, vm, params):
     """
     Test command umount:
     """
@@ -295,11 +294,11 @@ def test_umount(vm, params):
             gf.close_session()
             logging.error("'mounts' result:'")
             logging.error(items)
-            raise error.TestFail("test_umount failed")
+            test.fail("test_umount failed")
     gf.close_session()
 
 
-def test_mount_vfs(vm, params):
+def test_mount_vfs(test, vm, params):
     """
     Test command mount_vfs:
     """
@@ -326,18 +325,18 @@ def test_mount_vfs(vm, params):
         abs_mount_point = '%s1' % pv_name
     else:
         gf.close_session()
-        raise error.TestFail("test_mount_vfs failed, Wrong partition type")
+        test.fail("test_mount_vfs failed, Wrong partition type")
 
     gf_result = gf.inner_cmd("debug sh 'mount|grep %s'" % abs_mount_point)
     if mount_vfs_result.exit_status != 0 or ('/sysroot' not in gf_result.stdout):
         gf.close_session()
         logging.error(mount_vfs_result)
         logging.error(gf_result)
-        raise error.TestFail("test_mount_vfs failed")
+        test.fail("test_mount_vfs failed")
     gf.close_session()
 
 
-def test_umount_all(vm, params):
+def test_umount_all(test, vm, params):
     """
     Test command umount_all:
     """
@@ -359,7 +358,7 @@ def test_umount_all(vm, params):
     if mount_point in mounts_result.stdout:
         gf.close_session()
         logging.error(mounts_result)
-        raise error.TestFail("test_umount_all failed")
+        test.fail("test_umount_all failed")
     gf.close_session()
 
 
@@ -416,5 +415,5 @@ def run(test, params, env):
 
                 logging.debug("Skip preparing image, " + image_path + " exists")
             else:
-                prepare_image(params)
-            testcase(vm, params)
+                prepare_image(test, params)
+            testcase(test, vm, params)

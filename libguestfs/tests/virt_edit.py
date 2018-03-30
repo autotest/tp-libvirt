@@ -1,16 +1,15 @@
 import logging
 import re
 
-from autotest.client.shared import utils
-from autotest.client.shared import error
-from autotest.client.shared import ssh_key
+from avocado.utils import process
 
+from virttest import ssh_key
 from virttest import libvirt_vm
 from virttest import utils_libvirtd
 import virttest.utils_libguestfs as lgf
 
 
-def login_to_check_foo_line(vm, file_ref, foo_line):
+def login_to_check_foo_line(test, vm, file_ref, foo_line):
     """
     Login to check whether the foo line has been added to file.
     """
@@ -30,8 +29,8 @@ def login_to_check_foo_line(vm, file_ref, foo_line):
                     (foo_line, backup, file_ref))
         session.cmd('rm -f %s' % backup)
         session.close()
-    except Exception, detail:
-        raise error.TestError("Cleanup failed:\n%s" % detail)
+    except Exception as detail:
+        test.error("Cleanup failed:\n%s" % detail)
 
     vm.destroy()
     if not re.search(foo_line, cat_file):
@@ -40,7 +39,7 @@ def login_to_check_foo_line(vm, file_ref, foo_line):
     return True
 
 
-def cleanup_file_in_vm(vm, file_path):
+def cleanup_file_in_vm(test, vm, file_path):
     """Remove backup file in vm"""
     if not vm.is_alive():
         vm.start()
@@ -48,8 +47,8 @@ def cleanup_file_in_vm(vm, file_path):
         session = vm.wait_for_login()
         session.cmd("rm -f %s" % file_path)
         session.close()
-    except Exception, detail:
-        raise error.TestError("Cleanup failed:\n%s" % detail)
+    except Exception as detail:
+        test.error("Cleanup failed:\n%s" % detail)
     vm.destroy()
 
 
@@ -73,7 +72,7 @@ def run(test, params, env):
     if connect_uri is not None:
         uri = "qemu+ssh://%s@%s/system" % (remote_user, remote_host)
         if uri.count("EXAMPLE"):
-            raise error.TestNAError("Please config host and passwd first.")
+            test.cancel("Please config host and passwd first.")
         # Config ssh autologin for it
         ssh_key.setup_ssh_key(remote_host, remote_user, remote_passwd, port=22)
     else:
@@ -104,21 +103,21 @@ def run(test, params, env):
 
     if vm_ref == "domdisk":
         if len(dom_disk_dict) != 1:
-            raise error.TestError("Only one disk device should exist on "
-                                  "%s:\n%s." % (vm_name, dom_disk_dict))
-        disk_detail = dom_disk_dict.values()[0]
+            test.error("Only one disk device should exist on "
+                       "%s:\n%s." % (vm_name, dom_disk_dict))
+        disk_detail = list(dom_disk_dict.values())[0]
         vm_ref = disk_detail['source']
         logging.info("disk to be edit:%s", vm_ref)
         if test_format:
             # Get format:raw or qcow2
-            info = utils.run("qemu-img info %s" % vm_ref).stdout
+            info = process.run("qemu-img info %s" % vm_ref, shell=True).stdout
             for line in info.splitlines():
                 comps = line.split(':')
                 if comps[0].count("format"):
                     disk_format = comps[-1].strip()
                     break
             if disk_format is None:
-                raise error.TestError("Cannot get disk format:%s" % info)
+                test.error("Cannot get disk format:%s" % info)
         is_disk = True
     elif vm_ref == "domname":
         vm_ref = vm_name
@@ -126,7 +125,7 @@ def run(test, params, env):
         vm_ref = dom_uuid
     elif vm_ref == "createdimg":
         vm_ref = created_img
-        utils.run("dd if=/dev/zero of=%s bs=256M count=1" % created_img)
+        process.run("dd if=/dev/zero of=%s bs=256M count=1" % created_img, shell=True)
         is_disk = True
 
     # Decide whether pass a exprt for virt-edit command.
@@ -156,19 +155,19 @@ def run(test, params, env):
     if libvirtd == "off":
         utils_libvirtd.libvirtd_start()
 
-    utils.run("rm -f %s" % created_img)
+    process.run("rm -f %s" % created_img, shell=True)
 
     # Remove backup file in vm if it exists
     if backup_extension is not None:
         backup_file = file_ref + backup_extension
-        cleanup_file_in_vm(vm, backup_file)
+        cleanup_file_in_vm(test, vm, backup_file)
 
     status_error = (status_error == "yes")
     if status != 0:
         if not status_error:
-            raise error.TestFail("Command executed failed.")
+            test.fail("Command executed failed.")
     else:
         if (expr != "" and
-                (not login_to_check_foo_line(vm, file_ref, foo_line))):
-            raise error.TestFail("Virt-edit to add %s in %s failed."
-                                 "Test failed." % (foo_line, file_ref))
+                (not login_to_check_foo_line(test, vm, file_ref, foo_line))):
+            test.fail("Virt-edit to add %s in %s failed."
+                      "Test failed." % (foo_line, file_ref))

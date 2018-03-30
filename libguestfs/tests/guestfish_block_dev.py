@@ -2,13 +2,12 @@ import logging
 import os
 import re
 
-from autotest.client.shared import error
 from virttest import utils_test
 from virttest import data_dir
 from virttest import qemu_storage
 
 
-def prepare_image(params):
+def prepare_image(test, params):
     """
     (1) Create a image
     (2) Create file system on the image
@@ -16,17 +15,17 @@ def prepare_image(params):
     params["image_path"] = utils_test.libguestfs.preprocess_image(params)
 
     if not params.get("image_path"):
-        raise error.TestFail("Image could not be created for some reason.")
+        test.fail("Image could not be created for some reason.")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     status, output = gf.create_fs()
     if status is False:
         gf.close_session()
-        raise error.TestFail(output)
+        test.fail(output)
     gf.close_session()
 
 
-def test_blockdev_flushbufs(vm, params):
+def test_blockdev_flushbufs(test, vm, params):
     """
     Test blockdev-flushbufs command
     """
@@ -49,12 +48,12 @@ def test_blockdev_flushbufs(vm, params):
     gf.ll("/")
     if gf_result.exit_status:
         gf.close_session()
-        raise error.TestFail("blockdev_flushbufs failed.")
+        test.fail("blockdev_flushbufs failed.")
     logging.info("Get readonly status successfully.")
     gf.close_session()
 
 
-def test_blockdev_set_get_ro_rw(vm, params):
+def test_blockdev_set_get_ro_rw(test, vm, params):
     """
     Set block device to read-only or read-write
 
@@ -85,12 +84,12 @@ def test_blockdev_set_get_ro_rw(vm, params):
 
     try:
         if gf_result != expect_result:
-            raise error.TestFail("Get the uncorrect status, test failed.")
+            test.fail("Get the uncorrect status, test failed.")
     finally:
         gf.close_session()
 
 
-def test_blockdev_getsz(vm, params):
+def test_blockdev_getsz(test, vm, params):
     """
     Test command blockdev_getsz
     """
@@ -117,10 +116,10 @@ def test_blockdev_getsz(vm, params):
     logging.debug("Get size is %d" % get_size)
 
     if image_size != get_size:
-        raise error.TestFail("Can not get the correct result.")
+        test.fail("Can not get the correct result.")
 
 
-def test_blockdev_getbsz(vm, params):
+def test_blockdev_getbsz(test, vm, params):
     """
     Test command blockdev_getbsz
     """
@@ -142,10 +141,10 @@ def test_blockdev_getbsz(vm, params):
     logging.debug("Block size of %s is %d" % (pv_name, int(gf_result)))
 
     if int(gf_result) != 4096:
-        raise error.TestFail("Block size should be 4096")
+        test.fail("Block size should be 4096")
 
 
-def test_blockdev_getss(vm, params):
+def test_blockdev_getss(test, vm, params):
     """
     Test command blockdev_getbss
     """
@@ -167,10 +166,10 @@ def test_blockdev_getss(vm, params):
     logging.debug("Size of %s is %d" % (pv_name, int(gf_result)))
 
     if int(gf_result) < 512:
-        raise error.TestFail("Size of sectors is uncorrect")
+        test.fail("Size of sectors is uncorrect")
 
 
-def test_blockdev_getsize64(vm, params):
+def test_blockdev_getsize64(test, vm, params):
     """
     Test command blockdev_getsize64
     """
@@ -197,10 +196,10 @@ def test_blockdev_getsize64(vm, params):
     logging.debug("Get size is %d" % get_size)
 
     if image_size != get_size:
-        raise error.TestFail("Can not get the correct result.")
+        test.fail("Can not get the correct result.")
 
 
-def test_blockdev_rereadpt(vm, params):
+def test_blockdev_rereadpt(test, vm, params):
     """
     Test command blockdev-rereadpt
     """
@@ -221,12 +220,12 @@ def test_blockdev_rereadpt(vm, params):
     try:
         result = gf.blockdev_rereadpt(pv_name)
         if result.exit_status:
-            raise error.TestFail("blockdev-rereadpt execute failed")
+            test.fail("blockdev-rereadpt execute failed")
     finally:
         gf.close_session()
 
 
-def test_canonical_device_name(vm, params):
+def test_canonical_device_name(test, vm, params):
     """
     Test command canonical_device_name
     """
@@ -266,10 +265,10 @@ def test_canonical_device_name(vm, params):
 
     for i in gf_result:
         if partition_name != i:
-            raise error.TestFail("Can not get the correct result.")
+            test.fail("Can not get the correct result.")
 
 
-def test_device_index(vm, params):
+def test_device_index(test, vm, params):
     """
     Test command device_index
     """
@@ -290,15 +289,15 @@ def test_device_index(vm, params):
 
     result = {'/dev/sda': '0', '/dev/sdb': '1', '/dev/sdc': '2'}
     try:
-        for k, v in result.items():
+        for k, v in list(result.items()):
             index = gf.device_index(k).stdout.strip()
             if index != v:
-                raise error.TestFail("Can not get the correct result.")
+                test.fail("Can not get the correct result.")
     finally:
         gf.close_session()
 
 
-def test_list_devices(vm, params):
+def test_list_devices(test, vm, params):
     """
     Test command list-devices
     """
@@ -326,10 +325,10 @@ def test_list_devices(vm, params):
 
     for i in result:
         if i not in devices:
-            raise error.TestFail("Can not list device %s" % i)
+            test.fail("Can not list device %s" % i)
 
 
-def test_disk_format(vm, params):
+def test_disk_format(test, vm, params):
     """
     Test command disk-format
     """
@@ -360,14 +359,14 @@ def test_disk_format(vm, params):
 
         if result != i:
             gf.close_session()
-            raise error.TestFail("Format is %s, expected is %s" % (result, i))
+            test.fail("Format is %s, expected is %s" % (result, i))
 
     gf.close_session()
     params['image_name'] = image_name
     params["image_format"] = image_format
 
 
-def test_max_disks(vm, params):
+def test_max_disks(test, vm, params):
     """
     Test command max-disks
     """
@@ -388,10 +387,10 @@ def test_max_disks(vm, params):
     logging.debug("The maximum number of disks is %s" % max_disk)
 
     if max_disk != '255':
-        raise error.TestFail("The maximum number of disks is uncorrect")
+        test.fail("The maximum number of disks is uncorrect")
 
 
-def test_nr_devices(vm, params):
+def test_nr_devices(test, vm, params):
     """
     Test command nr-devices
     """
@@ -412,10 +411,10 @@ def test_nr_devices(vm, params):
     logging.debug("The number of device is %s" % device_num)
 
     if device_num != '1':
-        raise error.TestFail("The number of device is uncorrect")
+        test.fail("The number of device is uncorrect")
 
 
-def test_list_partitions(vm, params):
+def test_list_partitions(test, vm, params):
     """
     Test command list-partitions
     """
@@ -436,7 +435,7 @@ def test_list_partitions(vm, params):
 
     if result.exit_status:
         gf.close_session()
-        raise error.TestFail("Command list-partitions execute failed!")
+        test.fail("Command list-partitions execute failed!")
 
     gf.close_session()
 
@@ -445,13 +444,13 @@ def test_list_partitions(vm, params):
         device_num = len(re.findall('\S+', devices))
         if device_num != 1:
             # add one disk with one partition as default
-            raise error.TestFail("The number of device is uncorrect")
+            test.fail("The number of device is uncorrect")
     elif params["partition_type"] == "lvm":
         logging.debug("This does not return logical volumes. "
                       "For that you will need to call 'lvs'")
 
 
-def test_disk_has_backing_file(vm, params):
+def test_disk_has_backing_file(test, vm, params):
     """
     Test disk-has-backing-file
     """
@@ -475,7 +474,7 @@ def test_disk_has_backing_file(vm, params):
     result = gf.disk_has_backing_file(image_path).stdout.strip()
     if result != "false":
         gf.close_session()
-        raise error.TestFail("The disk has no backing file")
+        test.fail("The disk has no backing file")
 
     params["image_format"] = "qcow2"
     params['image_name'] = "backfile"
@@ -488,7 +487,7 @@ def test_disk_has_backing_file(vm, params):
     result = gf.disk_has_backing_file(image_path).stdout.strip()
     if result != "true":
         gf.close_session()
-        raise error.TestFail("The disk has backing file")
+        test.fail("The disk has backing file")
 
     params["image_format"] = image_format
     params['image_name'] = image_name
@@ -496,7 +495,7 @@ def test_disk_has_backing_file(vm, params):
     gf.close_session()
 
 
-def test_disk_virtual_size(vm, params):
+def test_disk_virtual_size(test, vm, params):
     """
     Test disk-virtual-size
     """
@@ -523,17 +522,17 @@ def test_disk_virtual_size(vm, params):
     if params["image_format"] == "raw":
         if result != disk_size and result != image_size:
             gf.close_session()
-            raise error.TestFail("disk-virtual-size can't get uncorrect size")
+            test.fail("disk-virtual-size can't get uncorrect size")
     elif params["image_format"] == "qcow2":
         # disk size of qcow format is not fixed
         if result != image_size:
             gf.close_session()
-            raise error.TestFail("disk-virtual-size can't get uncorrect size")
+            test.fail("disk-virtual-size can't get uncorrect size")
 
     gf.close_session()
 
 
-def test_scrub_device(vm, params):
+def test_scrub_device(test, vm, params):
     """
     Test command scrub-device
     """
@@ -574,7 +573,7 @@ def test_scrub_device(vm, params):
 
     if len(device_info) < 20 and len(part_info) < 20:
         gf.close_session()
-        raise error.TestFail("Info is not correct")
+        test.fail("Info is not correct")
 
     # scrub partition, device info should be kept
     gf.scrub_device(part_name)
@@ -583,13 +582,13 @@ def test_scrub_device(vm, params):
     logging.debug(device_info_new)
     if device_info_new != device_info:
         gf.close_session()
-        raise error.TestFail("Device info should be kept")
+        test.fail("Device info should be kept")
 
     part_info_new = gf.file(part_name).stdout.strip()
     logging.debug(part_info_new)
     if part_info_new != "data":
         gf.close_session()
-        raise error.TestFail("Scrub partition failed")
+        test.fail("Scrub partition failed")
 
     # scrub the whole device
     gf.scrub_device(pv_name)
@@ -598,14 +597,14 @@ def test_scrub_device(vm, params):
     logging.debug(device_info_new)
     if device_info_new != 'data':
         gf.close_session()
-        raise error.TestFail("Scrub device failed")
+        test.fail("Scrub device failed")
 
     gf.close_session()
     params['image_name'] = image_name
     params['image_size'] = image_size
 
 
-def test_scrub_file(vm, params):
+def test_scrub_file(test, vm, params):
     """
     Test command scrub-file
     """
@@ -628,18 +627,18 @@ def test_scrub_file(vm, params):
     ret = gf.cat(file_path).stdout.strip()
     if ret != content:
         gf.close_session()
-        raise error.TestFail("File content is not correct")
+        test.fail("File content is not correct")
 
     gf.scrub_file(file_path)
     ret = gf.exists(file_path).stdout.strip()
     if ret != "false":
         gf.close_session()
-        raise error.TestFail("scrub file failed")
+        test.fail("scrub file failed")
 
     gf.close_session()
 
 
-def test_scrub_freespace(vm, params):
+def test_scrub_freespace(test, vm, params):
     """
     Test command scrub-device
     """
@@ -679,19 +678,19 @@ def test_scrub_freespace(vm, params):
     result = gf.scrub_freespace(dir_path)
     if result.exit_status:
         gf.close_session()
-        raise error.TestFail("scrub_freespace failed.")
+        test.fail("scrub_freespace failed.")
 
     result = gf.exists(dir_path).stdout.strip()
     if result != "false":
         gf.close_session()
-        raise error.TestFail("folder still exist, scrub_freespace failed.")
+        test.fail("folder still exist, scrub_freespace failed.")
 
     gf.close_session()
     params['image_name'] = image_name
     params['image_size'] = image_size
 
 
-def test_md_test(vm, params):
+def test_md_test(test, vm, params):
     """
     Test command scrub-device
     """
@@ -731,13 +730,13 @@ def test_md_test(vm, params):
     logging.debug(md)
     if not md:
         gf.close_session()
-        raise error.TestFail("Can not find the md device")
+        test.fail("Can not find the md device")
 
     detail = gf.md_detail(md).stdout.strip()
     logging.debug(detail)
     if "level: raid6" not in detail or "devname: md11" not in detail:
         gf.close_session()
-        raise error.TestFail("MD detail info is not correct")
+        test.fail("MD detail info is not correct")
 
     gf.md_stop(md)
 
@@ -747,16 +746,16 @@ def test_md_test(vm, params):
     logging.debug(md)
     if not md:
         gf.close_session()
-        raise error.TestFail("Can not find the md device")
+        test.fail("Can not find the md device")
     stat = gf.md_stat(md).stdout.strip()
     logging.debug(stat)
     for i in re.findall("\w+", device):
         if i not in stat:
             gf.close_session()
-            raise error.TestFail("MD stat is not correct")
+            test.fail("MD stat is not correct")
     if "mdstat_flags: S" not in stat:
         gf.close_session()
-        raise error.TestFail("There should be a S flag for spare disk")
+        test.fail("There should be a S flag for spare disk")
 
     gf.close_session()
 
@@ -764,7 +763,7 @@ def test_md_test(vm, params):
     params["image_size"] = image_size
 
 
-def test_part_add(vm, params):
+def test_part_add(test, vm, params):
     """
     Test command part-add
     """
@@ -803,7 +802,7 @@ def test_part_add(vm, params):
     partnum = result.count("part_num")
     if partnum != 4:
         gf.close_session()
-        raise error.TestFail("partnum is %s, expect is 4" % partnum)
+        test.fail("partnum is %s, expect is 4" % partnum)
 
     gf.close_session()
 
@@ -811,7 +810,7 @@ def test_part_add(vm, params):
     params["image_size"] = image_size
 
 
-def test_part_del(vm, params):
+def test_part_del(test, vm, params):
     """
     Test command part-del
     """
@@ -848,7 +847,7 @@ def test_part_del(vm, params):
     partnum = result.count("part_num")
     if partnum != 2:
         gf.close_session()
-        raise error.TestFail("partnum is %s, expect is 2" % partnum)
+        test.fail("partnum is %s, expect is 2" % partnum)
 
     gf.part_del(partname, 2)
     result = gf.part_list(partname).stdout.strip()
@@ -856,14 +855,14 @@ def test_part_del(vm, params):
     partnum = result.count("part_num")
     if partnum != 1:
         gf.close_session()
-        raise error.TestFail("partnum is %s, expect is 1" % partnum)
+        test.fail("partnum is %s, expect is 1" % partnum)
 
     params["image_name"] = image_name
     params["image_size"] = image_size
     gf.close_session()
 
 
-def test_part_init(vm, params):
+def test_part_init(test, vm, params):
     """
     Test command part-init
     """
@@ -901,14 +900,14 @@ def test_part_init(vm, params):
         partnum = result.count("part_num")
         if partnum != 2:
             gf.close_session()
-            raise error.TestFail("partnum is %s, expect is 2" % partnum)
+            test.fail("partnum is %s, expect is 2" % partnum)
 
     params["image_name"] = image_name
     params["image_size"] = image_size
     gf.close_session()
 
 
-def test_part_set_get_bootable(vm, params):
+def test_part_set_get_bootable(test, vm, params):
     """
     Test command part-set-bootable, part-get-bootable
     """
@@ -928,17 +927,17 @@ def test_part_set_get_bootable(vm, params):
     result = {'1': 'true', 'true': 'true', '0': 'false', 'false': 'false'}
     partnum = '1'
     if params['partition_types'] == "physical":
-        for k, v in result.items():
+        for k, v in list(result.items()):
             gf.part_set_bootable(pv_name, partnum, k)
             ret = gf.part_get_bootable(pv_name, 1).stdout.strip()
             if ret != v:
                 gf.close_session()
-                raise error.TestFail("Get the uncorrect status")
+                test.fail("Get the uncorrect status")
 
     gf.close_session()
 
 
-def test_part_set_get_mbr_id(vm, params):
+def test_part_set_get_mbr_id(test, vm, params):
     """
     Test command part-set-mbr-id, part-get-mbr-id
     """
@@ -958,17 +957,17 @@ def test_part_set_get_mbr_id(vm, params):
     if params['partition_types'] == "physical":
         result = {'0xB': '0xb', '0x7': '0x7', '100': '0x64'}
         for i in ['1', '2', '3', '4']:
-            for k, v in result.items():
+            for k, v in list(result.items()):
                 gf.part_set_mbr_id(pv_name, i, k)
                 ret = gf.part_get_mbr_id(pv_name, i).stdout.strip()
                 if ret != v:
                     gf.close_session()
-                    raise error.TestFail("Get the uncorrect mbr id")
+                    test.fail("Get the uncorrect mbr id")
 
     gf.close_session()
 
 
-def test_part_disk(vm, params):
+def test_part_disk(test, vm, params):
     """
     Test command part-disk
     """
@@ -993,19 +992,19 @@ def test_part_disk(vm, params):
 
         if int(num[0]) != 1:
             gf.close_session()
-            raise error.TestFail("partnum is %s, expect is 1" % num)
+            test.fail("partnum is %s, expect is 1" % num)
 
         result = gf.part_get_parttype(pv_name).stdout.strip()
 
         if result != ptype:
             gf.close_session()
-            raise error.TestFail("partition type is %s, expect is %s" %
-                                 (result, ptype))
+            test.fail("partition type is %s, expect is %s" %
+                      (result, ptype))
 
     gf.close_session()
 
 
-def test_part_to_dev(vm, params):
+def test_part_to_dev(test, vm, params):
     """
     Test command part-to-dev
     """
@@ -1030,13 +1029,13 @@ def test_part_to_dev(vm, params):
 
         if devname != pv_name:
             gf.close_session()
-            raise error.TestFail("device name is %s, expect is %s" %
-                                 (devname, pv_name))
+            test.fail("device name is %s, expect is %s" %
+                      (devname, pv_name))
 
     gf.close_session()
 
 
-def test_part_to_partnum(vm, params):
+def test_part_to_partnum(test, vm, params):
     """
     Test command part-to-partnum
     """
@@ -1063,13 +1062,13 @@ def test_part_to_partnum(vm, params):
 
             if devnum != num:
                 gf.close_session()
-                raise error.TestFail("device num is %s, expect is %s" %
-                                     (devnum, num))
+                test.fail("device num is %s, expect is %s" %
+                          (devnum, num))
 
     gf.close_session()
 
 
-def test_sfdisk(vm, params):
+def test_sfdisk(test, vm, params):
     """
     Test command sfdisk
     """
@@ -1109,12 +1108,12 @@ def test_sfdisk(vm, params):
         gf.close_session()
         logging.debug("Got result:\n %s", result)
         logging.debug("Expect result:\n %s", expect)
-        raise error.TestFail("result is not match expect")
+        test.fail("result is not match expect")
 
     gf.close_session()
 
 
-def test_sfdiskM(vm, params):
+def test_sfdiskM(test, vm, params):
     """
     Test command sfdiskM
     """
@@ -1144,12 +1143,12 @@ def test_sfdiskM(vm, params):
         l = re.findall("/dev/sda[0-9]", result)
         if len(l) != 4:
             gf.close_session()
-            raise error.TestFail("result is not match expect")
+            test.fail("result is not match expect")
 
         gf.close_session()
 
 
-def test_sfdisk_N(vm, params):
+def test_sfdisk_N(test, vm, params):
     """
     Test command sfdisk-N
     """
@@ -1186,12 +1185,12 @@ def test_sfdisk_N(vm, params):
         logging.debug(result)
         if result != lines:
             gf.close_session()
-            raise error.TestFail("result is not match expect")
+            test.fail("result is not match expect")
 
         gf.close_session()
 
 
-def test_sfdisk_disk_geometry(vm, params):
+def test_sfdisk_disk_geometry(test, vm, params):
     """
     Test command sfdisk-disk-geometry
     """
@@ -1214,12 +1213,12 @@ def test_sfdisk_disk_geometry(vm, params):
 
     if not result:
         gf.close_session()
-        raise error.TestFail("result should not be empty")
+        test.fail("result should not be empty")
 
     gf.close_session()
 
 
-def test_sfdisk_kernel_geometry(vm, params):
+def test_sfdisk_kernel_geometry(test, vm, params):
     """
     Test command sfdisk-kernel-geometry
     """
@@ -1242,7 +1241,7 @@ def test_sfdisk_kernel_geometry(vm, params):
 
     if not result:
         gf.close_session()
-        raise error.TestFail("result should not be empty")
+        test.fail("result should not be empty")
 
     gf.close_session()
 
@@ -1277,5 +1276,5 @@ def run(test, params, env):
         params["image_format"] = image_format
         for partition_type in re.findall("\w+", partition_types):
             params["partition_type"] = partition_type
-            prepare_image(params)
-            testcase(vm, params)
+            prepare_image(test, params)
+            testcase(test, vm, params)

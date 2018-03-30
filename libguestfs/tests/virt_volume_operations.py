@@ -1,12 +1,9 @@
 import re
 import os
 import logging
-import commands
-
 import aexpect
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
+from avocado.utils import process
 
 from virttest import virt_vm
 from virttest import data_dir
@@ -15,15 +12,15 @@ from virttest import utils_test
 from virttest import utils_misc
 
 
-def test_created_volume_group(vm, params):
+def test_created_volume_group(test, vm, params):
     """
     1) Do some necessary check
     2) Format additional disk with new volume
     3) Login to check created volume group
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
-    device_in_lgf = utils.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                              ignore_status=True).stdout.strip()
+    device_in_lgf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
+                                ignore_status=True, shell=True).stdout.strip()
 
     device_part = "%s1" % device_in_lgf
     # Mount specific partition
@@ -38,13 +35,13 @@ def test_created_volume_group(vm, params):
     volume_name = "/dev/VGTest/LVTest"
     format_result = vt.format_disk(filesystem="ext3", lvm=volume_name)
     if format_result.exit_status:
-        raise error.TestFail("Format added disk failed.")
+        test.fail("Format added disk failed.")
     logging.info("Format added disk successfully.")
 
     # List filesystems detail
     list_fs_detail = vt.get_filesystems_info(vm_ref)
     if list_fs_detail.exit_status:
-        raise error.TestFail("List filesystems detail failed.")
+        test.fail("List filesystems detail failed.")
     logging.info("List filesystems detail successfully.")
 
     attached_vm = vt.newvm
@@ -56,33 +53,33 @@ def test_created_volume_group(vm, params):
             attached_vm.wait_for_shutdown()
             logging.error("Can not use volume group in guest, SKIP...")
             return
-    except (virt_vm.VMError, remote.LoginError), detail:
+    except (virt_vm.VMError, remote.LoginError) as detail:
         attached_vm.destroy()
-        raise error.TestFail(str(detail))
+        test.fail(str(detail))
 
     try:
         output = session.cmd_output("vgs --all", timeout=5)
         logging.debug(output)
         attached_vm.destroy()
         attached_vm.wait_for_shutdown()
-    except (virt_vm.VMError, remote.LoginError, aexpect.ShellError), detail:
+    except (virt_vm.VMError, remote.LoginError, aexpect.ShellError) as detail:
         logging.error(str(detail))
         if attached_vm.is_alive():
             attached_vm.destroy()
     if not re.search("VGTest", output):
-        raise error.TestFail("Can not find created volume group in vm.")
+        test.fail("Can not find created volume group in vm.")
     logging.info("Check created volume in vm successfully.")
 
 
-def test_created_volume(vm, params):
+def test_created_volume(test, vm, params):
     """
     1) Do some necessary check
     2) Format additional disk with new volume
     3) Login to check created volume
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
-    device_in_lgf = utils.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                              ignore_status=True).stdout.strip()
+    device_in_lgf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
+                                ignore_status=True, shell=True).stdout.strip()
     if utils_test.libguestfs.primary_disk_virtio(vm):
         device_in_vm = add_device
     else:
@@ -102,13 +99,13 @@ def test_created_volume(vm, params):
     volume_name = "/dev/VGTest/LVTest"
     format_result = vt.format_disk(filesystem="ext3", lvm=volume_name)
     if format_result.exit_status:
-        raise error.TestFail("Format added disk failed.")
+        test.fail("Format added disk failed.")
     logging.info("Format added disk successfully.")
 
     # List filesystems detail
     list_fs_detail = vt.get_filesystems_info(vm_ref)
     if list_fs_detail.exit_status:
-        raise error.TestFail("List filesystems detail failed.")
+        test.fail("List filesystems detail failed.")
     logging.info("List filesystems detail successfully.")
 
     mountpoint = params.get("vt_mountpoint", "/mnt")
@@ -117,29 +114,29 @@ def test_created_volume(vm, params):
     params['special_mountpoints'] = [volume_name]
     mounts, mounto = vt.guestmount(mountpoint, vm_ref)
     if mounts is False:
-        raise error.TestFail("Mount vm's filesystem failed.")
+        test.fail("Mount vm's filesystem failed.")
     else:
-        dfs, dfo = commands.getstatusoutput("df")
+        dfs, dfo = process.getstatusoutput("df")
         logging.debug(dfo)
         if not re.search("/dev/fuse", dfo):
             utils_misc.umount("", mountpoint, "")
-            raise error.TestFail("Did not find mounted filesystem.")
+            test.fail("Did not find mounted filesystem.")
 
     dd_cmd = "dd if=/dev/zero of=%s bs=1M count=5" % path
-    dds, ddo = commands.getstatusoutput(dd_cmd)
+    dds, ddo = process.getstatusoutput(dd_cmd)
     logging.debug(ddo)
     if dds:
         utils_misc.umount("", mountpoint, "")
-        raise error.TestFail("Create a image file failed.")
+        test.fail("Create a image file failed.")
 
-    md5s, md5o = commands.getstatusoutput("md5sum %s" % path)
+    md5s, md5o = process.getstatusoutput("md5sum %s" % path)
     logging.debug(md5o)
     if md5s:
         utils_misc.umount("", mountpoint, "")
-        raise error.TestFail("Get md5 value failed.")
+        test.fail("Get md5 value failed.")
 
     if not utils_misc.umount("", mountpoint, ""):
-        raise error.TestFail("Unmount vm's filesytem failed.")
+        test.fail("Unmount vm's filesytem failed.")
     logging.info("Unmount vm's filesystem successfully.")
 
     attached_vm = vt.newvm
@@ -151,9 +148,9 @@ def test_created_volume(vm, params):
             attached_vm.wait_for_shutdown()
             logging.error("Can not use volume in guest, SKIP...")
             return
-    except (virt_vm.VMError, remote.LoginError), detail:
+    except (virt_vm.VMError, remote.LoginError) as detail:
         attached_vm.destroy()
-        raise error.TestFail(str(detail))
+        test.fail(str(detail))
 
     try:
         mounts = session.cmd_status("mount %s %s" % (volume_name, mountpoint),
@@ -163,11 +160,11 @@ def test_created_volume(vm, params):
         md51 = session.cmd_output("md5sum %s" % path)
         logging.debug(md51)
         if not re.search(md5o, md51):
-            raise error.TestFail("Got a different md5.")
+            test.fail("Got a different md5.")
         logging.info("Got matched md5.")
         attached_vm.destroy()
         attached_vm.wait_for_shutdown()
-    except (virt_vm.VMError, remote.LoginError, aexpect.ShellError), detail:
+    except (virt_vm.VMError, remote.LoginError, aexpect.ShellError) as detail:
         logging.error(str(detail))
         if attached_vm.is_alive():
             attached_vm.destroy()
@@ -191,7 +188,7 @@ def run(test, params, env):
     try:
         # Create a new vm for editing and easier cleanup :)
         utils_test.libguestfs.define_new_vm(vm_name, new_vm_name)
-        testcase(vm, params)
+        testcase(test, vm, params)
     finally:
         disk_path = os.path.join(data_dir.get_tmp_dir(),
                                  params.get("gf_updated_target_dev"))

@@ -1,12 +1,10 @@
 import re
 import os
 import logging
-import commands
 
 import aexpect
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
+from avocado.utils import process
 
 from virttest import virt_vm
 from virttest import data_dir
@@ -15,15 +13,15 @@ from virttest import utils_test
 from virttest import utils_misc
 
 
-def test_unformatted_part(vm, params):
+def test_unformatted_part(test, vm, params):
     """
     1) Do some necessary check
     2) Format additional disk without filesystem type
     3) Try to mount device
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
-    device_in_lgf = utils.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                              ignore_status=True).stdout.strip()
+    device_in_lgf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
+                                ignore_status=True, shell=True).stdout.strip()
 
     device_part = "%s1" % device_in_lgf
     # Mount specific partition
@@ -37,25 +35,25 @@ def test_unformatted_part(vm, params):
     # Format disk
     format_result = vt.format_disk()
     if format_result.exit_status:
-        raise error.TestFail("Format added disk failed.")
+        test.fail("Format added disk failed.")
     logging.info("Format added disk successfully.")
 
     # List filesystems detail
     list_fs_detail = vt.get_filesystems_info(vm_ref)
     if list_fs_detail.exit_status:
-        raise error.TestFail("List filesystems detail failed:"
-                             "%s" % list_fs_detail)
+        test.fail("List filesystems detail failed:"
+                  "%s" % list_fs_detail)
     logging.info("List filesystems detail successfully.")
 
     mountpoint = params.get("vt_mountpoint", "/mnt")
     mounts, mounto = vt.guestmount(mountpoint, vm_ref)
     if utils_misc.umount("", mountpoint, "") and mounts:
-        raise error.TestFail("Mount vm's filesytem successfully, "
-                             "but not expected.")
+        test.fail("Mount vm's filesytem successfully, "
+                  "but not expected.")
     logging.info("Mount vm's filesystem failed as expected.")
 
 
-def test_formatted_part(vm, params):
+def test_formatted_part(test, vm, params):
     """
     1) Do some necessary check
     2) Format additional disk with specific filesystem
@@ -63,8 +61,8 @@ def test_formatted_part(vm, params):
     4) Login to check writed file and its md5
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
-    device_in_lgf = utils.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                              ignore_status=True).stdout.strip()
+    device_in_lgf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
+                                ignore_status=True, shell=True).stdout.strip()
     if utils_test.libguestfs.primary_disk_virtio(vm):
         device_in_vm = add_device
     else:
@@ -83,13 +81,13 @@ def test_formatted_part(vm, params):
     # Format disk
     format_result = vt.format_disk(filesystem="ext3", partition="mbr")
     if format_result.exit_status:
-        raise error.TestFail("Format added disk failed.")
+        test.fail("Format added disk failed.")
     logging.info("Format added disk successfully.")
 
     # List filesystems detail
     list_fs_detail = vt.get_filesystems_info(vm_ref)
     if list_fs_detail.exit_status:
-        raise error.TestFail("List filesystems detail failed.")
+        test.fail("List filesystems detail failed.")
     logging.info("List filesystems detail successfully.")
 
     content = "This is file for formatted part test."
@@ -101,28 +99,28 @@ def test_formatted_part(vm, params):
                                                    cleanup=False)
     if writes is False:
         utils_misc.umount("", mountpoint, "")
-        raise error.TestFail("Write file to mounted filesystem failed.")
+        test.fail("Write file to mounted filesystem failed.")
     logging.info("Create %s successfully.", writeo)
 
     # Compute new file's md5
     if os.path.isfile(writeo):
-        md5s, md5o = commands.getstatusoutput("md5sum %s" % writeo)
+        md5s, md5o = process.getstatusoutput("md5sum %s" % writeo)
         utils_misc.umount("", mountpoint, "")
         if md5s:
-            raise error.TestFail("Compute %s's md5 failed." % writeo)
+            test.fail("Compute %s's md5 failed." % writeo)
         md5 = md5o.split()[0].strip()
         logging.debug("%s's md5 in newvm is:%s", writeo, md5)
     else:
         utils_misc.umount("", mountpoint, "")
-        raise error.TestFail("Can not find %s." % writeo)
+        test.fail("Can not find %s." % writeo)
 
     attached_vm = vt.newvm
     try:
         attached_vm.start()
         session = attached_vm.wait_for_login()
-    except Exception, detail:
+    except Exception as detail:
         attached_vm.destroy()
-        raise error.TestFail(str(detail))
+        test.fail(str(detail))
 
     try:
         file_path = os.path.join(mountpoint, path)
@@ -135,16 +133,16 @@ def test_formatted_part(vm, params):
         if not re.search(md5o, md51):
             attached_vm.destroy()
             attached_vm.wait_for_shutdown()
-            raise error.TestFail("Got a different md5.")
+            test.fail("Got a different md5.")
         logging.info("Got matched md5.")
         session.cmd_status("cat %s" % file_path, timeout=5)
         attached_vm.destroy()
         attached_vm.wait_for_shutdown()
-    except (virt_vm.VMError, remote.LoginError, aexpect.ShellError), detail:
+    except (virt_vm.VMError, remote.LoginError, aexpect.ShellError) as detail:
         if attached_vm.is_alive():
             attached_vm.destroy()
         if not re.search(content, str(detail)):
-            raise error.TestFail(str(detail))
+            test.fail(str(detail))
     logging.info("Check file on guest successfully.")
 
 
@@ -165,7 +163,7 @@ def run(test, params, env):
     try:
         # Create a new vm for editing and easier cleanup :)
         utils_test.libguestfs.define_new_vm(vm_name, new_vm_name)
-        testcase(vm, params)
+        testcase(test, vm, params)
     finally:
         disk_path = os.path.join(data_dir.get_tmp_dir(),
                                  params.get("gf_updated_target_dev"))

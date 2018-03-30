@@ -1,11 +1,10 @@
 import logging
 import re
 
-from autotest.client.shared import error
 from virttest import utils_test
 
 
-def prepare_image(params):
+def prepare_image(test, params):
     """
     (1) Create a image
     (2) Create file system on the image
@@ -13,17 +12,17 @@ def prepare_image(params):
     params["image_path"] = utils_test.libguestfs.preprocess_image(params)
 
     if not params.get("image_path"):
-        raise error.TestFail("Image could not be created for some reason.")
+        test.fail("Image could not be created for some reason.")
 
     gf = utils_test.libguestfs.GuestfishTools(params)
     status, output = gf.create_fs()
     if status is False:
         gf.close_session()
-        raise error.TestFail(output)
+        test.fail(output)
     gf.close_session()
 
 
-def create_lvm(gf, mode, pv_name="/dev/sda", vg_name="VG", lv_name="LV", size=100):
+def create_lvm(test, gf, mode, pv_name="/dev/sda", vg_name="VG", lv_name="LV", size=100):
 
     if mode == 'pvcreate':
         gf.part_init(pv_name, "msdos")
@@ -31,27 +30,27 @@ def create_lvm(gf, mode, pv_name="/dev/sda", vg_name="VG", lv_name="LV", size=10
         ret = gf.pvs().stdout.strip()
         if not ret:
             gf.close_session()
-            raise error.TestFail("create PV failed")
+            test.fail("create PV failed")
         return ret
     elif mode == 'vgcreate':
         gf.vgcreate(vg_name, pv_name)
         ret = gf.vgs().stdout.strip()
         if not ret:
             gf.close_session()
-            raise error.TestFail("create VG failed")
+            test.fail("create VG failed")
         return ret
     elif mode == 'lvcreate':
         gf.lvcreate(lv_name, vg_name, size)
         ret = gf.lvs().stdout.strip()
         if not ret:
             gf.close_session()
-            raise error.TestFail("create LV failed")
+            test.fail("create LV failed")
         return ret
     else:
         logging.info("mode should be 'pvcreate','vgcreate' or 'lvcreate'")
 
 
-def test_is_lv(vm, params):
+def test_is_lv(test, vm, params):
     """
     Test command is-lv
     """
@@ -72,23 +71,23 @@ def test_is_lv(vm, params):
     ret = gf.is_lv(name).stdout.strip()
     if ret != "false":
         gf.close_session()
-        raise error.TestFail("It should be a physical device")
+        test.fail("It should be a physical device")
 
     # check lvm device
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate')
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate')
 
     name = gf.lvs().stdout.strip()
     ret = gf.is_lv(name).stdout.strip()
     if ret != "true":
         gf.close_session()
-        raise error.TestFail("It should be a lvm device")
+        test.fail("It should be a lvm device")
 
     gf.close_session()
 
 
-def test_lvcreate(vm, params):
+def test_lvcreate(test, vm, params):
     """
     Test command lvcreate
     """
@@ -108,9 +107,9 @@ def test_lvcreate(vm, params):
     vg_name = "myvg"
     lv_name = "mylv"
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate', vg_name=vg_name)
-    create_lvm(gf, 'lvcreate', vg_name=vg_name, lv_name=lv_name)
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate', vg_name=vg_name)
+    create_lvm(test, gf, 'lvcreate', vg_name=vg_name, lv_name=lv_name)
 
     part_name = "/dev/%s/%s" % (vg_name, lv_name)
 
@@ -118,19 +117,19 @@ def test_lvcreate(vm, params):
 
     if result != part_name:
         gf.close_session()
-        raise error.TestFail("lv name is not match")
+        test.fail("lv name is not match")
 
     result = gf.lvs_full().stdout.strip()
     result = re.search("lv_name:\s+(\S+)", result).groups()[0]
 
     if result != lv_name:
         gf.close_session()
-        raise error.TestFail("lv name is not match")
+        test.fail("lv name is not match")
 
     gf.close_session()
 
 
-def test_lvm_canonical_lv_name(vm, params):
+def test_lvm_canonical_lv_name(test, vm, params):
     """
     Test command lvm-canonical-lv-name
     """
@@ -147,9 +146,9 @@ def test_lvm_canonical_lv_name(vm, params):
     gf.run()
     pv_name = params.get("pv_name")
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate')
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate')
 
     real_name = gf.lvs().stdout.strip()
     vg_name, lv_name = real_name.split("/")[-2:]
@@ -160,12 +159,12 @@ def test_lvm_canonical_lv_name(vm, params):
 
     if result != real_name:
         gf.close_session()
-        raise error.TestFail("Return name is uncorrect")
+        test.fail("Return name is uncorrect")
 
     gf.close_session()
 
 
-def test_lvremove(vm, params):
+def test_lvremove(test, vm, params):
     """
     Test command lvremove
     """
@@ -182,9 +181,9 @@ def test_lvremove(vm, params):
         gf.add_domain(vm_name, readonly=readonly)
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate')
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate')
 
     ret = gf.lvs().stdout.strip()
     logging.debug(ret)
@@ -194,12 +193,12 @@ def test_lvremove(vm, params):
     ret = gf.lvs().stdout.strip()
     if ret:
         gf.close_session()
-        raise error.TestFail("LV can't be removed")
+        test.fail("LV can't be removed")
 
     gf.close_session()
 
 
-def test_lvm_remove_all(vm, params):
+def test_lvm_remove_all(test, vm, params):
     """
     Test command lvm-remove-all
     """
@@ -216,9 +215,9 @@ def test_lvm_remove_all(vm, params):
         gf.add_domain(vm_name, readonly=readonly)
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate')
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate')
 
     pv = gf.pvs().stdout.strip()
     vg = gf.vgs().stdout.strip()
@@ -235,12 +234,12 @@ def test_lvm_remove_all(vm, params):
 
     if pv or vg or lv:
         gf.close_session()
-        raise error.TestFail("lvm-remove-all failed")
+        test.fail("lvm-remove-all failed")
 
     gf.close_session()
 
 
-def test_lvrename(vm, params):
+def test_lvrename(test, vm, params):
     """
     Test command lvrename
     """
@@ -257,9 +256,9 @@ def test_lvrename(vm, params):
         gf.add_domain(vm_name, readonly=readonly)
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate')
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate')
 
     ret = gf.lvs().stdout.strip()
     logging.debug(ret)
@@ -270,12 +269,12 @@ def test_lvrename(vm, params):
     ret = gf.lvs().stdout.strip()
     if new_lv_name not in ret:
         gf.close_session()
-        raise error.TestFail("LV can't be renamed")
+        test.fail("LV can't be renamed")
 
     gf.close_session()
 
 
-def test_lvresize(vm, params):
+def test_lvresize(test, vm, params):
     """
     Test command lvresize
     """
@@ -292,9 +291,9 @@ def test_lvresize(vm, params):
         gf.add_domain(vm_name, readonly=readonly)
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate')
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate')
 
     ret = gf.lvs_full().stdout.strip()
     lv = gf.lvs().stdout.strip()
@@ -303,7 +302,7 @@ def test_lvresize(vm, params):
     ret = gf.lvresize(lv, 200)
     if ret.exit_status:
         gf.close_session()
-        raise error.TestFail("lvresize execute failed")
+        test.fail("lvresize execute failed")
 
     ret = gf.lvs_full().stdout.strip()
     new_size = re.search("lv_size:\s+(\S+)", ret).groups()[0]
@@ -312,12 +311,12 @@ def test_lvresize(vm, params):
 
     if new_size <= old_size:
         gf.close_session()
-        raise error.TestFail("lvresize failed")
+        test.fail("lvresize failed")
 
     gf.close_session()
 
 
-def test_lvresize_free(vm, params):
+def test_lvresize_free(test, vm, params):
     """
     Test command lvresize-free
     """
@@ -334,9 +333,9 @@ def test_lvresize_free(vm, params):
         gf.add_domain(vm_name, readonly=readonly)
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate', size=200)
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate', size=200)
 
     lv = gf.lvs().stdout.strip()
 
@@ -348,7 +347,7 @@ def test_lvresize_free(vm, params):
     ret = gf.lvresize_free(lv, 100)
     if ret.exit_status:
         gf.close_session()
-        raise error.TestFail("lvresize-free execute failed")
+        test.fail("lvresize-free execute failed")
 
     ret = gf.lvs_full().stdout.strip()
     new_size = re.search("lv_size:\s+(\S+)", ret).groups()[0]
@@ -357,12 +356,12 @@ def test_lvresize_free(vm, params):
 
     if new_size != max_size:
         gf.close_session()
-        raise error.TestFail("lv_size should be %s" % max_size)
+        test.fail("lv_size should be %s" % max_size)
 
     gf.close_session()
 
 
-def test_lvm_set_filter(vm, params):
+def test_lvm_set_filter(test, vm, params):
     """
     Test command lvm-set-filter and lvm-clear-filter
     """
@@ -380,33 +379,33 @@ def test_lvm_set_filter(vm, params):
 
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate')
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate')
 
     lv_name = gf.lvs().stdout.strip()
     if not lv_name:
         gf.close_session()
-        raise error.TestFail("LV should be listed")
+        test.fail("LV should be listed")
 
     # set filter, lvm device should be hided
     gf.lvm_set_filter(lv_name)
     lv_name = gf.lvs().stdout.strip()
     if lv_name:
         gf.close_session()
-        raise error.TestFail("LV should not be listed")
+        test.fail("LV should not be listed")
 
     # clear the filter, lvm device can be seen
     gf.lvm_clear_filter()
     lv_name = gf.lvs().stdout.strip()
     if not lv_name:
         gf.close_session()
-        raise error.TestFail("LV should be listed")
+        test.fail("LV should be listed")
 
     gf.close_session()
 
 
-def test_lvuuid(vm, params):
+def test_lvuuid(test, vm, params):
     """
     Test command lvuuid
     """
@@ -424,9 +423,9 @@ def test_lvuuid(vm, params):
 
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate')
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate')
 
     lv_name = gf.lvs().stdout.strip()
     uuid = gf.lvuuid(lv_name).stdout.strip()
@@ -439,12 +438,12 @@ def test_lvuuid(vm, params):
 
     if uuid != result:
         gf.close_session()
-        raise error.TestFail("lv uuid is not match")
+        test.fail("lv uuid is not match")
 
     gf.close_session()
 
 
-def test_vgcreate(vm, params):
+def test_vgcreate(test, vm, params):
     """
     Test command vgcreate
     """
@@ -462,26 +461,26 @@ def test_vgcreate(vm, params):
     pv_name = params.get("pv_name")
 
     vg_name = "myvg"
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate', vg_name=vg_name)
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate', vg_name=vg_name)
 
     result = gf.vgs().stdout.strip()
 
     if result != vg_name:
         gf.close_session()
-        raise error.TestFail("vg name is not match")
+        test.fail("vg name is not match")
 
     ret = gf.vgs_full().stdout.strip()
     result = re.search("vg_name:\s+(\S+)", ret).groups()[0]
 
     if result != vg_name:
         gf.close_session()
-        raise error.TestFail("vg name is not match")
+        test.fail("vg name is not match")
 
     gf.close_session()
 
 
-def test_vgremove(vm, params):
+def test_vgremove(test, vm, params):
     """
     Test command vgremove
     """
@@ -498,9 +497,9 @@ def test_vgremove(vm, params):
         gf.add_domain(vm_name, readonly=readonly)
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate')
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate')
 
     ret = gf.vgs().stdout.strip()
     logging.debug(ret)
@@ -510,12 +509,12 @@ def test_vgremove(vm, params):
     ret = gf.vgs().stdout.strip()
     if ret:
         gf.close_session()
-        raise error.TestFail("VG can't be removed")
+        test.fail("VG can't be removed")
 
     gf.close_session()
 
 
-def test_vgrename(vm, params):
+def test_vgrename(test, vm, params):
     """
     Test command vgrename
     """
@@ -532,9 +531,9 @@ def test_vgrename(vm, params):
         gf.add_domain(vm_name, readonly=readonly)
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate')
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate')
 
     ret = gf.vgs().stdout.strip()
     logging.debug(ret)
@@ -545,12 +544,12 @@ def test_vgrename(vm, params):
     ret = gf.vgs().stdout.strip()
     if new_vg_name not in ret:
         gf.close_session()
-        raise error.TestFail("VG can't be renamed")
+        test.fail("VG can't be renamed")
 
     gf.close_session()
 
 
-def test_vgscan(vm, params):
+def test_vgscan(test, vm, params):
     """
     Test command vgscan
     """
@@ -567,19 +566,19 @@ def test_vgscan(vm, params):
         gf.add_domain(vm_name, readonly=readonly)
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate')
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate')
 
     result = gf.vgscan()
     if result.exit_status:
         gf.close_session()
-        raise error.TestFail("vgscan execute failed")
+        test.fail("vgscan execute failed")
 
     gf.close_session()
 
 
-def test_vguuid(vm, params):
+def test_vguuid(test, vm, params):
     """
     Test command vguuid
     """
@@ -597,9 +596,9 @@ def test_vguuid(vm, params):
 
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate')
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate')
 
     vg_name = gf.vgs().stdout.strip()
     uuid = gf.vguuid(vg_name).stdout.strip()
@@ -612,12 +611,12 @@ def test_vguuid(vm, params):
 
     if uuid != result:
         gf.close_session()
-        raise error.TestFail("vg uuid is not match")
+        test.fail("vg uuid is not match")
 
     gf.close_session()
 
 
-def test_vg_activate(vm, params):
+def test_vg_activate(test, vm, params):
     """
     Test command vg-activate
     """
@@ -635,32 +634,32 @@ def test_vg_activate(vm, params):
 
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate')
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate')
 
     vg_name = gf.vgs().stdout.strip()
     result = gf.debug("ls", "/dev").stdout.strip()
     if vg_name not in result:
         gf.close_session()
-        raise error.TestFail("Can not find %s in /dev" % vg_name)
+        test.fail("Can not find %s in /dev" % vg_name)
 
     gf.vg_activate(0, vg_name)
     result = gf.debug("ls", "/dev").stdout.strip()
     if vg_name in result:
         gf.close_session()
-        raise error.TestFail("Find %s in /dev, it shouldn't be" % vg_name)
+        test.fail("Find %s in /dev, it shouldn't be" % vg_name)
 
     gf.vg_activate(1, vg_name)
     result = gf.debug("ls", "/dev").stdout.strip()
     if vg_name not in result:
         gf.close_session()
-        raise error.TestFail("Can not find %s in /dev" % vg_name)
+        test.fail("Can not find %s in /dev" % vg_name)
 
     gf.close_session()
 
 
-def test_vg_activate_all(vm, params):
+def test_vg_activate_all(test, vm, params):
     """
     Test command vg-activate-all
     """
@@ -678,32 +677,32 @@ def test_vg_activate_all(vm, params):
 
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate')
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate')
 
     vg_name = gf.vgs().stdout.strip()
     result = gf.debug("ls", "/dev").stdout.strip()
     if vg_name not in result:
         gf.close_session()
-        raise error.TestFail("Can not find %s in /dev" % vg_name)
+        test.fail("Can not find %s in /dev" % vg_name)
 
     gf.vg_activate_all(0)
     result = gf.debug("ls", "/dev").stdout.strip()
     if vg_name in result:
         gf.close_session()
-        raise error.TestFail("Find %s in /dev, it shouldn't be" % vg_name)
+        test.fail("Find %s in /dev, it shouldn't be" % vg_name)
 
     gf.vg_activate_all(1)
     result = gf.debug("ls", "/dev").stdout.strip()
     if vg_name not in result:
         gf.close_session()
-        raise error.TestFail("Can not find %s in /dev" % vg_name)
+        test.fail("Can not find %s in /dev" % vg_name)
 
     gf.close_session()
 
 
-def test_vglvuuids(vm, params):
+def test_vglvuuids(test, vm, params):
     """
     Test command vglvuuids
     """
@@ -721,9 +720,9 @@ def test_vglvuuids(vm, params):
 
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate')
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate')
 
     lv_name = gf.lvs().stdout.strip()
     uuid = gf.lvuuid(lv_name).stdout.strip()
@@ -732,12 +731,12 @@ def test_vglvuuids(vm, params):
 
     if uuid != result:
         gf.close_session()
-        raise error.TestFail("lv uuid is not match")
+        test.fail("lv uuid is not match")
 
     gf.close_session()
 
 
-def test_vgpvuuids(vm, params):
+def test_vgpvuuids(test, vm, params):
     """
     Test command vgpvuuids
     """
@@ -755,9 +754,9 @@ def test_vgpvuuids(vm, params):
 
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
-    create_lvm(gf, 'vgcreate')
-    create_lvm(gf, 'lvcreate')
+    create_lvm(test, gf, 'pvcreate')
+    create_lvm(test, gf, 'vgcreate')
+    create_lvm(test, gf, 'lvcreate')
 
     pv_name = gf.pvs().stdout.strip()
     uuid = gf.pvuuid(pv_name).stdout.strip()
@@ -766,12 +765,12 @@ def test_vgpvuuids(vm, params):
 
     if uuid != result:
         gf.close_session()
-        raise error.TestFail("pv uuid is not match")
+        test.fail("pv uuid is not match")
 
     gf.close_session()
 
 
-def test_pvcreate(vm, params):
+def test_pvcreate(test, vm, params):
     """
     Test command pvcreate
     """
@@ -789,7 +788,7 @@ def test_pvcreate(vm, params):
 
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
+    create_lvm(test, gf, 'pvcreate')
     pv_name = gf.pvs().stdout.strip()
 
     result = gf.pvs_full().stdout.strip()
@@ -797,12 +796,12 @@ def test_pvcreate(vm, params):
 
     if result != pv_name != "/dev/sda":
         gf.close_session()
-        raise error.TestFail("pv name is not match")
+        test.fail("pv name is not match")
 
     gf.close_session()
 
 
-def test_pvremove(vm, params):
+def test_pvremove(test, vm, params):
     """
     Test command pvremove
     """
@@ -820,24 +819,24 @@ def test_pvremove(vm, params):
 
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
+    create_lvm(test, gf, 'pvcreate')
     pv_name = gf.pvs().stdout.strip()
 
     if pv_name != "/dev/sda":
         gf.close_session()
-        raise error.TestFail("pv name is not match")
+        test.fail("pv name is not match")
 
     gf.pvremove('/dev/sda')
     pv_name = gf.pvs().stdout.strip()
 
     if pv_name:
         gf.close_session()
-        raise error.TestFail("remove pv failed")
+        test.fail("remove pv failed")
 
     gf.close_session()
 
 
-def test_pvresize(vm, params):
+def test_pvresize(test, vm, params):
     """
     Test command pvresize and pvresize-size
     """
@@ -855,7 +854,7 @@ def test_pvresize(vm, params):
 
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
+    create_lvm(test, gf, 'pvcreate')
     result = gf.pvs_full().stdout.strip()
     pv_size = re.search("pv_size:\s+(\S+)", result).groups()[0]
 
@@ -867,7 +866,7 @@ def test_pvresize(vm, params):
 
     if get_size != new_size:
         gf.close_session()
-        raise error.TestFail("Can not get correct size via pvresize-size")
+        test.fail("Can not get correct size via pvresize-size")
 
     gf.pvresize("/dev/sda")
 
@@ -876,12 +875,12 @@ def test_pvresize(vm, params):
 
     if get_size != pv_size:
         gf.close_session()
-        raise error.TestFail("Can not get correct size via pvresize-size")
+        test.fail("Can not get correct size via pvresize-size")
 
     gf.close_session()
 
 
-def test_pvuuid(vm, params):
+def test_pvuuid(test, vm, params):
     """
     Test command pvuuid
     """
@@ -899,7 +898,7 @@ def test_pvuuid(vm, params):
 
     gf.run()
 
-    create_lvm(gf, 'pvcreate')
+    create_lvm(test, gf, 'pvcreate')
 
     pv_name = gf.pvs().stdout.strip()
     uuid = gf.pvuuid(pv_name).stdout.strip()
@@ -912,7 +911,7 @@ def test_pvuuid(vm, params):
 
     if uuid != result:
         gf.close_session()
-        raise error.TestFail("pv uuid is not match")
+        test.fail("pv uuid is not match")
 
     gf.close_session()
 
@@ -947,5 +946,5 @@ def run(test, params, env):
         params["image_format"] = image_format
         for partition_type in re.findall("\w+", partition_types):
             params["partition_type"] = partition_type
-            prepare_image(params)
-            testcase(vm, params)
+            prepare_image(test, params)
+            testcase(test, vm, params)

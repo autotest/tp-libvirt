@@ -2,14 +2,14 @@ import re
 import logging
 import aexpect
 
-from autotest.client.shared import error
-from autotest.client.shared import utils
+from avocado.utils import process
+
 from virttest import virt_vm
 from virttest import remote
 from virttest import utils_test
 
 
-def prepare_attached_device(guestfs, device):
+def prepare_attached_device(test, guestfs, device):
     """
     Prepare attached device for block test.
 
@@ -21,22 +21,22 @@ def prepare_attached_device(guestfs, device):
     logging.debug(list_dev_result)
     if list_dev_result.exit_status:
         guestfs.close_session()
-        raise error.TestFail("List devices failed")
+        test.fail("List devices failed")
     else:
         if not re.search(device, list_dev_result.stdout):
             guestfs.close_session()
-            raise error.TestFail("Did not find additional device.")
+            test.fail("Did not find additional device.")
     logging.info("List devices successfully.")
 
     creates, createo = guestfs.create_whole_disk_msdos_part(device)
     if creates is False:
         guestfs.close_session()
-        raise error.TestFail(createo)
+        test.fail(createo)
     logging.info("Create partition successfully.")
     return createo
 
 
-def test_blockdev_info(vm, params):
+def test_blockdev_info(test, vm, params):
     """
     1) Fall into guestfish session w/ inspector
     2) Do some necessary check
@@ -45,8 +45,8 @@ def test_blockdev_info(vm, params):
     5) Login guest to check
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
-    device_in_gf = utils.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                             ignore_status=True).stdout.strip()
+    device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
+                               ignore_status=True, shell=True).stdout.strip()
     if utils_test.libguestfs.primary_disk_virtio(vm):
         device_in_vm = add_device
     else:
@@ -59,14 +59,14 @@ def test_blockdev_info(vm, params):
     params['libvirt_domain'] = vt.newvm.name
     params['gf_inspector'] = True
     gf = utils_test.libguestfs.GuestfishTools(params)
-    prepare_attached_device(gf, device_in_gf)
+    prepare_attached_device(test, gf, device_in_gf)
 
     # Get sectorsize of block device
     getss_result = gf.blockdev_getss(device_in_gf)
     logging.debug(getss_result)
     if getss_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Get sectionsize failed")
+        test.fail("Get sectionsize failed")
     sectorsize = str(getss_result.stdout.strip())
     logging.info("Get sectionsize successfully.")
 
@@ -75,7 +75,7 @@ def test_blockdev_info(vm, params):
     logging.debug(getsz_result)
     if getsz_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Get device size failed.")
+        test.fail("Get device size failed.")
     total_size = str(getsz_result.stdout.strip())
     logging.info("Get device size successfully.")
 
@@ -84,7 +84,7 @@ def test_blockdev_info(vm, params):
     logging.debug(getbsz_result)
     if getbsz_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Get blocksize failed.")
+        test.fail("Get blocksize failed.")
     blocksize = str(getbsz_result.stdout.strip())
     logging.info("Get blocksize successfully.")
 
@@ -93,7 +93,7 @@ def test_blockdev_info(vm, params):
     gf.close_session()
     logging.debug(getsize64_result)
     if getsize64_result.exit_status:
-        raise error.TestFail("Get device size in bytes failed.")
+        test.fail("Get device size in bytes failed.")
     total_size_in_bytes = str(getsize64_result.stdout.strip())
     logging.info("Get device size in bytes successfully")
 
@@ -108,9 +108,9 @@ def test_blockdev_info(vm, params):
     try:
         attached_vm.start()
         session = attached_vm.wait_for_login()
-    except (virt_vm.VMError, remote.LoginError), detail:
+    except (virt_vm.VMError, remote.LoginError) as detail:
         attached_vm.destroy()
-        raise error.TestFail(str(detail))
+        test.fail(str(detail))
 
     try:
         sectorsize2 = session.cmd_output("blockdev --getss %s" % device_in_vm,
@@ -124,10 +124,10 @@ def test_blockdev_info(vm, params):
             timeout=5).strip()
         attached_vm.destroy()
         attached_vm.wait_for_shutdown()
-    except (virt_vm.VMError, remote.LoginError, aexpect.ShellError), detail:
+    except (virt_vm.VMError, remote.LoginError, aexpect.ShellError) as detail:
         if attached_vm.is_alive():
             attached_vm.destroy()
-        raise error.TestFail(str(detail))
+        test.fail(str(detail))
 
     logging.info("Blockdev information in vm:\n"
                  "Sectorsize:%s\n"
@@ -147,11 +147,11 @@ def test_blockdev_info(vm, params):
     if total_size_in_bytes != total_size_in_bytes2:
         fail_info.append("Total size in bytes do not match.")
     if len(fail_info):
-        raise error.TestFail(fail_info)
+        test.fail(fail_info)
     logging.info("Check blockdev information on guest successfully.")
 
 
-def test_blockdev_ro(vm, params):
+def test_blockdev_ro(test, vm, params):
     """
     1) Fall into guestfish session w/ inspector
     2) Do some necessary check
@@ -160,8 +160,8 @@ def test_blockdev_ro(vm, params):
     5) Try to write a file to readonly disk
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
-    device_in_gf = utils.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                             ignore_status=True).stdout.strip()
+    device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
+                               ignore_status=True, shell=True).stdout.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -177,7 +177,7 @@ def test_blockdev_ro(vm, params):
     logging.debug(mkfs_result)
     if mkfs_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Format %s Failed" % part_name)
+        test.fail("Format %s Failed" % part_name)
     logging.info("Format %s successfully.", part_name)
 
     # Get readonly status
@@ -185,7 +185,7 @@ def test_blockdev_ro(vm, params):
     logging.debug(getro_result)
     if getro_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Get readonly status failed.")
+        test.fail("Get readonly status failed.")
     logging.info("Get readonly status successfully.")
 
     if getro_result.stdout.strip() == "true":
@@ -195,7 +195,7 @@ def test_blockdev_ro(vm, params):
         logging.debug(setro_result)
         if setro_result.exit_status:
             gf.close_session()
-            raise error.TestFail("Set readonly status failed.")
+            test.fail("Set readonly status failed.")
         logging.info("Set readonly status successfully.")
 
         # Check readonly status
@@ -203,14 +203,14 @@ def test_blockdev_ro(vm, params):
         logging.debug(getro_result)
         if getro_result.stdout.strip() == "false":
             gf.close_session()
-            raise error.TestFail("Check readonly status failed.")
+            test.fail("Check readonly status failed.")
 
     mountpoint = params.get("mountpoint", "/mnt")
     mount_result = gf.mount(part_name, mountpoint)
     logging.debug(mount_result)
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Mount %s Failed" % part_name)
+        test.fail("Mount %s Failed" % part_name)
     logging.info("Mount %s successfully.", part_name)
 
     # List mounts
@@ -218,11 +218,11 @@ def test_blockdev_ro(vm, params):
     logging.debug(list_df_result)
     if list_df_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Df failed")
+        test.fail("Df failed")
     else:
         if not re.search(part_name, list_df_result.stdout):
             gf.close_session()
-            raise error.TestFail("Did not find mounted device.")
+            test.fail("Did not find mounted device.")
     logging.info("Df successfully.")
 
     # Write file
@@ -232,11 +232,11 @@ def test_blockdev_ro(vm, params):
     gf.close_session()
     logging.debug(write_result)
     if write_result.exit_status == 0:
-        raise error.TestFail("Create file to readonly disk successfully!")
+        test.fail("Create file to readonly disk successfully!")
     logging.info("Create %s failed as expected.", path)
 
 
-def test_blockdev_rw(vm, params):
+def test_blockdev_rw(test, vm, params):
     """
     1) Fall into guestfish session w/ inspector
     2) Do some necessary check
@@ -247,8 +247,8 @@ def test_blockdev_rw(vm, params):
     7) Login vm to check file
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
-    device_in_gf = utils.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                             ignore_status=True).stdout.strip()
+    device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
+                               ignore_status=True, shell=True).stdout.strip()
     if utils_test.libguestfs.primary_disk_virtio(vm):
         device_in_vm = add_device
     else:
@@ -269,7 +269,7 @@ def test_blockdev_rw(vm, params):
     logging.debug(mkfs_result)
     if mkfs_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Format %s Failed" % part_name)
+        test.fail("Format %s Failed" % part_name)
     logging.info("Format %s successfully.", part_name)
 
     # Get readonly status
@@ -277,7 +277,7 @@ def test_blockdev_rw(vm, params):
     logging.debug(getro_result)
     if getro_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Get readonly status failed.")
+        test.fail("Get readonly status failed.")
     logging.info("Get readonly status successfully.")
 
     if getro_result.stdout.strip() == "true":
@@ -287,7 +287,7 @@ def test_blockdev_rw(vm, params):
         logging.debug(setro_result)
         if setro_result.exit_status:
             gf.close_session()
-            raise error.TestFail("Set readonly status failed.")
+            test.fail("Set readonly status failed.")
         logging.info("Set readonly status successfully.")
 
         # Check readonly status
@@ -295,14 +295,14 @@ def test_blockdev_rw(vm, params):
         logging.debug(getro_result)
         if getro_result.stdout.strip() == "false":
             gf.close_session()
-            raise error.TestFail("Check readonly status failed.")
+            test.fail("Check readonly status failed.")
 
     # Reset device to r/w
     setrw_result = gf.blockdev_setrw(part_name)
     logging.debug(setrw_result)
     if setrw_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Set read-write status failed.")
+        test.fail("Set read-write status failed.")
     logging.info("Set read-write status successfully.")
 
     # Check read-write status
@@ -310,14 +310,14 @@ def test_blockdev_rw(vm, params):
     logging.debug(getro_result)
     if getro_result.stdout.strip() == "true":
         gf.close_session()
-        raise error.TestFail("Check read-write status failed.")
+        test.fail("Check read-write status failed.")
 
     mountpoint = params.get("mountpoint", "/mnt")
     mount_result = gf.mount(part_name, mountpoint)
     logging.debug(mount_result)
     if mount_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Mount %s Failed" % part_name)
+        test.fail("Mount %s Failed" % part_name)
     logging.info("Mount %s successfully.", part_name)
 
     # List mounts
@@ -325,11 +325,11 @@ def test_blockdev_rw(vm, params):
     logging.debug(list_df_result)
     if list_df_result.exit_status:
         gf.close_session()
-        raise error.TestFail("Df failed")
+        test.fail("Df failed")
     else:
         if not re.search(part_name, list_df_result.stdout):
             gf.close_session()
-            raise error.TestFail("Did not find mounted device.")
+            test.fail("Did not find mounted device.")
     logging.info("Df successfully.")
 
     # Write file
@@ -339,7 +339,7 @@ def test_blockdev_rw(vm, params):
     gf.close_session()
     logging.debug(write_result)
     if write_result.exit_status:
-        raise error.TestFail("Create file to read-write disk failed.")
+        test.fail("Create file to read-write disk failed.")
     logging.info("Create %s successfully.", path)
 
     # Login in guest
@@ -347,9 +347,9 @@ def test_blockdev_rw(vm, params):
     try:
         attached_vm.start()
         session = attached_vm.wait_for_login()
-    except (virt_vm.VMError, remote.LoginError), detail:
+    except (virt_vm.VMError, remote.LoginError) as detail:
         attached_vm.destroy()
-        raise error.TestFail(str(detail))
+        test.fail(str(detail))
 
     try:
         session.cmd_status("mount %s %s" % (part_name_in_vm, mountpoint),
@@ -359,11 +359,11 @@ def test_blockdev_rw(vm, params):
         session.sendline("rm -f %s" % path)
         attached_vm.destroy()
         attached_vm.wait_for_shutdown()
-    except (virt_vm.VMError, remote.LoginError, aexpect.ShellError), detail:
+    except (virt_vm.VMError, remote.LoginError, aexpect.ShellError) as detail:
         if attached_vm.is_alive():
             attached_vm.destroy()
         if not re.search(content, str(detail)):
-            raise error.TestFail(str(detail))
+            test.fail(str(detail))
 
 
 def run(test, params, env):
@@ -383,6 +383,6 @@ def run(test, params, env):
     try:
         # Create a new vm for editing and easier cleanup :)
         utils_test.libguestfs.define_new_vm(vm_name, new_vm_name)
-        testcase(vm, params)
+        testcase(test, vm, params)
     finally:
         utils_test.libguestfs.cleanup_vm(new_vm_name)
