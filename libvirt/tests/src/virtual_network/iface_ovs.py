@@ -1,10 +1,13 @@
 import logging
 
+from avocado.utils import distro
 from avocado.utils import process
 
 from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_net
+from virttest import utils_package
+from virttest.staging import service
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.network_xml import NetworkXML
@@ -22,6 +25,21 @@ def run(test, params, env):
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+
+    # install openvswitch on host.
+    if distro.detect().name == 'Ubuntu':
+        pkg = "openvswitch-switch"
+    else:
+        pkg = "openvswitch"
+
+    ovs_service = service.Factory.create_service(pkg)
+
+    if not utils_package.package_install(pkg):
+        test.cancel("Failed to install dependency package %s"
+                    " on host" % pkg)
+    if not ovs_service.status():
+        logging.debug("Restart %s service.." % pkg)
+        ovs_service.restart()
 
     def modify_iface_xml():
         """
