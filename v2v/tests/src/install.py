@@ -4,9 +4,8 @@ import glob
 
 from virttest import installer
 
-from autotest.client import utils
-from autotest.client.shared import error
-from autotest.client.shared import software_manager
+from avocado.utils import software_manager
+from avocado.utils import build
 
 
 def run(test, params, env):
@@ -40,7 +39,7 @@ def run(test, params, env):
             ovirt_src = os.path.join(srcdir, installer_obj.name)
             topdir = os.getcwd()
             os.chdir(ovirt_src)
-            utils.make("rpm")
+            build.make("rpm")
             os.chdir(topdir)
             pkgs = glob.glob(
                 os.path.join(ovirt_src, "rpmtop/RPMS/noarch/*"))
@@ -58,5 +57,5 @@ def run(test, params, env):
             env.register_installer(installer_obj)
 
     if minor_failure:
-        raise error.TestWarn("Minor (worked around) failures during build "
-                             "test: %s" % ", ".join(minor_failure_reasons))
+        test.warn("Minor (worked around) failures during build "
+                  "test: %s" % ", ".join(minor_failure_reasons))
