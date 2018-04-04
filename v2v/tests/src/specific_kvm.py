@@ -25,7 +25,7 @@ def run(test, params, env):
     """
     convert specific kvm guest to rhev
     """
-    for v in params.itervalues():
+    for v in list(params.values()):
         if "V2V_EXAMPLE" in v:
             test.cancel("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
@@ -131,7 +131,7 @@ def run(test, params, env):
                 logging.debug('initramfs version is: %s' % initramfs)
                 if vmlinuz != initramfs:
                     log_fail('vmlinuz not match with initramfs')
-        except Exception, e:
+        except Exception as e:
             test.error('Error on find kernel info \n %s' % str(e))
 
     def check_boot_kernel(vmcheck):
@@ -162,7 +162,7 @@ def run(test, params, env):
             args.update({'mode': 'readonly'})
         config = ''
         # Join all options together to get command line
-        for key in args.keys():
+        for key in list(args.keys()):
             config += ' --%s %s' % (key, args[key])
         config += ' --current'
         virsh.attach_disk(vm_name, source, dev, extra=config)
@@ -175,12 +175,12 @@ def run(test, params, env):
         if dest not in bus_list:
             test.error('Bus type not support')
         dev_prefix = ['h', 's', 'v']
-        dev_table = dict(zip(bus_list, dev_prefix))
+        dev_table = dict(list(zip(bus_list, dev_prefix)))
         logging.info('Change disk bus to %s' % dest)
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         disks = vmxml.get_disk_all()
         index = 0
-        for disk in disks.values():
+        for disk in list(disks.values()):
             if disk.get('device') != 'disk':
                 continue
             target = disk.find('target')
@@ -196,7 +196,7 @@ def run(test, params, env):
         """
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         network_list = vmxml.get_iface_all()
-        for node in network_list.values():
+        for node in list(network_list.values()):
             if node.get('type') == 'network':
                 node.find('model').set('type', model)
         vmxml.sync()
@@ -222,8 +222,8 @@ def run(test, params, env):
             vm_name, virsh_instance=virsh_instance)
         iflist = vmxml.get_iface_all()
         logging.debug('MAC list before v2v: %s' % mac_list)
-        logging.debug('MAC list after  v2v: %s' % iflist.keys())
-        if set(mac_list).difference(iflist.keys()):
+        logging.debug('MAC list after  v2v: %s' % list(iflist.keys()))
+        if set(mac_list).difference(list(iflist.keys())):
             log_fail('Missing network interface')
         for mac in iflist:
             if iflist[mac].find('model').get('type') != 'virtio':
@@ -447,7 +447,7 @@ def run(test, params, env):
             vm.wait_for_login()
             vm.shutdown()
             logging.info('%s is down' % vm_name)
-        except Exception, e:
+        except Exception as e:
             test.error('Bootup guest and login failed: %s', str(e))
 
     def check_result(result, status_error):
@@ -466,7 +466,7 @@ def run(test, params, env):
             if output_mode == 'libvirt':
                 try:
                     virsh.start(vm_name, debug=True, ignore_status=False)
-                except Exception, e:
+                except Exception as e:
                     test.fail('Start vm failed: %s' % str(e))
             # Check guest following the checkpoint document after convertion
             vmchecker = VMChecker(test, params, env)
@@ -555,7 +555,7 @@ def run(test, params, env):
                               None, params)
             new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             disk_count = 0
-            for disk in new_xml.get_disk_all().values():
+            for disk in list(new_xml.get_disk_all().values()):
                 if disk.get('device') == 'disk':
                     disk_count += 1
             params['ori_disks'] = disk_count

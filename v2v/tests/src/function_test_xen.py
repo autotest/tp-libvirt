@@ -24,7 +24,7 @@ def run(test, params, env):
     """
     Convert specific xen guest
     """
-    for v in params.itervalues():
+    for v in list(params.values()):
         if "V2V_EXAMPLE" in v:
             test.cancel("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
@@ -160,7 +160,7 @@ def run(test, params, env):
             elif output_mode == 'libvirt':
                 try:
                     virsh.start(vm_name, debug=True, ignore_status=False)
-                except Exception, e:
+                except Exception as e:
                     test.fail('Start vm failed: %s', str(e))
             # Check guest following the checkpoint document after convertion
             logging.info('Checking common checkpoints for v2v')
@@ -364,7 +364,7 @@ def run(test, params, env):
             logging.debug(xml.xmltreefile)
             disks = xml.get_disk_all()
             logging.debug('Disks: %r', disks)
-            for disk in disks.values():
+            for disk in list(disks.values()):
                 # Check if vm has cdrom attached
                 if disk.get('device') == 'cdrom' and disk.find('source') is None:
                     test.error('No CDROM image attached')

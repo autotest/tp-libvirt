@@ -169,7 +169,7 @@ class VMChecker(object):
         try:
             os_version = re.search(r'(\d\.?\d?)', os_info).group(1).split('.')
             dist_major = int(os_version[0])
-        except Exception, e:
+        except Exception as e:
             err_msg = "Fail to get OS distribution: %s" % e
             self.log_err(err_msg)
         if dist_major < 4:
