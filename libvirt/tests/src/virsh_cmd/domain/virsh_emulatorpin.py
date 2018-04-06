@@ -199,7 +199,7 @@ def run(test, params, env):
             # Recover the VM and failout early
             vmxml_backup.sync()
             logging.debug("Used VM XML:\n %s", vmxml)
-            test.fail("VM Fails to start: %s", detail)
+            test.fail("VM Fails to start: %s" % detail)
 
     test_dicts = dict(params)
     test_dicts['vm'] = vm
