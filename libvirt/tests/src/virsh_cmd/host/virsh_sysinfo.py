@@ -16,7 +16,7 @@ def get_processor_version():
     processor_version = []
     cmd = "dmidecode -t processor | awk -F: '/Version/ {print $2}'"
     cmd_result = process.run(cmd, ignore_status=True, shell=True)
-    output = cmd_result.stdout.strip()
+    output = cmd_result.stdout_text.strip()
     if output:
         output_list = output.split('\n')
         for i in output_list:

@@ -62,7 +62,7 @@ def run(test, params, env):
         # Get pipe node.
         else:
             result = process.run(cmd, timeout=90, ignore_status=True, shell=True)
-            ret, output = result.exit_status, result.stdout
+            ret, output = result.exit_status, result.stdout_text
             if ret:
                 test.fail("Failed to get pipe node")
             else:

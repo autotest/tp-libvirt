@@ -92,7 +92,7 @@ def get_numa_parameter(test, params, cgstop):
         if status:
             test.fail(result.stderr)
         else:
-            logging.info(result.stdout)
+            logging.info(result.stdout.strip())
 
 
 def set_numa_parameter(test, params, cgstop):
@@ -166,7 +166,7 @@ def set_numa_parameter(test, params, cgstop):
                 test.fail(result.stderr)
         else:
             if check_numatune_xml(params):
-                logging.info(result.stdout)
+                logging.info(result.stdout.strip())
             else:
                 test.fail("The 'mode' or/and 'nodeset' are"
                           " inconsistent with numatune XML")

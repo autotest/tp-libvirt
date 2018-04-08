@@ -282,7 +282,7 @@ def run(test, params, env):
 
         # If pull job aborted as timeout, the exit status is different
         # on RHEL6(0) and RHEL7(1)
-        if with_timeout and 'Pull aborted' in result.stdout:
+        if with_timeout and 'Pull aborted' in result.stdout.strip():
             if libvirt_version.version_compare(1, 1, 1):
                 status_error = True
             else:

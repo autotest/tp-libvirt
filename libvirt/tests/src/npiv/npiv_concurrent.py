@@ -126,11 +126,11 @@ def get_blks_by_scsi(test, scsi_bus, blk_prefix="sd"):
     cmd %= (scsi_bus, blk_prefix)
     try:
         result = process.run(cmd, shell=True)
-        logging.debug("multipath result: %s", result.stdout.strip())
+        logging.debug("multipath result: %s", result.stdout_text.strip())
     except process.cmdError as detail:
         test.error("Error happend for multipath: %s",
                    str(detail))
-    blk_names = result.stdout.strip().splitlines()
+    blk_names = result.stdout_text.strip().splitlines()
     return blk_names
 
 
@@ -157,7 +157,7 @@ def get_symbols_by_blk(test, blkdev, method="by-path"):
         result = process.run(cmd, shell=True)
     except process.cmdError as detail:
         test.error("cmd wrong with error %s", str(detail))
-    symbolic_links = result.stdout.strip().splitlines()
+    symbolic_links = result.stdout_text.strip().splitlines()
     return symbolic_links
 
 

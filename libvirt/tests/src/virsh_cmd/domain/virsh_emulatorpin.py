@@ -122,7 +122,7 @@ def get_emulatorpin_parameter(params, test):
         if status:
             test.fail(result.stderr)
         else:
-            logging.info(result.stdout)
+            logging.info(result.stdout.strip())
 
 
 def set_emulatorpin_parameter(params, test):
@@ -156,7 +156,7 @@ def set_emulatorpin_parameter(params, test):
             test.fail(result.stderr)
         else:
             if check_emulatorpin(params, test):
-                logging.info(result.stdout)
+                logging.info(result.stdout.strip())
             else:
                 test.fail("The 'cpulist' is inconsistent with"
                           " 'cpulist' emulatorpin XML or/and is"

@@ -163,7 +163,7 @@ def run(test, params, env):
                                                     " -18" % if_name)
         else:
             out = process.run("ethtool -k %s | head -18" % if_name, shell=True)
-            ret, output = out.exit_status, out.stdout
+            ret, output = out.exit_status, out.stdout_text
         if ret:
             test.fail("ethtool return error code")
         logging.debug("ethtool output: %s", output)
@@ -205,7 +205,7 @@ def run(test, params, env):
             # Check macvtap mode by ip link command
             if iface_target == "macvtap" and iface.source.has_key("mode"):
                 cmd = "ip -d link show %s" % iface.target["dev"]
-                output = process.run(cmd, shell=True).stdout
+                output = process.run(cmd, shell=True).stdout_text
                 logging.debug("ip link output: %s", output)
                 mode = iface.source["mode"]
                 if mode == "passthrough":
@@ -219,9 +219,9 @@ def run(test, params, env):
         """
         cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
         ret = process.run(cmd, shell=True)
-        logging.debug("Command line %s", ret.stdout)
+        logging.debug("Command line %s", ret.stdout_text)
         if test_vhost_net:
-            if not ret.stdout.count("vhost=on") and not rm_vhost_driver:
+            if not ret.stdout_text.count("vhost=on") and not rm_vhost_driver:
                 test.fail("Can't see vhost options in"
                           " qemu-kvm command line")
 
@@ -230,7 +230,7 @@ def run(test, params, env):
         else:
             model_option = "device rtl8139"
         iface_cmdline = re.findall(r"%s,(.+),mac=%s" %
-                                   (model_option, iface_mac), ret.stdout)
+                                   (model_option, iface_mac), ret.stdout_text)
         if not iface_cmdline:
             test.fail("Can't see %s with mac %s in command"
                       " line" % (model_option, iface_mac))
@@ -273,7 +273,7 @@ def run(test, params, env):
                           " command line" %
                           (driver_opt, driver_dict[driver_opt]))
         if test_backend:
-            guest_pid = ret.stdout.rsplit()[1]
+            guest_pid = ret.stdout_text.rsplit()[1]
             cmd = "lsof %s | grep %s" % (backend["tap"], guest_pid)
             if process.system(cmd, ignore_status=True, shell=True):
                 test.fail("Guest process didn't open backend file"

@@ -35,7 +35,7 @@ def create_luks_secret(vol_path, password, test):
     utlv.check_exit_status(ret)
     try:
         encryption_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
-                                     ret.stdout)[0].lstrip()
+                                     ret.stdout.strip())[0].lstrip()
     except IndexError:
         test.error("Fail to get newly created secret uuid")
     logging.debug("Secret uuid %s", encryption_uuid)
@@ -159,7 +159,7 @@ def run(test, params, env):
                     test.cancel("LUKS is not supported in current"
                                 " libvirt version")
                 luks_sec_uuid = create_luks_secret(os.path.join(pool_target,
-                                                   vol_name),
+                                                                vol_name),
                                                    encryption_password, test)
                 secret_uuids.append(luks_sec_uuid)
                 vol_arg = {}

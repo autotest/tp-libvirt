@@ -75,7 +75,7 @@ def get_vhost_pids(test, vm):
         test.fail("Couldn't get vm's pid, its state: %s"
                   % vm.state())
     output = process.run("ps aux | grep [v]host-%s | awk '{print $2}'"
-                         % vmpid, shell=True).stdout.strip()
+                         % vmpid, shell=True).stdout_text.strip()
     return output.splitlines()
 
 
@@ -87,7 +87,7 @@ def top_vhost(test, pids, expected_running_vhosts=1, timeout=15):
     top_cmd = "top -n 1 -p %s -b" % pids_str
     timeout = int(timeout)
     while True:
-        output = process.run(top_cmd, shell=True).stdout.strip()
+        output = process.run(top_cmd, shell=True).stdout_text.strip()
         logging.debug(output)
         process_cpus = []
         for line in output.splitlines():

@@ -191,7 +191,7 @@ def run(test, params, env):
             libvirt.check_exit_status(ret)
 
             secret_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
-                                     ret.stdout)[0].lstrip()
+                                     ret.stdout.strip())[0].lstrip()
             logging.debug("Secret uuid %s", secret_uuid)
             if secret_uuid == "":
                 test.error("Failed to get secret uuid")

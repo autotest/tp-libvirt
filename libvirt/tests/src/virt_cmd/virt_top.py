@@ -67,4 +67,4 @@ def run(test, params, env):
     else:
         if cmd_result.exit_status != 2:
             raise exceptions.TestFail("Command virt-top exit successfully with"
-                                      "invalid option:%s" % cmd_result.stdout)
+                                      "invalid option:%s" % cmd_result.stdout_text)

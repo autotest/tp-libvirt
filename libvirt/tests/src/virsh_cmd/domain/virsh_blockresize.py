@@ -50,7 +50,7 @@ def run(test, params, env):
     cmd = "qemu-img create -f %s %s %s" % (image_format, image_path,
                                            initial_disk_size)
     ret = process.run(cmd, allow_output_check='combined', shell=True)
-    status, output = (ret.exit_status, ret.stdout.strip())
+    status, output = (ret.exit_status, ret.stdout_text.strip())
     if status:
         test.error("Creating image file %s failed: %s"
                    % (image_path, output))
@@ -60,7 +60,7 @@ def run(test, params, env):
                                extra=" --subdriver %s" % image_format)
     if result.exit_status:
         test.error("Failed to attach disk %s to VM: %s."
-                   % (image_path, result.stderr))
+                   % (image_path, result.stderr.strip()))
 
     if resize_value == "over_size":
         # Use byte unit for over_size test

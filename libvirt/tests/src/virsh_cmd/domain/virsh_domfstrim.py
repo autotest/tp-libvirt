@@ -112,7 +112,7 @@ def run(test, params, env):
         logging.debug("fdisk output %s", output)
         os.remove("/tmp/fdisk-cmd")
         # Format disk
-        output = process.run("mkfs.ext3 %s1" % scsi_disk, shell=True).stdout.strip()
+        output = process.run("mkfs.ext3 %s1" % scsi_disk, shell=True).stdout_text.strip()
         logging.debug("output %s", output)
         # Add scsi disk in guest
         recompose_xml(vm_name, scsi_disk)
@@ -146,7 +146,7 @@ def run(test, params, env):
             :return: disk size
             """
             map_cmd = "cat /sys/bus/pseudo/drivers/scsi_debug/map"
-            diskmap = process.run(map_cmd, shell=True).stdout.strip('\n\x00')
+            diskmap = process.run(map_cmd, shell=True).stdout_text.strip('\n\x00')
             sum = 0
             for i in diskmap.split(","):
                 sum = sum + int(i.split("-")[1]) - int(i.split("-")[0])

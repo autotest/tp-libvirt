@@ -93,7 +93,7 @@ def compare_virt_version(server_ip, server_user, server_pwd, test):
     query_cmd = "rpm -q libvirt"
     # query libvirt version on local host
     ret = process.run(query_cmd, allow_output_check='combined', shell=True)
-    status, output_local = ret.exit_status, ret.stdout.strip()
+    status, output_local = ret.exit_status, ret.stdout_text.strip()
     if status:
         test.error(output_local)
     # query libvirt version on remote host

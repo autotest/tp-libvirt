@@ -118,7 +118,7 @@ def create_luks_secret(vol_path, password, test):
     libvirt.check_exit_status(ret)
     try:
         encryption_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
-                                     ret.stdout)[0].lstrip()
+                                     ret.stdout.strip())[0].lstrip()
     except IndexError:
         test.error("Fail to get newly created secret uuid")
     logging.debug("Secret uuid %s", encryption_uuid)
@@ -145,7 +145,7 @@ def create_luks_vol(vol_name, sec_uuid, params):
         if (key.startswith('vol_') and not key.startswith('vol_new')):
             if key[4:] in ['capacity', 'allocation']:
                 vol_arg[key[4:]] = int(float(utils_misc.normalize_data_size(params[key],
-                                       "B", 1024)))
+                                                                            "B", 1024)))
             elif key[4:] in ['owner', 'group']:
                 vol_arg[key[4:]] = int(params[key])
             else:

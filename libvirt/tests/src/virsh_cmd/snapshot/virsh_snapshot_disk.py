@@ -165,7 +165,7 @@ def run(test, params, env):
                     cmd_result = process.run(cmd, ignore_status=True, shell=True)
                     if cmd_result.exit_status:
                         test.cancel("Failed to format volume, %s" %
-                                    cmd_result.stdout.strip())
+                                    cmd_result.stdout_text.strip())
             extra = "--persistent --subdriver %s" % vol_format
         else:
             # Create a image.

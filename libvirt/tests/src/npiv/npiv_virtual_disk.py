@@ -40,7 +40,7 @@ def get_symbols_by_blk(blkdev, method="by-path"):
         result = process.run(cmd, shell=True)
     except Exception as e:
         raise exceptions.TestError(str(e))
-    symbolic_links = result.stdout.strip().splitlines()
+    symbolic_links = result.stdout_text.strip().splitlines()
     return symbolic_links
 
 
@@ -61,7 +61,7 @@ def get_blks_by_scsi(scsi_bus, blk_prefix="sd"):
         result = process.run(cmd, shell=True)
     except Exception as e:
         raise exceptions.TestError(str(e))
-    blk_names = result.stdout.strip().splitlines()
+    blk_names = result.stdout_text.strip().splitlines()
     return blk_names
 
 

@@ -270,7 +270,7 @@ def run(test, params, env):
             vf_xml = NodedevXML.new_from_dumpxml(nodedev_pci)
             vf_bus_slot = ':'.join(vf_addr.split(':')[1:])
             res = process.run("lspci -s %s -vv" % vf_bus_slot)
-            vf_pci_info = res.stdout
+            vf_pci_info = res.stdout_text
             vf_product_info = vf_xml.cap.product_info
             if vf_pci_info.find(vf_product_info) == -1:
                 test.fail("The product_info show in nodedev-dumpxml is wrong\n")
@@ -447,7 +447,7 @@ def run(test, params, env):
         pci_id = pci_address.split("/")[-1]
         pf_name = os.listdir('%s/net' % pci_address)[0]
         bus_slot = ':'.join(pci_address.split(':')[1:])
-        pci_info = process.run("lspci -s %s -vv" % bus_slot).stdout
+        pci_info = process.run("lspci -s %s -vv" % bus_slot).stdout_text
         logging.debug("The pci info of the sriov card is:\n %s", pci_info)
         max_vfs = int(re.findall(r"Total VFs: (.+?),", pci_info)[0]) - 1
         if info_check == 'yes' or max_vfs < 32:

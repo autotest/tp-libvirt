@@ -289,12 +289,12 @@ def run(test, params, env):
                     chk_str = "-name %s,process=qemu:%s" % (vm_name, vm_name)
                 cmd = "ps -p %s -o command=" % vm_pid
                 result = process.run(cmd, shell=True)
-                if chk_str in result.stdout:
+                if chk_str in result.stdout_text:
                     logging.debug("%s found in vm process command: %s" %
-                                  (chk_str, result.stdout))
+                                  (chk_str, result.stdout_text))
                 else:
                     test.fail("%s not in vm process command: %s" %
-                              (chk_str, result.stdout))
+                              (chk_str, result.stdout_text))
 
             # Check the label of disk after VM being destroyed.
             vm.destroy()

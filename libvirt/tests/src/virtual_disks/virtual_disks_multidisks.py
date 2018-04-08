@@ -324,7 +324,7 @@ def run(test, params, env):
                 session.close()
                 test.fail("Failed due to: %s" % output.strip())
             discard_cmd = "cat /sys/bus/pseudo/drivers/scsi_debug/map"
-            cmd_result = process.run(discard_cmd, shell=True).stdout.strip()
+            cmd_result = process.run(discard_cmd, shell=True).stdout_text.strip()
             # Get discard map list.
             discard_map_list_before = len(cmd_result.split(','))
 
@@ -335,7 +335,7 @@ def run(test, params, env):
                 session.close()
                 test.fail("Failed due to: %s", output)
             session.close()
-            cmd_result = process.run(discard_cmd, shell=True).stdout.strip()
+            cmd_result = process.run(discard_cmd, shell=True).stdout_text.strip()
             discard_map_list_after = len(cmd_result.split(','))
             # After file is deleted,discard map number should be shorter.
             if discard_map_list_after >= discard_map_list_before:
@@ -404,7 +404,7 @@ def run(test, params, env):
         ret = virsh.snapshot_dumpxml(vm_name, snapshot1)
         libvirt.check_exit_status(ret)
 
-        cmd = "echo \"%s\" | grep %s.%s" % (ret.stdout, disk_name, snapshot1)
+        cmd = "echo \"%s\" | grep %s.%s" % (ret.stdout.strip(), disk_name, snapshot1)
         if process.system(cmd, ignore_status=True, shell=True):
             test.cancel("Check snapshot disk failed")
 
@@ -418,7 +418,7 @@ def run(test, params, env):
         libvirt.check_exit_status(ret)
 
         cmd = ("echo \"%s\" | grep -A 16 %s.%s | grep \"boot order='%s'\""
-               % (ret.stdout, disk_name, snapshot2, bootorder))
+               % (ret.stdout.strip(), disk_name, snapshot2, bootorder))
         if process.system(cmd, ignore_status=True, shell=True):
             test.error("Check snapshot disk with bootorder failed")
 
@@ -501,8 +501,8 @@ def run(test, params, env):
                                          '{"execute": "query-iothreads"}',
                                          "--pretty")
         libvirt.check_exit_status(ret)
-        logging.debug("Domain iothreads: %s", ret.stdout)
-        iothreads_ret = json.loads(ret.stdout)
+        logging.debug("Domain iothreads: %s", ret.stdout.strip())
+        iothreads_ret = json.loads(ret.stdout.strip())
         if len(iothreads_ret['return']) != int(dom_iothreads):
             test.fail("Failed to check domain iothreads")
 
@@ -580,7 +580,7 @@ def run(test, params, env):
         libvirt.check_exit_status(ret)
 
         secet_uuid_value = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
-                                      ret.stdout)[0].lstrip()
+                                      ret.stdout.strip())[0].lstrip()
         logging.debug("Secret uuid %s", secet_uuid_value)
         if not secet_uuid_value:
             test.error("Failed to get secret uuid")
@@ -644,7 +644,7 @@ def run(test, params, env):
             libvirt.check_exit_status(cmd_result)
             vol_list = []
             vol_list = re.findall(r"(\S+)\ +(\S+)[\ +\n]",
-                                  str(cmd_result.stdout))
+                                  str(cmd_result.stdout.strip()))
             if len(vol_list) > 1:
                 return vol_list[1]
             else:

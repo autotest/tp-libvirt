@@ -18,7 +18,7 @@ def run(test, params, env):
     """
     # Get the full path of virt-clone command.
     try:
-        VIRT_CLONE = process.run("which virt-clone", shell=True).stdout.strip()
+        VIRT_CLONE = process.run("which virt-clone", shell=True).stdout_text.strip()
     except ValueError:
         test.cancel("Not find virt-clone command on host.")
 

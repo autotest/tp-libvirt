@@ -143,7 +143,7 @@ def run(test, params, env):
                 libvirt.check_exit_status(cmd_result)
                 vol_list = []
                 vol_list = re.findall(r"(\S+)\ +(\S+)[\ +\n]",
-                                      str(cmd_result.stdout))
+                                      str(cmd_result.stdout.strip()))
                 if len(vol_list) > 1:
                     return vol_list[1]
                 else:

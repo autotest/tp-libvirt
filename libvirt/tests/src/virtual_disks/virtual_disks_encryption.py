@@ -94,7 +94,7 @@ def run(test, params, env):
         # Get secret uuid.
         try:
             encryption_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
-                                         ret.stdout)[0].lstrip()
+                                         ret.stdout.strip())[0].lstrip()
         except IndexError as e:
             test.error("Fail to get newly created secret uuid")
         logging.debug("Secret uuid %s", encryption_uuid)

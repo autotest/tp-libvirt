@@ -133,7 +133,7 @@ def run(test, params, env):
 
         ret = virsh.snapshot_dumpxml(vm_name, pre_name)
         if ret.exit_status == 0:
-            pre_xml = ret.stdout
+            pre_xml = ret.stdout.strip()
         else:
             test.fail("Fail to dumpxml of snapshot %s:%s" %
                       (pre_name, ret.stderr.strip()))

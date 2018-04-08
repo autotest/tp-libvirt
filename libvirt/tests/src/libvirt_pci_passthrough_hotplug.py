@@ -161,9 +161,9 @@ def run(test, params, env):
         result = virsh.attach_device(vm_name, dev.xml,
                                      flagstr="--live", debug=True)
         if result.exit_status:
-            test.error(result.stdout)
+            test.error(result.stdout.strip())
         else:
-            logging.debug(result.stdout)
+            logging.debug(result.stdout.strip())
         if not utils_misc.wait_for(check_attach_pci, timeout):
             test.fail("timeout value is not sufficient")
 
@@ -172,9 +172,9 @@ def run(test, params, env):
         result = virsh.detach_device(vm_name, dev.xml,
                                      flagstr="--live", debug=True)
         if result.exit_status:
-            test.fail(result.stdout)
+            test.fail(result.stdout.strip())
         else:
-            logging.debug(result.stdout)
+            logging.debug(result.stdout.strip())
         # Fix me
         # the purpose of waiting here is after detach the device from
         #  guest it need time to perform any other operation on the device

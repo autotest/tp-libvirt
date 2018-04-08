@@ -43,7 +43,7 @@ def run(test, params, env):
             test.cancel("SKIP: lsusb command has errored out,"
                         "please fix any issues with lsusb command"
                         " on host")
-        return ((existing_usb.stdout.strip()).splitlines())
+        return ((existing_usb.stdout_text.strip()).splitlines())
 
     device_type = params.get("usb_dev_label", 'all')
     # Check the parameters from configuration file.

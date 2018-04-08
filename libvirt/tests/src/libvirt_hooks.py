@@ -247,7 +247,7 @@ def run(test, params, env):
                     (qemu_bin, disk_src, vm_test))
         ret = process.run("%s &" % qemu_cmd, shell=True)
         pid = process.run("ps -ef | grep '%s' | grep -v grep | awk"
-                          " '{print $2}'" % qemu_cmd, shell=True).stdout.strip()
+                          " '{print $2}'" % qemu_cmd, shell=True).stdout_text.strip()
         if not pid:
             test.fail("Cannot get pid of qemu command")
         ret = virsh.qemu_attach(pid, **virsh_dargs)

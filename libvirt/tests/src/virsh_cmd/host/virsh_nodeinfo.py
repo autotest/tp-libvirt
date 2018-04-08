@@ -26,7 +26,7 @@ def run(test, params, env):
         cmd = "echo \"%s\" | grep \"%s\" | awk '{print $%s}'" % (
             nodeinfo_output, verify_str, column)
         cmd_result = process.run(cmd, ignore_status=True, shell=True)
-        stdout = cmd_result.stdout.strip()
+        stdout = cmd_result.stdout_text.strip()
         logging.debug("Info %s on nodeinfo output:%s" % (verify_str, stdout))
         return stdout
 
@@ -70,7 +70,7 @@ def run(test, params, env):
         cmd = ("cat /proc/cpuinfo | grep -E 'cpu MHz|clock|BogoMIPS' | "
                "head -n1 | awk -F: '{print $2}' | awk -F. '{print $1}'")
         cmd_result = process.run(cmd, ignore_status=True, shell=True)
-        cpu_frequency_os = cmd_result.stdout.strip()
+        cpu_frequency_os = cmd_result.stdout_text.strip()
         logging.debug("cpu_frequency_nodeinfo=%s cpu_frequency_os=%s",
                       cpu_frequency_nodeinfo, cpu_frequency_os)
         #
@@ -105,7 +105,7 @@ def run(test, params, env):
         cmd = "cat /sys/devices/system/node/node%s" % node_online_list[0]
         cmd += "/cpu*/topology/physical_package_id | uniq |wc -l"
         cmd_result = process.run(cmd, ignore_status=True, shell=True)
-        total_sockets_in_node = int(cmd_result.stdout.strip())
+        total_sockets_in_node = int(cmd_result.stdout_text.strip())
         if total_sockets_in_node != cpu_sockets_nodeinfo:
             test.fail("Virsh nodeinfo output didn't match CPU "
                       "socket(s) of host OS")
@@ -118,7 +118,7 @@ def run(test, params, env):
             nodeinfo_output, 'Core(s) per socket', 4)
         cmd = "lscpu | grep 'Core(s) per socket' | head -n1 | awk '{print $4}'"
         cmd_result = process.run(cmd, ignore_status=True, shell=True)
-        cores_per_socket_os = cmd_result.stdout.strip()
+        cores_per_socket_os = cmd_result.stdout_text.strip()
         spec_numa = False
         if not re.match(cores_per_socket_nodeinfo, cores_per_socket_os):
             # for spec NUMA arch, the output of nodeinfo is in a spec format

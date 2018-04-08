@@ -116,10 +116,10 @@ def run(test, params, env):
         if backend_dev:
             cmd = "lsof |grep %s" % backend_dev
             ret = process.run(cmd, ignore_status=True, shell=True)
-            if ret.exit_status or not ret.stdout.count("qemu"):
+            if ret.exit_status or not ret.stdout_text.count("qemu"):
                 test.fail("Failed to check random device"
                           " on host, command output: %s" %
-                          ret.stdout)
+                          ret.stdout_text)
 
     def check_snapshot(bgjob=None):
         """
@@ -144,7 +144,7 @@ def run(test, params, env):
             vm_name, ("%s %s" % (snapshot_name, options)))
         libvirt.check_exit_status(ret)
         ret = virsh.dumpxml(vm_name)
-        if ret.stdout.count("<rng model="):
+        if ret.stdout.strip().count("<rng model="):
             test.fail("Found rng device in xml")
 
         if snapshot_with_rng:
@@ -177,7 +177,7 @@ def run(test, params, env):
             test.fail("Failed to check snapshot list")
 
         ret = virsh.domblklist(vm_name)
-        if not ret.stdout.count(snapshot_name2):
+        if not ret.stdout.strip().count(snapshot_name2):
             test.fail("Failed to find snapshot disk")
 
     def check_guest(session):

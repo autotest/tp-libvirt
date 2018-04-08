@@ -116,7 +116,8 @@ def run(test, params, env):
             if not os.path.exists(dev_file):
                 test.fail("%s doesn't exist." % dev_file)
             p = subprocess.Popen(["/usr/bin/cat", dev_file],
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 universal_newlines=True)
             while True:
                 output = p.stdout.readline()
                 if output or p.poll():

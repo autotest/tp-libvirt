@@ -65,7 +65,7 @@ def run(test, params, env):
             old_parts = libvirt.get_parts_list(session)
             ret = virsh.attach_disk(vm_name, device_source, "vdd")
             if ret.exit_status:
-                test.fail("Attaching device failed before testing agent:%s" % ret.stdout)
+                test.fail("Attaching device failed before testing agent:%s" % ret.stdout.strip())
             time.sleep(1)
             new_parts = libvirt.get_parts_list(session)
             added_part = list(set(new_parts).difference(set(old_parts)))
@@ -87,7 +87,7 @@ def run(test, params, env):
                                                      ignore_status=True,
                                                      debug=True)
             libvirt.check_exit_status(st_cmd_result)
-            if not st_cmd_result.stdout.count("frozen"):
+            if not st_cmd_result.stdout.strip().count("frozen"):
                 test.fail("Guest filesystem status is not frozen: %s"
                           % st_cmd_result.stdout.strip())
 
@@ -102,7 +102,7 @@ def run(test, params, env):
                                                      ignore_status=True,
                                                      debug=True)
             libvirt.check_exit_status(st_cmd_result)
-            if not st_cmd_result.stdout.count("thawed"):
+            if not st_cmd_result.stdout.strip().count("thawed"):
                 test.fail("Guest filesystem status is not thawed: %s"
                           % st_cmd_result.stdout.strip())
             logging.info("Original dirty data: %s" % org_dirty_info)

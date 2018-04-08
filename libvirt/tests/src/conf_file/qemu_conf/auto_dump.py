@@ -90,7 +90,7 @@ def run(test, params, env):
             pass
         session.close()
 
-        iohelper_pid = process.run('pgrep -f %s' % dump_path).stdout.strip()
+        iohelper_pid = process.run('pgrep -f %s' % dump_path).stdout_text.strip()
         logging.error('%s', iohelper_pid)
 
         # Get file open flags containing bypass cache information.

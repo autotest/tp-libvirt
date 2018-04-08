@@ -124,7 +124,7 @@ def run(test, params, env):
         """
         cmd = ("%s & %s" % (virsh_cmd, bash_cmd))
         ret = process.run(cmd, ignore_status=True, shell=True)
-        output = ret.stdout.strip()
+        output = ret.stdout_text.strip()
         logging.debug("check flags output: %s" % output)
         lines = re.findall(r"flags:.(\d+)", output, re.M)
         logging.debug("Find all fdinfo flags: %s" % lines)
@@ -151,7 +151,7 @@ def run(test, params, env):
 
         # Wait 10 seconds for vm to start
         time.sleep(10)
-        is_systemd = process.run("cat /proc/1/comm", shell=True).stdout.count("systemd")
+        is_systemd = process.run("cat /proc/1/comm", shell=True).stdout_text.count("systemd")
         if is_systemd:
             libvirt_guests.restart()
             pattern = r'(.+ \d\d:\d\d:\d\d).+: Resuming guest.+done'
@@ -170,8 +170,8 @@ def run(test, params, env):
         utils_misc.wait_for(wait_func, 5)
         if is_systemd:
             ret = libvirt_guests.raw_status()
-        logging.info("status output: %s", ret.stdout)
-        resume_time = re.findall(pattern, ret.stdout, re.M)
+        logging.info("status output: %s", ret.stdout_text)
+        resume_time = re.findall(pattern, ret.stdout_text, re.M)
         if not resume_time:
             test.fail("Can't see messages of resuming guest")
 
@@ -197,7 +197,7 @@ def run(test, params, env):
         # Drop caches.
         drop_caches()
         # form proper parallel command based on if systemd is used or not
-        is_systemd = process.run("cat /proc/1/comm", shell=True).stdout.count("systemd")
+        is_systemd = process.run("cat /proc/1/comm", shell=True).stdout_text.count("systemd")
         if is_systemd:
             virsh_cmd_stop = "systemctl stop libvirt-guests"
             virsh_cmd_start = "systemctl start libvirt-guests"
@@ -210,9 +210,9 @@ def run(test, params, env):
                                     "1"), flags)
         if is_systemd:
             ret = libvirt_guests.raw_status()
-        logging.info("status output: %s", ret.stdout)
-        if all(["Suspending %s" % vm_name not in ret.stdout,
-                "stopped, with saved guests" not in ret.stdout]):
+        logging.info("status output: %s", ret.stdout_text)
+        if all(["Suspending %s" % vm_name not in ret.stdout_text,
+                "stopped, with saved guests" not in ret.stdout_text]):
             test.fail("Can't see messages of suspending vm")
         # status command should return 3.
         if not is_systemd:

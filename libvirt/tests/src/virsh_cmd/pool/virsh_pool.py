@@ -82,7 +82,7 @@ def run(test, params, env):
         result = virsh.pool_list(option, ignore_status=True)
         utlv.check_exit_status(result, False)
         output = re.findall(r"(\S+)\ +(\S+)\ +(\S+)[\ +\n]",
-                            str(result.stdout))
+                            str(result.stdout.strip()))
         for item in output:
             if pool_name in item[0]:
                 found = True
@@ -108,7 +108,7 @@ def run(test, params, env):
         result = virsh.vol_list(pool_name, ignore_status=True)
         utlv.check_exit_status(result)
 
-        output = re.findall(r"(\S+)\ +(\S+)[\ +\n]", str(result.stdout))
+        output = re.findall(r"(\S+)\ +(\S+)[\ +\n]", str(result.stdout.strip()))
         for item in output:
             if vol_name in item[0]:
                 found = True

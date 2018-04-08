@@ -72,7 +72,7 @@ def run(test, params, env):
                 values = re.findall(pat, line)
                 leases.append(dict(list(zip(keys, values))))
             return leases
-        except:
+        except Exception:
             test.error("Fail to parse output: %s" % output)
 
     def get_ip_by_mac(mac_addr, try_dhclint=False, timeout=120):

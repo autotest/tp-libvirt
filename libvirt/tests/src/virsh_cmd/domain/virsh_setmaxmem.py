@@ -159,7 +159,7 @@ def run(test, params, env):
             cpu_xml = vmxml.cpu
             cpu_xml.remove_numa_cells()
             vmxml.cpu = cpu_xml
-        except:
+        except Exception:
             # The item doesn't exist
             pass
         vmxml.sync()

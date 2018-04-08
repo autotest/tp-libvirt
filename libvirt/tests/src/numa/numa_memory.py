@@ -53,7 +53,7 @@ def run(test, params, env):
         """
         cmd = "lscpu | grep '^CPU(s):'"
         ret = process.run(cmd, shell=True)
-        cpu_num = int(ret.stdout.split(':')[1].strip())
+        cpu_num = int(ret.stdout_text.split(':')[1].strip())
         cpu_affinity_str = ""
         for i in range(cpu_num):
             if i in cpu_list:

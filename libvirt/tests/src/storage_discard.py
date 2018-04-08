@@ -37,7 +37,7 @@ def get_disk_capacity(test, disk_type, imagefile=None, lvname=None):
     """
     if disk_type == "file":
         result = process.run("du -sm %s" % imagefile, shell=True)
-        return result.stdout.split()[0].strip()
+        return result.stdout_text.split()[0].strip()
     elif disk_type == "block":
         if lvname is None:
             test.fail("No volume name provided.")
