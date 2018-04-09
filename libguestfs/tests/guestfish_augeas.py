@@ -186,9 +186,9 @@ def test_aug_defnode(test, vm, params):
         test.fail("Can not list augeas nodes under /files/etc/passwd/test. GSERROR_MSG: %s" % aug_ls_result)
     logging.info("List augeas nodes under /files/etc/passwd/test successfully")
 
-    if aug_ls_result.stdout.strip('\n') != '/files/etc/passwd/test/gid\n/files/etc/passwd/test/uid':
+    if aug_ls_result.stdout_text.strip('\n') != '/files/etc/passwd/test/gid\n/files/etc/passwd/test/uid':
         gf.close_session()
-        test.fail("The node value is not correct: %s" % aug_ls_result.stdout)
+        test.fail("The node value is not correct: %s" % aug_ls_result.stdout_text)
     logging.info("The node value is correct")
     gf.close_session()
 
@@ -242,9 +242,9 @@ def test_aug_defvar(test, vm, params):
         test.fail("Can not look up the value of /augeas/variables/test. GSERROR_MSG:%s" % aug_get_result)
     logging.info("Look up the value of /augeas/variables/test successfully")
 
-    if aug_get_result.stdout.strip('\n') != 'This is a test':
+    if aug_get_result.stdout_text.strip('\n') != 'This is a test':
         gf.close_session()
-        test.fail("The variable value is not correct %s != This is a test" % aug_get_result.stdout.strip('\n'))
+        test.fail("The variable value is not correct %s != This is a test" % aug_get_result.stdout_text.strip('\n'))
     logging.info("The variable value is correct")
     gf.close_session()
 
@@ -311,9 +311,9 @@ def test_aug_set_get(test, vm, params):
         test.fail("Can not get the value of /files/etc/passwd/root/home. GSERROR_MSG: %s" % aug_get_result_home)
     logging.info("Get the value of /files/etc/passwd/root/home successfully")
 
-    if aug_get_result_password.stdout.strip('\n') != "9999" or aug_get_result_home.stdout.strip('\n') != '/root':
+    if aug_get_result_password.stdout_text.strip('\n') != "9999" or aug_get_result_home.stdout_text.strip('\n') != '/root':
         gf.close_session()
-        test.fail("The value of /files/etc/passwd/root/password and /files/etc/passwd/root/home is not correct. root password %s != 9999, root home %s != /root" % (aug_get_result_password.stdout.strip('\n'), aug_get_result_home.stdout.strip('\n')))
+        test.fail("The value of /files/etc/passwd/root/password and /files/etc/passwd/root/home is not correct. root password %s != 9999, root home %s != /root" % (aug_get_result_password.stdout_text.strip('\n'), aug_get_result_home.stdout_text.strip('\n')))
     logging.info("The value of /files/etc/passwd/root/password and /files/etc/passwd/root/home is correct")
     gf.close_session()
 
@@ -462,9 +462,9 @@ def test_aug_insert(test, vm, params):
         gf.close_session()
         test.fail("Failed to run the command. GSERROR_MSG: %s" % command_result)
 
-    if command_result.stdout.strip('\n') != '/files/etc/passwd/root/testbefore\n/files/etc/passwd/root/name\n/files/etc/passwd/root/testafter':
+    if command_result.stdout_text.strip('\n') != '/files/etc/passwd/root/testbefore\n/files/etc/passwd/root/name\n/files/etc/passwd/root/testafter':
         gf.close_session()
-        test.fail("The match results is not correct. GSERROR_MSG: %s" % command_result.stdout)
+        test.fail("The match results is not correct. GSERROR_MSG: %s" % command_result.stdout_text)
     gf.close_session()
 
 
@@ -524,9 +524,9 @@ def test_aug_ls(test, vm, params):
         test.fail("Can not list path /files/etc/passwd. GSERROR_MSG: %s" % aug_ls_result)
     logging.info("List path /files/etc/passwd successfully")
 
-    if aug_ls_result.stdout.strip('\n') != '/files/etc/passwd/mysql\n/files/etc/passwd/root':
+    if aug_ls_result.stdout_text.strip('\n') != '/files/etc/passwd/mysql\n/files/etc/passwd/root':
         gf.close_session()
-        test.fail("aug-ls list the wrong results. GSERROR_MSG: %s" % aug_ls_result.stdout)
+        test.fail("aug-ls list the wrong results. GSERROR_MSG: %s" % aug_ls_result.stdout_text)
     logging.info("aug-ls list the right results")
 
     aug_ls_result = gf.aug_ls("/files/etc/passwd/")
@@ -608,9 +608,9 @@ def test_aug_match(test, vm, params):
         test.fail("Can not return augeas nodes which match /files/etc/*/root. GSERROR_MSG: %s" % aug_match_result)
     logging.info("Can return augeas nodes which match /files/etc/*/root successfully")
 
-    if aug_match_result.stdout.strip('\n') != '/files/etc/passwd/root\n/files/etc/config/root':
+    if aug_match_result.stdout_text.strip('\n') != '/files/etc/passwd/root\n/files/etc/config/root':
         gf.close_session()
-        test.fail("The match results is not correct. GSERROR_MSG: %s" % aug_match_result.stdout)
+        test.fail("The match results is not correct. GSERROR_MSG: %s" % aug_match_result.stdout_text)
     gf.close_session()
 
 
@@ -669,7 +669,7 @@ def test_aug_mv(test, vm, params):
         test.fail("Can not list augeas nodes under /files/etc/passwd. GSERROR_MSG: %s" % aug_ls_result)
     logging.info("List augeas nodes under /files/etc/passwd successfully")
 
-    if aug_ls_result.stdout.strip('\n') != '/files/etc/passwd/other_none_root':
+    if aug_ls_result.stdout_text.strip('\n') != '/files/etc/passwd/other_none_root':
         gf.close_session()
         test.fail("aug-mv: can not find the new node /files/etc/passwd/other_none_root")
     gf.close_session()
@@ -730,7 +730,7 @@ def test_aug_rm(test, vm, params):
         test.fail("Can not list augeas nodes under /files/etc/passwd. GSERROR_MSG: %s" % aug_ls_result)
     logging.info("List augeas nodes under /files/etc/passwd successfully")
 
-    if aug_ls_result.stdout.strip('\n') == '/files/etc/passwd/root':
+    if aug_ls_result.stdout_text.strip('\n') == '/files/etc/passwd/root':
         gf.close_session()
         test.fail("aug-rm: failed to remove node /files/etc/passwd/root")
     gf.close_session()
@@ -785,7 +785,7 @@ def test_aug_label(test, vm, params):
         gf.close_session()
         test.fail("Can not get the label of /files/etc/passwd/root. GSERROR_MSG: %s" % aug_label_result)
 
-    if aug_label_result.stdout.strip('\n') != 'root':
+    if aug_label_result.stdout_text.strip('\n') != 'root':
         gf.close_session()
         test.fail("aug-label return the wrong lable")
     gf.close_session()
@@ -856,9 +856,9 @@ def test_aug_setm(test, vm, params):
         gf.close_session()
         test.fail("Can not get the value of /files/etc/passwd/mysql/uid. GSERROR_MSG: %s" % aug_get_result_mysql)
 
-    if aug_get_result_root.stdout.strip('\n') != '2' or aug_get_result_mysql.stdout.strip('\n') != '2':
+    if aug_get_result_root.stdout_text.strip('\n') != '2' or aug_get_result_mysql.stdout_text.strip('\n') != '2':
         gf.close_session()
-        test.fail("aug-setm set the wrong value. GSERROR_MSG: root = %s, mysql = %s" % (aug_get_result_root.stdout.strip('\n'), aug_get_result_mysql.stdout.strip('\n')))
+        test.fail("aug-setm set the wrong value. GSERROR_MSG: root = %s, mysql = %s" % (aug_get_result_root_text.stdout_text.strip('\n'), aug_get_result_mysql.stdout_text.strip('\n')))
     gf.close_session()
 
 
@@ -942,7 +942,7 @@ def test_aug_load(test, vm, params):
         test.fail("Can not list augeas nodes under /files/etc. GSERROR_MSG: %s" % aug_ls_load_result)
     logging.info("List augeas nodes under /files/etc successfully")
 
-    if aug_ls_result.stdout.strip('\n') != '' or aug_ls_load_result.stdout.strip('\n') != '/files/etc/passwd':
+    if aug_ls_result.stdout_text.strip('\n') != '' or aug_ls_load_result.stdout_text.strip('\n') != '/files/etc/passwd':
         gf.close_session()
         test.fail("Failed to load the tree.")
     gf.close_session()
@@ -1055,9 +1055,9 @@ def test_aug_save(test, vm, params):
     if aug_get_result.exit_status:
         gf.close_session()
         test.fail("Can not get the home directory of root user. GSERROR_MSG: %s" % aug_get_result)
-    logging.info("Get the home directory of root user successfully. root directory is %s" % aug_get_result.stdout.strip('\n'))
+    logging.info("Get the home directory of root user successfully. root directory is %s" % aug_get_result.stdout_text.strip('\n'))
 
-    if aug_get_result.stdout.strip('\n') != '/tmp/root':
+    if aug_get_result.stdout_text.strip('\n') != '/tmp/root':
         gf.close_session()
         test.fail("The home directory of root user is not correct")
     gf.close_session()

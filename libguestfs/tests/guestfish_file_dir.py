@@ -53,7 +53,7 @@ def test_chmod(test, vm, params):
     mount_point = params.get("mount_point")
     gf.mount(mount_point, '/')
     gf_result = gf.ll("/file_ops/file_ascii")
-    ori_perm_oct = gf_result.stdout.split()[0]
+    ori_perm_oct = gf_result.stdout_text.split()[0]
     perm = list(ori_perm_oct)
     i = 0
     while i < len(perm):
@@ -74,12 +74,12 @@ def test_chmod(test, vm, params):
         i += 1
     new_perm = ''.join(new_perm)
     gf_result = gf.ll("/file_ops/file_ascii")
-    if gf_result.stdout.split()[0] != new_perm:
+    if gf_result.stdout_text.split()[0] != new_perm:
         gf.close_session()
         test.fail("chmod failed.")
     gf.chmod(str(ori_perm), "/file_ops/file_ascii")
     gf_result = gf.ll("/file_ops/file_ascii")
-    if gf_result.stdout.split()[0] != ori_perm_oct:
+    if gf_result.stdout_text.split()[0] != ori_perm_oct:
         gf.close_session()
         test.fail("chmod failed.")
     if gf_result.exit_status:
@@ -107,25 +107,25 @@ def test_chown(test, vm, params):
     mount_point = params.get("mount_point")
     gf.mount(mount_point, '/')
     gf_result = gf.ll("/file_ops/file_ascii")
-    logging.debug(gf_result.stdout)
+    logging.debug(gf_result.stdout_text)
     gf.chown(100, 100, "/file_ops/file_ascii")
     gf_result = gf.ll("/file_ops/file_ascii")
-    if gf_result.stdout.split()[2] != '100' or gf_result.stdout.split()[3] != 'users':
+    if gf_result.stdout_text.split()[2] != '100' or gf_result.stdout_text.split()[3] != 'users':
         gf.close_session()
         test.fail("chown failed.")
     gf.chown(500, 500, "/file_ops/file_ascii")
     gf_result = gf.ll("/file_ops/file_ascii")
-    if gf_result.stdout.split()[2] != '500' or gf_result.stdout.split()[3] != '500':
+    if gf_result.stdout_text.split()[2] != '500' or gf_result.stdout_text.split()[3] != '500':
         gf.close_session()
         test.fail("chown failed.")
     gf.chown(100, 100, "/file_ops/file_ascii_softlink")
     gf_result = gf.ll("/file_ops/file_ascii_softlink")
-    if gf_result.stdout.split()[2] != 'root' or gf_result.stdout.split()[3] != 'root':
+    if gf_result.stdout_text.split()[2] != 'root' or gf_result.stdout_text.split()[3] != 'root':
         gf.close_session()
         test.fail("chown failed.")
     gf.chown(500, 500, "/file_ops/file_ascii_softlink")
     gf_result = gf.ll("/file_ops/file_ascii_softlink")
-    if gf_result.stdout.split()[2] != 'root' or gf_result.stdout.split()[3] != 'root':
+    if gf_result.stdout_text.split()[2] != 'root' or gf_result.stdout_text.split()[3] != 'root':
         gf.close_session()
         test.fail("chown failed.")
     gf.close_session()
@@ -149,25 +149,25 @@ def test_lchown(test, vm, params):
     mount_point = params.get("mount_point")
     gf.mount(mount_point, '/')
     gf_result = gf.ll("/file_ops/file_ascii")
-    logging.debug(gf_result.stdout)
+    logging.debug(gf_result.stdout_text)
     gf.lchown(100, 100, "/file_ops/file_ascii")
     gf_result = gf.ll("/file_ops/file_ascii")
-    if gf_result.stdout.split()[2] != '100' or gf_result.stdout.split()[3] != 'users':
+    if gf_result.stdout_text.split()[2] != '100' or gf_result.stdout_text.split()[3] != 'users':
         gf.close_session()
         test.fail("lchown failed.")
     gf.lchown(500, 500, "/file_ops/file_ascii")
     gf_result = gf.ll("/file_ops/file_ascii")
-    if gf_result.stdout.split()[2] != '500' or gf_result.stdout.split()[3] != '500':
+    if gf_result.stdout_text.split()[2] != '500' or gf_result.stdout_text.split()[3] != '500':
         gf.close_session()
         test.fail("lchown failed.")
     gf.lchown(100, 100, "/file_ops/file_ascii_softlink")
     gf_result = gf.ll("/file_ops/file_ascii_softlink")
-    if gf_result.stdout.split()[2] != '100' or gf_result.stdout.split()[3] != 'users':
+    if gf_result.stdout_text.split()[2] != '100' or gf_result.stdout_text.split()[3] != 'users':
         gf.close_session()
         test.fail("lchown failed.")
     gf.lchown(500, 500, "/file_ops/file_ascii_softlink")
     gf_result = gf.ll("/file_ops/file_ascii_softlink")
-    if gf_result.stdout.split()[2] != '500' or gf_result.stdout.split()[3] != '500':
+    if gf_result.stdout_text.split()[2] != '500' or gf_result.stdout_text.split()[3] != '500':
         gf.close_session()
         test.fail("lchown failed.")
     gf.close_session()
@@ -191,7 +191,7 @@ def test_du(test, vm, params):
     mount_point = params.get("mount_point")
     gf.mount(mount_point, '/')
     gf_result = gf.du("/file_ops")
-    if int(gf_result.stdout.split()[0]) > 13200 or int(gf_result.stdout.split()[0]) < 13000:
+    if int(gf_result.stdout_text.split()[0]) > 13200 or int(gf_result.stdout_text.split()[0]) < 13000:
         gf.close_session()
         test.fail("du failed.")
     gf.close_session()
@@ -225,7 +225,7 @@ def test_file(test, vm, params):
                   "/file_ops/file_dev_char": 'character device'}
 
     for k, v in list(file_check.items()):
-        gf_result = gf.file(k).stdout.strip()
+        gf_result = gf.file(k).stdout_text.strip()
         if v not in gf_result:
             gf.close_session()
             test.fail("file failed.")
@@ -258,7 +258,7 @@ def test_file_architecture(test, vm, params):
                                "/file_ops/file_sparc": 'sparc'}
 
     for k, v in list(file_architecture_check.items()):
-        gf_result = gf.file_architecture(k).stdout.strip()
+        gf_result = gf.file_architecture(k).stdout_text.strip()
         if v.upper() not in gf_result.upper():
             gf.close_session()
             test.fail("file-architecture failed.")
@@ -293,7 +293,7 @@ def test_filesize(test, vm, params):
                       "/file_ops/file_dev_char": '0'}
 
     for k, v in list(filesize_check.items()):
-        gf_result = gf.filesize(k).stdout.strip()
+        gf_result = gf.filesize(k).stdout_text.strip()
         if v not in gf_result:
             gf.close_session()
             test.fail("filesize failed.")
@@ -328,7 +328,7 @@ def test_stat(test, vm, params):
                   "/file_ops/file_dev_char": '0'}
 
     for k, v in list(stat_check.items()):
-        gf_result = gf.stat(k).stdout.strip()
+        gf_result = gf.stat(k).stdout_text.strip()
         if v not in gf_result:
             gf.close_session()
             test.fail("stat failed.")
@@ -363,7 +363,7 @@ def test_lstat(test, vm, params):
                    "/file_ops/file_dev_char": '0'}
 
     for k, v in list(lstat_check.items()):
-        gf_result = gf.lstat(k).stdout.strip()
+        gf_result = gf.lstat(k).stdout_text.strip()
         if v not in gf_result:
             gf.close_session()
             test.fail("lstat failed.")
@@ -397,7 +397,7 @@ def test_lstatlist(test, vm, params):
                    "/file_ops/file_ascii_softlink_link": '19',
                    "/file_ops/file_dev_char": '0'}
 
-    gf_result = gf.lstatlist("/file_ops", "\"file_ascii file_ascii_long file_elf file_dev_block file_dev_fifo file_ascii_softlink file_ascii_softlink_link file_dev_char\"").stdout.strip()
+    gf_result = gf.lstatlist("/file_ops", "\"file_ascii file_ascii_long file_elf file_dev_block file_dev_fifo file_ascii_softlink file_ascii_softlink_link file_dev_char\"").stdout_text.strip()
     for k, v in list(lstat_check.items()):
         if v not in gf_result:
             gf.close_session()
@@ -460,36 +460,36 @@ def test_umask(test, vm, params):
     gf.mount(mount_point, '/')
     gf_result = gf.umask("022")
     gf_result = gf.get_umask()
-    if gf_result.stdout.strip() != "022":
+    if gf_result.stdout_text.strip() != "022":
         gf.close_session()
         test.fail("umask failed.")
     gf_result = gf.touch("/file_ops/umask0022")
     gf_result = gf.ll("/file_ops/umask0022")
-    if gf_result.stdout.split()[0] != "-rw-r--r--":
+    if gf_result.stdout_text.split()[0] != "-rw-r--r--":
         gf.close_session()
         test.fail("umask failed.")
     gf_result = gf.rm("/file_ops/umask0022")
 
     gf_result = gf.umask("0")
     gf_result = gf.get_umask()
-    if gf_result.stdout.strip() != "0":
+    if gf_result.stdout_text.strip() != "0":
         gf.close_session()
         test.fail("umask failed.")
     gf_result = gf.touch("/file_ops/umask0000")
     gf_result = gf.ll("/file_ops/umask0000")
-    if gf_result.stdout.split()[0] != "-rw-rw-rw-":
+    if gf_result.stdout_text.split()[0] != "-rw-rw-rw-":
         gf.close_session()
         test.fail("umask failed.")
     gf_result = gf.rm("/file_ops/umask0000")
 
     gf_result = gf.umask("066")
     gf_result = gf.get_umask()
-    if gf_result.stdout.strip() != "066":
+    if gf_result.stdout_text.strip() != "066":
         gf.close_session()
         test.fail("umask failed.")
     gf_result = gf.touch("/file_ops/umask0066")
     gf_result = gf.ll("/file_ops/umask0066")
-    if gf_result.stdout.split()[0] != "-rw-------":
+    if gf_result.stdout_text.split()[0] != "-rw-------":
         gf.close_session()
         test.fail("umask failed.")
     gf_result = gf.rm("/file_ops/umask0066")
@@ -497,7 +497,7 @@ def test_umask(test, vm, params):
 # regress bug 627832
     gf_result = gf.umask("022")
     gf_result = gf.get_umask()
-    if gf_result.stdout.strip() != "022":
+    if gf_result.stdout_text.strip() != "022":
         gf.close_session()
         test.fail("umask failed.")
     gf_result = gf.umask("-1")
@@ -505,7 +505,7 @@ def test_umask(test, vm, params):
         gf.close_session()
         test.fail("umask failed.")
     gf_result = gf.get_umask()
-    if gf_result.stdout.strip() != "022":
+    if gf_result.stdout_text.strip() != "022":
         gf.close_session()
         test.fail("umask failed.")
     gf_result = gf.umask("01000")
@@ -513,7 +513,7 @@ def test_umask(test, vm, params):
         gf.close_session()
         test.fail("umask failed.")
     gf_result = gf.get_umask()
-    if gf_result.stdout.strip() != "022":
+    if gf_result.stdout_text.strip() != "022":
         gf.close_session()
         test.fail("umask failed.")
     gf_result = gf.touch("/testfoo")
@@ -554,10 +554,10 @@ def test_cat(test, vm, params):
     mount_point = params.get("mount_point")
     gf.mount(mount_point, '/')
 
-    gf_result = gf.cat('/file_ops/file_ascii').stdout.strip()
+    gf_result = gf.cat('/file_ops/file_ascii').stdout_text.strip()
     logging.debug(gf_result)
     run_result = process.run("tar xOf %s file_ops/file_ascii" % params.get("tarball_path"),
-                             ignore_status=True, shell=True).stdout.strip()
+                             ignore_status=True, shell=True).stdout_text.strip()
     logging.debug(run_result)
     if gf_result != run_result:
         gf.close_session()
@@ -592,23 +592,23 @@ def test_checksum(test, vm, params):
                     "sha512": 'sha512sum'}
 
     for k, v in list(checksum_map.items()):
-        gf_result = gf.checksum(k, '/file_ops/file_ascii').stdout.strip()
+        gf_result = gf.checksum(k, '/file_ops/file_ascii').stdout_text.strip()
         run_result = process.run("tar xOf %s file_ops/file_ascii | %s" % (params.get("tarball_path"), v),
-                                 ignore_status=True, shell=True).stdout.split()[0]
+                                 ignore_status=True, shell=True).stdout_text.split()[0]
         if gf_result != run_result:
             gf.close_session()
             test.fail("checksum failed.")
 
     for k, v in list(checksum_map.items()):
-        gf_result = gf.checksum(k, '/file_ops/file_elf').stdout.strip()
+        gf_result = gf.checksum(k, '/file_ops/file_elf').stdout_text.strip()
         run_result = process.run("tar xOf %s file_ops/file_elf | %s" % (params.get("tarball_path"), v),
-                                 ignore_status=True, shell=True).stdout.split()[0]
+                                 ignore_status=True, shell=True).stdout_text.split()[0]
         if gf_result != run_result:
             gf.close_session()
             test.fail("checksum failed.")
 
     gf_result = gf.checksum('perfect', '/file_ops/file_elf')
-    logging.debug(gf_result.stdout.strip())
+    logging.debug(gf_result.stdout_text.strip())
     if gf_result.exit_status == 0:
         gf.close_session()
         test.fail("checksum failed.")
@@ -640,17 +640,17 @@ def test_checksum_device(test, vm, params):
                     "sha512": 'sha512sum'}
 
     for k, v in list(checksum_map.items()):
-        gf_result = gf.checksum_device(k, '/dev/sda').stdout.strip()
+        gf_result = gf.checksum_device(k, '/dev/sda').stdout_text.strip()
         logging.debug(gf_result.split('\n')[-1])
         run_result = process.run("%s %s" % (v, params.get("image_path")),
-                                 ignore_status=True, shell=True).stdout.split()[0]
+                                 ignore_status=True, shell=True).stdout_text.split()[0]
         logging.debug(run_result)
         if gf_result.split('\n')[-1] != run_result and params.get("image_format") == 'raw':
             gf.close_session()
             test.fail("checksum failed.")
 
     gf_result = gf.checksum_device('perfect', '/dev/sda')
-    logging.debug(gf_result.stdout.strip())
+    logging.debug(gf_result.stdout_text.strip())
     if gf_result.exit_status == 0:
         gf.close_session()
         test.fail("checksum-device failed.")
@@ -692,14 +692,14 @@ def test_checksums_out(test, vm, params):
     gf.download('/test/subdir/file_elf', '/tmp/file_elf')
     gf.download('/test/file_ascii', '/tmp/file_ascii')
     for k, v in list(checksum_map.items()):
-        gf_result = gf.checksums_out(k, '/test', '/tmp/sumsfile').stdout.strip()
-        run_result = process.run("cat /tmp/sumsfile", shell=True).stdout.split()
+        gf_result = gf.checksums_out(k, '/test', '/tmp/sumsfile').stdout_text.strip()
+        run_result = process.run("cat /tmp/sumsfile", shell=True).stdout_text.split()
         if k == 'crc':
             run_result[2] = os.path.basename(run_result[2])
             run_result[5] = os.path.basename(run_result[5])
             guest_res = dict(list(zip(run_result[2::3], run_result[0::3])))
             run_result = process.run("%s /tmp/file_elf /tmp/file_ascii" % v,
-                                     ignore_status=True, shell=True).stdout.split()
+                                     ignore_status=True, shell=True).stdout_text.split()
             run_result[2] = os.path.basename(run_result[2])
             run_result[5] = os.path.basename(run_result[5])
             host_res = dict(list(zip(run_result[2::3], run_result[0::3])))
@@ -708,7 +708,7 @@ def test_checksums_out(test, vm, params):
             run_result[3] = os.path.basename(run_result[3])
             guest_res = dict(list(zip(run_result[1::2], run_result[0::2])))
             run_result = process.run("%s /tmp/file_elf /tmp/file_ascii" % v,
-                                     ignore_status=True, shell=True).stdout.split()
+                                     ignore_status=True, shell=True).stdout_text.split()
             run_result[1] = os.path.basename(run_result[1])
             run_result[3] = os.path.basename(run_result[3])
             host_res = dict(list(zip(run_result[1::2], run_result[0::2])))
@@ -717,7 +717,7 @@ def test_checksums_out(test, vm, params):
             test.fail("checksum failed.")
 
     gf_result = gf.checksums_out('perfect', '/test', '/tmp/sumsfile')
-    logging.debug(gf_result.stdout.strip())
+    logging.debug(gf_result.stdout_text.strip())
     if gf_result.exit_status == 0:
         gf.close_session()
         test.fail("checksums-out failed.")
@@ -744,17 +744,17 @@ def test_equal(test, vm, params):
     mount_point = params.get("mount_point")
     gf.mount(mount_point, '/')
 
-    gf_result = gf.equal('/file_ops/file_ascii', '/file_ops/file_ascii_long').stdout.strip()
+    gf_result = gf.equal('/file_ops/file_ascii', '/file_ops/file_ascii_long').stdout_text.strip()
     if gf_result != 'false':
         gf.close_session()
         test.fail("equal failed.")
 
-    gf_result = gf.equal('/file_ops/file_ascii', '/file_ops/file_elf').stdout.strip()
+    gf_result = gf.equal('/file_ops/file_ascii', '/file_ops/file_elf').stdout_text.strip()
     if gf_result != 'false':
         gf.close_session()
         test.fail("equal failed.")
 
-    gf_result = gf.equal('/file_ops/file_ascii', '/file_ops/file_ascii_softlink').stdout.strip()
+    gf_result = gf.equal('/file_ops/file_ascii', '/file_ops/file_ascii_softlink').stdout_text.strip()
     if gf_result != 'true':
         gf.close_session()
         test.fail("equal failed.")
@@ -784,34 +784,34 @@ def test_fill(test, vm, params):
     gf_result = gf.download('/newfile', '/tmp/newfile')
     gf_result = gf.rm('/newfile')
 
-    run_result = process.run("for((i=0;i<100;i++)); do echo -n '----------'; done > /tmp/tmp", shell=True).stdout.split()
-    run_result = process.run("cmp /tmp/newfile /tmp/tmp", shell=True).stdout.strip()
+    run_result = process.run("for((i=0;i<100;i++)); do echo -n '----------'; done > /tmp/tmp", shell=True).stdout_text.split()
+    run_result = process.run("cmp /tmp/newfile /tmp/tmp", shell=True).stdout_text.strip()
     if run_result != '':
         gf.close_session()
         test.fail("fill failed.")
 
     gf_result = gf.fill('066', 10000000, '/newtest')
-    gf_result = gf.strings('/newtest').stdout.strip()
+    gf_result = gf.strings('/newtest').stdout_text.strip()
     if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         test.fail("fill failed.")
 
-    gf_result = gf.head('/newtest').stdout.strip()
+    gf_result = gf.head('/newtest').stdout_text.strip()
     if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         test.fail("fill failed.")
 
-    gf_result = gf.head_n(100000, '/newtest').stdout.strip()
+    gf_result = gf.head_n(100000, '/newtest').stdout_text.strip()
     if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         test.fail("fill failed.")
 
-    gf_result = gf.tail('/newtest').stdout.strip()
+    gf_result = gf.tail('/newtest').stdout_text.strip()
     if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         test.fail("fill failed.")
 
-    gf_result = gf.pread('/newtest', 10000000, 0).stdout.strip()
+    gf_result = gf.pread('/newtest', 10000000, 0).stdout_text.strip()
     if 'count is too large for the protocol' not in gf_result:
         gf.close_session()
         test.fail("fill failed.")
@@ -840,7 +840,7 @@ def test_fill_dir(test, vm, params):
     fill_num = random.randint(0, 99)
     gf_result = gf.mkdir('/fill/')
     gf_result = gf.fill_dir('/fill/', fill_num)
-    gf_result = gf.ls('/fill/').stdout.strip()
+    gf_result = gf.ls('/fill/').stdout_text.strip()
 
     cmp_result = ''
     for i in range(fill_num):
@@ -877,39 +877,39 @@ def test_fill_pattern(test, vm, params):
     gf_result = gf.download('/newfile', '/tmp/newfile')
     gf_result = gf.rm('/newfile')
 
-    run_result = process.run("for((i=0;i<125;i++)); do echo -n 'abcdefgh'; done > /tmp/tmp", shell=True).stdout.split()
-    run_result = process.run("cmp /tmp/newfile /tmp/tmp", shell=True).stdout.strip()
+    run_result = process.run("for((i=0;i<125;i++)); do echo -n 'abcdefgh'; done > /tmp/tmp", shell=True).stdout_text.split()
+    run_result = process.run("cmp /tmp/newfile /tmp/tmp", shell=True).stdout_text.strip()
     if run_result != '':
         gf.close_session()
         test.fail("fill-pattern failed.")
 
     gf_result = gf.fill_pattern('abcdef', 10000000, '/newtest')
-    gf_result = gf.hexdump('/newtest').stdout.strip()
+    gf_result = gf.hexdump('/newtest').stdout_text.strip()
     if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         test.fail("fill-pattern failed.")
 
-    gf_result = gf.strings('/newtest').stdout.strip()
+    gf_result = gf.strings('/newtest').stdout_text.strip()
     if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         test.fail("fill-pattern failed.")
 
-    gf_result = gf.head('/newtest').stdout.strip()
+    gf_result = gf.head('/newtest').stdout_text.strip()
     if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         test.fail("fill-pattern failed.")
 
-    gf_result = gf.head_n(100000, '/newtest').stdout.strip()
+    gf_result = gf.head_n(100000, '/newtest').stdout_text.strip()
     if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         test.fail("fill-pattern failed.")
 
-    gf_result = gf.tail('/newtest').stdout.strip()
+    gf_result = gf.tail('/newtest').stdout_text.strip()
     if 'maybe the reply exceeds the maximum message size in the protocol?' not in gf_result:
         gf.close_session()
         test.fail("fill-pattern failed.")
 
-    gf_result = gf.pread('/newtest', 10000000, 0).stdout.strip()
+    gf_result = gf.pread('/newtest', 10000000, 0).stdout_text.strip()
     if 'count is too large for the protocol' not in gf_result:
         gf.close_session()
         test.fail("fill-pattern failed.")
@@ -935,15 +935,15 @@ def test_head(test, vm, params):
     mount_point = params.get("mount_point")
     gf.mount(mount_point, '/')
 
-    gf_result = gf.head('/file_ops/file_ascii').stdout.strip()
+    gf_result = gf.head('/file_ops/file_ascii').stdout_text.strip()
     if len(gf_result) != 253:
         gf.close_session()
         test.fail("head failed.")
-    gf_result = gf.head_n(3, '/file_ops/file_ascii').stdout.strip()
+    gf_result = gf.head_n(3, '/file_ops/file_ascii').stdout_text.strip()
     if len(gf_result) != 73:
         gf.close_session()
         test.fail("head failed.")
-    gf_result = gf.head_n(1000, '/file_ops/file_ascii').stdout.strip()
+    gf_result = gf.head_n(1000, '/file_ops/file_ascii').stdout_text.strip()
     if len(gf_result) != 652:
         gf.close_session()
         test.fail("head failed.")
@@ -981,14 +981,14 @@ def test_hexdump(test, vm, params):
     mount_point = params.get("mount_point")
     gf.mount(mount_point, '/')
 
-    gf_result = gf.hexdump('/file_ops/file_ascii').stdout.strip()
+    gf_result = gf.hexdump('/file_ops/file_ascii').stdout_text.strip()
     m = hashlib.md5()
     m.update(gf_result)
     logging.debug(m.hexdigest())
     if m.hexdigest() != '3ca9739a70e246745ee6bb55e11f755b':
         gf.close_session()
         test.fail("hexdump failed.")
-    gf_result = gf.hexdump('/file_ops/file_tgz').stdout.strip()
+    gf_result = gf.hexdump('/file_ops/file_tgz').stdout_text.strip()
     m = hashlib.md5()
     m.update(gf_result)
     logging.debug(m.hexdigest())
@@ -1017,7 +1017,7 @@ def test_more(test, vm, params):
     mount_point = params.get("mount_point")
     gf.mount(mount_point, '/')
 
-    gf_result = gf.more('/file_ops/file_ascii').stdout.strip()
+    gf_result = gf.more('/file_ops/file_ascii').stdout_text.strip()
     if len(gf_result) != 652:
         gf.close_session()
         test.fail("more failed.")
@@ -1044,12 +1044,12 @@ def test_pread(test, vm, params):
     gf.mount(mount_point, '/')
 
     # inner cmd will delete the last none empty line
-    gf_result = gf.pread('/file_ops/file_ascii', 11, 80).stdout
+    gf_result = gf.pread('/file_ops/file_ascii', 11, 80).stdout_text
     if len(gf_result) != 11:
         gf.close_session()
         test.fail("pread failed.")
 
-    gf_result = gf.pread('/file_ops/file_ascii', 1000, 0).stdout.strip()
+    gf_result = gf.pread('/file_ops/file_ascii', 1000, 0).stdout_text.strip()
     if len(gf_result) != 652:
         gf.close_session()
         test.fail("pread failed.")

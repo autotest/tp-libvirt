@@ -106,7 +106,7 @@ def test_list_without_mount(test, vm, params):
     if list_df_result.exit_status == 0:
         test.fail("Df successfully unexpected.")
     else:
-        if not re.search("call.*mount.*first", list_df_result.stdout):
+        if not re.search("call.*mount.*first", list_df_result.stdout_text):
             test.fail("Unknown error.")
     logging.info("Df failed as expected.")
 
@@ -141,7 +141,7 @@ def test_list_without_launch(test, vm, params):
         gf.close_session()
         test.fail("List filesystems successfully")
     else:
-        if not re.search("call\slaunch\sbefore", list_fs_result.stdout):
+        if not re.search("call\slaunch\sbefore", list_fs_result.stdout_text):
             gf.close_session()
             test.fail("Unknown error.")
 
@@ -152,7 +152,7 @@ def test_list_without_launch(test, vm, params):
         gf.close_session()
         test.fail("List partitions successfully")
     else:
-        if not re.search("call\slaunch\sbefore", list_part_result.stdout):
+        if not re.search("call\slaunch\sbefore", list_part_result.stdout_text):
             gf.close_session()
             test.fail("Unknown error.")
 
@@ -163,7 +163,7 @@ def test_list_without_launch(test, vm, params):
         gf.close_session()
         test.fail("List devices successfully")
     else:
-        if not re.search("call\slaunch\sbefore", list_dev_result.stdout):
+        if not re.search("call\slaunch\sbefore", list_dev_result.stdout_text):
             gf.close_session()
             test.fail("Unknown error.")
 
@@ -174,7 +174,7 @@ def test_list_without_launch(test, vm, params):
     if mount_result.exit_status == 0:
         test.fail("Mount filesystem successfully")
     else:
-        if not re.search("call\slaunch\sbefore", mount_result.stdout):
+        if not re.search("call\slaunch\sbefore", mount_result.stdout_text):
             test.fail("Unknown error.")
 
     logging.info("Test end as expected.")

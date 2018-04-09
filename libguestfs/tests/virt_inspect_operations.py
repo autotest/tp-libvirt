@@ -53,7 +53,7 @@ def test_inspect_get(test, vm, params):
         vm_release = vm_info.get("release")
         if vm_release is None:
             fail_info.append("Get release with inspector failed.")
-        elif not release_result.stdout.strip() == vm_release:
+        elif not release_result.stdout_text.strip() == vm_release:
             fail_info.append("release do not match.")
         else:
             logging.info("Compare release info successfully.")
@@ -77,7 +77,7 @@ def test_inspect_get(test, vm, params):
     if len(vm_filesystems) == 0:
         fail_info.append("Get filesystems with inspector failed.")
     else:
-        list_fs_lines = list_fs_result.stdout.splitlines()
+        list_fs_lines = list_fs_result.stdout_text.splitlines()
         # kick non-filesystem line out
         for line in list_fs_lines:
             if re.search("filesystem", line):
@@ -114,7 +114,7 @@ def test_inspect_get(test, vm, params):
             vm_version = "%s.%s" % (vm_major_version, vm_minor_version)
         else:
             vm_version = vm_major_version
-        if not re.search(vm_version, release_result.stdout):
+        if not re.search(vm_version, release_result.stdout_text):
             fail_info.append("Version do not match:%s" % vm_version)
         logging.info("Get version successfully")
 
@@ -126,7 +126,7 @@ def test_inspect_get(test, vm, params):
         for mountpoint in vm_mountpoints:
             if re.search("mapper", mountpoint):
                 mountpoint = mountpoint.split('-')[-1]
-            if not re.search(mountpoint, df_result.stdout):
+            if not re.search(mountpoint, df_result.stdout_text):
                 fail_info.append("Mountpoint %s do not match." % mountpoint)
         logging.info("Get mountpoints successfully:%s", vm_mountpoints)
 
@@ -144,7 +144,7 @@ def test_inspect_get(test, vm, params):
         if is_redhat:
             release_output = session.cmd_output("cat /etc/redhat-release")
             logging.debug(release_output)
-            if release_output.strip() != release_result.stdout.strip():
+            if release_output.strip() != release_result.stdout_text.strip():
                 fail_info.append("release in vm do not match.")
         hostname_output = session.cmd_output("hostname")
         logging.debug("VM hostname:%s", hostname_output)

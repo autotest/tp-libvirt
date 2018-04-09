@@ -23,7 +23,7 @@ def prepare_attached_device(test, guestfs, device):
         guestfs.close_session()
         test.fail("List devices failed")
     else:
-        if not re.search(device, list_dev_result.stdout):
+        if not re.search(device, list_dev_result.stdout_text):
             guestfs.close_session()
             test.fail("Did not find additional device.")
     logging.info("List devices successfully.")
@@ -46,7 +46,7 @@ def test_blockdev_info(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
     if utils_test.libguestfs.primary_disk_virtio(vm):
         device_in_vm = add_device
     else:
@@ -67,7 +67,7 @@ def test_blockdev_info(test, vm, params):
     if getss_result.exit_status:
         gf.close_session()
         test.fail("Get sectionsize failed")
-    sectorsize = str(getss_result.stdout.strip())
+    sectorsize = str(getss_result.stdout_text.strip())
     logging.info("Get sectionsize successfully.")
 
     # Get total size of device in 512-byte sectors
@@ -76,7 +76,7 @@ def test_blockdev_info(test, vm, params):
     if getsz_result.exit_status:
         gf.close_session()
         test.fail("Get device size failed.")
-    total_size = str(getsz_result.stdout.strip())
+    total_size = str(getsz_result.stdout_text.strip())
     logging.info("Get device size successfully.")
 
     # Get blocksize of device
@@ -85,7 +85,7 @@ def test_blockdev_info(test, vm, params):
     if getbsz_result.exit_status:
         gf.close_session()
         test.fail("Get blocksize failed.")
-    blocksize = str(getbsz_result.stdout.strip())
+    blocksize = str(getbsz_result.stdout_text.strip())
     logging.info("Get blocksize successfully.")
 
     # Get total size in bytes
@@ -94,7 +94,7 @@ def test_blockdev_info(test, vm, params):
     logging.debug(getsize64_result)
     if getsize64_result.exit_status:
         test.fail("Get device size in bytes failed.")
-    total_size_in_bytes = str(getsize64_result.stdout.strip())
+    total_size_in_bytes = str(getsize64_result.stdout_text.strip())
     logging.info("Get device size in bytes successfully")
 
     logging.info("Block device information in guestfish:\n"
@@ -161,7 +161,7 @@ def test_blockdev_ro(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -188,7 +188,7 @@ def test_blockdev_ro(test, vm, params):
         test.fail("Get readonly status failed.")
     logging.info("Get readonly status successfully.")
 
-    if getro_result.stdout.strip() == "true":
+    if getro_result.stdout_text.strip() == "true":
         logging.info("Partition %s is readonly already.", part_name)
     else:
         setro_result = gf.blockdev_setro(part_name)
@@ -201,7 +201,7 @@ def test_blockdev_ro(test, vm, params):
         # Check readonly status
         getro_result = gf.blockdev_getro(part_name)
         logging.debug(getro_result)
-        if getro_result.stdout.strip() == "false":
+        if getro_result.stdout_text.strip() == "false":
             gf.close_session()
             test.fail("Check readonly status failed.")
 
@@ -220,7 +220,7 @@ def test_blockdev_ro(test, vm, params):
         gf.close_session()
         test.fail("Df failed")
     else:
-        if not re.search(part_name, list_df_result.stdout):
+        if not re.search(part_name, list_df_result.stdout_text):
             gf.close_session()
             test.fail("Did not find mounted device.")
     logging.info("Df successfully.")
@@ -248,7 +248,7 @@ def test_blockdev_rw(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
     if utils_test.libguestfs.primary_disk_virtio(vm):
         device_in_vm = add_device
     else:
@@ -280,7 +280,7 @@ def test_blockdev_rw(test, vm, params):
         test.fail("Get readonly status failed.")
     logging.info("Get readonly status successfully.")
 
-    if getro_result.stdout.strip() == "true":
+    if getro_result.stdout_text.strip() == "true":
         logging.info("Paritition %s is readonly already.", part_name)
     else:
         setro_result = gf.blockdev_setro(part_name)
@@ -293,7 +293,7 @@ def test_blockdev_rw(test, vm, params):
         # Check readonly status
         getro_result = gf.blockdev_getro(part_name)
         logging.debug(getro_result)
-        if getro_result.stdout.strip() == "false":
+        if getro_result.stdout_text.strip() == "false":
             gf.close_session()
             test.fail("Check readonly status failed.")
 
@@ -308,7 +308,7 @@ def test_blockdev_rw(test, vm, params):
     # Check read-write status
     getro_result = gf.blockdev_getro(part_name)
     logging.debug(getro_result)
-    if getro_result.stdout.strip() == "true":
+    if getro_result.stdout_text.strip() == "true":
         gf.close_session()
         test.fail("Check read-write status failed.")
 
@@ -327,7 +327,7 @@ def test_blockdev_rw(test, vm, params):
         gf.close_session()
         test.fail("Df failed")
     else:
-        if not re.search(part_name, list_df_result.stdout):
+        if not re.search(part_name, list_df_result.stdout_text):
             gf.close_session()
             test.fail("Did not find mounted device.")
     logging.info("Df successfully.")

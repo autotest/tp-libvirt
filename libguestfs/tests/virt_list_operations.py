@@ -18,7 +18,7 @@ def run(test, params, env):
 
     # List filesystems with virt-list-filesystems
     list_fs_result = lgf.virt_list_filesystems(vm_name, debug=True)
-    filesystems1 = list_fs_result.stdout.splitlines()
+    filesystems1 = list_fs_result.stdout_text.splitlines()
     if list_fs_result.exit_status:
         test.fail("List filesystems with virt-list-filesystems "
                   "failed:%s" % list_fs_result)
@@ -26,10 +26,10 @@ def run(test, params, env):
 
     # List filesystems with virt-filesystems
     virt_fs_result = lgf.virt_filesystems(vm_name, debug=True)
-    filesystems2 = virt_fs_result.stdout.splitlines()
+    filesystems2 = virt_fs_result.stdout_text.splitlines()
     if virt_fs_result.exit_status:
         test.fail("List filesystems with virt-filesystems failed:"
-                  "%s" % virt_fs_result.stdout.strip())
+                  "%s" % virt_fs_result.stdout_text.strip())
     logging.info("List filesystems successfully.")
 
     for fs in filesystems1:
@@ -38,7 +38,7 @@ def run(test, params, env):
 
     # List partitions
     list_part_result = lgf.virt_list_partitions(vm_name, debug=True)
-    partitions = list_part_result.stdout.splitlines()
+    partitions = list_part_result.stdout_text.splitlines()
     if list_part_result.exit_status:
         test.fail("List partitions failed:%s" % list_part_result)
     logging.info("List partitions successfully.")

@@ -42,7 +42,7 @@ def test_df(test, vm, params):
 
     gf.run()
     gf.do_mount("/")
-    result = gf.df().stdout.strip()
+    result = gf.df().stdout_text.strip()
 
     gf.close_session()
 
@@ -71,7 +71,7 @@ def test_df_h(test, vm, params):
 
     gf.run()
     gf.do_mount("/")
-    result = gf.df_h().stdout.strip()
+    result = gf.df_h().stdout_text.strip()
 
     gf.close_session()
 
@@ -107,9 +107,9 @@ def test_dd(test, vm, params):
     gf.write("/src.txt", "Hello World")
     gf.dd("/src.txt", "/dest.txt")
 
-    src_size = gf.filesize("/src.txt").stdout.strip()
-    dest_size = gf.filesize("/dest.txt").stdout.strip()
-    dest_content = gf.cat("/dest.txt").stdout.strip()
+    src_size = gf.filesize("/src.txt").stdout_text.strip()
+    dest_size = gf.filesize("/dest.txt").stdout_text.strip()
+    dest_content = gf.cat("/dest.txt").stdout_text.strip()
 
     gf.close_session()
 
@@ -137,11 +137,11 @@ def test_copy_size(test, vm, params):
     gf.do_mount("/")
 
     gf.write("/src.txt", "Hello World")
-    src_size = gf.filesize("/src.txt").stdout.strip()
+    src_size = gf.filesize("/src.txt").stdout_text.strip()
 
     gf.copy_size("/src.txt", "/dest.txt", src_size)
-    dest_size = gf.filesize("/dest.txt").stdout.strip()
-    dest_content = gf.cat("/dest.txt").stdout.strip()
+    dest_size = gf.filesize("/dest.txt").stdout_text.strip()
+    dest_content = gf.cat("/dest.txt").stdout_text.strip()
 
     gf.close_session()
 
@@ -169,7 +169,7 @@ def test_download(test, vm, params):
     gf.do_mount("/")
 
     gf.write("/src.txt", "Hello World")
-    src_size = gf.filesize("/src.txt").stdout.strip()
+    src_size = gf.filesize("/src.txt").stdout_text.strip()
 
     dest = "%s/dest.txt" % data_dir.get_tmp_dir()
     gf.download("/src.txt", "%s" % dest)
@@ -204,7 +204,7 @@ def test_download_offset(test, vm, params):
     string = "Hello World"
 
     gf.write("/src.txt", string)
-    src_size = gf.filesize("/src.txt").stdout.strip()
+    src_size = gf.filesize("/src.txt").stdout_text.strip()
 
     dest = "%s/dest.txt" % data_dir.get_tmp_dir()
     gf.download_offset("/src.txt", "%s" % dest, 0, len(string))
@@ -241,7 +241,7 @@ def test_upload(test, vm, params):
         fd.write("Hello World")
 
     gf.upload(filename, "/dest.txt")
-    content = gf.cat("/dest.txt").stdout.strip()
+    content = gf.cat("/dest.txt").stdout_text.strip()
     gf.close_session()
     process.getoutput("rm %s" % filename)
 
@@ -273,7 +273,7 @@ def test_upload_offset(test, vm, params):
     process.getoutput("echo %s > %s" % (string, filename))
 
     gf.upload_offset(filename, "/dest.txt", 0)
-    content = gf.cat("/dest.txt").stdout.strip()
+    content = gf.cat("/dest.txt").stdout_text.strip()
     gf.close_session()
     process.getoutput("rm %s" % filename)
 
@@ -302,7 +302,7 @@ def test_fallocate(test, vm, params):
 
     # preallocates a new file
     gf.fallocate("/new", 100)
-    size = gf.filesize("/new").stdout.strip()
+    size = gf.filesize("/new").stdout_text.strip()
 
     if int(size) != 100:
         gf.close_session()
@@ -312,8 +312,8 @@ def test_fallocate(test, vm, params):
     string = "Hello World"
     gf.write("/exist", "Hello world")
     gf.fallocate("/exist", 200)
-    size = gf.filesize("/exist").stdout.strip()
-    content = gf.cat("/exist").stdout.strip()
+    size = gf.filesize("/exist").stdout_text.strip()
+    content = gf.cat("/exist").stdout_text.strip()
     gf.close_session()
 
     if content != "":
@@ -343,7 +343,7 @@ def test_fallocate64(test, vm, params):
 
     # preallocates a new file
     gf.fallocate("/new", 100)
-    size = gf.filesize("/new").stdout.strip()
+    size = gf.filesize("/new").stdout_text.strip()
 
     if int(size) != 100:
         gf.close_session()
@@ -353,8 +353,8 @@ def test_fallocate64(test, vm, params):
     string = "Hello World"
     gf.write("/exist", "Hello world")
     gf.fallocate64("/exist", 200)
-    size = gf.filesize("/exist").stdout.strip()
-    content = gf.cat("/exist").stdout.strip()
+    size = gf.filesize("/exist").stdout_text.strip()
+    content = gf.cat("/exist").stdout_text.strip()
     gf.close_session()
 
     if content != "":

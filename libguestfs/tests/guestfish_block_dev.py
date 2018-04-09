@@ -76,11 +76,11 @@ def test_blockdev_set_get_ro_rw(test, vm, params):
     gf.run()
     pv_name = params.get("pv_name")
 
-    gf_result.append(gf.blockdev_getro(pv_name).stdout.strip())
+    gf_result.append(gf.blockdev_getro(pv_name).stdout_text.strip())
     gf.blockdev_setro(pv_name)
-    gf_result.append(gf.blockdev_getro(pv_name).stdout.strip())
+    gf_result.append(gf.blockdev_getro(pv_name).stdout_text.strip())
     gf.blockdev_setrw(pv_name)
-    gf_result.append(gf.blockdev_getro(pv_name).stdout.strip())
+    gf_result.append(gf.blockdev_getro(pv_name).stdout_text.strip())
 
     try:
         if gf_result != expect_result:
@@ -105,7 +105,7 @@ def test_blockdev_getsz(test, vm, params):
         gf.add_domain(vm_name, readonly=readonly)
     gf.run()
     pv_name = params.get("pv_name")
-    gf_result = gf.blockdev_getsz(pv_name).stdout.strip()
+    gf_result = gf.blockdev_getsz(pv_name).stdout_text.strip()
     gf.close_session()
 
     get_size = (int(gf_result) * 512)
@@ -135,7 +135,7 @@ def test_blockdev_getbsz(test, vm, params):
         gf.add_domain(vm_name, readonly=readonly)
     gf.run()
     pv_name = params.get("pv_name")
-    gf_result = gf.blockdev_getbsz(pv_name).stdout.strip()
+    gf_result = gf.blockdev_getbsz(pv_name).stdout_text.strip()
     gf.close_session()
 
     logging.debug("Block size of %s is %d" % (pv_name, int(gf_result)))
@@ -160,7 +160,7 @@ def test_blockdev_getss(test, vm, params):
         gf.add_domain(vm_name, readonly=readonly)
     gf.run()
     pv_name = params.get("pv_name")
-    gf_result = gf.blockdev_getss(pv_name).stdout.strip()
+    gf_result = gf.blockdev_getss(pv_name).stdout_text.strip()
     gf.close_session()
 
     logging.debug("Size of %s is %d" % (pv_name, int(gf_result)))
@@ -185,7 +185,7 @@ def test_blockdev_getsize64(test, vm, params):
         gf.add_domain(vm_name, readonly=readonly)
     gf.run()
     pv_name = params.get("pv_name")
-    gf_result = gf.blockdev_getsize64(pv_name).stdout.strip()
+    gf_result = gf.blockdev_getsize64(pv_name).stdout_text.strip()
     gf.close_session()
 
     get_size = int(gf_result)
@@ -242,14 +242,14 @@ def test_canonical_device_name(test, vm, params):
     gf.run()
     pv_name = params.get("pv_name")
 
-    gf_result = gf.list_filesystems().stdout.strip()
+    gf_result = gf.list_filesystems().stdout_text.strip()
     partition_name = gf_result.split(":")[0]
-    gf_result = gf.is_lv(partition_name).stdout.strip()
+    gf_result = gf.is_lv(partition_name).stdout_text.strip()
     if gf_result == "true":
         gf_result = []
         vg, lv = partition_name.split("/")[-2:]
         irregularity = '/dev/mapper/' + vg + '-' + lv
-        gf_result.append(gf.canonical_device_name(irregularity).stdout.strip())
+        gf_result.append(gf.canonical_device_name(irregularity).stdout_text.strip())
         logging.debug("canonical device name is %s" % gf_result)
     else:
         part = partition_name.split("/")
@@ -257,7 +257,7 @@ def test_canonical_device_name(test, vm, params):
         for i in ['h', 'v']:
             part[-1] = i + part[-1][1:]
             irregularity = "/".join(part)
-            s = gf.canonical_device_name(irregularity).stdout.strip()
+            s = gf.canonical_device_name(irregularity).stdout_text.strip()
             gf_result.append(s)
         logging.debug("canonical device name is %s" % gf_result)
 
@@ -290,7 +290,7 @@ def test_device_index(test, vm, params):
     result = {'/dev/sda': '0', '/dev/sdb': '1', '/dev/sdc': '2'}
     try:
         for k, v in list(result.items()):
-            index = gf.device_index(k).stdout.strip()
+            index = gf.device_index(k).stdout_text.strip()
             if index != v:
                 test.fail("Can not get the correct result.")
     finally:
@@ -318,7 +318,7 @@ def test_list_devices(test, vm, params):
 
     result = ['/dev/sda', '/dev/sdb', '/dev/sdc']
     try:
-        devices = gf.list_devices().stdout.strip()
+        devices = gf.list_devices().stdout_text.strip()
         logging.debug("%s" % devices)
     finally:
         gf.close_session()
@@ -354,7 +354,7 @@ def test_disk_format(test, vm, params):
         params['image_format'] = i
         image = qemu_storage.QemuImg(params, image_dir, '')
         image_path, _ = image.create(params)
-        result = gf.disk_format(image_path).stdout.strip()
+        result = gf.disk_format(image_path).stdout_text.strip()
         os.remove(image_path)
 
         if result != i:
@@ -381,7 +381,7 @@ def test_max_disks(test, vm, params):
         vm_name = params.get("main_vm")
         gf.add_domain(vm_name, readonly=readonly)
     gf.run()
-    max_disk = gf.max_disks().stdout.strip()
+    max_disk = gf.max_disks().stdout_text.strip()
     gf.close_session()
 
     logging.debug("The maximum number of disks is %s" % max_disk)
@@ -405,7 +405,7 @@ def test_nr_devices(test, vm, params):
         vm_name = params.get("main_vm")
         gf.add_domain(vm_name, readonly=readonly)
     gf.run()
-    device_num = gf.nr_devices().stdout.strip()
+    device_num = gf.nr_devices().stdout_text.strip()
     gf.close_session()
 
     logging.debug("The number of device is %s" % device_num)
@@ -431,7 +431,7 @@ def test_list_partitions(test, vm, params):
     gf.run()
 
     result = gf.list_partitions()
-    devices = result.stdout.strip()
+    devices = result.stdout_text.strip()
 
     if result.exit_status:
         gf.close_session()
@@ -471,7 +471,7 @@ def test_disk_has_backing_file(test, vm, params):
     image_format = params["image_format"]
     image_path = params.get("image_path")
 
-    result = gf.disk_has_backing_file(image_path).stdout.strip()
+    result = gf.disk_has_backing_file(image_path).stdout_text.strip()
     if result != "false":
         gf.close_session()
         test.fail("The disk has no backing file")
@@ -484,7 +484,7 @@ def test_disk_has_backing_file(test, vm, params):
     image.base_format = None
     image_path, _ = image.create(params)
 
-    result = gf.disk_has_backing_file(image_path).stdout.strip()
+    result = gf.disk_has_backing_file(image_path).stdout_text.strip()
     if result != "true":
         gf.close_session()
         test.fail("The disk has backing file")
@@ -513,7 +513,7 @@ def test_disk_virtual_size(test, vm, params):
 
     image_path = params.get("image_path")
     disk_size = int(os.path.getsize(image_path))
-    result = int(gf.disk_virtual_size(image_path).stdout.strip())
+    result = int(gf.disk_virtual_size(image_path).stdout_text.strip())
 
     power = {'G': 1024 ** 3, "M": 1024 ** 2, "K": 1024}
     image_size = params["image_size"]
@@ -566,9 +566,9 @@ def test_scrub_device(test, vm, params):
     gf.part_disk(pv_name, 'msdos')
     gf.mkfs('ext4', part_name)
 
-    device_info = gf.file(pv_name).stdout.strip()
+    device_info = gf.file(pv_name).stdout_text.strip()
     logging.debug(device_info)
-    part_info = gf.file(part_name).stdout.strip()
+    part_info = gf.file(part_name).stdout_text.strip()
     logging.debug(part_info)
 
     if len(device_info) < 20 and len(part_info) < 20:
@@ -578,13 +578,13 @@ def test_scrub_device(test, vm, params):
     # scrub partition, device info should be kept
     gf.scrub_device(part_name)
 
-    device_info_new = gf.file(pv_name).stdout.strip()
+    device_info_new = gf.file(pv_name).stdout_text.strip()
     logging.debug(device_info_new)
     if device_info_new != device_info:
         gf.close_session()
         test.fail("Device info should be kept")
 
-    part_info_new = gf.file(part_name).stdout.strip()
+    part_info_new = gf.file(part_name).stdout_text.strip()
     logging.debug(part_info_new)
     if part_info_new != "data":
         gf.close_session()
@@ -593,7 +593,7 @@ def test_scrub_device(test, vm, params):
     # scrub the whole device
     gf.scrub_device(pv_name)
 
-    device_info_new = gf.file(pv_name).stdout.strip()
+    device_info_new = gf.file(pv_name).stdout_text.strip()
     logging.debug(device_info_new)
     if device_info_new != 'data':
         gf.close_session()
@@ -623,14 +623,14 @@ def test_scrub_file(test, vm, params):
 
     file_path = "/test.log"
     content = "hello world"
-    gf.write(file_path, content).stdout.strip()
-    ret = gf.cat(file_path).stdout.strip()
+    gf.write(file_path, content).stdout_text.strip()
+    ret = gf.cat(file_path).stdout_text.strip()
     if ret != content:
         gf.close_session()
         test.fail("File content is not correct")
 
     gf.scrub_file(file_path)
-    ret = gf.exists(file_path).stdout.strip()
+    ret = gf.exists(file_path).stdout_text.strip()
     if ret != "false":
         gf.close_session()
         test.fail("scrub file failed")
@@ -680,7 +680,7 @@ def test_scrub_freespace(test, vm, params):
         gf.close_session()
         test.fail("scrub_freespace failed.")
 
-    result = gf.exists(dir_path).stdout.strip()
+    result = gf.exists(dir_path).stdout_text.strip()
     if result != "false":
         gf.close_session()
         test.fail("folder still exist, scrub_freespace failed.")
@@ -718,7 +718,7 @@ def test_md_test(test, vm, params):
 
     gf.run()
 
-    md = gf.list_md_devices().stdout.strip()
+    md = gf.list_md_devices().stdout_text.strip()
     if md:
         # close the existed md device
         gf.md_stop(md)
@@ -726,13 +726,13 @@ def test_md_test(test, vm, params):
     device = "'/dev/sda /dev/sdb /dev/sdc'"
     gf.md_create("md11", device, missingbitmap="0x4",
                  chunk=8192, level="raid6")
-    md = gf.list_md_devices().stdout.strip()
+    md = gf.list_md_devices().stdout_text.strip()
     logging.debug(md)
     if not md:
         gf.close_session()
         test.fail("Can not find the md device")
 
-    detail = gf.md_detail(md).stdout.strip()
+    detail = gf.md_detail(md).stdout_text.strip()
     logging.debug(detail)
     if "level: raid6" not in detail or "devname: md11" not in detail:
         gf.close_session()
@@ -742,12 +742,12 @@ def test_md_test(test, vm, params):
 
     gf.md_create("md21", device, nrdevices=2, spare=1,
                  chunk=8192, level="raid4")
-    md = gf.list_md_devices().stdout.strip()
+    md = gf.list_md_devices().stdout_text.strip()
     logging.debug(md)
     if not md:
         gf.close_session()
         test.fail("Can not find the md device")
-    stat = gf.md_stat(md).stdout.strip()
+    stat = gf.md_stat(md).stdout_text.strip()
     logging.debug(stat)
     for i in re.findall("\w+", device):
         if i not in stat:
@@ -797,7 +797,7 @@ def test_part_add(test, vm, params):
     gf.part_add(partname, 'p', 100001, 200000)
     gf.part_add(partname, 'e', 200001, 300000)
     gf.part_add(partname, 'l', 240000, 280000)
-    result = gf.part_list(partname).stdout.strip()
+    result = gf.part_list(partname).stdout_text.strip()
 
     partnum = result.count("part_num")
     if partnum != 4:
@@ -842,7 +842,7 @@ def test_part_del(test, vm, params):
     gf.part_init(partname, 'msdos')
     gf.part_add(partname, 'p', 2, 100000)
     gf.part_add(partname, 'p', 100001, 200000)
-    result = gf.part_list(partname).stdout.strip()
+    result = gf.part_list(partname).stdout_text.strip()
 
     partnum = result.count("part_num")
     if partnum != 2:
@@ -850,7 +850,7 @@ def test_part_del(test, vm, params):
         test.fail("partnum is %s, expect is 2" % partnum)
 
     gf.part_del(partname, 2)
-    result = gf.part_list(partname).stdout.strip()
+    result = gf.part_list(partname).stdout_text.strip()
 
     partnum = result.count("part_num")
     if partnum != 1:
@@ -895,7 +895,7 @@ def test_part_init(test, vm, params):
         gf.part_init(partname, i)
         gf.part_add(partname, 'p', 100, 100000)
         gf.part_add(partname, 'p', 100001, 200000)
-        result = gf.part_list(partname).stdout.strip()
+        result = gf.part_list(partname).stdout_text.strip()
 
         partnum = result.count("part_num")
         if partnum != 2:
@@ -929,7 +929,7 @@ def test_part_set_get_bootable(test, vm, params):
     if params['partition_types'] == "physical":
         for k, v in list(result.items()):
             gf.part_set_bootable(pv_name, partnum, k)
-            ret = gf.part_get_bootable(pv_name, 1).stdout.strip()
+            ret = gf.part_get_bootable(pv_name, 1).stdout_text.strip()
             if ret != v:
                 gf.close_session()
                 test.fail("Get the uncorrect status")
@@ -959,7 +959,7 @@ def test_part_set_get_mbr_id(test, vm, params):
         for i in ['1', '2', '3', '4']:
             for k, v in list(result.items()):
                 gf.part_set_mbr_id(pv_name, i, k)
-                ret = gf.part_get_mbr_id(pv_name, i).stdout.strip()
+                ret = gf.part_get_mbr_id(pv_name, i).stdout_text.strip()
                 if ret != v:
                     gf.close_session()
                     test.fail("Get the uncorrect mbr id")
@@ -987,14 +987,14 @@ def test_part_disk(test, vm, params):
 
     for ptype in ['msdos', 'gpt']:
         gf.part_disk(pv_name, ptype)
-        result = gf.part_list(pv_name).stdout.strip()
+        result = gf.part_list(pv_name).stdout_text.strip()
         num = re.findall(r'part_num: (\d)', result)
 
         if int(num[0]) != 1:
             gf.close_session()
             test.fail("partnum is %s, expect is 1" % num)
 
-        result = gf.part_get_parttype(pv_name).stdout.strip()
+        result = gf.part_get_parttype(pv_name).stdout_text.strip()
 
         if result != ptype:
             gf.close_session()
@@ -1024,8 +1024,8 @@ def test_part_to_dev(test, vm, params):
 
     for ptype in ['mbr', 'msdos', 'gpt', 'efi']:
         gf.part_disk(pv_name, ptype)
-        partname = gf.list_partitions().stdout.strip()
-        devname = gf.part_to_dev(partname).stdout.strip()
+        partname = gf.list_partitions().stdout_text.strip()
+        devname = gf.part_to_dev(partname).stdout_text.strip()
 
         if devname != pv_name:
             gf.close_session()
@@ -1056,9 +1056,9 @@ def test_part_to_partnum(test, vm, params):
     if params["partition_type"] == "physical":
         for ptype in ['mbr', 'msdos', 'gpt', 'efi']:
             gf.part_disk(pv_name, ptype)
-            partname = gf.list_partitions().stdout.strip()
+            partname = gf.list_partitions().stdout_text.strip()
             num = partname[-1]
-            devnum = gf.part_to_partnum(partname).stdout.strip()
+            devnum = gf.part_to_partnum(partname).stdout_text.strip()
 
             if devnum != num:
                 gf.close_session()
@@ -1096,7 +1096,7 @@ def test_sfdisk(test, vm, params):
 
     gf.part_init(pv_name, 'msdos')
     gf.sfdisk(pv_name, 0, 0, 0, lines)
-    ret = gf.sfdisk_l(pv_name).stdout.strip()
+    ret = gf.sfdisk_l(pv_name).stdout_text.strip()
 
     result = []
     for i in ret.split('\n'):
@@ -1137,7 +1137,7 @@ def test_sfdiskM(test, vm, params):
         lines = '"' + " ".join(partition) + '"'
 
         gf.sfdiskM(pv_name, lines)
-        result = gf.sfdisk_l(pv_name).stdout.strip()
+        result = gf.sfdisk_l(pv_name).stdout_text.strip()
         logging.debug(result)
 
         l = re.findall("/dev/sda[0-9]", result)
@@ -1173,7 +1173,7 @@ def test_sfdisk_N(test, vm, params):
         for i, v in enumerate(lines):
             gf.sfdisk_N(pv_name, i+1, 0, 0, 0, v)
 
-        ret = gf.sfdisk_l(pv_name).stdout.strip()
+        ret = gf.sfdisk_l(pv_name).stdout_text.strip()
 
         result = []
         for i in ret.split('\n'):
@@ -1209,7 +1209,7 @@ def test_sfdisk_disk_geometry(test, vm, params):
     gf.run()
 
     gf.part_init(pv_name, 'msdos')
-    result = gf.sfdisk_disk_geometry(pv_name).stdout.strip()
+    result = gf.sfdisk_disk_geometry(pv_name).stdout_text.strip()
 
     if not result:
         gf.close_session()
@@ -1237,7 +1237,7 @@ def test_sfdisk_kernel_geometry(test, vm, params):
     gf.run()
 
     gf.part_init(pv_name, 'msdos')
-    result = gf.sfdisk_kernel_geometry(pv_name).stdout.strip()
+    result = gf.sfdisk_kernel_geometry(pv_name).stdout_text.strip()
 
     if not result:
         gf.close_session()

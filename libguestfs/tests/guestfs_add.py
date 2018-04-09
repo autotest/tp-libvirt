@@ -62,7 +62,7 @@ def launch_disk(test, guestfs):
 
 def get_root(test, guestfs):
     getroot_result = guestfs.inspect_os()
-    roots_list = getroot_result.stdout.splitlines()
+    roots_list = getroot_result.stdout_text.splitlines()
     if getroot_result.exit_status or not len(roots_list):
         guestfs.close_session()
         test.fail("Get root failed:%s" % getroot_result)
@@ -168,7 +168,7 @@ def run(test, params, env):
         fail_info['cat_writed'] = ("Cat writed file failed:"
                                    "%s" % cat_result)
     else:
-        guestfs_writed_text = cat_result.stdout
+        guestfs_writed_text = cat_result.stdout_text
         if not re.search(content, guestfs_writed_text):
             fail_flag = 1
             fail_info['cat_writed'] = ("Catted text is not match with writed:"
@@ -183,7 +183,7 @@ def run(test, params, env):
     # Convert sdx in root to vdx for virtio system disk
     if primary_disk_virtio(vm):
         root = process.run("echo %s | sed -e 's/sd/vd/g'" % root,
-                           ignore_status=True, shell=True).stdout.strip()
+                           ignore_status=True, shell=True).stdout_text.strip()
     if login_to_check:
         try:
             vm.start()

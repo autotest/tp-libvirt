@@ -24,7 +24,7 @@ def prepare_attached_device(test, guestfs, device):
         guestfs.close_session()
         test.fail("List devices failed")
     else:
-        if not re.search(device, list_dev_result.stdout):
+        if not re.search(device, list_dev_result.stdout_text):
             guestfs.close_session()
             test.fail("Did not find additional device.")
     logging.info("List devices successfully.")
@@ -48,7 +48,7 @@ def test_create_vol_group(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -73,7 +73,7 @@ def test_create_vol_group(test, vm, params):
     if vgs_result.exit_status:
         test.fail("List volume groups failed.")
     else:
-        if not re.search(groupname, vgs_result.stdout):
+        if not re.search(groupname, vgs_result.stdout_text):
             test.fail("Can't get volume group %s." % groupname)
     logging.info("Got volume group %s", groupname)
 
@@ -117,7 +117,7 @@ def test_rename_vol_group(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -142,7 +142,7 @@ def test_rename_vol_group(test, vm, params):
         gf.close_session()
         test.fail("List volume groups failed.")
     else:
-        if not re.search(groupname, vgs_result.stdout):
+        if not re.search(groupname, vgs_result.stdout_text):
             gf.close_session()
             test.fail("Can't get volume group %s." % groupname)
     logging.info("Got volume group %s", groupname)
@@ -195,7 +195,7 @@ def test_remove_vol_group(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -220,7 +220,7 @@ def test_remove_vol_group(test, vm, params):
         gf.close_session()
         test.fail("List volume groups failed.")
     else:
-        if not re.search(groupname, vgs_result.stdout):
+        if not re.search(groupname, vgs_result.stdout_text):
             gf.close_session()
             test.fail("Can't get volume group %s." % groupname)
     logging.info("Got volume group %s", groupname)
@@ -238,7 +238,7 @@ def test_remove_vol_group(test, vm, params):
     if vgs_result.exit_status:
         test.fail("List volume groups failed.")
     else:
-        if re.search(groupname, vgs_result.stdout):
+        if re.search(groupname, vgs_result.stdout_text):
             test.fail("Are you sure volume group %s deleted "
                       "successfully?" % groupname)
     logging.info("Volume group %s did not deleted as expected!", groupname)
@@ -256,7 +256,7 @@ def test_create_volume(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -281,7 +281,7 @@ def test_create_volume(test, vm, params):
         gf.close_session()
         test.fail("List volume groups failed.")
     else:
-        if not re.search(groupname, vgs_result.stdout):
+        if not re.search(groupname, vgs_result.stdout_text):
             gf.close_session()
             test.fail("Can't get volume group %s." % groupname)
     logging.info("Got volume group %s", groupname)
@@ -302,7 +302,7 @@ def test_create_volume(test, vm, params):
         gf.close_session()
         test.fail("List volume groups failed.")
     else:
-        if not re.search(volumename, lvs_result.stdout):
+        if not re.search(volumename, lvs_result.stdout_text):
             gf.close_session()
             test.fail("Can't get volume %s." % volumename)
     logging.info("Got volume %s", volumename)
@@ -360,7 +360,7 @@ def test_delete_volume(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -385,7 +385,7 @@ def test_delete_volume(test, vm, params):
         gf.close_session()
         test.fail("List volume groups failed.")
     else:
-        if not re.search(groupname, vgs_result.stdout):
+        if not re.search(groupname, vgs_result.stdout_text):
             gf.close_session()
             test.fail("Can't get volume group %s." % groupname)
     logging.info("Got volume group %s", groupname)
@@ -406,7 +406,7 @@ def test_delete_volume(test, vm, params):
         gf.close_session()
         test.fail("List volume groups failed.")
     else:
-        if not re.search(volumename, lvs_result.stdout):
+        if not re.search(volumename, lvs_result.stdout_text):
             gf.close_session()
             test.fail("Can't get volume %s." % volumename)
     logging.info("Got volume %s", volumename)
@@ -424,7 +424,7 @@ def test_delete_volume(test, vm, params):
     if lvs_result.exit_status:
         test.fail("List volume groups failed.")
     else:
-        if re.search(volumename, lvs_result.stdout):
+        if re.search(volumename, lvs_result.stdout_text):
             test.fail("Are you sure volume %s removed as "
                       "expected?" % volumename)
 
@@ -444,7 +444,7 @@ def test_shrink_volume(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -469,7 +469,7 @@ def test_shrink_volume(test, vm, params):
         gf.close_session()
         test.fail("List volume groups failed.")
     else:
-        if not re.search(groupname, vgs_result.stdout):
+        if not re.search(groupname, vgs_result.stdout_text):
             gf.close_session()
             test.fail("Can't get volume group %s." % groupname)
     logging.info("Got volume group %s", groupname)
@@ -490,7 +490,7 @@ def test_shrink_volume(test, vm, params):
         gf.close_session()
         test.fail("List volume groups failed.")
     else:
-        if not re.search(volumename, lvs_result.stdout):
+        if not re.search(volumename, lvs_result.stdout_text):
             gf.close_session()
             test.fail("Can't get volume %s." % volumename)
     logging.info("Got volume %s", volumename)
@@ -567,7 +567,7 @@ def test_shrink_volume(test, vm, params):
         gf.close_session()
         test.fail("Df failed")
     else:
-        if not re.search(volumename, list_df_result.stdout):
+        if not re.search(volumename, list_df_result.stdout_text):
             gf.close_session()
             test.fail("Did not find mounted device.")
     logging.info("Df successfully.")
@@ -597,7 +597,7 @@ def test_expand_volume(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -622,7 +622,7 @@ def test_expand_volume(test, vm, params):
         gf.close_session()
         test.fail("List volume groups failed.")
     else:
-        if not re.search(groupname, vgs_result.stdout):
+        if not re.search(groupname, vgs_result.stdout_text):
             gf.close_session()
             test.fail("Can't get volume group %s." % groupname)
     logging.info("Got volume group %s", groupname)
@@ -643,7 +643,7 @@ def test_expand_volume(test, vm, params):
         gf.close_session()
         test.fail("List volume groups failed.")
     else:
-        if not re.search(volumename, lvs_result.stdout):
+        if not re.search(volumename, lvs_result.stdout_text):
             gf.close_session()
             test.fail("Can't get volume %s." % volumename)
     logging.info("Got volume %s", volumename)
@@ -719,7 +719,7 @@ def test_expand_volume(test, vm, params):
         gf.close_session()
         test.fail("Df failed")
     else:
-        if not re.search(volumename, list_df_result.stdout):
+        if not re.search(volumename, list_df_result.stdout_text):
             gf.close_session()
             test.fail("Did not find mounted device.")
     logging.info("Df successfully.")

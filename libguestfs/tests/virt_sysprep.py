@@ -180,7 +180,7 @@ def run(test, params, env):
     clone_result = lgf.virt_clone_cmd(vm_name, newname=vm_clone_name, **dargs)
     if clone_result.exit_status:
         test.fail("virt-clone failed:%s"
-                  % clone_result.stderr.strip())
+                  % clone_result.stderr_text.strip())
     try:
         # Modify network to make sure the clone guest can be logging.
         modify_network(vm_clone_name, first_nic)

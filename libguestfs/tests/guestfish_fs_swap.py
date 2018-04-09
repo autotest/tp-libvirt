@@ -73,19 +73,19 @@ def test_swap_device(test, vm, params):
     uuid = '71631235-fbec-4ce8-b1b3-c53366f5ac60'
     mkswap_result = gf.mkswap(test_mountpoint, label, uuid)
     file_result = gf.file(test_mountpoint)
-    if "swap file" not in file_result.stdout:
+    if "swap file" not in file_result.stdout_text:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(mkswap_result)
         logging.error(file_result)
         test.fail("test_mkswap failed")
-    if label not in file_result.stdout:
+    if label not in file_result.stdout_text:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error("swap file label created not match")
         logging.error(file_result)
         test.fail("test_mkswap failed")
-    if uuid not in file_result.stdout:
+    if uuid not in file_result.stdout_text:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error("swap file uuid created not match")
@@ -94,7 +94,7 @@ def test_swap_device(test, vm, params):
 
     gf.swapon_device(test_mountpoint)
     active_swapdevice = gf.inner_cmd("debug sh \"swapon -sv\" | sed -n '2p' ")
-    if '/dev' not in active_swapdevice.stdout:
+    if '/dev' not in active_swapdevice.stdout_text:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(active_swapdevice)
@@ -103,7 +103,7 @@ def test_swap_device(test, vm, params):
     gf.swapoff_device(test_mountpoint)
     active_swapdevice = gf.inner_cmd("debug sh \"swapon -sv\" | sed -n '2p' ")
 
-    if '/dev' in active_swapdevice.stdout:
+    if '/dev' in active_swapdevice.stdout_text:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(active_swapdevice)
@@ -160,13 +160,13 @@ def test_swap_label(test, vm, params):
     label = 'mkswap_label'
     mkswap_L_result = gf.mkswap_L(label, test_mountpoint)
     file_result = gf.file(test_mountpoint)
-    if "swap file" not in file_result.stdout:
+    if "swap file" not in file_result.stdout_text:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(mkswap_L_result)
         logging.error(file_result)
         test.fail("test_mkswap_L failed")
-    if label not in file_result.stdout:
+    if label not in file_result.stdout_text:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error("swap file label created not match")
@@ -175,7 +175,7 @@ def test_swap_label(test, vm, params):
 
     gf.swapon_label(label)
     active_swapdevice = gf.inner_cmd("debug sh \"swapon -sv\" | sed -n '2p' ")
-    if '/dev' not in active_swapdevice.stdout:
+    if '/dev' not in active_swapdevice.stdout_text:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(active_swapdevice)
@@ -184,7 +184,7 @@ def test_swap_label(test, vm, params):
     gf.swapoff_label(label)
     active_swapdevice = gf.inner_cmd("debug sh \"swapon -sv\" | sed -n '2p' ")
 
-    if '/dev' in active_swapdevice.stdout:
+    if '/dev' in active_swapdevice.stdout_text:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(active_swapdevice)
@@ -241,13 +241,13 @@ def test_swap_uuid(test, vm, params):
     temp, uuid = process.getstatusoutput("uuidgen")
     mkswap_U_result = gf.mkswap_U(uuid, test_mountpoint)
     file_result = gf.file(test_mountpoint)
-    if "swap file" not in file_result.stdout:
+    if "swap file" not in file_result.stdout_text:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(mkswap_U_result)
         logging.error(file_result)
         test.fail("test_mkswap_U failed")
-    if uuid not in file_result.stdout:
+    if uuid not in file_result.stdout_text:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error("swap file uuid created not match")
@@ -256,7 +256,7 @@ def test_swap_uuid(test, vm, params):
 
     gf.swapon_uuid(uuid)
     active_swapdevice = gf.inner_cmd("debug sh \"swapon -sv\" | sed -n '2p' ")
-    if '/dev' not in active_swapdevice.stdout:
+    if '/dev' not in active_swapdevice.stdout_text:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(active_swapdevice)
@@ -265,7 +265,7 @@ def test_swap_uuid(test, vm, params):
     gf.swapoff_uuid(uuid)
     active_swapdevice = gf.inner_cmd("debug sh \"swapon -sv\" | sed -n '2p' ")
 
-    if '/dev' in active_swapdevice.stdout:
+    if '/dev' in active_swapdevice.stdout_text:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(active_swapdevice)
@@ -326,7 +326,7 @@ def test_swap_file(test, vm, params):
     gf.fallocate(swapfile, swapfile_size*1024)
     mkswap_file_result = gf.mkswap_file(swapfile)
     file_result = gf.file(swapfile)
-    if "swap file" not in file_result.stdout:
+    if "swap file" not in file_result.stdout_text:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(mkswap_file_result)
@@ -335,7 +335,7 @@ def test_swap_file(test, vm, params):
 
     gf.swapon_file(swapfile)
     active_swapdevice = gf.inner_cmd("debug sh \"swapon -sv\" | sed -n '2p' ")
-    if swapfile not in active_swapdevice.stdout:
+    if swapfile not in active_swapdevice.stdout_text:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(active_swapdevice)
@@ -344,7 +344,7 @@ def test_swap_file(test, vm, params):
     gf.swapoff_file(swapfile)
     active_swapdevice = gf.inner_cmd("debug sh \"swapon -sv\" | sed -n '2p' ")
 
-    if swapfile in active_swapdevice.stdout:
+    if swapfile in active_swapdevice.stdout_text:
         gf.close_session()
         os.system('rm -f ' + test_img + ' > /dev/null')
         logging.error(active_swapdevice)
