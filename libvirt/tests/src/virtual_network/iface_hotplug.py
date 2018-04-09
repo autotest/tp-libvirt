@@ -168,7 +168,10 @@ def run(test, params, env):
             # Restart libvirtd service
             if restart_libvirtd:
                 libvirtd.restart()
+                # After restart libvirtd, the old console was invalidated,
+                # so we need create a new serial console
                 vm.cleanup_serial_console()
+                vm.create_serial_console()
 
             # Start the domain if needed
             if vm.is_dead():
