@@ -49,7 +49,7 @@ def run(test, params, env):
 
     cmd = "qemu-img create -f %s %s %s" % (image_format, image_path,
                                            initial_disk_size)
-    ret = process.run(cmd, shell=True)
+    ret = process.run(cmd, allow_output_check='combined', shell=True)
     status, output = (ret.exit_status, ret.stdout.strip())
     if status:
         test.error("Creating image file %s failed: %s"
