@@ -79,27 +79,27 @@ def run(test, params, env):
         if sysprep_opt.count("enable"):
             if action == "logfiles":
                 au_o = lgf.virt_ls_cmd(vm_name,
-                                       "/var/log/audit").stdout.strip()
-                sa_o = lgf.virt_ls_cmd(vm_name, "/var/log/sa").stdout.strip()
-                gdm_o = lgf.virt_ls_cmd(vm_name, "/var/log/gdm").stdout.strip()
+                                       "/var/log/audit").stdout_text.strip()
+                sa_o = lgf.virt_ls_cmd(vm_name, "/var/log/sa").stdout_text.strip()
+                gdm_o = lgf.virt_ls_cmd(vm_name, "/var/log/gdm").stdout_text.strip()
                 ntp_o = lgf.virt_ls_cmd(vm_name,
-                                        "/var/log/ntpstats").stdout.strip()
+                                        "/var/log/ntpstats").stdout_text.strip()
                 status = 1 if au_o or sa_o or gdm_o or ntp_o else 0
                 return status
             elif action == "tmp-files":
-                tmp_o = lgf.virt_ls_cmd(vm_name, "/tmp").stdout.strip()
-                vartmp_o = lgf.virt_ls_cmd(vm_name, "/var/tmp").stdout.strip()
+                tmp_o = lgf.virt_ls_cmd(vm_name, "/tmp").stdout_text.strip()
+                vartmp_o = lgf.virt_ls_cmd(vm_name, "/var/tmp").stdout_text.strip()
                 status = 1 if tmp_o or vartmp_o else 0
                 return status
             elif action == "firewall-rules":
                 fw_r = lgf.virt_cat_cmd(vm_name,
                                         "/etc/sysconfig/iptables")
-                status = 0 if fw_r.stdout.strip() else 1
+                status = 0 if fw_r.stdout_text.strip() else 1
                 return status
             elif action == "user-account":
                 status = 0
-                pwd_o = lgf.virt_cat_cmd(vm_name, "/etc/passwd").stdout.strip()
-                grp_o = lgf.virt_cat_cmd(vm_name, "/etc/group").stdout.strip()
+                pwd_o = lgf.virt_cat_cmd(vm_name, "/etc/passwd").stdout_text.strip()
+                grp_o = lgf.virt_cat_cmd(vm_name, "/etc/group").stdout_text.strip()
                 if pwd_o.count("test") or grp_o.count("test"):
                     status = 1
                 vm.start()

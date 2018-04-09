@@ -20,7 +20,7 @@ def test_formatted_part(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
     if utils_test.libguestfs.primary_disk_virtio(vm):
         device_in_vm = add_device
     else:
@@ -41,7 +41,7 @@ def test_formatted_part(test, vm, params):
         gf.close_session()
         test.fail("List devices failed")
     else:
-        if not re.search(device_in_gf, list_dev_result.stdout):
+        if not re.search(device_in_gf, list_dev_result.stdout_text):
             gf.close_session()
             test.fail("Did not find additional device.")
     logging.info("List devices successfully.")
@@ -76,7 +76,7 @@ def test_formatted_part(test, vm, params):
         gf.close_session()
         test.fail("Df failed")
     else:
-        if not re.search(part_name_in_gf, list_df_result.stdout):
+        if not re.search(part_name_in_gf, list_df_result.stdout_text):
             gf.close_session()
             test.fail("Did not find mounted device.")
     logging.info("Df successfully.")
@@ -122,7 +122,7 @@ def test_unformatted_part(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -140,7 +140,7 @@ def test_unformatted_part(test, vm, params):
         gf.close_session()
         test.fail("List devices failed")
     else:
-        if not re.search(device_in_gf, list_dev_result.stdout):
+        if not re.search(device_in_gf, list_dev_result.stdout_text):
             gf.close_session()
             test.fail("Did not find additional device.")
     logging.info("List devices successfully.")
@@ -159,7 +159,7 @@ def test_unformatted_part(test, vm, params):
     if mount_result.exit_status == 0:
         test.fail("Mount %s successfully." % part_name_in_gf)
     else:
-        if not re.search("[filesystem|fs] type", mount_result.stdout):
+        if not re.search("[filesystem|fs] type", mount_result.stdout_text):
             test.fail("Unknown error.")
 
 
@@ -173,7 +173,7 @@ def test_formatted_disk(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
     if utils_test.libguestfs.primary_disk_virtio(vm):
         device_in_vm = add_device
     else:
@@ -195,7 +195,7 @@ def test_formatted_disk(test, vm, params):
         gf.close_session()
         test.fail("List devices failed")
     else:
-        if not re.search(device_in_gf, list_dev_result.stdout):
+        if not re.search(device_in_gf, list_dev_result.stdout_text):
             gf.close_session()
             test.fail("Did not find additional device.")
     logging.info("List devices successfully.")
@@ -230,7 +230,7 @@ def test_formatted_disk(test, vm, params):
         gf.close_session()
         test.fail("Df failed")
     else:
-        if not re.search(part_name_in_gf, list_df_result.stdout):
+        if not re.search(part_name_in_gf, list_df_result.stdout_text):
             gf.close_session()
             test.fail("Did not find mounted device.")
     logging.info("Df successfully.")
@@ -317,7 +317,7 @@ def test_fscked_partition(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -334,7 +334,7 @@ def test_fscked_partition(test, vm, params):
         gf.close_session()
         test.fail("List devices failed")
     else:
-        if not re.search(device_in_gf, list_dev_result.stdout):
+        if not re.search(device_in_gf, list_dev_result.stdout_text):
             gf.close_session()
             test.fail("Did not find additional device.")
     logging.info("List devices successfully.")
@@ -368,7 +368,7 @@ def test_fscked_partition(test, vm, params):
         gf.close_session()
         test.fail("Df failed")
     else:
-        if not re.search(part_name_in_gf, list_df_result.stdout):
+        if not re.search(part_name_in_gf, list_df_result.stdout_text):
             gf.close_session()
             test.fail("Did not find mounted device.")
     logging.info("Df successfully.")

@@ -120,7 +120,7 @@ def run(test, params, env):
         if result.exit_status:
             test.fail(result)
 
-        output_virt_win_reg = result.stdout.strip()
+        output_virt_win_reg = result.stdout_text.strip()
 
         if not vm.is_alive():
             vm.start()

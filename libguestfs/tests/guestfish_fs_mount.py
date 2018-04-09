@@ -54,7 +54,7 @@ def test_mount(test, vm, params):
         test.fail("test_mount failed, Wrong partition type")
 
     gf_result = gf.inner_cmd("debug sh 'mount|grep %s'" % abs_mount_point)
-    if gf_result.exit_status != 0 or ('/sysroot' not in gf_result.stdout):
+    if gf_result.exit_status != 0 or ('/sysroot' not in gf_result.stdout_text):
         gf.close_session()
         test.fail("test_mount failed")
     gf.close_session()
@@ -90,8 +90,8 @@ def test_mount_options(test, vm, params):
         test.fail("test_mount_options failed, Wrong partition type")
 
     gf_result = gf.inner_cmd("debug sh 'mount|grep %s'" % abs_mount_point)
-    if gf_result.exit_status != 0 or ('/sysroot' not in gf_result.stdout) or (
-       'noatime' not in gf_result.stdout):
+    if gf_result.exit_status != 0 or ('/sysroot' not in gf_result.stdout_text) or (
+       'noatime' not in gf_result.stdout_text):
         gf.close_session()
         test.fail("test_mount_options failed")
     gf.close_session()
@@ -127,8 +127,8 @@ def test_mount_ro(test, vm, params):
         test.fail("test_mount_ro failed, Wrong partition type")
 
     gf_result = gf.inner_cmd("debug sh 'mount|grep %s'" % abs_mount_point)
-    if gf_result.exit_status != 0 or ('/sysroot' not in gf_result.stdout) or (
-       'ro' not in gf_result.stdout):
+    if gf_result.exit_status != 0 or ('/sysroot' not in gf_result.stdout_text) or (
+       'ro' not in gf_result.stdout_text):
         gf.close_session()
         test.fail("test_mount_ro failed")
     gf.close_session()
@@ -153,7 +153,7 @@ def test_mounts(test, vm, params):
     mount_point = params.get("mount_point")
     gf.mount(mount_point, '/')
     gf_result = gf.mounts()
-    if gf_result.exit_status != 0 or (mount_point not in gf_result.stdout):
+    if gf_result.exit_status != 0 or (mount_point not in gf_result.stdout_text):
         gf.close_session()
         test.fail("test_mounts failed")
     gf.close_session()
@@ -191,7 +191,7 @@ def test_mount_loop(test, vm, params):
     gf.rmmountpoint('/loop')
     os.system('rm -f %s; rm -f %s' % (test_img_iso, test_img))
 
-    if mount_loop_result.exit_status != 0 or ('test_mount_loop.img' not in readdir_result.stdout):
+    if mount_loop_result.exit_status != 0 or ('test_mount_loop.img' not in readdir_result.stdout_text):
         gf.close_session()
         logging.error("mount_loop /test_mount_loop.iso /loop:")
         logging.error(mount_loop_result)
@@ -221,7 +221,7 @@ def test_mountpoints(test, vm, params):
     gf.mkmountpoint('/test_mountpoints')
     gf_result = gf.mountpoints()
     expected_str = '%s: /' % mount_point
-    if expected_str not in gf_result.stdout:
+    if expected_str not in gf_result.stdout_text:
         gf.close_session()
         logging.error("Expected string: %s" % expected_str)
         logging.error('mountpoints:')
@@ -252,42 +252,42 @@ def test_umount(test, vm, params):
     gf.mount(mount_point, '/')
     gf.umount(mount_point, 'true')
     gf_result = gf.mounts()
-    mounts_result.append(gf_result.stdout)
+    mounts_result.append(gf_result.stdout_text)
 
     gf.mount(mount_point, '/')
     gf.umount(mount_point, 'false')
     gf_result = gf.mounts()
-    mounts_result.append(gf_result.stdout)
+    mounts_result.append(gf_result.stdout_text)
 
     gf.mount(mount_point, '/')
     gf.umount(mount_point, None, 'true')
     gf_result = gf.mounts()
-    mounts_result.append(gf_result.stdout)
+    mounts_result.append(gf_result.stdout_text)
 
     gf.mount(mount_point, '/')
     gf.umount(mount_point, None, 'false')
     gf_result = gf.mounts()
-    mounts_result.append(gf_result.stdout)
+    mounts_result.append(gf_result.stdout_text)
 
     gf.mount(mount_point, '/')
     gf.umount(mount_point, 'false', 'false')
     gf_result = gf.mounts()
-    mounts_result.append(gf_result.stdout)
+    mounts_result.append(gf_result.stdout_text)
 
     gf.mount(mount_point, '/')
     gf.umount(mount_point, 'true', 'true')
     gf_result = gf.mounts()
-    mounts_result.append(gf_result.stdout)
+    mounts_result.append(gf_result.stdout_text)
 
     gf.mount(mount_point, '/')
     gf.umount(mount_point, 'true', 'false')
     gf_result = gf.mounts()
-    mounts_result.append(gf_result.stdout)
+    mounts_result.append(gf_result.stdout_text)
 
     gf.mount(mount_point, '/')
     gf.umount(mount_point, 'false', 'true')
     gf_result = gf.mounts()
-    mounts_result.append(gf_result.stdout)
+    mounts_result.append(gf_result.stdout_text)
 
     for items in mounts_result:
         if mount_point in items:
@@ -328,7 +328,7 @@ def test_mount_vfs(test, vm, params):
         test.fail("test_mount_vfs failed, Wrong partition type")
 
     gf_result = gf.inner_cmd("debug sh 'mount|grep %s'" % abs_mount_point)
-    if mount_vfs_result.exit_status != 0 or ('/sysroot' not in gf_result.stdout):
+    if mount_vfs_result.exit_status != 0 or ('/sysroot' not in gf_result.stdout_text):
         gf.close_session()
         logging.error(mount_vfs_result)
         logging.error(gf_result)
@@ -355,7 +355,7 @@ def test_umount_all(test, vm, params):
     gf.mount(mount_point, '/')
     gf.umount_all()
     mounts_result = gf.mounts()
-    if mount_point in mounts_result.stdout:
+    if mount_point in mounts_result.stdout_text:
         gf.close_session()
         logging.error(mounts_result)
         test.fail("test_umount_all failed")

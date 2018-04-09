@@ -27,21 +27,21 @@ def create_lvm(test, gf, mode, pv_name="/dev/sda", vg_name="VG", lv_name="LV", s
     if mode == 'pvcreate':
         gf.part_init(pv_name, "msdos")
         gf.pvcreate(pv_name)
-        ret = gf.pvs().stdout.strip()
+        ret = gf.pvs().stdout_text.strip()
         if not ret:
             gf.close_session()
             test.fail("create PV failed")
         return ret
     elif mode == 'vgcreate':
         gf.vgcreate(vg_name, pv_name)
-        ret = gf.vgs().stdout.strip()
+        ret = gf.vgs().stdout_text.strip()
         if not ret:
             gf.close_session()
             test.fail("create VG failed")
         return ret
     elif mode == 'lvcreate':
         gf.lvcreate(lv_name, vg_name, size)
-        ret = gf.lvs().stdout.strip()
+        ret = gf.lvs().stdout_text.strip()
         if not ret:
             gf.close_session()
             test.fail("create LV failed")
@@ -67,8 +67,8 @@ def test_is_lv(test, vm, params):
     gf.run()
 
     # check physical device
-    name = gf.list_partitions().stdout.strip()
-    ret = gf.is_lv(name).stdout.strip()
+    name = gf.list_partitions().stdout_text.strip()
+    ret = gf.is_lv(name).stdout_text.strip()
     if ret != "false":
         gf.close_session()
         test.fail("It should be a physical device")
@@ -78,8 +78,8 @@ def test_is_lv(test, vm, params):
     create_lvm(test, gf, 'vgcreate')
     create_lvm(test, gf, 'lvcreate')
 
-    name = gf.lvs().stdout.strip()
-    ret = gf.is_lv(name).stdout.strip()
+    name = gf.lvs().stdout_text.strip()
+    ret = gf.is_lv(name).stdout_text.strip()
     if ret != "true":
         gf.close_session()
         test.fail("It should be a lvm device")
@@ -113,13 +113,13 @@ def test_lvcreate(test, vm, params):
 
     part_name = "/dev/%s/%s" % (vg_name, lv_name)
 
-    result = gf.lvs().stdout.strip()
+    result = gf.lvs().stdout_text.strip()
 
     if result != part_name:
         gf.close_session()
         test.fail("lv name is not match")
 
-    result = gf.lvs_full().stdout.strip()
+    result = gf.lvs_full().stdout_text.strip()
     result = re.search("lv_name:\s+(\S+)", result).groups()[0]
 
     if result != lv_name:
@@ -150,11 +150,11 @@ def test_lvm_canonical_lv_name(test, vm, params):
     create_lvm(test, gf, 'vgcreate')
     create_lvm(test, gf, 'lvcreate')
 
-    real_name = gf.lvs().stdout.strip()
+    real_name = gf.lvs().stdout_text.strip()
     vg_name, lv_name = real_name.split("/")[-2:]
 
     test_name = "/dev/mapper/%s-%s" % (vg_name, lv_name)
-    result = gf.lvm_canonical_lv_name(test_name).stdout.strip()
+    result = gf.lvm_canonical_lv_name(test_name).stdout_text.strip()
     logging.debug(result)
 
     if result != real_name:
@@ -185,12 +185,12 @@ def test_lvremove(test, vm, params):
     create_lvm(test, gf, 'vgcreate')
     create_lvm(test, gf, 'lvcreate')
 
-    ret = gf.lvs().stdout.strip()
+    ret = gf.lvs().stdout_text.strip()
     logging.debug(ret)
     if ret:
         gf.lvremove(ret)
 
-    ret = gf.lvs().stdout.strip()
+    ret = gf.lvs().stdout_text.strip()
     if ret:
         gf.close_session()
         test.fail("LV can't be removed")
@@ -219,17 +219,17 @@ def test_lvm_remove_all(test, vm, params):
     create_lvm(test, gf, 'vgcreate')
     create_lvm(test, gf, 'lvcreate')
 
-    pv = gf.pvs().stdout.strip()
-    vg = gf.vgs().stdout.strip()
-    lv = gf.lvs().stdout.strip()
+    pv = gf.pvs().stdout_text.strip()
+    vg = gf.vgs().stdout_text.strip()
+    lv = gf.lvs().stdout_text.strip()
     logging.debug("pv: %s\n vg:%s\n lv:%s\n" % (pv, vg, lv))
 
     if pv and vg and lv:
         gf.lvm_remove_all()
 
-    pv = gf.pvs().stdout.strip()
-    vg = gf.vgs().stdout.strip()
-    lv = gf.lvs().stdout.strip()
+    pv = gf.pvs().stdout_text.strip()
+    vg = gf.vgs().stdout_text.strip()
+    lv = gf.lvs().stdout_text.strip()
     logging.debug("pv: %s\n vg:%s\n lv:%s\n" % (pv, vg, lv))
 
     if pv or vg or lv:
@@ -260,13 +260,13 @@ def test_lvrename(test, vm, params):
     create_lvm(test, gf, 'vgcreate')
     create_lvm(test, gf, 'lvcreate')
 
-    ret = gf.lvs().stdout.strip()
+    ret = gf.lvs().stdout_text.strip()
     logging.debug(ret)
     if ret:
         new_lv_name = "newlv"
         gf.lvrename(ret, new_lv_name)
 
-    ret = gf.lvs().stdout.strip()
+    ret = gf.lvs().stdout_text.strip()
     if new_lv_name not in ret:
         gf.close_session()
         test.fail("LV can't be renamed")
@@ -295,8 +295,8 @@ def test_lvresize(test, vm, params):
     create_lvm(test, gf, 'vgcreate')
     create_lvm(test, gf, 'lvcreate')
 
-    ret = gf.lvs_full().stdout.strip()
-    lv = gf.lvs().stdout.strip()
+    ret = gf.lvs_full().stdout_text.strip()
+    lv = gf.lvs().stdout_text.strip()
     old_size = re.search("lv_size:\s+(\S+)", ret).groups()[0]
 
     ret = gf.lvresize(lv, 200)
@@ -304,7 +304,7 @@ def test_lvresize(test, vm, params):
         gf.close_session()
         test.fail("lvresize execute failed")
 
-    ret = gf.lvs_full().stdout.strip()
+    ret = gf.lvs_full().stdout_text.strip()
     new_size = re.search("lv_size:\s+(\S+)", ret).groups()[0]
 
     logging.debug("old_size is %s, new_size is %s" % (old_size, new_size))
@@ -337,11 +337,11 @@ def test_lvresize_free(test, vm, params):
     create_lvm(test, gf, 'vgcreate')
     create_lvm(test, gf, 'lvcreate', size=200)
 
-    lv = gf.lvs().stdout.strip()
+    lv = gf.lvs().stdout_text.strip()
 
-    ret = gf.lvs_full().stdout.strip()
+    ret = gf.lvs_full().stdout_text.strip()
     old_size = re.search("lv_size:\s+(\S+)", ret).groups()[0]
-    ret = gf.vgs_full().stdout.strip()
+    ret = gf.vgs_full().stdout_text.strip()
     max_size = re.search("vg_size:\s+(\S+)", ret).groups()[0]
 
     ret = gf.lvresize_free(lv, 100)
@@ -349,7 +349,7 @@ def test_lvresize_free(test, vm, params):
         gf.close_session()
         test.fail("lvresize-free execute failed")
 
-    ret = gf.lvs_full().stdout.strip()
+    ret = gf.lvs_full().stdout_text.strip()
     new_size = re.search("lv_size:\s+(\S+)", ret).groups()[0]
 
     logging.debug("old_size is %s, new_size is %s" % (old_size, new_size))
@@ -383,21 +383,21 @@ def test_lvm_set_filter(test, vm, params):
     create_lvm(test, gf, 'vgcreate')
     create_lvm(test, gf, 'lvcreate')
 
-    lv_name = gf.lvs().stdout.strip()
+    lv_name = gf.lvs().stdout_text.strip()
     if not lv_name:
         gf.close_session()
         test.fail("LV should be listed")
 
     # set filter, lvm device should be hided
     gf.lvm_set_filter(lv_name)
-    lv_name = gf.lvs().stdout.strip()
+    lv_name = gf.lvs().stdout_text.strip()
     if lv_name:
         gf.close_session()
         test.fail("LV should not be listed")
 
     # clear the filter, lvm device can be seen
     gf.lvm_clear_filter()
-    lv_name = gf.lvs().stdout.strip()
+    lv_name = gf.lvs().stdout_text.strip()
     if not lv_name:
         gf.close_session()
         test.fail("LV should be listed")
@@ -427,12 +427,12 @@ def test_lvuuid(test, vm, params):
     create_lvm(test, gf, 'vgcreate')
     create_lvm(test, gf, 'lvcreate')
 
-    lv_name = gf.lvs().stdout.strip()
-    uuid = gf.lvuuid(lv_name).stdout.strip()
+    lv_name = gf.lvs().stdout_text.strip()
+    uuid = gf.lvuuid(lv_name).stdout_text.strip()
     uuid = re.sub("-", "", uuid)
     logging.debug("uuid from lvuuid is %s" % uuid)
 
-    ret = gf.lvs_full().stdout.strip()
+    ret = gf.lvs_full().stdout_text.strip()
     result = re.search("lv_uuid:\s+(\S+)", ret).groups()[0]
     logging.debug("uuid from lvs-full is %s" % result)
 
@@ -464,13 +464,13 @@ def test_vgcreate(test, vm, params):
     create_lvm(test, gf, 'pvcreate')
     create_lvm(test, gf, 'vgcreate', vg_name=vg_name)
 
-    result = gf.vgs().stdout.strip()
+    result = gf.vgs().stdout_text.strip()
 
     if result != vg_name:
         gf.close_session()
         test.fail("vg name is not match")
 
-    ret = gf.vgs_full().stdout.strip()
+    ret = gf.vgs_full().stdout_text.strip()
     result = re.search("vg_name:\s+(\S+)", ret).groups()[0]
 
     if result != vg_name:
@@ -501,12 +501,12 @@ def test_vgremove(test, vm, params):
     create_lvm(test, gf, 'vgcreate')
     create_lvm(test, gf, 'lvcreate')
 
-    ret = gf.vgs().stdout.strip()
+    ret = gf.vgs().stdout_text.strip()
     logging.debug(ret)
     if ret:
         gf.vgremove(ret)
 
-    ret = gf.vgs().stdout.strip()
+    ret = gf.vgs().stdout_text.strip()
     if ret:
         gf.close_session()
         test.fail("VG can't be removed")
@@ -535,13 +535,13 @@ def test_vgrename(test, vm, params):
     create_lvm(test, gf, 'vgcreate')
     create_lvm(test, gf, 'lvcreate')
 
-    ret = gf.vgs().stdout.strip()
+    ret = gf.vgs().stdout_text.strip()
     logging.debug(ret)
     if ret:
         new_vg_name = "newvg"
         gf.vgrename(ret, new_vg_name)
 
-    ret = gf.vgs().stdout.strip()
+    ret = gf.vgs().stdout_text.strip()
     if new_vg_name not in ret:
         gf.close_session()
         test.fail("VG can't be renamed")
@@ -600,12 +600,12 @@ def test_vguuid(test, vm, params):
     create_lvm(test, gf, 'vgcreate')
     create_lvm(test, gf, 'lvcreate')
 
-    vg_name = gf.vgs().stdout.strip()
-    uuid = gf.vguuid(vg_name).stdout.strip()
+    vg_name = gf.vgs().stdout_text.strip()
+    uuid = gf.vguuid(vg_name).stdout_text.strip()
     uuid = re.sub("-", "", uuid)
     logging.debug("uuid from vguuid is %s" % uuid)
 
-    ret = gf.vgs_full().stdout.strip()
+    ret = gf.vgs_full().stdout_text.strip()
     result = re.search("vg_uuid:\s+(\S+)", ret).groups()[0]
     logging.debug("uuid from lvs-full is %s" % result)
 
@@ -638,20 +638,20 @@ def test_vg_activate(test, vm, params):
     create_lvm(test, gf, 'vgcreate')
     create_lvm(test, gf, 'lvcreate')
 
-    vg_name = gf.vgs().stdout.strip()
-    result = gf.debug("ls", "/dev").stdout.strip()
+    vg_name = gf.vgs().stdout_text.strip()
+    result = gf.debug("ls", "/dev").stdout_text.strip()
     if vg_name not in result:
         gf.close_session()
         test.fail("Can not find %s in /dev" % vg_name)
 
     gf.vg_activate(0, vg_name)
-    result = gf.debug("ls", "/dev").stdout.strip()
+    result = gf.debug("ls", "/dev").stdout_text.strip()
     if vg_name in result:
         gf.close_session()
         test.fail("Find %s in /dev, it shouldn't be" % vg_name)
 
     gf.vg_activate(1, vg_name)
-    result = gf.debug("ls", "/dev").stdout.strip()
+    result = gf.debug("ls", "/dev").stdout_text.strip()
     if vg_name not in result:
         gf.close_session()
         test.fail("Can not find %s in /dev" % vg_name)
@@ -681,20 +681,20 @@ def test_vg_activate_all(test, vm, params):
     create_lvm(test, gf, 'vgcreate')
     create_lvm(test, gf, 'lvcreate')
 
-    vg_name = gf.vgs().stdout.strip()
-    result = gf.debug("ls", "/dev").stdout.strip()
+    vg_name = gf.vgs().stdout_text.strip()
+    result = gf.debug("ls", "/dev").stdout_text.strip()
     if vg_name not in result:
         gf.close_session()
         test.fail("Can not find %s in /dev" % vg_name)
 
     gf.vg_activate_all(0)
-    result = gf.debug("ls", "/dev").stdout.strip()
+    result = gf.debug("ls", "/dev").stdout_text.strip()
     if vg_name in result:
         gf.close_session()
         test.fail("Find %s in /dev, it shouldn't be" % vg_name)
 
     gf.vg_activate_all(1)
-    result = gf.debug("ls", "/dev").stdout.strip()
+    result = gf.debug("ls", "/dev").stdout_text.strip()
     if vg_name not in result:
         gf.close_session()
         test.fail("Can not find %s in /dev" % vg_name)
@@ -724,10 +724,10 @@ def test_vglvuuids(test, vm, params):
     create_lvm(test, gf, 'vgcreate')
     create_lvm(test, gf, 'lvcreate')
 
-    lv_name = gf.lvs().stdout.strip()
-    uuid = gf.lvuuid(lv_name).stdout.strip()
+    lv_name = gf.lvs().stdout_text.strip()
+    uuid = gf.lvuuid(lv_name).stdout_text.strip()
 
-    result = gf.vglvuuids('VG').stdout.strip()
+    result = gf.vglvuuids('VG').stdout_text.strip()
 
     if uuid != result:
         gf.close_session()
@@ -758,10 +758,10 @@ def test_vgpvuuids(test, vm, params):
     create_lvm(test, gf, 'vgcreate')
     create_lvm(test, gf, 'lvcreate')
 
-    pv_name = gf.pvs().stdout.strip()
-    uuid = gf.pvuuid(pv_name).stdout.strip()
+    pv_name = gf.pvs().stdout_text.strip()
+    uuid = gf.pvuuid(pv_name).stdout_text.strip()
 
-    result = gf.vgpvuuids('VG').stdout.strip()
+    result = gf.vgpvuuids('VG').stdout_text.strip()
 
     if uuid != result:
         gf.close_session()
@@ -789,9 +789,9 @@ def test_pvcreate(test, vm, params):
     gf.run()
 
     create_lvm(test, gf, 'pvcreate')
-    pv_name = gf.pvs().stdout.strip()
+    pv_name = gf.pvs().stdout_text.strip()
 
-    result = gf.pvs_full().stdout.strip()
+    result = gf.pvs_full().stdout_text.strip()
     result = re.search("pv_name:\s+(\S+)", result).groups()[0]
 
     if result != pv_name != "/dev/sda":
@@ -820,14 +820,14 @@ def test_pvremove(test, vm, params):
     gf.run()
 
     create_lvm(test, gf, 'pvcreate')
-    pv_name = gf.pvs().stdout.strip()
+    pv_name = gf.pvs().stdout_text.strip()
 
     if pv_name != "/dev/sda":
         gf.close_session()
         test.fail("pv name is not match")
 
     gf.pvremove('/dev/sda')
-    pv_name = gf.pvs().stdout.strip()
+    pv_name = gf.pvs().stdout_text.strip()
 
     if pv_name:
         gf.close_session()
@@ -855,13 +855,13 @@ def test_pvresize(test, vm, params):
     gf.run()
 
     create_lvm(test, gf, 'pvcreate')
-    result = gf.pvs_full().stdout.strip()
+    result = gf.pvs_full().stdout_text.strip()
     pv_size = re.search("pv_size:\s+(\S+)", result).groups()[0]
 
     new_size = pv_size[:-1]
     gf.pvresize_size("/dev/sda", new_size)
 
-    result = gf.pvs_full().stdout.strip()
+    result = gf.pvs_full().stdout_text.strip()
     get_size = re.search("pv_size:\s+(\S+)", result).groups()[0]
 
     if get_size != new_size:
@@ -870,7 +870,7 @@ def test_pvresize(test, vm, params):
 
     gf.pvresize("/dev/sda")
 
-    result = gf.pvs_full().stdout.strip()
+    result = gf.pvs_full().stdout_text.strip()
     get_size = re.search("pv_size:\s+(\S+)", result).groups()[0]
 
     if get_size != pv_size:
@@ -900,12 +900,12 @@ def test_pvuuid(test, vm, params):
 
     create_lvm(test, gf, 'pvcreate')
 
-    pv_name = gf.pvs().stdout.strip()
-    uuid = gf.pvuuid(pv_name).stdout.strip()
+    pv_name = gf.pvs().stdout_text.strip()
+    uuid = gf.pvuuid(pv_name).stdout_text.strip()
     uuid = re.sub("-", "", uuid)
     logging.debug("uuid from pvuuid is %s" % uuid)
 
-    ret = gf.pvs_full().stdout.strip()
+    ret = gf.pvs_full().stdout_text.strip()
     result = re.search("pv_uuid:\s+(\S+)", ret).groups()[0]
     logging.debug("uuid from pvs-full is %s" % result)
 

@@ -110,7 +110,7 @@ def run(test, params, env):
         logging.info("disk to be edit:%s", vm_ref)
         if test_format:
             # Get format:raw or qcow2
-            info = process.run("qemu-img info %s" % vm_ref, shell=True).stdout
+            info = process.run("qemu-img info %s" % vm_ref, shell=True).stdout_text
             for line in info.splitlines():
                 comps = line.split(':')
                 if comps[0].count("format"):

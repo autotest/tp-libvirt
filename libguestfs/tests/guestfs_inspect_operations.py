@@ -58,7 +58,7 @@ def test_inspect_get(test, vm, params):
     logging.debug(getroot_result)
     if getroot_result.exit_status:
         fail_info.append("Get root with inspect-get-roots failed.")
-    elif not re.search(rootfs, str(getroot_result.stdout)):
+    elif not re.search(rootfs, str(getroot_result.stdout_text)):
         fail_info.append("Something wrong with got roots.")
     else:
         logging.info("Get root successfully.")
@@ -77,7 +77,7 @@ def test_inspect_get(test, vm, params):
     if distro_result.exit_status:
         fail_info.append("Get distro of %s failed." % rootfs)
     elif is_redhat:
-        if str(releaseo) != distro_result.stdout.strip():
+        if str(releaseo) != distro_result.stdout_text.strip():
             fail_info.append("Got distro do not match.")
     else:
         logging.info("Get distro successfully.")
@@ -139,7 +139,7 @@ def test_inspect_get(test, vm, params):
         if vm.is_alive():
             vm.destroy()
 
-    if not re.search(arch_result.stdout.strip(), uname2):
+    if not re.search(arch_result.stdout_text.strip(), uname2):
         fail_info.append("Got arch do not match.")
 
     if len(fail_info):

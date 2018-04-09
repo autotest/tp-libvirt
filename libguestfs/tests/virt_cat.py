@@ -75,7 +75,7 @@ def run(test, params, env):
         if result.exit_status:
             test.fail("Cat file failed.")
         else:
-            if not re.search(content, result.stdout):
+            if not re.search(content, result.stdout_text):
                 test.fail("Catted file do not match")
 
     # Cleanup
