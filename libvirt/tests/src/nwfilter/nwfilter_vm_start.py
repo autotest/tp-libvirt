@@ -126,7 +126,7 @@ def run(test, params, env):
                           " %s\n%s" % (e, bug_url))
 
         if kill_libvirtd:
-            cmd = "kill -SIGTERM `pidof libvirtd`"
+            cmd = "kill -s TERM `pidof libvirtd`"
             process.run(cmd, shell=True)
             ret = utils_misc.wait_for(lambda: not libvirtd.is_running(),
                                       timeout=30)
