@@ -148,7 +148,7 @@ def test_virt_tar_out(test, vm, params):
     if cat_result.exit_status:
         test.fail("Cat file failed.")
     else:
-        if not re.search(content, cat_result.stdout):
+        if not re.search(content, cat_result.stdout_text):
             test.fail("Catted file do not match.")
 
 
@@ -255,7 +255,7 @@ def test_virt_copy_out(test, vm, params):
 
     # Check file
     cat_result = process.run("cat %s" % path, ignore_status=True, shell=True)
-    logging.debug(cat_result.stdout)
+    logging.debug(cat_result.stdout_text)
     try:
         os.remove(path)
     except IOError as detail:
@@ -263,7 +263,7 @@ def test_virt_copy_out(test, vm, params):
     if cat_result.exit_status:
         test.fail("Cat file failed.")
     else:
-        if not re.search(content, cat_result.stdout):
+        if not re.search(content, cat_result.stdout_text):
             test.fail("Catted file do not match.")
 
 

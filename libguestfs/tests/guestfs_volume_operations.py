@@ -48,7 +48,7 @@ def test_create_vol_group(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -117,7 +117,7 @@ def test_rename_vol_group(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -195,7 +195,7 @@ def test_remove_vol_group(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -256,7 +256,7 @@ def test_create_volume(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -360,7 +360,7 @@ def test_delete_volume(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -444,7 +444,7 @@ def test_shrink_volume(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -597,7 +597,7 @@ def test_expand_volume(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk

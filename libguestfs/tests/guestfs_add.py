@@ -183,7 +183,7 @@ def run(test, params, env):
     # Convert sdx in root to vdx for virtio system disk
     if primary_disk_virtio(vm):
         root = process.run("echo %s | sed -e 's/sd/vd/g'" % root,
-                           ignore_status=True, shell=True).stdout.strip()
+                           ignore_status=True, shell=True).stdout_text.strip()
     if login_to_check:
         try:
             vm.start()

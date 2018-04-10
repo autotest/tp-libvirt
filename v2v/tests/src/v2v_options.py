@@ -313,7 +313,7 @@ def run(test, params, env):
         """
         Check if content of man page or help info meets expectation
         """
-        man_page = process.run('man virt-v2v', verbose=False).stdout.strip()
+        man_page = process.run('man virt-v2v', verbose=False).stdout_text.strip()
         if in_man:
             logging.info('Checking man page of virt-v2v for "%s"', in_man)
             if in_man not in man_page:
@@ -442,7 +442,7 @@ def run(test, params, env):
             if checkpoint == 'compress':
                 img_path = get_img_path(output)
                 logging.info('Image path: %s', img_path)
-                disk_check = process.run('qemu-img check %s' % img_path).stdout
+                disk_check = process.run('qemu-img check %s' % img_path).stdout_text
                 logging.info(disk_check)
                 compress_info = disk_check.split(',')[-1].split('%')[0].strip()
                 compress_rate = float(compress_info)

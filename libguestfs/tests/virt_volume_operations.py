@@ -20,7 +20,7 @@ def test_created_volume_group(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_lgf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                                ignore_status=True, shell=True).stdout.strip()
+                                ignore_status=True, shell=True).stdout_text.strip()
 
     device_part = "%s1" % device_in_lgf
     # Mount specific partition
@@ -79,7 +79,7 @@ def test_created_volume(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_lgf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                                ignore_status=True, shell=True).stdout.strip()
+                                ignore_status=True, shell=True).stdout_text.strip()
     if utils_test.libguestfs.primary_disk_virtio(vm):
         device_in_vm = add_device
     else:
