@@ -557,7 +557,7 @@ def test_cat(test, vm, params):
     gf_result = gf.cat('/file_ops/file_ascii').stdout.strip()
     logging.debug(gf_result)
     run_result = process.run("tar xOf %s file_ops/file_ascii" % params.get("tarball_path"),
-                             ignore_status=True, shell=True).stdout.strip()
+                             ignore_status=True, shell=True).stdout_text.strip()
     logging.debug(run_result)
     if gf_result != run_result:
         gf.close_session()
@@ -594,7 +594,7 @@ def test_checksum(test, vm, params):
     for k, v in list(checksum_map.items()):
         gf_result = gf.checksum(k, '/file_ops/file_ascii').stdout.strip()
         run_result = process.run("tar xOf %s file_ops/file_ascii | %s" % (params.get("tarball_path"), v),
-                                 ignore_status=True, shell=True).stdout.split()[0]
+                                 ignore_status=True, shell=True).stdout_text.split()[0]
         if gf_result != run_result:
             gf.close_session()
             test.fail("checksum failed.")
@@ -602,7 +602,7 @@ def test_checksum(test, vm, params):
     for k, v in list(checksum_map.items()):
         gf_result = gf.checksum(k, '/file_ops/file_elf').stdout.strip()
         run_result = process.run("tar xOf %s file_ops/file_elf | %s" % (params.get("tarball_path"), v),
-                                 ignore_status=True, shell=True).stdout.split()[0]
+                                 ignore_status=True, shell=True).stdout_text.split()[0]
         if gf_result != run_result:
             gf.close_session()
             test.fail("checksum failed.")
@@ -643,7 +643,7 @@ def test_checksum_device(test, vm, params):
         gf_result = gf.checksum_device(k, '/dev/sda').stdout.strip()
         logging.debug(gf_result.split('\n')[-1])
         run_result = process.run("%s %s" % (v, params.get("image_path")),
-                                 ignore_status=True, shell=True).stdout.split()[0]
+                                 ignore_status=True, shell=True).stdout_text.split()[0]
         logging.debug(run_result)
         if gf_result.split('\n')[-1] != run_result and params.get("image_format") == 'raw':
             gf.close_session()
@@ -693,13 +693,13 @@ def test_checksums_out(test, vm, params):
     gf.download('/test/file_ascii', '/tmp/file_ascii')
     for k, v in list(checksum_map.items()):
         gf_result = gf.checksums_out(k, '/test', '/tmp/sumsfile').stdout.strip()
-        run_result = process.run("cat /tmp/sumsfile", shell=True).stdout.split()
+        run_result = process.run("cat /tmp/sumsfile", shell=True).stdout_text.split()
         if k == 'crc':
             run_result[2] = os.path.basename(run_result[2])
             run_result[5] = os.path.basename(run_result[5])
             guest_res = dict(list(zip(run_result[2::3], run_result[0::3])))
             run_result = process.run("%s /tmp/file_elf /tmp/file_ascii" % v,
-                                     ignore_status=True, shell=True).stdout.split()
+                                     ignore_status=True, shell=True).stdout_text.split()
             run_result[2] = os.path.basename(run_result[2])
             run_result[5] = os.path.basename(run_result[5])
             host_res = dict(list(zip(run_result[2::3], run_result[0::3])))
@@ -708,7 +708,7 @@ def test_checksums_out(test, vm, params):
             run_result[3] = os.path.basename(run_result[3])
             guest_res = dict(list(zip(run_result[1::2], run_result[0::2])))
             run_result = process.run("%s /tmp/file_elf /tmp/file_ascii" % v,
-                                     ignore_status=True, shell=True).stdout.split()
+                                     ignore_status=True, shell=True).stdout_text.split()
             run_result[1] = os.path.basename(run_result[1])
             run_result[3] = os.path.basename(run_result[3])
             host_res = dict(list(zip(run_result[1::2], run_result[0::2])))
@@ -784,8 +784,8 @@ def test_fill(test, vm, params):
     gf_result = gf.download('/newfile', '/tmp/newfile')
     gf_result = gf.rm('/newfile')
 
-    run_result = process.run("for((i=0;i<100;i++)); do echo -n '----------'; done > /tmp/tmp", shell=True).stdout.split()
-    run_result = process.run("cmp /tmp/newfile /tmp/tmp", shell=True).stdout.strip()
+    run_result = process.run("for((i=0;i<100;i++)); do echo -n '----------'; done > /tmp/tmp", shell=True).stdout_text.split()
+    run_result = process.run("cmp /tmp/newfile /tmp/tmp", shell=True).stdout_text.strip()
     if run_result != '':
         gf.close_session()
         test.fail("fill failed.")
@@ -877,8 +877,8 @@ def test_fill_pattern(test, vm, params):
     gf_result = gf.download('/newfile', '/tmp/newfile')
     gf_result = gf.rm('/newfile')
 
-    run_result = process.run("for((i=0;i<125;i++)); do echo -n 'abcdefgh'; done > /tmp/tmp", shell=True).stdout.split()
-    run_result = process.run("cmp /tmp/newfile /tmp/tmp", shell=True).stdout.strip()
+    run_result = process.run("for((i=0;i<125;i++)); do echo -n 'abcdefgh'; done > /tmp/tmp", shell=True).stdout_text.split()
+    run_result = process.run("cmp /tmp/newfile /tmp/tmp", shell=True).stdout_text.strip()
     if run_result != '':
         gf.close_session()
         test.fail("fill-pattern failed.")

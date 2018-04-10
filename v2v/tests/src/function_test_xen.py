@@ -320,7 +320,7 @@ def run(test, params, env):
                 cmd = "sed -i 's|%s|%s|' %s" % (params['remote_disk_image'],
                                                 params['img_path'], xml_file)
                 process.run(cmd)
-                logging.debug(process.run('cat %s' % xml_file).stdout)
+                logging.debug(process.run('cat %s' % xml_file).stdout_text)
             if checkpoint == 'format_convert':
                 v2v_params['output_format'] = 'qcow2'
         if checkpoint == 'ssh_banner':

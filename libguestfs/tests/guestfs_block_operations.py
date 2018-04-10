@@ -46,7 +46,7 @@ def test_blockdev_info(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
     if utils_test.libguestfs.primary_disk_virtio(vm):
         device_in_vm = add_device
     else:
@@ -161,7 +161,7 @@ def test_blockdev_ro(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
 
     vt = utils_test.libguestfs.VirtTools(vm, params)
     # Create a new vm with additional disk
@@ -248,7 +248,7 @@ def test_blockdev_rw(test, vm, params):
     """
     add_device = params.get("gf_additional_device", "/dev/vdb")
     device_in_gf = process.run("echo %s | sed -e 's/vd/sd/g'" % add_device,
-                               ignore_status=True, shell=True).stdout.strip()
+                               ignore_status=True, shell=True).stdout_text.strip()
     if utils_test.libguestfs.primary_disk_virtio(vm):
         device_in_vm = add_device
     else:
