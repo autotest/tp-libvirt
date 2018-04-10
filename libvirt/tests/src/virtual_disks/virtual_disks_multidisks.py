@@ -716,6 +716,7 @@ def run(test, params, env):
     snapshot_option = params.get("snapshot_option", "")
     snapshot_error = "yes" == params.get("snapshot_error", "no")
     add_usb_device = "yes" == params.get("add_usb_device", "no")
+    duplicate_target = params.get("virt_disk_duplicate_target", "no")
     hotplug = "yes" == params.get(
         "virt_disk_device_hotplug", "no")
     device_at_dt_disk = "yes" == params.get("virt_disk_at_dt_disk", "no")
@@ -841,7 +842,7 @@ def run(test, params, env):
     # Get device path.
     device_source_path = ""
     if source_path:
-        device_source_path = test.virtdir
+        device_source_path = test.tmpdir
 
     # Prepare test environment.
     qemu_config = LibvirtQemuConfig()
@@ -1486,7 +1487,12 @@ def run(test, params, env):
                     dt_options = "--config"
                 ret = virsh.detach_disk(vm_name, device_targets[i],
                                         dt_options, **virsh_dargs)
-                libvirt.check_exit_status(ret)
+
+                #Need to judge if it's error condition or not
+                if (duplicate_target == "yes"):
+                    libvirt.check_exit_status(ret, (device_attach_error[i] == "yes"))
+                else:
+                    libvirt.check_exit_status(ret)
                 if virtio_disk_hot_unplug_event_watch:
                     check_info_in_libvird_log_file('"event": "DEVICE_DELETED"')
             # Check disks in VM after hotunplug.
