@@ -112,15 +112,6 @@ def run(test, params, env):
         else:
             logging.info('device.map has been remaped to "/dev/vd*"')
 
-    def check_snapshot_file(vmcheck):
-        """
-        Check if the removed file exists after conversion
-        """
-        removed_file = params.get('removed_file')
-        logging.debug(vmcheck.session.cmd('test -f %s' % removed_file).stderr)
-        if vmcheck.session.cmd('test -f %s' % removed_file).stderr == 0:
-            log_fail('Removed file "%s" exists after conversion')
-
     def check_result(result, status_error):
         """
         Check virt-v2v command result
