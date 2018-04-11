@@ -110,7 +110,7 @@ def run(test, params, env):
     virsh_dargs = {'debug': True, 'ignore_status': False}
     try:
         # Run test case
-        qemu_flags = testcase(vmxml, **test_dargs)
+        qemu_flags = testcase(test, vmxml, **test_dargs)
         result = virsh.start(vm_name, **virsh_dargs)
         libvirt.check_exit_status(result, expect_fail)
 
