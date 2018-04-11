@@ -40,6 +40,14 @@ def vm_console_config(vm, test, device='ttyS0', speed='115200'):
       e.g. console=ttyS0,115200
     3)Config init process for RHEL5,4,3 and others.
       e.g. S0:2345:respawn:/sbin/mingetty ttyS0
+
+    :param vm: Libvirt VM Object
+    :param test: Test Object
+    :param device: console device to be configured
+    :param speed: console baud rate to be configured
+
+    :return: True on configuration success
+    :raise: test.fail on configuration failure
     """
     if not vm.is_alive():
         vm.start(autoconsole=False)
@@ -73,6 +81,7 @@ def check_duplicated_console(command, force_command, status_error, login_user,
     :param status_error: Whether the command is fault.
     :param login_user: User name for logging into the VM.
     :param login_passwd: Password for logging into the VM.
+    :param test: Test Object
     """
     session = aexpect.ShellSession(command)
     if not status_error:
@@ -102,6 +111,7 @@ def check_disconnect_on_shutdown(command, status_error, login_user, login_passwd
     :param status_error: Whether the command is fault.
     :param login_user: User name for logging into the VM.
     :param login_passwd: Password for logging into the VM.
+    :param test: Test Object
     """
     session = aexpect.ShellSession(command)
     if not status_error:
@@ -170,6 +180,8 @@ def run(test, params, env):
     domid = ""
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
+    console_dev = params.get("console_device", "ttyS0")
+    console_speed = params.get("console_speed", "115200")
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
             unprivileged_user = 'testacl'
@@ -189,7 +201,8 @@ def run(test, params, env):
     try:
         # Guarantee cleanup after config vm console failed.
         if vm.is_qemu():
-            vm_console_config(vm, test)
+            vm_console_config(vm, test, device=console_dev,
+                              speed=console_speed)
 
         # Prepare vm state for test
         if vm_state != "shutoff":
@@ -233,6 +246,12 @@ def run(test, params, env):
         # Recover state of vm.
         if vm_state == "paused":
             vm.resume()
+
+        # clean up console from kernel commandline
+        if not vm.is_alive():
+            vm.start()
+            vm.wait_for_login()
+        vm.set_kernel_console(console_dev, console_speed, remove=True)
 
         # Recover vm
         if vm.is_alive():
