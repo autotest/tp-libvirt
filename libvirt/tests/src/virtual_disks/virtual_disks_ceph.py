@@ -17,6 +17,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import vol_xml
 from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml import secret_xml
+from virttest import data_dir
 
 
 def run(test, params, env):
@@ -216,7 +217,7 @@ def run(test, params, env):
         """
         Test save and restore operation
         """
-        save_file = os.path.join(test.tmpdir,
+        save_file = os.path.join(data_dir.get_tmp_dir(),
                                  "%s.save" % vm_name)
         ret = virsh.save(vm_name, save_file, **virsh_dargs)
         libvirt.check_exit_status(ret)
@@ -232,8 +233,8 @@ def run(test, params, env):
         Test snapshot operation.
         """
         snap_name = "s1"
-        snap_mem = os.path.join(test.tmpdir, "rbd.mem")
-        snap_disk = os.path.join(test.tmpdir, "rbd.disk")
+        snap_mem = os.path.join(data_dir.get_tmp_dir(), "rbd.mem")
+        snap_disk = os.path.join(data_dir.get_tmp_dir(), "rbd.disk")
         xml_snap_exp = ["disk name='%s' snapshot='external' type='file'" % target_dev]
         xml_dom_exp = ["source file='%s'" % snap_disk,
                        "backingStore type='network' index='1'",
@@ -276,7 +277,7 @@ def run(test, params, env):
         """
         Block copy operation test.
         """
-        blk_file = os.path.join(test.tmpdir, "blk.rbd")
+        blk_file = os.path.join(data_dir.get_tmp_dir, "blk.rbd")
         if os.path.exists(blk_file):
             os.remove(blk_file)
         blk_mirror = ("mirror type='file' file='%s' "
@@ -468,10 +469,10 @@ def run(test, params, env):
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     key_opt = ""
     secret_uuid = None
-    key_file = os.path.join(test.tmpdir, "ceph.key")
-    img_file = os.path.join(test.tmpdir,
+    key_file = os.path.join(data_dir.get_tmp_dir(), "ceph.key")
+    img_file = os.path.join(data_dir.get_tmp_dir(),
                             "%s_test.img" % vm_name)
-    front_end_img_file = os.path.join(test.tmpdir,
+    front_end_img_file = os.path.join(data_dir.get_tmp_dir(),
                                       "%s_frontend_test.img" % vm_name)
     # Construct a unsupported error message list to skip these kind of tests
     unsupported_err = []

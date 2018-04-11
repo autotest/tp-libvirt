@@ -11,6 +11,7 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.controller import Controller
+from virttest import data_dir
 
 
 def run(test, params, env):
@@ -142,7 +143,7 @@ def run(test, params, env):
         image_filename = params.get("image_filename", "raw.img")
         image_format = params.get("image_format", "raw")
         image_size = params.get("image_size", "1G")
-        image_path = os.path.join(test.tmpdir, image_filename)
+        image_path = os.path.join(data_dir.get_tmp_dir(), image_filename)
         try:
             if image_format in ["raw", "qcow2"]:
                 image_path = libvirt.create_local_disk("file",

@@ -15,6 +15,7 @@ from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
 from virttest.staging import lv_utils
 from virttest import utils_misc
+from virttest import data_dir
 
 from provider import libvirt_version
 
@@ -176,7 +177,7 @@ def run(test, params, env):
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     # Create virtual device file.
-    device_source_path = os.path.join(test.tmpdir, device_source_name)
+    device_source_path = os.path.join(data_dir.get_tmp_dir(), device_source_name)
     if test_block_dev:
         device_source = libvirt.setup_or_cleanup_iscsi(True)
         if not device_source:
@@ -389,7 +390,7 @@ def run(test, params, env):
     # Eject cdrom test
     eject_cdrom = "yes" == params.get("at_dt_disk_eject_cdrom", "no")
     save_vm = "yes" == params.get("at_dt_disk_save_vm", "no")
-    save_file = os.path.join(test.tmpdir, "vm.save")
+    save_file = os.path.join(data_dir.get_tmp_dir(), "vm.save")
     try:
         if eject_cdrom:
             eject_params = {'type_name': "file", 'device_type': "cdrom",
