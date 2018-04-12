@@ -10,6 +10,7 @@ from virttest import remote
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.staging import service
+from virttest import data_dir
 
 from provider import libvirt_version
 
@@ -175,7 +176,7 @@ def run(test, params, env):
     if vm:
         xml_bak = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     iface_script = NETWORK_SCRIPT + iface_name
-    iface_script_bk = os.path.join(test.tmpdir, "iface-%s.bk" % iface_name)
+    iface_script_bk = os.path.join(data_dir.get_tmp_dir(), "iface-%s.bk" % iface_name)
     net_bridge = utils_net.Bridge()
     if use_exist_iface:
         if iface_type == "bridge":
@@ -194,7 +195,7 @@ def run(test, params, env):
     if use_exist_iface:
         if not libvirt.check_iface(iface_name, "exists", "--all"):
             test.error("Interface '%s' not exists" % iface_name)
-        iface_xml = os.path.join(test.tmpdir, "iface.xml.tmp")
+        iface_xml = os.path.join(data_dir.get_tmp_dir(), "iface.xml.tmp")
         iface_is_up = net_iface.is_up()
     else:
         # Note, if not use the interface which already exists, iface_name must
@@ -203,7 +204,7 @@ def run(test, params, env):
             test.error("Interface '%s' already exists" % iface_name)
         if not iface_xml:
             test.error("XML file is needed.")
-        iface_xml = os.path.join(test.tmpdir, iface_xml)
+        iface_xml = os.path.join(data_dir.get_tmp_dir(), iface_xml)
         create_xml_file(iface_xml, params)
 
     # Stop NetworkManager as which may conflict with virsh iface commands
