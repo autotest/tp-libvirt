@@ -1520,6 +1520,9 @@ def run(test, params, env):
     finally:
         # Delete snapshots.
         if virsh.domain_exists(vm_name):
+            #To Delet snapshot, destroy vm first.
+            if vm.is_alive():
+                vm.destroy()
             libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)
 
         # Recover VM.
