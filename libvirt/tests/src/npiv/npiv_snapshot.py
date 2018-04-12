@@ -42,7 +42,7 @@ def get_symbols_by_blk(blkdev, method="by-path"):
         result = process.run(cmd, shell=True)
     except process.cmdError as detail:
         raise exceptions.TestError(str(detail))
-    symbolic_links = result.stdout.strip().splitlines()
+    symbolic_links = result.stdout_text.strip().splitlines()
     return symbolic_links
 
 
@@ -63,10 +63,10 @@ def get_blks_by_scsi(scsi_bus, blk_prefix="sd"):
     cmd %= (scsi_bus, blk_prefix)
     try:
         result = process.run(cmd, shell=True)
-        logging.debug("multipath result: %s", result.stdout.strip())
+        logging.debug("multipath result: %s", result.stdout_text.strip())
     except process.cmdError as detail:
         raise exceptions.TestError(str(detail))
-    blk_names = result.stdout.strip().splitlines()
+    blk_names = result.stdout_text.strip().splitlines()
     return blk_names
 
 

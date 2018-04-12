@@ -225,7 +225,7 @@ def numeric_timezone(tz_name="Europe/London"):
     try:
         cmd = "TZ='%s'" % tz_name
         cmd += " date +%z"
-        z = process.run(cmd, shell=True).stdout.strip()
+        z = process.run(cmd, shell=True).stdout_text.strip()
         numeric_tz = float(z[0:-2]) + float(z[0] + z[-2:]) / 60
     except Exception as e:
         logging.error("Convert timezone error: %s", e)

@@ -17,9 +17,9 @@ def get_snap_createtime(vm_name, snap_name):
     """
 
     result = virsh.command("snapshot-list %s" % vm_name)
-    logging.debug("result is %s", result.stdout)
+    logging.debug("result is %s", result.stdout.strip())
     data = re.search(snap_name + r"\s+\d+-\d+-\d+\s+\d+:\d+:\d+",
-                     result.stdout).group()
+                     result.stdout.strip()).group()
 
     return data.split("%s " % snap_name)[1].strip()
 

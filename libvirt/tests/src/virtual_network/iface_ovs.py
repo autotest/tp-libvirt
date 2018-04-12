@@ -86,7 +86,7 @@ def run(test, params, env):
         assert bridge == brname
         # Get port info from ovs-vsctl output
         cmd = "ovs-vsctl list port %s" % ifname
-        output = process.run(cmd, shell=True).stdout
+        output = process.run(cmd, shell=True).stdout_text
         logging.debug("ovs port output: %s", output)
         for line in output.splitlines():
             if line.count("tag"):

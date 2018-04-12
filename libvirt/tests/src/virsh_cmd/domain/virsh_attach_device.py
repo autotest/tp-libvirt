@@ -354,8 +354,8 @@ class AttachDeviceBase(TestDeviceBase):
             logging.debug("%s", line)
 
         if (cmdresult.exit_status == 0):
-            if (cmdresult.stdout.count('attached successfully') or
-                    cmdresult.stderr.count('attached successfully')):
+            if (cmdresult.stdout.strip().count('attached successfully') or
+                    cmdresult.stderr.strip().count('attached successfully')):
                 return True
         else:
             # See analyze_negative_results - expects return of true

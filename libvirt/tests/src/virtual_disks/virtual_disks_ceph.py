@@ -149,22 +149,22 @@ def run(test, params, env):
         # vol-key
         ret = virsh.vol_key(vol_name, pool_name)
         libvirt.check_exit_status(ret)
-        if "%s/%s" % (disk_src_pool, vol_name) not in ret.stdout:
+        if "%s/%s" % (disk_src_pool, vol_name) not in ret.stdout.strip():
             test.fail("Volume key isn't correct")
         # vol-path
         ret = virsh.vol_path(vol_name, pool_name)
         libvirt.check_exit_status(ret)
-        if "%s/%s" % (disk_src_pool, vol_name) not in ret.stdout:
+        if "%s/%s" % (disk_src_pool, vol_name) not in ret.stdout.strip():
             test.fail("Volume path isn't correct")
         # vol-pool
         ret = virsh.vol_pool("%s/%s" % (disk_src_pool, vol_name))
         libvirt.check_exit_status(ret)
-        if pool_name not in ret.stdout:
+        if pool_name not in ret.stdout.strip():
             test.fail("Volume pool isn't correct")
         # vol-name
         ret = virsh.vol_name("%s/%s" % (disk_src_pool, vol_name))
         libvirt.check_exit_status(ret)
-        if vol_name not in ret.stdout:
+        if vol_name not in ret.stdout.strip():
             test.fail("Volume name isn't correct")
         # vol-resize
         ret = virsh.vol_resize(vol_name, "2G", pool_name)
@@ -387,7 +387,7 @@ def run(test, params, env):
         cmd = ("rbd -m {0} {1} snap"
                " list {2}"
                "".format(mon_host, key_opt, os.path.join(disk_src_pool, vol_name)))
-        snaps_out = process.run(cmd, ignore_status=True, shell=True).stdout
+        snaps_out = process.run(cmd, ignore_status=True, shell=True).stdout_text
         snap_names = []
         if snaps_out:
             for line in snaps_out.rsplit("\n"):
@@ -514,7 +514,7 @@ def run(test, params, env):
                 libvirt.check_exit_status(ret)
 
                 secret_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
-                                         ret.stdout)[0].lstrip()
+                                         ret.stdout.strip())[0].lstrip()
                 logging.debug("Secret uuid %s", secret_uuid)
                 if secret_uuid is None:
                     test.error("Failed to get secret uuid")

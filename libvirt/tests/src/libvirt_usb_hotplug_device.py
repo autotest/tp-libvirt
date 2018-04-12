@@ -90,7 +90,7 @@ def run(test, params, env):
                     attach_cmd += (" 0 id=drive-usb-%s,if=none,file=%s" % (i, path))
 
                     result = virsh.qemu_monitor_command(vm_name, attach_cmd, options=opt)
-                    if result.exit_status or (result.stdout.find("OK") == -1):
+                    if result.exit_status or (result.stdout.strip().find("OK") == -1):
                         raise process.CmdError(result.command, result)
 
                     attach_cmd = "device_add usb-storage,"

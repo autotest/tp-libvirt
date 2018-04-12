@@ -65,12 +65,12 @@ def run(test, params, env):
         """
         Show disk by id.
         """
-        output = process.run("ls /dev/disk/by-id/", shell=True).stdout
+        output = process.run("ls /dev/disk/by-id/", shell=True).stdout_text
         for line in output.splitlines():
             disk_ids = line.split()
             for disk_id in disk_ids:
                 disk = os.path.basename(
-                    process.run("readlink %s" % disk_id, shell=True).stdout)
+                    process.run("readlink %s" % disk_id, shell=True).stdout_text)
                 if disk == os.path.basename(device):
                     return disk_id
         return None

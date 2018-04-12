@@ -121,7 +121,7 @@ def get_secret_value(test, params):
         else:
             # Check secret value
             if base64_file and check_secret(params):
-                logging.info(result.stdout)
+                logging.info(result.stdout.strip())
             else:
                 test.fail("The secret value "
                           "mismatch with result")
@@ -161,7 +161,7 @@ def set_secret_value(test, params):
         else:
             # Check secret value
             if check_secret(params):
-                logging.info(result.stdout)
+                logging.info(result.stdout.strip())
             else:
                 test.fail("The secret value "
                           "mismatch with result")

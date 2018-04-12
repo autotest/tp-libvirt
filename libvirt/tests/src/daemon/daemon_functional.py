@@ -75,7 +75,7 @@ def run(test, params, env):
             pid = int(pid_file.readline())
 
         result = process.run('pgrep libvirtd', ignore_status=True, shell=True)
-        expected_pid = int(result.stdout.strip().split()[0])
+        expected_pid = int(result.stdout_text.strip().split()[0])
 
         if pid != expected_pid:
             test.fail("PID file content mismatch. Expected %s "

@@ -19,7 +19,7 @@ def get_page_size():
     """
     try:
         getconf_path = utils_path.find_command('getconf')
-        return int(process.run(getconf_path + ' PAGESIZE', shell=True).stdout.strip())
+        return int(process.run(getconf_path + ' PAGESIZE', shell=True).stdout_text.strip())
     except utils_path.CmdNotFoundError:
         logging.warning('getconf not found! Assuming 4K for PAGESIZE')
         return 4096

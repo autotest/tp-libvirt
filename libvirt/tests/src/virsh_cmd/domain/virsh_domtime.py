@@ -53,7 +53,7 @@ def run(test, params, env):
         res = process.run("date -u", shell=True)
         # Strip timezone info from output
         # e.g. 'Sun Feb 15 07:31:40 CST 2009' -> 'Sun Feb 15 07:31:40 2009'
-        time_str = re.sub(r'\S+ (?=\S+$)', '', res.stdout.strip())
+        time_str = re.sub(r'\S+ (?=\S+$)', '', res.stdout_text.strip())
         return datetime.datetime.strptime(time_str,
                                           r"%a %b %d %H:%M:%S %Y")
 

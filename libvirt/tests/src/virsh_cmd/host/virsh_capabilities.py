@@ -32,7 +32,7 @@ def run(test, params, env):
         # Check the host arch.
         xml_arch = cap_xml.arch
         logging.debug("Host arch (capabilities_xml): %s", xml_arch)
-        exp_arch = process.run("arch", shell=True).stdout.strip()
+        exp_arch = process.run("arch", shell=True).stdout_text.strip()
         if cmp(xml_arch, exp_arch) != 0:
             test.fail("The host arch in capabilities_xml is "
                       "expected to be %s, but get %s" %
@@ -45,7 +45,7 @@ def run(test, params, env):
         if platform.machine() == 's390x':
             search_str = 'cpu number'
         cmd = "grep '%s' /proc/cpuinfo | wc -l" % search_str
-        exp_cpu_count = int(process.run(cmd, shell=True).stdout.strip())
+        exp_cpu_count = int(process.run(cmd, shell=True).stdout_text.strip())
         if xml_cpu_count != exp_cpu_count:
             test.fail("Host cpus count is expected to be %s, "
                       "but get %s" %
@@ -65,7 +65,7 @@ def run(test, params, env):
                           'mipsel', 'openrisc', 'parisc', 'ppc', 'ppcle',
                           'ppcemb', 's390', 'sh4', 'sparc', 'unicore32',
                           'xtensa', 'xtensaeb']
-        uri_type = process.run("virsh uri", shell=True).stdout.split(':')[0]
+        uri_type = process.run("virsh uri", shell=True).stdout_text.split(':')[0]
         domain_type = "domain_" + uri_type
         for arch_dict in list(itervalues(guest_capa)):
             for arch, val_dict in list(iteritems(arch_dict)):

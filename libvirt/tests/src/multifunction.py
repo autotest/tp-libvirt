@@ -171,7 +171,7 @@ def attach_additional_device(vm_name, disksize, targetdev, params):
     disk_path = os.path.join(data_dir.get_tmp_dir(), targetdev)
     cmd = "qemu-img create %s %s" % (disk_path, disksize)
     ret = process.run(cmd, shell=True, allow_output_check='combined')
-    status, output = ret.exit_status, ret.stdout.strip()
+    status, output = ret.exit_status, ret.stdout_text.strip()
     if status:
         return (False, output)
 

@@ -196,7 +196,7 @@ def run(test, params, env):
                 # get qemu-kvm memory consumption by top
                 cmd = "top -b -n 1|awk '$1 == %s {print $10}'" % pid
                 rate = process.run(cmd, ignore_status=False,
-                                   verbose=True, shell=True).stdout.strip()
+                                   verbose=True, shell=True).stdout_text.strip()
                 qemu_kvm_used = (utils_memory.memtotal() * float(rate)) / 100
                 logging.debug("rate: %s, used-by-qemu-kvm: %f, used-by-vm: %d",
                               rate, qemu_kvm_used, hugepage_used)

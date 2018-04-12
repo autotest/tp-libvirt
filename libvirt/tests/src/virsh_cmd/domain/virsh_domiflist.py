@@ -154,7 +154,7 @@ def run(test, params, env):
 
         result = virsh.domiflist(vm_name, "", ignore_status=True)
         libvirt.check_exit_status(result)
-        old_iflist = parse_interface_details(result.stdout)
+        old_iflist = parse_interface_details(result.stdout.strip())
         logging.debug("Old interface list: %s", old_iflist)
         # Attach interface for testing.
         if attach_iface:
@@ -167,7 +167,7 @@ def run(test, params, env):
 
         vm.verify_alive()
         result = virsh.domiflist(options, additional_options, ignore_status=True)
-        new_iflist = parse_interface_details(result.stdout)
+        new_iflist = parse_interface_details(result.stdout.strip())
         logging.debug("New interface list: %s", new_iflist)
 
         if status_error:

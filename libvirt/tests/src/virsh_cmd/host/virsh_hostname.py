@@ -14,7 +14,7 @@ def run(test, params, env):
     """
 
     hostname_result = process.run("hostname -f", shell=True, ignore_status=True)
-    hostname = hostname_result.stdout.strip()
+    hostname = hostname_result.stdout_text.strip()
 
     # Prepare libvirtd service
     check_libvirtd = "libvirtd" in params

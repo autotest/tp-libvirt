@@ -25,7 +25,7 @@ def create_disk(vm_name, disk_iso, disk_type, target_dev, mode=""):
         options += " --mode %s" % mode
     try:
         virsh.attach_disk(vm_name, disk_iso, target_dev, options)
-    except:
+    except Exception:
         os.remove(disk_iso)
         raise exceptions.TestFail("Failed to attach")
 

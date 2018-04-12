@@ -464,7 +464,7 @@ def run(test, params, env):
         count = 0
         while (count < migrate_start_timeout):
             if (virsh.domain_exists(vm.name, uri=dest_uri) and
-               check_vm_state(vm, 'paused', dest_uri, True)):
+                    check_vm_state(vm, 'paused', dest_uri, True)):
                 logging.debug("Domain exists with 'paused' state "
                               "with '%s' after %d seconds", dest_uri, count)
                 break
@@ -474,7 +474,7 @@ def run(test, params, env):
                 count += 1
                 time.sleep(1)
         if (count == migrate_start_timeout and
-           not virsh.domain_exists(vm.name, uri=dest_uri)):
+                not virsh.domain_exists(vm.name, uri=dest_uri)):
             test.error("Domain is not found with 'paused' state in 50s")
 
     def run_migration_cmd(cmd, timeout=5):

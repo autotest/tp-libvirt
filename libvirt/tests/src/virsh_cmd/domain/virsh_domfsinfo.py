@@ -240,7 +240,7 @@ def run(test, params, env):
                     test.fail("Expected fail with one of %s, but failed with:\n%s" %
                               (fail_pat, result))
         # Check virsh.domfsinfo output
-        cmd_output = result.stdout
+        cmd_output = result.stdout.strip()
         if quiet_mode:
             head_pat = "Mountpoint\s+Name\s+Type\s+Target"
             check_output(cmd_output, head_pat, test, expected=False)
@@ -256,7 +256,7 @@ def run(test, params, env):
             if result.exit_status:
                 test.fail("Failed to run virsh.domfsinfo after disk unplug:\n%s"
                           % result.stderr)
-            check_output(result.stdout, disk_pat, test, expected=False)
+            check_output(result.stdout.strip(), disk_pat, test, expected=False)
         else:
             # Verify virsh.domfsinfo consistency
             if not status_error:

@@ -171,7 +171,7 @@ def run(test, params, env):
         set_cpu_memory(new_vm_name, cpu_size, memory_size)
         vm = libvirt_vm.VM(new_vm_name, vm.params, vm.root_dir,
                            vm.address_cache)
-    except:   # Make sure created vm is cleaned up
+    except Exception:   # Make sure created vm is cleaned up
         virsh.remove_domain(new_vm_name)
         raise
 

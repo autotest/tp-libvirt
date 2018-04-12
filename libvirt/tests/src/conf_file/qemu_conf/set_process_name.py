@@ -32,7 +32,7 @@ def run(test, params, env):
         res = process.run("ps -p %s -o cmd h" % pid, shell=True)
 
         if res.exit_status == 0:
-            match = re.search(r'-name\s*(\S*)', res.stdout.strip())
+            match = re.search(r'-name\s*(\S*)', res.stdout_text.strip())
             if match:
                 return match.groups()[0]
 

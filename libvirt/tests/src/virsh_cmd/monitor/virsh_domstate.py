@@ -58,7 +58,7 @@ def check_crash_state(cmd_output, crash_action, vm_name, dump_file=""):
         result = process.run("ls %s" % dump_file,
                              ignore_status=True, shell=True)
         if result.exit_status == 0:
-            logging.debug("Find the auto dump core file:\n%s", result.stdout)
+            logging.debug("Find the auto dump core file:\n%s", result.stdout_text)
             find_dump_file = True
         else:
             logging.error("Not find coredump file: %s", dump_file)

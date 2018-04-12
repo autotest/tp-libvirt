@@ -292,7 +292,7 @@ def run(test, params, env):
             rdm.iscsi_login_setup(local_host, target2, is_login=False)
             try:
                 lv_utils.vg_remove(vgname)
-            except:
+            except Exception:
                 pass    # let it go to confirm cleanup iscsi device
             utlv.setup_or_cleanup_iscsi(is_setup=False,
                                         emulated_image="emulated-iscsi1")

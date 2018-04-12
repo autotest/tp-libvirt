@@ -16,7 +16,7 @@ def get_present_cpu():
     if os.path.exists("%s/cpu0" % SYSFS_SYSTEM_PATH):
         cmd = "ls %s | grep cpu[0-9] | wc -l" % SYSFS_SYSTEM_PATH
         cmd_result = process.run(cmd, ignore_status=True, shell=True)
-        present = int(cmd_result.stdout.strip())
+        present = int(cmd_result.stdout_text.strip())
     else:
         present = None
 
@@ -76,7 +76,7 @@ def get_online_cpu(option=''):
     if os.path.exists("%s/online" % SYSFS_SYSTEM_PATH):
         cmd = "cat %s/online" % SYSFS_SYSTEM_PATH
         cmd_result = process.run(cmd, ignore_status=True, shell=True)
-        output = cmd_result.stdout.strip()
+        output = cmd_result.stdout_text.strip()
         if 'pretty' in option:
             return tuple(output)
         if ',' in output:
@@ -92,7 +92,7 @@ def get_online_cpu(option=''):
                 if os.path.exists("%s/cpu%s/online" % (SYSFS_SYSTEM_PATH, i)):
                     cmd = "cat %s/cpu%s/online" % (SYSFS_SYSTEM_PATH, i)
                     cmd_result = process.run(cmd, ignore_status=True, shell=True)
-                    output = cmd_result.stdout.strip()
+                    output = cmd_result.stdout_text.strip()
                     if int(output) == 1:
                         cpu_map_list[i] = 'y'
                 else:

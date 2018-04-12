@@ -491,7 +491,7 @@ def run(test, params, env):
             status = cmd_result.exit_status
             if status != 0:
                 raise exceptions.TestFail("Run blockcopy command fail: %s" %
-                                          cmd_result.stdout + cmd_result.stderr)
+                                          cmd_result.stdout.strip() + cmd_result.stderr)
             elif not os.path.exists(dest_path):
                 raise exceptions.TestFail("Cannot find the created copy")
 
@@ -560,7 +560,7 @@ def run(test, params, env):
                     utl.check_exit_status(ret, status_error)
                     session.close()
             else:
-                raise exceptions.TestFail(cmd_result.stdout + cmd_result.stderr)
+                raise exceptions.TestFail(cmd_result.stdout.strip() + cmd_result.stderr)
         else:
             if status:
                 logging.debug("Expect error: %s", cmd_result.stderr)
@@ -573,7 +573,7 @@ def run(test, params, env):
                 # check, so also do check in libvirtd log to confirm.
                 if options.count("--timeout") and options.count("--wait"):
                     log_pattern = "Copy aborted"
-                    if (re.search(log_pattern, cmd_result.stdout) or
+                    if (re.search(log_pattern, cmd_result.stdout.strip()) or
                             chk_libvirtd_log(libvirtd_log_path,
                                              log_pattern, "debug")):
                         logging.debug("Found success a timed out block copy")

@@ -31,7 +31,7 @@ def run(test, params, env):
         :param guest_args : File which will save config information.
         """
         pid = vm.get_pid()
-        cmdline = process.run("cat -v /proc/%d/cmdline" % pid).stdout
+        cmdline = process.run("cat -v /proc/%d/cmdline" % pid).stdout_text
         cmdline = re.sub(r'\^@', ' ', cmdline)
         cmdline_tmp = re.sub(r'\s-drive\s[^\s]+', '\s', cmdline)
         with open(guest_args, 'w') as guest_file:

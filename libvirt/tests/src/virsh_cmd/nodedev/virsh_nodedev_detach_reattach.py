@@ -82,7 +82,7 @@ def run(test, params, env):
         net_list = virsh.nodedev_list(tree='', cap='net')
         net_lists = net_list.stdout.strip().splitlines()
         route_cmd = " route | grep default"
-        route_default = process.run(route_cmd, shell=True).stdout.strip().split(' ')
+        route_default = process.run(route_cmd, shell=True).stdout_text.strip().split(' ')
         ip_default = route_default[-1]
         for net_device_name in net_lists:
             if net_device_name.find(ip_default) == -1:

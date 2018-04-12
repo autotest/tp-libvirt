@@ -60,7 +60,7 @@ def run(test, params, env):
                                             ignore_status=True)
             cmdresult = vcback.vcpuinfo(vm_name)
             status = cmdresult.exit_status
-            output = cmdresult.stdout
+            output = cmdresult.stdout.strip()
             vcback.close_session()
             if status != 0:
                 err = output

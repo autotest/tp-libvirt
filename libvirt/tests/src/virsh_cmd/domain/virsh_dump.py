@@ -91,7 +91,7 @@ def run(test, params, env):
             cmd2 = ("cat /proc/$(%s |awk '/libvirt_i/{print $2}')/fdinfo/1"
                     "|grep flags|awk '{print $NF}'" % cmd1)
             ret = process.run(cmd2, allow_output_check='combined', shell=True)
-            status, output = ret.exit_status, ret.stdout.strip()
+            status, output = ret.exit_status, ret.stdout_text.strip()
             if status:
                 error = "Fail to get the flags of dumped file"
                 logging.error(error)
@@ -164,7 +164,7 @@ def run(test, params, env):
         else:
             file_cmd = "file %s" % dump_file
             ret = process.run(file_cmd, allow_output_check='combined', shell=True)
-            status, output = ret.exit_status, ret.stdout.strip()
+            status, output = ret.exit_status, ret.stdout_text.strip()
             if status:
                 logging.error("Fail to check dumped file %s", dump_file)
                 return False
@@ -222,7 +222,7 @@ def run(test, params, env):
             cmd = "cat /proc/%d/cmdline|xargs -0 echo" % vm_pid
             cmd += "|grep dump-guest-core=%s" % dump_guest_core
             result = process.run(cmd, ignore_status=True, shell=True)
-            logging.debug("cmdline: %s" % result.stdout)
+            logging.debug("cmdline: %s" % result.stdout_text)
             if result.exit_status:
                 test.fail("Not find dump-guest-core=%s in qemu cmdline"
                           % dump_guest_core)

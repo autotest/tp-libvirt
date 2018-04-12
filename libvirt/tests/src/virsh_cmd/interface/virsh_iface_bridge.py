@@ -90,7 +90,7 @@ def run(test, params, env):
                 # Get the new create bridge IP address
                 try:
                     br_ip = utils_net.get_ip_address_by_interface(bridge_name)
-                except:
+                except Exception:
                     br_ip = ""
                 # check IP of new bridge
                 if check_iface and br_ip and br_ip != iface_ip:

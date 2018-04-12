@@ -111,7 +111,7 @@ def run(test, params, env):
                 root_cpuset_path = utils_cgroup.get_cgroup_mountpoint("cpuset")
                 machine_cpuset_paths = []
                 if os.path.isdir(os.path.join(root_cpuset_path,
-                                 "machine.slice")):
+                                              "machine.slice")):
                     machine_cpuset_paths.append(os.path.join(root_cpuset_path,
                                                              "machine.slice"))
                 if os.path.isdir(os.path.join(root_cpuset_path, "machine")):

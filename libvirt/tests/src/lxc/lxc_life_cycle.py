@@ -147,7 +147,7 @@ def run(test, params, env):
         # List
         result = virsh.dom_list('--inactive', **virsh_args)
         utlv.check_exit_status(result)
-        if re.findall("(%s)\s+shut off" % vm_name, result.stdout):
+        if re.findall("(%s)\s+shut off" % vm_name, result.stdout.strip()):
             logging.info("Find %s in virsh list output", vm_name)
         else:
             raise TestFail("Not find %s in virsh list output")
@@ -164,7 +164,7 @@ def run(test, params, env):
             raise TestFail("Run edit command fail")
         else:
             result = virsh.dumpxml(vm_name, **virsh_args)
-            new_vcpu = re.search(r'(\d*)</vcpu>', result.stdout).group(1)
+            new_vcpu = re.search(r'(\d*)</vcpu>', result.stdout.strip()).group(1)
             if new_vcpu == edit_vcpu:
                 logging.info("vcpu number is expected after do edit")
             else:

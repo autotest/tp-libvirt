@@ -120,7 +120,7 @@ def create_nodedev_from_xml(test, params):
         if status:
             test.fail(result.stderr)
         else:
-            output = result.stdout
+            output = result.stdout.strip()
             logging.info(output)
             for scsi in output.split():
                 if scsi.startswith('scsi_host'):
@@ -165,7 +165,7 @@ def destroy_nodedev(test, params):
         else:
             # Check nodedev value
             if not check_nodedev(dev_name):
-                logging.info(result.stdout)
+                logging.info(result.stdout.strip())
             else:
                 test.fail("The relevant directory still exists"
                           "or mismatch with result")

@@ -44,7 +44,7 @@ def run(test, params, env):
         :param vcpu: VM cpu pid
         :return : list of affinity to vcpus
         """
-        total_cpu = process.run("ls -d /sys/devices/system/cpu/cpu[0-9]* |wc -l", shell=True).stdout.strip()
+        total_cpu = process.run("ls -d /sys/devices/system/cpu/cpu[0-9]* |wc -l", shell=True).stdout_text.strip()
         vcpus_affinity = {}
         output = virsh.vcpupin(vm_name).stdout
         for item in output.split('\n')[2:-2]:
@@ -64,7 +64,7 @@ def run(test, params, env):
         :param vcpu: VM cpu pid
         """
 
-        total_cpu = process.run("ls -d /sys/devices/system/cpu/cpu[0-9]* |wc -l", shell=True).stdout.strip()
+        total_cpu = process.run("ls -d /sys/devices/system/cpu/cpu[0-9]* |wc -l", shell=True).stdout_text.strip()
         logging.debug("Debug: cpulist %s", cpu_list)
         expected_output = utils_test.libvirt.cpus_string_to_affinity_list(
             cpu_list,

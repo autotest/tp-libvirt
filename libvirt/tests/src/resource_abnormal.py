@@ -611,7 +611,7 @@ class Virt_install(object):
             result = process.run(get_pid_cmd, ignore_status=True, shell=True)
             if result.exit_status:
                 self.test.fail("First install failed!")
-            install_pid = result.stdout.strip().split()[1]
+            install_pid = result.stdout_text.strip().split()[1]
             utils_misc.safe_kill(int(install_pid), signal.SIGKILL)
         self.td.join()
         if self.read_only:
@@ -684,7 +684,7 @@ class Migration(object):
                                            self.remote_user,
                                            self.remote_pwd, "#")
         self.session.cmd("setsebool virt_use_nfs on")
-        local_hostname = process.run("hostname", shell=True).stdout.strip()
+        local_hostname = process.run("hostname", shell=True).stdout_text.strip()
         remote_hostname = self.session.cmd_output("hostname")
 
         def file_add(a_str, a_file, session=None):
@@ -858,7 +858,7 @@ class Dom_opterations_nfs(object):
             """
             Check if there is 'nfs not responding' in dmesg.
             """
-            response = self.nfs_no_response_sign in process.run('dmesg').stdout
+            response = self.nfs_no_response_sign in process.run('dmesg').stdout_text
             if response:
                 logging.debug(self.nfs_no_response_sign)
             return response
@@ -923,12 +923,12 @@ int main(void){
     result = process.run("gcc %s -o %s" % (tmp_c_file, tmp_exe_file), shell=True)
     if result.exit_status:
         test.error("Compile C file failed: %s"
-                   % result.stderr.strip())
+                   % result.stderr_text.strip())
     # Set swap off before fill memory
     process.run("swapoff -a", shell=True)
     process.run("%s &" % tmp_exe_file, shell=True)
     result = process.run("ps -ef | grep %s | grep -v grep" % tmp_exe_file, shell=True)
-    pid = result.stdout.strip().split()[1]
+    pid = result.stdout_text.strip().split()[1]
     params['memory_pid'] = pid
 
 
@@ -960,7 +960,7 @@ done"""
     os.chmod(tmp_sh_file, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
     result = process.run("%s &" % tmp_sh_file, shell=True)
     result = process.run("ps -ef | grep %s | grep -v grep" % tmp_sh_file, shell=True)
-    pid = result.stdout.strip().split()[1]
+    pid = result.stdout_text.strip().split()[1]
     params['cpu_pid'] = pid
 
 

@@ -72,7 +72,7 @@ def run(test, params, env):
                 cmd = "openssl passwd -crypt %s" % new_passwd
                 ret = process.run(cmd, shell=True)
                 libvirt.check_exit_status(ret)
-                en_passwd = str(ret.stdout.strip())
+                en_passwd = str(ret.stdout_text.strip())
                 passwd = en_passwd
 
             ret = virsh.set_user_password(vm_name, set_user_name, passwd,

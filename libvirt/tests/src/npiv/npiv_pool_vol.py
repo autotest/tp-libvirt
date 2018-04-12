@@ -260,7 +260,7 @@ def run(test, params, env):
                    awk '{FS=\" \"} {print $1}'" % (pool_name, mpath_vol_path)
             cmd_result = process.run(cmd, shell=True)
             status = cmd_result.exit_status
-            output = cmd_result.stdout.strip()
+            output = cmd_result.stdout_text.strip()
             if cmd_result.exit_status:
                 raise exceptions.TestFail("vol-list pool %s failed", pool_name)
             if not output:

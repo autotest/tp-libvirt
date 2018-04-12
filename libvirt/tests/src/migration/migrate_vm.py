@@ -777,7 +777,7 @@ def check_vm_disk_after_migration(vm, params):
     cmdres = remote_vm_obj.run_command(vm_ip, cmd, ignore_status=True)
     if cmdres.exit_status:
         raise exceptions.TestFail("Command '%s' result: %s\n", cmd, cmdres)
-    disks = cmdres.stdout.split("\n")
+    disks = cmdres.stdout.strip().split("\n")
     logging.debug("Get disks in remote VM: %s", disks)
     for disk in disks:
         if disk == '' or disk == '/dev/vda' or disk.count('mapper') > 0:
@@ -2032,7 +2032,7 @@ def run(test, params, env):
         if run_migr_back:
             command = "virsh migrate %s %s %s" % (vm_name, virsh_options, uri)
             logging.debug("Start migrating: %s", command)
-            p = Popen(command, shell=True, stdout=PIPE, stderr=PIPE)
+            p = Popen(command, shell=True, universal_newlines=True, stdout=PIPE, stderr=PIPE)
 
             # wait for live storage migration starting
             time.sleep(delay)
@@ -2263,7 +2263,7 @@ def run(test, params, env):
                 # redefine remote guest using updated XML
                 logging.debug("Redefine remote guest")
                 result = remote_virsh_session.define(xml_path)
-                logging.debug(result.stdout)
+                logging.debug(result.stdout.strip())
 
                 # start remote guest
                 logging.debug("Start remote guest")

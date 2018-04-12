@@ -217,7 +217,7 @@ def run(test, params, env):
                 break
             elif result.exit_status == 0 and expect_succeed == 'no':
                 break
-            if not _check_result(cap, devices[cap], result.stdout):
+            if not _check_result(cap, devices[cap], result.stdout.strip()):
                 check_failed = True
                 break
     else:

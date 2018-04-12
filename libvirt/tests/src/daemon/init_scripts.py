@@ -40,7 +40,7 @@ def run(test, params, env):
             res = process.run('systemctl list-unit-files', shell=True)
             for ufile in ["libvirt-guests.service",
                           "libvirtd.service", "libvirtd.socket"]:
-                if ufile not in res.stdout:
+                if ufile not in res.stdout_text:
                     test.fail('Missing systemd unit file %s'
                               % ufile)
         elif cmd == 'initctl':

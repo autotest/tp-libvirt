@@ -76,14 +76,14 @@ def get_blkdevio_parameter(params, test):
 
     if status_error == "yes":
         if status:
-            logging.info("It's an expected %s", result.stderr)
+            logging.info("It's an expected %s", result.stderr.strip())
         else:
             test.fail("Unexpected return code %d" % status)
     elif status_error == "no":
         if status:
-            test.fail(result.stderr)
+            test.fail(result.stderr.strip())
         else:
-            logging.info(result.stdout)
+            logging.info(result.stdout.strip())
 
 
 def set_blkdevio_parameter(params, test):
@@ -121,7 +121,7 @@ def set_blkdevio_parameter(params, test):
             test.fail(result.stderr)
         else:
             if check_blkdeviotune(params):
-                logging.info(result.stdout)
+                logging.info(result.stdout.strip())
             else:
                 test.fail("The result is inconsistent between "
                           "test input and command/XML output")

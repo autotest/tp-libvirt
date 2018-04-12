@@ -230,7 +230,7 @@ def qemu_spice_options(libvirt_vm):
     """
     pid = libvirt_vm.get_pid()
     res = process.run("ps -p %s -o cmd h" % pid, shell=True)
-    match = re.search(r'-spice\s*(\S*)', res.stdout)
+    match = re.search(r'-spice\s*(\S*)', res.stdout_text)
     if match:
         spice_opt = match.groups()[0]
     logging.info('Qemu spice option is: %s', spice_opt)
@@ -260,7 +260,7 @@ def qemu_vnc_options(libvirt_vm):
     """
     pid = libvirt_vm.get_pid()
     res = process.run("ps -p %s -o cmd h" % pid, shell=True)
-    match = re.search(r'-vnc\s*(\S*)', res.stdout)
+    match = re.search(r'-vnc\s*(\S*)', res.stdout_text)
     if match:
         vnc_opt = match.groups()[0]
     logging.debug('Qemu VNC option is: %s', vnc_opt)
