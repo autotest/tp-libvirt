@@ -1,6 +1,7 @@
 import os
 
 from virttest import virsh
+from virttest import data_dir
 from virttest import utils_libvirtd
 
 from provider import libvirt_version
@@ -21,7 +22,7 @@ def run(test, params, env):
     """
     savefile = params.get("save_file", "save.file")
     if savefile:
-        savefile = os.path.join(test.tmpdir, savefile)
+        savefile = os.path.join(data_dir.get_tmp_dir, savefile)
     libvirtd = params.get("libvirtd", "on")
     extra_param = params.get("save_extra_param")
     vm_ref = params.get("save_vm_ref")

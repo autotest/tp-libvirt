@@ -4,6 +4,7 @@ import logging
 
 from avocado.core import exceptions
 from virttest import utils_libvirtd
+from virttest import data_dir
 from virttest import libvirt_storage
 from virttest import virsh
 from virttest.utils_test import libvirt as utlv
@@ -55,9 +56,9 @@ def run(test, params, env):
     source_name = params.get("pool_source_name", "gluster-vol1")
     source_path = params.get("pool_source_path", "/")
     # The file for dumped pool xml
-    pool_xml = os.path.join(test.tmpdir, "pool.xml.tmp")
+    pool_xml = os.path.join(data_dir.get_tmp_dir, "pool.xml.tmp")
     if os.path.dirname(pool_target) is "":
-        pool_target = os.path.join(test.tmpdir, pool_target)
+        pool_target = os.path.join(data_dir.get_tmp_dir, pool_target)
     vol_name = params.get("vol_name", "temp_vol_1")
     # Use pool name as VG name
     status_error = "yes" == params.get("status_error", "no")

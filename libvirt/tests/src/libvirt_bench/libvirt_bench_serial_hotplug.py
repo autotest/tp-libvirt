@@ -10,6 +10,7 @@ from virttest import libvirt_vm
 from virttest import utils_test
 from virttest import utils_misc
 from virttest.utils_test import libvirt as utlv
+from virttest import data_dir
 
 
 def run(test, params, env):
@@ -25,7 +26,7 @@ def run(test, params, env):
     test_count = int(params.get("test_count", 5))
     test_type = params.get("test_type", "multi")
 
-    tmp_dir = os.path.join(test.tmpdir, "hotplug_serial_load")
+    tmp_dir = os.path.join(data_dir.get_tmp_dir, "hotplug_serial_load")
     if not os.path.exists(tmp_dir):
         os.mkdir(tmp_dir)
     os.chmod(tmp_dir, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)

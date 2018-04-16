@@ -4,6 +4,7 @@ import logging
 import time
 
 from virttest import virsh
+from virttest import data_dir
 from virttest.utils_test import libvirt as utlv
 from virttest import ssh_key
 
@@ -64,8 +65,8 @@ def run(test, params, env):
     action = params.get("jobabort_action", "dump")
     status_error = params.get("status_error", "no")
     job = params.get("jobabort_job", "yes")
-    tmp_file = os.path.join(test.tmpdir, "domjobabort.tmp")
-    tmp_pipe = os.path.join(test.tmpdir, "domjobabort.fifo")
+    tmp_file = os.path.join(data_dir.get_tmp_dir, "domjobabort.tmp")
+    tmp_pipe = os.path.join(data_dir.get_tmp_dir, "domjobabort.fifo")
     vm_ref = params.get("jobabort_vm_ref")
     remote_uri = params.get("jobabort_remote_uri")
     remote_host = params.get("migrate_dest_host")

@@ -3,6 +3,7 @@ import shutil
 import logging
 
 from virttest import virsh
+from virttest import data_dir
 from virttest import utils_misc
 from virttest.libvirt_xml import VMXML
 from virttest.utils_test import libvirt
@@ -155,7 +156,7 @@ def run(test, params, env):
     orig_iso = os.path.join(test.virtdir, "orig.iso")
     test_iso = os.path.join(test.virtdir, "test.iso")
     test_diff_iso = os.path.join(test.virtdir, "test_diff.iso")
-    update_xmlfile = os.path.join(test.tmpdir, "update.xml")
+    update_xmlfile = os.path.join(data_dir.get_tmp_dir, "update.xml")
     create_attach_xml(test, update_xmlfile, test_iso, disk_type, target_bus,
                       target_dev, disk_mode)
 

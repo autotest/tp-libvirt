@@ -596,7 +596,7 @@ def run(test, params, env):
         # Create password file for access to ESX hypervisor
         if hypervisor == 'esx':
             vpx_passwd = params.get("vpx_password")
-            vpx_passwd_file = os.path.join(test.tmpdir, "vpx_passwd")
+            vpx_passwd_file = os.path.join(data_dir.get_tmp_dir, "vpx_passwd")
             logging.info("Building ESX no password interactive verification.")
             pwd_f = open(vpx_passwd_file, 'w')
             pwd_f.write(vpx_passwd)
@@ -687,7 +687,7 @@ def run(test, params, env):
                 cmd = su_cmd + "'virsh undefine %s'" % vm_name
                 try:
                     process.system(cmd)
-                except:
+                except Exception:
                     logging.error('Undefine "%s" failed', vm_name)
                 if no_root:
                     cleanup_pool(user_pool=True, pool_name='src_pool', pool_target='v2v_src_pool')

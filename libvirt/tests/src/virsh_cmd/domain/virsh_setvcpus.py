@@ -4,6 +4,7 @@ import logging
 
 from avocado.utils import process
 from virttest import remote
+from virttest import data_dir
 from virttest import virsh
 from virttest import libvirt_vm
 from virttest.libvirt_xml import vm_xml
@@ -76,7 +77,7 @@ def run(test, params, env):
     local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
     remote_pwd = params.get("remote_pwd", "")
     remote_prompt = params.get("remote_prompt", "#")
-    tmpxml = os.path.join(test.tmpdir, 'tmp.xml')
+    tmpxml = os.path.join(data_dir.get_tmp_dir, 'tmp.xml')
     set_topology = (params.get("set_topology", "no") == "yes")
     sockets = params.get("sockets")
     cores = params.get("cores")

@@ -6,6 +6,7 @@ from xml.dom.minidom import parseString
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+from virttest import data_dir
 
 
 def run(test, params, env):
@@ -69,7 +70,7 @@ def run(test, params, env):
     extra = params.get("cpu_baseline_extra", "")
     test_feature = params.get("cpu_baseline_test_feature", "acpi")
     status_error = "yes" == params.get("status_error", "no")
-    cpu_xmlfile = os.path.join(test.tmpdir, file_name)
+    cpu_xmlfile = os.path.join(data_dir.get_tmp_dir, file_name)
 
     # Prepare a xml file.
     create_attach_xml(cpu_xmlfile, test_feature)

@@ -7,11 +7,11 @@ import logging
 from avocado.utils import process
 
 from virttest import virsh
+from virttest import data_dir
 from virttest import utils_misc
 from virttest import xml_utils
 from virttest import utils_config
 from virttest import utils_libvirtd
-from virttest import data_dir
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
@@ -82,9 +82,9 @@ def compose_disk_options(test, params, opt_names):
 
         if params.get("bad_disk") is not None or \
            params.get("reuse_external") == "yes":
-            spec_disk = os.path.join(test.tmpdir, params.get(opt_list[0]))
+            spec_disk = os.path.join(data_dir.get_tmp_dir, params.get(opt_list[0]))
         else:
-            spec_disk = os.path.join(test.tmpdir, opt_list[0])
+            spec_disk = os.path.join(data_dir.get_tmp_dir, opt_list[0])
 
         return opt_disk[0] + "file=" + spec_disk + left_opt
 
@@ -376,7 +376,7 @@ def run(test, params, env):
         # if the parameters have the disk without "file=" then we only need to
         # add testdir for it.
         if mem_options is None:
-            mem_options = os.path.join(test.tmpdir, memspec_opts)
+            mem_options = os.path.join(data_dir.get_tmp_dir, memspec_opts)
         options += " --memspec " + mem_options
 
     tag_diskspec = 0
@@ -410,7 +410,7 @@ def run(test, params, env):
 
     # Generate empty image for negative test
     if bad_disk is not None:
-        bad_disk = os.path.join(test.tmpdir, bad_disk)
+        bad_disk = os.path.join(data_dir.get_tmp_dir, bad_disk)
         with open(bad_disk, 'w') as bad_file:
             pass
 
@@ -420,7 +420,7 @@ def run(test, params, env):
         for i in range(dnum):
             external_disk = "external_disk%s" % i
             if params.get(external_disk):
-                disk_path = os.path.join(test.tmpdir,
+                disk_path = os.path.join(data_dir.get_tmp_dir,
                                          params.get(external_disk))
                 process.run("qemu-img create -f qcow2 %s 1G" % disk_path, shell=True)
         # Only chmod of the last external disk for negative case
@@ -443,7 +443,7 @@ def run(test, params, env):
             libvirtd_conf = utils_config.LibvirtdConfig()
             libvirtd_conf["log_level"] = '1'
             libvirtd_conf["log_filters"] = '"1:json 3:remote 4:event"'
-            libvirtd_log_path = os.path.join(test.tmpdir, "libvirtd.log")
+            libvirtd_log_path = os.path.join(data_dir.get_tmp_dir, "libvirtd.log")
             libvirtd_conf["log_outputs"] = '"1:file:%s"' % libvirtd_log_path
             logging.debug("the libvirtd config file content is:\n %s" %
                           libvirtd_conf)
@@ -502,7 +502,7 @@ def run(test, params, env):
         # specified in cfg
         if dnum > 1 and "--print-xml" not in options:
             for i in range(1, dnum):
-                disk_path = os.path.join(test.tmpdir, 'disk%s.qcow2' % i)
+                disk_path = os.path.join(data_dir.get_tmp_dir, 'disk%s.qcow2' % i)
                 process.run("qemu-img create -f qcow2 %s 200M" % disk_path, shell=True)
                 virsh.attach_disk(vm_name, disk_path,
                                   'vd%s' % list(string.lowercase)[i],
@@ -603,12 +603,12 @@ def run(test, params, env):
         # rm attach disks and reuse external disks
         if dnum > 1 and "--print-xml" not in options:
             for i in range(dnum):
-                disk_path = os.path.join(test.tmpdir, 'disk%s.qcow2' % i)
+                disk_path = os.path.join(data_dir.get_tmp_dir, 'disk%s.qcow2' % i)
                 if os.path.exists(disk_path):
                     os.unlink(disk_path)
                 if reuse_external:
                     external_disk = "external_disk%s" % i
-                    disk_path = os.path.join(test.tmpdir,
+                    disk_path = os.path.join(data_dir.get_tmp_dir,
                                              params.get(external_disk))
                     if os.path.exists(disk_path):
                         os.unlink(disk_path)

@@ -11,6 +11,7 @@ from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
+from virttest import data_dir
 
 from provider import libvirt_version
 
@@ -39,7 +40,7 @@ def run(test, params, env):
 
     config = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
-    dump_path = os.path.join(test.tmpdir, "dump")
+    dump_path = os.path.join(data_dir.get_tmp_dir, "dump")
     try:
         if not vmxml.xmltreefile.find('devices').findall('panic'):
             # Set panic device

@@ -9,6 +9,7 @@ import aexpect
 from avocado.utils import process
 
 from virttest import libvirt_vm
+from virttest import data_dir
 from virttest import virsh
 from virttest import remote
 from virttest import utils_libvirtd
@@ -124,7 +125,7 @@ def run(test, params, env):
                 else:
                     # Backup snapshots for domain
                     for snp_item in snp_list:
-                        tmp_file = os.path.join(test.tmpdir, snp_item + ".xml")
+                        tmp_file = os.path.join(data_dir.get_tmp_dir, snp_item + ".xml")
                         virsh.snapshot_dumpxml(vm_name, snp_item, to_file=tmp_file)
                         snp_file_list.append(tmp_file)
             else:
