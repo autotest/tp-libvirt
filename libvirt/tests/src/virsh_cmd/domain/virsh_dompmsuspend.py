@@ -3,6 +3,7 @@ import os
 import platform
 
 from virttest import virt_vm
+from virttest import data_dir
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
@@ -127,7 +128,7 @@ def run(test, params, env):
 
         try:
             libvirtd = utils_libvirtd.Libvirtd()
-            savefile = os.path.join(test.tmpdir, "%s.save" % vm_name)
+            savefile = os.path.join(data_dir.get_tmp_dir, "%s.save" % vm_name)
             session = vm.wait_for_login()
             # Touch a file on guest to test managed save command.
             if test_managedsave:

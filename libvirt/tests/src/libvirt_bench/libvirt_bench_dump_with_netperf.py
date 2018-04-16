@@ -3,6 +3,7 @@ import logging
 
 from virttest import utils_test
 from virttest import utils_misc
+from virttest import data_dir
 
 
 def run(test, params, env):
@@ -48,7 +49,7 @@ def run(test, params, env):
     logging.debug("Netperf is already running in VMs.")
 
     try:
-        dump_path = os.path.join(test.tmpdir, "dump_file")
+        dump_path = os.path.join(data_dir.get_tmp_dir, "dump_file")
         for vm in vms:
             vm.dump(dump_path)
             # Check the status after vm.dump()

@@ -2,6 +2,7 @@ import re
 import os
 
 from virttest import virsh
+from virttest import data_dir
 from virttest import utils_libvirtd
 
 from provider import libvirt_version
@@ -55,12 +56,12 @@ def run(test, params, env):
                 session.close()
             if not re.search("processor", output):
                 test.fail("Unable to read /proc/cpuinfo")
-        tmp_file = os.path.join(test.tmpdir, "save.file")
+        tmp_file = os.path.join(data_dir.get_tmp_dir, "save.file")
         virsh.save(vm_name, tmp_file)
         if vm_ref == "saved_file":
             vm_ref = tmp_file
         elif vm_ref == "empty_new_file":
-            tmp_file = os.path.join(test.tmpdir, "new.file")
+            tmp_file = os.path.join(data_dir.get_tmp_dir, "new.file")
             with open(tmp_file, 'w') as tmp:
                 pass
             vm_ref = tmp_file

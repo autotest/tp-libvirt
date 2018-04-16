@@ -11,6 +11,7 @@ from virttest import utils_misc
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices.controller import Controller
+from virttest import data_dir
 
 
 def run(test, params, env):
@@ -26,7 +27,7 @@ def run(test, params, env):
     dup_devid = "yes" == params.get("dup_devid", "no")
     diff_devid = "yes" == params.get("diff_devid", "no")
 
-    tmp_dir = os.path.join(test.tmpdir, "hotplug_serial")
+    tmp_dir = os.path.join(data_dir.get_tmp_dir, "hotplug_serial")
     if not os.path.exists(tmp_dir):
         os.mkdir(tmp_dir)
     os.chmod(tmp_dir, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)

@@ -3,6 +3,7 @@ import logging
 import aexpect
 
 from virttest import utils_selinux
+from virttest import data_dir
 from virttest import virt_vm
 from virttest import virsh
 from virttest import remote
@@ -112,7 +113,7 @@ def run(test, params, env):
                                             "no")
     test_shareable = "yes" == params.get("virt_disk_test_shareable", "no")
     test_readonly = "yes" == params.get("virt_disk_test_readonly", "no")
-    disk_source_path = test.tmpdir
+    disk_source_path = data_dir.get_tmp_dir
     disk_path = ""
     tmp_filename = "cdrom_te.tmp"
     tmp_readonly_file = ""

@@ -10,6 +10,7 @@ from aexpect import ShellError
 from avocado.utils import process
 
 from virttest import virsh
+from virttest import data_dir
 from virttest import utils_misc
 from virttest.remote import LoginError
 from virttest.virt_vm import VMError
@@ -200,7 +201,7 @@ def run(test, params, env):
         vm.wait_for_login().close()
         domain_operation = params.get("domain_operation", "")
         if domain_operation == "save":
-            save_file = os.path.join(test.tmpdir, "vm.save")
+            save_file = os.path.join(data_dir.get_tmp_dir, "vm.save")
             cmd_result = virsh.save(vm_name, save_file, **virsh_dargs)
             libvirt.check_exit_status(cmd_result)
             cmd_result = virsh.restore(save_file)
@@ -236,7 +237,7 @@ def run(test, params, env):
             cmd_result = virsh.snapshot_current(vm_name, **virsh_dargs)
             libvirt.check_exit_status(cmd_result)
 
-            snapshot_file = os.path.join(test.tmpdir, snapshot_name2)
+            snapshot_file = os.path.join(data_dir.get_tmp_dir, snapshot_name2)
             sn_create_op = ("%s --disk-only --diskspec %s,file=%s"
                             % (snapshot_name2, disk_target, snapshot_file))
             cmd_result = virsh.snapshot_create_as(vm_name, sn_create_op,

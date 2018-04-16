@@ -7,6 +7,7 @@ import aexpect
 from avocado.core import exceptions
 
 from virttest import virsh
+from virttest import data_dir
 from virttest import remote
 from virttest import utils_libvirtd
 from virttest import utils_misc
@@ -99,7 +100,7 @@ def run(test, params, env):
     password = params.get("password", None)
     domuuid = vm.get_uuid()
     domid = ""
-    xml_file = os.path.join(test.tmpdir, "vm.xml")
+    xml_file = os.path.join(data_dir.get_tmp_dir, "vm.xml")
     virsh.dumpxml(vm_name, extra="--inactive", to_file=xml_file)
     libvirtd_inst = utils_libvirtd.Libvirtd()
 

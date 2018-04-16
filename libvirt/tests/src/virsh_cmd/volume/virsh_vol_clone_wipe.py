@@ -11,6 +11,7 @@ from avocado.core import exceptions
 from virttest.libvirt_xml import secret_xml
 from virttest.utils_test import libvirt as utlv
 from virttest import libvirt_storage
+from virttest import data_dir
 from virttest import virsh
 from virttest import utils_misc
 from virttest import libvirt_xml
@@ -82,7 +83,7 @@ def run(test, params, env):
     pool_type = params.get("pool_type")
     pool_target = params.get("pool_target")
     if not os.path.dirname(pool_target):
-        pool_target = os.path.join(test.tmpdir, pool_target)
+        pool_target = os.path.join(data_dir.get_tmp_dir, pool_target)
     emulated_image = params.get("emulated_image")
     emulated_image_size = params.get("emulated_image_size")
     vol_name = params.get("vol_name")

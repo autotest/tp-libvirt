@@ -6,6 +6,7 @@ import os
 from virttest import utils_selinux
 from virttest import virt_vm
 from virttest.libvirt_xml.vm_xml import VMXML
+from virttest import data_dir
 
 
 def run(test, params, env):
@@ -52,7 +53,7 @@ def run(test, params, env):
     vmxml.sync()
 
     # Init a path to save VM.
-    save_path = os.path.join(test.tmpdir, "svirt_save")
+    save_path = os.path.join(data_dir.get_tmp_dir, "svirt_save")
     try:
         # Start VM to check the VM is able to access the image or not.
         try:

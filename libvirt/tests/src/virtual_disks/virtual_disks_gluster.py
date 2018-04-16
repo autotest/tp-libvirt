@@ -4,6 +4,7 @@ import logging
 from avocado.utils import process
 
 from virttest import virsh
+from virttest import data_dir
 from virttest import utils_misc
 from virttest import virt_vm, remote
 from virttest.utils_test import libvirt
@@ -102,7 +103,7 @@ def run(test, params, env):
             vm.wait_for_login()
         # Create swap partition if nessesary.
         if not vm.has_swap():
-            swap_path = os.path.join(test.tmpdir, 'swap.img')
+            swap_path = os.path.join(data_dir.get_tmp_dir, 'swap.img')
             vm.create_swap_partition(swap_path)
         ret = virsh.dompmsuspend(vm_name, "disk", **virsh_dargs)
         libvirt.check_exit_status(ret)

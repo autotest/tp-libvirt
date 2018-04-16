@@ -4,6 +4,7 @@ import shutil
 import logging
 
 from virttest import utils_misc
+from virttest import data_dir
 from virttest import utils_libvirtd
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
@@ -36,7 +37,7 @@ def run(test, params, env):
 
     # Do xml backup for final recovery
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    tmp_file = os.path.join(test.tmpdir, "qemu.conf.bk")
+    tmp_file = os.path.join(data_dir.get_tmp_dir, "qemu.conf.bk")
 
     if "--type" in options:
         if not libvirt_version.version_compare(1, 2, 6):

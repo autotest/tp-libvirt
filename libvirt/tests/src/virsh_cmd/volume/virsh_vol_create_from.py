@@ -4,6 +4,7 @@ import os
 from avocado.core import exceptions
 
 from virttest import virsh
+from virttest import data_dir
 from virttest import libvirt_storage
 from virttest.utils_test import libvirt as utlv
 
@@ -91,7 +92,7 @@ def run(test, params, env):
 </volume>
 """ % (dest_vol_name, vol_size, dest_vol_format)
         logging.debug("Prepare the volume xml: %s", vol_xml)
-        vol_file = os.path.join(test.tmpdir, "dest_vol.xml")
+        vol_file = os.path.join(data_dir.get_tmp_dir, "dest_vol.xml")
         with open(vol_file, 'w') as xml_object:
             xml_object.write(vol_xml)
 

@@ -6,6 +6,7 @@ import time
 from avocado.utils import process
 
 from virttest import virsh
+from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import lv_utils
 from virttest.utils_test import libvirt
@@ -163,7 +164,7 @@ def run(test, params, env):
     # Hotplug and Unplug options
     hotplug_unplug = ("yes" == params.get("hotplug_unplug", False))
     disk_name = params.get("disk_name", "test")
-    disk_path = os.path.join(test.tmpdir, disk_name)
+    disk_path = os.path.join(data_dir.get_tmp_dir, disk_name)
     disk_target = params.get("disk_target", "vdb")
     fs_type = params.get("fs_type", "ext3")
     new_part = ""

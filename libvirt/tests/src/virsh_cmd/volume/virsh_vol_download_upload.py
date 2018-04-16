@@ -6,6 +6,7 @@ import hashlib
 from avocado.utils import process
 
 from virttest import virsh
+from virttest import data_dir
 from virttest import libvirt_xml
 from virttest.utils_test import libvirt as utlv
 
@@ -89,10 +90,10 @@ def run(test, params, env):
     pool_name = params.get("vol_download_upload_pool_name")
     pool_target = params.get("vol_download_upload_pool_target")
     if os.path.dirname(pool_target) is "":
-        pool_target = os.path.join(test.tmpdir, pool_target)
+        pool_target = os.path.join(data_dir.get_tmp_dir, pool_target)
     vol_name = params.get("vol_download_upload_vol_name")
     file_name = params.get("vol_download_upload_file_name")
-    file_path = os.path.join(test.tmpdir, file_name)
+    file_path = os.path.join(data_dir.get_tmp_dir, file_name)
     offset = params.get("vol_download_upload_offset")
     length = params.get("vol_download_upload_length")
     capacity = params.get("vol_download_upload_capacity")

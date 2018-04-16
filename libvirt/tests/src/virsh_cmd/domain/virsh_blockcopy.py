@@ -312,7 +312,7 @@ def run(test, params, env):
     libvirtd_utl = utils_libvirtd.Libvirtd()
     libvirtd_conf = utils_config.LibvirtdConfig()
     libvirtd_conf["log_filters"] = '"3:json 1:libvirt 1:qemu"'
-    libvirtd_log_path = os.path.join(test.tmpdir, "libvirtd.log")
+    libvirtd_log_path = os.path.join(data_dir.get_tmp_dir, "libvirtd.log")
     libvirtd_conf["log_outputs"] = '"1:file:%s"' % libvirtd_log_path
     logging.debug("the libvirtd config file content is:\n %s" %
                   libvirtd_conf)
