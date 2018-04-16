@@ -108,7 +108,7 @@ def run(test, params, env):
         result = virsh.vol_list(pool_name, ignore_status=True)
         utlv.check_exit_status(result)
 
-        output = re.findall(r"(\S+)\ +(\S+)[\ +\n]", str(result.stdout.strip()))
+        output = re.findall(r"(\S+)\ +(\S+)", str(result.stdout.strip()))
         for item in output:
             if vol_name in item[0]:
                 found = True

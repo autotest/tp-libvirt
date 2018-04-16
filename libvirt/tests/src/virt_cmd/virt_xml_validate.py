@@ -60,7 +60,7 @@ def storagepool_validate(test, pool_name, file=None, **virsh_dargs):
     # Confirm the storagepool exists.
     found = False
     result = virsh.pool_list(ignore_status=True)
-    output = re.findall(r"(\S+)\ +(\S+)\ +(\S+)[\ +\n]", str(result.stdout.strip()))
+    output = re.findall(r"(\S+)\ +(\S+)\ +(\S+)", str(result.stdout.strip()))
     for item in output[1:]:
         if pool_name == item[0]:
             found = True
@@ -84,7 +84,7 @@ def storagevol_validate(test, pool_name, file=None, **virsh_dargs):
     # Confirm the storagepool exists.
     found = False
     result = virsh.pool_list(ignore_status=True)
-    output = re.findall(r"(\S+)\ +(\S+)\ +(\S+)[\ +\n]", str(result.stdout.strip()))
+    output = re.findall(r"(\S+)\ +(\S+)\ +(\S+)", str(result.stdout.strip()))
     for item in output[1:]:
         if pool_name == item[0]:
             found = True
@@ -96,7 +96,7 @@ def storagevol_validate(test, pool_name, file=None, **virsh_dargs):
     cmd_result = virsh.vol_list(pool_name, **virsh_dargs)
     libvirt.check_exit_status(cmd_result)
     try:
-        vol_name = re.findall(r"(\S+)\ +(\S+)[\ +\n]", str(cmd_result.stdout.strip()))[1][0]
+        vol_name = re.findall(r"(\S+)\ +(\S+)", str(cmd_result.stdout.strip()))[1][0]
     except IndexError:
         test.error("Fail to get volume name")
 
@@ -133,7 +133,7 @@ def nwfilter_validate(test, file=None, **virsh_dargs):
     cmd_result = virsh.nwfilter_list(**virsh_dargs)
     libvirt.check_exit_status(cmd_result)
     try:
-        uuid = re.findall(r"(\S+)\ +(\S+)[\ +\n]", str(cmd_result.stdout.strip()))[1][0]
+        uuid = re.findall(r"(\S+)\ +(\S+)", str(cmd_result.stdout.strip()))[1][0]
     except IndexError:
         test.error("Fail to get nwfilter uuid")
 
@@ -149,7 +149,7 @@ def secret_validate(test, file=None, **virsh_dargs):
     cmd_result = virsh.secret_list(**virsh_dargs)
     libvirt.check_exit_status(cmd_result)
     try:
-        uuid = re.findall(r"(\S+)\ +(\S+)[\ +\n]", str(cmd_result.stdout.strip()))[1][0]
+        uuid = re.findall(r"(\S+)\ +(\S+)", str(cmd_result.stdout.strip()))[1][0]
     except IndexError:
         test.error("Fail to get secret uuid")
 
@@ -167,7 +167,7 @@ def interface_validate(test, file=None, **virsh_dargs):
     cmd_result = virsh.iface_list(**virsh_dargs)
     libvirt.check_exit_status(cmd_result)
     try:
-        iface_name = re.findall(r"(\S+)\ +(\S+)\ +(\S+)[\ +\n]",
+        iface_name = re.findall(r"(\S+)\ +(\S+)\ +(\S+)",
                                 str(cmd_result.stdout.strip()))[1][0]
     except IndexError:
         test.error("Fail to get iface name")

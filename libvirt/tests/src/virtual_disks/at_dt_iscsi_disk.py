@@ -142,7 +142,7 @@ def run(test, params, env):
                 cmd_result = virsh.vol_list(disk_src_pool, **virsh_dargs)
                 libvirt.check_exit_status(cmd_result)
                 vol_list = []
-                vol_list = re.findall(r"(\S+)\ +(\S+)[\ +\n]",
+                vol_list = re.findall(r"(\S+)\ +(\S+)",
                                       str(cmd_result.stdout.strip()))
                 if len(vol_list) > 1:
                     return vol_list[1]
