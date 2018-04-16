@@ -100,7 +100,7 @@ def run(test, params, env):
         Do save/restore operation and check the results.
         """
         hook_para = "%s %s" % (hook_file, vm_name)
-        save_file = os.path.join(data_dir.get_tmp_dir,
+        save_file = os.path.join(data_dir.get_tmp_dir(),
                                  "%s.save" % vm_name)
         disk_src = vm.get_first_disk_devices()['source']
         if domainxml_test:
@@ -143,7 +143,7 @@ def run(test, params, env):
         Do managedsave operation and check the results.
         """
         hook_para = "%s %s" % (hook_file, vm_name)
-        save_file = os.path.join(data_dir.get_tmp_dir,
+        save_file = os.path.join(data_dir.get_tmp_dir(),
                                  "%s.save" % vm_name)
         disk_src = vm.get_first_disk_devices()['source']
         if domainxml_test:

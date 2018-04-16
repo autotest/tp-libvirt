@@ -371,7 +371,7 @@ def run(test, params, env):
     pool_type = params.get("pool_type")
     pool_target = params.get("pool_target")
     if os.path.dirname(pool_target) is "":
-        pool_target = os.path.join(data_dir.get_tmp_dir, pool_target)
+        pool_target = os.path.join(data_dir.get_tmp_dir(), pool_target)
     vol_name = params.get("volume_name")
     vol_number = int(params.get("number_of_volumes", "2"))
     capacity = params.get("volume_size", "1048576")

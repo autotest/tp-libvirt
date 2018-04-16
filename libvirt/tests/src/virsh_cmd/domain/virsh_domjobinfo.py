@@ -26,7 +26,7 @@ def run(test, params, env):
     vm_ref = params.get("domjobinfo_vm_ref")
     status_error = params.get("status_error", "no")
     libvirtd = params.get("libvirtd", "on")
-    tmp_file = os.path.join(data_dir.get_tmp_dir, '%s.tmp' % vm_name)
+    tmp_file = os.path.join(data_dir.get_tmp_dir(), '%s.tmp' % vm_name)
 
     # prepare the state of vm
     if pre_vm_state == "dump":

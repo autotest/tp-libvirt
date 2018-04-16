@@ -117,7 +117,7 @@ def run(test, params, env):
     # Config libvirtd log
     if check_libvirtd_log == "yes":
         libvirtd_conf = utils_config.LibvirtdConfig()
-        libvirtd_log_file = os.path.join(data_dir.get_tmp_dir, "libvirtd.log")
+        libvirtd_log_file = os.path.join(data_dir.get_tmp_dir(), "libvirtd.log")
         libvirtd_conf["log_level"] = '1'
         libvirtd_conf["log_filters"] = ('"1:json 1:libvirt 1:qemu 1:monitor '
                                         '3:remote 4:event"')
@@ -131,7 +131,7 @@ def run(test, params, env):
     logging.debug("image source: %s" % image_source)
     new_image_source = image_source + '.rename'
 
-    dump_path = os.path.join(data_dir.get_tmp_dir, "dump/")
+    dump_path = os.path.join(data_dir.get_tmp_dir(), "dump/")
     logging.debug("dump_path: %s", dump_path)
     try:
         os.mkdir(dump_path)

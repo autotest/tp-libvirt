@@ -550,7 +550,7 @@ def run(test, params, env):
         if checkpoint in backup_list:
             backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         if checkpoint == 'multi_disks':
-            attach_disk_path = os.path.join(data_dir.get_tmp_dir, 'attach_disks')
+            attach_disk_path = os.path.join(data_dir.get_tmp_dir(), 'attach_disks')
             utlv.attach_disks(env.get_vm(vm_name), attach_disk_path,
                               None, params)
             new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)

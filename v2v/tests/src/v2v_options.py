@@ -596,7 +596,7 @@ def run(test, params, env):
         # Create password file for access to ESX hypervisor
         if hypervisor == 'esx':
             vpx_passwd = params.get("vpx_password")
-            vpx_passwd_file = os.path.join(data_dir.get_tmp_dir, "vpx_passwd")
+            vpx_passwd_file = os.path.join(data_dir.get_tmp_dir(), "vpx_passwd")
             logging.info("Building ESX no password interactive verification.")
             pwd_f = open(vpx_passwd_file, 'w')
             pwd_f.write(vpx_passwd)

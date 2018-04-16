@@ -26,7 +26,7 @@ def run(test, params, env):
     test_count = int(params.get("test_count", 5))
     test_type = params.get("test_type", "multi")
 
-    tmp_dir = os.path.join(data_dir.get_tmp_dir, "hotplug_serial_load")
+    tmp_dir = os.path.join(data_dir.get_tmp_dir(), "hotplug_serial_load")
     if not os.path.exists(tmp_dir):
         os.mkdir(tmp_dir)
     os.chmod(tmp_dir, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)

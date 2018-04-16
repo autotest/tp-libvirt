@@ -125,7 +125,7 @@ def run(test, params, env):
                 else:
                     # Backup snapshots for domain
                     for snp_item in snp_list:
-                        tmp_file = os.path.join(data_dir.get_tmp_dir, snp_item + ".xml")
+                        tmp_file = os.path.join(data_dir.get_tmp_dir(), snp_item + ".xml")
                         virsh.snapshot_dumpxml(vm_name, snp_item, to_file=tmp_file)
                         snp_file_list.append(tmp_file)
             else:

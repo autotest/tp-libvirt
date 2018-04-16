@@ -84,10 +84,10 @@ def run(test, params, env):
         """
         Setup nfs disk.
         """
-        mount_src = os.path.join(data_dir.get_tmp_dir, "nfs-export")
+        mount_src = os.path.join(data_dir.get_tmp_dir(), "nfs-export")
         if not os.path.exists(mount_src):
             os.mkdir(mount_src)
-        mount_dir = os.path.join(data_dir.get_tmp_dir, "nfs-mount")
+        mount_dir = os.path.join(data_dir.get_tmp_dir(), "nfs-mount")
 
         if disk_type in ["file", "floppy", "iso"]:
             disk_path = "%s/%s" % (mount_src, disk_name)
@@ -393,7 +393,7 @@ def run(test, params, env):
         logging.info("Checking diskorder option with snapshot...")
         snapshot1 = "s1"
         snapshot2 = "s2"
-        snapshot2_file = os.path.join(data_dir.get_tmp_dir, "s2")
+        snapshot2_file = os.path.join(data_dir.get_tmp_dir(), "s2")
         ret = virsh.snapshot_create(vm_name, "", **virsh_dargs)
         libvirt.check_exit_status(ret)
 
@@ -842,7 +842,7 @@ def run(test, params, env):
     # Get device path.
     device_source_path = ""
     if source_path:
-        device_source_path = data_dir.get_tmp_dir
+        device_source_path = data_dir.get_tmp_dir()
 
     # Prepare test environment.
     qemu_config = LibvirtQemuConfig()

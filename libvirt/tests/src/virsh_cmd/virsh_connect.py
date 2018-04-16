@@ -101,7 +101,7 @@ def run(test, params, env):
 
     # params special for unix transport.
     libvirtd_conf_path = '/etc/libvirt/libvirtd.conf'
-    libvirtd_conf_bak_path = '%s/libvirtd.conf.bak' % data_dir.get_tmp_dir
+    libvirtd_conf_bak_path = '%s/libvirtd.conf.bak' % data_dir.get_tmp_dir()
 
     # check the config
     if (connect_arg == "transport" and

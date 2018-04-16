@@ -24,7 +24,7 @@ def run(test, params, env):
     net_status = params.get("net_dumpxml_network_status", "active")
     xml_flie = params.get("net_dumpxml_xml_file", "default.xml")
     extra = params.get("net_dumpxml_extra", "")
-    network_xml = os.path.join(data_dir.get_tmp_dir, xml_flie)
+    network_xml = os.path.join(data_dir.get_tmp_dir(), xml_flie)
 
     # acl polkit params
     uri = params.get("virsh_uri")

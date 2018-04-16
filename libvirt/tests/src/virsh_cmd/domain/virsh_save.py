@@ -22,7 +22,7 @@ def run(test, params, env):
     """
     savefile = params.get("save_file", "save.file")
     if savefile:
-        savefile = os.path.join(data_dir.get_tmp_dir, savefile)
+        savefile = os.path.join(data_dir.get_tmp_dir(), savefile)
     libvirtd = params.get("libvirtd", "on")
     extra_param = params.get("save_extra_param")
     vm_ref = params.get("save_vm_ref")

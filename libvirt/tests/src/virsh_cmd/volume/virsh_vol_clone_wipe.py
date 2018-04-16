@@ -83,7 +83,7 @@ def run(test, params, env):
     pool_type = params.get("pool_type")
     pool_target = params.get("pool_target")
     if not os.path.dirname(pool_target):
-        pool_target = os.path.join(data_dir.get_tmp_dir, pool_target)
+        pool_target = os.path.join(data_dir.get_tmp_dir(), pool_target)
     emulated_image = params.get("emulated_image")
     emulated_image_size = params.get("emulated_image_size")
     vol_name = params.get("vol_name")

@@ -224,7 +224,7 @@ def run(test, params, env):
             ceph_auth_user = params.get("ceph_auth_user")
             ceph_auth_key = params.get("ceph_auth_key")
             enable_auth = "yes" == params.get("enable_auth")
-            key_file = os.path.join(data_dir.get_tmp_dir, "ceph.key")
+            key_file = os.path.join(data_dir.get_tmp_dir(), "ceph.key")
             key_opt = ""
             if not utils_package.package_install(["ceph-common"]):
                 test.error("Failed to install ceph-common")
@@ -263,7 +263,7 @@ def run(test, params, env):
             nfs_server_dir = params.get("nfs_server_dir", "nfs_server")
             emulated_image = params.get("emulated_image")
             image_name = params.get("nfs_image_name", "nfs.img")
-            tmp_dir = data_dir.get_tmp_dir
+            tmp_dir = data_dir.get_tmp_dir()
             pvt = libvirt.PoolVolumeTest(test, params)
             pvt.pre_pool(pool_name, pool_type, pool_target, emulated_image)
             nfs_mount_dir = os.path.join(tmp_dir, pool_target)

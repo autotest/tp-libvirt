@@ -81,7 +81,7 @@ def run(test, params, env):
     modify_invalid = "yes" == params.get("cpu_compare_modify_invalid", "no")
     check_vm_ps = "yes" == params.get("check_vm_ps", "no")
     check_vm_ps_value = params.get("check_vm_ps_value")
-    tmp_file = os.path.join(data_dir.get_tmp_dir, file_name)
+    tmp_file = os.path.join(data_dir.get_tmp_dir(), file_name)
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)

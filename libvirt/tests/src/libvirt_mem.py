@@ -181,7 +181,7 @@ def run(test, params, env):
         """
         Test save and restore operation
         """
-        save_file = os.path.join(data_dir.get_tmp_dir,
+        save_file = os.path.join(data_dir.get_tmp_dir(),
                                  "%s.save" % vm_name)
         ret = virsh.save(vm_name, save_file, **virsh_dargs)
         libvirt.check_exit_status(ret)

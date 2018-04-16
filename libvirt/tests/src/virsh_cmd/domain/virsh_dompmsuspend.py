@@ -128,7 +128,7 @@ def run(test, params, env):
 
         try:
             libvirtd = utils_libvirtd.Libvirtd()
-            savefile = os.path.join(data_dir.get_tmp_dir, "%s.save" % vm_name)
+            savefile = os.path.join(data_dir.get_tmp_dir(), "%s.save" % vm_name)
             session = vm.wait_for_login()
             # Touch a file on guest to test managed save command.
             if test_managedsave:
