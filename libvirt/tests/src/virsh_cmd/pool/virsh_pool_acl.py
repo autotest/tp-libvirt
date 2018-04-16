@@ -94,7 +94,7 @@ def run(test, params, env):
         else:
             result = virsh.pool_list(option, ignore_status=True)
         utlv.check_exit_status(result, False)
-        output = re.findall(r"(\S+)\ +(\S+)\ +(\S+)[\ +\n]",
+        output = re.findall(r"(\S+)\ +(\S+)\ +(\S+)",
                             str(result.stdout.strip()))
         for item in output:
             if pool_name in item[0]:

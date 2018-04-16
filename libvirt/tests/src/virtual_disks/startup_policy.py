@@ -90,7 +90,7 @@ def run(test, params, env):
             cmd_result = virsh.vol_list(pool_name, **virsh_dargs)
             libvirt.check_exit_status(cmd_result)
             vol_list = []
-            vol_list = re.findall(r"(\S+)\ +(\S+)[\ +\n]",
+            vol_list = re.findall(r"(\S+)\ +(\S+)",
                                   str(cmd_result.stdout.strip()))
             try:
                 return vol_list[1]
