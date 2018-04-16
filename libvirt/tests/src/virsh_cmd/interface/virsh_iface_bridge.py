@@ -35,7 +35,7 @@ def run(test, params, env):
     bridge_status_error = "yes" == params.get("bridge_status_error", "no")
     unbridge_status_error = "yes" == params.get("unbridge_status_error", "no")
     iface_script = NETWORK_SCRIPT + iface_name
-    iface_script_bk = os.path.join(data_dir.get_tmp_dir, "iface-%s.bk" % iface_name)
+    iface_script_bk = os.path.join(data_dir.get_tmp_dir(), "iface-%s.bk" % iface_name)
     check_iface = "yes" == params.get("check_iface", "yes")
     if check_iface:
         # Make sure the interface exists

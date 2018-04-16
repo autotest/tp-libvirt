@@ -43,7 +43,7 @@ def run(test, params, env):
     pre_vm_state = params.get("pre_vm_state", "running")
     options = params.get("domcontrol_options", "")
     action = params.get("domcontrol_action", "dump")
-    tmp_file = os.path.join(data_dir.get_tmp_dir, "domcontrol.tmp")
+    tmp_file = os.path.join(data_dir.get_tmp_dir(), "domcontrol.tmp")
     vm_ref = params.get("domcontrol_vm_ref")
     job = params.get("domcontrol_job", "yes")
     readonly = "yes" == params.get("readonly", "no")

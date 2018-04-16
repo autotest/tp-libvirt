@@ -366,14 +366,14 @@ def run(test, params, env):
 
     # Source file parameters.
     media_name = params.get("media_name")
-    media_file = os.path.join(data_dir.get_tmp_dir, media_name)
+    media_file = os.path.join(data_dir.get_tmp_dir(), media_name)
     media_file_new = media_file + ".new"
-    save_file = os.path.join(data_dir.get_tmp_dir, "vm.save")
+    save_file = os.path.join(data_dir.get_tmp_dir(), "vm.save")
     snapshot_name = "s1"
 
     # Policy related paramters.
-    disk_xml_file = os.path.join(data_dir.get_tmp_dir, "attach_disk.xml")
-    disk_xml_policy_file = os.path.join(data_dir.get_tmp_dir, "attach_policy_disk.xml")
+    disk_xml_file = os.path.join(data_dir.get_tmp_dir(), "attach_disk.xml")
+    disk_xml_policy_file = os.path.join(data_dir.get_tmp_dir(), "attach_policy_disk.xml")
     update_policy = "yes" == params.get("update_policy", "no")
     policy_only = "yes" == params.get("policy_only", "no")
     update_policy_list = params.get("update_policy_list").split()

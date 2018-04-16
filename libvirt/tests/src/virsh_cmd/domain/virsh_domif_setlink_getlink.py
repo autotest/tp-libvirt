@@ -132,7 +132,7 @@ def run(test, params, env):
     password = params.get("password")
 
     # Back up xml file.
-    vm_xml_file = os.path.join(data_dir.get_tmp_dir, "vm.xml")
+    vm_xml_file = os.path.join(data_dir.get_tmp_dir(), "vm.xml")
     virsh.dumpxml(vm_name[0], extra="--inactive", to_file=vm_xml_file)
 
     # Vm status

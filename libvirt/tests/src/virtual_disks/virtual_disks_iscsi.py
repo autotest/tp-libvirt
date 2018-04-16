@@ -317,7 +317,7 @@ def run(test, params, env):
                     test.fail("Check disk partitions in VM failed")
             # Test domain save/restore/snapshot.
             if test_save_snapshot:
-                save_file = os.path.join(data_dir.get_tmp_dir, "%.save" % vm_name)
+                save_file = os.path.join(data_dir.get_tmp_dir(), "%.save" % vm_name)
                 check_save_restore(save_file)
                 check_snapshot()
                 if os.path.exists(save_file):

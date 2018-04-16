@@ -47,7 +47,7 @@ def run(test, params, env):
     # put vm's information to a file
     if guest_args != "":
         if os.path.dirname(guest_args) is "":
-            guest_args = os.path.join(data_dir.get_tmp_dir, guest_args)
+            guest_args = os.path.join(data_dir.get_tmp_dir(), guest_args)
         virsh_convxml(guest_args)
 
     # libvirtd off

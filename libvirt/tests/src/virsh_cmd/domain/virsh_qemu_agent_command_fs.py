@@ -53,7 +53,7 @@ def run(test, params, env):
             except (IndexError, ValueError), details:
                 test.fail("Get dirty info failed: %s" % details)
 
-        device_source_path = os.path.join(data_dir.get_tmp_dir, "disk.img")
+        device_source_path = os.path.join(data_dir.get_tmp_dir(), "disk.img")
         device_source = libvirt.create_local_disk("file", path=device_source_path,
                                                   disk_format="qcow2")
         vm.prepare_guest_agent()

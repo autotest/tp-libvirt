@@ -29,7 +29,7 @@ def run(test, params, env):
     for i in range(1, snap_num + 1):
         screate_opt = params.get("screate_opt%s" % i)
         if "SNAPSHOT_TMPFILE" in screate_opt:
-            tmp_file = os.path.join(data_dir.get_tmp_dir, "tmpfile")
+            tmp_file = os.path.join(data_dir.get_tmp_dir(), "tmpfile")
             screate_opt = re.sub("SNAPSHOT_TMPFILE", tmp_file, screate_opt)
         snap_opt.append(screate_opt)
 

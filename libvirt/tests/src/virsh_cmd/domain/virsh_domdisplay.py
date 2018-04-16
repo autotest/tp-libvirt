@@ -37,7 +37,7 @@ def run(test, params, env):
 
     # Do xml backup for final recovery
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    tmp_file = os.path.join(data_dir.get_tmp_dir, "qemu.conf.bk")
+    tmp_file = os.path.join(data_dir.get_tmp_dir(), "qemu.conf.bk")
 
     if "--type" in options:
         if not libvirt_version.version_compare(1, 2, 6):

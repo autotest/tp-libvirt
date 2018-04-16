@@ -59,7 +59,7 @@ def run(test, params, env):
         test.error("Interface '%s' not exists" % iface_name)
     # get the interface script independent of distro
     iface_script = utils_net.get_network_cfg_file(iface_name)
-    iface_script_bk = os.path.join(data_dir.get_tmp_dir, "iface-%s.bk" % iface_name)
+    iface_script_bk = os.path.join(data_dir.get_tmp_dir(), "iface-%s.bk" % iface_name)
     net_iface = utils_net.Interface(name=iface_name)
     iface_is_up = net_iface.is_up()
     old_ifstart_mode = get_ifstart_mode(iface_name)

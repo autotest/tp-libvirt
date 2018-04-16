@@ -36,9 +36,9 @@ def run(test, params, env):
     pool_type = params.get("pool_type", "dir")
     pool_target = params.get("pool_target", "")
     # The file for dumped pool xml
-    pool_xml = os.path.join(data_dir.get_tmp_dir, "pool.xml.tmp")
+    pool_xml = os.path.join(data_dir.get_tmp_dir(), "pool.xml.tmp")
     if os.path.dirname(pool_target) is "":
-        pool_target = os.path.join(data_dir.get_tmp_dir, pool_target)
+        pool_target = os.path.join(data_dir.get_tmp_dir(), pool_target)
     vol_name = params.get("vol_name", "temp_vol_1")
     # Use pool name as VG name
     vg_name = pool_name

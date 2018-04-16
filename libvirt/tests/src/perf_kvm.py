@@ -172,11 +172,11 @@ def run(test, params, env):
     guestkallsyms_path = None
     guestmodules_path = None
 
-    output_of_record = os.path.join(data_dir.get_tmp_dir, "record.output")
+    output_of_record = os.path.join(data_dir.get_tmp_dir(), "record.output")
     # As diff command need two files, init a variable for it.
-    output_for_diff = os.path.join(data_dir.get_tmp_dir, "record.output.diff")
-    host_result_file = os.path.join(data_dir.get_tmp_dir, "perf_kvm_result")
-    guest_result_file = os.path.join(data_dir.get_tmp_dir, "guest_result")
+    output_for_diff = os.path.join(data_dir.get_tmp_dir(), "record.output.diff")
+    host_result_file = os.path.join(data_dir.get_tmp_dir(), "perf_kvm_result")
+    guest_result_file = os.path.join(data_dir.get_tmp_dir(), "guest_result")
     result_on_guest = "/root/result"
 
     command = perf_kvm_exec

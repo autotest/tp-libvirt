@@ -277,7 +277,7 @@ def run(test, params, env):
         """
         Block copy operation test.
         """
-        blk_file = os.path.join(data_dir.get_tmp_dir, "blk.rbd")
+        blk_file = os.path.join(data_dir.get_tmp_dir(), "blk.rbd")
         if os.path.exists(blk_file):
             os.remove(blk_file)
         blk_mirror = ("mirror type='file' file='%s' "
