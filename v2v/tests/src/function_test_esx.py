@@ -112,15 +112,6 @@ def run(test, params, env):
         else:
             logging.info('device.map has been remaped to "/dev/vd*"')
 
-    def check_snapshot_file(vmcheck):
-        """
-        Check if the removed file exists after conversion
-        """
-        removed_file = params.get('removed_file')
-        logging.debug(vmcheck.session.cmd('test -f %s' % removed_file).stderr)
-        if vmcheck.session.cmd('test -f %s' % removed_file).stderr == 0:
-            log_fail('Removed file "%s" exists after conversion')
-
     def check_result(result, status_error):
         """
         Check virt-v2v command result
@@ -156,15 +147,14 @@ def run(test, params, env):
                 check_modprobe(vmchecker.checker)
             if checkpoint == 'device_map':
                 check_device_map(vmchecker.checker)
-            if checkpoint == 'snapshot':
-                check_snapshot_file(vmchecker.checker)
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
         log_check = utils_v2v.check_log(params, output)
         if log_check:
             log_fail(log_check)
         if len(error_list):
-            test.fail('%d checkpoints failed: %s' % (len(error_list), error_list))
+            test.fail('%d checkpoints failed: %s' %
+                      (len(error_list), error_list))
 
     try:
         v2v_params = {
@@ -220,7 +210,8 @@ def run(test, params, env):
             v2v_params['v2v_opts'] += ' --root %s' % root_option
         if checkpoint == 'copy_to_local':
             esx_password = params.get('esx_password')
-            esx_passwd_file = os.path.join(data_dir.get_tmp_dir(), "esx_passwd")
+            esx_passwd_file = os.path.join(
+                data_dir.get_tmp_dir(), "esx_passwd")
             logging.info('Prepare esx password file')
             with open(esx_passwd_file, 'w') as pwd_f:
                 pwd_f.write(esx_password)
