@@ -355,7 +355,7 @@ def run(test, params, env):
             return 0
         try:
             # Get all interface
-            link_before = set(process.run('ls /sys/class/net').stdout_ext.splitlines())
+            link_before = set(process.run('ls /sys/class/net').stdout_text.splitlines())
             # Start the VM.
             vm.start()
             if start_error:
