@@ -59,7 +59,7 @@ def run(test, params, env):
                     test.fail("Shutdown of guest should be failed to "
                               "complete in time")
 
-        if (on_shutdown == "shutdown") and len(vms) > 1:
+        if (on_shutdown == "shutdown") and int(parallel_shutdown) > 0:
             chk_parallel_shutdown(output, parallel_shutdown)
 
     def chk_on_boot(status_error, on_boot):
@@ -85,37 +85,45 @@ def run(test, params, env):
                                   "guest should be shut off after "
                                   "restarting libvirt-guests, ")
 
+    def check_on_shutdown_vm_status():
+        for dom in vms:
+            result = virsh.domstate(dom.name, "--reason")
+            try:
+                dom.wait_for_shutdown()
+            except Exception as e:
+                test.fail('As on_boot is set to "ignore", but guest %s is '
+                          'not shutdown. reason: %s ' % (dom.name, e))
+
     def chk_parallel_shutdown(output, parallel_shutdown):
         """
         check whether the guests has been shut down concurrently
         on host shutdown.
         """
         pattern = r".+ libvirt-guests.sh: Starting shutdown on guest: .+"
-        line_nums = []
+        shut_start_line_nums = []
         for line_num, line in enumerate(output.splitlines()):
             if re.search(pattern, line):
-                line_nums.append(line_num)
+                shut_start_line_nums.append(line_num)
         logging.debug("the line_numbers contains shutdown messages is: %s ",
-                      line_nums)
-        if parallel_shutdown:
-            for i in range(1, int(parallel_shutdown)):
-                # the logs of the starting shutdown guests parallelly should
-                # stick together.
-                if line_nums[i] != (line_nums[i-1] + 1):
-                    test.fail("Since parallel_shutdown is setting to non_zero, "
-                              "%s guests should be shutdown concurrently."
-                              % parallel_shutdown)
+                      shut_start_line_nums)
 
-            for i in range(int(parallel_shutdown), len(vms)):
-                if line_nums[i] == (line_nums[i-1] + 1):
-                    test.fail("The number of guests shutdown concurrently "
-                              "should not be exceeded than %s."
-                              % parallel_shutdown)
-        else:
-            for i in range(1, len(vms)):
-                if line_nums[i] == (line_nums[i-1] + 1):
-                    test.fail("The guests should not be shutdown concurrently "
-                              "as the PARALLEL_SHUTDOWN is set to zero!")
+        pattern = r".+ libvirt-guests.sh: Shutdown of guest.+complete"
+        for line_num, line in enumerate(output.splitlines()):
+            if re.search(pattern, line):
+                shut_complete_first_line = line_num
+                break
+        logging.debug("the first line contains shutdown complete messages is: %s ",
+                      shut_complete_first_line)
+
+        para_shut = int(parallel_shutdown)
+        if shut_start_line_nums[para_shut-1] > shut_complete_first_line:
+            test.fail("Since parallel_shutdown is setting to non_zero, "
+                      "%s guests should be shutdown concurrently."
+                      % parallel_shutdown)
+        if shut_start_line_nums[para_shut] < shut_complete_first_line:
+            test.fail("The number of guests shutdown concurrently "
+                      "should not be exceeded than %s."
+                      % parallel_shutdown)
 
     def expect_shutdown_msg(status_error, on_shutdown):
         """
@@ -233,6 +241,9 @@ def run(test, params, env):
         chk_on_boot(status_error, on_boot)
         # check the guests save files
         chk_save_files(status_error, on_shutdown, on_boot)
+
+        if on_boot == "ignore" and on_shutdown == "shutdown":
+            check_on_shutdown_vm_status()
 
     finally:
         config.restore()
