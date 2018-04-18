@@ -4,6 +4,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest.compat_52lts import decode_to_text as to_text
 
 
 def run(test, params, env):
@@ -29,7 +30,7 @@ def run(test, params, env):
         :return: interface device of VM.
         """
         interface = ""
-        domxml = process.system_output("virsh dumpxml %s" % guest_name, shell=True)
+        domxml = to_text(process.system_output("virsh dumpxml %s" % guest_name, shell=True))
         dom = parseString(domxml)
         root = dom.documentElement
         array = root.getElementsByTagName("interface")

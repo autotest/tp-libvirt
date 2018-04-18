@@ -17,6 +17,7 @@ from virttest.utils_test import libvirt
 from virttest.utils_test.__init__ import ping
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.network_xml import NetworkXML
+from virttest.compat_52lts import decode_to_text as to_text
 from provider import libvirt_version
 
 
@@ -176,7 +177,7 @@ TIMEOUT 3"""
         Check bandwidth settings via 'tc class' output
         """
         cmd = "tc class show dev %s" % ifname
-        class_output = process.system_output(cmd)
+        class_output = to_text(process.system_output(cmd))
         logging.debug("Bandwidth class output: %s", class_output)
         class_pattern = (r"class htb %s.*rate (\d+)(K?M?)bit ceil"
                          " (\d+)(K?M?)bit burst (\d+)(K?M?)b.*" % rule_id)
@@ -213,7 +214,7 @@ TIMEOUT 3"""
         Check bandwidth settings via 'tc filter' output
         """
         cmd = "tc -d filter show dev %s parent ffff:" % ifname
-        filter_output = process.system_output(cmd)
+        filter_output = to_text(process.system_output(cmd))
         logging.debug("Bandwidth filter output: %s", filter_output)
         if not filter_output.count("filter protocol all pref"):
             test.fail("Can't find 'protocol all' settings in filter rules")
@@ -247,7 +248,7 @@ TIMEOUT 3"""
                 cmd = "ip route list %s" % addr
                 if "family" in route and route["family"] == "ipv6":
                     cmd = "ip -6 route list %s" % addr
-                output = process.system_output(cmd)
+                output = to_text(process.system_output(cmd))
                 match_obj = re.search(r"via (\S+).*metric (\d+)", output)
                 if match_obj:
                     via_addr = match_obj.group(1)
@@ -275,7 +276,7 @@ TIMEOUT 3"""
             if check_net and net_inbound:
                 # Check qdisc rules
                 cmd = "tc -d qdisc show dev %s" % net_bridge_name
-                qdisc_output = process.system_output(cmd)
+                qdisc_output = to_text(process.system_output(cmd))
                 logging.debug("Bandwidth qdisc output: %s", qdisc_output)
                 if not qdisc_output.count("qdisc ingress ffff:"):
                     test.fail("Can't find ingress setting")
@@ -364,7 +365,7 @@ TIMEOUT 3"""
                           % (net_ipv4, br_name, net_dev_out))]
                 ipv4_rules.extend(rules)
 
-            output = process.system_output('iptables-save')
+            output = to_text(process.system_output('iptables-save'))
             logging.debug("iptables: %s", output)
             for ipt in ipv4_rules:
                 if not re.findall(r"%s" % ipt, output, re.M):
@@ -378,7 +379,7 @@ TIMEOUT 3"""
                          ("FORWARD -s %s -i %s%s -j ACCEPT"
                           % (net_ipv6, br_name, net_dev_out))]
                 ipv6_rules.extend(rules)
-            output = process.system_output("ip6tables-save")
+            output = to_text(process.system_output("ip6tables-save"))
             logging.debug("iptables: %s", output)
             for ipt in ipv6_rules:
                 if not output.count(ipt):
@@ -505,7 +506,7 @@ TIMEOUT 3"""
     # Enabling IPv6 forwarding with RA routes without accept_ra set to 2
     # is likely to cause routes loss
     sysctl_cmd = 'sysctl net.ipv6.conf.all.accept_ra'
-    original_accept_ra = process.system_output(sysctl_cmd + ' -n')
+    original_accept_ra = to_text(process.system_output(sysctl_cmd + ' -n'))
     if test_ipv6_address and original_accept_ra != '2':
         process.system(sysctl_cmd + '=2')
 
@@ -611,8 +612,8 @@ TIMEOUT 3"""
                         br_delay = float(bridge['delay'])
                         cmd = ("brctl showstp %s | grep 'bridge forward delay'"
                                % bridge['name'])
-                        out = process.system_output(
-                            cmd, shell=True, ignore_status=False)
+                        out = to_text(process.system_output(
+                            cmd, shell=True, ignore_status=False))
                         logging.debug("brctl showstp output: %s", out)
                         pattern = (r"\s*forward delay\s+(\d+.\d+)\s+bridge"
                                    " forward delay\s+(\d+.\d+)")
