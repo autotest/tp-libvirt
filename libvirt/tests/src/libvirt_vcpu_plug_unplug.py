@@ -285,15 +285,21 @@ def run(test, params, env):
         vmxml.sync()
 
         topology = vmxml.get_cpu_topology()
-        if all([topology, sockets, cores, threads]):
-            # Check if the topology matches correct otherwise
-            if (sockets * cores * threads != vcpu_max_num):
-                if topology_correction:
+        # If topology is configured in domain xml or new topology is
+        # need to be newly set, check if the topology matches
+        # correct, if not, change topology to match expected values
+        # For example:
+        # In some case, we change vcpu max number, but not change topology
+        # manually, topology should be automatically updated if topology
+        # exist in original domain xml.
+        if topology or all([sockets, cores, threads]):
+            if topology_correction:
+                if (sockets * cores * threads != vcpu_max_num):
                     cores = vcpu_max_num
                     sockets = 1
                     threads = 1
-            vmxml.set_vm_vcpus(vm_name, vcpu_max_num, vcpu_current_num,
-                               sockets, cores, threads)
+                vmxml.set_vm_vcpus(vm_name, vcpu_max_num, vcpu_current_num,
+                                   sockets, cores, threads, add_topology=True)
         else:
             vmxml.set_vm_vcpus(vm_name, vcpu_max_num, vcpu_current_num)
         # Do not apply S3/S4 on power
