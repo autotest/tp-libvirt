@@ -20,6 +20,7 @@ from virttest import utils_v2v
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
+from virttest.compat_52lts import decode_to_text as to_text
 
 from provider.v2v_vmcheck_helper import VMChecker
 
@@ -117,8 +118,8 @@ def run(test, params, env):
         ovf_content = ""
         if os.path.isdir(export_vm_dir):
             ovf_id = "ovf:id='%s'" % vol_uuid
-            ret = process.system_output("grep -R \"%s\" %s" %
-                                        (ovf_id, export_vm_dir))
+            ret = to_text(process.system_output("grep -R \"%s\" %s" %
+                                                (ovf_id, export_vm_dir)))
             ovf_file = ret.split(":")[0]
             if os.path.isfile(ovf_file):
                 ovf_f = open(ovf_file, "r")

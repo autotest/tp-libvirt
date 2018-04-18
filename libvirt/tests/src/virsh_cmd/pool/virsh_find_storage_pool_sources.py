@@ -7,6 +7,7 @@ from virttest import xml_utils
 from virttest import utils_test
 from virttest import virsh
 from virttest.staging import lv_utils
+from virttest.compat_52lts import decode_to_text as to_text
 
 from provider import libvirt_version
 
@@ -105,7 +106,7 @@ def run(test, params, env):
         # Clean up
         if cleanup_logical:
             cmd = "pvs |grep %s |awk '{print $1}'" % vg_name
-            pv_name = process.system_output(cmd, shell=True)
+            pv_name = to_text(process.system_output(cmd, shell=True))
             lv_utils.vg_remove(vg_name)
             process.run("pvremove %s" % pv_name)
         if cleanup_iscsi:

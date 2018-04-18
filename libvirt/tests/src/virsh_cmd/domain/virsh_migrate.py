@@ -21,7 +21,6 @@ from virttest import libvirt_vm
 from virttest import utils_package
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
-from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
 from virttest import utils_misc
 from virttest.utils_misc import SELinuxBoolean
 from virttest.qemu_storage import QemuImg
@@ -29,6 +28,8 @@ from virttest.utils_test import libvirt
 from virttest import test_setup
 from virttest import ssh_key
 from virttest.staging import utils_memory
+from virttest.compat_52lts import decode_to_text as to_text
+from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
 
 from provider import libvirt_version
 
@@ -319,7 +320,7 @@ def run(test, params, env):
                 if (cmd_output[0] != 0):
                     test.cancel("HP not supported/configured")
             else:
-                process.system_output(command, verbose=True, shell=True)
+                to_text(process.system_output(command, verbose=True, shell=True))
 
     def create_mem_hotplug_xml(mem_size, mem_unit, numa_node='',
                                mem_model='dimm'):

@@ -6,6 +6,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest.compat_52lts import decode_to_text as to_text
 
 
 def run(test, params, env):
@@ -106,7 +107,7 @@ def run(test, params, env):
                  vm's information.
         """
         pid = vm.get_pid()
-        cmdline_tmp = process.system_output("cat -v /proc/%d/cmdline" % pid, shell=True)
+        cmdline_tmp = to_text(process.system_output("cat -v /proc/%d/cmdline" % pid, shell=True))
 
         # Output has a trailing '^@' which gets converted into an empty
         # element when spliting by '\x20', so strip it on the end.
