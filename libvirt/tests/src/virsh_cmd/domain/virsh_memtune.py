@@ -1,63 +1,65 @@
 import logging
+import re
+import time
 
 from virttest import virsh
-
+from virttest import utils_libvirtd
 from virttest.staging import utils_memory
 from virttest.staging import utils_cgroup
+from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 
 
-def run(test, params, env):
+memtune_types = ['hard-limit', 'soft-limit', 'swap-hard-limit']
+memtune_cgnames = [
+    'limit_in_bytes',
+    'soft_limit_in_bytes',
+    'memsw.limit_in_bytes',
+]
+
+
+def check_limit(path, expected_value, limit_type, cgname, vm, test, acceptable_minus=8):
     """
-    Test the command virsh memtune
+    Matches the expected and actual output
+    1) Match the output of the virsh memtune
+    2) Match the output of the respective cgroup fs value
+    3) Match the output of the virsh dumpxml
+    4) Check if vm is alive
 
-    (1) To get the current memtune parameters
-    (2) Change the parameter values
-    (3) Check the memtune query updated with the values
-    (4) Check whether the mounted cgroup path gets the updated value
-    (5) Login to guest and use the memory greater that the assigned value
-        and check whether it kills the vm.
-    (6) TODO:Check more values and robust scenarios.
+    :params path: memory controller path for a domain
+    :params expected_value: the expected limit value
+    :params limit_type: the limit type to be checked
+                        hard-limit/soft-limit/swap-hard-limit
+    :params cgname: the cgroup postfix
+    :params vm: vm instance
+    :params test: test instance
     """
 
-    def check_limit(path, expected_value, limit_name):
-        """
-        Matches the expected and actual output
-        (1) Match the output of the virsh memtune
-        (2) Match the output of the respective cgroup fs value
+    status_value = True
+    limit_name = re.sub('-', '_', limit_type)
 
-        :params: path: memory controller path for a domain
-        :params: expected_value: the expected limit value
-        :params: limit_name: the limit to be checked
-                             hard_limit/soft_limit/swap_hard_limit
-        :return: True or False based on the checks
-        """
-        status_value = True
-        # Check 1
-        actual_value = virsh.memtune_get(domname, limit_name)
-        if actual_value == -1:
-            test.fail("the key %s not found in the "
-                      "virsh memtune output" % limit_name)
-        if actual_value != int(expected_value):
-            status_value = False
-            logging.error("%s virsh output:\n\tExpected value:%d"
-                          "\n\tActual value: "
-                          "%d", limit_name,
-                          int(expected_value), int(actual_value))
+    # Check 1
+    # Match the output of the virsh memtune
+    actual_value = virsh.memtune_get(vm.name, limit_name)
+    minus = int(expected_value) - int(actual_value)
+    if minus > acceptable_minus:
+        status_value = False
+        logging.error("%s virsh output:\n\tExpected value:%d"
+                      "\n\tActual value: "
+                      "%d", limit_name,
+                      int(expected_value), int(actual_value))
 
-        # Check 2
-        if limit_name == 'hard_limit':
-            cg_file_name = '%s/memory.limit_in_bytes' % path
-        elif limit_name == 'soft_limit':
-            cg_file_name = '%s/memory.soft_limit_in_bytes' % path
-        elif limit_name == 'swap_hard_limit':
-            cg_file_name = '%s/memory.memsw.limit_in_bytes' % path
-
+    # Check 2
+    # Match the output of the respective cgroup fs value
+    if int(expected_value) != -1:
+        cg_file_name = '%s/memory.%s' % (path, cgname)
         cg_file = None
         try:
             with open(cg_file_name) as cg_file:
                 output = cg_file.read()
-            value = int(output) / 1024
-            if int(expected_value) != int(value):
+            value = int(output) // 1024
+            minus = int(expected_value) - int(value)
+            if minus > acceptable_minus:
                 status_value = False
                 logging.error("%s cgroup fs:\n\tExpected Value: %d"
                               "\n\tActual Value: "
@@ -67,72 +69,166 @@ def run(test, params, env):
             status_value = False
             logging.error("Error while reading:\n%s", cg_file_name)
 
-        return status_value
+    # Check 3
+    # Match the output of the virsh dumpxml
+    if int(expected_value) != -1:
+        guest_xml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+        memtune_element = guest_xml.memtune
+        logging.debug("Expected memtune XML is:\n%s", memtune_element)
+        actual_fromxml = getattr(memtune_element, limit_name)
+        if int(expected_value) != int(actual_fromxml):
+            status_value = False
+            logging.error("Expect memtune:\n%s\nBut got:\n "
+                          "%s" % (expected_value, actual_fromxml))
 
-    # Get the vm name, pid of vm and check for alive
-    domname = params.get("main_vm")
-    vm = env.get_vm(params["main_vm"])
-    vm.verify_alive()
-    pid = vm.get_pid()
-    logging.info("Verify valid cgroup path for VM pid: %s", pid)
+    # Check 4
+    # Check if vm is alive
+    if not vm.is_alive():
+        status_value = False
+        logging.error("Error: vm is not alive")
 
-    # Resolve the memory cgroup path for a domain
-    path = utils_cgroup.resolve_task_cgroup_path(int(pid), "memory")
+    if not status_value:
+        test.fail("Failed to restore domain %s" % vm.name)
 
+
+def check_limits(path, mt_limits, vm, test, acceptable_minus=8):
+    """
+    Check 3 types memtune setting in turn
+
+    :params path: memory controller path for a domain
+    :params mt_limits: a list with following items:
+                       [str(hard_mem), str(soft_mem), str(swap_mem)]
+    :params vm: vm instance
+    :params test: test instance
+    """
+    for index in range(len(memtune_types)):
+        check_limit(path, mt_limits[index], memtune_types[index],
+                    memtune_cgnames[index], vm, test, acceptable_minus)
+
+
+def mem_step(params, path, vm, test, acceptable_minus=8):
     # Set the initial memory starting value for test case
     # By default set 1GB less than the total memory
     # In case of total memory is less than 1GB set to 256MB
     # visit subtests.cfg to change these default values
+    base_mem = int(params.get("mt_base_mem"))
+    hard_base = int(params.get("mt_hard_base_mem"))
+    soft_base = int(params.get("mt_soft_base_mem"))
+
+    # Get MemTotal of host
     Memtotal = utils_memory.read_from_meminfo('MemTotal')
-    base_mem = params.get("memtune_base_mem")
 
     if int(Memtotal) < int(base_mem):
-        Mem = int(params.get("memtune_min_mem"))
+        Mem = int(params.get("mt_min_mem"))
     else:
         Mem = int(Memtotal) - int(base_mem)
 
-    # Initialize error counter
-    error_counter = 0
+    # Run test case with 100kB increase in memory value for each iteration
+    start = time.time()
+    while (Mem < Memtotal):
+        # If time pass over 60 secondes, exit directly from while
+        if time.time() - start > 60:
+            break
+        hard_mem = Mem - hard_base
+        soft_mem = Mem - soft_base
+        swaphard = Mem
+
+        mt_limits = [str(hard_mem), str(soft_mem), str(swaphard)]
+        options = " %s --live" % ' '.join(mt_limits)
+
+        result = virsh.memtune_set(vm.name, options)
+        check_limits(path, mt_limits, vm, test, acceptable_minus)
+
+        Mem += hard_base
+
+
+def run(test, params, env):
+    """
+    Test the command virsh memtune
+
+    1) To get the current memtune parameters
+    2) Change the parameter values
+    3) Check the memtune query updated with the values
+    4) Check whether the mounted cgroup path gets the updated value
+    5) Check the output of virsh dumpxml
+    6) Check vm is alive
+    """
 
     # Check for memtune command is available in the libvirt version under test
     if not virsh.has_help_command("memtune"):
         test.cancel(
             "Memtune not available in this libvirt version")
 
-    # Run test case with 100kB increase in memory value for each iteration
-    while (Mem < Memtotal):
-        if virsh.has_command_help_match("memtune", "hard-limit"):
-            hard_mem = Mem - int(params.get("memtune_hard_base_mem"))
-            options = " --hard-limit %d --live" % hard_mem
-            virsh.memtune_set(domname, options)
-            if not check_limit(path, hard_mem, "hard_limit"):
-                error_counter += 1
-        else:
-            test.cancel("harlimit option not available in memtune "
-                        "cmd in this libvirt version")
+    # Check if memtune options are supported
+    for option in memtune_types:
+        if not virsh.has_command_help_match("memtune", option):
+            test.cancel("%s option not available in memtune "
+                        "cmd in this libvirt version" % option)
+    # Get common parameters
+    acceptable_minus = int(params.get("acceptable_minus", 8))
+    step_mem = params.get("mt_step_mem", "no") == "yes"
+    expect_error = params.get("expect_error", "no") == "yes"
+    restart_libvirtd = params.get("restart_libvirtd", "no") == "yes"
+    set_one_line = params.get("set_in_one_command", "no") == "yes"
+    mt_hard_limit = params.get("mt_hard_limit", None)
+    mt_soft_limit = params.get("mt_soft_limit", None)
+    mt_swap_hard_limit = params.get("mt_swap_hard_limit", None)
+    # if restart_libvirtd is True, set set_one_line is True
+    set_one_line = True if restart_libvirtd else set_one_line
 
-        if virsh.has_command_help_match("memtune", "soft-limit"):
-            soft_mem = Mem - int(params.get("memtune_soft_base_mem"))
-            options = " --soft-limit %d --live" % soft_mem
-            virsh.memtune_set(domname, options)
-            if not check_limit(path, soft_mem, "soft_limit"):
-                error_counter += 1
-        else:
-            test.cancel("softlimit option not available in memtune "
-                        "cmd in this libvirt version")
+    # Get the vm name, pid of vm and check for alive
+    vm = env.get_vm(params["main_vm"])
+    vm.verify_alive()
+    pid = vm.get_pid()
 
-        if virsh.has_command_help_match("memtune", "swap-hard-limit"):
-            swaphard = Mem
-            options = " --swap-hard-limit %d --live" % swaphard
-            virsh.memtune_set(domname, options)
-            if not check_limit(path, swaphard, "swap_hard_limit"):
-                error_counter += 1
-        else:
-            test.cancel("swaplimit option not available in memtune "
-                        "cmd in this libvirt version")
-        Mem += int(params.get("memtune_hard_base_mem"))
+    # Resolve the memory cgroup path for a domain
+    path = utils_cgroup.resolve_task_cgroup_path(int(pid), "memory")
 
-    # Raise error based on error_counter
-    if error_counter > 0:
-        test.fail(
-            "Test failed, consult the previous error messages")
+    # step_mem is used to do step increment limit testing
+    if step_mem:
+        mem_step(params, path, vm, test, acceptable_minus)
+        return
+
+    if not set_one_line:
+        # Set one type memtune limit in one command
+        if mt_hard_limit:
+            index = 0
+            mt_limit = mt_hard_limit
+        elif mt_soft_limit:
+            index = 1
+            mt_limit = mt_soft_limit
+        elif mt_swap_hard_limit:
+            index = 2
+            mt_limit = mt_swap_hard_limit
+        mt_type = memtune_types[index]
+        mt_cgname = memtune_cgnames[index]
+        options = " --%s %s --live" % (mt_type, mt_limit)
+        result = virsh.memtune_set(vm.name, options, debug=True)
+
+        if expect_error:
+            fail_patts = [params.get("error_info")]
+            libvirt.check_result(result, fail_patts, [])
+        else:
+            # If limit value is negative, means no memtune limit
+            mt_expected = mt_limit if int(mt_limit) > 0 else -1
+            check_limit(path, mt_expected, mt_type, mt_cgname, vm, test,
+                        acceptable_minus)
+    else:
+        # Set 3 limits in one command line
+        mt_limits = [mt_hard_limit, mt_soft_limit, mt_swap_hard_limit]
+        options = " %s --live" % ' '.join(mt_limits)
+        result = virsh.memtune_set(vm.name, options, debug=True)
+
+        if expect_error:
+            fail_patts = [params.get("error_info")]
+            libvirt.check_result(result, fail_patts, [])
+        else:
+            check_limits(path, mt_limits, vm, test, acceptable_minus)
+
+        if restart_libvirtd:
+            libvirtd = utils_libvirtd.Libvirtd()
+            libvirtd.restart()
+
+        if not expect_error:
+            # After libvirtd restared, check memtune values again
+            check_limits(path, mt_limits, vm, test, acceptable_minus)
