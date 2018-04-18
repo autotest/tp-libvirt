@@ -2,6 +2,7 @@ import os
 import re
 import logging
 import platform
+import time
 
 from avocado.utils import cpu as cpu_util
 
@@ -204,6 +205,7 @@ def run(test, params, env):
     vcpu_plug_num = int(params.get("vcpu_plug_num"))
     vcpu_unplug = "yes" == params.get("vcpu_unplug", "no")
     vcpu_unplug_num = int(params.get("vcpu_unplug_num"))
+    vcpu_max_timeout = int(params.get("vcpu_max_timeout", "480"))
     setvcpu_option = params.get("setvcpu_option", "")
     agent_channel = "yes" == params.get("agent_channel", "yes")
     install_qemuga = "yes" == params.get("install_qemuga", "no")
@@ -347,7 +349,7 @@ def run(test, params, env):
                     expect_vcpu_num['guest_live'] = vcpu_plug_num
                     if not status_error:
                         if not utils_misc.wait_for(lambda: utils_misc.check_if_vm_vcpu_match(vcpu_plug_num, vm),
-                                                   120, text="wait for vcpu online") or not online_new_vcpu(vm, vcpu_plug_num):
+                                                   vcpu_max_timeout, text="wait for vcpu online") or not online_new_vcpu(vm, vcpu_plug_num):
                             test.fail("Fail to enable new added cpu")
 
                 # Pin vcpu
@@ -439,10 +441,39 @@ def run(test, params, env):
                     # expect_vcpupin to empty
                     expect_vcpupin = {}
 
+                # Operation of setvcpus is asynchronization, even if it return,
+                # may not mean it is complete, a poll checking of guest vcpu numbers
+                # need to be executed.
+                # So for case of unpluging vcpus from max vcpu number to 1, when
+                # setvcpus return, need continue to obverse if vcpu number is
+                # continually to be unplugged to 1 gradually.
                 result = virsh.setvcpus(vm_name, vcpu_unplug_num,
                                         setvcpu_option,
                                         readonly=setvcpu_readonly,
                                         ignore_status=True, debug=True)
+                try:
+                    session = vm.wait_for_login()
+                    cmd = "lscpu | grep \"^CPU(s):\""
+                    operation = "setvcpus"
+                    prev_output = -1
+                    while True:
+                        ret, output = session.cmd_status_output(cmd)
+                        if ret:
+                            test.error("Run lscpu failed, output: %s" % output)
+                        output = output.split(":")[-1].strip()
+
+                        if int(prev_output) == int(output):
+                            break
+                        prev_output = output
+                        time.sleep(5)
+                    logging.debug("CPUs available from inside guest after %s - %s",
+                                  operation, output)
+                    if int(output) != vcpu_unplug_num:
+                        test.fail("CPU %s failed as cpus are not "
+                                  "reflected from inside guest" % operation)
+                finally:
+                    if session:
+                        session.close()
 
                 check_setvcpus_result(result, status_error)
                 if setvcpu_option == "--config":
