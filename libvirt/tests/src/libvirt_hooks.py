@@ -11,7 +11,7 @@ from virttest import utils_misc
 from virttest import utils_libvirtd
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
-from virrtest import data_dir
+from virttest import data_dir
 
 
 def run(test, params, env):
