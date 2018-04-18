@@ -217,19 +217,23 @@ TIMEOUT 3"""
         logging.debug("Bandwidth filter output: %s", filter_output)
         if not filter_output.count("filter protocol all pref"):
             test.fail("Can't find 'protocol all' settings in filter rules")
-        filter_pattern = ".*police.*rate (\d+)Kbit burst (\d+)(K?M?)b.*"
+        filter_pattern = ".*police.*rate (\d+)(K?M?)bit burst (\d+)(K?M?)b.*"
         se = re.search(r"%s" % filter_pattern, filter_output, re.M)
         if not se:
             test.fail("Can't find any filter policy")
         logging.debug("bandwidth from tc output:%s" % str(se.groups()))
         logging.debug("bandwidth from setting:%s" % str(bandwidth))
         if "average" in bandwidth:
-            assert int(se.group(1)) == int(bandwidth["average"]) * 8
-        if "burst" in bandwidth:
-            if se.group(3) == 'M':
-                tc_burst = int(se.group(2)) * 1024
+            if se.group(2) == 'M':
+                tc_average = int(se.group(1)) * 1000
             else:
-                tc_burst = int(se.group(2))
+                tc_average = int(se.group(1))
+            assert tc_average == int(bandwidth["average"]) * 8
+        if "burst" in bandwidth:
+            if se.group(4) == 'M':
+                tc_burst = int(se.group(3)) * 1024
+            else:
+                tc_burst = int(se.group(3))
             assert tc_burst == int(bandwidth["burst"])
 
     def check_host_routes():
