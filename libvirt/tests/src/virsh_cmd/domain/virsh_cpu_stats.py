@@ -25,6 +25,7 @@ def run(test, params, env):
     vm_ref = params.get("cpu_stats_vm_ref")
     status_error = params.get("status_error", "no")
     options = params.get("cpu_stats_options")
+    error_msg = params.get("error_msg", "")
     logging.debug("options are %s", options)
 
     if vm_ref == "name":
@@ -73,6 +74,10 @@ def run(test, params, env):
     if status_error == "yes":
         if status == 0:
             test.fail("Run successfully with wrong command!")
+        else:
+            # Check error message is expected
+            if not re.search(error_msg, cmd_result.stderr.strip()):
+                test.fail("Error message is not expected!")
     elif status_error == "no":
         if status != 0:
             test.fail("Run failed with right command")
