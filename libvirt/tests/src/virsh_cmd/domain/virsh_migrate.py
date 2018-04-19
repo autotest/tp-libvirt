@@ -24,7 +24,6 @@ from virttest import utils_misc
 from virttest.qemu_storage import QemuImg
 from virttest.utils_test import libvirt
 from virttest import test_setup
-from virttest import ssh_key
 from virttest.staging import utils_memory
 from virttest.compat_52lts import decode_to_text as to_text
 from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
@@ -347,26 +346,21 @@ def run(test, params, env):
 
         return mem_xml_file
 
-    def cpu_hotplug_hotunplug(vm, vm_addr, cpu_count, operation,
-                              uri=None, params=None):
+    def cpu_hotplug_hotunplug(vm, cpu_count, operation, uri=None):
         """
         Performs CPU Hotplug or Hotunplug based on the cpu_count given.
 
         :param vm: VM object
-        :param vm_addr: IP address of VM
         :param cpu_count: No of CPUs to be hotplugged or hotunplugged
         :param operation: operation to be performed, ie hotplug or hotunplug
         :param uri: virsh connect uri if operation to be performed remotely
-        :param params: Test dict params
 
         :raise test.fail if hotplug or hotunplug doesn't work
         """
-        if params:
-            remote_user = params.get("remote_user", "root")
-            remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
-            remote_pwd = params.get("remote_pwd", None)
-            session = remote.remote_login("ssh", remote_ip, "22", remote_user,
-                                          remote_pwd, r"[\#\$]\s*$")
+        if uri:
+            connect_uri = vm.connect_uri
+            vm.connect_uri = uri
+            session = vm.wait_for_serial_login()
         else:
             session = vm.wait_for_login()
         status = virsh.setvcpus(vm.name, cpu_count, extra="--live", debug=True,
@@ -392,11 +386,6 @@ def run(test, params, env):
             logging.debug("Checking CPU number gets reflected from inside "
                           "guest")
             cmd = "lscpu | grep \"^CPU(s):\""
-            if params:
-                guest_user = params.get("username", "root")
-                ssh_cmd = "ssh %s@%s" % (guest_user, vm_addr)
-                ssh_cmd += " -o StrictHostKeyChecking=no"
-                cmd = "%s '%s'" % (ssh_cmd, cmd)
             # vcpu count gets reflected step by step gradually, so we check
             # vcpu and compare with previous count by taking 5 seconds, if
             # there is no change in vpcu count we break the loop.
@@ -405,7 +394,7 @@ def run(test, params, env):
                 ret, output = session.cmd_status_output(cmd)
                 if ret:
                     test.fail("CPU %s failed - %s" % (operation, output))
-                output = output.split(":")[-1].strip()
+                output = filter(str.isdigit, str(output.split(":")[-1].strip()))
 
                 if int(prev_output) == int(output):
                     break
@@ -419,6 +408,10 @@ def run(test, params, env):
             logging.debug("CPU %s successful !!!", operation)
         except Exception as info:
             test.fail("CPU %s failed - %s" % (operation, info))
+        finally:
+            # recover the connect uri
+            if uri:
+                vm.connect_uri = connect_uri
 
     def check_migration_timeout_suspend(timeout):
         """
@@ -476,7 +469,7 @@ def run(test, params, env):
                 not virsh.domain_exists(vm.name, uri=dest_uri)):
             test.error("Domain is not found with 'paused' state in 50s")
 
-    def run_migration_cmd(cmd, timeout=5):
+    def run_migration_cmd(cmd, timeout=60):
         """
         Check to see the VM on target machine should ran up once
         migration-postcopy command is executed. To get sufficient time to
@@ -927,27 +920,13 @@ def run(test, params, env):
 
         # Perform cpu hotplug or hotunplug before migration
         if cpu_hotplug:
-            guest_ip = vm.get_address()
-            if hotplug_after_migrate or hotunplug_after_migrate:
-                config_opt = ["StrictHostKeyChecking=no"]
-                guest_user = params.get("username", "root")
-                guest_pwd = params.get("password", "password")
-                # Configure ssh key between destination machine and VM
-                # before migration, so that commands can be executed from
-                # destination machine to VM after migration for validation
-                ssh_key.setup_remote_ssh_key(server_ip, server_user,
-                                             server_pwd, hostname2=guest_ip,
-                                             user2=guest_user,
-                                             password2=guest_pwd,
-                                             config_options=config_opt,
-                                             public_key="rsa")
             if hotplug_before_migrate:
                 logging.debug("Performing CPU Hotplug before migration")
-                cpu_hotplug_hotunplug(vm, guest_ip, max_vcpus, "Hotplug")
+                cpu_hotplug_hotunplug(vm, max_vcpus, "Hotplug")
             if cpu_hotunplug:
                 if hotunplug_before_migrate:
                     logging.debug("Performing CPU Hot Unplug before migration")
-                    cpu_hotplug_hotunplug(vm, guest_ip, current_vcpus, "Hotunplug")
+                    cpu_hotplug_hotunplug(vm, current_vcpus, "Hotunplug")
 
         # Perform memory hotplug after VM is up
         if mem_hotplug:
@@ -1221,16 +1200,15 @@ def run(test, params, env):
                                                 server_user, server_pwd,
                                                 r"[\#\$]\s*$")
                 if migrate_there_and_back:
-                    uri = src_uri
+                    uri = None
                 if hotplug_after_migrate:
                     logging.debug("Performing CPU Hotplug after migration")
-                    cpu_hotplug_hotunplug(vm, vm_ip, max_vcpus, "Hotplug",
-                                          uri=uri, params=params)
+                    cpu_hotplug_hotunplug(vm, max_vcpus, "Hotplug", uri=uri)
                 if cpu_hotunplug:
                     if hotunplug_after_migrate:
                         logging.debug("Performing CPU Hot Unplug after migration")
-                        cpu_hotplug_hotunplug(vm, vm_ip, current_vcpus,
-                                              "Hotunplug", uri=uri, params=params)
+                        cpu_hotplug_hotunplug(vm, current_vcpus, "Hotunplug",
+                                              uri=uri)
 
         if graphics_server:
             logging.info("To check the process running '%s'.",
