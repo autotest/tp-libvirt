@@ -10,7 +10,6 @@ from avocado.utils import process
 from avocado.utils import path
 from avocado.core import exceptions
 
-from virttest import nfs
 from virttest import remote
 from virttest import defaults
 from virttest import utils_test
@@ -22,7 +21,6 @@ from virttest import utils_package
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
 from virttest import utils_misc
-from virttest.utils_misc import SELinuxBoolean
 from virttest.qemu_storage import QemuImg
 from virttest.utils_test import libvirt
 from virttest import test_setup
@@ -598,21 +596,6 @@ def run(test, params, env):
     params["disk_source_protocol"] = "netfs"
     params["mnt_path_name"] = nfs_mount_path
 
-    # Params for NFS and SSH setup
-    params["server_ip"] = migrate_dest_ip
-    params["server_user"] = "root"
-    params["server_pwd"] = params.get("migrate_dest_pwd")
-    params["client_ip"] = params.get("migrate_source_host")
-    params["client_user"] = "root"
-    params["client_pwd"] = params.get("migrate_source_pwd")
-    params["nfs_client_ip"] = migrate_dest_ip
-    params["nfs_server_ip"] = params.get("migrate_source_host")
-
-    # Params to enable SELinux boolean on remote host
-    params["remote_boolean_varible"] = "virt_use_nfs"
-    params["remote_boolean_value"] = "on"
-    params["set_sebool_remote"] = "yes"
-
     server_ip = params.get("server_ip")
     server_user = params.get("server_user", "root")
     server_pwd = params.get("server_pwd")
@@ -842,22 +825,8 @@ def run(test, params, env):
     try:
         # Change the disk of the vm to shared disk
         libvirt.set_vm_disk(vm, params)
-        # Backup the SELinux status on local host for recovering
-        local_selinux_bak = params.get("selinux_status_bak")
 
-        # Configure NFS client on remote host
-        nfs_client = nfs.NFSClient(params)
-        nfs_client.setup()
-
-        logging.info("Enable virt NFS SELinux boolean on target host.")
-        seLinuxBool = SELinuxBoolean(params)
-        seLinuxBool.setup()
-
-        # Permit iptables to permit 49152-49216 ports to libvirt for
-        # migration and if arch is ppc with power8 then switch off smt
-        # will be taken care in remote machine for migration to succeed
         migrate_setup = libvirt.MigrationTest()
-        migrate_setup.migrate_pre_setup(dest_uri, params)
 
         subdriver = utils_test.get_image_info(shared_storage)['format']
         extra_attach = ("--config --driver qemu --subdriver %s --cache %s"
@@ -1070,6 +1039,10 @@ def run(test, params, env):
                     vmxml.vm_name = vm_new_name
                 extra = ("%s --xml=%s" % (extra, vmxml.xml))
 
+        # Get VM uptime before migration
+        vm_uptime = vm.uptime()
+        logging.info("Check VM uptime before migration: %s", vm_uptime)
+
         # Turn VM into certain state.
         logging.debug("Turning %s into certain state.", vm.name)
         if src_state == "paused":
@@ -1165,6 +1138,13 @@ def run(test, params, env):
 
         dest_state = params.get("virsh_migrate_dest_state", "running")
         if ret_migrate and dest_state == "running":
+            # Check VM uptime after migrating to destination
+            migrated_vm_uptime = vm.uptime(dest_uri)
+            logging.info("Check VM uptime in destination after migration: %s",
+                         migrated_vm_uptime)
+            if vm_uptime > migrated_vm_uptime:
+                test.fail("VM went for a reboot while migrating to destination")
+
             server_session = remote.wait_for_login('ssh', server_ip, '22',
                                                    server_user, server_pwd,
                                                    r"[\#\$]\s*$")
@@ -1176,8 +1156,8 @@ def run(test, params, env):
             logging.info(o_ping)
             if s_ping != 0:
                 server_session.close()
-                test.error("%s did not respond after %d sec." % (vm.name,
-                                                                 ping_timeout))
+                test.fail("%s did not respond after %d sec." % (vm.name,
+                                                                ping_timeout))
             server_session.close()
             logging.debug("Migration from %s to %s success" %
                           (src_uri, dest_uri))
@@ -1214,14 +1194,22 @@ def run(test, params, env):
                     except Exception as info:
                         test.fail(info)
                     ret_migrate = obj_migration.RET_MIGRATION
+
+                # Check for VM uptime migrating back
+                vm_uptime = vm.uptime()
+                logging.info("Check VM uptime after migrating back to source: %s",
+                             vm_uptime)
+                if migrated_vm_uptime > vm_uptime:
+                    test.fail("VM went for a reboot while migrating back to source")
+
                 logging.info("To check VM network connectivity after "
                              "migrating back to source")
                 s_ping, o_ping = utils_test.ping(vm_ip, count=ping_count,
                                                  timeout=ping_timeout)
                 logging.info(o_ping)
                 if s_ping != 0:
-                    test.error("%s did not respond after %d sec." %
-                               (vm.name, ping_timeout))
+                    test.fail("%s did not respond after %d sec." %
+                              (vm.name, ping_timeout))
                 # clean up of pre migration setup for local machine
                 migrate_setup.migrate_pre_setup(src_uri, params,
                                                 cleanup=True)
@@ -1375,30 +1363,9 @@ def run(test, params, env):
     if attach_scsi_disk:
         libvirt.delete_local_disk("file", path=scsi_disk)
 
-    if seLinuxBool:
-        logging.info("Recover virt NFS SELinux boolean on target host...")
-        # keep .ssh/authorized_keys for NFS cleanup later
-        seLinuxBool.cleanup(True)
-
-    if nfs_client:
-        logging.info("Cleanup NFS client environment...")
-        nfs_client.cleanup()
-
     logging.info("Remove the NFS image...")
     source_file = params.get("source_file")
     libvirt.delete_local_disk("file", path=source_file)
-
-    logging.info("Cleanup NFS server environment...")
-    exp_dir = params.get("export_dir")
-    mount_dir = params.get("mnt_path_name")
-    libvirt.setup_or_cleanup_nfs(False, export_dir=exp_dir,
-                                 mount_dir=mount_dir,
-                                 restore_selinux=local_selinux_bak,
-                                 rm_export_dir=False)
-    # cleanup pre migration setup for remote machine
-    if migrate_setup:
-        logging.debug("Clean up migration setup for remote machine")
-        migrate_setup.migrate_pre_setup(dest_uri, params, cleanup=True)
 
     if skip_exception:
         test.cancel(detail)
