@@ -51,6 +51,7 @@ def check_crash_state(cmd_output, crash_action, vm_name, dump_file=""):
         text = 'VM in middle state: %s' % middle_state
         if cmd_output.strip() == middle_state:
             utils_misc.wait_for(_wait_for_state, 60, text=text)
+            cmd_output = virsh.domstate(vm_name, '--reason').stdout.strip()
 
     logging.debug("Actual state: %s", cmd_output.strip())
     if cmd_output.strip() == expect_output:
