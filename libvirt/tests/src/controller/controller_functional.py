@@ -49,6 +49,8 @@ def run(test, params, env):
         """
         Prepare os part of VM XML according to params.
         """
+        if os_machine == 'auto':
+            return
         osxml = vm_xml.os
         orig_machine = osxml.machine
         if '-' in orig_machine:
@@ -245,7 +247,7 @@ def run(test, params, env):
                 test.fail('Expect MSI enable with non-zero vectors,'
                           ' but got %s' % output)
 
-    os_machine = params.get('os_machine', 'i440fx')
+    os_machine = params.get('os_machine', 'auto')
     cntlr_type = params.get('controller_type', None)
     model = params.get('controller_model', None)
     index = params.get('controller_index', None)
