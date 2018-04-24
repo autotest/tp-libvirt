@@ -198,5 +198,6 @@ def run(test, params, env):
 
     finally:
         if create_file is not None:
+            session = vm.wait_for_login()
             session.cmd("rm -rf %s" % create_file)
         session.close()
