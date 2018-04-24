@@ -148,21 +148,21 @@ def run(test, params, env):
             if result.exit_status == 0:
                 if fail_pat:
                     test.fail("Expected failed with %s, but run succeed:\n%s" %
-                              (fail_pat, result))
+                              (fail_pat, result.stdout))
             else:
                 if unsupported_guest_err in result.stderr:
-                    fail_pat.append(unsupported_guest_err)
+                    test.cancel("Unsupported suspend mode:\n%s" % result.stderr)
                 if not fail_pat:
-                    test.fail("Expected success, but run failed:\n%s" % result)
+                    test.fail("Expected success, but run failed:\n%s" % result.stderr)
                 #if not any_pattern_match(fail_pat, result.stderr):
                 if not any(p in result.stderr for p in fail_pat):
                     test.fail("Expected failed with one of %s, but "
-                              "failed with:\n%s" % (fail_pat, result))
+                              "failed with:\n%s" % (fail_pat, result.stderr))
 
             # check whether the state changes to pmsuspended
             if not utils_misc.wait_for(lambda: vm.state() == 'pmsuspended', 30):
                 test.fail("VM failed to change its state, expected state: "
-                          "pmsuspended, but actual state: %s" % vm.state)
+                          "pmsuspended, but actual state: %s" % vm.state())
 
             if agent_error_test:
                 ret = virsh.dompmsuspend(vm_name, "mem", **virsh_dargs)
