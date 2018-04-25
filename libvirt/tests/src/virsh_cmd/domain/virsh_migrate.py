@@ -1049,10 +1049,6 @@ def run(test, params, env):
                     vmxml.vm_name = vm_new_name
                 extra = ("%s --xml=%s" % (extra, vmxml.xml))
 
-        # Get VM uptime before migration
-        vm_uptime = vm.uptime()
-        logging.info("Check VM uptime before migration: %s", vm_uptime)
-
         # Turn VM into certain state.
         logging.debug("Turning %s into certain state.", vm.name)
         if src_state == "paused":
@@ -1148,13 +1144,6 @@ def run(test, params, env):
 
         dest_state = params.get("virsh_migrate_dest_state", "running")
         if ret_migrate and dest_state == "running":
-            # Check VM uptime after migrating to destination
-            migrated_vm_uptime = vm.uptime(dest_uri)
-            logging.info("Check VM uptime in destination after migration: %s",
-                         migrated_vm_uptime)
-            if vm_uptime > migrated_vm_uptime:
-                test.fail("VM went for a reboot while migrating to destination")
-
             server_session = remote.wait_for_login('ssh', server_ip, '22',
                                                    server_user, server_pwd,
                                                    r"[\#\$]\s*$")
@@ -1166,8 +1155,8 @@ def run(test, params, env):
             logging.info(o_ping)
             if s_ping != 0:
                 server_session.close()
-                test.fail("%s did not respond after %d sec." % (vm.name,
-                                                                ping_timeout))
+                test.error("%s did not respond after %d sec." % (vm.name,
+                                                                 ping_timeout))
             server_session.close()
             logging.debug("Migration from %s to %s success" %
                           (src_uri, dest_uri))
@@ -1204,22 +1193,14 @@ def run(test, params, env):
                     except Exception as info:
                         test.fail(info)
                     ret_migrate = obj_migration.RET_MIGRATION
-
-                # Check for VM uptime migrating back
-                vm_uptime = vm.uptime()
-                logging.info("Check VM uptime after migrating back to source: %s",
-                             vm_uptime)
-                if migrated_vm_uptime > vm_uptime:
-                    test.fail("VM went for a reboot while migrating back to source")
-
                 logging.info("To check VM network connectivity after "
                              "migrating back to source")
                 s_ping, o_ping = utils_test.ping(vm_ip, count=ping_count,
                                                  timeout=ping_timeout)
                 logging.info(o_ping)
                 if s_ping != 0:
-                    test.fail("%s did not respond after %d sec." %
-                              (vm.name, ping_timeout))
+                    test.error("%s did not respond after %d sec." %
+                               (vm.name, ping_timeout))
                 # clean up of pre migration setup for local machine
                 migrate_setup.migrate_pre_setup(src_uri, params,
                                                 cleanup=True)
