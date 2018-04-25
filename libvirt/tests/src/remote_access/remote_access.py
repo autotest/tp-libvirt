@@ -114,6 +114,7 @@ def cleanup(objs_list):
     Clean up test environment
     """
     # recovery test environment
+    objs_list.reverse()
     for obj in objs_list:
         obj.auto_recover = True
         del obj
@@ -149,6 +150,7 @@ def run(test, params, env):
     server_user = test_dict.get("server_user")
     server_pwd = test_dict.get("server_pwd")
     no_any_config = params.get("no_any_config", "no")
+    sasl_type = test_dict.get("sasl_type", "gssapi")
     sasl_user_pwd = test_dict.get("sasl_user_pwd")
     sasl_allowed_users = test_dict.get("sasl_allowed_users")
     server_cn = test_dict.get("server_cn")
@@ -360,7 +362,7 @@ def run(test, params, env):
         # From libvirt-3.2.0, the default sasl change from
         # DIGEST-MD5 to GSSAPI. "sasl_user" is discarded.
         # More details: https://libvirt.org/auth.html#ACL_server_kerberos
-        if sasl_user_pwd and not libvirt_version.version_compare(3, 2, 0):
+        if sasl_user_pwd and sasl_type == 'digest-md5':
             # covert string tuple and list to python data type
             sasl_user_pwd = eval(sasl_user_pwd)
             if sasl_allowed_users:
@@ -390,6 +392,8 @@ def run(test, params, env):
     finally:
         # recovery test environment
         # Destroy the VM after all test are done
+        cleanup(objs_list)
+
         if vm_name:
             vm = env.get_vm(vm_name)
             if vm and vm.is_alive():
@@ -406,5 +410,3 @@ def run(test, params, env):
 
         if polkit_pkla and os.path.isfile(polkit_pkla):
             os.unlink(polkit_pkla)
-
-        cleanup(objs_list)
