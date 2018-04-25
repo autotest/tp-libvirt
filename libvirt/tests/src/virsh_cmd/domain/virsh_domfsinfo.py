@@ -2,6 +2,7 @@ import re
 import logging
 import os
 import time
+import sys
 
 from avocado.utils import process
 
@@ -103,6 +104,7 @@ def check_domfsinfo(domfsinfo, expected_results, test):
     """
     expected_fs_count = len(expected_results)
     real_fs_count = len(domfsinfo)
+    encoding = sys.getdefaultencoding()
     if real_fs_count != expected_fs_count:
         test.fail("Expected number of mounted filesystems is %s, "
                   "but got %s from virsh command" %
@@ -112,7 +114,7 @@ def check_domfsinfo(domfsinfo, expected_results, test):
         for expect_fs in expected_results:
             if fs_name == expect_fs.get("Name"):
                 for key, value in expect_fs.items():
-                    if real_fs[key] != value.encode('utf-8'):
+                    if real_fs[key] != value.encode(encoding).decode(encoding):
                         test.fail("Expect filesystem %s has attribute %s=%s, "
                                   "but got %s=%s from virsh command" %
                                   (fs_name, key, value, key, real_fs[key]))
