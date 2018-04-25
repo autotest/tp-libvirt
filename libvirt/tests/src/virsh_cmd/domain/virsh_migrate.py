@@ -10,6 +10,7 @@ from avocado.utils import process
 from avocado.utils import path
 from avocado.core import exceptions
 
+from virttest import nfs
 from virttest import remote
 from virttest import defaults
 from virttest import utils_test
@@ -21,6 +22,7 @@ from virttest import utils_package
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
 from virttest import utils_misc
+from virttest.utils_misc import SELinuxBoolean
 from virttest.qemu_storage import QemuImg
 from virttest.utils_test import libvirt
 from virttest import test_setup
@@ -589,6 +591,21 @@ def run(test, params, env):
     params["disk_source_protocol"] = "netfs"
     params["mnt_path_name"] = nfs_mount_path
 
+    # Params for NFS and SSH setup
+    params["server_ip"] = migrate_dest_ip
+    params["server_user"] = "root"
+    params["server_pwd"] = params.get("migrate_dest_pwd")
+    params["client_ip"] = params.get("migrate_source_host")
+    params["client_user"] = "root"
+    params["client_pwd"] = params.get("migrate_source_pwd")
+    params["nfs_client_ip"] = migrate_dest_ip
+    params["nfs_server_ip"] = params.get("migrate_source_host")
+
+    # Params to enable SELinux boolean on remote host
+    params["remote_boolean_varible"] = "virt_use_nfs"
+    params["remote_boolean_value"] = "on"
+    params["set_sebool_remote"] = "yes"
+
     server_ip = params.get("server_ip")
     server_user = params.get("server_user", "root")
     server_pwd = params.get("server_pwd")
@@ -818,8 +835,22 @@ def run(test, params, env):
     try:
         # Change the disk of the vm to shared disk
         libvirt.set_vm_disk(vm, params)
+        # Backup the SELinux status on local host for recovering
+        local_selinux_bak = params.get("selinux_status_bak")
 
+        # Configure NFS client on remote host
+        nfs_client = nfs.NFSClient(params)
+        nfs_client.setup()
+
+        logging.info("Enable virt NFS SELinux boolean on target host.")
+        seLinuxBool = SELinuxBoolean(params)
+        seLinuxBool.setup()
+
+        # Permit iptables to permit 49152-49216 ports to libvirt for
+        # migration and if arch is ppc with power8 then switch off smt
+        # will be taken care in remote machine for migration to succeed
         migrate_setup = libvirt.MigrationTest()
+        migrate_setup.migrate_pre_setup(dest_uri, params)
 
         subdriver = utils_test.get_image_info(shared_storage)['format']
         extra_attach = ("--config --driver qemu --subdriver %s --cache %s"
@@ -1341,9 +1372,30 @@ def run(test, params, env):
     if attach_scsi_disk:
         libvirt.delete_local_disk("file", path=scsi_disk)
 
+    if seLinuxBool:
+        logging.info("Recover virt NFS SELinux boolean on target host...")
+        # keep .ssh/authorized_keys for NFS cleanup later
+        seLinuxBool.cleanup(True)
+
+    if nfs_client:
+        logging.info("Cleanup NFS client environment...")
+        nfs_client.cleanup()
+
     logging.info("Remove the NFS image...")
     source_file = params.get("source_file")
     libvirt.delete_local_disk("file", path=source_file)
+
+    logging.info("Cleanup NFS server environment...")
+    exp_dir = params.get("export_dir")
+    mount_dir = params.get("mnt_path_name")
+    libvirt.setup_or_cleanup_nfs(False, export_dir=exp_dir,
+                                 mount_dir=mount_dir,
+                                 restore_selinux=local_selinux_bak,
+                                 rm_export_dir=False)
+    # cleanup pre migration setup for remote machine
+    if migrate_setup:
+        logging.debug("Clean up migration setup for remote machine")
+        migrate_setup.migrate_pre_setup(dest_uri, params, cleanup=True)
 
     if skip_exception:
         test.cancel(detail)
