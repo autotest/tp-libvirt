@@ -82,7 +82,8 @@ def run(test, params, env):
     srcSpec = xml_utils.TempXMLFile()
     srcSpec.write(src_xml)
     srcSpec.flush()
-    logging.debug("srcSpec file content:\n%s", file(srcSpec.name).read())
+    with open(srcSpec.name) as srcSpec_file:
+        logging.debug("srcSpec file content:\n%s", srcSpec_file.read())
 
     if params.get('setup_libvirt_polkit') == 'yes':
         cmd = "chmod 666 %s" % srcSpec.name
