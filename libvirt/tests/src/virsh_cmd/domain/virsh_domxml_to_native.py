@@ -118,13 +118,22 @@ def run(test, params, env):
         # do the same if we find "/usr/bin/qemu-kvm" in the incoming
         # argument list and we find "qemu-system-x86_64 -machine accel=kvm"
         # in the running guest's cmdline
-        qemu_bin = "/usr/bin/qemu-kvm"
+        # ubuntu use /usr/bin/kvm as qemu binary
+        qemu_bin = ["/usr/bin/qemu-kvm", "/usr/bin/kvm"]
         arch_bin = ["/usr/bin/qemu-system-x86_64 -machine accel=kvm",
-                    "/usr/bin/qemu-system-ppc64 -machine accel=kvm"]
-        if conv_arg.find(qemu_bin) != -1:
+                    "/usr/bin/qemu-system-ppc64 -machine accel=kvm",
+                    "qemu-system-ppc64 -enable-kvm"]
+        qemu_kvm_bin = ""
+        for each_bin in qemu_bin:
+            if conv_arg.find(each_bin) != -1:
+                qemu_kvm_bin = each_bin
+        if qemu_kvm_bin:
             for arch in arch_bin:
                 if cmdline.find(arch) != -1:
-                    cmdline = re.sub(arch, qemu_bin, cmdline)
+                    cmdline = re.sub(arch, qemu_kvm_bin, cmdline)
+        else:
+            logging.warning("qemu-kvm binary is not identified: '%s'",
+                            qemu_kvm_bin)
 
         # Now prepend the various environment variables that will be in
         # the conv_arg, but not in the actual command
