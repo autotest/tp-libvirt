@@ -1,8 +1,8 @@
 import logging
+import re
 
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
-
 from provider import libvirt_version
 
 
@@ -18,6 +18,10 @@ def check_domiftune(params, test_clear):
     options = params.get("options")
     inbound = params.get("inbound", "")
     outbound = params.get("outbound", "")
+    set_clear = "yes" == params.get("set_clear", "no")
+    test_outbound = "yes" == params.get("test_outbound", "no")
+    test_inbound = "yes" == params.get("test_inbound", "no")
+    status_error = 'yes' == params.get("status_error", "no")
     inbound_from_cmd_output = None
     outbound_from_cmd_output = None
     peak_in_from_cmd_output = None
@@ -26,8 +30,26 @@ def check_domiftune(params, test_clear):
     burst_out_from_cmd_output = None
     inbound_from_xml = None
     outbound_from_xml = None
+    peak_in_from_xml = None
+    peak_out_from_xml = None
+    burst_in_from_xml = None
+    burst_out_from_xml = None
 
-    logging.debug("Checking inbound=%s outbound=%s", inbound, outbound)
+    logging.debug("Checking inbound=%s outbound= %s", inbound, outbound)
+    # get inbound and outbound parameters from virsh cmd setting
+    if not status_error and test_inbound:
+        in_list = re.findall(r'[0-9]+', inbound)
+        inbound_average = int(in_list[0])
+        if len(in_list) == 3:
+            inbound_peak = int(in_list[1])
+            inbound_burst = int(in_list[2])
+    if not status_error and test_outbound:
+        out_list = re.findall(r'[0-9]+', outbound)
+        outbound_average = int(out_list[0])
+        if len(out_list) == 3:
+            outbound_peak = int(out_list[1])
+            outbound_burst = int(out_list[2])
+    # get inbound and outbound parameters from virsh cmd output
     if vm and vm.is_alive():
         result = virsh.domiftune(vm_name, interface, options=options)
         dicts = {}
@@ -38,15 +60,20 @@ def check_domiftune(params, test_clear):
                 dicts[k.strip()] = v.strip()
 
         logging.debug(dicts)
-        inbound_from_cmd_output = dicts['inbound.average']
-        outbound_from_cmd_output = dicts['outbound.average']
-        logging.debug("inbound_from_cmd_output=%s, outbound_from_cmd_output=%s",
-                      inbound_from_cmd_output, outbound_from_cmd_output)
-        peak_in_from_cmd_output = dicts['inbound.peak']
-        peak_out_from_cmd_output = dicts['outbound.peak']
-        burst_in_from_cmd_output = dicts['inbound.peak']
-        burst_out_from_cmd_output = dicts['outbound.peak']
+        inbound_from_cmd_output = int(dicts['inbound.average'])
+        outbound_from_cmd_output = int(dicts['outbound.average'])
+        peak_in_from_cmd_output = int(dicts['inbound.peak'])
+        peak_out_from_cmd_output = int(dicts['outbound.peak'])
+        burst_in_from_cmd_output = int(dicts['inbound.burst'])
+        burst_out_from_cmd_output = int(dicts['outbound.burst'])
 
+        logging.debug("inbound and outbound from cmd output:")
+        logging.debug("inbound: %s,%s,%s; outbound: %s,%s,%s"
+                      % (inbound_from_cmd_output, peak_in_from_cmd_output,
+                         burst_in_from_cmd_output, outbound_from_cmd_output,
+                         peak_out_from_cmd_output, burst_out_from_cmd_output))
+
+    # get inbound and outbound parameters from vm xml
     virt_xml_obj = vm_xml.VMXML(virsh_instance=virsh)
 
     if options == "config" and vm and vm.is_alive():
@@ -59,19 +86,33 @@ def check_domiftune(params, test_clear):
         domiftune_params = virt_xml_obj.get_iftune_params(vm_name)
 
     try:
-        inbound_from_xml = domiftune_params.get("inbound").get("average")
-        outbound_from_xml = domiftune_params.get("outbound").get("average")
+        print("test inbound is %s, test outbound is %s" %
+              (test_inbound, test_outbound))
+        if test_inbound:
+            inbound_from_xml = int(domiftune_params.get("inbound").get("average"))
+            peak_in_from_xml = int(domiftune_params.get("inbound").get("peak"))
+            burst_in_from_xml = int(domiftune_params.get("inbound").get("burst"))
+            logging.debug("inbound from xml:")
+            logging.debug("%s, %s, %s" % (inbound_from_xml, peak_in_from_xml,
+                                          burst_in_from_xml))
+        if test_outbound:
+            outbound_from_xml = int(domiftune_params.get("outbound").get("average"))
+            peak_out_from_xml = int(domiftune_params.get("outbound").get("peak"))
+            burst_out_from_xml = int(domiftune_params.get("outbound").get("burst"))
+            logging.debug("outbound from xml:")
+            logging.debug("%s, %s, %s" % (outbound_from_xml, peak_out_from_xml,
+                                          burst_out_from_xml))
     except AttributeError as details:
         logging.error("Error in get inbound/outbound average: %s", details)
     logging.debug("inbound_from_xml=%s, outbound_from_xml=%s",
                   inbound_from_xml, outbound_from_xml)
 
     if vm and vm.is_alive() and options != "config":
-        if test_clear and inbound:
+        if test_clear and set_clear and test_inbound:
             if inbound_from_xml is not None or \
-               inbound_from_cmd_output is not "0" or \
-               peak_in_from_cmd_output is not "0" or \
-               burst_in_from_cmd_output is not "0":
+               inbound_from_cmd_output != 0 or \
+               peak_in_from_cmd_output != 0 or \
+               burst_in_from_cmd_output != 0:
                 logging.error("Inbound was not cleared, xml=%s "
                               "avg=%s peak=%s burst=%s",
                               inbound_from_xml,
@@ -79,34 +120,53 @@ def check_domiftune(params, test_clear):
                               peak_in_from_cmd_output,
                               burst_in_from_cmd_output)
                 return False
-        if test_clear and outbound:
+            else:
+                return True
+        if test_clear and set_clear and test_outbound:
             if outbound_from_xml is not None or \
-               outbound_from_cmd_output is not "0" or \
-               peak_out_from_cmd_output is not "0" or \
-               burst_out_from_cmd_output is not "0":
+               outbound_from_cmd_output != 0 or \
+               peak_out_from_cmd_output != 0 or \
+               burst_out_from_cmd_output != 0:
                 logging.error("Outbound was not cleared, xml=%s "
                               "avg=%s peak=%s burst=%s",
                               outbound_from_xml,
                               outbound_from_cmd_output,
                               peak_out_from_cmd_output,
                               burst_out_from_cmd_output)
-        if test_clear:
-            return True
-        if inbound and inbound != inbound_from_cmd_output:
-            logging.error("To expect inbound %s: %s", inbound,
-                          inbound_from_cmd_output)
+                return False
+            else:
+                return True
+        if test_inbound and (inbound_average != inbound_from_cmd_output
+                             or inbound_peak != peak_in_from_cmd_output
+                             or inbound_burst != burst_in_from_cmd_output):
+            logging.error("To expect inbound %s: but got {average: %s, peak:"
+                          " %s, burst: %s} from cmd output", inbound,
+                          inbound_from_cmd_output, peak_in_from_cmd_output,
+                          burst_in_from_cmd_output)
             return False
-        if outbound and outbound != outbound_from_cmd_output:
-            logging.error("To expect inbound %s: %s", outbound,
-                          outbound_from_cmd_output)
+        if test_inbound and (inbound_average != inbound_from_xml
+                             or inbound_peak != peak_in_from_xml
+                             or inbound_burst != burst_in_from_xml):
+            logging.error("To expect inbound %s: but got {average: %s, peak:"
+                          " %s, burst: %s} from xml", inbound,
+                          inbound_from_xml, peak_in_from_xml,
+                          burst_in_from_xml)
             return False
-        if inbound and inbound_from_xml and inbound != inbound_from_xml:
-            logging.error("To expect outbound %s: %s", inbound,
-                          inbound_from_xml)
+        if test_outbound and (outbound_average != outbound_from_cmd_output
+                              or outbound_peak != peak_out_from_cmd_output
+                              or outbound_burst != burst_out_from_cmd_output):
+            logging.error("To expect outbound %s: but got {average: %s, peak:"
+                          " %s, burst: %s} from cmd output", outbound,
+                          outbound_from_cmd_output, peak_out_from_cmd_output,
+                          burst_out_from_cmd_output)
             return False
-        if outbound and outbound_from_xml and outbound != outbound_from_xml:
-            logging.error("To expect outbound %s: %s", outbound,
-                          outbound_from_xml)
+        if test_outbound and (outbound_average != outbound_from_xml or
+                              outbound_peak != peak_out_from_xml or
+                              outbound_burst != burst_out_from_xml):
+            logging.error("To expect outbound %s: but got {average: %s, peak:"
+                          " %s, burst: %s} from xml", outbound,
+                          outbound_from_xml, peak_out_from_xml,
+                          burst_out_from_xml)
             return False
 
     return True
@@ -169,13 +229,13 @@ def set_domiftune_parameter(params, test):
             if inbound:
                 save_inbound = inbound
                 # average,peak,burst
-                inbound = "1,4,6"
-                params['inbound'] = "1"
+                inbound = "2,4,7"
+                params['inbound'] = "2,4,7"
             if outbound:
                 save_outbound = outbound
                 # average,peak,burst
-                outbound = "1,4,6"
-                params['outbound'] = "1"
+                outbound = "2,4,7"
+                params['outbound'] = "2,4,7"
         else:
             # Prior to libvirt 1.2.3 this would be an error
             # So let's just treat it as such. Leaving the
@@ -198,6 +258,7 @@ def set_domiftune_parameter(params, test):
             test.fail("Unexpected set domiftune error: %s" %
                       result.stderr)
         else:
+            logging.debug("set domiftune successfully!!!")
             if not check_domiftune(params, False):
                 test.fail("The 'inbound' or/and 'outbound' are"
                           " inconsistent with domiftune XML"
@@ -208,6 +269,7 @@ def set_domiftune_parameter(params, test):
     # command.  That should result in a successful return and should
     # clear the parameter.
     if test_clear:
+        params['set_clear'] = 'yes'
         if inbound:
             inbound = save_inbound
             params['inbound'] = save_inbound
@@ -220,6 +282,8 @@ def set_domiftune_parameter(params, test):
             test.fail("Unexpected failure when clearing: %s" %
                       result.stderr)
         else:
+            logging.debug("clear the inbound/outbound successfully!!!")
+            params['set_clear'] = "yes"
             if not check_domiftune(params, True):
                 test.fail("The 'inbound' or/and 'outbound' were "
                           "not cleared.")
@@ -244,10 +308,12 @@ def run(test, params, env):
     start_vm = params.get("start_vm", "yes")
     change_parameters = params.get("change_parameters", "no")
     interface = []
-
+    if vm and not vm.is_alive():
+        vm.start()
     if vm and vm.is_alive():
         virt_xml_obj = vm_xml.VMXML(virsh_instance=virsh)
         interface = virt_xml_obj.get_iface_dev(vm_name)
+        logging.debug("the interface is %s" % interface[0])
 
     test_dict = dict(params)
     test_dict['vm'] = vm
@@ -264,9 +330,19 @@ def run(test, params, env):
             get_domiftune_parameter(test_dict, test)
         else:
             set_domiftune_parameter(test_dict, test)
+            result = virsh.domiftune(vm_name, interface[0], 'current', '0', '0')
+            if result.exit_status:
+                logging.debug("clear the bandwidth failed after the test.")
+            else:
+                logging.debug("clear the bandwidth successfully after the test.")
 
     if status_error == "yes":
         if change_parameters == "no":
             get_domiftune_parameter(test_dict, test)
         else:
             set_domiftune_parameter(test_dict, test)
+            result = virsh.domiftune(vm_name, interface[0], 'current', '0', '0')
+            if result.exit_status:
+                logging.debug("clear the bandwidth failed after the test.")
+            else:
+                logging.debug("clear the bandwidth successfully after the test.")
