@@ -2,6 +2,7 @@ import os
 import logging
 import string
 import hashlib
+import locale
 
 from avocado.utils import process
 
@@ -47,10 +48,10 @@ def write_file(path):
     """
     logging.info("write data into file %s", path)
     with open(path, 'wb') as write_fd:
-        datastr = ''.join(string.lowercase + string.uppercase +
+        datastr = ''.join(string.ascii_lowercase + string.ascii_uppercase +
                           string.digits + '.' + '\n')
         data = ''.join(16384 * datastr)
-        write_fd.write(data)
+        write_fd.write(data.encode(locale.getpreferredencoding()))
 
 
 def create_luks_vol(pool_name, vol_name, sec_uuid, vol_arg):
