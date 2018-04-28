@@ -312,7 +312,7 @@ def run(test, params, env):
         capacity['xml'] = volume_xml.capacity
         capacity['qemu_img'] = img_info['vsize']
         norm_cap = norm_capacity(capacity)
-        delta_size = params.get('delta_size', "1024")
+        delta_size = int(params.get('delta_size', "1024"))
         if abs(expected['capacity'] - norm_cap['list']) > delta_size:
             logging.error("Capacity mismatch for volume: %s against virsh"
                           " vol-list\nExpected: %s\nActual: %s",
