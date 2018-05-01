@@ -3,7 +3,6 @@ import time
 import os
 
 from avocado.utils import process
-
 from virttest import virsh
 from virttest.libvirt_xml import nodedev_xml
 from provider import libvirt_version
@@ -73,20 +72,22 @@ def run(test, params, env):
         logging.debug("Compare info in xml and info in sysfs finished"
                       "for device %s.", dev_name)
 
-    def pci_devices_address():
+    def pci_devices_name(device_type):
         """
         Get the address of pci device
+        :param device_type: type of device, such as pci, net , storage
         """
-        pci_list = virsh.nodedev_list(tree='', cap='pci')
-        pci_devices_address = pci_list.stdout.strip().splitlines()
-        pci_device_address = pci_devices_address[0]
-        return pci_device_address
+        devices_list = virsh.nodedev_list(tree='', cap=device_type)
+        devices_name_list = devices_list.stdout.strip().splitlines()
+        device_name = devices_name_list[0]
+        return device_name
 
     # Init variables.
     status_error = ('yes' == params.get('status_error', 'no'))
+    device_type = params.get('device_type', "")
     device_name = params.get('nodedev_device_name', 'ENTER.YOUR.PCI.DEVICE')
     if device_name.find('ENTER.YOUR.PCI.DEVICE') != -1:
-        replace_name = pci_devices_address().strip()
+        replace_name = pci_devices_name(device_type).strip()
         device_name = device_name.replace('ENTER.YOUR.PCI.DEVICE', replace_name).strip()
     device_opt = params.get('nodedev_device_opt', "")
 
@@ -112,8 +113,8 @@ def run(test, params, env):
     if os.path.exists(polkit_file):
         replace_cmd = "sed -i 's/'ENTER.YOUR.PCI.DEVICE'/%s/g' /etc/polkit-1/rules.d/500-libvirt-acl-virttest.rules" % device_name
         cat_cmd = "cat /etc/polkit-1/rules.d/500-libvirt-acl-virttest.rules"
-        replace_output = process.getoutput(replace_cmd)
-        cat_output = process.getoutput(cat_cmd)
+        replace_output = process.run(replace_cmd, shell=True).stdout_text
+        cat_output = process.run(cat_cmd, shell=True).stdout_text
 
     # do nodedev dumpxml.
     try:
