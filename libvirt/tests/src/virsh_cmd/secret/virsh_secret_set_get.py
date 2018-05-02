@@ -2,6 +2,7 @@ import os
 import re
 import base64
 import logging
+import locale
 from tempfile import mktemp
 
 from avocado.utils import process
@@ -27,8 +28,8 @@ def check_secret(params):
 
     if os.access(base64_file, os.R_OK):
         with open(base64_file, 'rb') as base64file:
-            base64_encoded_string = base64file.read().strip().decode('utf-8')
-        secret_decoded_string = base64.b64decode(base64_encoded_string)
+            base64_encoded_string = base64file.read().strip()
+        secret_decoded_string = base64.b64decode(base64_encoded_string).decode(locale.getpreferredencoding())
     else:
         logging.error("Did not find base64_file: %s", base64_file)
         return False
@@ -139,7 +140,8 @@ def set_secret_value(test, params):
 
     # Encode secret string if it exists
     if secret_string:
-        secret_string = base64.b64encode(secret_string)
+        encoding = locale.getpreferredencoding()
+        secret_string = base64.b64encode(secret_string.encode(encoding)).decode(encoding)
 
     result = virsh.secret_set_value(uuid, secret_string, options)
     status = result.exit_status
