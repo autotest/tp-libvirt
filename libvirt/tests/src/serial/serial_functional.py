@@ -301,6 +301,7 @@ def run(test, params, env):
         """
         console = librarian.get('console')(serial_type)
         console.target_type = console_target_type
+        console.target_port = console_target_port
 
         sources = []
         logging.debug(sources_str)
@@ -618,6 +619,8 @@ def run(test, params, env):
     username = params.get('username')
     password = params.get('password')
     console_target_type = params.get('console_target_type', 'serial')
+    console_target_port = params.get('console_target_port', '0')
+    second_serial_console = params.get('second_serial_console', 'no') == 'yes'
     vm_name = params.get('main_vm', 'virt-tests-vm1')
     vm = env.get_vm(vm_name)
 
@@ -627,12 +630,25 @@ def run(test, params, env):
         vm_xml.remove_all_device_by_type('serial')
         vm_xml.remove_all_device_by_type('console')
         serial_dev = prepare_serial_device()
-        if console_target_type == 'serial':
+        if console_target_type == 'serial' or second_serial_console:
             logging.debug('Serial device:\n%s', serial_dev)
             vm_xml.add_device(serial_dev)
         console_dev = prepare_console_device()
         logging.debug('Console device:\n%s', console_dev)
         vm_xml.add_device(console_dev)
+        if second_serial_console:
+            console_target_type = 'serial'
+            console_target_port = '1'
+            console_dev = prepare_console_device()
+            logging.debug('Console device:\n%s', console_dev)
+            vm_xml.add_device(console_dev)
+            vm_xml.undefine()
+            res = virsh.define(vm_xml.xml)
+            if res.stderr.find(r'Only the first console can be ') != -1:
+                logging.debug("Test only first console can be a"
+                              "serial succeeded.")
+                return
+            test.fail("Test only the first console can be serial failed.")
 
         console_type = get_console_type()
 
