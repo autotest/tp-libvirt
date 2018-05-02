@@ -108,7 +108,7 @@ def run(test, params, env):
         known_models = {
             'pci': ['pci-root', 'pcie-root', 'pci-bridge'],
             'virtio-serial': [],
-            'usb': ['ehci', 'ich9-ehci1'],
+            'usb': ['ehci', 'ich9-ehci1', 'nec-xhci', 'qemu-xhci'],
         }
 
         if cntlr_type == 'pci' and model is None:
@@ -227,6 +227,8 @@ def run(test, params, env):
             for item in model_list:
                 if item == "ehci":
                     pattern = r"-device.usb-ehci"
+                elif item == "qemu-xhci":
+                    pattern = r"-device.qemu-xhci"
                 else:
                     name = item.split('-')
                     pattern = pattern + r"-device.%s-usb-%s.*" % (name[0], name[1])
