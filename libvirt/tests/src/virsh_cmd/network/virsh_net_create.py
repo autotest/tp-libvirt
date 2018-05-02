@@ -116,7 +116,7 @@ def run(test, params, env):
         # find file size
         test_xml.seek(0, 2)  # end
         # write garbage at middle of file
-        test_xml.seek(test_xml.tell() // 2)
+        test_xml.seek(test_xml.open_file.tell() // 2)
         test_xml.write('"<network><<<BAD>>><\'XML</network\>'
                        '!@#$%^&*)>(}>}{CORRUPTE|>!')
         test_xml.flush()
