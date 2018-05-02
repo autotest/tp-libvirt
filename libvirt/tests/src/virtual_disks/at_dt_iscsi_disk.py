@@ -4,6 +4,7 @@ import time
 import base64
 import logging
 import platform
+import locale
 
 from aexpect import ShellError
 
@@ -103,7 +104,8 @@ def run(test, params, env):
                 test.error("Fail to get new created secret uuid")
 
             # Set secret value
-            secret_string = base64.b64encode(chap_passwd.encode()).decode()
+            encoding = locale.getpreferredencoding()
+            secret_string = base64.b64encode(chap_passwd.encode(encoding)).decode(encoding)
             cmd_result = virsh.secret_set_value(secret_uuid, secret_string,
                                                 **virsh_dargs)
             libvirt.check_exit_status(cmd_result)
