@@ -63,6 +63,7 @@ def run(test, params, env):
         return p
 
     action = params.get("jobabort_action", "dump")
+    dump_opt = params.get("dump_opt", None)
     status_error = params.get("status_error", "no")
     job = params.get("jobabort_job", "yes")
     tmp_file = os.path.join(data_dir.get_tmp_dir(), "domjobabort.tmp")
@@ -73,6 +74,10 @@ def run(test, params, env):
     remote_user = params.get("migrate_dest_user", "root")
     remote_pwd = params.get("migrate_dest_pwd")
     saved_data = None
+
+    # Build job action
+    if dump_opt:
+        action = "dump --crash"
 
     if action == "managedsave":
         tmp_pipe = '/var/lib/libvirt/qemu/save/%s.save' % vm.name
