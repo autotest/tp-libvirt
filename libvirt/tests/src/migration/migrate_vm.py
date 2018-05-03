@@ -1731,7 +1731,7 @@ def run(test, params, env):
             result = None
             try:
                 vm.start()
-            except virt_vm.VMStartError, e:
+            except virt_vm.VMStartError as e:
                 logging.info("Recovery VM XML configration")
                 vmxml_backup.sync()
                 logging.debug("The current VM XML:\n%s", vmxml_backup.xmltreefile)
@@ -1764,7 +1764,7 @@ def run(test, params, env):
             if (utils_misc.is_qemu_capability_supported("drive-mirror") and
                     utils_misc.is_qemu_capability_supported("nbd-server")):
                 support_precreation = True
-        except exceptions.TestError, e:
+        except exceptions.TestError as e:
             logging.debug(e)
 
         test_dict["support_precreation"] = support_precreation
@@ -2274,9 +2274,9 @@ def run(test, params, env):
                 # migration on local machine
                 migrate_setup.migrate_pre_setup(src_uri, params, ports=uri_port)
 
-            except (process.CmdError, remote.SCPError), e:
+            except (process.CmdError, remote.SCPError) as e:
                 logging.debug(e)
-            except Exception, details:
+            except Exception as details:
                 logging.debug(details)
             finally:
                 logging.debug("Recover remote guest's XML")
@@ -2331,9 +2331,9 @@ def run(test, params, env):
                                               "is not running."
                                               % target_vm_name)
 
-            except (remote.LoginError, aexpect.ShellError), detail:
+            except (remote.LoginError, aexpect.ShellError) as detail:
                 raise exceptions.TestError(detail)
-            except (process.CmdError, remote.SCPError), detail:
+            except (process.CmdError, remote.SCPError) as detail:
                 raise exceptions.TestError(detail)
             finally:
                 session.close()
@@ -2627,7 +2627,7 @@ def run(test, params, env):
             try:
                 remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
                 remote_virsh_session.destroy(target_vm_name)
-            except (process.CmdError, remote.SCPError), detail:
+            except (process.CmdError, remote.SCPError) as detail:
                 raise exceptions.TestError(detail)
             finally:
                 remote_virsh_session.close_session()

@@ -120,7 +120,7 @@ def run(test, params, env):
         try:
             encryption_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
                                          ret.stdout.strip())[0].lstrip()
-        except IndexError, e:
+        except IndexError as e:
             test.error("Fail to get newly created secret uuid")
         logging.debug("Secret uuid %s", encryption_uuid)
 
@@ -292,7 +292,7 @@ def run(test, params, env):
                                               src_pool_name).stdout.strip()
                     logging.debug("Full path of %s: %s", vol_name, vol_path)
                     vol_path_list.append(vol_path)
-            except exceptions.TestFail, e:
+            except exceptions.TestFail as e:
                 stderr = cmd_result.stderr
                 if any(err in stderr for err in fmt_err_list):
                     test.cancel(skip_msg)
@@ -308,7 +308,7 @@ def run(test, params, env):
                 try:
                     virsh.pool_refresh(src_pool_name, ignore_status=False)
                     check_vol(src_pool_name, process_vol, expect_vol_exist)
-                except (process.CmdError, exceptions.TestFail), e:
+                except (process.CmdError, exceptions.TestFail) as e:
                     if process_vol_type == "thin":
                         logging.error(str(e))
                         test.cancel("You may encounter bug BZ#1060287")
@@ -329,7 +329,7 @@ def run(test, params, env):
                              src_emulated_image)
             for secret_uuid in set(secret_uuids):
                 virsh.secret_undefine(secret_uuid)
-        except exceptions.TestFail, detail:
+        except exceptions.TestFail as detail:
             logging.error(str(detail))
         if multipathd_status:
             multipathd.start()

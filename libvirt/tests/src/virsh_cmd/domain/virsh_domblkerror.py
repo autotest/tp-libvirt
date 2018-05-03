@@ -156,7 +156,7 @@ def run(test, params, env):
             try:
                 session.cmd("dd if=/dev/zero of=%s/big_file bs=1024 "
                             "count=51200 && sync" % mnt_dir)
-            except Exception, err:
+            except Exception as err:
                 logging.debug("Expected Fail %s", err)
             session.close()
 
