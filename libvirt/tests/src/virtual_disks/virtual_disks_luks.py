@@ -60,7 +60,7 @@ def run(test, params, env):
         """
         cmd_result = process.run("qemu-img" + ' -h', ignore_status=True,
                                  shell=True, verbose=False)
-        if '-U' in cmd_result.stdout:
+        if b'-U' in cmd_result.stdout:
             cmd = ("qemu-img info -U %s| grep -i 'file format' "
                    "| grep -i %s" % (device, fmt))
         else:
@@ -100,7 +100,7 @@ def run(test, params, env):
                           status, output)
             return status == 0
 
-        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError), e:
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
             logging.error(str(e))
             return False
 
