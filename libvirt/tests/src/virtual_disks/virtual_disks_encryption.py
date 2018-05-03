@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import base64
+import locale
 
 import aexpect
 
@@ -100,7 +101,8 @@ def run(test, params, env):
         logging.debug("Secret uuid %s", encryption_uuid)
 
         # Set secret value.
-        secret_string = base64.b64encode(secret_password_no_encoded.encode()).decode()
+        encoding = locale.getpreferredencoding()
+        secret_string = base64.b64encode(secret_password_no_encoded.encode(encoding)).decode(encoding)
         ret = virsh.secret_set_value(encryption_uuid, secret_string,
                                      **virsh_dargs)
         libvirt.check_exit_status(ret)
