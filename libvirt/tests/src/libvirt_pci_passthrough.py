@@ -81,6 +81,12 @@ def run(test, params, env):
                 pf_filter_re=params.get("pf_filter_re"),
                 pa_type=params.get("pci_assignable"))
 
+            # For Infiniband Controllers, we have to set the link
+            # for the VF's before pass-through.
+            cont = sriov_setup.get_controller_type()
+            if cont == "Infiniband controller":
+                sriov_setup.set_linkvf_ib()
+
             # Based on the PF Device specified, all the VF's
             # belonging to the same iommu group, will be
             # pass-throughed to the guest.
