@@ -114,7 +114,7 @@ def run(test, params, env):
 
         # Prepare temp compare file.
         cpu_compare_xml = get_cpu_xml(target, mode)
-        with open(tmp_file, 'w+b') as cpu_compare_xml_f:
+        with open(tmp_file, 'w+') as cpu_compare_xml_f:
             if mode == "clear":
                 cpu_compare_xml_f.truncate(0)
             else:
