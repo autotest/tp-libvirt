@@ -182,7 +182,13 @@ def run(test, params, env):
             omit_list = snapshot_external_disks[top_index:]
             vm.destroy(gracefully=False)
             vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-            disk_xml = vmxml.get_devices(device_type="disk")[0]
+            disk_xml = ''
+            disk_xmls = vmxml.get_devices(device_type="disk")
+            for disk in disk_xmls:
+                if disk.get('device_tag') == 'disk':
+                    disk_xml = disk
+                    break
+
             vmxml.del_device(disk_xml)
             disk_dict = {'attrs': {'file': snap_top}}
             disk_xml.source = disk_xml.new_disk_source(**disk_dict)
@@ -217,6 +223,8 @@ def run(test, params, env):
             if disk.target['dev'] != blk_target:
                 continue
             else:
+                if disk.device != 'disk':
+                    continue
                 disk_xml = disk.xmltreefile
                 logging.debug("the target disk xml after snapshot is %s",
                               disk_xml)
