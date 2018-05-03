@@ -193,7 +193,7 @@ def run(test, params, env):
                                        vcpucount_option).stdout.strip()
 
     # Find the alive cpus list
-    cpus_list = map(str, cpuutils.cpu_online_list())
+    cpus_list = list(map(str, cpuutils.cpu_online_list()))
     logging.info("Active cpus in host are %s", cpus_list)
 
     try:
