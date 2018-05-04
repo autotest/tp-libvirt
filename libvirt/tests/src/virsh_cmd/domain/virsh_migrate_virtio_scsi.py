@@ -29,7 +29,7 @@ def run(test, params, env):
             actual_state = vm.state()
         except process.CmdError:
             return False
-        if cmp(actual_state, state) == 0:
+        if actual_state == state:
             return True
         else:
             return False

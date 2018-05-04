@@ -33,7 +33,7 @@ def run(test, params, env):
         xml_arch = cap_xml.arch
         logging.debug("Host arch (capabilities_xml): %s", xml_arch)
         exp_arch = process.run("arch", shell=True).stdout_text.strip()
-        if cmp(xml_arch, exp_arch) != 0:
+        if xml_arch != exp_arch:
             test.fail("The host arch in capabilities_xml is "
                       "expected to be %s, but get %s" %
                       (exp_arch, xml_arch))

@@ -321,7 +321,7 @@ def run(test, params, env):
         if vf_type == "vf" or vf_type == "vf_pool":
             for interface in device.by_device_tag("interface"):
                 if interface.type_name == "hostdev":
-                    if cmp(interface.hostdev_address.attrs, vf_addr_attrs) == 0:
+                    if interface.hostdev_address.attrs == vf_addr_attrs:
                         test.fail("The hostdev interface still in the guest xml after detach\n")
                     break
             driver = os.readlink("%s/%s/driver" % (pci_device_dir, vf_addr)).split('/')[-1]

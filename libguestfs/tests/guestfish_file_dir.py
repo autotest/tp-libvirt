@@ -712,7 +712,7 @@ def test_checksums_out(test, vm, params):
             run_result[1] = os.path.basename(run_result[1])
             run_result[3] = os.path.basename(run_result[3])
             host_res = dict(list(zip(run_result[1::2], run_result[0::2])))
-        if cmp(guest_res, host_res) != 0:
+        if guest_res != host_res:
             gf.close_session()
             test.fail("checksum failed.")
 

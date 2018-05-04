@@ -916,7 +916,7 @@ def check_domjobinfo_on_complete(test, source_jobinfo, target_jobinfo):
                    "Operation"]:
             continue
         else:
-            if cmp(value, target_value) != 0:
+            if value != target_value:
                 test.fail("The value '%s' for '%s' on source "
                           "host should be equal to the value "
                           "'%s' on target host"
