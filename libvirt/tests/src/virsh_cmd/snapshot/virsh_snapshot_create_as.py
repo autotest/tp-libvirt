@@ -254,7 +254,7 @@ def check_snapslist(test, vm_name, options, option_dict, output,
     # Also check if the mem file exists
     if options.find("memspec") >= 0:
         memspec = option_dict['memspec']
-        if re.search('file=', option_dict['memspec']) < 0:
+        if not re.search('file=', option_dict['memspec']):
             memspec = 'file=' + option_dict['memspec']
 
         mem_dict = utils_misc.valued_option_dict(memspec, ",", 0,
