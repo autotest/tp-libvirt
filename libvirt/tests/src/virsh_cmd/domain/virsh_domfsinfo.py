@@ -104,7 +104,7 @@ def check_domfsinfo(domfsinfo, expected_results, test):
     """
     expected_fs_count = len(expected_results)
     real_fs_count = len(domfsinfo)
-    encoding = locale.getpreferrencoding()
+    encoding = locale.getpreferredencoding()
     if real_fs_count != expected_fs_count:
         test.fail("Expected number of mounted filesystems is %s, "
                   "but got %s from virsh command" %
