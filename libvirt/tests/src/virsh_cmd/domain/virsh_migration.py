@@ -49,7 +49,7 @@ def run(test, params, env):
                                        migrate_type, migrate_options,
                                        func=postcopy_func,
                                        migrate_start_state=migrate_start_state)
-        except Exception, info:
+        except Exception as info:
             test.fail(info)
         for vm in vm_list:
             if not migrate_setup.check_vm_state(vm, vm_state, dest_uri):

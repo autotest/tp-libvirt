@@ -340,7 +340,7 @@ def run(test, params, env):
                 vmxml_backup.define()
                 raise exceptions.TestSkipError("Cann't create the domain")
             vm.wait_for_login().close()
-    except Exception, e:
+    except Exception as e:
         logging.error(str(e))
         if os.path.exists(orig_iso):
             os.remove(orig_iso)

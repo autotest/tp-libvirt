@@ -254,7 +254,7 @@ def run(test, params, env):
             vmxml.xmltreefile.write()
             try:
                 vmxml.sync()
-            except xcepts.LibvirtXMLError, details:
+            except xcepts.LibvirtXMLError as details:
                 if status_error:
                     # Expect error for negetive test
                     return 0
@@ -269,7 +269,7 @@ def run(test, params, env):
                 ret = virsh.attach_device(vm_name, iface.xml,
                                           ignore_status=False,
                                           debug=True)
-            except process.CmdError, error:
+            except process.CmdError as error:
                 if status_error:
                     # Expect error for negetive test
                     return 0

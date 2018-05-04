@@ -110,7 +110,7 @@ def run(test, params, env):
 
         try:
             vm.prepare_guest_agent()
-        except virt_vm.VMStartError, info:
+        except virt_vm.VMStartError as info:
             if "not supported" in str(info).lower():
                 test.cancel(info)
             else:

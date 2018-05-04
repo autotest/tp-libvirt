@@ -147,7 +147,7 @@ def multi_migration(vm, src_uri, dest_uri, options, migrate_type,
                     jobabort_thread.join(migrate_thread_timeout)
             ret_migration = True
 
-        except Exception, info:
+        except Exception as info:
             raise exceptions.TestFail(info)
 
     elif migrate_type.lower() == "orderly":
@@ -165,7 +165,7 @@ def multi_migration(vm, src_uri, dest_uri, options, migrate_type,
                                                      each_vm.get_address()))
                 ping_thread.start()
 
-        except Exception, info:
+        except Exception as info:
             raise exceptions.TestFail(info)
 
     if obj_migration.RET_MIGRATION:
@@ -278,7 +278,7 @@ def run(test, params, env):
         multi_migration(vms, srcuri, desturi, option, migration_type,
                         migrate_timeout, jobabort, lrunner=localrunner,
                         rrunner=remoterunner)
-    except Exception, info:
+    except Exception as info:
         logging.error("Test failed: %s" % info)
         flag_migration = False
 

@@ -50,7 +50,7 @@ def run(test, params, env):
                     else:
                         return int(session.cmd_output(data_cmd).strip().
                                    split()[1])
-            except (IndexError, ValueError), details:
+            except (IndexError, ValueError) as details:
                 test.fail("Get dirty info failed: %s" % details)
 
         device_source_path = os.path.join(data_dir.get_tmp_dir(), "disk.img")
