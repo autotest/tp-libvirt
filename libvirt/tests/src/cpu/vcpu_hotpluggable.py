@@ -185,7 +185,7 @@ def run(test, params, env):
             # Recheck VM xml
             re_dump_xml = virsh.dumpxml(vm_name).stdout.strip()
             re_vcpu_items = re.findall(r"vcpu.*", re_dump_xml)
-            if cmp(vcpu_items, re_vcpu_items) != 0:
+            if vcpu_items != re_vcpu_items:
                 test.fail("After restarting libvirtd,"
                           "VM xml changed unexpectedly.")
 

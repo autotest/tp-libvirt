@@ -44,7 +44,7 @@ def run(test, params, env):
             test.fail("Command 'virsh hostname %s' succeeded "
                       "(incorrect command)" % option)
     elif status_error == "no":
-        if cmp(hostname, hostname_test) != 0:
+        if hostname != hostname_test:
             test.fail(
                 "Virsh cmd gives hostname %s != %s." % (hostname_test, hostname))
         if status != 0:

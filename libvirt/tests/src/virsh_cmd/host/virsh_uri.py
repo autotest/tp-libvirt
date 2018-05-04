@@ -79,7 +79,7 @@ def run(test, params, env):
         else:
             logging.info("command: %s is a expected error", cmd)
     elif status_error == "no":
-        if cmp(target_uri, uri_test) != 0:
+        if target_uri != uri_test:
             raise exceptions.TestFail("Virsh cmd uri %s != %s." %
                                       (uri_test, target_uri))
         if status != 0:

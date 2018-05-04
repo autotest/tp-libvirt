@@ -55,7 +55,7 @@ def run(test, params, env):
             actual_state = virsh.domstate(vm.name, uri=uri).stdout.strip()
         else:
             actual_state = vm.state()
-        if cmp(actual_state, state) != 0:
+        if actual_state != state:
             if not ignore_error:
                 test.fail("The VM state is expected '%s' "
                           "but '%s' found" % (state, actual_state))
