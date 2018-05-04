@@ -164,15 +164,43 @@ def run(test, params, env):
 
         return True
 
-    # run test case
+    # prepare
+    vm_name = params.get("main_vm")
+    vm = env.get_vm(vm_name)
+
+    if not vm.is_dead():
+        vm.destroy()
+    vm.start()
+    if not vm.is_alive():
+        test.fail("VM start failed")
+
+    domid = vm.get_id()
+    domuuid = vm.get_uuid()
+
     dtn_format = params.get("dtn_format")
-    file_xml = params.get("dtn_file_xml")
+    file_xml = params.get("dtn_file_xml", "")
     extra_param = params.get("dtn_extra_param")
+    extra = params.get("dtn_extra", "")
     libvirtd = params.get("libvirtd")
-    status_error = params.get("status_error")
+    status_error = params.get("status_error", "no")
+    vm_id = params.get("dtn_vm_id", "")
+
+    # For positive_test
+    if status_error == "no":
+        if vm_id == "id":
+            vm_id = domid
+        elif vm_id == "uuid":
+            vm_id = domuuid
+        elif vm_id == "name":
+            vm_id = "%s %s" % (vm_name, extra)
+        if file_xml == "":
+            extra_param = extra_param + vm_id
+
     virsh.dumpxml(vm_name, extra="", to_file=file_xml)
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()
+
+    # run test case
     ret = virsh.domxml_to_native(dtn_format, file_xml, extra_param,
                                  ignore_status=True, debug=True)
     status = ret.exit_status
