@@ -3,42 +3,44 @@ import logging
 
 from virttest import virt_vm
 from virttest import virsh
+from virttest import remote
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.controller import Controller
-from virttest.libvirt_xml.devices.address import Address
 
 
-def remove_all_addresses(vm_xml):
+def remove_devices(vm_xml, type):
     """
     Remove all addresses for all devices who has one.
-    """
-    try:
-        for elem in vm_xml.xmltreefile.findall('/devices/*/address'):
-            vm_xml.xmltreefile.remove(elem)
-    except (AttributeError, TypeError):
-        pass  # Element already doesn't exist
-    vm_xml.xmltreefile.write()
 
+    :param vm_xml: The VM XML to be modified
+    :param type: The device type for removing
 
-def remove_usb_devices(vm_xml):
+    :return: True if success, otherwise, False
     """
-    Remove all USB devices.
-    """
+    if type not in ['address', 'usb']:
+        return
+    type_dict = {'address': '/devices/*/address',
+                 'usb': '/devices/*'}
     try:
-        for xml in vm_xml.xmltreefile.findall('/devices/*'):
-            if xml.get('bus') == 'usb':
-                vm_xml.xmltreefile.remove(xml)
-    except (AttributeError, TypeError):
-        pass  # Element already doesn't exist
+        for elem in vm_xml.xmltreefile.findall(type_dict[type]):
+            if type == 'usb':
+                if elem.get('bus') == 'usb':
+                    vm_xml.xmltreefile.remove(elem)
+            else:
+                vm_xml.xmltreefile.remove(elem)
+    except (AttributeError, TypeError) as details:
+        logging.error("Fail to remove '%s': %s", type, details)
+        return False
     vm_xml.xmltreefile.write()
+    return True
 
 
 def run(test, params, env):
     """
     Test for basic controller device function.
 
-    1) Define the VM with specified controller device and check result meets
+    1) Define the VM w/o specified controller device and check result meets
        expectation.
     2) Start the guest and check if start result meets expectation
     3) Test the function of started controller device
@@ -47,45 +49,46 @@ def run(test, params, env):
 
     def setup_os_xml():
         """
-        Prepare os part of VM XML according to params.
+        Prepare os part of VM XML.
+
         """
         osxml = vm_xml.os
         orig_machine = osxml.machine
-        if '-' in orig_machine:
-            suffix = orig_machine.split('-')[-1]
-            new_machine = '-'.join(('pc', os_machine, suffix))
+        if os_machine:
+            osxml.machine = os_machine
+            vm_xml.os = osxml
         else:
-            if os_machine == 'i440fx':
-                new_machine = 'pc'
-            else:
-                new_machine = os_machine
-        osxml.machine = new_machine
-        vm_xml.os = osxml
+            cur_machine = orig_machine
 
-    def setup_controller_xml():
+    def setup_controller_xml(index, addr_target=None):
         """
-        Prepare controller devices of VM XML according to params.
-        """
-        if cntlr_type is None:
-            return
+        Prepare controller devices of VM XML.
 
+        :param index: The index of controller
+        :param addr_target: The controller address
+
+        """
         ctrl = Controller(type_name=cntlr_type)
-
-        if model is not None:
+        if model:
             ctrl.model = model
-        if pcihole is not None:
+        if pcihole:
             ctrl.pcihole64 = pcihole
-        if vectors is not None:
+        if vectors:
             ctrl.vectors = vectors
-        if index is not None:
+        if index:
             ctrl.index = index
-        if addr_str is not None:
-            match = re.match(r"(?P<bus>[0-9]*):(?P<slot>[0-9]*).(?P<function>[0-9])", addr_str)
+        if chassisNr:
+            ctrl.target = {'chassisNr': chassisNr}
+        if model_name:
+            ctrl.model_name = {'name': model_name}
+
+        if addr_target:
+            match = re.match(r"(?P<bus>[0-9]*):(?P<slot>[0-9a-f]*).(?P<function>[0-9])", addr_target)
             if match:
                 addr_dict = match.groupdict()
-                addr_dict['bus'] = hex(int(addr_dict['bus']))
-                addr_dict['slot'] = hex(int(addr_dict['slot']))
-                addr_dict['function'] = hex(int(addr_dict['function']))
+                addr_dict['bus'] = hex(int(addr_dict['bus'], 16))
+                addr_dict['slot'] = hex(int(addr_dict['slot'], 16))
+                addr_dict['function'] = hex(int(addr_dict['function'], 16))
                 addr_dict['domain'] = '0x0000'
                 ctrl.address = ctrl.new_controller_address(attrs=addr_dict)
 
@@ -94,9 +97,10 @@ def run(test, params, env):
 
         if cmpnn_cntlr_model is not None:
             for num in range(int(cmpnn_cntlr_num)):
-                ctrl = Controller(type_name='usb')
+                ctrl = Controller(type_name=cntlr_type)
                 ctrl.model = cmpnn_cntlr_model + str(num+1)
                 ctrl.index = index
+                logging.debug("Controller XML is:%s", ctrl)
                 vm_xml.add_device(ctrl)
 
     def define_and_check():
@@ -105,27 +109,11 @@ def run(test, params, env):
         with testing XML.
         """
         fail_patts = []
-        known_models = {
-            'pci': ['pci-root', 'pcie-root', 'pci-bridge'],
-            'virtio-serial': [],
-            'usb': ['ehci', 'ich9-ehci1', 'nec-xhci', 'qemu-xhci'],
-        }
-
-        if cntlr_type == 'pci' and model is None:
-            fail_patts.append(r"Invalid PCI controller model")
-        if model is not None and model not in known_models[cntlr_type]:
-            fail_patts.append(r"Unknown model type")
-        if os_machine == 'q35' and model in ['pci-root', 'pci-bridge']:
-            fail_patts.append(r"Device requires a PCI Express slot")
-        if os_machine == 'i440fx' and model == 'pcie-root':
-            fail_patts.append(r"Device requires a standard PCI slot")
-        # isdigit will return false on negative number, which just meet the
-        # requirement of this test.
-        if index is not None and not index.isdigit():
-            fail_patts.append(r"Cannot parse controller index")
-
+        if expect_err_msg:
+            fail_patts.append(expect_err_msg)
         vm_xml.undefine()
         res = vm_xml.virsh.define(vm_xml.xml)
+        logging.debug("Expect failures: %s", fail_patts)
         libvirt.check_result(res, expected_fails=fail_patts)
         return not res.exit_status
 
@@ -134,37 +122,188 @@ def run(test, params, env):
         Predict the error message when starting and try to start the guest.
         """
         fail_patts = []
-        if model == 'pci-bridge' and (index is None or int(index) == 0):
-            fail_patts.append(r"PCI bridge index should be > 0")
+        if expect_err_msg:
+            fail_patts.append(expect_err_msg)
         res = virsh.start(vm_name)
+        logging.debug("Expect failures: %s", fail_patts)
         libvirt.check_result(res, expected_fails=fail_patts)
         return not res.exit_status
+
+    def prepare_qemu_pattern(elem):
+        """
+        Collect the patterns to be searched in qemu command line.
+
+        :param elem: a Controller object
+
+        :return: A list including search patterns
+        """
+        search_qemu_cmd = []
+
+        bus = int(elem.address.attrs.get('bus'), 0)
+        slot = int(elem.address.attrs.get('slot'), 0)
+        func = int(elem.address.attrs.get('function'), 0)
+        addr_str = '%02d:%02d.%1d' % (bus, slot, func)
+        name = elem.alias.get('name')
+        if elem.model != 'dmi-to-pci-bridge':
+            chassisNR = elem.target.get('chassisNr')
+            value = "pci-bridge,chassis_nr=%s" % chassisNR
+            value = "%s,id=%s,bus=pci.%d,addr=%#x" % (value, name, bus, slot)
+        else:
+            value = "%s" % elem.model_name['name']
+            value = "%s,id=%s,bus=pcie.%d,addr=%#x" % (value, name, bus, slot)
+
+        tup = ('-device', value)
+        search_qemu_cmd.append(tup)
+        return search_qemu_cmd
+
+    def search_controller(vm_xml, cntl_type, cntl_model, cntl_index,
+                          qemu_pattern=True):
+        """
+        Search a controller as specified and prepare the expected qemu
+        command line
+        :params vm_xml: The guest VMXML instance
+        :params cntl_type: The controller type
+        :params cntl_model: The controller model
+        :params cntl_index: The controller index
+        :params qemu_pattern: True if it needs to be checked with qemu
+                              command line. False if not.
+
+        :return: Tuple (Controller, List)
+                       Boolean: True if the controller is found. Otherwise, False.
+                       List: a list including qemu search patterns
+        """
+        logging.debug("Search controller with type %s, model %s index %s",
+                      cntl_type, cntl_model, cntl_index)
+        qemu_list = None
+        found = False
+        for elem in vm_xml.devices.by_device_tag('controller'):
+            if (elem.type == cntl_type and
+               elem.model == cntl_model and
+               elem.index == cntl_index):
+                found = True
+                if (qemu_pattern and
+                   cntl_model != 'pci-root' and
+                   cntl_model != 'pcie-root'):
+                    qemu_list = prepare_qemu_pattern(elem)
+                return (elem, qemu_list)
+        if not found:
+            test.fail("Can not find %s controller "
+                      "with index %s." % (cntl_model, cntl_index))
+
+    def get_patt_inx_ctl(cur_vm_xml, qemu_list, inx):
+        """
+        Get search pattern in qemu line for some kind of cases
+
+        :param cur_vm_xml: Guest xml
+        :param qemu_list: List for storing qemu search patterns
+        :param inx: Controller index used
+
+        :return: a tuple for (search_result, qemu_list)
+
+        """
+        (search_result, qemu_search) = search_controller(cur_vm_xml,
+                                                         cntlr_type,
+                                                         model,
+                                                         inx)
+        if qemu_search:
+            qemu_list.extend(qemu_search)
+        return (search_result, qemu_list)
+
+    def get_patt_non_zero_bus(cur_vm_xml, qemu_list):
+        """
+
+        """
+        actual_set = set()
+        for elem in cur_vm_xml.devices.by_device_tag('controller'):
+            if (elem.type == cntlr_type and elem.model == model):
+                actual_set.add(int(elem.index))
+                qemu_list = prepare_qemu_pattern(elem)
+        expect_set = set()
+        for num in range(1, int(pci_bus_number) + 1):
+            expect_set.add(num)
+
+        logging.debug("expect: %s, actual: %s", expect_set, actual_set)
+        if (not actual_set.issubset(expect_set) or
+                not expect_set.issubset(actual_set)):
+            test.fail("The actual index set (%s)does "
+                      "not match the expect index set "
+                      "(%s)." % (actual_set, expect_set))
+        return qemu_list
+
+    def get_search_patt_qemu_line():
+        """
+        Check if the guest XML has the expected content.
+
+        :return: -device pci-bridge,chassis_nr=1,id=pci.1,bus=pci.0,addr=0x3
+        """
+        cur_vm_xml = VMXML.new_from_dumpxml(vm_name)
+        qemu_list = []
+        # Check the pci-root controller has index = 0
+        if no_pci_controller == "yes":
+            (_, qemu_list) = get_patt_inx_ctl(cur_vm_xml,
+                                              qemu_list, '0')
+            return qemu_list
+
+        # Check index numbers of pci-bridge controllers should be equal
+        # to the pci_bus_number
+        if int(pci_bus_number) > 0:
+            return get_patt_non_zero_bus(cur_vm_xml, qemu_list)
+        # All controllers should exist if there is a gap between two PCI
+        # controller indexes
+        if index and index_second and int(index) > 0 and int(index_second) > 0:
+            for idx in range(int(index_second), int(index) + 1):
+                (_, qemu_list) = get_patt_inx_ctl(cur_vm_xml,
+                                                  qemu_list, str(idx))
+            return qemu_list
+
+        # All controllers should exist with index among [1..index]
+        if index and int(index) > 0 and not index_second:
+            for idx in range(1, int(index) + 1):
+                (search_result, qemu_list) = get_patt_inx_ctl(cur_vm_xml,
+                                                              qemu_list,
+                                                              str(idx))
+                if not search_result:
+                    test.fail("Can not find %s controller "
+                              "with index %s." % (model, str(idx)))
+            return qemu_list
 
     def get_controller_addr(cntlr_type=None, model=None, index=None):
         """
         Get the address of testing controller from VM XML as a string with
         format "bus:slot.function".
+
+        :param cntlr_type: controller type
+        :param model: controller model
+        :param index: controller index
+
+        :return: an address string of the specified controller
         """
+        if model in ['pci-root', 'pcie-root']:
+            return None
+
+        addr_str = None
         cur_vm_xml = VMXML.new_from_dumpxml(vm_name)
-        addr = None
-        for elem in cur_vm_xml.xmltreefile.findall('/devices/controller'):
+
+        for elem in cur_vm_xml.devices.by_device_tag('controller'):
             if (
-                    (cntlr_type is None or elem.get('type') == cntlr_type) and
-                    (model is None or elem.get('model') == model) and
-                    (index is None or elem.get('index') == index)):
-                addr_elem = elem.find('./address')
-                if addr_elem is not None:
-                    addr = Address.new_from_element(addr_elem).attrs
+                    (cntlr_type is None or elem.type == cntlr_type) and
+                    (model is None or elem.model == model) and
+                    (index is None or elem.index == index)):
+                addr_elem = elem.address
+                if addr_elem is None:
+                    test.error("Can not find 'Address' "
+                               "element for the controller")
 
-        if addr is not None:
-            bus = int(addr['bus'], 0)
-            slot = int(addr['slot'], 0)
-            func = int(addr['function'], 0)
-            addr_str = '%02d:%02d.%1d' % (bus, slot, func)
-            logging.debug("String for address element %s is %s", addr, addr_str)
-            return addr_str
+                bus = int(addr_elem.attrs.get('bus'), 0)
+                slot = int(addr_elem.attrs.get('slot'), 0)
+                func = int(addr_elem.attrs.get('function'), 0)
+                addr_str = '%02d:%02x.%1d' % (bus, slot, func)
+                logging.debug("Controller address is %s", addr_str)
+                break
 
-    def check_controller_addr(test):
+        return addr_str
+
+    def check_controller_addr():
         """
         Check test controller address against expectation.
         """
@@ -177,24 +316,54 @@ def run(test, params, env):
                 test.fail('Expect controller do not have address, '
                           'but got "%s"' % addr_str)
 
+        if index != 0:
+            if '00:00' in addr_str:
+                test.fail("Invalid PCI address 0000:00:00, "
+                          "at least one of domain, bus, "
+                          "or slot must be > 0")
+
         exp_addr_patt = r'00:[0-9]{2}.[0-9]'
         if model in ['ehci']:
             exp_addr_patt = r'0[1-9]:[0-9]{2}.[0-9]'
-        if addr_str is not None:
+        if addr_str:
             exp_addr_patt = addr_str
 
         if not re.match(exp_addr_patt, addr_str):
             test.fail('Expect get controller address "%s", '
                       'but got "%s"' % (exp_addr_patt, addr_str))
 
-    def check_qemu_cmdline(test):
+    def check_qemu_cmdline(search_pattern=None):
         """
         Check domain qemu command line against expectation.
+
+        :param search_pattern: search list with tuple objects
         """
         with open('/proc/%s/cmdline' % vm.get_pid()) as proc_file:
             cmdline = proc_file.read()
         logging.debug('Qemu command line: %s', cmdline)
+
         options = cmdline.split('\x00')
+        # Search the command line options for the given patterns
+        if search_pattern and isinstance(search_pattern, list):
+            for pattern in search_pattern:
+                key = pattern[0]
+                value = pattern[1]
+                logging.debug("key=%s, value=%s", key, value)
+                found = False
+                check_value = False
+                for opt in options:
+                    if check_value:
+                        if opt == value:
+                            logging.debug("Found the expected (%s %s) in qemu "
+                                          "command line" % (key, value))
+                            found = True
+                            break
+                        check_value = False
+                    if key == opt:
+                        check_value = True
+                if not found:
+                    test.fail("Can not find '%s %s' in qemu "
+                              "command line" % (key, value))
 
         # Get pcihole options from qemu command line
         pcihole_opt = ''
@@ -204,10 +373,11 @@ def run(test, params, env):
 
         # Get expected pcihole options from params
         exp_pcihole_opt = ''
-        if cntlr_type == 'pci' and model in ['pci-root', 'pcie-root'] and pcihole is not None:
-            if 'i440fx' in os_machine:
+        if (cntlr_type == 'pci' and model in ['pci-root', 'pcie-root'] and
+           pcihole):
+            if 'pc' in cur_machine:
                 exp_pcihole_opt = 'i440FX-pcihost'
-            elif 'q35' in os_machine:
+            elif 'q35' in cur_machine:
                 exp_pcihole_opt = 'q35-pcihost'
             exp_pcihole_opt += '.pci-hole64-size=%sK' % pcihole
 
@@ -238,66 +408,142 @@ def run(test, params, env):
             if not re.search(pattern, cmdline):
                 test.fail("Expect get usb model info in qemu cmdline, but failed!")
 
-    def check_msi(test):
+    def check_guest(cntlr_type, cntlr_model, cntlr_index=None):
         """
-        Check MSI state against expectation.
+        Check status within the guest against expectation.
         """
-        addr_str = get_controller_addr(cntlr_type='virtio-serial')
 
-        if addr_str is None:
+        if model == 'pci-root' or model == 'pcie-root':
+            return
+
+        addr_str = get_controller_addr(cntlr_type=cntlr_type,
+                                       model=cntlr_model,
+                                       index=cntlr_index)
+        pci_name = 'PCI bridge:'
+        verbose_option = ""
+        if cntlr_type == 'virtio-serial':
+            verbose_option = '-vvv'
+
+        if (addr_str is None and model != 'pci-root' and model != 'pcie-root'):
             test.error("Can't find target controller in XML")
+        if cntlr_index:
+            logging.debug("%s, %s, %s", cntlr_type, cntlr_model, cntlr_index)
+        if (addr_str is None and cntlr_model != 'pci-root' and cntlr_model != 'pcie-root'):
+            test.fail("Can't find target controller in XML")
 
-        session = vm.wait_for_login()
-        status, output = session.cmd_status_output('lspci -vvv -s %s' % addr_str)
+        session = vm.wait_for_login(serial=True)
+        status, output = session.cmd_status_output('lspci %s -s %s'
+                                                   % (verbose_option, addr_str))
         logging.debug("lspci output is: %s", output)
 
-        if (vectors is not None and int(vectors) == 0):
+        if (cntlr_type == 'virtio-serial' and
+           (vectors and int(vectors) == 0)):
             if 'MSI' in output:
-                test.fail('Expect MSI disable with zero vectors,'
-                          ' but got %s' % output)
-        if (vectors is None or int(vectors) != 0):
+                test.fail("Expect MSI disable with zero vectors, "
+                          "but got %s" % output)
+        if (cntlr_type == 'virtio-serial' and
+           (vectors is None or int(vectors) != 0)):
             if 'MSI' not in output:
-                test.fail('Expect MSI enable with non-zero vectors,'
-                          ' but got %s' % output)
+                test.fail("Expect MSI enable with non-zero vectors, "
+                          "but got %s" % output)
+        if (cntlr_type == 'pci'):
+            if pci_name not in output:
+                test.fail("Can't find target pci device"
+                          " '%s' on guest " % addr_str)
 
-    os_machine = params.get('os_machine', 'i440fx')
+    os_machine = params.get('os_machine', None)
+    libvirt.check_machine_type_arch(os_machine)
     cntlr_type = params.get('controller_type', None)
     model = params.get('controller_model', None)
     index = params.get('controller_index', None)
     vectors = params.get('controller_vectors', None)
     pcihole = params.get('controller_pcihole64', None)
+    chassisNr = params.get('chassisNr', None)
     addr_str = params.get('controller_address', None)
     cmpnn_cntlr_model = params.get('companion_controller_model', None)
     cmpnn_cntlr_num = params.get('companion_controller_num', None)
     vm_name = params.get("main_vm", "avocado-vt-vm1")
+    no_pci_controller = params.get("no_pci_controller", "no")
+    pci_bus_number = params.get("pci_bus_number", "0")
+    remove_address = params.get("remove_address", "yes")
+    setup_controller = params.get("setup_controller", "yes")
+    index_second = params.get("controller_index_second", None)
+    cur_machine = os_machine
+    check_qemu = "yes" == params.get("check_qemu", "no")
+    check_within_guest = "yes" == params.get("check_within_guest", "no")
+    run_vm = "yes" == params.get("run_vm", "no")
+    second_level_controller_num = params.get("second_level_controller_num", "0")
+    status_error = "yes" == params.get("status_error", "no")
+    model_name = params.get("model_name", None)
+    expect_err_msg = params.get("err_msg", None)
+
+    if index and index_second:
+        if int(index) > int(index_second):
+            test.error("Invalid parameters")
 
     vm = env.get_vm(vm_name)
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
+
     try:
         vm_xml.remove_all_device_by_type('controller')
-        remove_all_addresses(vm_xml)
-        remove_usb_devices(vm_xml)
-        setup_controller_xml()
+        if remove_address == "yes":
+            remove_devices(vm_xml, 'address')
+        remove_devices(vm_xml, 'usb')
+        if setup_controller == "yes":
+            if index_second:
+                setup_controller_xml(index_second)
+            setup_controller_xml(index, addr_str)
+            if second_level_controller_num:
+                for indx in range(2, int(second_level_controller_num) + 2):
+                    addr_second = "0%s:0%s.0" % (index, str(indx))
+                    setup_controller_xml(str(indx), addr_second)
         setup_os_xml()
-        logging.debug("Test VM XML is %s" % vm_xml)
+        if int(pci_bus_number) > 0:
+            address_params = {'bus': "%0#4x" % int(pci_bus_number)}
+            libvirt.set_disk_attr(vm_xml, 'vda', 'address', address_params)
+
+        logging.debug("Test VM XML before define is %s" % vm_xml)
 
         if not define_and_check():
             logging.debug("Can't define the VM, exiting.")
             return
+        vm_xml = VMXML.new_from_dumpxml(vm_name)
+        logging.debug("Test VM XML after define is %s" % vm_xml)
 
-        check_controller_addr(test)
+        check_controller_addr()
+        if run_vm:
+            try:
+                if not start_and_check():
+                    logging.debug("Can't start the VM, exiting.")
+                    return
+            except virt_vm.VMStartError as detail:
+                test.fail(detail)
 
-        try:
-            if not start_and_check():
-                logging.debug("Can't start the VM, exiting.")
-                return
-        except virt_vm.VMStartError as detail:
-            test.fail(detail)
+            search_qemu_cmd = get_search_patt_qemu_line()
+            if check_qemu:
+                check_qemu_cmdline(search_pattern=search_qemu_cmd)
 
-        check_qemu_cmdline(test)
+            if check_within_guest:
+                try:
+                    if int(pci_bus_number) > 0:
+                        for contr_idx in range(1, int(pci_bus_number) + 1):
+                            check_guest(cntlr_type, model, str(contr_idx))
+                        return
+                    if index:
+                        check_max_index = int(index) + int(second_level_controller_num)
+                        for contr_idx in range(1, int(check_max_index) + 1):
+                            check_guest(cntlr_type, model, str(contr_idx))
+                    else:
+                        check_guest(cntlr_type, model)
+                        if model == 'pcie-root':
+                            # Need check other auto added controller
+                            check_guest(cntlr_type, 'dmi-to-pci-bridge', '1')
+                            check_guest(cntlr_type, 'pci-bridge', '2')
+                except remote.LoginTimeoutError as e:
+                    logging.debug(e)
+                    if not status_error:
+                        raise
 
-        if cntlr_type == 'virtio-serial':
-            check_msi(test)
     finally:
         vm_xml_backup.sync()
