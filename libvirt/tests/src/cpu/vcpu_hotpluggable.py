@@ -93,6 +93,16 @@ def run(test, params, env):
         vcpus_xml.vcpu = vcpu_list
 
         vmxml.vcpus = vcpus_xml
+
+        # Remove influence from topology setting
+        try:
+            logging.info('Remove influence from topology setting')
+            cpuxml = vmxml.cpu
+            del cpuxml.topology
+            vmxml.cpu = cpuxml
+        except Exception as e:
+            pass
+
         vmxml.sync()
 
         # Start VM
