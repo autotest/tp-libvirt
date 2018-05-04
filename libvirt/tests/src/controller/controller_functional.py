@@ -92,19 +92,12 @@ def run(test, params, env):
         logging.debug("Controller XML is:%s", ctrl)
         vm_xml.add_device(ctrl)
 
-        if usb_cntlr_model is not None:
-            ctrl = Controller(type_name='usb')
-            ctrl.model = usb_cntlr_model
-            if usb_cntlr_addr is not None:
-                match = re.match(r"(?P<bus>[0-9]*):(?P<slot>[0-9]*).(?P<function>[0-9])", usb_cntlr_addr)
-                if match:
-                    addr_dict = match.groupdict()
-                    addr_dict['bus'] = hex(int(addr_dict['bus']))
-                    addr_dict['slot'] = hex(int(addr_dict['slot']))
-                    addr_dict['function'] = hex(int(addr_dict['function']))
-                    addr_dict['domain'] = '0x0000'
-                    ctrl.address = ctrl.new_controller_address(attrs=addr_dict)
-            vm_xml.add_device(ctrl)
+        if cmpnn_cntlr_model is not None:
+            for num in range(int(cmpnn_cntlr_num)):
+                ctrl = Controller(type_name='usb')
+                ctrl.model = cmpnn_cntlr_model + str(num+1)
+                ctrl.index = index
+                vm_xml.add_device(ctrl)
 
     def define_and_check():
         """
@@ -115,7 +108,7 @@ def run(test, params, env):
         known_models = {
             'pci': ['pci-root', 'pcie-root', 'pci-bridge'],
             'virtio-serial': [],
-            'usb': ['ehci', 'ich9-ehci1'],
+            'usb': ['ehci', 'ich9-ehci1', 'nec-xhci', 'qemu-xhci'],
         }
 
         if cntlr_type == 'pci' and model is None:
@@ -223,6 +216,28 @@ def run(test, params, env):
             test.fail('Expect get qemu command serial option "%s", '
                       'but got "%s"' % (exp_pcihole_opt, pcihole_opt))
 
+        # Check usb options against expectation
+        if cntlr_type == "usb":
+            model_list = [model]
+            if cmpnn_cntlr_num is not None:
+                for num in range(int(cmpnn_cntlr_num)):
+                    model_list.append(cmpnn_cntlr_model+str(num+1))
+
+            pattern = ""
+            for item in model_list:
+                if item == "ehci":
+                    pattern = r"-device.usb-ehci"
+                elif item == "qemu-xhci":
+                    pattern = r"-device.qemu-xhci"
+                else:
+                    name = item.split('-')
+                    pattern = pattern + r"-device.%s-usb-%s.*" % (name[0], name[1])
+
+            logging.debug("pattern is %s", pattern)
+
+            if not re.search(pattern, cmdline):
+                test.fail("Expect get usb model info in qemu cmdline, but failed!")
+
     def check_msi(test):
         """
         Check MSI state against expectation.
@@ -252,8 +267,8 @@ def run(test, params, env):
     vectors = params.get('controller_vectors', None)
     pcihole = params.get('controller_pcihole64', None)
     addr_str = params.get('controller_address', None)
-    usb_cntlr_model = params.get('usb_controller_model', None)
-    usb_cntlr_addr = params.get('usb_controller_address', None)
+    cmpnn_cntlr_model = params.get('companion_controller_model', None)
+    cmpnn_cntlr_num = params.get('companion_controller_num', None)
     vm_name = params.get("main_vm", "avocado-vt-vm1")
 
     vm = env.get_vm(vm_name)
