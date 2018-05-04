@@ -2,6 +2,7 @@ import os
 import random
 import logging
 import base64
+import locale
 import re
 
 from avocado.utils import path as utils_path
@@ -41,7 +42,8 @@ def create_luks_secret(vol_path, password, test):
         test.error("Fail to get newly created secret uuid")
     logging.debug("Secret uuid %s", encryption_uuid)
     # Set secret value.
-    secret_string = base64.b64encode(password)
+    encoding = locale.getpreferredencoding()
+    secret_string = base64.b64encode(password.encode(encoding)).decode(encoding)
     ret = virsh.secret_set_value(encryption_uuid, secret_string)
     utlv.check_exit_status(ret)
     return encryption_uuid

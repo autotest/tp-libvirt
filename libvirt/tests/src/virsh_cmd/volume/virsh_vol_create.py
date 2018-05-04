@@ -2,6 +2,7 @@ import os
 import logging
 import re
 import base64
+import locale
 
 from avocado.utils import process
 from avocado.core import exceptions
@@ -125,7 +126,8 @@ def run(test, params, env):
         logging.debug("Secret uuid %s", encryption_uuid)
 
         # Set secret value.
-        secret_string = base64.b64encode('redhat')
+        encoding = locale.getpreferredencoding()
+        secret_string = base64.b64encode('redhat'.encode(encoding)).decode(encoding)
         ret = virsh.secret_set_value(encryption_uuid, secret_string)
         utlv.check_exit_status(ret)
 
