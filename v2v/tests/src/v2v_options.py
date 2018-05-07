@@ -18,6 +18,7 @@ from virttest import ssh_key
 from virttest import utils_misc
 from virttest import utils_v2v
 from virttest import virsh
+from virttest import remote
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.compat_52lts import decode_to_text as to_text
@@ -240,6 +241,24 @@ def run(test, params, env):
         else:
             test.fail('Fail to find snapshot_id')
 
+    def setup_esx_ssh_key(hostname, user, password, port=22):
+        """
+        Setup up remote login in esx server by using public key
+        """
+        logging.debug('Performing SSH key setup on %s:%d as %s.' %
+                      (hostname, port, user))
+        try:
+            session = remote.remote_login(client='ssh', host=hostname,
+                                          username=user, port=port,
+                                          password=password, prompt=r'[ $#%]')
+            public_key = ssh_key.get_public_key()
+            session.cmd("echo '%s' >> /etc/ssh/keys-root/authorized_keys; " %
+                        public_key)
+            logging.debug('SSH key setup complete.')
+            session.close()
+        except Exception as err:
+            logging.debug('SSH key setup has failed. %s', err)
+
     def check_source(output):
         """
         Check if --print-source option print the correct info
@@ -273,13 +292,15 @@ def run(test, params, env):
 
         logging.info('KEY:\tSOURCE<-> XML')
         for key in check_map:
-            logging.info('%-15s:%18s <-> %s', key, source_info[key], check_map[key])
+            logging.info('%-15s:%18s <-> %s', key,
+                         source_info[key], check_map[key])
             if source_info[key] != str(check_map[key]):
                 fail.append(key)
 
         # Check disk info
         disk = list(xml.get_disk_all().values())[0]
-        bus, type = disk.find('target').get('bus'), disk.find('driver').get('type')
+        bus, type = disk.find('target').get(
+            'bus'), disk.find('driver').get('type')
         path = disk.find('source').get('file')
         disks_info = "%s (%s) [%s]" % (path, type, bus)
         source_disks = source_info['disks'].split()
@@ -303,7 +324,8 @@ def run(test, params, env):
 
         # Check cpu features
         feature_list = xml.features.get_feature_list()
-        logging.info('CPU features:%s<->%s', source_info['CPU features'], feature_list)
+        logging.info('CPU features:%s<->%s',
+                     source_info['CPU features'], feature_list)
         if sorted(source_info['CPU features'].split(',')) != sorted(feature_list):
             fail.append('CPU features')
 
@@ -314,7 +336,8 @@ def run(test, params, env):
         """
         Check if content of man page or help info meets expectation
         """
-        man_page = process.run('man virt-v2v', verbose=False).stdout_text.strip()
+        man_page = process.run(
+            'man virt-v2v', verbose=False).stdout_text.strip()
         if in_man:
             logging.info('Checking man page of virt-v2v for "%s"', in_man)
             if in_man not in man_page:
@@ -387,7 +410,7 @@ def run(test, params, env):
             if output_mode == "libvirt":
                 if "qemu:///session" not in v2v_options and not no_root:
                     virsh.start(vm_name, debug=True, ignore_status=False)
-            if checkpoint == 'vmx':
+            if checkpoint == ['vmx', 'vmx_ssh']:
                 vmchecker = VMChecker(test, params, env)
                 params['vmchecker'] = vmchecker
                 params['vmcheck_flag'] = True
@@ -426,7 +449,8 @@ def run(test, params, env):
                 else:
                     test.fail('Overlay file not saved')
             if checkpoint.startswith('empty_nic_source'):
-                target_str = '%s "eth0" mac: %s' % (params[checkpoint][0], params[checkpoint][1])
+                target_str = '%s "eth0" mac: %s' % (
+                    params[checkpoint][0], params[checkpoint][1])
                 logging.info('Expect log: %s', target_str)
                 if target_str not in result.stdout.lower():
                     test.fail('Expect log not found: %s' % target_str)
@@ -443,7 +467,8 @@ def run(test, params, env):
             if checkpoint == 'compress':
                 img_path = get_img_path(output)
                 logging.info('Image path: %s', img_path)
-                disk_check = process.run('qemu-img check %s' % img_path).stdout_text
+                disk_check = process.run(
+                    'qemu-img check %s' % img_path).stdout_text
                 logging.info(disk_check)
                 compress_info = disk_check.split(',')[-1].split('%')[0].strip()
                 compress_rate = float(compress_info)
@@ -567,10 +592,12 @@ def run(test, params, env):
             logging.info("Convert to qemu:///session by user '%s'", v2v_user)
             if input_mode == "disk":
                 # Copy image from souce and change the image owner and group
-                disk_path = os.path.join(data_dir.get_tmp_dir(), os.path.basename(disk_img))
+                disk_path = os.path.join(
+                    data_dir.get_tmp_dir(), os.path.basename(disk_img))
                 logging.info('Copy image file %s to %s', disk_img, disk_path)
                 shutil.copyfile(disk_img, disk_path)
-                input_option = string.replace(input_option, disk_img, disk_path)
+                input_option = string.replace(
+                    input_option, disk_img, disk_path)
                 os.chown(disk_path, user_info.pw_uid, user_info.pw_gid)
             elif not no_root:
                 test.cancel("Only support convert local disk")
@@ -597,7 +624,8 @@ def run(test, params, env):
         # Create password file for access to ESX hypervisor
         if hypervisor == 'esx':
             vpx_passwd = params.get("vpx_password")
-            vpx_passwd_file = os.path.join(data_dir.get_tmp_dir(), "vpx_passwd")
+            vpx_passwd_file = os.path.join(
+                data_dir.get_tmp_dir(), "vpx_passwd")
             logging.info("Building ESX no password interactive verification.")
             pwd_f = open(vpx_passwd_file, 'w')
             pwd_f.write(vpx_passwd)
@@ -614,7 +642,8 @@ def run(test, params, env):
         if checkpoint in ['with_ic', 'without_ic']:
             new_v2v_user = True
             v2v_options += ' -on %s' % new_vm_name
-            create_pool(user_pool=True, pool_name='src_pool', pool_target='v2v_src_pool')
+            create_pool(user_pool=True, pool_name='src_pool',
+                        pool_target='v2v_src_pool')
             create_pool(user_pool=True)
             logging.debug(virsh.pool_list(uri='qemu:///session'))
             sh_install_vm = params.get('sh_install_vm')
@@ -624,7 +653,8 @@ def run(test, params, env):
                 cmd_install_vm = fh.read().strip()
             process.run('su - %s -c "%s"' % (v2v_user, cmd_install_vm),
                         timeout=10, shell=True)
-            params['cmd_clean_vm'] = "%s 'virsh undefine %s'" % (su_cmd, vm_name)
+            params['cmd_clean_vm'] = "%s 'virsh undefine %s'" % (
+                su_cmd, vm_name)
 
         if checkpoint == 'vmx':
             mount_point = params.get('mount_point')
@@ -637,6 +667,29 @@ def run(test, params, env):
             input_option = '-i vmx %s' % vmx
             v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
                                              params.get("output_network"))
+
+        if checkpoint == 'vmx_ssh':
+            esx_user = params.get("esx_host_user", "root")
+            esx_pwd = params.get("esx_host_passwd", "123qweP")
+            vmx = params.get('vmx')
+            setup_esx_ssh_key(esx_ip, esx_user, esx_pwd)
+            try:
+                utils_misc.add_identities_into_ssh_agent()
+            except Exception:
+                process.run("ssh-agent -k")
+                raise exceptions.TestError("Fail to setup ssh-agent")
+            input_option = '-i vmx -it ssh %s' % vmx
+            v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
+                                             params.get("output_network"))
+
+        if checkpoint == 'simulate_nfs':
+            simulate_images = params.get("simu_images_path")
+            simulate_vms = params.get("simu_vms_path")
+            simulate_dom_md = params.get("simu_dom_md_path")
+            os.makedirs(simulate_images)
+            os.makedirs(simulate_vms)
+            process.run('touch %s' % simulate_dom_md)
+            process.run('chmod -R 777 /tmp/rhv/')
 
         # Running virt-v2v command
         cmd = "%s %s %s %s" % (utils_v2v.V2V_EXEC, input_option,
@@ -653,11 +706,12 @@ def run(test, params, env):
             v2v_timeout = 30
         # Get tail content of /var/log/messages
         if checkpoint == 'tail_log':
-            params['tail_log'] = os.path.join(data_dir.get_tmp_dir(), 'tail_log')
+            params['tail_log'] = os.path.join(
+                data_dir.get_tmp_dir(), 'tail_log')
             params['tail'] = aexpect.Tail(
-                    command='tail -f /var/log/messages',
-                    output_func=utils_misc.log_line,
-                    output_params=(params['tail_log'],)
+                command='tail -f /var/log/messages',
+                output_func=utils_misc.log_line,
+                output_params=(params['tail_log'],)
             )
         cmd_result = process.run(cmd, timeout=v2v_timeout, verbose=True,
                                  ignore_status=True)
@@ -691,7 +745,8 @@ def run(test, params, env):
                 except Exception:
                     logging.error('Undefine "%s" failed', vm_name)
                 if no_root:
-                    cleanup_pool(user_pool=True, pool_name='src_pool', pool_target='v2v_src_pool')
+                    cleanup_pool(user_pool=True, pool_name='src_pool',
+                                 pool_target='v2v_src_pool')
                     cleanup_pool(user_pool=True)
             else:
                 virsh.remove_domain(vm_name)
@@ -709,3 +764,5 @@ def run(test, params, env):
         if checkpoint == 'vmx':
             utils_misc.umount(params['nfs_vmx'], params['mount_point'], 'nfs')
             os.rmdir(params['mount_point'])
+        if checkpoint == 'simulate_nfs':
+            process.run('rm -rf /tmp/rhv/')
