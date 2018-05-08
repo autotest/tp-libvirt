@@ -78,10 +78,7 @@ def run(test, params, env):
     remote_pwd = params.get("remote_pwd", "")
     remote_prompt = params.get("remote_prompt", "#")
     tmpxml = os.path.join(data_dir.get_tmp_dir(), 'tmp.xml')
-    set_topology = (params.get("set_topology", "no") == "yes")
-    sockets = params.get("sockets")
-    cores = params.get("cores")
-    threads = params.get("threads")
+    topology_correction = "yes" == params.get("topology_correction", "yes")
     result = True
 
     # Early death 1.1
@@ -147,17 +144,13 @@ def run(test, params, env):
         # Set maximum vcpus, so we can run all kinds of normal tests without
         # encounter requested vcpus greater than max allowable vcpus error
         topology = vmxml.get_cpu_topology()
-        if all([topology, sockets, cores, threads]) or set_topology:
-            vmxml.set_vm_vcpus(vm_name, max_vcpu, current_vcpu,
-                               sockets, cores, threads, True)
-        else:
-            vmxml.set_vm_vcpus(vm_name, max_vcpu, current_vcpu)
-
         if topology and ("config" and "maximum" in options) and not status_error:
             # https://bugzilla.redhat.com/show_bug.cgi?id=1426220
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             del vmxml.cpu
             vmxml.sync()
+        vmxml.set_vm_vcpus(vm_name, max_vcpu, current_vcpu,
+                           topology_correction=topology_correction)
 
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         logging.debug("Pre-test xml is %s", vmxml.xmltreefile)
