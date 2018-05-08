@@ -1,3 +1,5 @@
+#import logging
+from virttest.utils_test import libvirt
 from virttest import virsh
 
 from provider import libvirt_version
@@ -21,6 +23,7 @@ def run(test, params, env):
     vm_ref = params.get("suspend_vm_ref", "")
     extra = params.get("suspend_extra", "")
     status_error = params.get("status_error", "no")
+    suspend_readonly = "yes" == params.get("suspend_readonly", "no")
 
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
@@ -58,6 +61,15 @@ def run(test, params, env):
     err = result.stderr.strip()
     if status == 0 and not vm.is_paused():
         status = 1
+
+    # Test the readonly mode
+    if suspend_readonly:
+        result = virsh.suspend(vm_ref, ignore_status=True, debug=True, readonly=True)
+        libvirt.check_exit_status(result, expect_error=True)
+        # This is for status_error check
+        status = result.exit_status
+        if status:
+            err = 1
 
     # resume the VM
     if vm.is_paused():

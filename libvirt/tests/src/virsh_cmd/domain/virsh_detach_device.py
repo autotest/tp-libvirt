@@ -138,6 +138,7 @@ def run(test, params, env):
     no_attach = "yes" == params.get("dt_device_no_attach", 'no')
     os_type = params.get("os_type", "linux")
     device = params.get("dt_device_device", "disk")
+    readonly = "yes" == params.get("detach_readonly", "no")
     test_cmd = "detach-device"
     if not virsh.has_command_help_match(test_cmd, dt_options) and\
        not status_error:
@@ -162,7 +163,10 @@ def run(test, params, env):
 
     # Back up xml file.
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    device_source = os.path.join(test.virtdir, device_source_name)
+    if readonly:
+        device_source = os.path.join(test.tmpdir, device_source_name)
+    else:
+        device_source = os.path.join(test.virtdir, device_source_name)
 
     # Create virtual device file.
     if test_block_dev:
@@ -233,7 +237,7 @@ def run(test, params, env):
         else:
             vm_ref = ""
 
-        status = virsh.detach_device(vm_ref, device_xml, flagstr=dt_options,
+        status = virsh.detach_device(vm_ref, device_xml, readonly=readonly, flagstr=dt_options,
                                      debug=True).exit_status
 
         # Resume guest after command. On newer libvirt this is fixed as it has

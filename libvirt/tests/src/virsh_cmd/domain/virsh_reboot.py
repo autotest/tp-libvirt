@@ -2,6 +2,7 @@ import re
 import logging
 import aexpect
 
+from virttest.utils_test import libvirt
 from avocado.utils import process
 
 from virttest import libvirt_vm
@@ -38,6 +39,7 @@ def run(test, params, env):
     agent = ("yes" == params.get("reboot_agent", "no"))
     mode = params.get("reboot_mode", "")
     pre_domian_status = params.get("reboot_pre_domian_status", "running")
+    reboot_readonly = "yes" == params.get("reboot_readonly", "no")
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     try:
         # Add or remove qemu-agent from guest before test
@@ -101,6 +103,13 @@ def run(test, params, env):
             else:
                 vm.wait_for_login().close()
         output = virsh.dom_list(ignore_status=True).stdout.strip()
+
+        # Test the readonly mode
+        if reboot_readonly:
+            result = virsh.reboot(vm_ref, ignore_status=True, debug=True, readonly=True)
+            libvirt.check_exit_status(result, expect_error=True)
+            # This is for status_error check
+            status = result.exit_status
 
         # recover libvirtd service start
         if libvirtd == "off":
