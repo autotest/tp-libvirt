@@ -220,9 +220,6 @@ def run(test, params, env):
     pin_vcpu = params.get("pin_vcpu")
     pin_cpu_list = params.get("pin_cpu_list", "x")
     check_after_plug_fail = "yes" == params.get("check_after_plug_fail", "no")
-    sockets = int(params.get("sockets", "0"))
-    cores = int(params.get("cores", "0"))
-    threads = int(params.get("threads", "0"))
     with_stress = "yes" == params.get("run_stress", "no")
     iterations = int(params.get("test_itr", 1))
     topology_correction = "yes" == params.get("topology_correction", "no")
@@ -286,18 +283,8 @@ def run(test, params, env):
             vmxml.remove_agent_channels()
         vmxml.sync()
 
-        topology = vmxml.get_cpu_topology()
-        if all([topology, sockets, cores, threads]):
-            # Check if the topology matches correct otherwise
-            if (sockets * cores * threads != vcpu_max_num):
-                if topology_correction:
-                    cores = vcpu_max_num
-                    sockets = 1
-                    threads = 1
-            vmxml.set_vm_vcpus(vm_name, vcpu_max_num, vcpu_current_num,
-                               sockets, cores, threads)
-        else:
-            vmxml.set_vm_vcpus(vm_name, vcpu_max_num, vcpu_current_num)
+        vmxml.set_vm_vcpus(vm_name, vcpu_max_num, vcpu_current_num,
+                           topology_correction=topology_correction)
         # Do not apply S3/S4 on power
         cpu_arch = platform.machine()
         if cpu_arch in ('x86_64', 'i386', 'i686'):
