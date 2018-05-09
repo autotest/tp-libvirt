@@ -388,24 +388,19 @@ def run(test, params, env):
 
         # Check usb options against expectation
         if cntlr_type == "usb":
-            model_list = [model]
+            pattern = ""
             if cmpnn_cntlr_num is not None:
                 for num in range(int(cmpnn_cntlr_num)):
-                    model_list.append(cmpnn_cntlr_model+str(num+1))
-
-            pattern = ""
-            for item in model_list:
-                if item == "ehci":
-                    pattern = r"-device.usb-ehci"
-                elif item == "qemu-xhci":
-                    pattern = r"-device.qemu-xhci"
-                else:
-                    name = item.split('-')
+                    name = (cmpnn_cntlr_model+str(num+1)).split('-')
                     pattern = pattern + r"-device.%s-usb-%s.*" % (name[0], name[1])
+            elif model == "ehci":
+                pattern = r"-device.usb-ehci"
+            elif model == "qemu-xhci":
+                pattern = r"-device.qemu-xhci"
 
             logging.debug("pattern is %s", pattern)
 
-            if not re.search(pattern, cmdline):
+            if pattern and not re.search(pattern, cmdline):
                 test.fail("Expect get usb model info in qemu cmdline, but failed!")
 
     def check_guest(cntlr_type, cntlr_model, cntlr_index=None):
