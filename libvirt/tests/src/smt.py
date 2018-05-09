@@ -6,6 +6,7 @@ from avocado.utils import process
 from virttest.libvirt_xml import vm_xml
 from virttest import utils_package
 from virttest.compat_52lts import decode_to_text as to_text
+from virttest import virt_vm
 
 
 def run(test, params, env):
@@ -106,7 +107,7 @@ def run(test, params, env):
     ignore_status = params.get("ignore_status", "no") == "yes"
 
     smt_number = params.get("smt_number", None)
-    max_vcpu = current_vcpu = int(params.get("smp", 8))
+    max_vcpu = current_vcpu = int(params.get("smt_smp", 8))
     vm_cores = int(params.get("smt_vcpu_cores", 8))
     vm_threads = int(params.get("smt_vcpu_threads", 1))
     vm_sockets = int(params.get("smt_vcpu_sockets", 1))
@@ -115,91 +116,98 @@ def run(test, params, env):
     output = to_text(process.system_output(smt_threads_per_core_cmd, shell=True))
     try:
         host_threads = int(re.findall('Threads per core:\s+(\d+)', output)[0])
-    except Exception:
-        test.cancel("Unable to get the host threads")
+    except Exception, e:
+        test.cancel("Unable to get the host threads\n %s" % e)
 
     logging.info("Guest: cores:%d, threads:%d, sockets:%d", vm_cores,
                  vm_threads, vm_sockets)
     try:
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         org_xml = vmxml.copy()
-        # try installing powerpc-utils in guest if not skip
-        try:
-            session = vm.wait_for_login()
-            utils_package.package_install(["powerpc-utils"], session, 360)
-            session.close()
-        except Exception:
-            test.cancel("Unable to install powerpc-utils package in guest")
-
+        vm.destroy()
         # Initial Setup of vm
         vmxml.set_vm_vcpus(vm_name, max_vcpu, current_vcpu,
-                           vm_sockets, vm_cores, vm_threads)
-        if not vm.is_alive():
+                           vm_sockets, vm_cores, vm_threads,
+                           add_topology=True)
+        try:
             vm.start()
+            if status_error:
+                test.fail("VM Started with invalid thread %s" % vm_threads)
+        except virt_vm.VMStartError, detail:
+            if not status_error:
+                test.fail("VM failed to start %s" % detail)
 
-        # Changing the smt number
-        if smt_number:
-            smt_chk_cmd_mod = "%s=%s" % (smt_chk_cmd, smt_number)
-            error_count += smt_check(vm, smt_chk_cmd_mod, "")
+        if not status_error:
+            # try installing powerpc-utils in guest if not skip
+            try:
+                session = vm.wait_for_login()
+                utils_package.package_install(["powerpc-utils"], session, 360)
+                session.close()
+            except Exception, e:
+                test.cancel("Unable to install powerpc-utils package in guest\n %s" % e)
+            # Changing the smt number
+            if smt_number:
+                smt_chk_cmd_mod = "%s=%s" % (smt_chk_cmd, smt_number)
+                error_count += smt_check(vm, smt_chk_cmd_mod, "")
 
-        guest_cpu_details = cpus_info(vm)
-        # Step 10: Check for threads, cores, sockets
-        if vm_cores != guest_cpu_details[2]:
-            logging.error("Number of cores mismatch:\nExpected number of "
-                          "cores: %s\nActual number of cores: %s",
-                          vm_cores, guest_cpu_details[2])
-            error_count += 1
-        if smt_number:
-            threads = int(smt_number)
-        else:
-            threads = vm_threads
-        if threads != guest_cpu_details[1]:
-            logging.error("Number of threads mismatch:\nExpected number of "
-                          "threads: %s\nActual number of threads: %s",
-                          threads, guest_cpu_details[1])
-            error_count += 1
-        if vm_sockets != guest_cpu_details[3]:
-            logging.error("Number of sockets mismatch:\nExpected number of "
-                          "sockets: %s\nActual number of sockets: %s",
-                          vm_sockets, guest_cpu_details[3])
-            error_count += 1
-
-        error_count += smt_check(vm, smt_chk_cmd, smt_chk_on_output,
-                                 ignorestatus=ignore_status)
-        session = vm.wait_for_login()
-        session.cmd_output(smt_off_cmd)
-        session.close()
-        error_count += smt_check(vm, smt_chk_cmd, smt_chk_off_output,
-                                 ignorestatus=ignore_status)
-        cores = vm_cores * vm_sockets
-        extra = " %s" % cores
-        error_count += smt_check(vm, smt_core_pst_cmd,
-                                 smt_core_pst_output, extra)
-        extra = " %s" % cores
-        error_count += smt_check(vm, smt_core_on_cmd, smt_core_on_output, extra)
-        extra = " %s" % vm_threads
-        error_count += smt_check(vm, smt_threads_per_core_cmd,
-                                 smt_threads_per_core_output, extra)
-
-        # Changing the cores
-        cores -= 1
-        while cores > 1:
-            smt_core_on_cmd_mod = "%s=%s" % (smt_core_on_cmd, cores)
-            error_count += smt_check(vm, smt_core_on_cmd_mod, "")
-            extra = " %s" % cores
-            error_count += smt_check(vm, smt_core_on_cmd,
-                                     smt_core_on_output, extra)
             guest_cpu_details = cpus_info(vm)
-            if cores != (guest_cpu_details[3] * guest_cpu_details[2]):
-                logging.error("The core changes through command: %s not "
-                              "reflected in lscpu output", smt_core_on_cmd_mod)
+            # Step 10: Check for threads, cores, sockets
+            if vm_cores != guest_cpu_details[2]:
+                logging.error("Number of cores mismatch:\nExpected number of "
+                              "cores: %s\nActual number of cores: %s",
+                              vm_cores, guest_cpu_details[2])
                 error_count += 1
-            cores -= 1
-            # wait for sometime before next change of cores
-            time.sleep(5)
+            if smt_number:
+                threads = int(smt_number)
+            else:
+                threads = vm_threads
+            if threads != guest_cpu_details[1]:
+                logging.error("Number of threads mismatch:\nExpected number of "
+                              "threads: %s\nActual number of threads: %s",
+                              threads, guest_cpu_details[1])
+                error_count += 1
+            if vm_sockets != guest_cpu_details[3]:
+                logging.error("Number of sockets mismatch:\nExpected number of "
+                              "sockets: %s\nActual number of sockets: %s",
+                              vm_sockets, guest_cpu_details[3])
+                error_count += 1
 
-        if error_count > 0:
-            test.fail("The SMT feature has issue, please consult "
-                      "previous errors more details")
+            error_count += smt_check(vm, smt_chk_cmd, smt_chk_on_output,
+                                     ignorestatus=ignore_status)
+            session = vm.wait_for_login()
+            session.cmd_output(smt_off_cmd)
+            session.close()
+            error_count += smt_check(vm, smt_chk_cmd, smt_chk_off_output,
+                                     ignorestatus=ignore_status)
+            cores = vm_cores * vm_sockets
+            extra = " %s" % cores
+            error_count += smt_check(vm, smt_core_pst_cmd,
+                                     smt_core_pst_output, extra)
+            extra = " %s" % cores
+            error_count += smt_check(vm, smt_core_on_cmd, smt_core_on_output, extra)
+            extra = " %s" % vm_threads
+            error_count += smt_check(vm, smt_threads_per_core_cmd,
+                                     smt_threads_per_core_output, extra)
+
+            # Changing the cores
+            cores -= 1
+            while cores > 1:
+                smt_core_on_cmd_mod = "%s=%s" % (smt_core_on_cmd, cores)
+                error_count += smt_check(vm, smt_core_on_cmd_mod, "")
+                extra = " %s" % cores
+                error_count += smt_check(vm, smt_core_on_cmd,
+                                         smt_core_on_output, extra)
+                guest_cpu_details = cpus_info(vm)
+                if cores != (guest_cpu_details[3] * guest_cpu_details[2]):
+                    logging.error("The core changes through command: %s not "
+                                  "reflected in lscpu output", smt_core_on_cmd_mod)
+                    error_count += 1
+                cores -= 1
+                # wait for sometime before next change of cores
+                time.sleep(5)
+
+            if error_count > 0:
+                test.fail("The SMT feature has issue, please consult "
+                          "previous errors more details")
     finally:
         org_xml.sync()
