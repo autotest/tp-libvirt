@@ -23,8 +23,47 @@ def set_cpu_memory(vm_name, cpu, memory):
     vmxml.sync()
 
 
-def do_stress_migration(vms, srcuri, desturi, stress_type,
-                        migration_type, test, params,
+def post_migration_check(vms, uptime, test, params, uri=None):
+    """
+    Validating migration by performing checks in this method
+    * uptime of the migrated vm > uptime of vm before migration
+    * ping vm from target host
+    * check vm state after migration
+
+    :param vms: VM objects of migrating vms
+    :param uptime: uptime dict of vms before migration
+    :param uri: target virsh uri
+    :return: updated dict of uptime
+    """
+    migrate_setup = utils_test.libvirt.MigrationTest()
+    vm_state = params.get("virsh_migrated_state", "running")
+    ping_count = int(params.get("ping_count", 10))
+    for vm in vms:
+        if uri:
+            vm_uri = vm.connect_uri
+            vm.connect_uri = uri
+        vm_uptime = vm.uptime(connect_uri=uri)
+        logging.info("uptime of migrated VM %s: %s", vm.name,
+                     vm_uptime)
+        if vm_uptime < uptime[vm.name]:
+            test.fail("vm went for a reboot during migration")
+        if not migrate_setup.check_vm_state(vm, vm_state, uri):
+            test.fail("Migrated VMs failed to be in %s state at "
+                      "destination" % vm_state)
+        logging.info("Guest state is '%s' at destination is as expected",
+                     vm_state)
+        migrate_setup.ping_vm(vm, test, params, uri=uri,
+                              ping_count=ping_count)
+        # update vm uptime to check when migrating back
+        uptime[vm.name] = vm_uptime
+
+        # revert the connect_uri to avoid cleanup errors
+        if uri:
+            vm.connect_uri = vm_uri
+    return uptime
+
+
+def do_stress_migration(vms, srcuri, desturi, migration_type, test, params,
                         thread_timeout=60):
     """
     Migrate vms with stress.
@@ -32,7 +71,6 @@ def do_stress_migration(vms, srcuri, desturi, stress_type,
     :param vms: migrated vms.
     :param srcuri: connect uri for source machine
     :param desturi: connect uri for destination machine
-    :param stress_type: type of stress test in VM
     :param migration_type: type of migration to be performed
     :param params: Test dict params
     :param thread_timeout: default timeout for migration thread
@@ -42,56 +80,58 @@ def do_stress_migration(vms, srcuri, desturi, stress_type,
     migrate_setup = utils_test.libvirt.MigrationTest()
     options = params.get("migrate_options")
     ping_count = int(params.get("ping_count", 10))
-    vm_state = params.get("virsh_migrated_vm_state", "running")
+    migrate_times = 1
+    migrate_back = params.get("virsh_migrate_back", "no") == "yes"
+    if migrate_back:
+        migrate_times = int(params.get("virsh_migrate_there_and_back", 1))
     uptime = {}
-    migrated_uptime = {}
 
     for vm in vms:
-        session = vm.wait_for_login()
         uptime[vm.name] = vm.uptime()
         logging.info("uptime of VM %s: %s", vm.name, uptime[vm.name])
         migrate_setup.ping_vm(vm, test, params, ping_count=ping_count)
     logging.debug("Starting migration...")
     migrate_options = ("%s --timeout %s"
                        % (options, params.get("virsh_migrate_timeout", 60)))
-    try:
-        migrate_setup.do_migration(vms, srcuri, desturi, migration_type,
-                                   options=migrate_options,
-                                   thread_timeout=thread_timeout)
-    except Exception, info:
-        test.fail(info)
-    for vm in vms:
-        vm.connect_uri = desturi
-        session = vm.wait_for_serial_login()
-        migrated_uptime[vm.name] = vm.uptime(connect_uri=desturi)
-        logging.info("uptime of migrated VM %s: %s", vm.name,
-                     migrated_uptime[vm.name])
-        if migrated_uptime[vm.name] < uptime[vm.name]:
-            test.fail("vm went for a reboot during migration")
-        if not migrate_setup.check_vm_state(vm, vm_state, desturi):
-            test.fail("Migrated VMs failed to be in %s state at "
-                      "destination" % vm_state)
-        logging.info("Guest state is '%s' at destination is as expected",
-                     vm_state)
-        migrate_setup.ping_vm(vm, test, params, uri=desturi,
-                              ping_count=ping_count)
+    for each_time in range(migrate_times):
+        logging.debug("Migrating vms from %s to %s for %s time", srcuri,
+                      desturi, each_time + 1)
+        try:
+            migrate_setup.do_migration(vms, srcuri, desturi, migration_type,
+                                       options=migrate_options,
+                                       thread_timeout=thread_timeout)
+        except Exception, info:
+            test.fail(info)
 
-    vm.connect_uri = None
+        uptime = post_migration_check(vms, uptime, test, params, uri=desturi)
+        if migrate_back and "cross" not in migration_type:
+            migrate_setup.migrate_pre_setup(srcuri, params)
+            logging.debug("Migrating back to source from %s to %s for %s time",
+                          desturi, srcuri, each_time + 1)
+            for vm in vms:
+                vm.connect_uri = desturi
+            try:
+                migrate_setup.do_migration(vms, desturi, srcuri, migration_type,
+                                           options=migrate_options,
+                                           thread_timeout=thread_timeout)
+            except Exception, info:
+                test.fail(info)
+            finally:
+                for vm in vms:
+                    vm.connect_uri = srcuri
+            uptime = post_migration_check(vms, uptime, test, params)
+            migrate_setup.migrate_pre_setup(srcuri, params, cleanup=True)
 
 
 def run(test, params, env):
     """
     Test migration under stress.
     """
-    vm_names = params.get("migration_vms").split()
+    vm_names = params.get("vms").split()
     if len(vm_names) < 2:
         test.cancel("Provide enough vms for migration")
 
-    src_uri = libvirt_vm.complete_uri(params.get("migrate_source_host",
-                                                 "EXAMPLE"))
-    if src_uri.count('///') or src_uri.count('EXAMPLE'):
-        test.cancel("The src_uri '%s' is invalid" % src_uri)
-
+    src_uri = "qemu:///system"
     dest_uri = libvirt_vm.complete_uri(params.get("migrate_dest_host",
                                                   "EXAMPLE"))
     if dest_uri.count('///') or dest_uri.count('EXAMPLE'):
@@ -99,23 +139,18 @@ def run(test, params, env):
 
     # Migrated vms' instance
     vms = env.get_all_vms()
-    load_vm_names = params.get("load_vms").split()
-    params['load_vms'] = vms
+    params["load_vms"] = list(vms)
 
     cpu = int(params.get("smp", 1))
     memory = int(params.get("mem")) * 1024
     stress_tool = params.get("stress_tool", "")
     stress_type = params.get("migration_stress_type")
     require_stress_tool = "stress" in stress_tool
-    vm_bytes = params.get("stress_vm_bytes")
+    vm_bytes = params.get("stress_vm_bytes", "128M")
     stress_args = params.get("stress_args")
     migration_type = params.get("migration_type")
-    start_migration_vms = "yes" == params.get("start_migration_vms", "yes")
+    start_migration_vms = params.get("start_migration_vms", "yes") == "yes"
     thread_timeout = int(params.get("thread_timeout", 120))
-    remote_host = params.get("migrate_dest_host")
-    username = params.get("migrate_dest_user", "root")
-    password = params.get("migrate_dest_pwd")
-    prompt = params.get("shell_prompt", r"[\#\$]")
 
     # Set vm_bytes for start_cmd
     mem_total = utils_memory.memtotal()
@@ -124,7 +159,7 @@ def run(test, params, env):
         vm_bytes = (mem_total - vm_reserved) / 2
     elif vm_bytes == "shortage":
         vm_bytes = mem_total - vm_reserved + 524288
-    if vm_bytes is not None:
+    if "vm-bytes" in stress_args:
         params["stress_args"] = stress_args % vm_bytes
 
     # Ensure stress tool is available in host
@@ -138,21 +173,20 @@ def run(test, params, env):
         set_cpu_memory(vm.name, cpu, memory)
 
     try:
-        vm_ipaddr = {}
         if start_migration_vms:
             for vm in vms:
                 vm.start()
-                session = vm.wait_for_login()
-                vm_ipaddr[vm.name] = vm.get_address()
+                vm.wait_for_login()
 
         # configure stress in VM
         if require_stress_tool and stress_type == "stress_in_vms":
             utils_test.load_stress("stress_in_vms", params, vms)
 
-        do_stress_migration(vms, src_uri, dest_uri, stress_type,
-                            migration_type, test, params, thread_timeout)
+        do_stress_migration(vms, src_uri, dest_uri, migration_type, test,
+                            params, thread_timeout)
     finally:
         logging.debug("Cleanup vms...")
+        params["connect_uri"] = src_uri
         for vm in vms:
             utils_test.libvirt.MigrationTest().cleanup_dest_vm(vm, None,
                                                                dest_uri)
@@ -161,4 +195,4 @@ def run(test, params, env):
             if not vm.is_alive():
                 vm.start()
                 vm.wait_for_login()
-        utils_test.unload_stress(stress_type, vms)
+        utils_test.unload_stress(stress_type, params, vms)
