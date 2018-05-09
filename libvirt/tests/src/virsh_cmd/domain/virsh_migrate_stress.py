@@ -1,14 +1,7 @@
-import os
 import logging
 
-from avocado.core import exceptions
-
-from virttest import ssh_key
 from virttest import libvirt_vm
 from virttest import utils_test
-from virttest import data_dir
-from virttest import nfs
-from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import utils_memory
 
@@ -31,7 +24,8 @@ def set_cpu_memory(vm_name, cpu, memory):
 
 
 def do_stress_migration(vms, srcuri, desturi, stress_type,
-                        migration_type, params, thread_timeout=60):
+                        migration_type, test, params,
+                        thread_timeout=60):
     """
     Migrate vms with stress.
 
@@ -43,42 +37,46 @@ def do_stress_migration(vms, srcuri, desturi, stress_type,
     :param params: Test dict params
     :param thread_timeout: default timeout for migration thread
 
-    :raise: exceptions.TestFail if migration fails
+    :raise: test.fail if migration fails
     """
-    fail_info = utils_test.load_stress(stress_type, vms, params)
+    migrate_setup = utils_test.libvirt.MigrationTest()
+    options = params.get("migrate_options")
+    ping_count = int(params.get("ping_count", 10))
+    vm_state = params.get("virsh_migrated_vm_state", "running")
+    uptime = {}
+    migrated_uptime = {}
 
-    migtest = utlv.MigrationTest()
-    options = ''
-    if migration_type == "compressed":
-        options = "--compressed"
-        migration_type = "orderly"
-        shared_dir = os.path.dirname(data_dir.get_data_dir())
-        src_file = os.path.join(shared_dir, "scripts", "duplicate_pages.py")
-        dest_dir = "/tmp"
-        for vm in vms:
-            session = vm.wait_for_login()
-            vm.copy_files_to(src_file, dest_dir)
-            status = session.cmd_status("cd /tmp;python duplicate_pages.py")
-            if status:
-                fail_info.append("Set duplicated pages for vm failed.")
-
-    if len(fail_info):
-        logging.warning("Add stress for migration failed:%s", fail_info)
-
+    for vm in vms:
+        session = vm.wait_for_login()
+        uptime[vm.name] = vm.uptime()
+        logging.info("uptime of VM %s: %s", vm.name, uptime[vm.name])
+        migrate_setup.ping_vm(vm, test, params, ping_count=ping_count)
     logging.debug("Starting migration...")
-    migrate_options = ("--live --unsafe %s --timeout %s"
+    migrate_options = ("%s --timeout %s"
                        % (options, params.get("virsh_migrate_timeout", 60)))
-    migtest.do_migration(vms, srcuri, desturi, migration_type,
-                         options=migrate_options,
-                         thread_timeout=thread_timeout)
+    try:
+        migrate_setup.do_migration(vms, srcuri, desturi, migration_type,
+                                   options=migrate_options,
+                                   thread_timeout=thread_timeout)
+    except Exception, info:
+        test.fail(info)
+    for vm in vms:
+        vm.connect_uri = desturi
+        session = vm.wait_for_serial_login()
+        migrated_uptime[vm.name] = vm.uptime(connect_uri=desturi)
+        logging.info("uptime of migrated VM %s: %s", vm.name,
+                     migrated_uptime[vm.name])
+        if migrated_uptime[vm.name] < uptime[vm.name]:
+            test.fail("vm went for a reboot during migration")
+        if not migrate_setup.check_vm_state(vm, vm_state, desturi):
+            test.fail("Migrated VMs failed to be in %s state at "
+                      "destination" % vm_state)
+        logging.info("Guest state is '%s' at destination is as expected",
+                     vm_state)
+        migrate_setup.ping_vm(vm, test, params, uri=desturi,
+                              ping_count=ping_count)
 
-    # vms will be shutdown, so no need to do this cleanup
-    # And migrated vms may be not login if the network is local lan
-    if stress_type == "stress_on_host":
-        utils_test.unload_stress(stress_type, vms)
-
-    if not migtest.RET_MIGRATION:
-        raise exceptions.TestFail()
+    vm.connect_uri = None
 
 
 def run(test, params, env):
@@ -87,50 +85,28 @@ def run(test, params, env):
     """
     vm_names = params.get("migration_vms").split()
     if len(vm_names) < 2:
-        raise exceptions.TestSkipError("Provide enough vms for migration")
+        test.cancel("Provide enough vms for migration")
 
     src_uri = libvirt_vm.complete_uri(params.get("migrate_source_host",
                                                  "EXAMPLE"))
     if src_uri.count('///') or src_uri.count('EXAMPLE'):
-        raise exceptions.TestSkipError("The src_uri '%s' is invalid" % src_uri)
+        test.cancel("The src_uri '%s' is invalid" % src_uri)
 
     dest_uri = libvirt_vm.complete_uri(params.get("migrate_dest_host",
                                                   "EXAMPLE"))
     if dest_uri.count('///') or dest_uri.count('EXAMPLE'):
-        raise exceptions.TestSkipError("The dest_uri '%s' is invalid" %
-                                       dest_uri)
-
-    # Params for NFS and SSH setup
-    params["server_ip"] = params.get("migrate_dest_host")
-    params["server_user"] = "root"
-    params["server_pwd"] = params.get("migrate_dest_pwd")
-    params["client_ip"] = params.get("migrate_source_host")
-    params["client_user"] = "root"
-    params["client_pwd"] = params.get("migrate_source_pwd")
-    params["nfs_client_ip"] = params.get("migrate_dest_host")
-    params["nfs_server_ip"] = params.get("migrate_source_host")
-
-    # Configure NFS client on remote host
-    nfs_client = nfs.NFSClient(params)
-    nfs_client.setup()
+        test.cancel("The dest_uri '%s' is invalid" % dest_uri)
 
     # Migrated vms' instance
-    vms = []
-    for vm_name in vm_names:
-        vms.append(libvirt_vm.VM(vm_name, params, test.bindir,
-                                 env.get("address_cache")))
-
+    vms = env.get_all_vms()
     load_vm_names = params.get("load_vms").split()
-    # vms for load
-    load_vms = []
-    for vm_name in load_vm_names:
-        load_vms.append(libvirt_vm.VM(vm_name, params, test.bindir,
-                                      env.get("address_cache")))
-    params['load_vms'] = load_vms
+    params['load_vms'] = vms
 
     cpu = int(params.get("smp", 1))
     memory = int(params.get("mem")) * 1024
+    stress_tool = params.get("stress_tool", "")
     stress_type = params.get("migration_stress_type")
+    require_stress_tool = "stress" in stress_tool
     vm_bytes = params.get("stress_vm_bytes")
     stress_args = params.get("stress_args")
     migration_type = params.get("migration_type")
@@ -151,6 +127,10 @@ def run(test, params, env):
     if vm_bytes is not None:
         params["stress_args"] = stress_args % vm_bytes
 
+    # Ensure stress tool is available in host
+    if require_stress_tool and stress_type == "stress_on_host":
+        utils_test.load_stress("stress_on_host", params)
+
     for vm in vms:
         # Keep vm dead for edit
         if vm.is_alive():
@@ -162,30 +142,23 @@ def run(test, params, env):
         if start_migration_vms:
             for vm in vms:
                 vm.start()
-                vm.wait_for_login()
+                session = vm.wait_for_login()
                 vm_ipaddr[vm.name] = vm.get_address()
-                # TODO: recover vm if start failed?
-        # Config ssh autologin for remote host
-        ssh_key.setup_ssh_key(remote_host, username, password, port=22)
+
+        # configure stress in VM
+        if require_stress_tool and stress_type == "stress_in_vms":
+            utils_test.load_stress("stress_in_vms", params, vms)
 
         do_stress_migration(vms, src_uri, dest_uri, stress_type,
-                            migration_type, params, thread_timeout)
-        # Check network of vms on destination
-        if start_migration_vms and migration_type != "cross":
-            for vm in vms:
-                utils_test.check_dest_vm_network(vm, vm_ipaddr[vm.name],
-                                                 remote_host,
-                                                 username, password, prompt)
+                            migration_type, test, params, thread_timeout)
     finally:
         logging.debug("Cleanup vms...")
-        for vm_name in vm_names:
-            vm = libvirt_vm.VM(vm_name, params, test.bindir,
-                               env.get("address_cache"))
-            utlv.MigrationTest().cleanup_dest_vm(vm, None, dest_uri)
-            if vm.is_alive():
-                vm.destroy(gracefully=False)
-
-        if nfs_client:
-            logging.info("Cleanup NFS client environment...")
-            nfs_client.cleanup()
-        env.clean_objects()
+        for vm in vms:
+            utils_test.libvirt.MigrationTest().cleanup_dest_vm(vm, None,
+                                                               dest_uri)
+            # Try to start vms in source once vms in destination are
+            # cleaned up
+            if not vm.is_alive():
+                vm.start()
+                vm.wait_for_login()
+        utils_test.unload_stress(stress_type, vms)
