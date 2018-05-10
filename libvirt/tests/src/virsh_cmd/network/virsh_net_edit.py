@@ -97,6 +97,14 @@ def run(test, params, env):
                 test.fail("Found wrong network states"
                           " after restarting libvirtd: %s"
                           % net_state)
+        else:
+            libvirtd.restart()
+            net_state = virsh.net_state_dict()
+            if (net_state[net_name]['active'] or
+                    net_state[net_name]['autostart'] or
+                    not net_state[net_name]['persistent']):
+                test.fail("Found wrong network states: %s" % net_state)
+            virsh.net_start(net_name)
         edit_net_xml()
         if test_create:
             # Network become persistent after editing
@@ -118,6 +126,16 @@ def run(test, params, env):
         xml = cmd_result.stdout.strip()
         if not re.search(match_string, xml):
             test.fail("The xml is not expected")
+        # The active xml should not contain the match_string
+        cmd_result = virsh.net_dumpxml(net_name, debug=True)
+        if cmd_result.exit_status:
+            test.fail("Failed to dump active xml of virtual network %s" %
+                      net_name)
+        # The xml should contain the match_string
+        match_string = "100.253"
+        xml = cmd_result.stdout.strip()
+        if re.search(match_string, xml):
+            test.fail("The active xml should not change")
 
     finally:
         test_xml.orbital_nuclear_strike()
