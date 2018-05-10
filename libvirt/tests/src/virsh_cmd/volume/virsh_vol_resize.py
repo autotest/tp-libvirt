@@ -102,7 +102,7 @@ def get_expect_info(new_capacity, vol_path, test, resize_option=None):
         test.error("Fail to get expect volume info:\n%s" % detail)
 
 
-def create_luks_secret(vol_path, password, test):
+def create_luks_secret(vol_path, test):
     """
     Create secret for luks encryption
     :param vol_path: volume path.
@@ -123,12 +123,20 @@ def create_luks_secret(vol_path, password, test):
     except IndexError:
         test.error("Fail to get newly created secret uuid")
     logging.debug("Secret uuid %s", encryption_uuid)
-    # Set secret value.
+    return encryption_uuid
+
+
+def set_secret_value(password, encryption_uuid):
+    """
+    Generate secret string and set secret value.
+
+    :param password: password for encryption
+    :param encryption_uuid: uuid of secret
+    """
     encoding = locale.getpreferredencoding()
     secret_string = base64.b64encode(password.encode(encoding)).decode(encoding)
     ret = virsh.secret_set_value(encryption_uuid, secret_string)
     libvirt.check_exit_status(ret)
-    return encryption_uuid
 
 
 def create_luks_vol(vol_name, sec_uuid, params):
@@ -279,8 +287,9 @@ def run(test, params, env):
         # Create a volume
         if b_luks_encrypt:
             luks_sec_uuid = create_luks_secret(os.path.join(pool_target, vol_name),
-                                               encryption_password, test)
+                                               test)
             secret_uuids.append(luks_sec_uuid)
+            set_secret_value(encryption_password, luks_sec_uuid)
             create_luks_vol(vol_name, luks_sec_uuid, params)
         else:
             libv_pvt.pre_vol(vol_name=vol_name, vol_format=vol_format,
