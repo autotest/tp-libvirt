@@ -102,13 +102,13 @@ def run(test, params, env):
         # Load module and get scsi disk name
         linux_modules.load_module("scsi_debug lbpu=1 lbpws=1")
         scsi_disk = process.run("lsscsi|grep scsi_debug|"
-                                "awk '{print $6}'", shell=True).stdout.strip()
+                                "awk '{print $6}'", shell=True).stdout_text.strip()
         # Create partition
         with open("/tmp/fdisk-cmd", "w") as cmd_file:
             cmd_file.write("n\np\n\n\n\nw\n")
 
         output = process.run("fdisk %s < /tmp/fdisk-cmd"
-                             % scsi_disk, shell=True).stdout.strip()
+                             % scsi_disk, shell=True).stdout_text.strip()
         logging.debug("fdisk output %s", output)
         os.remove("/tmp/fdisk-cmd")
         # Format disk
