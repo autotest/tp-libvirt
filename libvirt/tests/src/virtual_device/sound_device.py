@@ -46,6 +46,8 @@ def run(test, params, env):
         """
         Check whether the added devices are shown in the qemu cmd line
         """
+        if not vm.get_pid():
+            test.fail('VM pid file missing.')
         with open('/proc/%s/cmdline' % vm.get_pid()) as cmdline_file:
             cmdline = cmdline_file.read()
         # Check sound model
