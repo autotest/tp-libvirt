@@ -91,7 +91,7 @@ def run(test, params, env):
         if not os.path.exists(guest_log_file):
             test.error("Expected VM log file: %s not exists" % guest_log_file)
         permission = oct(stat.S_IMODE(os.lstat(guest_log_file).st_mode))
-        if permission != '0600':
+        if permission != '0600' and permission != '0o600':
             test.fail("VM log file: %s expect to get permission:0600, got %s ."
                       % (guest_log_file, permission))
         # Check VM log file owner.
