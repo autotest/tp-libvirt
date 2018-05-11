@@ -57,7 +57,10 @@ def run(test, params, env):
         except utils_path.CmdNotFoundError:
             if not utils_package.package_install(["virt-install"]):
                 test.cancel("Failed to install virt-install on host")
-        utils_libguestfs.virt_clone_cmd(vm_name, vm2_name, True, timeout=360)
+        ret_clone = utils_libguestfs.virt_clone_cmd(vm_name, vm2_name,
+                                                    True, timeout=360)
+        if ret_clone.exit_status:
+            test.fail("Error occured when clone a second vm!")
         vm2 = libvirt_vm.VM(vm2_name, vm.params, vm.root_dir, vm.address_cache)
         virsh.dom_list("--name --all", debug=True)
 
@@ -101,7 +104,7 @@ def run(test, params, env):
 
     finally:
         # Remove additional vms
-        if add_vm and vm2.exists():
+        if add_vm and vm2.exists() and result.exit_status:
             virsh.remove_domain(vm2_name, "--remove-all-storage")
 
         # Undefine newly renamed domain
