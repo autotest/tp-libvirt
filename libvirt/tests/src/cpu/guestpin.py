@@ -176,8 +176,8 @@ def run(test, params, env):
 
         cpucount = vm.get_cpu_count()
         if cpucount != current_vcpu:
-            test.fail("Incorrect initial guest vcpu\nExpected:%s Actual:%s",
-                      cpucount, current_vcpu)
+            test.fail("Incorrect initial guest vcpu\nExpected:%s Actual:%s" %
+                      (cpucount, current_vcpu))
 
         if config_pin:
             cpustats = utils_hotplug.get_cpustats(vm)
@@ -238,8 +238,8 @@ def run(test, params, env):
         # Check for guest functional
         cpucount = vm.get_cpu_count()
         if cpucount != current_vcpu:
-            test.fail("Incorrect final guest vcpu\nExpected:%s Actual:%s",
-                      cpucount, current_vcpu)
+            test.fail("Incorrect final guest vcpu\nExpected:%s Actual:%s" %
+                      (cpucount, current_vcpu))
     finally:
         if fail:
             test.fail("Consult previous errors")
