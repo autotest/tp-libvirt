@@ -1003,7 +1003,7 @@ def run(test, params, env):
             xml_file.write(minimal_xml_content)
         vm.undefine()
         if virsh.define(minimal_vm_xml_file).exit_status:
-            test.skip("can't create the domain")
+            test.cancel("can't create the domain")
 
     # For special characters VM xml,and disk image file name.
     if test_special_characters_xml:
