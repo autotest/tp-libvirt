@@ -319,7 +319,7 @@ def run(test, params, env):
                                   debug=True)
         if not status_error:
             if result.exit_status != 0:
-                test.fail(result.stdout.strip())
+                test.fail(result.stdout.strip() + result.stderr.strip())
             else:
                 if check_vol_info(libv_vol, vol_name, test, expect_info):
                     logging.debug("Volume %s resize check pass.", vol_name)
