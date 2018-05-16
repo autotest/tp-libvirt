@@ -1080,6 +1080,7 @@ def run(test, params, env):
     cpu_set = "yes" == test_dict.get("cpu_set", "no")
     vcpu_num = test_dict.get("vcpu_num", "1")
 
+    enable_stress_test = "yes" == test_dict.get("enable_stress_test", "no")
     stress_type = test_dict.get("stress_type")
     stress_args = test_dict.get("stress_args")
 
@@ -1906,7 +1907,7 @@ def run(test, params, env):
                                           % (run_cmd_in_vm, output))
             logging.debug(output)
 
-        if stress_args:
+        if enable_stress_test and stress_args:
             s_list = stress_type.split("_")
 
             if s_list and s_list[-1] == "vms":
