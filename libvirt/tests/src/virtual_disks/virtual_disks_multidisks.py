@@ -60,6 +60,13 @@ def run(test, params, env):
     tmp_demo_img = "/tmp/demo.img"
     se_obj = None
 
+    original_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    disk_devices = original_xml.get_devices('disk')
+    for disk in disk_devices:
+        if disk.device != 'disk':
+            virsh.detach_disk(vm_name, disk.target['dev'],
+                              extra='--config', debug=True)
+
     def check_disk_order(targets_name):
         """
         Check VM disk's order on pci bus.
