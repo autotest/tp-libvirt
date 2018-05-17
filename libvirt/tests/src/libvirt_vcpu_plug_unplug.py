@@ -76,6 +76,8 @@ def run(test, params, env):
             elif vm_operation == "suspend":
                 result = virsh.suspend(vm_name, ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
+            elif vm_operation == "reboot":
+                vm.reboot()
             else:
                 logging.debug("No operation for the domain")
 
@@ -99,6 +101,8 @@ def run(test, params, env):
             elif vm_operation == "suspend":
                 result = virsh.resume(vm_name, ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
+            elif vm_operation == "reboot":
+                pass
             else:
                 logging.debug("No need recover the domain")
 
