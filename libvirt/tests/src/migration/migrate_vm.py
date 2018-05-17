@@ -1929,7 +1929,7 @@ def run(test, params, env):
                 pkg_list = ['stress']
                 libvirt.yum_install(pkg_list)
                 err_msg = utils_test.load_stress(stress_type,
-                                                 [vm], test_dict)
+                                                 test_dict, [vm])
                 if len(err_msg):
                     raise exceptions.TestFail("Add stress for migration failed:%s"
                                               % err_msg[0])
