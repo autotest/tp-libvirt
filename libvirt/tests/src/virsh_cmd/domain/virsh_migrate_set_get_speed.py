@@ -19,9 +19,9 @@ UINT64_MAX = (1 << 64) - 1
 # This test thus must use proper values.  Additionally, code
 # points out that max is an INT64, which is not called out in
 # the man page (yet).
-UINT32_MiB = UINT32_MAX / (1024 * 1024)
-INT64_MiB = INT64_MAX / (1024 * 1024)
-UINT64_MiB = UINT64_MAX / (1024 * 1024)
+UINT32_MiB = UINT32_MAX // (1024 * 1024)
+INT64_MiB = INT64_MAX // (1024 * 1024)
+UINT64_MiB = UINT64_MAX // (1024 * 1024)
 DEFAULT = INT64_MiB
 
 
