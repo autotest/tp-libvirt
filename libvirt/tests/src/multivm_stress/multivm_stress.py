@@ -16,7 +16,7 @@ def run(test, params, env):
     stress_event = utils_stress.VMStressEvents(params, env)
     if guest_stress:
         try:
-            utils_test.load_stress("stress_in_vms", vms, params)
+            utils_test.load_stress("stress_in_vms", params=params, vms=vms)
         except Exception as err:
             test.fail("Error running stress in vms: %s" % err)
     try:
