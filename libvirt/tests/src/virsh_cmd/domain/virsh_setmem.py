@@ -76,7 +76,7 @@ def run(test, params, env):
     4) Check result.
     """
 
-    def vm_usable_mem(session):
+    def get_vm_usable_mem(session):
         """
         Get total usable RAM from /proc/meminfo
         """
@@ -95,7 +95,7 @@ def run(test, params, env):
         dmi_mem = session.cmd_output(cmd)
         total_physical_mem = reduce(lambda x, y: int(x) + int(y),
                                     re.findall(r'Size:\s(\d+)\sMB', dmi_mem))
-        return int(total_physical_mem) * 1024 - vm_usable_mem(session)
+        return int(total_physical_mem) * 1024 - get_vm_usable_mem(session)
 
     def make_domref(domarg, vm_ref, domid, vm_name, domuuid):
         """
@@ -282,11 +282,11 @@ def run(test, params, env):
     if session.cmd_status('dmidecode'):
         # The physical memory size is in vm xml, use it when dmideode not
         # supported
-        unusable_mem = int(vmxml.max_mem) - vm_usable_mem(session)
+        unusable_mem = int(vmxml.max_mem) - get_vm_usable_mem(session)
     else:
         unusable_mem = vm_unusable_mem(session)
     original_outside_mem = vm.get_used_mem()
-    original_inside_mem = vm_usable_mem(session)
+    original_inside_mem = get_vm_usable_mem(session)
     session.close()
     # Prepare VM state
     if not start_vm:
@@ -351,21 +351,6 @@ def run(test, params, env):
 
         # Gather stats if not running error test
         if not status_error and not old_libvirt_fail:
-            if not memory_change:
-                test_inside_mem = original_inside_mem
-                test_outside_mem = original_outside_mem
-            else:
-                if vm.state() == "shut off":
-                    vm.start()
-                # Make sure it's never paused
-                vm.resume()
-                session = vm.wait_for_login()
-
-                # Actual results
-                test_inside_mem = vm_usable_mem(session)
-                session.close()
-                test_outside_mem = vm.get_used_mem()
-
             # Expected results for both inside and outside
             if remove_balloon_driver:
                 expected_mem = original_outside_mem
@@ -384,27 +369,56 @@ def run(test, params, env):
                 expected_inside_mem = expected_mem
                 expected_outside_mem = original_outside_mem
 
+            def get_vm_mem():
+                """
+                Test results for both inside and outside
+                :return: Get vm memory for both inside and outside
+                """
+                if not memory_change:
+                    test_inside_mem = original_inside_mem
+                    test_outside_mem = original_outside_mem
+                else:
+                    if vm.state() == "shut off":
+                        vm.start()
+                    elif vm.state() == "paused":
+                        # Make sure it's never paused
+                        vm.resume()
+                    session = vm.wait_for_login()
+
+                    # Actual results
+                    test_inside_mem = get_vm_usable_mem(session)
+                    session.close()
+                    test_outside_mem = vm.get_used_mem()
+                return (test_inside_mem, test_outside_mem)
+
+            # Don't care about memory comparison on error test
+            def verify_outside_result():
+                _, test_outside_mem = get_vm_mem()
+                return(cal_deviation(test_outside_mem, expected_outside_mem) <= delta_percentage)
+
+            def verify_inside_result():
+                test_inside_mem, _ = get_vm_mem()
+                return(cal_deviation(test_inside_mem, expected_inside_mem) <= delta_percentage)
+
+            msg = "test conditions not met: "
+            error_flag = 0
+            if status is not 0:
+                error_flag = 1
+                msg += "Non-zero virsh setmem exit code. "
+            if not utils_misc.wait_for(verify_outside_result, timeout=240):
+                error_flag = 1
+                msg += "Outside memory deviated. "
+            if not utils_misc.wait_for(verify_inside_result, timeout=240):
+                error_flag = 1
+                msg += "Inside memory deviated. "
+
+            test_inside_mem, test_outside_mem = get_vm_mem()
             print_debug_stats(original_inside_mem, original_outside_mem,
                               test_inside_mem, test_outside_mem,
                               expected_outside_mem, expected_inside_mem,
                               delta_percentage, unusable_mem)
-
-            # Don't care about memory comparison on error test
-            outside_pass = cal_deviation(test_outside_mem,
-                                         expected_outside_mem) <= delta_percentage
-            inside_pass = cal_deviation(test_inside_mem,
-                                        expected_inside_mem) <= delta_percentage
-            if status is not 0 or not outside_pass or not inside_pass:
-                msg = "test conditions not met: "
-                if status is not 0:
-                    msg += "Non-zero virsh setmem exit code. "
-                if not outside_pass:
-                    msg += "Outside memory deviated. "
-                if not inside_pass:
-                    msg += "Inside memory deviated. "
+            if error_flag:
                 test.fail(msg)
-
-            return  # Normal test passed
         elif not status_error and old_libvirt_fail:
             if status is 0:
                 if old_libvirt:
