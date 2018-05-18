@@ -906,7 +906,7 @@ def check_domjobinfo_on_complete(test, source_jobinfo, target_jobinfo):
     for key, value in source_info.items():
         if key in ["Expected downtime"]:
             continue
-        if not target_info.has_key(key):
+        if key not in target_info:
             test.fail("The domjobinfo on target host "
                       "does not has the field: '%s'" % key)
 
