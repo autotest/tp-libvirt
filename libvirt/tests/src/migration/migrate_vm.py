@@ -1907,7 +1907,7 @@ def run(test, params, env):
                                           % (run_cmd_in_vm, output))
             logging.debug(output)
 
-        if enable_stress_test and stress_args:
+        if enable_stress_test and stress_args and stress_type:
             s_list = stress_type.split("_")
 
             if s_list and s_list[-1] == "vms":
