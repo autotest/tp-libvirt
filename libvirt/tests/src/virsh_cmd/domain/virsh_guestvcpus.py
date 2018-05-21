@@ -38,7 +38,7 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy()
         vmxml.placement = vcpus_placement
-        vmxml.set_vm_vcpus(vm_name, vcpus_num, vcpus_num)
+        vmxml.set_vm_vcpus(vm_name, vcpus_num, vcpus_num, topology_correction=True)
         logging.debug("Define guest with '%s' vcpus" % str(vcpus_num))
 
         # Start guest agent in vm
