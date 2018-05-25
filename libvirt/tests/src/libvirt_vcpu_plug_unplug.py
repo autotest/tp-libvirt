@@ -442,6 +442,10 @@ def run(test, params, env):
                                         setvcpu_option,
                                         readonly=setvcpu_readonly,
                                         ignore_status=True, debug=True)
+                unsupport_str = utils_hotplug.vcpuhotunplug_unsupport_str()
+                if unsupport_str and (unsupport_str in result.stderr):
+                    test.cancel("Vcpu hotunplug is not supported in this host:"
+                                "\n%s" % result.stderr)
                 try:
                     session = vm.wait_for_login()
                     cmd = "lscpu | grep \"^CPU(s):\""
