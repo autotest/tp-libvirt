@@ -133,11 +133,11 @@ def run(test, params, env):
     # run domblklist and check
     domblklist_test()
 
-    # Test domblkinfo as well
+    # Test domblkinfo function as well
     if domblkinfo == "yes":
         ret = virsh.domblklist(vm_ref, options,
                                ignore_status=True, debug=True)
-        target_disks = re.findall(r"[v, s]d[a-z]", ret.stdout)
+        target_disks = re.findall(r"[v,s]d[a-z]", ret.stdout)
         if info_options == "":
             check_list = ["Capacity", "Allocation", "Physical"]
             ret2 = virsh.domblkinfo(vm_ref, target_disks[0])
@@ -146,7 +146,7 @@ def run(test, params, env):
             cmd = "virsh domblkinfo %s %s %s" % (vm_ref, target_disks[0], info_options)
             ret2 = process.run(cmd, shell=True, ignore_status=True)
         for check in check_list:
-            if re.search(check, ret2.stdout):
+            if not re.search(check, ret2.stdout):
                 test.fail("Cmd domblkinfo run failed")
 
     if status_error == "no":
