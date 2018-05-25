@@ -10,7 +10,7 @@ from virttest import utils_npiv as npiv
 _TIMEOUT = 5
 
 
-def restart_libvirtd():
+def restart_libvirtd(test):
     """
     Restart libvirtd deamon.
     """
@@ -19,7 +19,7 @@ def restart_libvirtd():
         test.fail("Failed to restart libvirt deamon.")
 
 
-def restart_libvirtd_and_check_vhbaxml(scsi_host):
+def restart_libvirtd_and_check_vhbaxml(scsi_host, test):
     """
     Check a vhba's xml before and after restart libvirtd. Return false
     if vhba's xml chnaged.
@@ -29,7 +29,7 @@ def restart_libvirtd_and_check_vhbaxml(scsi_host):
     if "<device>" not in scsi_host_xml:
         test.fail("node device %s has invalid xml: %s" %
                   (scsi_host, scsi_host_xml))
-    restart_libvirtd()
+    restart_libvirtd(test)
     cmd_result = virsh.nodedev_dumpxml(scsi_host)
     scsi_host_xml_new = cmd_result.stdout.strip()
     if (scsi_host_xml == scsi_host_xml_new):
@@ -41,7 +41,7 @@ def restart_libvirtd_and_check_vhbaxml(scsi_host):
     return False
 
 
-def create_vhba(wwnn, wwpn, parent_scsi_host, method="virsh",
+def create_vhba(test, wwnn, wwpn, parent_scsi_host, method="virsh",
                 fc_host_dir="/sys/class/fc_host"):
     """
     Create vhba, can use 'virsh nodedev-create' or echo wwpn:wwnn to
@@ -63,7 +63,7 @@ def create_vhba(wwnn, wwpn, parent_scsi_host, method="virsh",
         test.fail("method must be 'virsh' or 'echo'")
 
 
-def delete_vhba(scsi_host="", wwnn="", wwpn="", parent_scsi_host="",
+def delete_vhba(test, scsi_host="", wwnn="", wwpn="", parent_scsi_host="",
                 method="virsh", fc_host_dir="/sys/class/fc_host"):
     """
     Delete a vhba, can use 'virsh nodedev-destroy' or echo wwpn:wwnn to
@@ -120,7 +120,7 @@ def run(test, params, env):
         old_vhbas = npiv.find_hbas("vhba")
 
         # Create vhba
-        create_vhba(wwnn, wwpn, first_online_hba, create_vhba_method,
+        create_vhba(test, wwnn, wwpn, first_online_hba, create_vhba_method,
                     fc_host_dir)
         if not utils_misc.wait_for(lambda: npiv.is_vhbas_added(old_vhbas),
                                    timeout=_TIMEOUT):
@@ -133,14 +133,14 @@ def run(test, params, env):
         new_vhbas.append(new_vhba)
 
         # Restart libvirtd, and check vhba's xml after it.
-        check_result = restart_libvirtd_and_check_vhbaxml(new_vhba)
+        check_result = restart_libvirtd_and_check_vhbaxml(new_vhba, test)
         if not check_result:
             test.fail("vhba %s's xml changed after libvirtd "
                       "restarted." % new_vhba)
 
         # Destroy vhba
         cur_vhbas = npiv.find_hbas("vhba")
-        delete_vhba(new_vhba, wwnn, wwpn, first_online_hba,
+        delete_vhba(test, new_vhba, wwnn, wwpn, first_online_hba,
                     destroy_vhba_method, fc_host_dir)
         if not utils_misc.wait_for(lambda: npiv.is_vhbas_removed(cur_vhbas),
                                    timeout=_TIMEOUT):
