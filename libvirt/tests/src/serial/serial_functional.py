@@ -6,12 +6,14 @@ import socket
 import threading
 import select
 import platform
+import subprocess
 
 import aexpect
 
 from virttest import remote
 from virttest import virsh
 from virttest.utils_test import libvirt
+from virttest.utils_conn import TLSConnection
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices import librarian
 
@@ -25,7 +27,7 @@ class Console(aexpect.ShellSession):
     with qemu VM in different ways.
     """
 
-    def __init__(self, console_type, address, is_server=False):
+    def __init__(self, console_type, address, is_server=False, pki_path='.'):
         """
         Initialize the instance and create socket/fd for connect with.
 
@@ -36,6 +38,7 @@ class Console(aexpect.ShellSession):
                         this should be a string representing the path to be
                         connect with
         :param is_server: Whether this connection act as a server or a client
+        :param pki_path: Where the tls pki file is located
         """
         self.exit = False
         self.address = address
@@ -45,18 +48,43 @@ class Console(aexpect.ShellSession):
         self.read_fd = None
         self.write_fd = None
         self._poll_thread = None
+        self.pki_path = pki_path
         self.linesep = "\n"
         self.prompt = r"^\[.*\][\#\$]\s*$"
         self.status_test_command = "echo $?"
+        self.process = None
 
         if console_type == 'unix':
             self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             self.socket.connect(address)
+        elif console_type == 'tls':
+            outfilename = '/tmp/gnutls.out'
+            self.read_fd = open(outfilename, 'a+')
+            if is_server:
+                cmd = ('gnutls-serv --echo --x509cafile %s/ca-cert.pem ' %
+                       self.pki_path + '--x509keyfile %s/server-key.pem' %
+                       self.pki_path + ' --x509certfile %s/server-cert.pem' %
+                       self.pki_path)
+                obj = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
+                                       stdout=self.read_fd,
+                                       universal_newlines=True)
+            else:
+                cmd = ('gnutls-cli --priority=NORMAL -p5556 --x509cafile=%s'
+                       % self.pki_path + '/ca-cert.pem ' + '127.0.0.1 '
+                       + '--x509certfile=%s' % self.pki_path
+                       + '/client-cert.pem --x509keyfile=%s' % self.pki_path
+                       + '/client-key.pem')
+                obj = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
+                                       stdout=self.read_fd,
+                                       universal_newlines=True)
+                obj.stdin.write('\n')
+                time.sleep(50)
+                obj.stdin.write('\n')
+                obj.stdin.close()
+            self.process = obj
         elif console_type == 'tcp':
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             if is_server:
-                # Fix the address already in use issue after other case run
-                time.sleep(60)
                 self.socket.bind(address)
                 self.socket.listen(1)
                 self._poll_thread = threading.Thread(
@@ -71,15 +99,13 @@ class Console(aexpect.ShellSession):
         elif console_type == 'pipe':
             os.mkfifo(address + '.in')
             os.mkfifo(address + '.out')
-            self.write_fd = os.open(
-                address + '.in',
-                os.O_RDWR | os.O_CREAT | os.O_NONBLOCK)
-            self.read_fd = os.open(
-                address + '.out',
-                os.O_RDONLY | os.O_CREAT | os.O_NONBLOCK)
+            self.write_fd = open(
+                address + '.in', 'a+')
+            self.read_fd = open(
+                address + '.in', 'r')
         elif console_type == 'file':
-            self.read_fd = os.open(
-                address, os.O_RDONLY | os.O_CREAT | os.O_NONBLOCK)
+            self.read_fd = open(address,
+                                'a+')
 
     def _tcp_thread(self):
         """
@@ -116,14 +142,14 @@ class Console(aexpect.ShellSession):
                         1024, socket.MSG_DONTWAIT)
                     data += new_data
                     return data
-                elif self.console_type in ['file', 'pipe']:
+                elif self.console_type in ['file', 'pipe', 'tls']:
                     try:
                         read_fds, _, _ = select.select(
                             [self.read_fd], [], [], internal_timeout)
                     except Exception:
                         return data
                     if self.read_fd in read_fds:
-                        new_data = os.read(self.read_fd, 1024)
+                        new_data = self.read_fd.read(1024)
                         if not new_data:
                             return data
                         data += new_data
@@ -244,6 +270,8 @@ class Console(aexpect.ShellSession):
                 os.remove(self.address + '.in')
             if os.path.exists(self.address + '.out'):
                 os.remove(self.address + '.out')
+        if self.process is not None:
+            self.process.terminate()
 
 
 def run(test, params, env):
@@ -278,7 +306,10 @@ def run(test, params, env):
         """
         Prepare a serial device XML according to parameters
         """
-        serial = librarian.get('serial')(serial_type)
+        local_serial_type = serial_type
+        if serial_type == "tls":
+            local_serial_type = "tcp"
+        serial = librarian.get('serial')(local_serial_type)
 
         serial.target_port = "0"
 
@@ -299,7 +330,10 @@ def run(test, params, env):
         """
         Prepare a serial device XML according to parameters
         """
-        console = librarian.get('console')(serial_type)
+        local_serial_type = serial_type
+        if serial_type == "tls":
+            local_serial_type = "tcp"
+        console = librarian.get('console')(local_serial_type)
         console.target_type = console_target_type
         console.target_port = console_target_port
 
@@ -355,10 +389,14 @@ def run(test, params, env):
         """
         console_cls = librarian.get('console')
 
-        # Predict expected serial and console XML
-        expected_console = console_cls(serial_type)
+        local_serial_type = serial_type
 
-        if serial_type == 'udp':
+        if serial_type == 'tls':
+            local_serial_type = 'tcp'
+        # Predict expected serial and console XML
+        expected_console = console_cls(local_serial_type)
+
+        if local_serial_type == 'udp':
             sources = []
             for source in serial_dev.sources:
                 if 'service' in source and 'mode' not in source:
@@ -369,8 +407,8 @@ def run(test, params, env):
 
         expected_console.sources = sources
 
-        if serial_type == 'tcp':
-            if 'protocol_type' in serial_type:
+        if local_serial_type == 'tcp':
+            if 'protocol_type' in local_serial_type:
                 expected_console.protocol_type = serial_dev.protocol_type
             else:
                 expected_console.protocol_type = "raw"
@@ -402,13 +440,13 @@ def run(test, params, env):
 
         if console_target_type == 'serial':
             serial_cls = librarian.get('serial')
-            expected_serial = serial_cls(serial_type)
+            expected_serial = serial_cls(local_serial_type)
             expected_serial.sources = sources
 
             set_targets(expected_serial)
 
-            if serial_type == 'tcp':
-                if 'protocol_type' in serial_type:
+            if local_serial_type == 'tcp':
+                if 'protocol_type' in local_serial_type:
                     expected_serial.protocol_type = serial_dev.protocol_type
                 else:
                     expected_serial.protocol_type = "raw"
@@ -435,6 +473,11 @@ def run(test, params, env):
             # Unix socket path should match SELinux label
             socket_path = '/var/lib/libvirt/qemu/virt-test'
             console = Console('unix', socket_path, is_server)
+        elif serial_type == 'tls':
+            host = '127.0.0.1'
+            service = 5556
+            console = Console('tls', (host, service), is_server,
+                              custom_pki_path)
         elif serial_type == 'tcp':
             host = '127.0.0.1'
             service = 2445
@@ -487,7 +530,7 @@ def run(test, params, env):
         # Get expected serial and console options from params
         if serial_type == 'dev':
             ser_type = 'tty'
-        elif serial_type in ['unix', 'tcp']:
+        elif serial_type in ['unix', 'tcp', 'tls']:
             ser_type = 'socket'
         else:
             ser_type = serial_type
@@ -503,7 +546,7 @@ def run(test, params, env):
                 exp_ser_opts.append('append=on')
             else:
                 exp_ser_opts.append('path=%s' % path)
-        elif serial_type in ['tcp']:
+        elif serial_type in ['tcp', 'tls']:
             for source in serial_dev.sources:
                 if 'host' in source:
                     host = source['host']
@@ -530,7 +573,7 @@ def run(test, params, env):
             exp_ser_opts.append('localaddr=%s' % localaddr)
             exp_ser_opts.append('localport=%s' % localport)
 
-        if serial_type in ['unix', 'tcp', 'udp']:
+        if serial_type in ['unix', 'tcp', 'udp', 'tls']:
             for source in serial_dev.sources:
                 if 'mode' in source:
                     mode = source['mode']
@@ -538,10 +581,14 @@ def run(test, params, env):
                 exp_ser_opts.append('server')
                 exp_ser_opts.append('nowait')
 
+        if serial_type == 'tls':
+            exp_ser_opts.append('tls-creds=objcharserial0_tls0')
+
         exp_ser_opt = ','.join(exp_ser_opts)
 
         if "ppc" in platform.machine():
-            exp_ser_devs = ['spapr-vty', 'chardev=charserial0', 'reg=0x30000000']
+            exp_ser_devs = ['spapr-vty', 'chardev=charserial0',
+                            'reg=0x30000000']
             if libvirt_version.version_compare(3, 9, 0):
                 exp_ser_devs.insert(2, 'id=serial0')
         else:
@@ -584,7 +631,7 @@ def run(test, params, env):
         Check whether console works properly by read the result for read only
         console and login and emit a command for read write console.
         """
-        if serial_type in ['file']:
+        if serial_type in ['file', 'tls']:
             _, output = console.read_until_output_matches(['.*[Ll]ogin:'])
         else:
             console.wait_for_login(username, password)
@@ -592,19 +639,24 @@ def run(test, params, env):
             logging.debug("Command status: %s", status)
             logging.debug("Command output: %s", output)
 
-    def check_cleanup():
+    def cleanup(objs_list):
         """
-        Clean up residue file.
+        Clean up test environment
         """
         if serial_type == 'file':
             if os.path.exists('/var/log/libvirt/virt-test'):
                 os.remove('/var/log/libvirt/virt-test')
 
+        # recovery test environment
+        for obj in objs_list:
+            obj.auto_recover = True
+            del obj
+
     def get_console_type():
         """
         Check whether console should be started before or after guest starting.
         """
-        if serial_type in ['tcp', 'unix', 'udp']:
+        if serial_type in ['tcp', 'unix', 'udp', 'tls']:
             for source in serial_dev.sources:
                 if 'mode' in source and source['mode'] == 'connect':
                     return 'server'
@@ -621,18 +673,40 @@ def run(test, params, env):
     console_target_type = params.get('console_target_type', 'serial')
     console_target_port = params.get('console_target_port', '0')
     second_serial_console = params.get('second_serial_console', 'no') == 'yes'
+    custom_pki_path = params.get('custom_pki_path', '/etc/pki/libvirt-chardev')
+    auto_recover = params.get('auto_recover', 'no')
+    client_pwd = params.get('client_pwd', None)
+    server_pwd = params.get('server_pwd', None)
+
+    args_list = [client_pwd, server_pwd]
+
+    for arg in args_list:
+        if arg and arg.count("ENTER.YOUR."):
+            raise test.fail("Please assign a value for %s!" % arg)
+
     vm_name = params.get('main_vm', 'virt-tests-vm1')
     vm = env.get_vm(vm_name)
+
+    # it's used to clean up TLS objs later
+    objs_list = []
 
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
     try:
         vm_xml.remove_all_device_by_type('serial')
         vm_xml.remove_all_device_by_type('console')
+        if serial_type == "tls":
+            test_dict = dict(params)
+            tls_obj = TLSConnection(test_dict)
+            if auto_recover == "yes":
+                objs_list.append(tls_obj)
+            tls_obj.conn_setup(False, True, True)
+
         serial_dev = prepare_serial_device()
         if console_target_type == 'serial' or second_serial_console:
             logging.debug('Serial device:\n%s', serial_dev)
             vm_xml.add_device(serial_dev)
+
         console_dev = prepare_console_device()
         logging.debug('Console device:\n%s', console_dev)
         vm_xml.add_device(console_dev)
@@ -644,9 +718,9 @@ def run(test, params, env):
             vm_xml.add_device(console_dev)
             vm_xml.undefine()
             res = virsh.define(vm_xml.xml)
-            if res.stderr.find(r'Only the first console can be ') != -1:
-                logging.debug("Test only first console can be a"
-                              "serial succeeded.")
+            if res.stderr.find(r'Only the first console can be a serial port'):
+                logging.debug("Test only the first console can be a serial"
+                              "succeeded")
                 return
             test.fail("Test only the first console can be serial failed.")
 
@@ -655,7 +729,6 @@ def run(test, params, env):
         if not define_and_check():
             logging.debug("Can't define the VM, exiting.")
             return
-
         check_xml()
 
         expected_fails = []
@@ -678,11 +751,12 @@ def run(test, params, env):
         if console_type == 'client':
             console = prepare_serial_console()
 
-        if console_type is not None:
+        if (console_type is not None and serial_type != 'tls' and
+           console_type != 'server'):
             check_serial_console(console, username, password)
 
         vm.destroy()
 
-        check_cleanup()
     finally:
+        cleanup(objs_list)
         vm_xml_backup.sync()
