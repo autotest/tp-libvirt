@@ -42,7 +42,7 @@ def get_storage_devices():
         for device in os.listdir(storage_path):
             info = process.run(
                                'udevadm info %s' % os.path.join(storage_path, device),
-                               timeout=5, ignore_status=True, shell=True).stdout
+                               timeout=5, ignore_status=True, shell=True).stdout_text
             # Only disk devices are list, not partition
             dev_type = re.search(r'(?<=E: DEVTYPE=)\S*', info)
             dev_real_virtual = re.search(r'P: /devices/virtual', info)
