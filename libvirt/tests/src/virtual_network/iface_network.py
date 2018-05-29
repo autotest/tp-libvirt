@@ -518,6 +518,7 @@ TIMEOUT 3"""
     net_with_dev = "yes" == params.get("with_dev", "no")
     username = params.get("username")
     password = params.get("password")
+    forward = ast.literal_eval(params.get("net_forward", "{}"))
     ipt_rules = []
 
     # Destroy VM first
@@ -561,8 +562,6 @@ TIMEOUT 3"""
             # Check forward device is valid or not,
             # if it's not in host interface list, try to set
             # forward device to first active interface of host
-            forward = ast.literal_eval(params.get("net_forward",
-                                                  "{}"))
             if ('mode' in forward and forward['mode'] in
                 ['passthrough', 'private', 'bridge', 'macvtap'] and
                 'dev' in forward and
