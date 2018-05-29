@@ -1,5 +1,6 @@
 import re
 import logging
+import platform
 
 from avocado.utils import process
 
@@ -163,7 +164,8 @@ def run(test, params, env):
                     test.cancel("node %s memory is empty" % i)
 
         # set hugepage with qemu.conf and mount path
-        if default_hp_size == 2048:
+        arch = platform.machine()
+        if default_hp_size == 2048 and 'ppc64' not in arch:
             hp_cl.setup()
             deallocate = True
         else:
