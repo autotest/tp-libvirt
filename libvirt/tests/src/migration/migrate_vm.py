@@ -104,6 +104,11 @@ def check_output(output_msg, params):
     :raise TestSkipError: raised if the known error is found together
                           with some conditions satisfied
     """
+    err_msg = params.get("err_msg", None)
+    if err_msg and err_msg in output_msg:
+        logging.debug("Expected error '%s' was found", err_msg)
+        return
+
     ERR_MSGDICT = {"Bug 1249587": "error: Operation not supported: " +
                    "pre-creation of storage targets for incremental " +
                    "storage migration is not supported",
