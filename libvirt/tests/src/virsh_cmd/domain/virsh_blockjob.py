@@ -116,6 +116,9 @@ def run(test, params, env):
     if invalid_disk:
         target = invalid_disk
 
+    # Wait for few seconds to be more like human activity,
+    # otherwise, unexpected failure may happen.
+    time.sleep(3)
     # Run virsh blockjob command
     cmd_result = virsh.blockjob(vm_name, target, options,
                                 ignore_status=True, debug=True)
