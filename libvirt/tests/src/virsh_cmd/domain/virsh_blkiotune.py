@@ -1,16 +1,22 @@
 import os
 import logging
-from autotest.client.shared import error
+import re
+
+from avocado.utils import process
+
 from virttest import libvirt_xml, utils_libvirtd, virsh
 from virttest.staging import utils_cgroup
 from virttest.utils_misc import get_dev_major_minor
+from virttest.compat_52lts import results_stdout_52lts
 
 
-def check_blkiotune(params):
+def check_blkiotune(test, params):
     """
     To compare weight and device-weights value with guest XML
     configuration, virsh blkiotune output and corresponding
     blkio.weight and blkio.weight_device value from cgroup.
+
+    :param test: the test handle
     :params: the parameter dictionary
     """
     vm_name = params.get("main_vm")
@@ -42,7 +48,6 @@ def check_blkiotune(params):
     device_weights_from_xml = ""
     weight_from_cgroup = ""
     device_weight_from_cgroup = ""
-    blkio_params_from_cgroup = {}
 
     weight_from_xml = blkio_params.get("weight", "")
     device_weights_path_from_xml = blkio_params.get("device_weights_path")
@@ -53,7 +58,7 @@ def check_blkiotune(params):
     # To get guest corresponding blkio.weight and blkio.weight_device value
     # from blkio controller of the cgroup.
     if cgconfig == "on" and vm.is_alive():
-        blkio_params_from_cgroup = get_blkio_params_from_cgroup(params)
+        blkio_params_from_cgroup = get_blkio_params_from_cgroup(test, params)
         weight_from_cgroup = blkio_params_from_cgroup.get('weight')
         device_weight_from_cgroup = \
             blkio_params_from_cgroup.get('weight_device')
@@ -62,30 +67,25 @@ def check_blkiotune(params):
     # of /path/to/device,weight
     if device_weights_path_from_xml and device_weights_weight_from_xml:
         device_weights_from_xml = device_weights_path_from_xml + "," + \
-            device_weights_weight_from_xml
+                                  device_weights_weight_from_xml
 
     if device_weights:
         dev = device_weights.split(',')[0]
         (major, minor) = get_dev_major_minor(dev)
-        device_weights_tmp = str(major) + ":" + str(minor) + "," + \
-            device_weights.split(',')[1]
+        device_weights_tmp = str(major) + ":" + str(minor) + "," + device_weights.split(',')[1]
 
     # To check specified weight and device_weight value with virsh command
     # output and/or blkio.weight and blkio.weight_device value from blkio
     # controller of the cgroup.
     if vm.is_alive() and options != "config":
-        if (weight and weight != weight_from_cmd_output or
-                weight and weight != weight_from_cgroup):
+        if (weight and weight != weight_from_cmd_output or weight and weight != weight_from_cgroup):
             logging.error("To expect weight %s: %s",
                           weight, weight_from_cmd_output)
             return False
-        if device_weights and \
-            device_weights != device_weights_from_cmd_output or \
-            device_weights and \
-                device_weights_tmp != device_weight_from_cgroup:
+        if (device_weights and device_weights != device_weights_from_cmd_output or device_weights and
+                device_weights_tmp != device_weight_from_cgroup):
             # The value 0 to remove that device from per-device listings.
-            if (device_weights.split(',')[-1] == '0' and not
-                    device_weights_from_cmd_output):
+            if (device_weights.split(',')[-1] == '0' and not device_weights_from_cmd_output):
                 return True
             else:
                 logging.error("To expect device_weights %s: %s",
@@ -95,8 +95,7 @@ def check_blkiotune(params):
         if weight and weight != weight_from_xml:
             logging.error("To expect weight %s: %s", weight, weight_from_xml)
             return False
-        if (device_weights and device_weights_from_xml and
-                device_weights != device_weights_from_xml):
+        if (device_weights and device_weights_from_xml and device_weights != device_weights_from_xml):
             logging.error("To expect device_weights %s: %s",
                           device_weights, device_weights_from_xml)
             return False
@@ -104,28 +103,30 @@ def check_blkiotune(params):
     return True
 
 
-def get_blkio_params_from_cgroup(params):
+def get_blkio_params_from_cgroup(test, params):
     """
     Get a list of domain-specific per block stats from cgroup blkio controller.
     :param domain: Domain name
-    :param qemu_path: Default: "/libvirt/qemu/".
+
+    :param test: the test handle
+    :param params: the parameter dictionary
     """
 
     vm_name = params.get("main_vm")
     qemu_path = params.get("qemu_path")
+    vm = params.get("vm")
+    domid = vm.get_id()
 
-    if not qemu_path:
+    blkio_path = os.path.join(utils_cgroup.get_cgroup_mountpoint("blkio"), qemu_path, vm_name)
+    if not os.path.isdir(blkio_path):
         # to convert "-" to "\x2d" for vm name on >=F19 and RHEL7.y
         name = vm_name.replace("-", "\\x2d")
         # qemu_path defaults as follows for >= F19 or RHEL7.y
-        qemu_path = "machine.slice/machine-qemu\\x2d%s.scope" % name
+        # qemu_path = "machine.slice/machine-qemu\\x2d%s.scope" % name
+        # qemu_path defaults as follows for >= RHEL7.4
+        qemu_path = "machine.slice/machine-qemu\\x2d%s\\x2d%s.scope" % (domid, name)
         blkio_path = os.path.join(utils_cgroup.get_cgroup_mountpoint("blkio"),
                                   qemu_path)
-    else:
-        # qemu_path defaults "/libvirt/qemu/" on RHEL6.y, and requires tester
-        # to add the parameter into test configuration
-        blkio_path = os.path.join(utils_cgroup.get_cgroup_mountpoint("blkio"),
-                                  qemu_path, vm_name)
 
     blkio_weight_file = os.path.join(blkio_path, "blkio.weight")
     blkio_device_weights_file = os.path.join(blkio_path, "blkio.weight_device")
@@ -134,25 +135,27 @@ def get_blkio_params_from_cgroup(params):
 
     for f in blkio_weight_file, blkio_device_weights_file:
         try:
-            f_blkio_params = open(f, "rU")
-            val = f_blkio_params.readline().split()
-            if len(val) > 1:
-                blkio_params_from_cgroup[f.split('.')[-1]] = \
-                    val[0] + "," + val[1]
-            elif len(val) == 1:
-                blkio_params_from_cgroup[f.split('.')[-1]] = val[0]
-            f_blkio_params.close()
+            with open(f, 'rU') as f_blkio_params:
+                val = f_blkio_params.readline().split()
+                if len(val) > 1:
+                    blkio_params_from_cgroup[f.split('.')[-1]] = \
+                        val[0] + "," + val[1]
+                elif len(val) == 1:
+                    blkio_params_from_cgroup[f.split('.')[-1]] = val[0]
         except IOError:
-            raise error.TestError("Failed to get blkio params from %s" % f)
+            test.fail("Failed to get blkio params from %s" % f)
 
     logging.debug(blkio_params_from_cgroup)
     return blkio_params_from_cgroup
 
 
-def get_blkio_parameter(params, cgstop):
+def get_blkio_parameter(test, params, cgstop):
     """
     Get the blkio parameters
-    :params: the parameter dictionary
+
+    :param test: the test handle
+    :param params: the parameter dictionary
+    :param cgstop: the status of cgconfig
     """
     vm_name = params.get("main_vm")
     options = params.get("options")
@@ -168,20 +171,23 @@ def get_blkio_parameter(params, cgstop):
             logging.info("It's an expected %s", result.stderr)
         else:
             if cgstop:
-                raise error.TestFail("Unexpected return code %d" % status)
+                test.fail("Unexpected return code %d" % status)
             else:
                 logging.info("Control groups stopped, thus expected success")
     elif status_error == "no":
         if status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
         else:
             logging.info(result.stdout)
 
 
-def set_blkio_parameter(params, cgstop):
+def set_blkio_parameter(test, params, cgstop):
     """
     Set the blkio parameters
-    :params: the parameter dictionary
+
+    :param test: the test handle
+    :param params: the parameter dictionary
+    :param cgstop: the status of cgconfig
     """
     vm_name = params.get("main_vm")
     weight = params.get("blkio_weight")
@@ -199,20 +205,20 @@ def set_blkio_parameter(params, cgstop):
             logging.info("It's an expected %s", result.stderr)
         else:
             if cgstop:
-                raise error.TestFail("Unexpected return code %d" % status)
+                test.fail("Unexpected return code %d" % status)
             else:
                 logging.info("Control groups stopped, thus expected success")
     elif status_error == "no":
         if status:
-            raise error.TestFail(result.stderr)
+            test.fail(result.stderr)
         else:
-            if check_blkiotune(params):
+            if check_blkiotune(test, params):
                 logging.info(result.stdout)
             else:
-                raise error.TestFail("The 'weight' or/and 'device-weights' are"
-                                     " inconsistent with blkiotune XML or/and"
-                                     " blkio.weight and blkio.weight_device"
-                                     " value from cgroup blkio controller")
+                test.fail("The 'weight' or/and 'device-weights' are"
+                          " inconsistent with blkiotune XML or/and"
+                          " blkio.weight and blkio.weight_device"
+                          " value from cgroup blkio controller")
 
 
 def run(test, params, env):
@@ -242,6 +248,12 @@ def run(test, params, env):
     if start_vm == "no" and vm and vm.is_alive():
         vm.destroy()
 
+    cmd = "cat /sys/block/sda/queue/scheduler"
+    iosche = results_stdout_52lts(process.run(cmd, shell=True))
+    oldmode = re.findall("\[(.*?)\]", iosche)[0]
+    with open('/sys/block/sda/queue/scheduler', 'w') as scf:
+        scf.write('cfq')
+
     test_dict = dict(params)
     test_dict['vm'] = vm
 
@@ -249,11 +261,14 @@ def run(test, params, env):
 
     cgstop = False
     try:
+        if start_vm == "yes" and not vm.is_alive():
+            vm.start()
+            vm.wait_for_login()
         if status_error == "no":
             if change_parameters == "no":
-                get_blkio_parameter(test_dict, cgstop)
+                get_blkio_parameter(test, test_dict, cgstop)
             else:
-                set_blkio_parameter(test_dict, cgstop)
+                set_blkio_parameter(test, test_dict, cgstop)
         if cgconfig == "off":
             # If running, then need to shutdown a running guest before
             # stopping cgconfig service and will start the guest after
@@ -274,20 +289,23 @@ def run(test, params, env):
                 # Not running is not a good thing, but it does happen
                 # and it will affect other tests
                 if not utils_libvirtd.libvirtd_is_running():
-                    raise error.TestNAError("libvirt service is not running!")
+                    test.fail("libvirt service is not running!")
 
         # Recover previous running guest
-        if (cgconfig == "off" and libvirtd == "restart"
-                and not vm.is_alive() and start_vm == "yes"):
+        if (cgconfig == "off" and libvirtd == "restart" and not vm.is_alive() and start_vm == "yes"):
             vm.start()
         if status_error == "yes":
             if change_parameters == "no":
-                get_blkio_parameter(test_dict, cgstop)
+                get_blkio_parameter(test, test_dict, cgstop)
             else:
-                set_blkio_parameter(test_dict, cgstop)
+                set_blkio_parameter(test, test_dict, cgstop)
     finally:
         # Restore guest
         original_vm_xml.sync()
+
+        scf = open('/sys/block/sda/queue/scheduler', 'w')
+        scf.write(oldmode)
+        scf.close()
 
         # If we stopped cg, then recover and refresh libvirtd to recognize
         if cgstop:
