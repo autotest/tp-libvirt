@@ -1,10 +1,14 @@
 import os
 import logging
 import tempfile
+import collections
+
+from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
+from virttest import libvirt_storage
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import snapshot_xml
@@ -55,9 +59,13 @@ def run(test, params, env):
     4) Check result.
     """
 
-    def make_disk_snapshot():
-        # Make four external snapshots for disks only
-        for count in range(1, 5):
+    def make_disk_snapshot(snapshot_take):
+        """
+        Make external snapshots for disks only.
+
+        :param snapshot_take: snapshots taken.
+        """
+        for count in range(1, snapshot_take + 1):
             snap_xml = snapshot_xml.SnapshotXML()
             snapshot_name = "snapshot_test%s" % count
             snap_xml.snap_name = snapshot_name
@@ -154,10 +162,73 @@ def run(test, params, env):
                 test.fail("Touch file in vm failed. %s" % output)
             snapshot_flag_files.append(file_path)
 
+    def get_first_disk_source():
+        """
+        Get disk source of first device
+        :return: first disk of first device.
+        """
+        first_device = vm.get_first_disk_devices()
+        firt_disk_src = first_device['source']
+        return firt_disk_src
+
+    def make_relative_path_backing_files():
+        """
+        Create backing chain files of relative path.
+
+        :return: absolute path of top active file
+        """
+        first_disk_source = get_first_disk_source()
+        basename = os.path.basename(first_disk_source)
+        root_dir = os.path.dirname(first_disk_source)
+        cmd = "mkdir -p %s" % os.path.join(root_dir, '{b..d}')
+        ret = process.run(cmd, shell=True)
+        libvirt.check_exit_status(ret)
+
+        # Make three external relative path backing files.
+        backing_file_dict = collections.OrderedDict()
+        backing_file_dict["b"] = "../%s" % basename
+        backing_file_dict["c"] = "../b/b.img"
+        backing_file_dict["d"] = "../c/c.img"
+        for key, value in list(backing_file_dict.items()):
+            backing_file_path = os.path.join(root_dir, key)
+            cmd = ("cd %s && qemu-img create -f qcow2 -o backing_file=%s,backing_fmt=qcow2 %s.img"
+                   % (backing_file_path, value, key))
+            ret = process.run(cmd, shell=True)
+            libvirt.check_exit_status(ret)
+        return os.path.join(backing_file_path, "d.img")
+
+    def check_chain_backing_files(disk_src_file, expect_backing_file=False):
+        """
+        Check backing chain files of relative path after blockcommit.
+
+        :param disk_src_file: first disk src file.
+        :param expect_backing_file: whether it expect to have backing files.
+        """
+        first_disk_source = get_first_disk_source()
+        # Validate source image need refer to original one after active blockcommit
+        if not expect_backing_file and disk_src_file not in first_disk_source:
+            test.fail("The disk image path:%s doesn't include the origin image: %s" % (first_disk_source, disk_src_file))
+        # Validate source image doesn't have backing files after active blockcommit
+        cmd = "qemu-img info %s --backing-chain" % first_disk_source
+        if qemu_img_locking_feature_support:
+            cmd = "qemu-img info -U %s --backing-chain" % first_disk_source
+        ret = process.run(cmd, shell=True).stdout_text.strip()
+        if expect_backing_file:
+            if 'backing file' not in ret:
+                test.fail("The disk image doesn't have backing files")
+            else:
+                logging.debug("The actual qemu-img output:%s\n", ret)
+        else:
+            if 'backing file' in ret:
+                test.fail("The disk image still have backing files")
+            else:
+                logging.debug("The actual qemu-img output:%s\n", ret)
+
     # MAIN TEST CODE ###
     # Process cartesian parameters
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    snapshot_take = int(params.get("snapshot_take", '0'))
     needs_agent = "yes" == params.get("needs_agent", "yes")
     replace_vm_disk = "yes" == params.get("replace_vm_disk", "no")
     snap_in_mirror = "yes" == params.get("snap_in_mirror", 'no')
@@ -168,6 +239,10 @@ def run(test, params, env):
     base_option = params.get("base_option", None)
     keep_relative = "yes" == params.get("keep_relative", 'no')
     virsh_dargs = {'debug': True}
+
+    # Check whether qemu-img need add -U suboption since locking feature was added afterwards qemu-2.10
+    qemu_img_locking_feature_support = libvirt_storage.check_qemu_image_lock_support()
+    backing_file_relative_path = "yes" == params.get("backing_file_relative_path", "no")
 
     # Process domain disk device parameters
     disk_type = params.get("disk_type")
@@ -210,6 +285,17 @@ def run(test, params, env):
                 mon_host = params.get("mon_host", "EXAMPLE_MON_HOST")
                 if src_host.count("EXAMPLE") or mon_host.count("EXAMPLE"):
                     test.cancel("Please provide ceph host first.")
+            if backing_file_relative_path:
+                if vm.is_alive():
+                    vm.destroy(gracefully=False)
+                first_src_file = get_first_disk_source()
+                blk_source_image = os.path.basename(first_src_file)
+                blk_source_folder = os.path.dirname(first_src_file)
+                replace_disk_image = make_relative_path_backing_files()
+                params.update({'disk_source_name': replace_disk_image,
+                               'disk_type': 'file',
+                               'disk_src_protocol': 'file'})
+                vm.start()
             libvirt.set_vm_disk(vm, params, tmp_dir)
 
         if needs_agent:
@@ -225,7 +311,7 @@ def run(test, params, env):
         # get a vm session before snapshot
         session = vm.wait_for_login()
         # do snapshot
-        make_disk_snapshot()
+        make_disk_snapshot(snapshot_take)
 
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         logging.debug("The domain xml after snapshot is %s" % vmxml)
@@ -252,6 +338,8 @@ def run(test, params, env):
         base_index = None
         if (libvirt_version.version_compare(1, 2, 4) or
                 disk_src_protocol == 'gluster'):
+            # For libvirt is older version than 1.2.4 or source protocol is gluster
+            # there are various base image,which depends on base option:shallow,base,top respectively
             if base_option == "shallow":
                 base_index = 1
                 base_image = "%s[%s]" % (disk_target, base_index)
@@ -275,6 +363,28 @@ def run(test, params, env):
         if keep_relative:
             blockpull_options += " --keep-relative"
 
+        if backing_file_relative_path:
+            # Use block commit to shorten previous snapshots.
+            blockcommit_options = "  --active --verbose --shallow --pivot --keep-relative"
+            for count in range(1, snapshot_take + 1):
+                res = virsh.blockcommit(vm_name, blk_target,
+                                        blockcommit_options, **virsh_dargs)
+                libvirt.check_exit_status(res, status_error)
+
+            #Use block pull with --keep-relative flag,and reset base_index to 2.
+            base_index = 2
+            for count in range(1, snapshot_take):
+                # If block pull operations are more than or equal to 3,it need reset base_index to 1.
+                if count >= 3:
+                    base_index = 1
+                base_image = "%s[%s]" % (disk_target, base_index)
+                blockpull_options = "  --wait --verbose --base %s --keep-relative" % base_image
+                res = virsh.blockpull(vm_name, blk_target,
+                                      blockpull_options, **virsh_dargs)
+                libvirt.check_exit_status(res, status_error)
+            # Check final backing chain files.
+            check_chain_backing_files(blk_source_image, True)
+            return
         # Run test case
         result = virsh.blockpull(vm_name, blk_target,
                                  blockpull_options, **virsh_dargs)
@@ -355,6 +465,10 @@ def run(test, params, env):
             for disk in snapshot_external_disks:
                 if os.path.exists(disk):
                     os.remove(disk)
+
+        if backing_file_relative_path:
+            libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)
+            process.run("cd %s && rm -rf b c d" % blk_source_folder, shell=True)
 
         libvirtd = utils_libvirtd.Libvirtd()
 
