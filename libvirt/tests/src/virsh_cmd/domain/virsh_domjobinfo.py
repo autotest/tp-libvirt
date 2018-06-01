@@ -2,6 +2,7 @@ import os
 import subprocess
 import logging
 import time
+import locale
 
 from virttest import virsh
 from virttest import data_dir
@@ -51,7 +52,8 @@ def run(test, params, env):
         out_dict = dict([x.split(':') for x in out_list])
         ret_cmp = set(out_dict.keys()) == set(info_list)
         if not ret_cmp:
-            test.fail("Not all output jobinfo items are as expected")
+            test.fail("Not all output jobinfo items are as expected: Expect:%s, but get %s"
+                      % (set(info_list), set(out_dict.keys())))
         else:
             if out_dict["Job type"].strip() != job_type:
                 test.fail("Expect %s Job type but got %s" %
@@ -119,8 +121,8 @@ def run(test, params, env):
 
         process = get_subprocess(action, vm_name, tmp_pipe, None)
 
-        f = open(tmp_pipe, 'r')
-        dummy = f.read(1024 * 1024)
+        f = open(tmp_pipe, 'rb')
+        dummy = f.read(1024 * 1024).decode(locale.getpreferredencoding(), 'ignore')
 
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()

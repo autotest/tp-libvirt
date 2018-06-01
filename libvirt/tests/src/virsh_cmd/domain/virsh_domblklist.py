@@ -8,6 +8,7 @@ from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import disk
 from virttest import element_tree as ElementTree
+from virttest.compat_52lts import results_stdout_52lts
 
 SOURCE_LIST = ['file', 'dev', 'dir', 'name']
 
@@ -146,7 +147,7 @@ def run(test, params, env):
             cmd = "virsh domblkinfo %s %s %s" % (vm_ref, target_disks[0], info_options)
             ret2 = process.run(cmd, shell=True, ignore_status=True)
         for check in check_list:
-            if not re.search(check, ret2.stdout):
+            if not re.search(check, results_stdout_52lts(ret2)):
                 test.fail("Cmd domblkinfo run failed")
 
     if status_error == "no":
