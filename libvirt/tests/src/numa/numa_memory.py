@@ -142,7 +142,7 @@ def run(test, params, env):
         ret = utils_misc.wait_for(lambda: libvirtd.is_working(),
                                   timeout=240,
                                   step=1)
-        if ret:
+        if not ret:
             test.fail("Libvirtd hang after restarted")
 
         # Get host numa node list
