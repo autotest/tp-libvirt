@@ -2342,8 +2342,10 @@ def run(test, params, env):
             except (process.CmdError, remote.SCPError) as detail:
                 raise exceptions.TestError(detail)
             finally:
-                session.close()
-                remote_session.close_session()
+                if session:
+                    session.close()
+                if remote_session:
+                    remote_session.close_session()
 
         set_tgt_pm_suspend_tgt = test_dict.get("set_tgt_pm_suspend_target")
         set_tgt_pm_wakeup = "yes" == test_dict.get("set_tgt_pm_wakeup", "no")
