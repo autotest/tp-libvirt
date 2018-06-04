@@ -87,6 +87,13 @@ def run(test, params, env):
         except path.CmdNotFoundError:
             pass
 
+        # Allow for more times to libvirtd restarted sucessfully.
+        ret = utils_misc.wait_for(lambda: libvirtd.is_working(),
+                                  timeout=240,
+                                  step=1)
+        if ret:
+            test.fail("Libvirtd hang after restarted")
+
         if numa_memory.get('nodeset'):
             used_node = utils_test.libvirt.cpus_parser(numa_memory['nodeset'])
             logging.debug("set node list is %s", used_node)
