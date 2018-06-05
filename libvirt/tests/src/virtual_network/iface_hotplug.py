@@ -39,8 +39,6 @@ def run(test, params, env):
         logging.debug("Create new interface xml: %s", iface)
         return iface
 
-    status_error = "yes" == params.get("status_error", "no")
-
     # Interface specific attributes.
     iface_num = params.get("iface_num", '1')
     iface_type = params.get("iface_type", "network")
@@ -56,9 +54,13 @@ def run(test, params, env):
     stress_test = "yes" == params.get("stress_test")
     restart_libvirtd = "yes" == params.get("restart_libvirtd",
                                            "no")
+    start_vm = "yes" == params.get("start_vm", "yes")
+    options_test = "yes" == params.get("options_test", "no")
     username = params.get("username")
     password = params.get("password")
     poll_timeout = int(params.get("poll_timeout", 10))
+    err_msgs1 = params.get("err_msgs1")
+    err_msgs2 = params.get("err_msgs2")
 
     # stree_test require detach operation
     stress_test_detach_device = False
@@ -79,15 +81,18 @@ def run(test, params, env):
 
     # Check virsh command option
     check_cmds = []
-    if not status_error:
-        if attach_device and attach_option:
-            check_cmds.append(('attach-device', attach_option))
-        if attach_iface and attach_option:
-            check_cmds.append(('attach-interface', attach_option))
-        if (detach_device or stress_test_detach_device) and detach_option:
-            check_cmds.append(('detach-device', detach_option))
-        if stress_test_detach_interface and detach_option:
-            check_cmds.append(('detach-device', detach_option))
+    sep_options = attach_option.split()
+    logging.debug("sep_options: %s" % sep_options)
+    for sep_option in sep_options:
+        if attach_device and sep_option:
+            check_cmds.append(('attach-device', sep_option))
+        if attach_iface and sep_option:
+            check_cmds.append(('attach-interface', sep_option))
+        if (detach_device or stress_test_detach_device) and sep_option:
+            check_cmds.append(('detach-device', sep_option))
+        if stress_test_detach_interface and sep_option:
+            check_cmds.append(('detach-device', sep_option))
+
     for cmd, option in check_cmds:
         libvirt.virsh_cmd_has_option(cmd, option)
 
@@ -97,9 +102,11 @@ def run(test, params, env):
             iface_list = []
             err_msgs = ("No more available PCI slots",
                         "No more available PCI addresses")
-            if attach_device:
-                for i in range(int(iface_num)):
-                    logging.info("Try to attach interface loop %s" % i)
+            if not start_vm:
+                virsh.destroy(vm_name)
+            for i in range(int(iface_num)):
+                if attach_device:
+                    logging.info("Try to attach device loop %s" % i)
                     if iface_mac:
                         mac = iface_mac
                     else:
@@ -109,31 +116,7 @@ def run(test, params, env):
                     ret = virsh.attach_device(vm_name, iface_xml_obj.xml,
                                               flagstr=attach_option,
                                               ignore_status=True)
-                    if ret.exit_status:
-                        if any([msg in ret.stderr for msg in err_msgs]):
-                            logging.debug("No more pci slots, can't"
-                                          " attach more devices")
-                            break
-                        elif (ret.stderr.count("doesn't support option %s"
-                                               % attach_option)):
-                            test.cancel(ret.stderr)
-                        elif status_error:
-                            continue
-                        else:
-                            logging.error("Command output %s" %
-                                          ret.stdout.strip())
-                            test.fail("Failed to attach-device")
-                    elif stress_test:
-                        # Detach the device immediately for stress test
-                        ret = virsh.detach_device(vm_name, iface_xml_obj.xml,
-                                                  flagstr=detach_option,
-                                                  ignore_status=True)
-                        libvirt.check_exit_status(ret)
-                    else:
-                        iface_list.append({'mac': mac,
-                                           'iface_xml': iface_xml_obj})
-            elif attach_iface:
-                for i in range(int(iface_num)):
+                elif attach_iface:
                     logging.info("Try to attach interface loop %s" % i)
                     mac = utils_net.generate_mac_address_simple()
                     options = ("%s %s --model %s --mac %s %s" %
@@ -141,30 +124,42 @@ def run(test, params, env):
                                 iface_model, mac, attach_option))
                     ret = virsh.attach_interface(vm_name, options,
                                                  ignore_status=True)
-                    if ret.exit_status:
-                        if any([msg in ret.stderr for msg in err_msgs]):
-                            logging.debug("No more pci slots, can't"
-                                          " attach more devices")
-                            break
-                        elif (ret.stderr.count("doesn't support option %s"
-                                               % attach_option)):
-                            test.cancel(ret.stderr)
-                        elif status_error:
-                            continue
-                        else:
-                            logging.error("Command output %s" %
-                                          ret.stdout.strip())
-                            test.fail("Failed to attach-interface")
-                    elif stress_test:
+                if ret.exit_status:
+                    if any([msg in ret.stderr for msg in err_msgs]):
+                        logging.debug("No more pci slots, can't attach more devices")
+                        break
+                    elif (ret.stderr.count("doesn't support option %s" % attach_option)):
+                        test.cancel(ret.stderr)
+                    elif err_msgs1 in ret.stderr:
+                        logging.debug("option %s is not supported when domain running is %s" % (attach_option, vm.is_alive()))
+                        if start_vm or ("--live" not in sep_options and attach_option):
+                            test.fail("return not supported, but it is unexpected")
+                    elif err_msgs2 in ret.stderr:
+                        logging.debug("options %s are mutually exclusive" % attach_option)
+                        if not ("--current" in sep_options and len(sep_options) > 1):
+                            test.fail("return mutualy exclusive, but it is unexpected")
+                    else:
+                        logging.error("Command output %s" % ret.stdout.strip())
+                        test.fail("Failed to attach-interface")
+                elif stress_test:
+                    if attach_device:
+                        # Detach the device immediately for stress test
+                        ret = virsh.detach_device(vm_name, iface_xml_obj.xml,
+                                                  flagstr=detach_option,
+                                                  ignore_status=True)
+                    elif attach_iface:
                         # Detach the device immediately for stress test
                         options = ("--type %s --mac %s %s" %
                                    (iface_type, mac, detach_option))
                         ret = virsh.detach_interface(vm_name, options,
                                                      ignore_status=True)
-                        libvirt.check_exit_status(ret)
-                    else:
+                    libvirt.check_exit_status(ret)
+                else:
+                    if attach_device:
+                        iface_list.append({'mac': mac,
+                                           'iface_xml': iface_xml_obj})
+                    elif attach_iface:
                         iface_list.append({'mac': mac})
-
             # Restart libvirtd service
             if restart_libvirtd:
                 libvirtd.restart()
@@ -172,6 +167,63 @@ def run(test, params, env):
                 # so we need create a new serial console
                 vm.cleanup_serial_console()
                 vm.create_serial_console()
+            # in options test, check if the interface is attached
+            # in current state when attach return true
+
+            def check_iface_exist():
+                try:
+                    session = vm.wait_for_serial_login(username=username,
+                                                       password=password)
+                    if utils_net.get_linux_ifname(session, iface['mac']):
+                        return True
+                    else:
+                        logging.debug("can not find interface in vm")
+                except Exception:
+                    return False
+            if options_test:
+                for iface in iface_list:
+                    if 'mac' in iface:
+                        # Check interface in dumpxml output
+                        if_attr = vm_xml.VMXML.get_iface_by_mac(vm_name,
+                                                                iface['mac'])
+                        if vm.is_alive() and attach_option == "--config":
+                            if if_attr:
+                                test.fail("interface should not exists "
+                                          "in current live vm while "
+                                          "attached by --config")
+                        else:
+                            if if_attr:
+                                logging.debug("interface %s found current "
+                                              "state in xml" % if_attr['mac'])
+                            else:
+                                test.fail("no interface found in "
+                                          "current state in xml")
+
+                        if if_attr:
+                            if if_attr['type'] != iface_type or \
+                                    if_attr['source'] != \
+                                    iface_source['network']:
+                                test.fail("Interface attribute doesn't "
+                                          "match attachment options")
+                        # check interface in vm only when vm is active
+                        if vm.is_alive():
+                            logging.debug("check interface in current state "
+                                          "in vm")
+
+                            if not utils_misc.wait_for(check_iface_exist, timeout=20):
+                                if not attach_option == "--config":
+                                    test.fail("Can't see interface "
+                                              "in current state in vm")
+                                else:
+                                    logging.debug("find interface in "
+                                                  "current state in vm")
+                            else:
+                                logging.debug("find interface in "
+                                              "current state in vm")
+                            # in options test, if the attach is performed
+                            # when the vm is running
+                            # need to destroy and start to check again
+                            vm.destroy()
 
             # Start the domain if needed
             if vm.is_dead():
@@ -179,28 +231,43 @@ def run(test, params, env):
             session = vm.wait_for_serial_login(username=username,
                                                password=password)
 
-            # Check if interface was attached
+            # check if interface is attached
             for iface in iface_list:
                 if 'mac' in iface:
+                    logging.debug("check interface in xml")
                     # Check interface in dumpxml output
                     if_attr = vm_xml.VMXML.get_iface_by_mac(vm_name,
                                                             iface['mac'])
-                    if not if_attr:
-                        test.fail("Can't see interface in dumpxml")
-                    if (if_attr['type'] != iface_type or
-                            if_attr['source'] != iface_source['network']):
-                        test.fail("Interface attribute doesn't"
-                                  " match attachment opitons")
-                    # Check interface on guest
+                    logging.debug(if_attr)
+                    if if_attr:
+                        logging.debug("interface {} is found in xml".
+                                      format(if_attr['mac']))
+                        if (if_attr['type'] != iface_type or
+                                if_attr['source'] != iface_source['network']):
+                            test.fail("Interface attribute doesn't "
+                                      "match attachment options")
+                        if options_test and start_vm and attach_option \
+                                in ("--current", "--live", ""):
+                            test.fail("interface should not exists when "
+                                      "restart vm in options_test")
+                    else:
+                        logging.debug("no interface found in xml")
+                        if options_test and start_vm and attach_option in \
+                                ("--current", "--live", ""):
+                            logging.debug("interface not exists next state "
+                                          "in xml with %s" % attach_option)
+                        else:
+                            test.fail("Can't see interface in dumpxml")
 
-                    def get_iface():
-                        try:
-                            utils_net.get_linux_ifname(session, iface['mac'])
-                            return True
-                        except Exception:
-                            return False
-                    if not utils_misc.wait_for(get_iface, timeout=60):
-                        test.fail("Can't see interface on guest")
+                    # Check interface on guest
+                    if not utils_misc.wait_for(check_iface_exist, timeout=20):
+                        logging.debug("can't see interface next state in vm")
+                        if start_vm and attach_option in \
+                                ("--current", "--live", ""):
+                            logging.debug("it is expected")
+                        else:
+                            test.fail("should find interface "
+                                      "but no seen in next state in vm")
 
             # Detach hot/cold-plugged interface at last
             if detach_device:

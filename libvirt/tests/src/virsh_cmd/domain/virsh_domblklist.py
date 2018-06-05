@@ -1,11 +1,14 @@
 import os
+import re
 import logging
 from six import iteritems
 
+from avocado.utils import process
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import disk
 from virttest import element_tree as ElementTree
+from virttest.compat_52lts import results_stdout_52lts
 
 SOURCE_LIST = ['file', 'dev', 'dir', 'name']
 
@@ -106,9 +109,11 @@ def run(test, params, env):
     # Get all parameters from configuration.
     vm_ref = params.get("domblklist_vm_ref")
     options = params.get("domblklist_options", "")
+    info_options = params.get("info_options", "")
     status_error = params.get("status_error", "no")
     front_dev = params.get("domblkinfo_front_dev", "vdd")
     test_attach_disk = os.path.join(test.virtdir, "tmp.img")
+    domblkinfo = params.get("domblkinfo", "no")
     extra = ""
 
     domid = vm.get_id()
@@ -128,6 +133,22 @@ def run(test, params, env):
 
     # run domblklist and check
     domblklist_test()
+
+    # Test domblkinfo function as well
+    if domblkinfo == "yes":
+        ret = virsh.domblklist(vm_ref, options,
+                               ignore_status=True, debug=True)
+        target_disks = re.findall(r"[v,s]d[a-z]", ret.stdout)
+        if info_options == "":
+            check_list = ["Capacity", "Allocation", "Physical"]
+            ret2 = virsh.domblkinfo(vm_ref, target_disks[0])
+        elif info_options == "--human":
+            check_list = ["Capacity", "Allocation", "Physical", "GiB"]
+            cmd = "virsh domblkinfo %s %s %s" % (vm_ref, target_disks[0], info_options)
+            ret2 = process.run(cmd, shell=True, ignore_status=True)
+        for check in check_list:
+            if not re.search(check, results_stdout_52lts(ret2)):
+                test.fail("Cmd domblkinfo run failed")
 
     if status_error == "no":
         try:

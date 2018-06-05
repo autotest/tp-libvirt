@@ -546,7 +546,7 @@ def run(test, params, env):
     if test_snapshot:
         unsupported_err.append('live disk snapshot not supported')
     if test_disk_readonly:
-        unsupported_err.append('Unable to read from monitor: Connection reset by peer')
+        unsupported_err.append('Could not create file: Permission denied')
         unsupported_err.append('Permission denied')
     if test_disk_internal_snapshot:
         unsupported_err.append('unsupported configuration: internal snapshot for disk ' +

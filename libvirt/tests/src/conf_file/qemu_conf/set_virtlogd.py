@@ -1,6 +1,7 @@
 import logging
 import os
 import stat
+import time
 
 from pwd import getpwuid
 
@@ -158,6 +159,9 @@ def run(test, params, env):
         for tmp_vm in env.get_all_vms():
             if tmp_vm.is_alive():
                 tmp_vm.destroy(gracefully=False)
+
+        # Sleep a few seconds to let VM syn underlying data
+        time.sleep(3)
 
         # Remove VM previous log file.
         clean_up_vm_log_file(vm_name)

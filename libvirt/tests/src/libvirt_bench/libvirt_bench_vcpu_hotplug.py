@@ -1,5 +1,6 @@
 import logging
 import re
+import platform
 
 from avocado.core import exceptions
 
@@ -34,7 +35,7 @@ def run(test, params, env):
     orig_config_xml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     # Set min/max of vcpu
-    libvirt_xml.VMXML.set_vm_vcpus(vm_name, test_set_max, min_count)
+    libvirt_xml.VMXML.set_vm_vcpus(vm_name, test_set_max, min_count, topology_correction=True)
 
     # prepare VM instance
     vm = libvirt_vm.VM(vm_name, params, test.bindir, env.get("address_cache"))
@@ -58,7 +59,7 @@ def run(test, params, env):
         session.cmd("dmesg -c")
         for i in range(test_times):
             # 1. Add vcpu
-            add_result = libvirt.hotplug_domain_vcpu(vm_name,
+            add_result = libvirt.hotplug_domain_vcpu(vm,
                                                      max_count,
                                                      add_by_virsh)
             add_status = add_result.exit_status
@@ -69,14 +70,15 @@ def run(test, params, env):
                                 % add_result.stderr.strip())
                 test.fail("Test failed for:\n %s"
                           % add_result.stderr.strip())
-            # 1.2 check dmesg
-            domain_add_dmesg = session.cmd_output("dmesg -c")
-            dmesg1 = "CPU%d has been hot-added" % (max_count - 1)
-            dmesg2 = "CPU %d got hotplugged" % (max_count - 1)
-            if (not domain_add_dmesg.count(dmesg1) and
-                    not domain_add_dmesg.count(dmesg2)):
-                test.fail("Cannot find hotplug info in dmesg: %s"
-                          % domain_add_dmesg)
+            if 'ppc' not in platform.machine():
+                # 1.2 check dmesg
+                domain_add_dmesg = session.cmd_output("dmesg -c")
+                dmesg1 = "CPU%d has been hot-added" % (max_count - 1)
+                dmesg2 = "CPU %d got hotplugged" % (max_count - 1)
+                if (not domain_add_dmesg.count(dmesg1) and
+                        not domain_add_dmesg.count(dmesg2)):
+                    test.fail("Cannot find hotplug info in dmesg: %s"
+                              % domain_add_dmesg)
             # 1.3 check cpu related file
             online_cmd = "cat /sys/devices/system/cpu/cpu%d/online" \
                          % (max_count - 1)
@@ -107,8 +109,15 @@ def run(test, params, env):
                 test.fail("CPU%d can be found in /proc/interrupts"
                           " when it's offline"
                           % (int(max_count) - 1))
+            # 1.8 online vcpu
+            on_st = session.cmd_status("echo 1 > "
+                                       "/sys/devices/system/cpu/cpu%d/online"
+                                       % (max_count - 1))
+            if on_st:
+                test.fail("Set cpu%d online failed!"
+                          % (max_count - 1))
             # 2. Del vcpu
-            del_result = libvirt.hotplug_domain_vcpu(vm_name,
+            del_result = libvirt.hotplug_domain_vcpu(vm,
                                                      min_count,
                                                      del_by_virsh,
                                                      hotplug=False)
@@ -135,16 +144,19 @@ def run(test, params, env):
                 # besides above, regard it failed
                 test.fail("Test fail for:\n %s"
                           % del_result.stderr.strip())
-            domain_del_dmesg = session.cmd_output("dmesg -c")
-            if not domain_del_dmesg.count("CPU %d is now offline"
-                                          % (max_count - 1)):
-                test.fail("Cannot find hot-unplug info in dmesg: %s"
-                          % domain_del_dmesg)
+            if 'ppc' not in platform.machine():
+                domain_del_dmesg = session.cmd_output("dmesg -c")
+                if not domain_del_dmesg.count("CPU %d is now offline"
+                                              % (max_count - 1)):
+                    test.fail("Cannot find hot-unplug info in dmesg: %s"
+                              % domain_del_dmesg)
     except exceptions.TestCancel:
         # So far, QEMU doesn't support unplug vcpu,
         # unplug operation will encounter kind of errors.
         pass
     finally:
-        session.close()
+        utils_test.unload_stress("stress_in_vms", load_vms)
+        if session:
+            session.close()
         # Cleanup
         orig_config_xml.sync()

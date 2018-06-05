@@ -32,6 +32,7 @@ def run(test, params, env):
     iteration = int(params.get("setvcpu_iteration", 1))
     invalid_vcpulist = params.get("invalid_vcpulist", "")
     convert_err = "Can't convert {0} to integer type"
+    unsupport_str = params.get("unsupport_str", "")
     try:
         current_vcpu = int(params.get("setvcpu_current", "1"))
     except ValueError:
@@ -207,6 +208,10 @@ def run(test, params, env):
                     status = virsh.setvcpu(
                         dom_option, vcpu_list_option, options,
                         ignore_status=True, debug=True)
+                    unsupport_str = utils_hotplug.vcpuhotunplug_unsupport_str()
+                    if unsupport_str and (unsupport_str in status.stderr):
+                        test.cancel("Vcpu hotunplug is not supported in this host:"
+                                    "\n%s" % status.stderr)
                     # Preserve the first failure
                     if status.exit_status != 0:
                         setvcpu_exit_status = status.exit_status

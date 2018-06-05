@@ -297,10 +297,11 @@ def run(test, params, env):
 
     finally:
         # Clean up snapshot
-        libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)
-        # Restore vm
+        # Shut down before cleaning up snapshots
         if vm.is_alive():
             vm.destroy()
+        libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)
+        # Restore vm
         vmxml_backup.sync("--snapshots-metadata")
         # Destroy pool and undefine secret, which may not exist
         try:

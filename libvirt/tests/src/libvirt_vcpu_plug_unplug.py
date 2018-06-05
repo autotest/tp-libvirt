@@ -76,6 +76,8 @@ def run(test, params, env):
             elif vm_operation == "suspend":
                 result = virsh.suspend(vm_name, ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
+            elif vm_operation == "reboot":
+                vm.reboot()
             else:
                 logging.debug("No operation for the domain")
 
@@ -99,6 +101,8 @@ def run(test, params, env):
             elif vm_operation == "suspend":
                 result = virsh.resume(vm_name, ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
+            elif vm_operation == "reboot":
+                pass
             else:
                 logging.debug("No need recover the domain")
 
@@ -438,6 +442,10 @@ def run(test, params, env):
                                         setvcpu_option,
                                         readonly=setvcpu_readonly,
                                         ignore_status=True, debug=True)
+                unsupport_str = utils_hotplug.vcpuhotunplug_unsupport_str()
+                if unsupport_str and (unsupport_str in result.stderr):
+                    test.cancel("Vcpu hotunplug is not supported in this host:"
+                                "\n%s" % result.stderr)
                 try:
                     session = vm.wait_for_login()
                     cmd = "lscpu | grep \"^CPU(s):\""

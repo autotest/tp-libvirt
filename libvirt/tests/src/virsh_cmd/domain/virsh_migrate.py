@@ -123,7 +123,9 @@ def run(test, params, env):
                 return False
 
         # Throws exception if console shows panic message
-        vm.verify_kernel_crash()
+        if not options.count("dname") and not extra.count("dname"):
+            vm.verify_kernel_crash()
+
         return True
 
     def numa_pin(memory_mode, memnode_mode, numa_dict_list, host_numa_node):
@@ -1117,12 +1119,14 @@ def run(test, params, env):
 
         dest_state = params.get("virsh_migrate_dest_state", "running")
         if ret_migrate and dest_state == "running":
-            # Check VM uptime after migrating to destination
-            migrated_vm_uptime = vm.uptime(dest_uri)
-            logging.info("Check VM uptime in destination after migration: %s",
-                         migrated_vm_uptime)
-            if vm_uptime > migrated_vm_uptime:
-                test.fail("VM went for a reboot while migrating to destination")
+            if (not options.count("dname") and not extra.count("dname")):
+                # Check VM uptime after migrating to destination
+                migrated_vm_uptime = vm.uptime(dest_uri)
+                logging.info("Check VM uptime in destination after "
+                             "migration: %s", migrated_vm_uptime)
+                if vm_uptime > migrated_vm_uptime:
+                    test.fail("VM went for a reboot while migrating "
+                              "to destination")
 
             server_session = remote.wait_for_login('ssh', server_ip, '22',
                                                    server_user, server_pwd,

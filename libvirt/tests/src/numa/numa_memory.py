@@ -138,6 +138,13 @@ def run(test, params, env):
         except path.CmdNotFoundError:
             pass
 
+        # Allow for more times to libvirtd restarted sucessfully.
+        ret = utils_misc.wait_for(lambda: libvirtd.is_working(),
+                                  timeout=240,
+                                  step=1)
+        if not ret:
+            test.fail("Libvirtd hang after restarted")
+
         # Get host numa node list
         host_numa_node = utils_misc.NumaInfo()
         node_list = host_numa_node.online_nodes_withmem

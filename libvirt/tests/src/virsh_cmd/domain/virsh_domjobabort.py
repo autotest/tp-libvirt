@@ -2,6 +2,7 @@ import os
 import subprocess
 import logging
 import time
+import locale
 
 from virttest import virsh
 from virttest import data_dir
@@ -125,8 +126,8 @@ def run(test, params, env):
         elif action == "migrate":
             f = None
         else:
-            f = open(tmp_pipe, 'r')
-            dummy = f.read(1024 * 1024)
+            f = open(tmp_pipe, 'rb')
+            dummy = f.read(1024 * 1024).decode(locale.getpreferredencoding(), 'ignore')
 
     # Give enough time for starting job
     t = 0

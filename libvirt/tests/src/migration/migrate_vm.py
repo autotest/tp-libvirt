@@ -104,6 +104,11 @@ def check_output(output_msg, params):
     :raise TestSkipError: raised if the known error is found together
                           with some conditions satisfied
     """
+    err_msg = params.get("err_msg", None)
+    if err_msg and err_msg in output_msg:
+        logging.debug("Expected error '%s' was found", err_msg)
+        return
+
     ERR_MSGDICT = {"Bug 1249587": "error: Operation not supported: " +
                    "pre-creation of storage targets for incremental " +
                    "storage migration is not supported",
@@ -906,7 +911,7 @@ def check_domjobinfo_on_complete(test, source_jobinfo, target_jobinfo):
     for key, value in source_info.items():
         if key in ["Expected downtime"]:
             continue
-        if not target_info.has_key(key):
+        if key not in target_info:
             test.fail("The domjobinfo on target host "
                       "does not has the field: '%s'" % key)
 
@@ -1907,7 +1912,7 @@ def run(test, params, env):
                                           % (run_cmd_in_vm, output))
             logging.debug(output)
 
-        if enable_stress_test and stress_args:
+        if enable_stress_test and stress_args and stress_type:
             s_list = stress_type.split("_")
 
             if s_list and s_list[-1] == "vms":
@@ -2337,8 +2342,10 @@ def run(test, params, env):
             except (process.CmdError, remote.SCPError) as detail:
                 raise exceptions.TestError(detail)
             finally:
-                session.close()
-                remote_session.close_session()
+                if session:
+                    session.close()
+                if remote_session:
+                    remote_session.close_session()
 
         set_tgt_pm_suspend_tgt = test_dict.get("set_tgt_pm_suspend_target")
         set_tgt_pm_wakeup = "yes" == test_dict.get("set_tgt_pm_wakeup", "no")

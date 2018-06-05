@@ -131,20 +131,21 @@ def run(test, params, env):
     disks = vm.get_disk_devices()
     backup_labels_of_disks = {}
     qemu_disk_mod = False
-    for disk in list(disks.values()):
-        disk_path = disk['source']
-        f = os.open(disk_path, 0)
-        stat_re = os.fstat(f)
-        backup_labels_of_disks[disk_path] = "%s:%s" % (stat_re.st_uid,
-                                                       stat_re.st_gid)
-        label_list = img_label.split(":")
-        os.chown(disk_path, int(label_list[0]), int(label_list[1]))
-        os.close(f)
-        st = os.stat(disk_path)
-        if not bool(st.st_mode & stat.S_IWGRP):
-            # add group wirte mode to disk by chmod g+w
-            os.chmod(disk_path, st.st_mode | stat.S_IWGRP)
-            qemu_disk_mod = True
+    if (not status_error) and (not dynamic_ownership):
+        for disk in list(disks.values()):
+            disk_path = disk['source']
+            f = os.open(disk_path, 0)
+            stat_re = os.fstat(f)
+            backup_labels_of_disks[disk_path] = "%s:%s" % (stat_re.st_uid,
+                                                           stat_re.st_gid)
+            label_list = img_label.split(":")
+            os.chown(disk_path, int(label_list[0]), int(label_list[1]))
+            os.close(f)
+            st = os.stat(disk_path)
+            if not bool(st.st_mode & stat.S_IWGRP):
+                # add group wirte mode to disk by chmod g+w
+                os.chmod(disk_path, st.st_mode | stat.S_IWGRP)
+                qemu_disk_mod = True
 
     # Set selinux of host.
     backup_sestatus = utils_selinux.get_status()
@@ -211,7 +212,6 @@ def run(test, params, env):
             if set_process_name:
                 qemu_conf.set_process_name = set_process_name
             logging.debug("the qemu.conf content is: %s" % qemu_conf)
-            libvirtd.restart()
 
         if set_sec_label:
             # Transform seclabel to "uid:gid"
@@ -229,6 +229,7 @@ def run(test, params, env):
 
         # Start VM to check the qemu process and image.
         try:
+            libvirtd.restart()
             vm.start()
             # Start VM successfully.
             # VM with seclabel can access the image with the context.
