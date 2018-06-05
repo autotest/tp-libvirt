@@ -79,7 +79,7 @@ def modify_expect(cell, expect, pagesize='4KiB'):
     with system current freememory is less than 4*1024Kib, check would pass.
     """
     if pagesize in expect.keys():
-        if abs(int(expect[pagesize]) - int(cell[pagesize])) < 1024:
+        if abs(int(float(expect[pagesize])) - int(float(cell[pagesize]))) < 1024:
             expect[pagesize] = cell[pagesize]
 
 
