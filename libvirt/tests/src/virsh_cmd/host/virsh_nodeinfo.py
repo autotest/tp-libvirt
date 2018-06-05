@@ -164,8 +164,7 @@ def run(test, params, env):
                       "Memory size")
 
     # Prepare libvirtd service
-    check_libvirtd = params.has_key("libvirtd")
-    if check_libvirtd:
+    if "libvirtd" in params:
         libvirtd = params.get("libvirtd")
         if libvirtd == "off":
             utils_libvirtd.libvirtd_stop()
