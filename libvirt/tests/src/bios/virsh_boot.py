@@ -217,6 +217,10 @@ def setup_test_env(params, test):
     global cleanup_iso_file
     global cleanup_image_file
 
+    os_version = params.get("os_version")
+    if not os_version.count("EXAMPLE"):
+        os_version = os_version.split(".")[0]
+
     if boot_type == "ovmf":
         if not libvirt_version.version_compare(2, 0, 0):
             test.error("OVMF doesn't support in current"
@@ -225,8 +229,11 @@ def setup_test_env(params, test):
         if not utils_package.package_install('OVMF'):
             test.error("OVMF package install failed")
 
-        if not utils_package.package_install('qemu-kvm-rhev'):
+        if os_version == "RHEL-7" and not \
+                utils_package.package_install('qemu-kvm-rhev'):
             test.error("qemu-kvm-rhev package install failed")
+        elif not utils_package.package_install('qemu-kvm'):
+            test.error("qemu-kvm package install failed")
 
     if boot_type == "seabios" and \
             not utils_package.package_install('seabios-bin'):
