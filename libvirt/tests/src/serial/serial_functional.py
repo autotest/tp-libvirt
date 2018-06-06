@@ -16,6 +16,7 @@ from virttest.utils_test import libvirt
 from virttest.utils_conn import TLSConnection
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices import librarian
+from avocado.utils import astring
 
 from provider import libvirt_version
 
@@ -240,6 +241,8 @@ class Console(aexpect.ShellSession):
 
         :param cont: String to send to the child process.
         """
+        if astring.is_text(cont):
+            cont = cont.encode()
         if self.console_type in ['tcp', 'unix']:
             self.socket.sendall(cont)
         elif self.console_type == 'udp':
