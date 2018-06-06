@@ -260,6 +260,8 @@ def run(test, params, env):
             if not numad_log:
                 test.fail("numad usage not found in libvirtd log")
             if numad_log[0].split("numad ")[-1] != numad_cmd_opt:
+                logging.warning('numa log:\n%s\n' % numad_log[0].split("numad ")[-1])
+                logging.warning('numa cmd opt:\n%s\n' % numad_cmd_opt)
                 test.fail("numad command not expected in log")
             numad_ret = numad_log[1].split("numad: ")[-1]
             numad_node = utils_test.libvirt.cpus_parser(numad_ret)
