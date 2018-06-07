@@ -855,7 +855,7 @@ def run(test, params, env):
     except virt_vm.VMStartError as details:
         for msg in unsupported_err:
             if msg in str(details):
-                test.skip(details)
+                test.cancel(str(details))
         else:
             test.fail("VM failed to start."
                       "Error: %s" % str(details))
