@@ -505,7 +505,7 @@ def run(test, params, env):
                 disk_path = os.path.join(data_dir.get_tmp_dir(), 'disk%s.qcow2' % i)
                 process.run("qemu-img create -f qcow2 %s 200M" % disk_path, shell=True)
                 virsh.attach_disk(vm_name, disk_path,
-                                  'vd%s' % list(string.lowercase)[i],
+                                  'vd%s' % list(string.ascii_lowercase)[i],
                                   debug=True)
 
         # Run virsh command
