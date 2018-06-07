@@ -4,6 +4,7 @@ import re
 import base64
 import locale
 
+from avocado.core import exceptions
 from avocado.utils import process
 from avocado.core import exceptions
 
@@ -121,7 +122,7 @@ def run(test, params, env):
         try:
             encryption_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
                                          ret.stdout.strip())[0].lstrip()
-        except IndexError as e:
+        except IndexError as detail:
             test.error("Fail to get newly created secret uuid")
         logging.debug("Secret uuid %s", encryption_uuid)
 
@@ -245,6 +246,9 @@ def run(test, params, env):
         while pool_vol_num > 0:
             # Set volume xml file
             vol_name = prefix_vol_name + "_%s" % pool_vol_num
+            bad_vol_name = params.get("bad_vol_name", "")
+            if bad_vol_name:
+                vol_name = bad_vol_name
             pool_vol_num -= 1
             # disk partition for new volume
             if src_pool_type == "disk":
@@ -253,6 +257,11 @@ def run(test, params, env):
                     test.error("Fail to generate volume name")
             if by_xml:
                 # According to BZ#1138523, we need inpect the right name
+                # (disk partition) for new volume
+                if src_pool_type == "disk":
+                    vol_name = utlv.new_disk_vol_name(src_pool_name)
+                    if vol_name is None:
+                        test.error("Fail to generate volume name")
                 vol_arg['name'] = vol_name
                 volxml = libvirt_xml.VolXML()
                 newvol = volxml.new_vol(**vol_arg)
@@ -289,17 +298,24 @@ def run(test, params, env):
             try:
                 utlv.check_exit_status(cmd_result, status_error)
                 check_vol(src_pool_name, vol_name, not status_error)
+                if bad_vol_name:
+                    pattern = "volume name '%s' cannot contain '/'" % vol_name
+                    logging.debug("pattern: %s", pattern)
+                    if "\\" in pattern and by_xml:
+                        pattern = pattern.replace("\\", "\\\\")
+                    if re.search(pattern, cmd_result.stderr) is None:
+                        test.fail("vol-create failed with unexpected reason")
                 if not status_error:
                     vol_path = virsh.vol_path(vol_name,
                                               src_pool_name).stdout.strip()
                     logging.debug("Full path of %s: %s", vol_name, vol_path)
                     vol_path_list.append(vol_path)
-            except exceptions.TestFail as e:
+            except exceptions.TestFail as detail:
                 stderr = cmd_result.stderr
                 if any(err in stderr for err in fmt_err_list):
                     test.cancel(skip_msg)
                 else:
-                    raise e
+                    test.fail("Create volume fail:\n%s" % detail)
         # Post process vol by other programs
         process_vol_by = params.get("process_vol_by")
         process_vol_type = params.get("process_vol_type", "")
@@ -310,12 +326,12 @@ def run(test, params, env):
                 try:
                     virsh.pool_refresh(src_pool_name, ignore_status=False)
                     check_vol(src_pool_name, process_vol, expect_vol_exist)
-                except (process.CmdError, exceptions.TestFail) as e:
+                except (process.CmdError, exceptions.TestFail) as detail:
                     if process_vol_type == "thin":
-                        logging.error(str(e))
+                        logging.error(str(detail))
                         test.cancel("You may encounter bug BZ#1060287")
                     else:
-                        raise e
+                        test.fail("Fail to refresh pool:\n%s" % detail)
             else:
                 test.fail("Post process volume failed")
     finally:
