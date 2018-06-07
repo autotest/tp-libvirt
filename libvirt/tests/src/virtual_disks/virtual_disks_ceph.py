@@ -2,7 +2,9 @@ import os
 import re
 import time
 import logging
+import shutil
 import aexpect
+
 from collections import OrderedDict
 
 from avocado.utils import process
@@ -41,6 +43,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     virsh_dargs = {'debug': True, 'ignore_status': True}
+    additional_xml_file = os.path.join(data_dir.get_tmp_dir(), "additional_disk.xml")
 
     def config_ceph():
         """
@@ -753,6 +756,9 @@ def run(test, params, env):
                 if "secret_usage" in params:
                     params.pop("secret_usage")
             xml_file = libvirt.create_disk_xml(params)
+            if additional_guest:
+                # Copy xml_file for additional guest VM.
+                shutil.copyfile(xml_file, additional_xml_file)
             opts = params.get("attach_option", "")
             ret = virsh.attach_device(vm_name, xml_file,
                                       flagstr=opts, debug=True)
@@ -761,7 +767,7 @@ def run(test, params, env):
                 # Make sure the additional VM is running
                 if additional_vm.is_dead():
                     additional_vm.start()
-                ret = virsh.attach_device(guest_name, xml_file,
+                ret = virsh.attach_device(guest_name, additional_xml_file,
                                           "", debug=True)
                 libvirt.check_result(ret, skip_if=unsupported_err)
         elif attach_disk:
