@@ -1,7 +1,8 @@
 import re
 import os.path
 import logging
-import multiprocessing
+
+from avocado.utils import cpu
 
 from virttest import virsh
 from virttest.staging import utils_cgroup
@@ -32,8 +33,8 @@ def run(test, params, env):
         vm_ref = vm_name
 
     # get host cpus num
-    cpus = multiprocessing.cpu_count()
-    logging.debug("host cpu num is %s", cpus)
+    cpus = cpu.online_cpus_count()
+    logging.debug("host online cpu num is %s", cpus)
 
     # get options and put into a dict
     get_total = re.search('total', options)
@@ -61,6 +62,9 @@ def run(test, params, env):
     # check if cpu is enough,if not cancel the test
     if (status_error == "no"):
         cpu_start = int(option_dict.get("start", "0"))
+        if cpu_start == 32:
+            cpus = cpu.total_cpus_count()
+            logging.debug("Host total cpu num: %s", cpus)
         if (cpu_start >= cpus):
             test.cancel("Host cpus are not enough")
 
