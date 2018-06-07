@@ -567,7 +567,6 @@ def run(test, params, env):
                 virsh.secret_undefine(dirty_secret_uuid)
         # Prepare test environment.
         qemu_config = LibvirtQemuConfig()
-        san_lock_config = LibvirtSanLockConfig()
 
         if disk_snapshot_with_sanlock:
             # Install necessary package:sanlock,libvirt-lock-sanlock
@@ -585,6 +584,7 @@ def run(test, params, env):
             qemu_config.lock_manager = 'sanlock'
 
             # Update qemu-sanlock.conf.
+            san_lock_config = LibvirtSanLockConfig()
             san_lock_config.user = 'sanlock'
             san_lock_config.group = 'sanlock'
             san_lock_config.host_id = 1
