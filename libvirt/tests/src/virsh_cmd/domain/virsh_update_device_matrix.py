@@ -225,7 +225,7 @@ def run(test, params, env):
                         "rhel7": "Red Hat Enterprise Linux Server release 7",
                         "fedora": "Fedora release"}
         version_file = "/etc/redhat-release"
-        if not rhel_release.has_key(release_ver):
+        if release_ver not in rhel_release:
             logging.error("Can't support this version of guest: %s",
                           release_ver)
             return False
