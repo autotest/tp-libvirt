@@ -246,6 +246,21 @@ def run(test, params, env):
     logging.info("iface_format is %s", iface_format)
 
     try:
+        # Delete all controller devices except index=0 to allow available PCI slots.
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        controllers = vmxml.get_devices(device_type="controller")
+        for ctrl in controllers:
+            if ctrl.type == "pci" and ctrl.index != "0":
+                vmxml.del_device(ctrl)
+        # Delete all interfaces except first to allow available PCI slots.
+        vnics = vmxml.get_devices(device_type="interface")
+        for vnic in vnics[1:]:
+            vmxml.del_device(vnic)
+        logging.debug(vmxml)
+        vmxml.sync()
+        if vm.is_dead():
+            vm.start()
+
         # Generate xml file if using attach-device command
         if attach_cmd == "attach-device":
             # Change boot order to disk
