@@ -16,6 +16,7 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.devices import disk
+from virttest import libvirt_storage
 
 from provider import libvirt_version
 
@@ -47,8 +48,12 @@ def check_snap_in_image(vm_name, snap_name):
 
     domxml = virsh.dumpxml(vm_name).stdout.strip()
     xtf_dom = xml_utils.XMLTreeFile(domxml)
+    # Check whether qemu-img need add -U suboption since locking feature was added afterwards qemu-2.10
+    qemu_img_locking_feature_support = libvirt_storage.check_qemu_image_lock_support()
 
     cmd = "qemu-img info " + xtf_dom.find("devices/disk/source").get("file")
+    if qemu_img_locking_feature_support:
+        cmd = "qemu-img info -U " + xtf_dom.find("devices/disk/source").get("file")
     img_info = process.getoutput(cmd).strip()
 
     if re.search(snap_name, img_info):
