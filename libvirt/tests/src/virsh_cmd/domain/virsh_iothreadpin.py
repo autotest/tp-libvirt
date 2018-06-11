@@ -126,7 +126,7 @@ def run(test, params, env):
             # Check iothreadinfo by virsh command
             iothread_info = libvirt.get_iothreadsinfo(dom_option, options)
             logging.debug("iothreadinfo: %s", iothread_info)
-            if (not iothread_info.has_key(iothread_id) or
+            if (iothread_id not in iothread_info or
                     iothread_info[iothread_id] != cpuset):
                 raise exceptions.TestFail("Failed to add iothreadpins %s", iothread_id)
 
