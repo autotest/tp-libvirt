@@ -28,11 +28,11 @@ def run(test, params, env):
         :return : Translated 4-digit permission string, like "0777".
         """
         ubit = bits % 8
-        bits /= 8
+        bits //= 8
         gbit = bits % 8
-        bits /= 8
+        bits //= 8
         obit = bits % 8
-        bits /= 8
+        bits //= 8
         return "%s%s%s%s" % (bits, obit, gbit, ubit)
 
     def check_unix_sock(group, perms, path, readonly=False):
