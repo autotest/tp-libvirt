@@ -52,9 +52,9 @@ def run(test, params, env):
         params["stress_args"] = stress_param
     load_vms.append(vm)
     if stress_type in ['cpu', 'memory']:
-        utils_test.load_stress("stress_in_vms", vms=load_vms, params=params)
+        utils_test.load_stress("stress_in_vms", params, vms=load_vms)
     else:
-        utils_test.load_stress("iozone_in_vms", vms=load_vms, params=params)
+        utils_test.load_stress("iozone_in_vms", params, vms=load_vms)
 
     session = vm.wait_for_login()
     try:
@@ -168,7 +168,7 @@ def run(test, params, env):
         # unplug operation will encounter kind of errors.
         pass
     finally:
-        utils_test.unload_stress("stress_in_vms", vms=load_vms)
+        utils_test.unload_stress("stress_in_vms", params, load_vms)
         if session:
             session.close()
         # Cleanup
