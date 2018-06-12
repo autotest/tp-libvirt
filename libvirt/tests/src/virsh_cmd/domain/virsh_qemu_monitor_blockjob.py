@@ -57,7 +57,7 @@ def copied_migration(test, vm, params, blockjob_type=None, block_target="vda"):
     elif stress_type == "memory":
         params['stress_args'] = "--vm 2 --vm-bytes 256M --vm-keep --timeout 60"
     if stress_type is not None:
-        utils_test.load_stress("stress_in_vms", [vm], params)
+        utils_test.load_stress("stress_in_vms", params=params, vms=[vm])
 
     cp_mig = utlv.MigrationTest()
     migration_thread = threading.Thread(target=cp_mig.thread_func_migration,

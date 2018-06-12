@@ -247,7 +247,7 @@ def manipulate_vm(vm, operation, params=None):
     # Special operations for test
     if operation == "stress":
         logging.debug("Load stress in VM")
-        err_msg = utils_test.load_stress(operation, [vm], params)[0]
+        err_msg = utils_test.load_stress(operation, params=params, vms=[vm])[0]
     elif operation == "inject_nmi":
         inject_times = int(params.get("inject_times", 10))
         logging.info("Trying to inject nmi %s times", inject_times)

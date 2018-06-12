@@ -175,7 +175,7 @@ def run(test, params, env):
         for vm in vms:
             set_get_speed(vm.name, bandwidth, virsh_dargs=virsh_dargs)
             vm.wait_for_login()
-        utils_test.load_stress(stress_type, vms, params)
+        utils_test.load_stress(stress_type, params=params, vms=vms)
         mig_first.do_migration(vms, src_uri, dest_uri, migration_type,
                                options=virsh_migrate_options, thread_timeout=thread_timeout)
         for vm in vms:
@@ -202,7 +202,7 @@ def run(test, params, env):
                 vm.start()
             vm.wait_for_login()
             set_get_speed(vm.name, second_bandwidth, virsh_dargs=virsh_dargs)
-        utils_test.load_stress(stress_type, vms, params)
+        utils_test.load_stress(stress_type, params=params, vms=vms)
         mig_second = utlv.MigrationTest()
         mig_second.do_migration(vms, src_uri, dest_uri, migration_type,
                                 options=virsh_migrate_options, thread_timeout=thread_timeout)

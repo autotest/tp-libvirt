@@ -2667,7 +2667,7 @@ def run(test, params, env):
         # And migrated vms may be not login if the network is local lan
         if stress_type == "stress_on_host":
             logging.info("Unload stress from host")
-            utils_test.unload_stress(stress_type, [vm])
+            utils_test.unload_stress(stress_type, params=test_dict, vms=[vm])
 
         if HUGETLBFS_MOUNT:
             cmds = ["umount -l %s" % remote_hugetlbfs_path,

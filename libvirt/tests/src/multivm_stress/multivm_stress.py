@@ -23,3 +23,4 @@ def run(test, params, env):
         stress_event.run_threads()
     finally:
         stress_event.wait_for_threads()
+        utils_test.unload_stress("stress_in_vms", params=params, vms=vms)
