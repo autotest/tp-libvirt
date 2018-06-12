@@ -235,14 +235,16 @@ def run(test, params, env):
                 error_msg = "Link state isn't up in guest"
 
             # Ignore status of this one
-            cmd = 'ifdown %s' % guest_if_name
-            pattern = "Device '%s' successfully disconnected" % guest_if_name
-            guest_cmd_check(cmd, session, pattern)
+            cmd = 'ip link set down %s' % guest_if_name
+            session.cmd_status_output(cmd, timeout=10)
+            pattern = "%s:.*state DOWN.*" % guest_if_name
+            pattern_cmd = 'ip addr show dev %s' % guest_if_name
+            guest_cmd_check(pattern_cmd, session, pattern)
 
-            cmd = 'ifup %s' % guest_if_name
-            pattern = "Determining IP information for %s" % guest_if_name
-            pattern += "|Connection successfully activated"
-            if not guest_cmd_check(cmd, session, pattern):
+            cmd = 'ip link set up %s' % guest_if_name
+            session.cmd_status_output(cmd, timeout=10)
+            pattern = "%s:.*state UP.*" % guest_if_name
+            if not guest_cmd_check(pattern_cmd, session, pattern):
                 error_msg = ("Could not bring up interface %s inside guest"
                              % guest_if_name)
         else:  # negative test
