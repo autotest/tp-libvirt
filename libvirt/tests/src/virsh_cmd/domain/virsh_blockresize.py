@@ -75,7 +75,12 @@ def run(test, params, env):
 
         # Check status_error
         if status_error:
-            if status == 0 or err == "":
+            #if Qemu version > 2.11, zero_size shrink can be supported.
+            qemu_version = utils_misc.get_qemu_version()
+            is_rhev_installed = qemu_version['is_rhev']
+            zero_size_hit = (resize_value == "0"
+                             and utils_misc.compare_qemu_version(2, 11, 0, is_rhev=is_rhev_installed))
+            if (status == 0 or err == "") and (not zero_size_hit):
                 test.fail("Expect failure, but run successfully!")
             # No need to do more test
             return
