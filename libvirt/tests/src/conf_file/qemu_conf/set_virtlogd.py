@@ -14,6 +14,9 @@ from virttest import virt_vm
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.console import Console
 
+from provider import libvirt_version
+
+
 # Define qemu log path.
 QEMU_LOG_PATH = "/var/log/libvirt/qemu"
 
@@ -194,7 +197,11 @@ def run(test, params, env):
         check_info_in_vm_log_file(vm_name, matchedMsg="char device redirected to /dev/pts")
 
         # Get pipe node opened by virtlogd for VM log file.
-        cmd = ("lsof  -w |grep pipe|grep virtlogd|tail -n 1|awk '{print $9}'")
+        pipe_node_field = "$9"
+        # On latest release,No.8 field in lsof returning is pipe node number.
+        if libvirt_version.version_compare(4, 3, 0):
+            pipe_node_field = "$8"
+        cmd = ("lsof  -w |grep pipe|grep virtlogd|tail -n 1|awk '{print %s}' % pipe_node_field")
         pipe_node = configure(cmd)
 
         # Check if qemu-kvm use pipe node provided by virtlogd.
