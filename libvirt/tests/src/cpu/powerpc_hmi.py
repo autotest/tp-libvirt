@@ -79,8 +79,8 @@ def run(test, params, env):
     if not sm.check_installed("opal-utils") and not sm.install("opal-utils"):
         test.cancel("opal-utils package install failed")
     cpus_list = cpu.cpu_online_list()
-    cpu_idle_state = cpu.get_cpu_idle()
-    cpu.set_cpu_idle()
+    cpu_idle_state = cpu.get_cpuidle_state()
+    cpu.set_cpuidle_state()
     # Lets use second available host cpu
     hmi_cpu = cpus_list[1]
     pir = int(open('/sys/devices/system/cpu/cpu%s/pir' % hmi_cpu).read().strip(), 16)
