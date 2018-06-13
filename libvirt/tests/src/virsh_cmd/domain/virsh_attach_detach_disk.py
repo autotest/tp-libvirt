@@ -103,6 +103,20 @@ def run(test, params, env):
             logging.error(str(e))
             return False
 
+    def check_shareable(at_with_shareable, test_twice):
+        """
+        check if current libvirt version support shareable option
+
+        at_with_shareable: True or False. Whether attach disk with shareable option
+        test_twice: True or False. Whether perform operations twice
+        return: True or cancel the test
+        """
+        if at_with_shareable or test_twice:
+            if libvirt_version.version_compare(3, 9, 0):
+                return True
+            else:
+                test.cancel("Current libvirt version doesn't support shareable feature")
+
     # Get test command.
     test_cmd = params.get("at_dt_disk_test_cmd", "attach-disk")
 
@@ -147,7 +161,7 @@ def run(test, params, env):
     address2 = params.get("at_dt_disk_address2", "")
     cache_options = params.get("cache_options", "")
     time_sleep = params.get("time_sleep", 3)
-    if at_with_shareable:
+    if check_shareable(at_with_shareable, test_twice):
         at_options += " --mode shareable"
     if serial:
         at_options += (" --serial %s" % serial)
@@ -218,8 +232,9 @@ def run(test, params, env):
         s_at_options = "--driver qemu --config"
         #Since lock feature is introduced in libvirt 3.9.0 afterwards, disk shareable options
         #need be set if disk needs be attached multitimes
-        if at_with_shareable or (test_twice and libvirt_version.version_compare(3, 9, 0)):
-            s_at_options += ' --mode shareable'
+        if check_shareable(at_with_shareable, test_twice):
+            s_at_options += " --mode shareable"
+
         s_attach = virsh.attach_disk(vm_name, device_source, device_target,
                                      s_at_options).exit_status
         if s_attach != 0:
@@ -276,12 +291,6 @@ def run(test, params, env):
         vm_ref = ""
 
     if test_cmd == "attach-disk":
-
-        #Since lock feature is introduced in libvirt 3.9.0 afterwards, disk shareable options
-        #need be set if disk needs be attached multitimes
-        if test_twice and libvirt_version.version_compare(3, 9, 0):
-            if not at_with_shareable:
-                at_options += " --mode shareable"
         status = virsh.attach_disk(vm_ref, device_source, device_target,
                                    at_options, debug=True).exit_status
     elif test_cmd == "detach-disk":
@@ -438,6 +447,7 @@ def run(test, params, env):
         # Recover VM.
         if vm.is_alive():
             vm.destroy(gracefully=False)
+        logging.debug("Restore the VM XML")
         backup_xml.sync()
         if os.path.exists(save_file):
             os.remove(save_file)
