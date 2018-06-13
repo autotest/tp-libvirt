@@ -91,7 +91,7 @@ class VMChecker(object):
         Compare virt-v2v version against given version.
         """
         cmd = 'rpm -q virt-v2v|grep virt-v2v'
-        v2v_version = LooseVersion(process.run(cmd, shell=True).stdout.strip())
+        v2v_version = LooseVersion(process.run(cmd, shell=True).stdout_text.strip())
         compare_version = LooseVersion(compare_version)
         if v2v_version > compare_version:
             return True
