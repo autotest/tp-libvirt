@@ -133,6 +133,9 @@ def run(test, params, env):
     new_disk = ""
     vm = env.get_vm(vm_name)
     try:
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        vmxml_backup = vmxml.copy()
+        old_disk_count = vmxml.get_disk_count(vm_name)
         # Prepare vHBA
         online_hbas = utils_npiv.find_hbas("hba")
         old_vhbas = utils_npiv.find_hbas("vhba")
@@ -181,10 +184,7 @@ def run(test, params, env):
         copyfile(lun_disk_xml, disk_xml)
         if not vm.is_alive():
             vm.start()
-        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        vmxml_backup = vmxml.copy()
         session = vm.wait_for_login()
-        old_disk_count = vmxml.get_disk_count(vm_name)
         libvirt_vm = lib_vm.VM(vm_name, vm.params, vm.root_dir,
                                vm.address_cache)
         old_disks = libvirt_vm.get_disks()
