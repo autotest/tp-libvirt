@@ -79,8 +79,7 @@ def run(test, params, env):
             status, output = session.cmd_status_output(cmd)
             session.close()
             if status:
-                test.fail("Disk operation in VM failed:\nexit code:\n%s\noutput:\n%s",
-                          status, output)
+                test.fail("Disk operation in VM failed:%s" % output)
         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as err:
             test.fail("Error happens when check disk in vm: %s" % err)
 
