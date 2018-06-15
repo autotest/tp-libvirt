@@ -116,7 +116,7 @@ def run(test, params, env):
         if "vcpupin" in condition:
             set_condn("pin_vcpu")
         if "stress" in condition:
-            session.cmd('while true;do echo "no" >/dev/null;done&')
+            utils_test.load_stress("stress_in_vms", params=params, vms=[vm])
         if "save" in condition:
             set_condn("save")
         if "suspend" in condition:
@@ -140,7 +140,9 @@ def run(test, params, env):
         if "suspend" in condition:
             set_condn("suspend")
     finally:
+        if "stress" in condition:
+            utils_test.unload_stress("stress_in_vms", params=params, vms=[vm])
         if session:
             session.close()
         org_xml.sync()
-        cpu.set_cpu_idle(old_value=cpu_idle_state)
+        cpu.set_cpuidle_state(setstate=cpu_idle_state)
