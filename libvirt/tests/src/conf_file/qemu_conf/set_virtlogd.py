@@ -201,7 +201,7 @@ def run(test, params, env):
         # On latest release,No.8 field in lsof returning is pipe node number.
         if libvirt_version.version_compare(4, 3, 0):
             pipe_node_field = "$8"
-        cmd = ("lsof  -w |grep pipe|grep virtlogd|tail -n 1|awk '{print %s}' % pipe_node_field")
+        cmd = ("lsof  -w |grep pipe|grep virtlogd|tail -n 1|awk '{print %s}'" % pipe_node_field)
         pipe_node = configure(cmd)
 
         # Check if qemu-kvm use pipe node provided by virtlogd.
