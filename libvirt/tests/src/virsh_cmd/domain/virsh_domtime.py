@@ -276,6 +276,7 @@ def run(test, params, env):
         Suspend, managedsave, pmsuspend or shutdown a VM for a period of time
         """
         stop_start = time.time()
+        vmlogin_dur = 0.0
         if suspend:
             vm.pause()
             time.sleep(10)
@@ -284,17 +285,21 @@ def run(test, params, env):
             vm.managedsave()
             time.sleep(10)
             vm.start()
+            start_dur = time.time()
             vm.wait_for_login()
+            vmlogin_dur = time.time() - start_dur
         elif pmsuspend:
             vm.pmsuspend()
             time.sleep(10)
             vm.pmwakeup()
+            start_dur = time.time()
             vm.wait_for_login()
+            vmlogin_dur = time.time() - start_dur
         elif shutdown:
             vm.destroy()
 
         # Check real guest stop time
-        stop_seconds = time.time() - stop_start
+        stop_seconds = time.time() - stop_start - vmlogin_dur
         stop_time = datetime.timedelta(seconds=stop_seconds)
         logging.debug("Guest stopped: %s", stop_time)
         return stop_time
