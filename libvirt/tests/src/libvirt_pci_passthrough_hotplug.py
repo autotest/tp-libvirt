@@ -29,6 +29,7 @@ from virttest import data_dir
 from virttest.libvirt_xml.devices.controller import Controller
 from virttest import utils_package
 from virttest import utils_net
+from virttest.libvirt_xml import vm_xml
 from provider import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.compat_52lts import decode_to_text as to_text
@@ -52,7 +53,10 @@ def run(test, params, env):
         10. test virsh dumpxml
         11. hotunplug the device
         12. test stress
-           to verify the new network device.
+            to verify the new network device.
+        13. test virsh dump
+        14. boot the guest with huge pages
+            backed memory
     """
     # get the params from params
     vm_name = params.get("main_vm")
@@ -71,6 +75,7 @@ def run(test, params, env):
     virsh_dumpxml = params.get("virsh_dumpxml", "no")
     virsh_dump = params.get("virsh_dump", "no")
     flood_ping = params.get("flood_ping", "no")
+    hugepages_backedmem = params.get("hugepages_backedmem", "no")
     # Check the parameters from configuration file.
     for each_param in params.itervalues():
         if "ENTER_YOUR" in each_param:
@@ -259,10 +264,22 @@ def run(test, params, env):
         if cmd_result.exit_status:
             test.fail("Failed to virsh dump of domain %s" % vm_name)
 
+    def test_hugepages():
+        # test with huge pages backed memory
+        membacking = vm_xml.VMMemBackingXML()
+        hugepages = vm_xml.VMHugepagesXML()
+        membacking.hugepages = hugepages
+        vmxml.mb = membacking
+        vmxml.sync()
+        vm.start()
+        device_hotplug()
+        logging.debug("vm xml: %s", vmxml)
+
     try:
         for stress_value in range(0, int(stress_val)):
-            device_hotplug()
-            test_ping()
+            if not hugepages_backedmem == "yes":
+                device_hotplug()
+                test_ping()
             if flood_ping == "yes":
                 test_flood_ping()
             if suspend_operation == "yes":
@@ -273,6 +290,8 @@ def run(test, params, env):
                 test_dumpxml()
             if virsh_dump == "yes":
                 test_dump()
+            if hugepages_backedmem == "yes":
+                test_hugepages()
             device_hotunplug()
 
     finally:
