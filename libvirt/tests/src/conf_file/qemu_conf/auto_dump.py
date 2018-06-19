@@ -6,7 +6,7 @@ import platform
 from aexpect import ShellTimeoutError
 
 from avocado.utils import process
-
+from virttest import virsh
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
@@ -132,8 +132,10 @@ def run(test, params, env):
                         "support")
 
     finally:
-        backup_xml.sync()
+        # Recover Environment
         config.restore()
         libvirtd.restart()
+        virsh.destroy(vm_name)
+        backup_xml.sync()
         if os.path.exists(dump_path):
             shutil.rmtree(dump_path)
