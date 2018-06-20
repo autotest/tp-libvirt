@@ -12,6 +12,7 @@ def run(test, params, env):
     """
 
     guest_stress = params.get("guest_stress", "no") == "yes"
+    host_stress = params.get("host_stress", "no") == "yes"
     vms = env.get_all_vms()
     stress_event = utils_stress.VMStressEvents(params, env)
     if guest_stress:
@@ -19,8 +20,18 @@ def run(test, params, env):
             utils_test.load_stress("stress_in_vms", params=params, vms=vms)
         except Exception as err:
             test.fail("Error running stress in vms: %s" % err)
+    if host_stress:
+        if params.get("host_stress_args", ""):
+            params["stress_args"] = params.get("host_stress_args")
+        try:
+            utils_test.load_stress("stress_on_host", params=params)
+        except Exception as err:
+            test.fail("Error running stress in host: %s" % err)
     try:
         stress_event.run_threads()
     finally:
         stress_event.wait_for_threads()
-        utils_test.unload_stress("stress_in_vms", params=params, vms=vms)
+        if guest_stress:
+            utils_test.unload_stress("stress_in_vms", params=params, vms=vms)
+        if host_stress:
+            utils_test.unload_stress("stress_on_host", params=params)
