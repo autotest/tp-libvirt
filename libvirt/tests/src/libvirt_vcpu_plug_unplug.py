@@ -78,6 +78,7 @@ def run(test, params, env):
                 libvirt.check_exit_status(result)
             elif vm_operation == "reboot":
                 vm.reboot()
+                vm_uptime_init = vm.uptime()
             else:
                 logging.debug("No operation for the domain")
 
@@ -202,6 +203,7 @@ def run(test, params, env):
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    vm_uptime_init = 0
     vm_operation = params.get("vm_operation", "null")
     vcpu_max_num = int(params.get("vcpu_max_num"))
     vcpu_current_num = int(params.get("vcpu_current_num"))
@@ -294,6 +296,7 @@ def run(test, params, env):
         if cpu_arch in ('x86_64', 'i386', 'i686'):
             vmxml.set_pm_suspend(vm_name, "yes", "yes")
         vm.start()
+        vm_uptime_init = vm.uptime()
         if with_stress:
             bt = utils_test.run_avocado_bg(vm, params, test)
             if not bt:
@@ -536,6 +539,8 @@ def run(test, params, env):
                                                                      expect_vcpu_num,
                                                                      expect_vcpupin,
                                                                      setvcpu_option)
+        if vm.uptime() < vm_uptime_init:
+            test.fail("Unexpected VM reboot detected in between test")
     # Recover env
     finally:
         if need_mkswap:
