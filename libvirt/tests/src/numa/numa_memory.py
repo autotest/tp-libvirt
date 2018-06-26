@@ -190,6 +190,18 @@ def run(test, params, env):
         numad_cmd_opt = "-w %s:%s" % (vcpu_num, max_mem / 1024)
 
         try:
+            cmd = 'ls -l /usr/libexec/qemu-kvm'
+            logging.debug(process.getoutput(cmd, shell=True))
+            cmd = 'tail -n 100 /var/log/messages>>/var/log/chwen.log'
+            logging.debug(process.getoutput(cmd, shell=True))
+            cmd = 'ls -l /var/lib/avocado/data/avocado-vt/images/jeos-27-x86_64.qcow2'
+            logging.debug(process.getoutput(cmd, shell=True))
+            cmd = 'ps auxZ | grep libvirtd'
+            logging.debug(process.getoutput(cmd, shell=True))
+            cmd = 'ls -Z /usr/sbin/libvirtd'
+            logging.debug(process.getoutput(cmd, shell=True))
+            cmd = 'ls -Z /usr/libexec/qemu-kvm'
+            logging.debug(process.getoutput(cmd, shell=True))
             vm.start()
             vm.wait_for_login()
             vmxml_new = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
