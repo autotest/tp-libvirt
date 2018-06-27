@@ -184,6 +184,7 @@ def run(test, params, env):
     libvirtd = params.get("libvirtd")
     status_error = params.get("status_error", "no")
     vm_id = params.get("dtn_vm_id", "")
+    readonly = ("yes" == params.get("readonly", "no"))
 
     # For positive_test
     if status_error == "no":
@@ -201,7 +202,7 @@ def run(test, params, env):
         utils_libvirtd.libvirtd_stop()
 
     # run test case
-    ret = virsh.domxml_to_native(dtn_format, file_xml, extra_param,
+    ret = virsh.domxml_to_native(dtn_format, file_xml, extra_param, readonly=readonly,
                                  ignore_status=True, debug=True)
     status = ret.exit_status
     conv_arg = ret.stdout.strip()
