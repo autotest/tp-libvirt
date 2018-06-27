@@ -20,6 +20,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_conn import TLSConnection
 from virttest.compat_52lts import results_stdout_52lts, results_stderr_52lts
+from virttest.libvirt_xml.devices.controller import Controller
 
 
 def check_parameters(test, params):
@@ -162,6 +163,23 @@ def run(test, params, env):
         if option and not virsh.has_command_help_match(command, option):
             test.cancel(msg + "virsh command '%s' with option '%s'" % (command,
                                                                        option))
+
+    def add_ctrls(vm_xml, dev_type="pci", dev_index="0", dev_model="pci-root"):
+        """
+        Add multiple devices
+
+        :param dev_type: the type of the device to be added
+        :param dev_index: the maximum index of the device to be added
+        :param dev_model: the model of the device to be added
+        """
+        for inx in range(0, int(dev_index) + 1):
+            newcontroller = Controller("controller")
+            newcontroller.type = dev_type
+            newcontroller.index = inx
+            newcontroller.model = dev_model
+            logging.debug("New device is added:\n%s", newcontroller)
+            vm_xml.add_device(newcontroller)
+        vm_xml.sync()
 
     def do_migration(vm, dest_uri, options, extra):
         """
@@ -328,19 +346,21 @@ def run(test, params, env):
     log_file = params.get("libvirt_log", "/var/log/libvirt/libvirtd.log")
     check_complete_job = "yes" == params.get("check_complete_job", "no")
     config_libvirtd = "yes" == params.get("config_libvirtd", "no")
+    contrl_index = params.get("new_contrl_index", None)
     grep_str_remote_log = params.get("grep_str_remote_log", "")
     grep_str_local_log = params.get("grep_str_local_log", "")
     stress_in_vm = "yes" == params.get("stress_in_vm", "no")
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
                           'ssh_remote_auth': True}
+
     hpt_resize = params.get("hpt_resize", None)
     qemu_check = params.get("qemu_check", None)
     xml_check_after_mig = params.get("guest_xml_check_after_mig", None)
 
     arch = platform.machine()
-    if hpt_resize and 'ppc64' not in arch:
-        test.cancel("HPT resizing case is PPC only.")
+    if (hpt_resize or contrl_index) and 'ppc64' not in arch:
+        test.cancel("The case is PPC only.")
 
     # For TLS
     tls_recovery = params.get("tls_auto_recovery", "yes")
@@ -371,13 +391,17 @@ def run(test, params, env):
     vm.verify_alive()
 
     # For safety reasons, we'd better back up  xmlfile.
-    orig_config_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    orig_config_xml = new_xml.copy()
     if not orig_config_xml:
         test.error("Backing up xmlfile failed.")
 
     try:
-        # Change the disk of the vm to shared disk
-        libvirt.set_vm_disk(vm, params)
+        # Change VM xml in below part
+        if contrl_index:
+            new_xml.remove_all_device_by_type('controller')
+            logging.debug("After removing controllers, current XML:\n%s\n", new_xml)
+            add_ctrls(new_xml, dev_index=contrl_index)
 
         if extra.count("--tls"):
             qemu_conf_dict = {"migrate_tls_x509_verify": "1"}
@@ -403,9 +427,10 @@ def run(test, params, env):
                                                              remote_host=True,
                                                              extra_params=params)
         if hpt_resize:
-            new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             set_hpt(hpt_resize, new_xml)
 
+        # Change the disk of the vm to shared disk and then start VM
+        libvirt.set_vm_disk(vm, params)
         if not vm.is_alive():
             vm.start()
 
@@ -518,13 +543,18 @@ def run(test, params, env):
                 remote_virsh_session.dumpxml(vm_name,
                                              debug=True,
                                              ignore_status=True)).strip()
-            check_content = xml_check_after_mig
             if hpt_resize:
-                check_content = "%s'%s'" % (xml_check_after_mig, hpt_resize)
-            if not re.search(check_content, target_guest_dumpxml):
-                remote_virsh_session.close_session()
-                test.fail("Fail to search '%s' in target guest XML:\n%s"
-                          % (xml_check_after_mig, target_guest_dumpxml))
+                xml_check_after_mig = "%s'%s'" % (xml_check_after_mig, hpt_resize)
+                if not re.search(xml_check_after_mig, target_guest_dumpxml):
+                    remote_virsh_session.close_session()
+                    test.fail("Fail to search '%s' in target guest XML:\n%s"
+                              % (xml_check_after_mig, target_guest_dumpxml))
+            if contrl_index:
+                all_ctrls = re.findall(xml_check_after_mig, target_guest_dumpxml)
+                if len(all_ctrls) != int(contrl_index) + 1:
+                    remote_virsh_session.close_session()
+                    test.fail("%s pci-root controllers are expected in guest XML, "
+                              "but found %s" % (int(contrl_index) + 1, len(all_ctrls)))
             remote_virsh_session.close_session()
 
         server_session = remote.wait_for_login('ssh', server_ip, '22',
@@ -532,7 +562,6 @@ def run(test, params, env):
                                                r"[\#\$]\s*$")
         check_vm_network_accessed(server_session)
         server_session.close()
-
     except exceptions.TestFail as details:
         is_TestFail = True
         test_exception = details
