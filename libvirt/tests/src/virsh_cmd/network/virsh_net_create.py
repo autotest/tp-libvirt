@@ -60,7 +60,7 @@ def do_high_level_test(virsh_dargs, test_xml, net_name, net_uuid, bridge):
     test_netxml.debug_xml()
 
     try:
-        test_netxml.create()
+        test_netxml.create(**virsh_dargs)
         return test_netxml.defined
     except (IOError, process.CmdError, LibvirtXMLError) as cmd_excpt:
         # CmdError catches failing virsh commands
@@ -85,6 +85,7 @@ def run(test, params, env):
     uri = libvirt_vm.normalize_connect_uri(params.get("connect_uri",
                                                       "default"))
     status_error = "yes" == params.get("status_error", "no")
+    readonly = ("yes" == params.get("net_create_readonly", "no"))
     net_name = params.get("net_create_net_name", "")  # default is tested
     net_uuid = params.get("net_create_net_uuid", "")  # default is tested
     options_ref = params.get("net_create_options_ref", "")  # default is tested
@@ -134,15 +135,15 @@ def run(test, params, env):
         logging.info("The following is expected to fail...")
 
     try:
+        if readonly:
+            virsh_dargs.update({"readonly": readonly})
         # Determine depth of test - if low-level calls are needed
         if (options_ref or extra or corrupt):
             logging.debug("Performing low-level net-create test")
-            # vrsh will act like it's own virsh-dargs, i.e. it is dict-like
-            test_passed = do_low_level_test(vrsh, test_xml, options_ref, extra)
+            test_passed = do_low_level_test(virsh_dargs, test_xml, options_ref, extra)
         else:  # high-level test
             logging.debug("Performing high-level net-create test")
-            # vrsh will act like it's own virsh-dargs, i.e. it is dict-like
-            test_passed = do_high_level_test(vrsh, test_xml, net_name,
+            test_passed = do_high_level_test(virsh_dargs, test_xml, net_name,
                                              net_uuid, bridge)
     finally:
         # Be nice to user
