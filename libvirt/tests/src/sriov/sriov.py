@@ -369,6 +369,11 @@ def run(test, params, env):
         if option == "--config":
             result = virsh.start(vm_name)
             utils_test.libvirt.check_exit_status(result, expect_error=False)
+        # For option == "--persistent", after VM destroyed and then start, the device should still be there.
+        if option == "--persistent":
+            virsh.destroy(vm_name)
+            result = virsh.start(vm_name, debug=True)
+            utils_test.libvirt.check_exit_status(result, expect_error=False)
         live_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         logging.debug(live_xml)
         get_ip_by_mac(mac_addr, timeout=60)
