@@ -185,7 +185,7 @@ def run(test, params, env):
                 continue
             target = disk.find('target')
             target.set('bus', dest)
-            target.set('dev', dev_table[dest] + 'd' + string.lowercase[index])
+            target.set('dev', dev_table[dest] + 'd' + string.ascii_lowercase[index])
             disk.remove(disk.find('address'))
             index += 1
         vmxml.sync()
