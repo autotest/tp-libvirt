@@ -28,7 +28,6 @@ def run(test, params, env):
         :param test_feature: test feature element.
         """
         content = """
-<host>
  <cpu>
   <arch>x86_64</arch>
   <model>pentium3</model>
@@ -43,7 +42,6 @@ def run(test, params, env):
   <feature name="sse2"/>
   <feature name="%s"/>
   </cpu>
-</host>
 """ % (test_feature, test_feature)
         with open(cpu_xmlfile, 'w') as xmlfile:
             xmlfile.write(content)
