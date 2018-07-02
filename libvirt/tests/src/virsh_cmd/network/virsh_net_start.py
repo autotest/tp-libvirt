@@ -65,6 +65,8 @@ def run(test, params, env):
     if params.get('setup_libvirt_polkit') == 'yes':
         virsh_dargs = {'uri': virsh_uri, 'unprivileged_user': unprivileged_user,
                        'debug': False, 'ignore_status': True}
+    if params.get('net_start_readonly', 'no') == 'yes':
+        virsh_dargs = {'uri': uri, 'debug': True, 'readonly': True, 'ignore_status': True}
 
     # Run test case
     result = virsh.net_start(net_ref, extra, **virsh_dargs)
