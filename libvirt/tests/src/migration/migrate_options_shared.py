@@ -5,6 +5,7 @@ import re
 import threading
 
 from avocado.utils import process
+from avocado.utils import memory
 from avocado.core import exceptions
 
 from virttest import libvirt_vm
@@ -202,6 +203,26 @@ def run(test, params, env):
                       timeout, vm_state)
         remote_virsh_session.close_session()
 
+    def get_usable_compress_cache(pagesize):
+        """
+        Get a number which is bigger than pagesize and is power of two.
+
+        :param pagesize: the given integer
+        :return: an integer satisfying the criteria
+        """
+        def calculate(num):
+            result = num & (num - 1)
+            return (result == 0)
+
+        item = pagesize
+        found = False
+        while (not found):
+            item += 1
+            found = calculate(item)
+        logging.debug("%d is smallest one that is bigger than '%s' and "
+                      "is power of 2", item, pagesize)
+        return item
+
     check_parameters(test, params)
 
     # Params for NFS shared storage
@@ -238,11 +259,6 @@ def run(test, params, env):
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
                           'ssh_remote_auth': True}
-
-    # For --postcopy enable
-    postcopy_options = params.get("postcopy_options")
-    if postcopy_options and not extra.count(postcopy_options):
-        extra = "%s %s" % (extra, postcopy_options)
 
     # For TLS
     tls_recovery = params.get("tls_auto_recovery", "yes")
@@ -325,6 +341,15 @@ def run(test, params, env):
         if extra.count("timeout-postcopy"):
             asynch_migration = True
             func_name = check_timeout_postcopy
+        if extra.count("comp-xbzrle-cache"):
+            cache = get_usable_compress_cache(memory.get_page_size())
+            extra = "%s %s" % (extra, cache)
+
+        # For --postcopy enable
+        postcopy_options = params.get("postcopy_options")
+        if postcopy_options and not extra.count(postcopy_options):
+            extra = "%s %s" % (extra, postcopy_options)
+
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
         else:
@@ -359,6 +384,8 @@ def run(test, params, env):
             jobinfo = results_stdout_52lts(virsh.domjobinfo(args, debug=True,
                                            ignore_status=True)).strip()
             logging.debug("Local job info on completion:\n%s", jobinfo)
+            if extra.count("comp-xbzrle-cache") and search_str_domjobinfo:
+                search_str_domjobinfo = "%s %s" % (search_str_domjobinfo, cache//1024)
             if search_str_domjobinfo:
                 if not re.search(search_str_domjobinfo, jobinfo):
                     test.fail("Fail to search '%s' on local:\n%s"
