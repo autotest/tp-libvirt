@@ -1,4 +1,5 @@
 import os
+import re
 
 from virttest import virsh
 from virttest import data_dir
@@ -32,6 +33,8 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     uri = params.get("virsh_uri")
+    readonly = ("yes" == params.get("save_readonly", "no"))
+    expect_msg = params.get("save_err_msg", "")
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
@@ -65,7 +68,7 @@ def run(test, params, env):
         options += " --verbose"
     result = virsh.save(vm_ref, savefile, options, ignore_status=True,
                         unprivileged_user=unprivileged_user,
-                        uri=uri, debug=True)
+                        uri=uri, debug=True, readonly=readonly)
     status = result.exit_status
     err_msg = result.stderr.strip()
 
@@ -82,6 +85,9 @@ def run(test, params, env):
             if not status:
                 test.fail("virsh run succeeded with an "
                           "incorrect command")
+            if readonly:
+                if not re.search(expect_msg, err_msg):
+                    test.fail("Fail to get expect err msg: %s" % expect_msg)
         else:
             if status:
                 test.fail("virsh run failed with a "
