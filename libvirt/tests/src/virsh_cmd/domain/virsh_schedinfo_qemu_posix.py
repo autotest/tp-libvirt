@@ -72,19 +72,30 @@ def run(test, params, env):
             test.fail("Output is not standard:\n%s" % output)
 
         result_lines = output.splitlines()
-        set_value = None
-        for line in result_lines:
-            key_value = line.split(":")
-            key = key_value[0].strip()
-            value = key_value[1].strip()
-            if key == "Scheduler":
-                if value != scheduler:
-                    test.cancel("This test do not support"
-                                " %s scheduler." % scheduler)
-            elif key == set_ref:
-                set_value = value
-                break
-        return set_value
+        set_value_list = []
+        for set_ref_node in set_ref.split(","):
+            for line in result_lines:
+                key_value = line.split(":")
+                key = key_value[0].strip()
+                value = key_value[1].strip()
+                if key == "Scheduler":
+                    if value != scheduler:
+                        test.cancel("This test do not support"
+                                    " %s scheduler." % scheduler)
+                elif key == set_ref_node:
+                    set_value_list.append(value)
+                    break
+        return set_value_list
+
+    def get_current_value():
+        """
+        Get the current schedinfo value and return
+        """
+        current_result = virsh.schedinfo(vm_ref, " --current",
+                                         ignore_status=True, debug=True)
+        current_value = schedinfo_output_analyse(current_result, set_ref,
+                                                 scheduler_value)
+        return current_value
 
     # Prepare test options
     vm_ref = params.get("schedinfo_vm_ref", "domname")
@@ -99,6 +110,9 @@ def run(test, params, env):
     # The default scheduler on qemu/kvm is posix
     scheduler_value = "posix"
     status_error = params.get("status_error", "no")
+    start_vm = ("yes" == params.get("start_vm"))
+    readonly = ("yes" == params.get("schedinfo_readonly", "no"))
+    expect_msg = params.get("schedinfo_err_msg", "")
 
     # Prepare vm test environment
     vm_name = params.get("main_vm")
@@ -109,7 +123,13 @@ def run(test, params, env):
     elif set_ref:
         if set_method == 'cmd':
             if set_value:
-                options_ref = "--set %s=%s" % (set_ref, set_value)
+                set_ref_list = set_ref.split(",")
+                set_value_list = set_value.split(",")
+                for i in range(0, len(set_ref_list)):
+                    if "--set" in options_ref:
+                        options_ref += " %s=%s" % (set_ref_list[i], set_value_list[i])
+                    else:
+                        options_ref = "--set %s=%s" % (set_ref_list[i], set_value_list[i])
             else:
                 options_ref = "--set %s" % set_ref
         elif set_method == 'xml':
@@ -130,7 +150,7 @@ def run(test, params, env):
             xml.sync()
 
     vm = env.get_vm(vm_name)
-    if vm.is_dead():
+    if vm.is_dead() and start_vm:
         vm.start()
     domid = vm.get_id()
     domuuid = vm.get_uuid()
@@ -149,55 +169,81 @@ def run(test, params, env):
 
     options_ref += " %s " % options_suffix
 
-    # Run command
-    result = virsh.schedinfo(vm_ref, options_ref,
-                             ignore_status=True, debug=True)
-    status = result.exit_status
-
-    # VM must be running to get cgroup parameters.
-    if not vm.is_alive():
-        vm.start()
-
-    if options_ref.count("config"):
-        vm.destroy()
-        vm.start()
-
-    set_value_of_cgroup = get_parameter_in_cgroup(vm, cgroup_type=schedinfo_param,
-                                                  parameter=cgroup_ref)
-    vm.destroy(gracefully=False)
-
+    # Get schedinfo with --current parameter
     if set_ref:
-        set_value_of_output = schedinfo_output_analyse(result, set_ref,
-                                                       scheduler_value)
+        bef_current_value = get_current_value()
 
-    # Check result
-    if status_error == "no":
-        if status:
-            test.fail("Run failed with right command.")
+    try:
+        # Run command
+        result = virsh.schedinfo(vm_ref, options_ref,
+                                 ignore_status=True, debug=True, readonly=readonly)
+        status = result.exit_status
+
+        # VM must be running to get cgroup parameters.
+        if not vm.is_alive():
+            vm.start()
+
+        if options_ref.count("config") and start_vm:
+            # Get schedinfo with --current parameter
+            aft_current_value = get_current_value()
+            if bef_current_value != aft_current_value:
+                test.fail("--config change the current %s" % set_ref)
+
+            vm.destroy()
+            vm.start()
+
+        if set_ref:
+            start_current_value = get_current_value()
+
+        set_value_of_cgroup = get_parameter_in_cgroup(vm, cgroup_type=schedinfo_param,
+                                                      parameter=cgroup_ref)
+        vm.destroy(gracefully=False)
+
+        if set_ref:
+            set_value_of_output = schedinfo_output_analyse(result, set_ref,
+                                                           scheduler_value)
+
+        # Check result
+        if status_error == "no":
+            if status:
+                test.fail("Run failed with right command.")
+            else:
+                if set_ref and set_value_expected:
+                    logging.info("value will be set:%s\n"
+                                 "set value in output:%s\n"
+                                 "set value in cgroup:%s\n"
+                                 "expected value:%s" % (
+                                     set_value, set_value_of_output,
+                                     set_value_of_cgroup, set_value_expected))
+                    if set_value_of_output is None:
+                        test.fail("Get parameter %s failed." % set_ref)
+                    # Value in output of virsh schedinfo is not guaranteed 'correct'
+                    # when we use --config.
+                    # This is my attempt to fix it
+                    # http://www.redhat.com/archives/libvir-list/2014-May/msg00466.html.
+                    # But this patch did not go into upstream of libvirt.
+                    # Libvirt just guarantee that the value is correct in next boot
+                    # when we use --config. So skip checking of output in this case.
+                    expected_value_list = sorted(set_value_expected.split(','))
+                    if (not (expected_value_list == sorted(set_value_of_output)) and
+                            not (options_ref.count("config"))):
+                        test.fail("Run successful but value "
+                                  "in output is not expected.")
+                    if len(set_value_expected.split(',')) == 1:
+                        if not (set_value_expected == set_value_of_cgroup):
+                            test.fail("Run successful but value "
+                                      "in cgroup is not expected.")
+                        if not (expected_value_list == sorted(start_current_value)):
+                            test.fail("Run successful but current "
+                                      "value is not expected.")
         else:
-            if set_ref and set_value_expected:
-                logging.info("value will be set:%s\n"
-                             "set value in output:%s\n"
-                             "set value in cgroup:%s\n"
-                             "expected value:%s" % (
-                                 set_value, set_value_of_output,
-                                 set_value_of_cgroup, set_value_expected))
-                if set_value_of_output is None:
-                    test.fail("Get parameter %s failed." % set_ref)
-                # Value in output of virsh schedinfo is not guaranteed 'correct'
-                # when we use --config.
-                # This is my attempt to fix it
-                # http://www.redhat.com/archives/libvir-list/2014-May/msg00466.html.
-                # But this patch did not go into upstream of libvirt.
-                # Libvirt just guarantee that the value is correct in next boot
-                # when we use --config. So skip checking of output in this case.
-                if (not (set_value_expected == set_value_of_output) and
-                        not (options_ref.count("config"))):
-                    test.fail("Run successful but value "
-                              "in output is not expected.")
-                if not (set_value_expected == set_value_of_cgroup):
-                    test.fail("Run successful but value "
-                              "in cgroup is not expected.")
-    else:
-        if not status:
-            test.fail("Run successfully with wrong command.")
+            if not status:
+                test.fail("Run successfully with wrong command.")
+            if readonly:
+                if not re.search(expect_msg, result.stderr.strip()):
+                    test.fail("Fail to get expect err msg: %s" % expect_msg)
+    finally:
+        if set_ref:
+            for j in range(0, len(set_ref.split(','))):
+                virsh.schedinfo(vm_ref, "--set %s=%s" % (set_ref.split(',')[j], bef_current_value[j]),
+                                ignore_status=True, debug=True)
