@@ -156,8 +156,9 @@ def run(test, params, env):
             vmxml_backup.sync()
 
     else:
-        status = virsh.net_destroy(net_ref, extra, uri=uri, debug=True,
-                                   unprivileged_user=unprivileged_user,
+        readonly = (params.get("net_destroy_readonly", "no") == "yes")
+        status = virsh.net_destroy(net_ref, extra, uri=uri, readonly=readonly,
+                                   debug=True, unprivileged_user=unprivileged_user,
                                    ignore_status=True).exit_status
         # Confirm the network has been destroied.
         if net_persistent:
