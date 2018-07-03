@@ -3,6 +3,7 @@ import logging
 import multiprocessing
 import time
 import platform
+import re
 
 from avocado.utils import process
 
@@ -177,6 +178,24 @@ def run(test, params, env):
             else:
                 return True
 
+    def check_verbose(cmd_output):
+        """
+        check the cmd output of virsh dump with --verbose
+        :param cmd_output: The cmd output of virsh dump
+        :return: True or False
+        """
+        prgs_line_pattern = 'Dump: \[\s*\d+\s*%\]'
+        last_line_pattern = 'Domain %s dumped to %s' % (vm_name, dump_file)
+        match_last_line = match_prgs_line = 0
+        for line in cmd_output.splitlines():
+            if re.match(last_line_pattern, line):
+                match_last_line += 1
+                break
+            if re.match(prgs_line_pattern, line):
+                match_prgs_line += 1
+        # For bug 916061, ensure two lines of progress data at least
+        return match_last_line == 1 and match_prgs_line >= 2
+
     # Configure dump_image_format in /etc/libvirt/qemu.conf.
     qemu_config = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
@@ -242,8 +261,15 @@ def run(test, params, env):
         cmd_result = virsh.dump(vm_name, dump_file, options,
                                 unprivileged_user=unprivileged_user,
                                 uri=uri,
-                                ignore_status=True, debug=True)
+                                ignore_status=True, debug=True,
+                                timeout=60, allow_output_check='combined')
         status = cmd_result.exit_status
+        cmd_output = cmd_result.stdout.strip()
+
+        if not status and options.find('verbose') >= 0:
+            if not check_verbose(cmd_output):
+                test.fail("Dump progress check fail:\n%s" % cmd_output)
+
         if 'child_process' in locals():
             child_process.join(timeout=check_bypass_timeout)
             params['bypass'] = result_dict['bypass']
