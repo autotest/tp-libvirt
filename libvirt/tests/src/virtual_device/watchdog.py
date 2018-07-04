@@ -134,7 +134,9 @@ def run(test, params, env):
         name_length = int(params.get("name_length", "1"))
         vm_name = ''.join([random.choice(string.ascii_letters+string.digits)
                            for _ in range(name_length)])
-        virsh.domrename(vm, vm_name)
+        vm_xml.VMXML.vm_rename(vm, vm_name)
+        # Generate the renamed xml file
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     # Add watchdog device to domain
     vmxml.remove_all_device_by_type('watchdog')
@@ -163,5 +165,3 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
         backup_xml.sync()
-        if name_length != "default":
-            virsh.domrename(vm, origin_name)
