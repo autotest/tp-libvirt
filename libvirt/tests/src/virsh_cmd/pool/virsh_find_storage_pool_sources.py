@@ -75,18 +75,15 @@ def run(test, params, env):
     if srcSpec:
         if srcSpec == "INVALID.XML":
             src_xml = "<invalid><host name='#@!'/><?source>"
-        else:
-            src_xml = srcSpec
-    else:
-        src_xml = "<source><host name='%s'/></source>" % source_host
-    srcSpec = xml_utils.TempXMLFile()
-    srcSpec.write(src_xml)
-    srcSpec.flush()
-    with open(srcSpec.name) as srcSpec_file:
-        logging.debug("srcSpec file content:\n%s", srcSpec_file.read())
+        elif srcSpec == "VALID.XML":
+            src_xml = "<source><host name='%s'/></source>" % source_host
+        srcSpec = xml_utils.TempXMLFile().name
+        with open(srcSpec, "w+") as srcSpec_file:
+            srcSpec_file.write(src_xml)
+            logging.debug("srcSpec file content:\n%s", srcSpec_file.read())
 
-    if params.get('setup_libvirt_polkit') == 'yes':
-        cmd = "chmod 666 %s" % srcSpec.name
+    if params.get('setup_libvirt_polkit') == 'yes' and srcSpec:
+        cmd = "chmod 666 %s" % srcSpec
         process.run(cmd)
 
     if ro_flag:
@@ -96,7 +93,7 @@ def run(test, params, env):
     try:
         cmd_result = virsh.find_storage_pool_sources(
             source_type,
-            srcSpec.name,
+            srcSpec,
             ignore_status=True,
             debug=True,
             unprivileged_user=unprivileged_user,
