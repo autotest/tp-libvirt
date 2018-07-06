@@ -18,6 +18,7 @@ from virttest import utils_misc
 from virttest import utils_v2v
 from virttest import virsh
 from virttest import remote
+from virttest import libvirt_storage
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.compat_52lts import decode_to_text as to_text
@@ -468,8 +469,13 @@ def run(test, params, env):
             if checkpoint == 'compress':
                 img_path = get_img_path(output)
                 logging.info('Image path: %s', img_path)
-                disk_check = process.run(
-                    'qemu-img check %s' % img_path).stdout_text
+
+                qemu_img_cmd = 'qemu-img check %s' % img_path
+                qemu_img_locking_feature_support = libvirt_storage.check_qemu_image_lock_support()
+                if qemu_img_locking_feature_support:
+                    qemu_img_cmd = 'qemu-img check %s -U' % img_path
+
+                disk_check = process.run(qemu_img_cmd).stdout_text
                 logging.info(disk_check)
                 compress_info = disk_check.split(',')[-1].split('%')[0].strip()
                 compress_rate = float(compress_info)
