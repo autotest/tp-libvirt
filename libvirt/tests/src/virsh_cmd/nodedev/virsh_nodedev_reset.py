@@ -44,17 +44,18 @@ def run(test, params, env):
             devices[dev_name] = info
         return devices
 
-    def test_nodedev_reset(devices, expect_error):
+    def test_nodedev_reset(devices, expect_error, **virsh_dargs):
         """
         Test nodedev-reset command on a list of devices
 
         :param devices        : A list of node devices to be tested.
         :param expect_error : 'yes' for expect command run successfully
                                  and 'no' for fail.
+        :param virsh_dargs: standardized virsh function API keywords
         """
+        readonly = virsh_dargs.get('readonly', 'no')
         for device in devices:
-            result = virsh.nodedev_reset(device)
-            logging.debug(result)
+            result = virsh.nodedev_reset(device, readonly=readonly, debug=True)
             # Check whether exit code match expectation.
             libvirt.check_exit_status(result, expect_error)
 
@@ -62,6 +63,7 @@ def run(test, params, env):
     expect_error = params.get('expect_error', 'no') == 'yes'
     device_option = params.get('device_option', 'valid')
     unspecified = 'REPLACE_WITH_TEST_DEVICE'
+    readonly = (params.get('nodedev_reset_readonly', 'no') == 'yes')
 
     # Backup original libvirtd status and prepare libvirtd status
     logging.debug('Preparing libvirtd')
@@ -95,7 +97,7 @@ def run(test, params, env):
             # Test specified resettable device.
             if specified_device != unspecified:
                 if specified_device in resettable_nodes:
-                    test_nodedev_reset([specified_device], expect_error)
+                    test_nodedev_reset([specified_device], expect_error, readonly=readonly)
                 else:
                     test.error('Param specified_device is not set!')
             else:
