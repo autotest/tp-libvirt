@@ -70,6 +70,7 @@ def run(test, params, env):
     address_cache = env.get('address_cache')
     params['vmcheck_flag'] = False
     checkpoint = params.get('checkpoint', '')
+    error_flag = 'strict'
 
     def create_pool(user_pool=False, pool_name=pool_name, pool_target=pool_target):
         """
@@ -351,7 +352,8 @@ def run(test, params, env):
         """
         Check virt-v2v command result
         """
-        utlv.check_exit_status(result, status_error)
+        utils_v2v.check_exit_status(result, status_error, error_flag)
+
         output = result.stdout + result.stderr
         if status_error:
             if checkpoint == 'length_of_error':
@@ -700,6 +702,9 @@ def run(test, params, env):
 
         if params.get('cmd_free') == 'yes':
             cmd = params.get('check_command')
+            # only set error to 'ignore' to avoid exception for RHEL7-84978
+            if "guestfish" in cmd:
+                error_flag = "replace"
 
         # Set timeout to kill v2v process before conversion succeed
         if checkpoint == 'disk_not_exist':
