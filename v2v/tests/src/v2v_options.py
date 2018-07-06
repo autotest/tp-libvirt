@@ -6,7 +6,6 @@ import re
 import pwd
 import logging
 import shutil
-import string
 
 import aexpect
 
@@ -353,8 +352,8 @@ def run(test, params, env):
         Check virt-v2v command result
         """
         utils_v2v.check_exit_status(result, status_error, error_flag)
-
-        output = result.stdout + result.stderr
+        output = to_text(result.stdout + result.stderr, errors=error_flag)
+        output_stdout = to_text(result.stdout, errors=error_flag)
         if status_error:
             if checkpoint == 'length_of_error':
                 log_lines = output.split('\n')
@@ -454,15 +453,15 @@ def run(test, params, env):
                 target_str = '%s "eth0" mac: %s' % (
                     params[checkpoint][0], params[checkpoint][1])
                 logging.info('Expect log: %s', target_str)
-                if target_str not in result.stdout.lower():
+                if target_str not in output_stdout.lower():
                     test.fail('Expect log not found: %s' % target_str)
             if checkpoint == 'print_source':
-                check_source(result.stdout)
+                check_source(output_stdout)
             if checkpoint == 'machine_readable':
                 if os.path.exists(params.get('example_file', '')):
                     expect_output = open(params['example_file']).read().strip()
                     logging.debug(expect_output)
-                    if expect_output != result.stdout.strip():
+                    if expect_output != output_stdout.strip():
                         test.fail('machine readable content not correct')
                 else:
                     test.error('No content to compare with')
@@ -598,8 +597,7 @@ def run(test, params, env):
                     data_dir.get_tmp_dir(), os.path.basename(disk_img))
                 logging.info('Copy image file %s to %s', disk_img, disk_path)
                 shutil.copyfile(disk_img, disk_path)
-                input_option = string.replace(
-                    input_option, disk_img, disk_path)
+                input_option = input_option.replace(disk_img, disk_path)
                 os.chown(disk_path, user_info.pw_uid, user_info.pw_gid)
             elif not no_root:
                 test.cancel("Only support convert local disk")
