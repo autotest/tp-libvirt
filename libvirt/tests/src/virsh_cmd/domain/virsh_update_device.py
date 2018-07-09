@@ -36,7 +36,7 @@ def create_disk(test, vm_name, orig_iso, disk_type, target_dev, mode=""):
 
 
 def create_attach_xml(test, update_xmlfile, source_iso, disk_type, target_bus,
-                      target_dev, disk_mode=""):
+                      target_dev, disk_mode="", disk_alias=None):
     """
     Create a xml file to update a device.
 
@@ -46,6 +46,7 @@ def create_attach_xml(test, update_xmlfile, source_iso, disk_type, target_bus,
     :param target_bus: disk's target bus
     :param target_dev: disk's target device name
     :param disk_mode: readonly or shareable
+    :param disk_alias: disk's alias name
     """
     try:
         with open(source_iso, 'wb') as _file:
@@ -64,6 +65,8 @@ def create_attach_xml(test, update_xmlfile, source_iso, disk_type, target_bus,
         disk.readonly = True
     if disk_mode == "shareable":
         disk.share = True
+    if disk_alias:
+        disk.alias = dict(name=disk_alias)
     disk.xmltreefile.write()
     shutil.copyfile(disk.xml, update_xmlfile)
 
@@ -157,8 +160,6 @@ def run(test, params, env):
     test_iso = os.path.join(test.virtdir, "test.iso")
     test_diff_iso = os.path.join(test.virtdir, "test_diff.iso")
     update_xmlfile = os.path.join(data_dir.get_tmp_dir(), "update.xml")
-    create_attach_xml(test, update_xmlfile, test_iso, disk_type, target_bus,
-                      target_dev, disk_mode)
 
     # This test needs a cdrom/floppy attached first - attach a cdrom/floppy
     # to a shutdown vm. Then decide to restart or not
@@ -173,6 +174,10 @@ def run(test, params, env):
         domid = vm.get_id()
     else:
         domid = "domid invalid; domain is shut-off"
+
+    disk_alias = libvirt.get_disk_alias(vm, orig_iso)
+    create_attach_xml(test, update_xmlfile, test_iso, disk_type, target_bus,
+                      target_dev, disk_mode, disk_alias)
 
     # Get remaining parameters for configuration.
     twice = "yes" == params.get("updatedevice_twice", "no")
@@ -198,7 +203,7 @@ def run(test, params, env):
                 # Swap filename of device backing file in update.xml
                 os.remove(update_xmlfile)
                 create_attach_xml(test, update_xmlfile, test_diff_iso, disk_type,
-                                  target_bus, target_dev, disk_mode)
+                                  target_bus, target_dev, disk_mode, disk_alias)
         elif vm_ref == "uuid":
             vm_ref = vmxml.uuid
         elif vm_ref == "hex_id":
