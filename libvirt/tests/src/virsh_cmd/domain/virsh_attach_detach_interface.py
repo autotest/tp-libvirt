@@ -138,6 +138,40 @@ def check_save_restore(vm_name):
         os.remove(save_file)
 
 
+def check_interface_xml(vm_name, iface_type, iface_source, iface_mac, is_active=True):
+    """
+    Check attached interface xml.
+
+    :param vm_name: vm_name
+    :param iface_type: interface device type
+    :param iface_source: interface source
+    :param iface_mac: interface MAC address
+    :param is_active: indicate active or inactive xml
+    :return: True/False checked if interface xml match or not
+    """
+    if is_active:
+        dumped_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    else:
+        dumped_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    ifaces = dumped_vmxml.devices.by_device_tag('interface')
+    for iface in ifaces:
+        if iface.type_name != iface_type:
+            continue
+        if iface.mac_address != iface_mac:
+            continue
+        if iface_source is not None:
+            if iface.xmltreefile.find('source') is not None:
+                if iface.source['network'] != iface_source:
+                    continue
+            else:
+                continue
+        # All three conditions met
+        logging.debug("Find %s in given iface XML", iface_mac)
+        return True
+    logging.debug("Not find %s in given iface XML", iface_mac)
+    return False
+
+
 def run(test, params, env):
     """
     Test virsh {at|de}tach-interface command.
@@ -197,6 +231,7 @@ def run(test, params, env):
     restart_libvirtd = params.get("restart_libvirtd", "no")
     attach_cmd = params.get("attach_cmd", "attach-interface")
     virsh_dargs = {'ignore_status': True, 'debug': True, 'uri': uri}
+    validate_xml_result = "yes" == params.get("check_xml_result", "no")
 
     # Get iface name if iface_type is direct
     if iface_type == "direct":
@@ -338,6 +373,15 @@ def run(test, params, env):
         # Check dumpxml file whether the interface is added successfully.
         status, ret = check_dumpxml_iface(vm_name, iface_format)
         if "print-xml" not in options_suffix:
+            # Check validate_xml_result flag to determine whether apply check_interface_xml.
+            if validate_xml_result:
+                # If options_suffix contains config, it need dump inactive xml.
+                is_active = True
+                if options_suffix.count("config"):
+                    is_active = False
+                # Check dumping VM xml value.
+                if not check_interface_xml(vm_name, iface_type, iface_source, iface_mac, is_active):
+                    test.fail("Failed to find matched interface values in VM interface xml")
             if status:
                 fail_flag = 1
                 result_info.append(ret)
@@ -397,6 +441,9 @@ def run(test, params, env):
         logging.debug(detach_result)
 
         if detach_status == 0 and status_error == 0:
+            # If command with --config parameter, ignore below checking.
+            if options_suffix.count("config"):
+                return
             # Check the xml after detach and clean up if needed.
             time.sleep(5)
             status, _ = check_dumpxml_iface(vm_name, iface_format)
