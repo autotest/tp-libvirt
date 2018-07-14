@@ -1,4 +1,6 @@
 import os
+import re
+import logging
 
 from avocado.utils import process
 
@@ -48,6 +50,9 @@ def run(test, params, env):
     define_error = "yes" == params.get("define_error", "no")
     undefine_error = "yes" == params.get("undefine_error", "no")
     get_value_error = "yes" == params.get("get_value_error", "no")
+    define_readonly = "yes" == params.get("secret_define_readonly", "no")
+    undefine_readonly = "yes" == params.get("secret_undefine_readonly", "no")
+    expect_msg = params.get("secret_err_msg", "")
 
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
@@ -78,9 +83,15 @@ def run(test, params, env):
             process.run("chmod 666 %s" % secret_xml_obj.xml, shell=True)
             cmd_result = virsh.secret_define(secret_xml_obj.xml, **acl_dargs)
         else:
-            cmd_result = virsh.secret_define(secret_xml_obj.xml, debug=True)
+            cmd_result = virsh.secret_define(secret_xml_obj.xml, debug=True,
+                                             readonly=define_readonly)
         libvirt.check_exit_status(cmd_result, define_error)
         if cmd_result.exit_status:
+            if define_readonly:
+                if not re.search(expect_msg, cmd_result.stderr.strip()):
+                    test.fail("Fail to get expect err msg: %s" % expect_msg)
+                else:
+                    logging.info("Get expect err msg: %s", expect_msg)
             return
 
         # Check ephemeral attribute
@@ -123,8 +134,13 @@ def run(test, params, env):
         if undefine_acl:
             cmd_result = virsh.secret_undefine(uuid, **acl_dargs)
         else:
-            cmd_result = virsh.secret_undefine(uuid, debug=True)
+            cmd_result = virsh.secret_undefine(uuid, debug=True, readonly=undefine_readonly)
             libvirt.check_exit_status(cmd_result, undefine_error)
+            if undefine_readonly:
+                if not re.search(expect_msg, cmd_result.stderr.strip()):
+                    test.fail("Fail to get expect err msg: %s" % expect_msg)
+                else:
+                    logging.info("Get expect err msg: %s", expect_msg)
     finally:
         # cleanup
         virsh.secret_undefine(uuid, ignore_status=True)
