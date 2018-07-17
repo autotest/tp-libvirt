@@ -171,6 +171,7 @@ def run(test, params, env):
     vm_ref = params.get("vcpupin_vm_ref", "name")
     options = params.get("vcpupin_options", "--current")
     cpu_list = params.get("vcpupin_cpu_list", "x")
+    cpu_itrs = int(params.get("vcpupin_cpu_itrs", "20"))
     start_vm = ("yes" == params.get("start_vm", "yes"))
     vcpupin_initial = ("yes" == params.get("vcpupin_initial", "no"))
 
@@ -259,7 +260,18 @@ def run(test, params, env):
         # Run test case
         for vcpu in range(int(guest_vcpu_count)):
             if cpu_list == "x":
-                for cpu in cpus_list:
+                # Lets make 2 times cpu_itrs value as threshold
+                # for guest vcpu iterations as there are possibility
+                # the iterations will grow bigger number causing test
+                # to run for a very long time and based on assumption
+                # this let us recalculate cpu_itrs value with least value as 2
+                if (int(guest_vcpu_count) * host_online_cpu_count) > (2 * cpu_itrs * cpu_itrs):
+                    if int(guest_vcpu_count) > 2 * cpu_itrs:
+                        cpu_itrs = (2 * cpu_itrs * cpu_itrs)/int(guest_vcpu_count)
+                        if cpu_itrs == 0:
+                            cpu_itrs = 2
+                for _ in range(cpu_itrs):
+                    cpu = random.choice(cpus_list)
                     left_cpus = "0-%s,^%s" % (online_cpu_max, cpu)
                     if offline_pin:
                         offline_pin_and_check(vm, vcpu, str(cpu))
