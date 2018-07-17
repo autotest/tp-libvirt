@@ -42,7 +42,7 @@ def run(test, params, env):
         logging.debug("Define guest with '%s' vcpus" % str(vcpus_num))
 
         # Start guest agent in vm
-        vm.prepare_guest_agent(prepare_xml=False)
+        vm.prepare_guest_agent()
 
         # Normal test: disable/ enable guest vcpus
         if option and status_error == "no":
