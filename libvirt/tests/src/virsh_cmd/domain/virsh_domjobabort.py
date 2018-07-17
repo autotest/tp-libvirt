@@ -26,6 +26,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     start_vm = params.get("start_vm")
     pre_vm_state = params.get("pre_vm_state", "start")
+    readonly = ("yes" == params.get("readonly", "no"))
     if start_vm == "no" and vm.is_alive():
         vm.destroy()
 
@@ -143,7 +144,10 @@ def run(test, params, env):
         else:
             logging.debug("Job started: %s", jobtype)
             break
-    ret = virsh.domjobabort(vm_ref, ignore_status=True, debug=True)
+    virsh_dargs = {'ignore_status': True, 'debug': True}
+    if readonly:
+        virsh_dargs.update({'readonly': True})
+    ret = virsh.domjobabort(vm_ref, **virsh_dargs)
     status = ret.exit_status
 
     if process and f:
