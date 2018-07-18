@@ -99,13 +99,15 @@ class Console(aexpect.ShellSession):
         elif console_type == 'pipe':
             os.mkfifo(address + '.in')
             os.mkfifo(address + '.out')
-            self.write_fd = open(
-                address + '.in', 'a+')
-            self.read_fd = open(
-                address + '.in', 'r')
+            self.write_fd = os.open(
+                address + '.in',
+                os.O_RDWR | os.O_CREAT | os.O_NONBLOCK)
+            self.read_fd = os.open(
+                address + '.out',
+                os.O_RDONLY | os.O_CREAT | os.O_NONBLOCK)
         elif console_type == 'file':
             self.read_fd = open(address,
-                                'a+')
+                                'r')
 
     def _tcp_thread(self):
         """
@@ -149,7 +151,10 @@ class Console(aexpect.ShellSession):
                     except Exception:
                         return data
                     if self.read_fd in read_fds:
-                        new_data = self.read_fd.read(1024)
+                        if self.console_type == 'pipe':
+                            new_data = os.read(self.read_fd, 1024)
+                        else:
+                            new_data = self.read_fd.read(1024)
                         if not new_data:
                             return data
                         data += new_data
@@ -262,9 +267,15 @@ class Console(aexpect.ShellSession):
         if self.socket is not None:
             self.socket.close()
         if self.read_fd is not None:
-            os.close(self.read_fd)
+            if self.console_type == 'pipe':
+                os.close(self.read_fd)
+            else:
+                self.read_fd.close()
         if self.write_fd is not None:
-            os.close(self.write_fd)
+            if self.console_type == 'pipe':
+                os.close(self.write_fd)
+            else:
+                self.write_fd.close()
         if self.console_type == 'pipe':
             if os.path.exists(self.address + '.in'):
                 os.remove(self.address + '.in')
@@ -746,7 +757,6 @@ def run(test, params, env):
             return
 
         check_qemu_cmdline()
-
         # Prepare console after start when console is client
         if console_type == 'client':
             console = prepare_serial_console()
