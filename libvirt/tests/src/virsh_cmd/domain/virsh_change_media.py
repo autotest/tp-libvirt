@@ -104,14 +104,20 @@ def run(test, params, env):
         :param options: update-device option
         :param start_vm: guest start flag
         """
+        if disk_alias is None:
+            disk_alias_update = ""
+        else:
+            disk_alias_update = disk_alias
         snippet = """
 <disk type='file' device='%s'>
 <driver name='qemu' type='raw'/>
 <source file='%s'/>
 <target dev='%s'/>
 <readonly/>
+<alias name='%s'/>
 </disk>
-""" % (device_type, init_iso, target_device)
+""" % (device_type, init_iso, target_device, disk_alias_update)
+        logging.info("Update xml is %s", snippet)
         with open(update_iso_xml, "w") as update_iso_file:
             update_iso_file.write(snippet)
 
@@ -188,6 +194,8 @@ def run(test, params, env):
             logging.info("Starting guest...")
             vm.start()
 
+        disk_alias = libvirt.get_disk_alias(vm)
+        logging.debug("disk_alias is %s", disk_alias)
         # If test target is floppy, you need to set selinux to Permissive mode.
         result = update_device(vm_name, init_iso, options, start_vm)
 
