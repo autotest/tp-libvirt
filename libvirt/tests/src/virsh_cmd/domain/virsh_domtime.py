@@ -269,6 +269,9 @@ def run(test, params, env):
                 fail_patts.append(r"Invalid time")
             elif time_max_3 < int(set_time):
                 fail_patts.append(r"too big for guest agent")
+
+        if readonly:
+            fail_patts.append(r"operation forbidden")
         return fail_patts
 
     def stop_vm():
@@ -323,6 +326,7 @@ def run(test, params, env):
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    readonly = (params.get("readonly_test", "no") == "yes")
 
     # Backup domain XML
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -357,7 +361,7 @@ def run(test, params, env):
 
             # Run command with specified options.
             res = virsh.domtime(vm_name, now=now, pretty=pretty, sync=sync,
-                                time=set_time)
+                                time=set_time, readonly=readonly, debug=True)
             libvirt.check_result(res, fail_patts, skip_patts)
 
             # Check interval between two check of guest time
