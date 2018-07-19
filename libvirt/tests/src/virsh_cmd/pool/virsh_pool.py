@@ -61,7 +61,7 @@ def run(test, params, env):
     new_pool_name = params.get("new_pool_name", "")
     build_option = params.get("build_option", "")
     same_source_test = "yes" == params.get("same_source_test", "no")
-    multiple_source_test = "yes" == params.get("multiple_source_test", "no")
+    customize_initiator_iqn = "yes" == params.get("customize_initiator_iqn", "no")
     # The file for dumped pool xml
     poolxml = os.path.join(data_dir.get_tmp_dir(), "pool.xml.tmp")
     if os.path.dirname(pool_target) is "":
@@ -213,14 +213,15 @@ def run(test, params, env):
             poolxml = p_xml.xml
             logging.debug("XML after update host name:\n%s" % p_xml)
 
-        if multiple_source_test:
-            _iscsi_target, _iscsi_luns = utlv.setup_or_cleanup_iscsi(True, is_login=False)
-            logging.debug("second iscsi: %s, %s" % (_iscsi_target, _iscsi_luns))
+        if customize_initiator_iqn:
+            initiator_iqn = params.get("initiator_iqn",
+                                       "iqn.2018-07.com.virttest:pool.target")
             p_xml = pool_xml.PoolXML.new_from_dumpxml(pool_name)
             s_node = p_xml.xmltreefile.find('/source')
             i_node = ET.SubElement(s_node, 'initiator')
-            ET.SubElement(i_node, 'iqn', {'name': _iscsi_target})
+            ET.SubElement(i_node, 'iqn', {'name': initiator_iqn})
             p_xml.xmltreefile.write()
+            poolxml = p_xml.xml
             logging.debug('XML after add Multi-IQN:\n%s' % p_xml)
 
         # Step (4)
