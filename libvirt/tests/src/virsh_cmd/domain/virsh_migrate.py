@@ -105,7 +105,7 @@ def run(test, params, env):
         logging.info("Sleeping %d seconds before migration", delay)
         time.sleep(delay)
         # Migrate the guest.
-        migration_res = vm.migrate(dest_uri, options, extra, True, True)
+        migration_res = vm.migrate(dest_uri, options, extra, **virsh_args)
         logging.info("Migration exit status: %d", migration_res.exit_status)
         check_migration_result(migration_res)
         if int(migration_res.exit_status) != 0:
@@ -544,6 +544,7 @@ def run(test, params, env):
         if isinstance(v, string_types) and v.count("EXAMPLE"):
             test.cancel("Please set real value for %s" % v)
 
+    virsh_args = {"ignore_status": True, "debug": True}
     options = params.get("virsh_migrate_options")
     # Direct migration is supported only for Xen in libvirt
     if options.count("direct") or extra.count("direct"):
