@@ -102,7 +102,7 @@ def run(test, params, env):
         logging.info("Sleeping 10 seconds before migration")
         time.sleep(10)
         # Migrate the guest.
-        migration_res = vm.migrate(dest_uri, options, extra, True, True)
+        migration_res = vm.migrate(dest_uri, options, extra, **virsh_args)
         logging.info("Migration out: %s", results_stdout_52lts(migration_res).strip())
         logging.info("Migration error: %s", results_stderr_52lts(migration_res).strip())
         if int(migration_res.exit_status) != 0:
@@ -243,6 +243,7 @@ def run(test, params, env):
     params["mnt_path_name"] = params.get("nfs_mount_dir")
 
     # Local variables
+    virsh_args = {"ignore_status": True, "debug": True}
     server_ip = params.get("server_ip")
     server_user = params.get("server_user", "root")
     server_pwd = params.get("server_pwd")
