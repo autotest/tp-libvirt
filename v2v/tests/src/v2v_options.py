@@ -63,7 +63,7 @@ def run(test, params, env):
     output_uri = params.get("oc_uri", "")
     pool_name = params.get("pool_name", "v2v_test")
     pool_type = params.get("pool_type", "dir")
-    pool_target = params.get("pool_target_path", "v2v_pool")
+    pool_target = params.get("pool_target", "v2v_pool")
     emulated_img = params.get("emulated_image_path", "v2v-emulated-img")
     pvt = utlv.PoolVolumeTest(test, params)
     new_v2v_user = False
@@ -638,6 +638,13 @@ def run(test, params, env):
             pwd_f.close()
             output_option += " --password-file %s" % vpx_passwd_file
 
+        # if don't specify any output option for virt-v2v, 'default' pool
+        # will be used.
+        if output_mode is None:
+            # Cleanup first to avoid failure if 'default' pool exists.
+            pvt.cleanup_pool(pool_name, pool_type, pool_target, emulated_img)
+            pvt.pre_pool(pool_name, pool_type, pool_target, emulated_img)
+
         # Create libvirt dir pool
         if output_mode == "libvirt":
             create_pool()
@@ -760,6 +767,8 @@ def run(test, params, env):
             else:
                 virsh.remove_domain(vm_name)
             cleanup_pool()
+        if output_mode is None:
+            pvt.cleanup_pool(pool_name, pool_type, pool_target, emulated_img)
         vmcheck_flag = params.get("vmcheck_flag")
         if vmcheck_flag:
             vmcheck = utils_v2v.VMCheck(test, params, env)
