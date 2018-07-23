@@ -191,6 +191,8 @@ def run(test, params, env):
                     virsh.start(vm_name, ignore_status=True)
                 else:
                     virsh.start(vm_name, ignore_status=False)
+                    if start_action == "restart_libvirtd":
+                        libvirtd.restart()
             elif vm_action == "kill":
                 if kill_action == "stop_libvirtd":
                     libvirtd.stop()
