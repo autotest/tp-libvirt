@@ -43,8 +43,8 @@ def run(test, params, env):
 
     # Run test case
     option = params.get("virsh_hostname_options")
-    remote_ip = params.get("remote_ip", None)
-    if not remote_ip or remote_ip.count("EXAMPLE"):
+    remote_ip = params.get("remote_ip")
+    if remote_uri and remote_ip.count("EXAMPLE"):
         test.cancel("Pls configure rempte_ip first")
     remote_pwd = params.get("remote_pwd", None)
     remote_user = params.get("remote_user", "root")
