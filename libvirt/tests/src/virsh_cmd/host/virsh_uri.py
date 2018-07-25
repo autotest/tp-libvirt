@@ -1,7 +1,6 @@
 import logging
 
 from avocado.utils import process
-from avocado.core import exceptions
 
 from virttest import libvirt_vm
 from virttest import virsh
@@ -25,6 +24,7 @@ def run(test, params, env):
                                                               "default"))
 
     option = params.get("virsh_uri_options")
+    unprivileged_user = params.get('unprivileged_user')
 
     remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
     remote_pwd = params.get("remote_pwd", None)
@@ -36,7 +36,7 @@ def run(test, params, env):
 
     if remote_ref:
         if target_uri.count('EXAMPLE.COM'):
-            raise exceptions.TestSkipError(
+            test.cancel(
                 'target_uri configuration set to sample value')
         logging.info("The target_uri: %s", target_uri)
         cmd = "virsh -c %s uri" % target_uri
@@ -57,37 +57,44 @@ def run(test, params, env):
     if remote_ref:
         ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
 
+    if unprivileged_user:
+        if process.run("id %s" % unprivileged_user, ignore_status=True).exit_status != 0:
+            process.run("useradd %s" % unprivileged_user)
     try:
-        if remote_ref == "remote":
+        if remote_ref == "remote" or unprivileged_user:
             connect_uri = target_uri
-        uri_test = virsh.canonical_uri(option, uri=connect_uri,
+        uri_test = virsh.canonical_uri(option,
+                                       unprivileged_user=unprivileged_user,
+                                       uri=connect_uri,
                                        ignore_status=False,
                                        debug=True)
         status = 0  # good
     except process.CmdError:
         status = 1  # bad
         uri_test = ''
+        if unprivileged_user:
+            process.run("userdel %s" % unprivileged_user)
 
     # Recover libvirtd service start
     if libvirtd == "off":
         utils_libvirtd.libvirtd_start()
 
     # Check status_error
-    status_error = params.get("status_error")
+    status_error = params.get("status_error", "no")
     if status_error == "yes":
         if status == 0:
             if libvirtd == "off" and libvirt_version.version_compare(5, 6, 0):
                 logging.info("From libvirt version 5.6.0 libvirtd is restarted "
                              "and command should succeed.")
             else:
-                raise exceptions.TestFail("Command: %s  succeeded "
-                                          "(incorrect command)" % cmd)
+                test.fail("Command: %s  succeeded "
+                          "(incorrect command)" % cmd)
         else:
             logging.info("command: %s is a expected error", cmd)
     elif status_error == "no":
         if target_uri != uri_test:
-            raise exceptions.TestFail("Virsh cmd uri %s != %s." %
-                                      (uri_test, target_uri))
+            test.fail("Virsh cmd uri %s != %s." %
+                      (uri_test, target_uri))
         if status != 0:
-            raise exceptions.TestFail("Command: %s  failed "
-                                      "(correct command)" % cmd)
+            test.fail("Command: %s  failed "
+                      "(correct command)" % cmd)
