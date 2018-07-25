@@ -145,6 +145,11 @@ def run(test, params, env):
     dargs = {'flagstr': flags,
              'use_kilobytes': use_kilobytes,
              'uri': uri, 'ignore_status': True, "debug": True}
+
+    readonly = ("yes" == params.get("setmaxmem_readonly", "no"))
+    if readonly:
+        dargs.update({"readonly": readonly})
+
     dargs.update(make_domref(domarg, vm_ref, domid, vm_name, domuuid))
     dargs.update(make_sizeref(sizearg, mem_ref, original_dominfo_mem))
 
