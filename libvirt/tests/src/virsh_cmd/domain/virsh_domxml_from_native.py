@@ -35,6 +35,25 @@ def run(test, params, env):
         cmdline = process.run("cat -v /proc/%d/cmdline" % pid).stdout_text
         cmdline = re.sub(r'\^@', ' ', cmdline)
         cmdline_tmp = re.sub(r'\s-drive\s[^\s]+', '\s', cmdline)
+
+        # Libvirt requires the binary path for domxml-from-native to succeed
+        # /proc/pid/cmdline would give qemu cmdline with binary without
+        # absolute path
+        qemu_bin = ['qemu-system-ppc64', 'qemu-system-x86_64', 'qemu-kvm', 'kvm']
+        change_bin = ''
+        qemu_binary = ''
+        for each_bin in qemu_bin:
+            if each_bin in cmdline_tmp:
+                qemu_binary = each_bin
+                break
+        for each_opt in cmdline_tmp.split():
+            if qemu_binary in each_opt:
+                change_bin = each_opt
+                break
+        qemu_binary = process.getoutput("which %s" % qemu_binary)
+        if change_bin.strip() != qemu_binary.strip():
+            cmdline_tmp = re.sub(change_bin, qemu_binary, cmdline_tmp)
+
         with open(guest_args, 'w') as guest_file:
             guest_file.write(cmdline_tmp)
 
@@ -56,7 +75,7 @@ def run(test, params, env):
 
     # Ignore exception with ignore_status=True.
     ret = virsh.domxml_from_native(dfn_format, guest_args, invalid_guest_args,
-                                   ignore_status=True)
+                                   ignore_status=True, debug=True)
     utlv.check_exit_status(ret, status_error)
     # recover libvirtd service start
     if libvirtd == "off":
