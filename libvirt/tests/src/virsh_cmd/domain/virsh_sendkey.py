@@ -9,6 +9,8 @@ from virttest.libvirt_xml import vm_xml
 
 from provider import libvirt_version
 
+from avocado.utils import wait
+
 
 def run(test, params, env):
     """
@@ -28,6 +30,7 @@ def run(test, params, env):
     keystrokes = params.get("sendkey", "")
     codeset = params.get("codeset", "")
     holdtime = params.get("holdtime", "")
+    hold_timeout = eval(params.get("hold_timeout", "1"))
     sysrq_test = ("yes" == params.get("sendkey_sysrq", "no"))
     sleep_time = int(params.get("sendkey_sleeptime", 5))
     readonly = params.get("readonly", False)
@@ -164,12 +167,10 @@ def run(test, params, env):
         if create_file is not None:
             # check if created file exist
             cmd_ls = "ls %s" % create_file
-            sec_status, sec_output = session.get_command_status_output(cmd_ls)
-            if sec_status == 0:
-                logging.info("Succeed to create file with send key")
-            else:
-                test.fail("Fail to create file with send key, Error:%s" %
-                          sec_output)
+            if not wait.wait_for(lambda: session.get_command_status_output(cmd_ls),
+                                 hold_timeout, step=5):
+                test.fail("Fail to create file with send key")
+            logging.info("Succeed to create file with send key")
         elif sysrq_test:
             # check LOG_FILE info according to different key
 
