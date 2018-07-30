@@ -2305,6 +2305,7 @@ def run(test, params, env):
                 "Migration without shared storage is unsafe" in err_msg and
                 not libvirt_version.version_compare(4, 3, 1)):
             test_dict['status_error'] = 'no'
+            status_error = "no"
             test_dict['err_msg'] = None
 
         if run_migr_front:
