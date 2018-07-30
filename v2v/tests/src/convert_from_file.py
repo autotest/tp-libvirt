@@ -123,7 +123,9 @@ def run(test, params, env):
         # Build rhev related options
         if output_mode == 'rhev':
             # Create SASL user on the ovirt host
-            user_pwd = "[['%s', '%s']]" % (params.get("sasl_user"),
+            sasl_user = params.get("sasl_user") + utils_misc.generate_random_string(3)
+            logging.info('sals user name is %s' % sasl_user)
+            user_pwd = "[['%s', '%s']]" % (sasl_user,
                                            params.get("sasl_pwd"))
             v2v_sasl = utils_sasl.SASL(sasl_user_pwd=user_pwd)
             v2v_sasl.server_ip = params.get("remote_ip")
