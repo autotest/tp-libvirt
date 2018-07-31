@@ -29,6 +29,7 @@ def run(test, params, env):
     hotplug_iface = "yes" == params.get("hotplug_interface", "no")
     filter_by_mac = "yes" == params.get("filter_by_mac", "no")
     invalid_mac = "yes" == params.get("invalid_mac", "no")
+    expect_msg = params.get("leases_err_msg")
     # Generate a random string as the MAC address
     nic_mac = None
     if invalid_mac:
@@ -189,6 +190,9 @@ def run(test, params, env):
             utlv.check_exit_status(result, status_error)
             lease = get_net_dhcp_leases(result.stdout.strip())
             check_net_lease(lease, expected_find)
+        else:
+            if expect_msg:
+                utlv.check_result(result, expect_msg.split(';'))
     finally:
         # Delete the new attached interface
         if new_nic_index > 0:

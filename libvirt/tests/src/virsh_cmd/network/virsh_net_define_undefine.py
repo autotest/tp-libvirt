@@ -7,6 +7,7 @@ from virttest import libvirt_vm
 from virttest import xml_utils
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import network_xml
+from virttest.utils_test import libvirt
 
 from provider import libvirt_version
 
@@ -59,6 +60,7 @@ def run(test, params, env):
     check_states = "yes" == params.get("check_states", "no")
     net_persistent = "yes" == params.get("net_persistent")
     net_active = "yes" == params.get("net_active")
+    expect_msg = params.get("net_define_undefine_err_msg")
 
     virsh_dargs = {'uri': uri, 'debug': False, 'ignore_status': True}
     virsh_instance = virsh.VirshPersistent(**virsh_dargs)
@@ -138,6 +140,9 @@ def run(test, params, env):
                 fail_flag = 1
                 result_info.append("Found wrong network states for "
                                    "defined netowrk: %s" % str(net_state))
+
+        if define_status == 1 and status_error and expect_msg:
+            libvirt.check_result(define_result, expect_msg.split(';'))
 
         # If defining network succeed, then trying to start it.
         if define_status == 0:
