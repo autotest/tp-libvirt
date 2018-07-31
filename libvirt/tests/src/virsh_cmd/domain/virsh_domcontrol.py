@@ -3,6 +3,7 @@ import subprocess
 
 from virttest import virsh
 from virttest import data_dir
+from virttest import ssh_key
 
 
 def get_subprocess(action, vm_name, filepath):
@@ -48,8 +49,17 @@ def run(test, params, env):
     job = params.get("domcontrol_job", "yes")
     readonly = "yes" == params.get("readonly", "no")
     status_error = params.get("status_error", "no")
+    remote_uri = params.get("remote_uri")
+    remote_ip = params.get("remote_ip")
+    remote_pwd = params.get("remote_pwd")
+    remote_user = params.get("remote_user", "root")
     if start_vm == "no" and vm.is_alive():
         vm.destroy()
+
+    if remote_uri:
+        if remote_ip.count("EXAMPLE"):
+            test.cancel("The remote ip is Sample one, pls configure it first")
+        ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
 
     # Instead of "paused_after_start_vm", use "pre_vm_state".
     # After start the VM, wait for some time to make sure the job
@@ -101,7 +111,7 @@ def run(test, params, env):
     else:
         # Check domain contorl interface state without job on domain.
         ret = virsh.domcontrol(vm_ref, options, readonly=readonly,
-                               ignore_status=True, debug=True)
+                               ignore_status=True, debug=True, uri=remote_uri)
         status = ret.exit_status
 
         # check status_error
