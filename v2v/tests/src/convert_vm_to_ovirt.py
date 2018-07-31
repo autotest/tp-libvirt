@@ -40,6 +40,11 @@ def run(test, params, env):
     v2v_opts = params.get("v2v_opts")
     v2v_timeout = int(params.get('v2v_timeout', 1200))
 
+    # create different sasl_user name for different job
+    params.update({'sasl_user': params.get("sasl_user") +
+                   utils_misc.generate_random_string(3)})
+    logging.info('sals user name is %s' % params.get("sasl_user"))
+
     # Prepare step for different hypervisor
     if hypervisor == "esx":
         source_ip = vpx_ip
@@ -87,9 +92,7 @@ def run(test, params, env):
             v2v_virsh.close_session()
 
     # Create SASL user on the ovirt host
-    sasl_user = params.get("sasl_user") + utils_misc.generate_random_string(3)
-    logging.info('sals user name is %s' % sasl_user)
-    user_pwd = "[['%s', '%s']]" % (sasl_user,
+    user_pwd = "[['%s', '%s']]" % (params.get("sasl_user"),
                                    params.get("sasl_pwd"))
     v2v_sasl = utils_sasl.SASL(sasl_user_pwd=user_pwd)
     v2v_sasl.server_ip = params.get("remote_ip")
@@ -136,7 +139,13 @@ def run(test, params, env):
 
         # Other checks
         err_list = []
-        os_list = ['win8', 'win8.1', 'win10', 'win2012', 'win2012r2', 'win2008']
+        os_list = [
+            'win8',
+            'win8.1',
+            'win10',
+            'win2012',
+            'win2012r2',
+            'win2008']
         win_version = ['6.2', '6.3', '10.0', '6.2', '6.3']
         os_map = dict(list(zip(os_list, win_version)))
         vm_arch = params.get('vm_arch')

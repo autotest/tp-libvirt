@@ -44,6 +44,11 @@ def run(test, params, env):
     checkpoint = params.get('checkpoint', '')
     error_list = []
 
+    # create different sasl_user name for different job
+    params.update({'sasl_user': params.get("sasl_user") +
+                   utils_misc.generate_random_string(3)})
+    logging.info('sals user name is %s' % params.get("sasl_user"))
+
     def log_fail(msg):
         """
         Log error and update error list
@@ -106,7 +111,9 @@ def run(test, params, env):
         if log_check:
             log_fail(log_check)
         if len(error_list):
-            test.fail('%d checkpoints failed: %s' % (len(error_list), error_list))
+            test.fail(
+                '%d checkpoints failed: %s' %
+                (len(error_list), error_list))
 
     try:
         v2v_params = {
@@ -123,9 +130,7 @@ def run(test, params, env):
         # Build rhev related options
         if output_mode == 'rhev':
             # Create SASL user on the ovirt host
-            sasl_user = params.get("sasl_user") + utils_misc.generate_random_string(3)
-            logging.info('sals user name is %s' % sasl_user)
-            user_pwd = "[['%s', '%s']]" % (sasl_user,
+            user_pwd = "[['%s', '%s']]" % (params.get("sasl_user"),
                                            params.get("sasl_pwd"))
             v2v_sasl = utils_sasl.SASL(sasl_user_pwd=user_pwd)
             v2v_sasl.server_ip = params.get("remote_ip")
