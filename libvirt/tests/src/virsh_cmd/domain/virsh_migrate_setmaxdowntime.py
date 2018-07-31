@@ -45,15 +45,13 @@ def thread_func_live_migration(vm, dest_uri, dargs):
     Thread for virsh migrate command.
     """
     # Migrate the domain.
-    debug = dargs.get("debug", "False")
-    ignore_status = dargs.get("ignore_status", "False")
     options = "--live --unsafe"
     postcopy_options = dargs.get("postcopy_options")
     if postcopy_options:
         options = "%s %s" % (options, postcopy_options)
     extra = dargs.get("extra")
     global ret_migration
-    result = vm.migrate(dest_uri, options, extra, ignore_status, debug)
+    result = vm.migrate(dest_uri, options, extra, **dargs)
     if result.exit_status:
         logging.error("Migrate %s to %s failed." % (vm.name, dest_uri))
         return
