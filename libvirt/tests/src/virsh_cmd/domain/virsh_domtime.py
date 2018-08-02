@@ -7,6 +7,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import error_context
+from virttest import utils_time
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
@@ -192,9 +193,9 @@ def run(test, params, env):
         if now or sync or (set_time is not None):
             action = "set"
 
-        tz_diff = org_times['local_sys'] - org_times['utc_sys']
-        logging.debug("Timezone diff on guest is %d hours.",
-                      (tz_diff.total_seconds() // 3600))
+        host_tz_diff = org_host_loc_time - org_host_time
+        logging.debug("Timezone diff on host is %d hours.",
+                      (host_tz_diff.total_seconds() // 3600))
 
         # Hardware time will never stop
         logging.info('Add %ss to expected guest time', interval)
@@ -208,14 +209,14 @@ def run(test, params, env):
                 # Time change accordingly if succeed.
                 if now:
                     utc_time = org_host_time
-                    local_time = utc_time + tz_diff
+                    local_time = utc_time + guest_tz_diff
                 elif sync:
                     local_time = org_times["local_hw"]
-                    utc_time = local_time - tz_diff
+                    utc_time = local_time - guest_tz_diff
                 elif set_time is not None:
                     utc_time = epoch + datetime.timedelta(
                         seconds=(int(set_time) - guest_duration))
-                    local_time = utc_time + tz_diff
+                    local_time = utc_time + guest_tz_diff
                 expected_times = {}
                 expected_times['local_hw'] = local_time
                 expected_times['local_sys'] = local_time
@@ -279,18 +280,18 @@ def run(test, params, env):
         vmlogin_dur = 0.0
         if suspend:
             vm.pause()
-            time.sleep(10)
+            time.sleep(vm_stop_duration)
             vm.resume()
         elif managedsave:
             vm.managedsave()
-            time.sleep(10)
+            time.sleep(vm_stop_duration)
             vm.start()
             start_dur = time.time()
             vm.wait_for_login()
             vmlogin_dur = time.time() - start_dur
         elif pmsuspend:
             vm.pmsuspend()
-            time.sleep(10)
+            time.sleep(vm_stop_duration)
             vm.pmwakeup()
             start_dur = time.time()
             vm.wait_for_login()
@@ -320,6 +321,7 @@ def run(test, params, env):
     suspend = (params.get("suspend_vm", "no") == 'yes')
     managedsave = (params.get("managedsave_vm", "no") == 'yes')
     pmsuspend = (params.get("pmsuspend_vm", "no") == 'yes')
+    vm_stop_duration = int(params.get("vm_stop_duration", "10"))
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -332,7 +334,15 @@ def run(test, params, env):
         # Add or remove qemu-agent from guest before test
         vm.prepare_guest_agent(channel=channel, start=agent)
         session = vm.wait_for_login()
+        # Let's set guest timezone to region where we do not
+        # have day light savings, to affect the time
+        session.cmd("timedatectl set-timezone Asia/Kolkata")
         try:
+            init_guest_times, _ = get_guest_times(session)
+            guest_tz_diff = init_guest_times['local_sys'] - init_guest_times['utc_sys']
+            logging.debug("Timezone diff on guest is %d hours.",
+                          (guest_tz_diff.total_seconds() // 3600))
+
             if channel and agent:
                 init_time(session)
 
@@ -347,8 +357,14 @@ def run(test, params, env):
             # Record start time
             start = time.time()
 
-            # Record host time before testing
+            # Record host utc time before testing
             org_host_time = get_host_utc_time()
+
+            # Record host local time before testing
+            outp = process.run('date', shell=True)
+            time_st = re.sub(r'\S+ (?=\S+$)', '', outp.stdout_text.strip())
+            org_host_loc_time = datetime.datetime.strptime(time_st, r"%a %b %d %H:%M:%S %Y")
+
             # Get original guest times
             org_times, guest_duration = get_guest_times(session)
 
@@ -371,6 +387,10 @@ def run(test, params, env):
 
                 check_time(res, org_times, cur_times)
         finally:
+            if shutdown:
+                vm.start()
+            # sync guest timezone
+            utils_time.sync_timezone_linux(vm)
             # Sync guest time with host
             if channel and agent and not shutdown:
                 res = virsh.domtime(vm_name, now=True)
