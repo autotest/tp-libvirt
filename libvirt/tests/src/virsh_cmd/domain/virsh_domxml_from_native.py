@@ -50,7 +50,8 @@ def run(test, params, env):
             if qemu_binary in each_opt:
                 change_bin = each_opt
                 break
-        qemu_binary = process.getoutput("which %s" % qemu_binary)
+        exec_str = "export PATH=$PATH:/usr/libexec;which %s"
+        qemu_binary = process.getoutput(exec_str % qemu_binary, shell=True)
         if change_bin.strip() != qemu_binary.strip():
             cmdline_tmp = re.sub(change_bin, qemu_binary, cmdline_tmp)
 
