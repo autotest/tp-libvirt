@@ -45,9 +45,10 @@ def run(test, params, env):
     error_list = []
 
     # create different sasl_user name for different job
-    params.update({'sasl_user': params.get("sasl_user") +
-                   utils_misc.generate_random_string(3)})
-    logging.info('sals user name is %s' % params.get("sasl_user"))
+    if output_mode == 'rhev':
+        params.update({'sasl_user': params.get("sasl_user") +
+                       utils_misc.generate_random_string(3)})
+        logging.info('sals user name is %s' % params.get("sasl_user"))
 
     def log_fail(msg):
         """
