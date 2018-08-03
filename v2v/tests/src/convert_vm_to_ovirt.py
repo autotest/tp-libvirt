@@ -9,6 +9,7 @@ from virttest import virsh
 from virttest import ssh_key
 from virttest import utils_misc
 from virttest import utils_sasl
+from virttest import remote
 
 from provider.v2v_vmcheck_helper import VMChecker
 
@@ -26,6 +27,7 @@ def run(test, params, env):
     hypervisor = params.get("hypervisor")
     input_mode = params.get("input_mode")
     storage = params.get('storage')
+    storage_name = params.get('storage_name')
     network = params.get('network')
     bridge = params.get('bridge')
     source_user = params.get("username", "root")
@@ -39,6 +41,16 @@ def run(test, params, env):
     address_cache = env.get('address_cache')
     v2v_opts = params.get("v2v_opts")
     v2v_timeout = int(params.get('v2v_timeout', 1200))
+    # for construct rhv-upload option in v2v cmd
+    output_method = params.get("output_method")
+    rhv_upload_opts = params.get("rhv_upload_opts")
+    # for get ca.crt file from ovirt engine
+    rhv_passwd = params.get("rhv_upload_passwd")
+    rhv_passwd_file = params.get("rhv_upload_passwd_file")
+    ovirt_engine_passwd = params.get("ovirt_engine_password")
+    ovirt_hostname = params.get("ovirt_engine_url").split('/')[2]
+    ovirt_ca_file_path = params.get("ovirt_ca_file_path")
+    local_ca_file_path = params.get("local_ca_file_path")
 
     # create different sasl_user name for different job
     params.update({'sasl_user': params.get("sasl_user") +
@@ -67,6 +79,16 @@ def run(test, params, env):
         source_pwd = None
     else:
         test.cancel("Unspported hypervisor: %s" % hypervisor)
+
+    if output_method == 'rhv_upload':
+        # Create password file for '-o rhv_upload' to connect to ovirt
+        with open(rhv_passwd_file, 'w') as f:
+            f.write(rhv_passwd)
+        # Copy ca file from ovirt to local
+        remote.scp_from_remote(ovirt_hostname, 22, 'root',
+                               ovirt_engine_passwd,
+                               ovirt_ca_file_path,
+                               local_ca_file_path)
 
     # Create libvirt URI
     v2v_uri = utils_v2v.Uri(hypervisor)
@@ -105,16 +127,20 @@ def run(test, params, env):
                   'main_vm': vm_name, 'input_mode': input_mode,
                   'network': network, 'bridge': bridge,
                   'storage': storage, 'hostname': source_ip,
-                  'new_name': vm_name + utils_misc.generate_random_string(3)}
+                  'new_name': vm_name + utils_misc.generate_random_string(3),
+                  'output_method': output_method, 'storage_name': storage_name}
     if vpx_dc:
         v2v_params.update({"vpx_dc": vpx_dc})
     if esx_ip:
         v2v_params.update({"esx_ip": esx_ip})
     if v2v_opts:
         v2v_params.update({"v2v_opts": v2v_opts})
+    if rhv_upload_opts:
+        v2v_params.update({"rhv_upload_opts": rhv_upload_opts})
     output_format = params.get('output_format')
+    # output_format will be set to 'raw' in utils_v2v.v2v_cmd if it's None
     if output_format:
-        v2v_params.update({'output_format': 'qcow2'})
+        v2v_params.update({'output_format': output_format})
 
     # Set libguestfs environment variable
     if hypervisor in ('xen', 'kvm'):
@@ -128,6 +154,7 @@ def run(test, params, env):
 
         params['main_vm'] = v2v_params['new_name']
 
+        logging.info("output_method is %s" % output_method)
         # Import the VM to oVirt Data Center from export domain, and start it
         if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                             timeout=v2v_timeout):
@@ -178,7 +205,9 @@ def run(test, params, env):
         vmcheck.cleanup()
         if v2v_sasl:
             v2v_sasl.cleanup()
-        if hypervisor == "esx":
-            os.remove(vpx_passwd_file)
         if hypervisor == "xen":
             process.run("ssh-agent -k")
+
+        tmpfiles = [vpx_passwd_file, rhv_passwd_file, local_ca_file_path]
+        for i in [x for x in tmpfiles if x and os.path.exists(x)]:
+            os.remove(i)
