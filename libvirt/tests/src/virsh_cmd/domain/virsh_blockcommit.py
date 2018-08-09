@@ -459,6 +459,9 @@ def run(test, params, env):
                             if not ret:
                                 test.fail("Domain image backing "
                                           "chain check failed")
+                            cmd_result = virsh.blockjob(vm_name, blk_target, '',
+                                                        ignore_status=True, debug=True)
+                            libvirt.check_exit_status(cmd_result)
                         elif "--base" in blockcommit_options:
                             chain_lst = snap_src_lst[::-1]
                             base_index = chain_lst.index(blk_source)
