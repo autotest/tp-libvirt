@@ -122,6 +122,12 @@ def run(test, params, env):
         elif resize_value[-1] == "g":
             value = int(resize_value[:-1])
             expected_size = value * 1024 * 1024 * 1024
+            cmd = "qemu-img info %s" % image_path
+            ret = process.run(cmd, allow_output_check='combined', shell=True)
+            status, output = (ret.exit_status, ret.stdout_text.strip())
+            value_return_by_qemu_img = re.search(r'virtual size:\s+(\d+(\.\d+)?)+G', output).group(1)
+            if value != int(float(value_return_by_qemu_img)):
+                test.fail("initial image size in config is not equals to value returned by qemu-img info")
         else:
             test.error("Unknown scale value")
 
