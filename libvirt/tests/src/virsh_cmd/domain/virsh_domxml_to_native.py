@@ -119,7 +119,7 @@ def run(test, params, env):
         # argument list and we find "qemu-system-x86_64 -machine accel=kvm"
         # in the running guest's cmdline
         # ubuntu use /usr/bin/kvm as qemu binary
-        qemu_bin = ["/usr/bin/qemu-kvm", "/usr/bin/kvm"]
+        qemu_bin = ["/usr/bin/qemu-kvm", "/usr/bin/kvm", "/usr/libexec/qemu-kvm"]
         arch_bin = ["/usr/bin/qemu-system-x86_64 -machine accel=kvm",
                     "/usr/bin/qemu-system-ppc64 -machine accel=kvm",
                     "qemu-system-ppc64 -enable-kvm"]
@@ -195,7 +195,7 @@ def run(test, params, env):
         elif vm_id == "name":
             vm_id = "%s %s" % (vm_name, extra)
         if file_xml == "":
-            extra_param = extra_param + vm_id
+            file_xml = vm_id
 
     virsh.dumpxml(vm_name, extra="", to_file=file_xml)
     if libvirtd == "off":
