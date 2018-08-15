@@ -12,12 +12,14 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import utils_config
 from virttest import utils_numeric
 from virttest import virt_vm
 from virttest import data_dir
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
+from virttest.staging import utils_memory
 from virttest.staging.utils_memory import drop_caches
 from virttest.staging.utils_memory import read_from_numastat
 
@@ -54,6 +56,44 @@ def run(test, params, env):
                   " count={0}".format(size))
         session.cmd(sh_cmd, timeout=timeout)
         session.close()
+
+    def mount_hugepages(page_size):
+        """
+        To mount hugepages
+
+        :param page_size: unit is kB, it can be 4,2048,1048576,etc
+        """
+        if page_size == 4:
+            perm = ""
+        else:
+            perm = "pagesize=%dK" % page_size
+
+        tlbfs_status = utils_misc.is_mounted("hugetlbfs", "/dev/hugepages",
+                                             "hugetlbfs")
+        if tlbfs_status:
+            utils_misc.umount("hugetlbfs", "/dev/hugepages", "hugetlbfs")
+        utils_misc.mount("hugetlbfs", "/dev/hugepages", "hugetlbfs", perm)
+
+    def setup_hugepages(page_size=2048, shp_num=2000):
+        """
+        To setup hugepages
+
+        :param page_size: unit is kB, it can be 4,2048,1048576,etc
+        :param shp_num: number of hugepage, string type
+        """
+        mount_hugepages(page_size)
+        utils_memory.set_num_huge_pages(shp_num)
+        config.hugetlbfs_mount = ["/dev/hugepages"]
+        utils_libvirtd.libvirtd_restart()
+
+    def restore_hugepages(page_size=4):
+        """
+        To recover hugepages
+        :param page_size: unit is kB, it can be 4,2048,1048576,etc
+        """
+        mount_hugepages(page_size)
+        config.restore()
+        utils_libvirtd.libvirtd_restart()
 
     def check_qemu_cmd():
         """
@@ -98,7 +138,7 @@ def run(test, params, env):
         session.cmd(cmd)
         # Wait a while for new memory to be detected.
         utils_misc.wait_for(
-            lambda: vm.get_totalmem_sys() != int(old_mem), 20, first=15.0)
+            lambda: vm.get_totalmem_sys() != int(old_mem), 30, first=20.0)
         new_mem = vm.get_totalmem_sys()
         session.close()
         logging.debug("Memtotal on guest: %s", new_mem)
@@ -338,6 +378,11 @@ def run(test, params, env):
                     for x in params.get("numa_memnode", "").split()]
     at_times = int(params.get("attach_times", 1))
 
+    config = utils_config.LibvirtQemuConfig()
+    setup_hugepages_flag = params.get("setup_hugepages")
+    if (setup_hugepages_flag == "yes"):
+        setup_hugepages(int(pg_size))
+
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
@@ -559,4 +604,6 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
         logging.info("Restoring vm...")
+        if (setup_hugepages_flag == "yes"):
+            restore_hugepages()
         vmxml_backup.sync()
