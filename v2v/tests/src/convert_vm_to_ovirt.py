@@ -170,6 +170,7 @@ def run(test, params, env):
             'win8',
             'win8.1',
             'win10',
+            'win2016'
             'win2012',
             'win2012r2',
             'win2008']
