@@ -139,7 +139,7 @@ def run(test, params, env):
                         if not ("--current" in sep_options and len(sep_options) > 1):
                             test.fail("return mutualy exclusive, but it is unexpected")
                     else:
-                        logging.error("Command output %s" % ret.stderr.strip())
+                        test.fail("Failed to attach-interface: %s" % ret.stderr.strip())
                 elif stress_test:
                     if attach_device:
                         # Detach the device immediately for stress test
