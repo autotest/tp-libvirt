@@ -34,8 +34,10 @@ def run(test, params, env):
         :param new_iso: sourse file for update
         """
         error_context.context("Preparing ISO images")
-        process.run("dd if=/dev/urandom of=%s/old bs=1M count=1" % iso_dir, shell=True)
-        process.run("dd if=/dev/urandom of=%s/new bs=1M count=1" % iso_dir, shell=True)
+        process.run("dd if=/dev/urandom of=%s/old bs=1M count=1" %
+                    iso_dir, shell=True)
+        process.run("dd if=/dev/urandom of=%s/new bs=1M count=1" %
+                    iso_dir, shell=True)
         process.run("mkisofs -o %s %s/old" % (old_iso, iso_dir), shell=True)
         process.run("mkisofs -o %s %s/new" % (new_iso, iso_dir), shell=True)
 
@@ -49,7 +51,8 @@ def run(test, params, env):
         :param action: test case action
         """
         if target_device == "hdc" or target_device == "sdc":
-            drive_name = session.cmd("cat /proc/sys/dev/cdrom/info | grep -i 'drive name'", ignore_all_errors=True).split()[2]
+            drive_name = session.cmd(
+                "cat /proc/sys/dev/cdrom/info | grep -i 'drive name'", ignore_all_errors=True).split()[2]
         if action != "--eject ":
             error_context.context("Checking guest %s files" % target_device)
             if target_device == "hdc" or target_device == "sdc":
@@ -95,7 +98,7 @@ def run(test, params, env):
                           "--type %s --sourcetype file --config" % device_type,
                           debug=True)
 
-    def update_device(vm_name, init_iso, options, start_vm):
+    def update_device(vm_name, init_iso, options, start_vm, disk_alias=None):
         """
         Update device iso file for test case
 
@@ -277,7 +280,8 @@ def run(test, params, env):
                 test.fail("Unexpected error (positive testing). "
                           "Output: %s" % result.stderr.strip())
             else:
-                logging.info("Expected success. Output: %s", result.stdout.strip())
+                logging.info("Expected success. Output: %s",
+                             result.stdout.strip())
     finally:
         # Clean the iso dir  and clean the device
         update_device(vm_name, "", options, start_vm)
