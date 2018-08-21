@@ -34,9 +34,11 @@ def run(test, params, env):
         :param vmxml. Domain xml object.
         """
         # Add disk scsi controller
+        controllers = vmxml.get_devices('controller')
+        existing_scsi = sum([1 if con.type == 'scsi' else 0 for con in controllers])
         scsi_controller = Controller("controller")
         scsi_controller.type = "scsi"
-        scsi_controller.index = "0"
+        scsi_controller.index = str(existing_scsi)
         scsi_controller.model = "virtio-scsi"
         vmxml.add_device(scsi_controller)
 
@@ -127,6 +129,13 @@ def run(test, params, env):
     # Initialize VM list
     vms_list = []
     try:
+        # Remove cdrom/floppy or other non-disk disks
+        for vm_name in vm_names:
+            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            disk_devices = vmxml.get_devices('disk')
+            for disk in disk_devices:
+                if disk.device != 'disk':
+                    virsh.detach_disk(vm_name, disk.target['dev'], extra='--config', debug=True)
         # Create disk images if needed.
         disks = []
         if disk_format == "scsi":
