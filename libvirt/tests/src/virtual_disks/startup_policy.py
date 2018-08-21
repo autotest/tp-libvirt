@@ -226,13 +226,13 @@ def run(test, params, env):
                 :param inactive_policy: inactive policy attribute value
                 """
                 vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-                disk_list = vmxml.devices.by_device_tag("disk")
+                disk_list = [x for x in vmxml.devices.by_device_tag("disk") if x.device == 'disk']
                 disk = disk_list[len(disk_list)-1]
                 if not active_policy == disk.source.attrs["startupPolicy"]:
                     test.error("Actual policy:%s in active state is not equal to expected:%s"
                                % (active_policy, disk.source.attrs["startupPolicy"]))
                 vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-                disk_list = vmxml.devices.by_device_tag("disk")
+                disk_list = [x for x in vmxml.devices.by_device_tag("disk") if x.device == 'disk']
                 disk = disk_list[len(disk_list)-1]
                 if not inactive_policy == disk.source.attrs["startupPolicy"]:
                     test.error("Actual policy:%s in inactive state is not equal to expected: %s"
