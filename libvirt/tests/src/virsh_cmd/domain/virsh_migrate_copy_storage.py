@@ -12,6 +12,8 @@ from virttest import virsh
 from virttest.utils_misc import is_qemu_capability_supported as qemu_test
 from virttest import remote
 
+from provider import libvirt_version
+
 
 def create_destroy_pool_on_remote(test, action, params):
     """
@@ -103,10 +105,14 @@ def copied_migration(test, vms, params):
     dest_uri = params.get("migrate_dest_uri")
     remote_host = params.get("migrate_dest_host")
     copy_option = params.get("copy_storage_option", "")
+    tls_option = params.get("tls_option", "")
     username = params.get("migrate_dest_user", "root")
     password = params.get("migrate_dest_pwd")
     timeout = int(params.get("thread_timeout", 1200))
-    options = "--live %s" % copy_option
+
+    if copy_option and tls_option and not libvirt_version.version_compare(4, 4, 0):
+        test.cancel("libvirt less than 4.4 cannot support --copy-storage-{all,inc} with --tls")
+    options = "--live %s %s" % (copy_option, tls_option)
 
     # Get vm ip for remote checking
     vms_ip = {}
