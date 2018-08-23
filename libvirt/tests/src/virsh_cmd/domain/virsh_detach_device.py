@@ -2,6 +2,7 @@ import os
 import time
 import logging
 import shutil
+import uuid
 
 import aexpect
 
@@ -121,6 +122,8 @@ def run(test, params, env):
             disk.driver = dict(name='qemu', type='raw')
             disk.source = disk.new_disk_source(attrs={stype: device_source})
             disk.target = dict(bus=device_bus, dev=device_target)
+            if detach_alias:
+                disk.alias = dict(name=device_alias)
             disk.xmltreefile.write()
             shutil.copyfile(disk.xml, device_xml_file)
         else:
@@ -129,6 +132,8 @@ def run(test, params, env):
             iface.mac_address = iface_mac_address
             iface.source = dict(network=iface_network)
             iface.model = iface_model_type
+            if detach_alias:
+                iface.alias = dict(name=device_alias)
             iface.xmltreefile.write()
             shutil.copyfile(iface.xml, device_xml_file)
         return device_xml_file
@@ -143,6 +148,12 @@ def run(test, params, env):
     readonly = "yes" == params.get("detach_readonly", "no")
     tmp_dir = data_dir.get_tmp_dir()
     test_cmd = "detach-device"
+    detach_alias = "yes" == params.get("dt_device_alias", "no")
+    if detach_alias:
+        test_cmd = "detach-device-alias"
+        device_alias = "ua-" + str(uuid.uuid4())
+    else:
+        test_cmd = "detach-device"
     if not virsh.has_command_help_match(test_cmd, dt_options) and\
        not status_error:
         test.cancel("Current libvirt version doesn't support '%s'"
@@ -189,7 +200,7 @@ def run(test, params, env):
         device_xml = create_device_xml(params, tmp_dir, device_source)
         if not no_attach:
             s_attach = virsh.attach_device(vm_name, device_xml,
-                                           flagstr="--config").exit_status
+                                           flagstr="--config", debug=True).exit_status
             if s_attach != 0:
                 logging.error("Attach device failed before testing "
                               "detach-device")
@@ -237,8 +248,12 @@ def run(test, params, env):
         else:
             vm_ref = ""
 
-        status = virsh.detach_device(vm_ref, device_xml, readonly=readonly, flagstr=dt_options,
-                                     debug=True).exit_status
+        if detach_alias:
+            status = virsh.detach_device_alias(vm_ref, device_alias, dt_options, readonly=readonly,
+                                               debug=True).exit_status
+        else:
+            status = virsh.detach_device(vm_ref, device_xml, readonly=readonly, flagstr=dt_options,
+                                         debug=True).exit_status
 
         time.sleep(2)
         # Resume guest after command. On newer libvirt this is fixed as it has
