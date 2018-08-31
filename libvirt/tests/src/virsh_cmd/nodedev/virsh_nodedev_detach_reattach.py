@@ -50,6 +50,7 @@ def run(test, params, env):
         # Libvirt acl polkit related params
         uri = params.get("virsh_uri")
         unprivileged_user = params.get('unprivileged_user')
+        readonly = (params.get('nodedev_detach_readonly', 'no') == 'yes')
         if unprivileged_user:
             if unprivileged_user.count('EXAMPLE'):
                 unprivileged_user = 'testacl'
@@ -58,7 +59,7 @@ def run(test, params, env):
         logging.debug('Node device name is %s.', device_address)
         CmdResult = virsh.nodedev_detach(device_address, options,
                                          unprivileged_user=unprivileged_user,
-                                         uri=uri)
+                                         uri=uri, readonly=readonly)
         # Check the exit_status.
         libvirt.check_exit_status(CmdResult)
         # Check the driver.
