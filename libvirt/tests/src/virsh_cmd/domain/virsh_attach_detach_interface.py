@@ -166,6 +166,7 @@ def run(test, params, env):
     start_vm = params.get("start_vm")
     # Should attach must be pass for detach test.
     correct_attach = "yes" == params.get("correct_attach", "no")
+    readonly = ("yes" == params.get("readonly", "no"))
 
     # Interface specific attributes.
     iface_type = params.get("at_detach_iface_type", "network")
@@ -282,6 +283,8 @@ def run(test, params, env):
         # Set attach-interface options and Start attach-interface test
         if correct_attach:
             options = set_options("network", "default", iface_mac, "", "attach")
+            if readonly:
+                virsh_dargs.update({'readonly': True, 'debug': True})
             attach_result = virsh.attach_interface(vm_name, options,
                                                    **virsh_dargs)
         else:
