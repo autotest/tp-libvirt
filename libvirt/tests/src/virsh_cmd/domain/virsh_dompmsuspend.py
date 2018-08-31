@@ -37,6 +37,7 @@ def run(test, params, env):
     pmsuspend_error_msg = params.get("pmsuspend_error_msg")
     agent_error_test = 'yes' == params.get("agent_error_test", 'no')
     arch = platform.processor()
+    duration_value = int(params.get("duration", "0"))
 
     # Libvirt acl test related params
     uri = params.get("virsh_uri")
@@ -142,7 +143,7 @@ def run(test, params, env):
                 vm.destroy()
 
             # Run test case
-            result = virsh.dompmsuspend(vm_name, suspend_target, debug=True,
+            result = virsh.dompmsuspend(vm_name, suspend_target, duration=duration_value, debug=True,
                                         uri=uri,
                                         unprivileged_user=unprivileged_user)
             if result.exit_status == 0:
@@ -159,6 +160,9 @@ def run(test, params, env):
                     test.fail("Expected failed with one of %s, but "
                               "failed with:\n%s" % (fail_pat, result.stderr))
 
+            # If pmsuspend_error is True, just skip below checking, and return directly.
+            if pmsuspend_error:
+                return
             # check whether the state changes to pmsuspended
             if not utils_misc.wait_for(lambda: vm.state() == 'pmsuspended', 30):
                 test.fail("VM failed to change its state, expected state: "
