@@ -207,7 +207,5 @@ def run(test, params, env):
             v2v_sasl.cleanup()
         if hypervisor == "xen":
             process.run("ssh-agent -k")
-
-        tmpfiles = [vpx_passwd_file, rhv_passwd_file, local_ca_file_path]
-        for i in [x for x in tmpfiles if x and os.path.exists(x)]:
-            os.remove(i)
+        # Cleanup constant files
+        utils_v2v.cleanup_constant_files(params)
