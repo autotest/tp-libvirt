@@ -9,6 +9,7 @@ from avocado.utils import process
 from virttest import data_dir
 from virttest import virsh
 from virttest import utils_net
+from virttest import remote
 from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml import vm_xml
@@ -437,13 +438,33 @@ def run(test, params, env):
 
             if loop == 0:
                 try:
+                    backup_files = []
                     # Define and start network
                     test_xml.debug_xml()
                     test_xml.define()
                     ori_net_xml = virsh.net_dumpxml(net_name).stdout.strip()
                     if "ipv6" in ori_net_xml:
                         host_ifaces = utils_net.get_net_if(state="UP")
+                        backup_files.append(
+                            remote.RemoteFile(address='127.0.0.1',
+                                              client='scp',
+                                              username=params.get('username'),
+                                              password=params.get('password'),
+                                              port='22',
+                                              remote_path='/proc/sys/net/ipv6/'
+                                                          'conf/all/accept_ra'))
+                        process.run("echo 2 > /proc/sys/net/ipv6/conf/all/accept_ra",
+                                    shell=True)
                         for host_iface in host_ifaces:
+                            backup_files.append(
+                                remote.RemoteFile(address='127.0.0.1',
+                                                  client='scp',
+                                                  username=params.get('username'),
+                                                  password=params.get('password'),
+                                                  port='22',
+                                                  remote_path='/proc/sys/net/ipv6/'
+                                                              'conf/%s/accept_ra'
+                                                              % host_iface))
                             process.run("echo 2 > /proc/sys/net/ipv6/conf/%s/accept_ra"
                                         % host_iface, shell=True)
                             process.run("cat /proc/sys/net/ipv6/conf/%s/accept_ra"
@@ -866,3 +887,5 @@ def run(test, params, env):
             if vm.is_alive():
                 vm.destroy(gracefully=False)
             vmxml_backup.sync()
+        for config_file in backup_files:
+            config_file._reset_file()
