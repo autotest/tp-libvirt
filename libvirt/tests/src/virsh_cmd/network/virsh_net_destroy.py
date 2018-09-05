@@ -6,6 +6,7 @@ from virttest import virsh
 from provider import libvirt_version
 from virttest import utils_test
 from virttest.libvirt_xml import vm_xml
+from virttest import utils_libvirtd
 
 
 # if the net is transisent, dump the xml then define it to make it persistent
@@ -48,6 +49,7 @@ def run(test, params, env):
     net_cfg_file = params.get("net_cfg_file", "/usr/share/libvirt/networks/default.xml")
     check_libvirtd = "yes" == params.get("check_libvirtd")
     vm_defined = "yes" == params.get("vm_defined")
+    check_vm = "yes" == params.get("check_vm")
 
     # libvirt acl polkit related params
     if not libvirt_version.version_compare(1, 1, 1):
@@ -91,7 +93,7 @@ def run(test, params, env):
     elif net_ref == "name":
         net_ref = network_name
 
-    if check_libvirtd:
+    if check_libvirtd or check_vm:
         vm_name = params.get("main_vm")
         if virsh.is_alive(vm_name):
             virsh.destroy(vm_name)
@@ -140,16 +142,26 @@ def run(test, params, env):
                 else:
                     logging.debug("libvirtd do not crash after destroy network!")
                     status = 0
-                # destroy vm, check libvirtd pid no change
-                ret = virsh.destroy(vm_name)
-                utils_test.libvirt.check_exit_status(ret, expect_error=False)
-                result = check_libvirtd_restart(libvirtd_pid, cmd)
-                if result:
-                    test.fail("libvirtd crash after destroy vm!")
-                    status = 1
-                else:
-                    logging.debug("libvirtd do not crash after destroy vm!")
-                    status = 0
+                if check_libvirtd:
+                    # destroy vm, check libvirtd pid no change
+                    ret = virsh.destroy(vm_name)
+                    utils_test.libvirt.check_exit_status(ret, expect_error=False)
+                    result = check_libvirtd_restart(libvirtd_pid, cmd)
+                    if result:
+                        test.fail("libvirtd crash after destroy vm!")
+                        status = 1
+                    else:
+                        logging.debug("libvirtd do not crash after destroy vm!")
+                        status = 0
+                elif check_vm:
+                    # restart libvirtd and check vm is running
+                    libvirtd = utils_libvirtd.Libvirtd()
+                    libvirtd.restart()
+                    if not virsh.is_alive(vm_name):
+                        test.fail("vm shutdown when transient network destroyed then libvirtd restart")
+                    else:
+                        status = 0
+
         finally:
             if not vm_defined:
                 vmxml_backup.define()
