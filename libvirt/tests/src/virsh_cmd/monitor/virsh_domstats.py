@@ -3,9 +3,28 @@ import logging
 from aexpect import ShellTimeoutError
 from aexpect import ShellProcessTerminatedError
 
+from multiprocessing.pool import ThreadPool
+
 from virttest import virsh
+from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
+
+from provider import libvirt_version
+
+
+def create_snap(vm_name, snap_option):
+    """
+    Create snap using snap options
+
+    :param vm_name: VM name
+    :param snap_option: snap option
+    :return: snapshot created
+    """
+    cmd_result = virsh.snapshot_create_as(vm_name, snap_option,
+                                          ignore_status=True, debug=True)
+    libvirt.check_exit_status(cmd_result)
+    return cmd_result
 
 
 def prepare_vm_state(vm, vm_state):
@@ -72,13 +91,38 @@ def check_output(output, vm, vm_state, options):
     :param options: Virsh command options
     """
     check_pass = []
-    list_option_pass = False
     list_option = ""
+    list_option_pass = False
+    state_option = ""
+    state_option_pass = False
+    block_option = ""
+    block_option_pass = False
+    cpu_option = ""
+    cpu_option_pass = False
+    balloon_option = ""
+    balloon_option_pass = False
+    nowait_option = ""
+    nowait_option_pass = False
+
     for option in options.split():
         if "--list" in option:
             list_option = option.strip()
             break
-    logging.info(list_option)
+        if "--state" in option:
+            state_option = option.strip()
+            break
+        if "--block" in option:
+            block_option = option.strip()
+            break
+        if "--vcpu" in option:
+            cpu_option = option.strip()
+            break
+        if "--balloon" in option:
+            balloon_option = option.strip()
+            break
+        if "--nowait" in option:
+            nowait_option = option.strip()
+            break
     if list_option == '--list-active':
         if vm_state in ["active", "running", 'paused', 'transient']:
             list_option_pass = vm.name in output
@@ -126,6 +170,27 @@ def check_output(output, vm, vm_state, options):
         logging.error("Check '%s' option failed", list_option)
     #TODO: check all output(state, cpu-total, ballon, vcpu, interface, block)
     check_pass.append(list_option_pass)
+    if state_option == '--state':
+        if 'state' in output:
+            state_option_pass = True
+        check_pass.append(state_option_pass)
+    if block_option == '--block':
+        if 'block' in output:
+            block_option_pass = True
+        check_pass.append(block_option_pass)
+    if cpu_option == '--vcpu':
+        if 'vcpu' in output:
+            cpu_option_pass = True
+        check_pass.append(cpu_option_pass)
+    if balloon_option == '--balloon':
+        if 'balloon' in output:
+            balloon_option_pass = True
+        check_pass.append(balloon_option_pass)
+    if nowait_option == '--nowait':
+        composed_option = ['state', 'block', 'vcpu', 'balloon']
+        if all(sub_option in output for sub_option in composed_option):
+            nowait_option_pass = True
+        check_pass.append(nowait_option_pass)
     return False not in check_pass
 
 
@@ -147,6 +212,8 @@ def run(test, params, env):
     enforce_command = "yes" == params.get("enforce_command", "no")
     status_error = (params.get("status_error", "no") == "yes")
 
+    if "--nowait" in domstats_option and not libvirt_version.version_compare(4, 5, 0):
+        test.cancel("--nowait option is supported until libvirt 4.5.0 version...")
     vms = [default_vm]
     if vm_list:
         for name in vm_list.split():
@@ -181,6 +248,11 @@ def run(test, params, env):
             domstats_option += " --enforce"
         if raw_print:
             domstats_option += " --raw"
+        if "--nowait" in domstats_option:
+            pool = ThreadPool(processes=1)
+            async_result = pool.apply_async(create_snap, (vm_list, '--no-metadata'))
+            return_val = async_result.get()
+
         # Run virsh command
         result = virsh.domstats(vm_list, domstats_option, ignore_status=True,
                                 debug=True)
