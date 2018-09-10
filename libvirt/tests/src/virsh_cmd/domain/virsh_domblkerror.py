@@ -178,7 +178,7 @@ def run(test, params, env):
             # If not paused, perform one more IO operation to the mnt disk
             session = vm.wait_for_login()
             session.cmd("echo 'one more write to big file' > %s/big_file" % mnt_dir)
-            if not utils_misc.wait_for(_check_state, 60):
+            if not utils_misc.wait_for(_check_state, 180):
                 test.fail("Guest does not paused, it is %s now" % vm.state())
         else:
             logging.info("Now domain state changed to paused status")
