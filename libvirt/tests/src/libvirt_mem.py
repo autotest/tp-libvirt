@@ -138,8 +138,8 @@ def run(test, params, env):
         session.cmd(cmd)
         # Wait a while for new memory to be detected.
         utils_misc.wait_for(
-            lambda: vm.get_totalmem_sys() != int(old_mem), 30, first=20.0)
-        new_mem = vm.get_totalmem_sys()
+            lambda: vm.get_totalmem_sys(online) != int(old_mem), 30, first=20.0)
+        new_mem = vm.get_totalmem_sys(online)
         session.close()
         logging.debug("Memtotal on guest: %s", new_mem)
         no_of_times = 1
@@ -377,6 +377,7 @@ def run(test, params, env):
     numa_memnode = [ast.literal_eval(x)
                     for x in params.get("numa_memnode", "").split()]
     at_times = int(params.get("attach_times", 1))
+    online = params.get("mem_online", "no")
 
     config = utils_config.LibvirtQemuConfig()
     setup_hugepages_flag = params.get("setup_hugepages")
@@ -409,7 +410,7 @@ def run(test, params, env):
         if attach_device:
             vm.start()
             session = vm.wait_for_login()
-            old_mem_total = vm.get_totalmem_sys()
+            old_mem_total = vm.get_totalmem_sys(online)
             logging.debug("Memtotal on guest: %s", old_mem_total)
             session.close()
         dev_xml = None
