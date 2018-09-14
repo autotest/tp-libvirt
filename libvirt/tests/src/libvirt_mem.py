@@ -377,6 +377,7 @@ def run(test, params, env):
     numa_memnode = [ast.literal_eval(x)
                     for x in params.get("numa_memnode", "").split()]
     at_times = int(params.get("attach_times", 1))
+    online = params.get("mem_online", "no")
 
     config = utils_config.LibvirtQemuConfig()
     setup_hugepages_flag = params.get("setup_hugepages")
@@ -406,7 +407,6 @@ def run(test, params, env):
 
         # Start the domain any way if attach memory device
         old_mem_total = None
-        online = 'no'
         if attach_device:
             vm.start()
             session = vm.wait_for_login()
