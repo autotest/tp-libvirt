@@ -341,10 +341,6 @@ def run(test, params, env):
     arch = platform.machine()
     if hpt_resize and 'ppc64' not in arch:
         test.cancel("HPT resizing case is PPC only.")
-    # For --postcopy enable
-    postcopy_options = params.get("postcopy_options")
-    if postcopy_options and not extra.count(postcopy_options):
-        extra = "%s %s" % (extra, postcopy_options)
 
     # For TLS
     tls_recovery = params.get("tls_auto_recovery", "yes")
