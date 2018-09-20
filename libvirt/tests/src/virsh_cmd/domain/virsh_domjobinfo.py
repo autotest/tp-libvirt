@@ -169,8 +169,9 @@ def run(test, params, env):
 
     # Get completed domjobinfo
     if status_error == "no":
+        time.sleep(5)
         vm_ref = "%s --completed" % vm_ref
-        ret_cmplt = virsh.domjobinfo(vm_ref, ignore_status=True)
+        ret_cmplt = virsh.domjobinfo(vm_ref, ignore_status=True, debug=True)
         status_cmplt = ret_cmplt.exit_status
 
     # Recover the environment.
