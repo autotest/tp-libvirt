@@ -1,10 +1,11 @@
 import re
 import logging
-
+import ast
 from avocado.utils import process
 
 from virttest import virsh
 from virttest import libvirt_xml
+from virttest import utils_package
 from virttest import utils_misc
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices import interface
@@ -26,7 +27,7 @@ def run(test, params, env):
     check_cmd = params.get("check_cmd")
     expect_match = params.get("expect_match")
     check_vm_cmd = params.get("check_vm_cmd")
-    vm_expect_match = params.get("vm_expect_match")
+    vm_expect_match = ast.literal_eval(params.get("vm_expect_match"))
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     filterref_dict = {}
@@ -81,7 +82,13 @@ def run(test, params, env):
         if check_vm_cmd:
             output = session.cmd_output(check_vm_cmd)
             logging.debug("cmd output: %s", output)
-            if vm_expect_match and not re.search(vm_expect_match, output):
+            key = "default"
+            if "ubuntu" in vm.get_distro().lower():
+                key = "ubuntu"
+                pkg = "arping"
+                if not utils_package.package_install(pkg, session):
+                    test.cancel("Can't install arping package on host")
+            if vm_expect_match and not re.search(vm_expect_match[key], output):
                 test.fail("'%s' not found in output: %s"
                           % (vm_expect_match, output))
     finally:
