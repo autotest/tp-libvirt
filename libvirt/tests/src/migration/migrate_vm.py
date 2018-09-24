@@ -44,6 +44,7 @@ from provider import libvirt_version
 
 MIGRATE_RET = False
 
+
 def destroy_active_pool_on_remote(params):
     """
     This is to destroy active pool with same target path as pool_target
@@ -74,6 +75,7 @@ def destroy_active_pool_on_remote(params):
     new_session.close_session()
 
     return ret
+
 
 def create_destroy_pool_on_remote(action, params):
     """
