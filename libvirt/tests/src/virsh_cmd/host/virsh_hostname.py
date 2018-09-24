@@ -16,7 +16,7 @@ def run(test, params, env):
     (3) Call virsh hostname with libvirtd service stop
     """
 
-    hostname_result = process.run("hostname", shell=True, ignore_status=True)
+    hostname_result = process.run("hostname -f", shell=True, ignore_status=True)
     hostname = hostname_result.stdout_text.strip()
 
     remote_uri = params.get("remote_uri", None)
@@ -25,7 +25,7 @@ def run(test, params, env):
     session = None
     if remote_uri:
         session = vm.wait_for_login()
-        hostname = session.cmd_output("hostname").strip()
+        hostname = session.cmd_output("hostname -f").strip()
 
     # Prepare libvirtd service on local
     check_libvirtd = "libvirtd" in params
