@@ -1,5 +1,6 @@
 import re
 import logging
+import platform
 
 from avocado.utils import process
 
@@ -9,6 +10,7 @@ from virttest import utils_misc
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import test_setup
+from virttest import utils_params
 from virttest.utils_test import libvirt as utlv
 
 from provider import libvirt_version
@@ -48,6 +50,50 @@ def run(test, params, env):
     """
     Test guest numa setting
     """
+    host_numa_node = utils_misc.NumaInfo()
+    node_list = host_numa_node.online_nodes
+    arch = platform.machine()
+    if 'ppc64' in arch:
+        try:
+            ppc_memory_nodeset = ""
+            nodes = params['memory_nodeset']
+            if '-' in nodes:
+                for n in range(int(nodes.split('-')[0]), int(nodes.split('-')[1])):
+                    ppc_memory_nodeset += str(node_list[n]) + ','
+                ppc_memory_nodeset += str(node_list[n + 1])
+            else:
+                node_lst = nodes.split(',')
+                for n in range(len(node_lst) - 1):
+                    ppc_memory_nodeset += str(node_list[node_lst[n]]) + ','
+                ppc_memory_nodeset += str(node_list[node_lst[n + 1]])
+            params['memory_nodeset'] = ppc_memory_nodeset
+        except IndexError:
+            test.cancel("No of numas in config does not match with no of "
+                        "online numas in system")
+        except utils_params.ParamNotFound:
+            pass
+        pkeys = ('memnode_nodeset', 'page_nodenum')
+        for pkey in pkeys:
+            for key in params.keys():
+                if pkey in key:
+                    params[key] = str(node_list[int(params[key])])
+        # Modify qemu command line
+        try:
+            if params['qemu_cmdline_mem_backend_1']:
+                qemu_cmdline = "memory-backend-ram,.*?id=ram-node1,\
+.*?host-nodes=%s,.*?host-nodes=%s,policy=bind" % \
+                    (params['memory_nodeset'].split(',')[0],
+                     params['memory_nodeset'].split(',')[1])
+                params['qemu_cmdline_mem_backend_1'] = qemu_cmdline
+        except utils_params.ParamNotFound:
+            pass
+        try:
+            if params['qemu_cmdline_mem_backend_0']:
+                qemu_cmdline = params['qemu_cmdline_mem_backend_0']
+                params['qemu_cmdline_mem_backend_0'] = qemu_cmdline.replace(
+                    ".*?host-nodes=1", ".*?host-nodes=%s" % params['memnode_nodeset_0'])
+        except utils_params.ParamNotFound:
+            pass
     vcpu_num = int(params.get("vcpu_num", 2))
     max_mem = int(params.get("max_mem", 1048576))
     max_mem_unit = params.get("max_mem_unit", 'KiB')
@@ -134,8 +180,6 @@ def run(test, params, env):
 
     try:
         # Get host numa node list
-        host_numa_node = utils_misc.NumaInfo()
-        node_list = host_numa_node.online_nodes
         logging.debug("host node list is %s", node_list)
         used_node = []
         if numa_memory.get('nodeset'):
