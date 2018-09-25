@@ -2,6 +2,9 @@ import logging
 
 from virttest import libvirt_vm
 from virttest import utils_test
+from virttest import utils_misc
+from virttest import utils_package
+from virttest import remote
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import utils_memory
 
@@ -144,13 +147,17 @@ def run(test, params, env):
     cpu = int(params.get("smp", 1))
     memory = int(params.get("mem")) * 1024
     stress_tool = params.get("stress_tool", "")
-    stress_type = params.get("migration_stress_type")
-    require_stress_tool = "stress" in stress_tool
+    remote_stress = params.get("migration_stress_remote", "no") == "yes"
+    host_stress = params.get("migration_stress_host", "no") == "yes"
+    vms_stress = params.get("migration_stress_vms", "no") == "yes"
     vm_bytes = params.get("stress_vm_bytes", "128M")
-    stress_args = params.get("stress_args")
+    stress_args = params.get("%s_args" % stress_tool)
     migration_type = params.get("migration_type")
     start_migration_vms = params.get("start_migration_vms", "yes") == "yes"
     thread_timeout = int(params.get("thread_timeout", 120))
+    ubuntu_dep = ['build-essential', 'git']
+    hstress = rstress = None
+    vstress = {}
 
     # Set vm_bytes for start_cmd
     mem_total = utils_memory.memtotal()
@@ -160,11 +167,41 @@ def run(test, params, env):
     elif vm_bytes == "shortage":
         vm_bytes = mem_total - vm_reserved + 524288
     if "vm-bytes" in stress_args:
-        params["stress_args"] = stress_args % vm_bytes
+        params["%s_args" % stress_tool] = stress_args % vm_bytes
 
     # Ensure stress tool is available in host
-    if require_stress_tool and stress_type == "stress_on_host":
-        utils_test.load_stress("stress_on_host", params)
+    if host_stress:
+        # remove package manager installed tool to avoid conflict
+        if not utils_package.package_remove(stress_tool):
+            logging.error("Existing %s is not removed")
+        if "stress-ng" in stress_tool and 'Ubuntu' in utils_misc.get_distro():
+            params['stress-ng_dependency_packages_list'] = ubuntu_dep
+        try:
+            hstress = utils_test.HostStress(stress_tool, params)
+            hstress.load_stress_tool()
+        except utils_test.StressError, info:
+            test.error(info)
+
+    if remote_stress:
+        try:
+            server_ip = params['remote_ip']
+            server_pwd = params['remote_pwd']
+            server_user = params.get('remote_user', 'root')
+            remote_session = remote.wait_for_login('ssh', server_ip, '22', server_user,
+                                                   server_pwd, r"[\#\$]\s*$")
+            # remove package manager installed tool to avoid conflict
+            if not utils_package.package_remove(stress_tool, session=remote_session):
+                logging.error("Existing %s is not removed")
+            if("stess-ng" in stress_tool and
+               'Ubuntu' in utils_misc.get_distro(session=remote_session)):
+                params['stress-ng_dependency_packages_list'] = ubuntu_dep
+
+            rstress = utils_test.HostStress(stress_tool, params, remote_server=True)
+            rstress.load_stress_tool()
+            remote_session.close()
+        except utils_test.StressError, info:
+            remote_session.close()
+            test.error(info)
 
     for vm in vms:
         # Keep vm dead for edit
@@ -176,11 +213,22 @@ def run(test, params, env):
         if start_migration_vms:
             for vm in vms:
                 vm.start()
-                vm.wait_for_login()
-
-        # configure stress in VM
-        if require_stress_tool and stress_type == "stress_in_vms":
-            utils_test.load_stress("stress_in_vms", params, vms)
+                session = vm.wait_for_login()
+                # remove package manager installed tool to avoid conflict
+                if not utils_package.package_remove(stress_tool, session=session):
+                    logging.error("Existing %s is not removed")
+                # configure stress in VM
+                if vms_stress:
+                    if("stress-ng" in stress_tool and
+                       'Ubuntu' in utils_misc.get_distro(session=session)):
+                        params['stress-ng_dependency_packages_list'] = ubuntu_dep
+                    try:
+                        vstress[vm.name] = utils_test.VMStress(vm, stress_tool, params)
+                        vstress[vm.name].load_stress_tool()
+                    except utils_test.StressError, info:
+                        session.close()
+                        test.error(info)
+                session.close()
 
         do_stress_migration(vms, src_uri, dest_uri, migration_type, test,
                             params, thread_timeout)
@@ -195,4 +243,14 @@ def run(test, params, env):
             if not vm.is_alive():
                 vm.start()
                 vm.wait_for_login()
-        utils_test.unload_stress(stress_type, params, vms)
+            try:
+                if vstress[vm.name]:
+                    vstress[vm.name].unload_stress()
+            except KeyError:
+                continue
+
+        if rstress:
+            rstress.unload_stress()
+
+        if hstress:
+            hstress.unload_stress()

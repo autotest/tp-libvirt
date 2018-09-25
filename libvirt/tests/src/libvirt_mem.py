@@ -3,6 +3,7 @@ import re
 import ast
 import logging
 import tempfile
+import random
 
 from six.moves import xrange
 
@@ -11,12 +12,14 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import utils_config
 from virttest import utils_numeric
 from virttest import virt_vm
 from virttest import data_dir
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
+from virttest.staging import utils_memory
 from virttest.staging.utils_memory import drop_caches
 from virttest.staging.utils_memory import read_from_numastat
 
@@ -41,15 +44,6 @@ def run(test, params, env):
     new_max_mem = None
     new_cur_mem = None
 
-    def get_vm_memtotal(session):
-        """
-        Get guest total memory
-        """
-        proc_meminfo = session.cmd_output("cat /proc/meminfo")
-        # verify format and units are expected
-        return int(re.search(r'MemTotal:\s+(\d+)\s+[kK]B',
-                             proc_meminfo).group(1))
-
     def consume_vm_mem(size=1000, timeout=360):
         """
         To consume guest memory, default size is 1000M
@@ -62,6 +56,44 @@ def run(test, params, env):
                   " count={0}".format(size))
         session.cmd(sh_cmd, timeout=timeout)
         session.close()
+
+    def mount_hugepages(page_size):
+        """
+        To mount hugepages
+
+        :param page_size: unit is kB, it can be 4,2048,1048576,etc
+        """
+        if page_size == 4:
+            perm = ""
+        else:
+            perm = "pagesize=%dK" % page_size
+
+        tlbfs_status = utils_misc.is_mounted("hugetlbfs", "/dev/hugepages",
+                                             "hugetlbfs")
+        if tlbfs_status:
+            utils_misc.umount("hugetlbfs", "/dev/hugepages", "hugetlbfs")
+        utils_misc.mount("hugetlbfs", "/dev/hugepages", "hugetlbfs", perm)
+
+    def setup_hugepages(page_size=2048, shp_num=2000):
+        """
+        To setup hugepages
+
+        :param page_size: unit is kB, it can be 4,2048,1048576,etc
+        :param shp_num: number of hugepage, string type
+        """
+        mount_hugepages(page_size)
+        utils_memory.set_num_huge_pages(shp_num)
+        config.hugetlbfs_mount = ["/dev/hugepages"]
+        utils_libvirtd.libvirtd_restart()
+
+    def restore_hugepages(page_size=4):
+        """
+        To recover hugepages
+        :param page_size: unit is kB, it can be 4,2048,1048576,etc
+        """
+        mount_hugepages(page_size)
+        config.restore()
+        utils_libvirtd.libvirtd_restart()
 
     def check_qemu_cmd():
         """
@@ -106,8 +138,8 @@ def run(test, params, env):
         session.cmd(cmd)
         # Wait a while for new memory to be detected.
         utils_misc.wait_for(
-            lambda: get_vm_memtotal(session) != int(old_mem), 20, first=15.0)
-        new_mem = get_vm_memtotal(session)
+            lambda: vm.get_totalmem_sys(online) != int(old_mem), 30, first=20.0)
+        new_mem = vm.get_totalmem_sys(online)
         session.close()
         logging.debug("Memtotal on guest: %s", new_mem)
         no_of_times = 1
@@ -268,8 +300,8 @@ def run(test, params, env):
             if align_mem_values:
                 for cell in range(cells.__len__()):
                     memory_value = str(utils_numeric.align_value(
-                                           cells[cell]["memory"],
-                                           align_to_value))
+                        cells[cell]["memory"],
+                        align_to_value))
                     cells[cell]["memory"] = memory_value
             cpu_xml = vm_xml.VMCPUXML()
             cpu_xml.xml = "<cpu><numa/></cpu>"
@@ -325,8 +357,12 @@ def run(test, params, env):
     set_max_mem = params.get("set_max_mem")
     align_mem_values = "yes" == params.get("align_mem_values", "no")
     align_to_value = int(params.get("align_to_value", "65536"))
-    known_unplug_errors = []
-    known_unplug_errors.append(params.get("known_unplug_errors"))
+    hot_reboot = "yes" == params.get("hot_reboot", "no")
+    rand_reboot = "yes" == params.get("rand_reboot", "no")
+    guest_known_unplug_errors = []
+    guest_known_unplug_errors.append(params.get("guest_known_unplug_errors"))
+    host_known_unplug_errors = []
+    host_known_unplug_errors.append(params.get("host_known_unplug_errors"))
 
     # params for attached device
     tg_size = params.get("tg_size")
@@ -341,6 +377,12 @@ def run(test, params, env):
     numa_memnode = [ast.literal_eval(x)
                     for x in params.get("numa_memnode", "").split()]
     at_times = int(params.get("attach_times", 1))
+    online = params.get("mem_online", "no")
+
+    config = utils_config.LibvirtQemuConfig()
+    setup_hugepages_flag = params.get("setup_hugepages")
+    if (setup_hugepages_flag == "yes"):
+        setup_hugepages(int(pg_size))
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -368,7 +410,7 @@ def run(test, params, env):
         if attach_device:
             vm.start()
             session = vm.wait_for_login()
-            old_mem_total = get_vm_memtotal(session)
+            old_mem_total = vm.get_totalmem_sys(online)
             logging.debug("Memtotal on guest: %s", old_mem_total)
             session.close()
         dev_xml = None
@@ -377,13 +419,27 @@ def run(test, params, env):
         if add_mem_device:
             at_times = int(params.get("attach_times", 1))
             dev_xml = create_mem_xml()
+            randvar = 0
+            rand_value = random.randint(15, 25)
+            logging.debug("reboots at %s", rand_value)
             for x in xrange(at_times):
                 # If any error excepted, command error status should be
                 # checked in the last time
+                randvar = randvar + 1
+                logging.debug("attaching device count = %s", x)
                 if x == at_times - 1:
                     add_device(dev_xml, attach_error)
                 else:
                     add_device(dev_xml)
+                if hot_reboot:
+                    vm.reboot()
+                    vm.wait_for_login()
+                if rand_reboot and randvar == rand_value:
+                    randvar = 0
+                    rand_value = random.randint(15, 25)
+                    logging.debug("reboots at %s", rand_value)
+                    vm.reboot()
+                    vm.wait_for_login()
 
         # Check domain xml after attach device.
         if test_dom_xml:
@@ -473,14 +529,26 @@ def run(test, params, env):
             for x in xrange(at_times):
                 ret = virsh.detach_device(vm_name, dev_xml.xml,
                                           flagstr=attach_option)
+                if ret.stderr and host_known_unplug_errors:
+                    for known_error in host_known_unplug_errors:
+                        if (known_error[0] == known_error[-1]) and \
+                           known_error.startswith(("'")):
+                            known_error = known_error[1:-1]
+                        if known_error in ret.stderr:
+                            unplug_failed_with_known_error = True
+                            logging.debug("Known error occured in Host, while"
+                                          " hot unplug: %s", known_error)
+                if unplug_failed_with_known_error:
+                    break
                 try:
                     libvirt.check_exit_status(ret, detach_error)
                 except Exception as detail:
                     dmesg_file = tempfile.mktemp(dir=data_dir.get_tmp_dir())
                     try:
                         session = vm.wait_for_login()
-                        utils_misc.verify_dmesg(dmesg_log_file=dmesg_file, ignore_result=True, session=session,
-                                                level_check=5)
+                        utils_misc.verify_dmesg(dmesg_log_file=dmesg_file,
+                                                ignore_result=True,
+                                                session=session, level_check=5)
                     except Exception:
                         session.close()
                         test.fail("After memory unplug Unable to connect to VM"
@@ -488,7 +556,8 @@ def run(test, params, env):
                     session.close()
                     if os.path.exists(dmesg_file):
                         with open(dmesg_file, 'r') as f:
-                            flag = re.findall(r'memory memory\d+?: Offline failed', f.read())
+                            flag = re.findall(
+                                r'memory memory\d+?: Offline failed', f.read())
                         if not flag:
                             # The attached memory is used by vm, and it could not be unplugged
                             # The result is expected
@@ -500,14 +569,16 @@ def run(test, params, env):
             dmesg_file = tempfile.mktemp(dir=data_dir.get_tmp_dir())
             try:
                 session = vm.wait_for_login()
-                utils_misc.verify_dmesg(dmesg_log_file=dmesg_file, ignore_result=True, session=session, level_check=4)
+                utils_misc.verify_dmesg(dmesg_log_file=dmesg_file,
+                                        ignore_result=True, session=session,
+                                        level_check=4)
             except Exception:
                 session.close()
                 test.fail("After memory unplug Unable to connect to VM"
                           " or unable to collect dmesg")
             session.close()
-            if known_unplug_errors and os.path.exists(dmesg_file):
-                for known_error in known_unplug_errors:
+            if guest_known_unplug_errors and os.path.exists(dmesg_file):
+                for known_error in guest_known_unplug_errors:
                     if (known_error[0] == known_error[-1]) and \
                        known_error.startswith(("'")):
                         known_error = known_error[1:-1]
@@ -534,4 +605,6 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
         logging.info("Restoring vm...")
+        if (setup_hugepages_flag == "yes"):
+            restore_hugepages()
         vmxml_backup.sync()

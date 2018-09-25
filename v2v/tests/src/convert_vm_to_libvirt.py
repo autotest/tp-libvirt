@@ -137,8 +137,7 @@ def run(test, params, env):
     finally:
         vmcheck = utils_v2v.VMCheck(test, params, env)
         vmcheck.cleanup()
-        if hypervisor == "esx":
-            os.remove(vpx_pwd_file)
+        utils_v2v.cleanup_constant_files(params)
         if hypervisor == "xen":
             process.run("ssh-agent -k")
         # Clean libvirt VM

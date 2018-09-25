@@ -5,6 +5,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import virt_vm
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):
@@ -110,7 +111,10 @@ def run(test, params, env):
     domarg = params.get("setmaxmem_domarg", "no")
     sizearg = params.get("setmaxmem_sizearg", "no")
     delta_per = params.get("setmaxmem_delta_per", "10")
+    readonly = "yes" == params.get("setmaxmem_readonly", "no")
+    expect_msg = params.get("setmaxmem_err_msg")
     vm_name = params.get("main_vm")
+    start_vm = "yes" == params.get("start_vm")
 
     # Gather environment parameters
     vm = env.get_vm(vm_name)
@@ -144,7 +148,7 @@ def run(test, params, env):
     # Argument pattern is complex, build with dargs
     dargs = {'flagstr': flags,
              'use_kilobytes': use_kilobytes,
-             'uri': uri, 'ignore_status': True, "debug": True}
+             'uri': uri, 'ignore_status': True, "debug": True, "readonly": readonly}
     dargs.update(make_domref(domarg, vm_ref, domid, vm_name, domuuid))
     dargs.update(make_sizeref(sizearg, mem_ref, original_dominfo_mem))
 
@@ -163,6 +167,9 @@ def run(test, params, env):
             # The item doesn't exist
             pass
         vmxml.sync()
+        # sync will destroy the vm so need to start again
+        if start_vm:
+            vm.start()
 
         result = virsh.setmaxmem(**dargs)
         status = result.exit_status
@@ -194,6 +201,9 @@ def run(test, params, env):
                               expected_mem, test_vmxml_mem, test_dominfo_mem)
 
         else:
+            if expect_msg:
+                libvirt.check_result(result, expect_msg.split(';'))
+
             if vm.state() == "paused":
                 vm.resume()
     finally:

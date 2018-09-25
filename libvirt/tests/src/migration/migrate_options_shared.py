@@ -3,6 +3,7 @@ import logging
 import time
 import re
 import threading
+import platform
 
 from avocado.utils import process
 from avocado.utils import memory
@@ -63,16 +64,89 @@ def setup_libvirtd_conf_dict(params):
 
 
 def run(test, params, env):
-    def check_vm_network_accessed():
+    """
+    Test virsh migrate command.
+    """
+
+    def set_hpt(resizing, vmxml):
         """
-        The operations to the VM need to be done before migration happens
+        Set the hpt feature for PPC
+
+        :param resizing: The value needed
+        :param vmxml: guest xml
         """
-        # 1. Confirm local VM can be accessed through network.
-        logging.info("Check local VM network connectivity before migrating")
-        s_ping, o_ping = utils_test.ping(vm.get_address(), count=10, timeout=20)
-        logging.info(o_ping)
+        features_xml = vm_xml.VMFeaturesXML()
+        features_xml.hpt_resizing = resizing
+        vmxml.features = features_xml
+        vmxml.sync()
+
+    def trigger_hpt_resize(session):
+        """
+        Check the HPT order file and dmesg
+
+        :param session: the session to guest
+
+        :raise: test.fail if required message is not found
+        """
+        hpt_order_path = "/sys/kernel/debug/powerpc/hpt_order"
+        hpt_order = session.cmd_output('cat %s' % hpt_order_path).strip()
+        hpt_order = int(hpt_order)
+        logging.info('Current hpt_order is %d', hpt_order)
+        hpt_order += 1
+        cmd = 'echo %d > %s' % (hpt_order, hpt_order_path)
+        cmd_result = session.cmd_status_output(cmd)
+        result = process.CmdResult(stderr=cmd_result[1],
+                                   stdout=cmd_result[1],
+                                   exit_status=cmd_result[0])
+        libvirt.check_exit_status(result)
+        dmesg = session.cmd('dmesg')
+        dmesg_content = params.get('dmesg_content').split('|')
+        for content in dmesg_content:
+            if content % hpt_order not in dmesg:
+                test.fail("'%s' is missing in dmesg" % (content % hpt_order))
+            else:
+                logging.info("'%s' is found in dmesg", content % hpt_order)
+
+    def check_qemu_cmd_line(content, err_ignore=False):
+        """
+        Check the specified content in the qemu command line
+
+        :param content: the desired string to search
+        :param err_ignore: True to return False when fail
+                           False to raise exception when fail
+
+        :return: True if exist, False otherwise
+        """
+        cmd = 'ps -ef|grep qemu|grep -v grep'
+        qemu_line = results_stdout_52lts(process.run(cmd, shell=True))
+        if content not in qemu_line:
+            if err_ignore:
+                return False
+            else:
+                test.fail("Expected '%s' was not found in "
+                          "qemu command line" % content)
+        return True
+
+    def check_vm_network_accessed(session=None):
+        """
+        The operations to the VM need to be done before or after
+        migration happens
+
+        :param session: The session object to the host
+
+        :raise: test.error when ping fails
+        """
+        # Confirm local/remote VM can be accessed through network.
+        logging.info("Check VM network connectivity")
+        s_ping, _ = utils_test.ping(vm.get_address(),
+                                    count=10,
+                                    timeout=20,
+                                    output_func=logging.debug,
+                                    session=session)
         if s_ping != 0:
-            test.error("%s did not respond after %d sec." % (vm.name, 20))
+            if session:
+                session.close()
+            test.fail("%s did not respond after %d sec." % (vm.name, 20))
 
     def check_virsh_command_and_option(command, option=None):
         """
@@ -102,7 +176,7 @@ def run(test, params, env):
         logging.info("Sleeping 10 seconds before migration")
         time.sleep(10)
         # Migrate the guest.
-        migration_res = vm.migrate(dest_uri, options, extra, True, True)
+        migration_res = vm.migrate(dest_uri, options, extra, **virsh_args)
         logging.info("Migration out: %s", results_stdout_52lts(migration_res).strip())
         logging.info("Migration error: %s", results_stderr_52lts(migration_res).strip())
         if int(migration_res.exit_status) != 0:
@@ -243,6 +317,7 @@ def run(test, params, env):
     params["mnt_path_name"] = params.get("nfs_mount_dir")
 
     # Local variables
+    virsh_args = {"ignore_status": True, "debug": True}
     server_ip = params.get("server_ip")
     server_user = params.get("server_user", "root")
     server_pwd = params.get("server_pwd")
@@ -259,6 +334,13 @@ def run(test, params, env):
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
                           'ssh_remote_auth': True}
+    hpt_resize = params.get("hpt_resize", None)
+    qemu_check = params.get("qemu_check", None)
+    xml_check_after_mig = params.get("guest_xml_check_after_mig", None)
+
+    arch = platform.machine()
+    if hpt_resize and 'ppc64' not in arch:
+        test.cancel("HPT resizing case is PPC only.")
 
     # For TLS
     tls_recovery = params.get("tls_auto_recovery", "yes")
@@ -320,10 +402,26 @@ def run(test, params, env):
             libvirtd_conf = libvirt.customize_libvirt_config(libvirtd_conf_dict,
                                                              remote_host=True,
                                                              extra_params=params)
+        if hpt_resize:
+            new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            set_hpt(hpt_resize, new_xml)
+
         if not vm.is_alive():
             vm.start()
+
+        logging.debug("Guest xml after starting:\n%s", vm_xml.VMXML.new_from_dumpxml(vm_name))
+
+        if qemu_check:
+            check_content = qemu_check
+            if hpt_resize:
+                check_content = "%s%s" % (qemu_check, hpt_resize)
+            check_qemu_cmd_line(check_content)
+
         vm_session = vm.wait_for_login()
         check_vm_network_accessed()
+
+        if hpt_resize and hpt_resize != 'disabled':
+            trigger_hpt_resize(vm_session)
 
         if stress_in_vm:
             pkg_name = 'stress'
@@ -376,6 +474,7 @@ def run(test, params, env):
 
         if int(mig_result.exit_status) != 0:
             test.fail(results_stderr_52lts(mig_result).strip())
+
         if check_complete_job:
             search_str_domjobinfo = params.get("search_str_domjobinfo", None)
             opts = "--completed"
@@ -391,7 +490,8 @@ def run(test, params, env):
                     test.fail("Fail to search '%s' on local:\n%s"
                               % (search_str_domjobinfo, jobinfo))
             # Check remote host
-            remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
+            if not remote_virsh_session:
+                remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
             jobinfo = results_stdout_52lts(remote_virsh_session.domjobinfo(args, debug=True,
                                                                            ignore_status=True)).strip()
             logging.debug("Remote job info on completion:\n%s", jobinfo)
@@ -401,6 +501,7 @@ def run(test, params, env):
                     test.fail("Fail to search '%s' on remote:\n%s"
                               % (search_str_domjobinfo, jobinfo))
             remote_virsh_session.close_session()
+
         if grep_str_local_log:
             cmd = "grep -E '%s' %s" % (grep_str_local_log, log_file)
             cmdRes = process.run(cmd, shell=True, ignore_status=True)
@@ -409,6 +510,28 @@ def run(test, params, env):
         if grep_str_remote_log:
             cmd = "grep -E '%s' %s" % (grep_str_remote_log, log_file)
             run_remote_cmd(cmd)
+
+        if xml_check_after_mig:
+            if not remote_virsh_session:
+                remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
+            target_guest_dumpxml = results_stdout_52lts(
+                remote_virsh_session.dumpxml(vm_name,
+                                             debug=True,
+                                             ignore_status=True)).strip()
+            check_content = xml_check_after_mig
+            if hpt_resize:
+                check_content = "%s'%s'" % (xml_check_after_mig, hpt_resize)
+            if not re.search(check_content, target_guest_dumpxml):
+                remote_virsh_session.close_session()
+                test.fail("Fail to search '%s' in target guest XML:\n%s"
+                          % (xml_check_after_mig, target_guest_dumpxml))
+            remote_virsh_session.close_session()
+
+        server_session = remote.wait_for_login('ssh', server_ip, '22',
+                                               server_user, server_pwd,
+                                               r"[\#\$]\s*$")
+        check_vm_network_accessed(server_session)
+        server_session.close()
 
     except exceptions.TestFail as details:
         is_TestFail = True

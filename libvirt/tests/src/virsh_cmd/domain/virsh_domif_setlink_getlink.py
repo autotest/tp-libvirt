@@ -197,8 +197,8 @@ def run(test, params, env):
                           "equal with setlink operation")
 
         logging.info("Getlink done")
-        # If --config is given should restart the vm then test link status
-        if options == "--config" and vm.is_alive():
+        # If --config or --persistent is given should restart the vm then test link status
+        if any(options == option for option in ["--config", "--persistent"]) and vm.is_alive():
             vm.destroy()
             vm.start()
             logging.info("Restart VM")

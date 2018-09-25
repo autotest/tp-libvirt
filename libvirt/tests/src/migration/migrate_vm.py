@@ -39,6 +39,8 @@ from virttest.utils_net import check_listening_port_remote_by_service
 from virttest.utils_test import libvirt
 from virttest.compat_52lts import decode_to_text as to_text
 
+from provider import libvirt_version
+
 MIGRATE_RET = False
 
 
@@ -2121,7 +2123,7 @@ def run(test, params, env):
                 else:
                     stderr = p.communicate()[1]
                     logging.debug(stderr)
-                    err_str = ".*error.*migration job: canceled by client"
+                    err_str = ".*error.*migration.*job: canceled by client"
                     if not re.search(err_str, stderr):
                         raise exceptions.TestFail("Can't find error: %s."
                                                   % (err_str))
@@ -2293,6 +2295,18 @@ def run(test, params, env):
                                         client_cn, uri_port, uri_path)
             test_dict["desuri"] = uri
             test_dict["vm_name_to_migrate"] = target_vm_name
+
+        # There is a migration different result from libvirt 4.3.0-1 when
+        # migrating without shared storage and --copy-storage-all
+        # Before: migration succeeds with image preallocation on target host
+        # After: migration is forbidden
+        err_msg = test_dict.get('err_msg', None)
+        if (err_msg and
+                "Migration without shared storage is unsafe" in err_msg and
+                not libvirt_version.version_compare(4, 3, 1)):
+            test_dict['status_error'] = 'no'
+            status_error = "no"
+            test_dict['err_msg'] = None
 
         if run_migr_front:
             migrate_vm(test_dict)

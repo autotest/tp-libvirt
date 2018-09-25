@@ -44,6 +44,12 @@ def run(test, params, env):
     checkpoint = params.get('checkpoint', '')
     error_list = []
 
+    # create different sasl_user name for different job
+    if output_mode == 'rhev':
+        params.update({'sasl_user': params.get("sasl_user") +
+                       utils_misc.generate_random_string(3)})
+        logging.info('sals user name is %s' % params.get("sasl_user"))
+
     def log_fail(msg):
         """
         Log error and update error list
@@ -106,7 +112,9 @@ def run(test, params, env):
         if log_check:
             log_fail(log_check)
         if len(error_list):
-            test.fail('%d checkpoints failed: %s' % (len(error_list), error_list))
+            test.fail(
+                '%d checkpoints failed: %s' %
+                (len(error_list), error_list))
 
     try:
         v2v_params = {

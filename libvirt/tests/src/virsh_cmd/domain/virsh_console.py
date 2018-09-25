@@ -1,4 +1,5 @@
 import logging
+import platform
 
 import aexpect
 
@@ -180,6 +181,12 @@ def run(test, params, env):
     domid = ""
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
+
+    # PAPR guests don't usually have a true serial device (ttyS0),
+    # they only have the hypervisor console (/dev/hvc0)
+    if 'ppc64' in platform.machine():
+        params["console_device"] = 'hvc0'
+
     console_dev = params.get("console_device", "ttyS0")
     console_speed = params.get("console_speed", "115200")
     if unprivileged_user:

@@ -148,7 +148,7 @@ def run(test, params, env):
             # After change the source format, we have to rebuild the pool to
             # overwrite the disk partition table
             if edit_target == "pool_format_type":
-                virsh.pool_build(pool_name, '--overwrite', debug=True)
+                libvirt_pool.build_pool(pool_name, '--overwrite', debug=True)
             if not libvirt_pool.start_pool(check_pool_name):
                 test.fail("Fail to start pool after edit it")
             if not check_pool(check_pool_name, edit_target, expect_value):

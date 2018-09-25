@@ -1,5 +1,6 @@
 import re
 import logging
+import signal
 
 from virttest import utils_net
 from virttest import utils_misc
@@ -7,6 +8,8 @@ from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import network_xml
 from virttest.utils_test import libvirt as utlv
+from virttest.compat_52lts import results_stdout_52lts
+from avocado.utils import process
 
 from provider import libvirt_version
 
@@ -136,6 +139,19 @@ def run(test, params, env):
         vm.destroy(gracefully=False)
     login_nic_index = 0
     new_nic_index = 0
+    # Cleanup dirty dnsmaq, firstly get all network,and destroy all networks except
+    # default
+    net_state = virsh.net_state_dict(only_names=True)
+    logging.debug("current networks: %s, destroy and undefine networks "
+                  "except default!", net_state)
+    for net in net_state:
+        if net != "default":
+            virsh.net_destroy(net)
+            virsh.net_undefine(net)
+    cmd = "ps aux|grep dnsmasq|grep -v grep | grep -v default | awk '{print $2}'"
+    pid_list = results_stdout_52lts(process.run(cmd, shell=True)).strip().split('\n')
+    for pid in pid_list:
+        utils_misc.safe_kill(pid, signal.SIGKILL)
     # Create new network
     if prepare_net:
         create_network()

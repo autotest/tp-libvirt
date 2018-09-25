@@ -556,7 +556,7 @@ def run(test, params, env):
                     path = source['path']
             if serial_type == 'file':
                 # Use re to make this fdset number flexible
-                exp_ser_opts.append('path=/dev/fdset/\d')
+                exp_ser_opts.append('path=/dev/fdset/\d+')
                 exp_ser_opts.append('append=on')
             elif serial_type == 'unix':
                 # Use re to make this fd number flexible

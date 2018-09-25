@@ -214,7 +214,7 @@ def run(test, params, env):
     quiesce_delay = int(params.get("setmem_quiesce_delay", "1"))
     domarg = params.get("setmem_domarg", "no")
     sizearg = params.get("setmem_sizearg", "no")
-    libvirt = params.get("libvirt", "on")
+    libvirt_status = params.get("libvirt", "on")
     delta_percentage = float(params.get("setmem_delta_per", "10"))
     start_vm = "yes" == params.get("start_vm", "yes")
     vm_name = params.get("main_vm", "avocado-vt-vm1")
@@ -224,6 +224,8 @@ def run(test, params, env):
     manipulate_dom_after_setmem = "yes" == params.get(
         "manipulate_dom_after_setmem", "no")
     manipulate_action = params.get("manipulate_action", "")
+    readonly = "yes" == params.get("setmem_readonly", "no")
+    expect_msg = params.get("setmem_err_msg")
 
     vm = env.get_vm(vm_name)
     # Back up domain XML
@@ -305,13 +307,14 @@ def run(test, params, env):
     # Argument pattern is complex, build with dargs
     dargs = {'flagstr': flags,
              'use_kilobytes': use_kilobytes,
-             'uri': uri, 'ignore_status': True, "debug": True}
+             'uri': uri, 'ignore_status': True, "debug": True,
+             'readonly': readonly}
     dargs.update(make_domref(domarg, vm_ref, domid, vm_name, domuuid))
     dargs.update(make_sizeref(sizearg, mem_ref, original_outside_mem))
 
     # Prepare libvirtd status
     libvirtd = utils_libvirtd.Libvirtd()
-    if libvirt == "off":
+    if libvirt_status == "off":
         libvirtd.stop()
     else:
         if not libvirtd.is_running():
@@ -346,7 +349,7 @@ def run(test, params, env):
             manipulate_domain(test, vm_name, manipulate_action, True)
 
         # Recover libvirtd status
-        if libvirt == "off":
+        if libvirt_status == "off":
             libvirtd.start()
 
         # Gather stats if not running error test
@@ -429,6 +432,8 @@ def run(test, params, env):
         else:  # Verify an error test resulted in error
             if status is 0:
                 test.fail("Error test did not result in an error")
+            if expect_msg:
+                libvirt.check_result(result, expect_msg.split(';'))
     finally:
         if need_mkswap:
             vm.cleanup_swap()

@@ -174,8 +174,8 @@ def run(test, params, env):
 
         # Create password file for access to ESX hypervisor
         vpx_passwd = params.get("vpx_password")
-        logging.debug(vpx_passwd)
-        vpx_passwd_file = os.path.join(data_dir.get_tmp_dir(), "vpx_passwd")
+        logging.debug("vpx password is %s" % vpx_passwd)
+        vpx_passwd_file = params.get("vpx_passwd_file")
         with open(vpx_passwd_file, 'w') as pwd_f:
             pwd_f.write(vpx_passwd)
         v2v_params['v2v_opts'] += " --password-file %s" % vpx_passwd_file
@@ -250,3 +250,5 @@ def run(test, params, env):
             logging.info('Unset http_proxy&https_proxy')
             os.environ.pop('http_proxy')
             os.environ.pop('https_proxy')
+        # Cleanup constant files
+        utils_v2v.cleanup_constant_files(params)
