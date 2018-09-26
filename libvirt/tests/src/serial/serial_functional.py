@@ -7,6 +7,7 @@ import threading
 import select
 import platform
 import subprocess
+import re
 
 import aexpect
 
@@ -18,6 +19,8 @@ from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices import librarian
 
 from provider import libvirt_version
+
+from avocado.utils import astring
 
 
 class Console(aexpect.ShellSession):
@@ -137,12 +140,12 @@ class Console(aexpect.ShellSession):
                 if self.console_type in ['tcp', 'unix']:
                     new_data = self.socket.recv(
                         1024, socket.MSG_DONTWAIT)
-                    data += new_data
+                    data += astring.to_text(new_data)
                     return data
                 elif self.console_type == 'udp':
                     new_data, self.peer_addr = self.socket.recvfrom(
                         1024, socket.MSG_DONTWAIT)
-                    data += new_data
+                    data += astring.to_text(new_data)
                     return data
                 elif self.console_type in ['file', 'pipe', 'tls']:
                     try:
@@ -246,15 +249,15 @@ class Console(aexpect.ShellSession):
         :param cont: String to send to the child process.
         """
         if self.console_type in ['tcp', 'unix']:
-            self.socket.sendall(cont)
+            self.socket.sendall(cont.encode())
         elif self.console_type == 'udp':
             if self.peer_addr is None:
                 logging.debug("No peer connection yet.")
             else:
-                self.socket.sendto(cont, self.peer_addr)
+                self.socket.sendto(cont.encode(), self.peer_addr)
         elif self.console_type == 'pipe':
             try:
-                os.write(self.write_fd, cont)
+                os.write(self.write_fd, cont.encode())
             except Exception:
                 pass
         elif self.console_type == 'file':
@@ -552,9 +555,12 @@ def run(test, params, env):
                 if 'path' in source:
                     path = source['path']
             if serial_type == 'file':
-                # This fdset number should be make flexible later
-                exp_ser_opts.append('path=/dev/fdset/2')
+                # Use re to make this fdset number flexible
+                exp_ser_opts.append('path=/dev/fdset/\d+')
                 exp_ser_opts.append('append=on')
+            elif serial_type == 'unix':
+                # Use re to make this fd number flexible
+                exp_ser_opts.append('fd=\d+')
             else:
                 exp_ser_opts.append('path=%s' % path)
         elif serial_type in ['tcp', 'tls']:
@@ -606,12 +612,12 @@ def run(test, params, env):
             exp_ser_devs = ['isa-serial', 'chardev=charserial0', 'id=serial0']
         exp_ser_dev = ','.join(exp_ser_devs)
 
-        if console_target_type != 'serial' or serial_type in ['spiceport']:
+        if console_target_type != 'serial':
             exp_ser_opt = None
             exp_ser_dev = None
 
         # Check options against expectation
-        if ser_opt != exp_ser_opt:
+        if exp_ser_opt is not None and re.match(exp_ser_opt, ser_opt) is None:
             test.fail('Expect get qemu command serial option "%s", '
                       'but got "%s"' % (exp_ser_opt, ser_opt))
         if ser_dev != exp_ser_dev:
@@ -755,7 +761,6 @@ def run(test, params, env):
         if res.exit_status:
             logging.debug("Can't start the VM, exiting.")
             return
-
         check_qemu_cmdline()
         # Prepare console after start when console is client
         if console_type == 'client':
