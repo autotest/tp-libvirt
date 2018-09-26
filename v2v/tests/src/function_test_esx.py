@@ -204,7 +204,7 @@ def run(test, params, env):
             utils_package.package_install('OVMF')
         if checkpoint == 'root_ask':
             v2v_params['v2v_opts'] += ' --root ask'
-            v2v_params['custom_inputs'] = params.get('choice', '1')
+            v2v_params['custom_inputs'] = params.get('choice', '2')
         if checkpoint.startswith('root_') and checkpoint != 'root_ask':
             root_option = params.get('root_option')
             v2v_params['v2v_opts'] += ' --root %s' % root_option

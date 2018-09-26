@@ -91,14 +91,16 @@ def run(test, params, env):
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                     timeout=v2v_timeout):
                     test.fail('Import VM failed')
+            # Create vmchecker before virsh.start so that the vm can be undefined
+            # if started failed.
+            vmchecker = VMChecker(test, params, env)
+            params['vmchecker'] = vmchecker
             if output_mode == 'libvirt':
                 try:
                     virsh.start(vm_name, debug=True, ignore_status=False)
                 except Exception as e:
                     test.fail('Start vm failed: %s' % str(e))
             # Check guest following the checkpoint document after convertion
-            vmchecker = VMChecker(test, params, env)
-            params['vmchecker'] = vmchecker
             if params.get('skip_vm_check') != 'yes':
                 if checkpoint != 'win2008r2_ostk':
                     ret = vmchecker.run()
