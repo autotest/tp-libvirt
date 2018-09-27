@@ -320,7 +320,11 @@ TIMEOUT 3"""
         Check dns resolving on guest
         """
         # Check if bind-utils is installed
-        if not utils_package.package_install(['bind-utils'], session):
+        if "ubuntu" in vm.get_distro().lower():
+            pkg = "bind9"
+        else:
+            pkg = "bind-utils"
+        if not utils_package.package_install(pkg, session):
             test.error("Failed to install bind-utils on guest")
         # Run host command to check if hostname can be resolved
         if not guest_ipv4 and not guest_ipv6:
