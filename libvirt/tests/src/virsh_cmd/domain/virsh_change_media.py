@@ -104,7 +104,7 @@ def run(test, params, env):
         :param options: update-device option
         :param start_vm: guest start flag
         """
-        if disk_alias is None:
+        if 'disk_alias' not in locals() or disk_alias is None:
             disk_alias_update = ""
         else:
             disk_alias_update = disk_alias
