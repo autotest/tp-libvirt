@@ -98,7 +98,8 @@ def run(test, params, env):
         :raise: test.cancel when some known messages found
         """
         logging.debug("Migration result:\n%s", migration_res)
-        if migration_res.stderr.find("error: unsupported configuration:") >= 0:
+        if (migration_res.stderr.find("error: unsupported configuration:") >= 0 and
+                not params.get("unsupported_conf", "no") == "yes"):
             test.cancel(migration_res.stderr)
 
     def do_migration(delay, vm, dest_uri, options, extra):
