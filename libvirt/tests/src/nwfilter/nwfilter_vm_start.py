@@ -2,13 +2,13 @@ import re
 import logging
 
 from avocado.utils import process
-from avocado.utils import path
 
 from virttest import virsh
 from virttest import virt_vm
 from virttest import libvirt_xml
 from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import utils_package
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices import interface
 from virttest.compat_52lts import decode_to_text as to_text
@@ -86,12 +86,9 @@ def run(test, params, env):
             process.run(cmd, shell=True)
 
         if ipset_command:
-            try:
-                path.find_command("ipset")
-            except path.CmdNotFoundError:
-                ret = process.run("yum install ipset -y", shell=True)
-                if ret.exit_status:
-                    test.cancel("Can't install ipset on host")
+            pkg = "ipset"
+            if not utils_package.package_install(pkg):
+                test.cancel("Can't install ipset on host")
             process.run(ipset_command, shell=True)
 
         # Run command
