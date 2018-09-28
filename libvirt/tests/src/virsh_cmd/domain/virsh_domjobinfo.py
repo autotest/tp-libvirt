@@ -28,9 +28,9 @@ def run(test, params, env):
         """
         Execute background virsh command, return subprocess w/o waiting for exit()
 
-        :param action : virsh command.
+        :param action : virsh command and its option.
         :param vm_name : VM's name
-        :param file : virsh command's file option.
+        :param file : virsh command's file option, could be vm.dump, vm.save, etc.
         """
         command = "virsh %s %s %s" % (action, vm_name, file)
         logging.debug("Action: %s", command)
@@ -38,14 +38,14 @@ def run(test, params, env):
                              stderr=subprocess.PIPE)
         return p
 
-    def cmp_jobinfo(result, info_list, job_type, action):
+    def cmp_jobinfo(result, info_list, job_type, actions):
         """
         Compare the output jobinfo with expected one
 
         :param result : the return from domjobinfo cmd
         :param info_list : an expected domjobinfo list
         :param job_type : an expected value for 'Job Type'
-        :param action : the job operation
+        :param actions : the job operation
         """
         logging.debug(result.stdout)
         out_list = result.stdout.strip().splitlines()
@@ -58,9 +58,9 @@ def run(test, params, env):
             if out_dict["Job type"].strip() != job_type:
                 test.fail("Expect %s Job type but got %s" %
                           (job_type, out_dict["Job type"].strip()))
-            if out_dict["Operation"].strip() != action.capitalize():
+            if out_dict["Operation"].strip() != actions.capitalize():
                 test.fail("Expect %s Operation but got %s" %
-                          (action.capitalize(), out_dict["Operation"].strip()))
+                          (actions.capitalize(), out_dict["Operation"].strip()))
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -79,12 +79,20 @@ def run(test, params, env):
 
     domid = vm.get_id()
     domuuid = vm.get_uuid()
-    action = params.get("domjobinfo_action", "dump")
+    actions = params.get("domjobinfo_action", "dump")
+    act_opt = params.get("dump_opt", "")
     vm_ref = params.get("domjobinfo_vm_ref")
     status_error = params.get("status_error", "no")
     libvirtd = params.get("libvirtd", "on")
-    tmp_file = os.path.join(data_dir.get_tmp_dir(), "domjobinfo.tmp")
+    # Use tmp_pipe to act as target file for job operation in subprocess,
+    # such as vm.dump, vm.save, etc.
     tmp_pipe = os.path.join(data_dir.get_tmp_dir(), "domjobinfo.fifo")
+
+    # Build job action
+    action = ' '.join([actions, act_opt])
+    if actions == "managedsave":
+        tmp_pipe = '/var/lib/libvirt/qemu/save/%s.save' % vm.name
+
     # Expected domjobinfo list
     info_list = ["Job type", "Time elapsed",
                  "Data processed", "Data remaining", "Data total",
@@ -112,14 +120,18 @@ def run(test, params, env):
 
     # Get the subprocess of VM.
     # The command's effect is to get domjobinfo of running domain job.
-    # So before do "domjobinfo" action, we must create a job on the domain.
+    # So before do "domjobinfo", we must create a job on the domain.
     process = None
     if start_vm == "yes" and status_error == "no":
         if os.path.exists(tmp_pipe):
             os.unlink(tmp_pipe)
         os.mkfifo(tmp_pipe)
 
-        process = get_subprocess(action, vm_name, tmp_pipe, None)
+        # Target file param is not needed for managedsave operation
+        if action == "managedsave ":
+            process = get_subprocess(action, vm_name, "", None)
+        else:
+            process = get_subprocess(action, vm_name, tmp_pipe, None)
 
         f = open(tmp_pipe, 'rb')
         dummy = f.read(1024 * 1024).decode(locale.getpreferredencoding(), 'ignore')
@@ -155,10 +167,6 @@ def run(test, params, env):
             os.unlink(tmp_pipe)
         except OSError as detail:
             logging.info("Can't remove %s: %s", tmp_pipe, detail)
-        try:
-            os.unlink(tmp_file)
-        except OSError as detail:
-            logging.info("Cant' remove %s: %s", tmp_file, detail)
 
     if process:
         if process.poll():
@@ -169,11 +177,17 @@ def run(test, params, env):
 
     # Get completed domjobinfo
     if status_error == "no":
+        time.sleep(5)
+        if act_opt != "--live" and vm_ref == domid:
+            # use vm_name but not id since domain shutoff
+            vm_ref = vm_name
         vm_ref = "%s --completed" % vm_ref
-        ret_cmplt = virsh.domjobinfo(vm_ref, ignore_status=True)
+        ret_cmplt = virsh.domjobinfo(vm_ref, ignore_status=True, debug=True)
         status_cmplt = ret_cmplt.exit_status
 
     # Recover the environment.
+    if actions == "managedsave":
+        virsh.managedsave_remove(vm_name, ignore_status=True)
     if pre_vm_state == "suspend":
         vm.resume()
     if libvirtd == "off":
@@ -188,10 +202,13 @@ def run(test, params, env):
             test.fail("Run failed with right command")
 
     if status_error == "no":
+        # The 'managedsave' Operation will be shown as 'Save' in domjobinfo
+        if actions == "managedsave":
+            actions = "save"
         # Check output of "virsh domjobinfo"
-        cmp_jobinfo(ret, info_list, "Unbounded", action)
+        cmp_jobinfo(ret, info_list, "Unbounded", actions)
         # Check output of "virsh domjobinfo --completed"
         info_list.insert(info_list.index("Memory total")+1, "Memory bandwidth")
         info_list[info_list.index("Expected downtime")] = "Total downtime"
         logging.debug("The expected info_list for completed job is %s", info_list)
-        cmp_jobinfo(ret_cmplt, info_list, "Completed", action)
+        cmp_jobinfo(ret_cmplt, info_list, "Completed", actions)
