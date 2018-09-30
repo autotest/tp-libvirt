@@ -31,6 +31,7 @@ def run(test, params, env):
     event_list_option = "yes" == params.get("event_list_option", "no")
     event_loop = "yes" == params.get("event_loop", "no")
     event_timeout = params.get("event_timeout")
+    all_events_timeout = params.get("all_events_timeout")
     event_option = params.get("event_option", "")
     status_error = "yes" == params.get("status_error", "no")
     qemu_monitor_test = "yes" == params.get("qemu_monitor_test", "no")
@@ -173,7 +174,9 @@ def run(test, params, env):
             event_cmd += " %s" % event_option
             if event_name and not qemu_monitor_test:
                 event_cmd += " --event %s" % event_name
-            if event_timeout:
+            if event_timeout or all_events_timeout:
+                if event_all_option:
+                    event_timeout = all_events_timeout
                 event_cmd += " --timeout %s" % event_timeout
             # Run the command in a new virsh session, then waiting for
             # various events
