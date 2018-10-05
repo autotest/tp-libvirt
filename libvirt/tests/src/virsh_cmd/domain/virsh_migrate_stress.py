@@ -1,12 +1,20 @@
 import logging
+import os
+from fractions import gcd
 
 from virttest import libvirt_vm
 from virttest import utils_test
 from virttest import utils_misc
+from virttest import kernel_interface
 from virttest import utils_package
-from virttest import remote
+from virttest import test_setup
+from virttest import utils_numeric
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import utils_memory
+
+"""
+Assert Anonpages for THP is being exercised or not
+"""
 
 
 def set_cpu_memory(vm_name, cpu, memory):
@@ -24,6 +32,29 @@ def set_cpu_memory(vm_name, cpu, memory):
     vmxml.current_mem = memory
     logging.debug("VMXML info:\n%s", vmxml.get('xml'))
     vmxml.sync()
+
+
+def enable_thp(test, params, sysfs_path, value=None, session=None, name="host"):
+    """
+    Method to enable/disable THP on host/remote host/guest
+
+    :param test: Test Object
+    :param params: Test Dict params
+    :param sysfs_path: path to be used to set THP
+    :param value: value to be set
+    :param session: ShellSession Object
+    :param name: name used to backup initial value to restore in cleanup
+    """
+    thp = kernel_interface.SysFS(sysfs_path, session=session)
+    if value:
+        # backup to restore
+        params["%s_%s" % (name, sysfs_path)] = thp.sys_fs_value
+    else:
+        value = params["%s_%s" % (name, sysfs_path)]
+    if value not in thp.sys_fs_value:
+        thp.sys_fs_value = value
+        if value not in thp.sys_fs_value:
+            test.error("Failed to set %s in %s" % (value, sysfs_path))
 
 
 def post_migration_check(vms, uptime, test, params, uri=None):
@@ -144,33 +175,102 @@ def run(test, params, env):
     vms = env.get_all_vms()
     params["load_vms"] = list(vms)
 
-    cpu = int(params.get("smp", 1))
-    memory = int(params.get("mem")) * 1024
+    cpu = int(params.get("set_smp", 1))
+    memory = int(params.get("set_mem")) * 1024
     stress_tool = params.get("stress_tool", "")
     remote_stress = params.get("migration_stress_remote", "no") == "yes"
     host_stress = params.get("migration_stress_host", "no") == "yes"
     vms_stress = params.get("migration_stress_vms", "no") == "yes"
-    vm_bytes = params.get("stress_vm_bytes", "128M")
+    vm_bytes = params.get("stress_vm_bytes")
     stress_args = params.get("%s_args" % stress_tool)
     migration_type = params.get("migration_type")
     start_migration_vms = params.get("start_migration_vms", "yes") == "yes"
     thread_timeout = int(params.get("thread_timeout", 120))
+    thp_stress = params.get("transparent_hugepages", "no") == "yes"
     ubuntu_dep = ['build-essential', 'git']
     hstress = rstress = None
     vstress = {}
+    params['server_ip'] = params['remote_ip']
+    params['server_pwd'] = params['remote_pwd']
+    params['server_user'] = params.get('remote_user', 'root')
+    remote_session = test_setup.remote_session(params)
+
+    mem_free = utils_memory.freememtotal()
+    remote_mem_free = utils_memory.freememtotal(remote_session)
+
+    if thp_stress and (host_stress or remote_stress):
+        hp_size = utils_memory.get_huge_page_size()
+        remote_hp_size = utils_memory.get_huge_page_size(remote_session)
+        # align vm memory with hugepage size
+        if remote_hp_size == hp_size:
+            align = hp_size
+        else:
+            align = hp_size * remote_hp_size // gcd(hp_size, remote_hp_size)
+        memory = utils_numeric.align_value(memory, align)
+
+    vm_reserved = len(vms) * memory
+    if mem_free < vm_reserved:
+        test.cancel("Memory is not available to bring up VMs")
+
+    if remote_mem_free < vm_reserved:
+        test.cancel("Memory is not available in remote host to migrate VMs")
 
     # Set vm_bytes for start_cmd
-    mem_total = utils_memory.memtotal()
-    vm_reserved = len(vms) * memory
-    if vm_bytes == "half":
-        vm_bytes = (mem_total - vm_reserved) / 2
-    elif vm_bytes == "shortage":
-        vm_bytes = mem_total - vm_reserved + 524288
-    if "vm-bytes" in stress_args:
-        params["%s_args" % stress_tool] = stress_args % vm_bytes
+    host_vm_bytes = (mem_free - vm_reserved) * 0.95
+    remote_vm_bytes = (remote_mem_free - vm_reserved)
+    if host_stress:
+        if vm_bytes == "half":
+            host_vm_bytes = (mem_free - vm_reserved) * 0.5
+        elif vm_bytes == "shortage":
+            host_vm_bytes = (mem_free - vm_reserved) * 1.5
+        if thp_stress:
+            host_vm_bytes = utils_numeric.align_value(host_vm_bytes, align)
+
+    if remote_stress:
+        if vm_bytes == "half":
+            remote_vm_bytes = (remote_mem_free - vm_reserved) * 0.5
+        elif vm_bytes == "shortage":
+            remote_vm_bytes = (remote_mem_free - vm_reserved) * 1.5
+        if thp_stress:
+            remote_vm_bytes = utils_numeric.align_value(remote_vm_bytes, align)
+    remote_session.close()
+
+    # calculate vm bytes based on the hugepage size supported for THP to use
+    if thp_stress:
+        RH_THP_PATH = "/sys/kernel/mm/redhat_transparent_hugepage"
+        if os.path.isdir(RH_THP_PATH):
+            thp_path = RH_THP_PATH
+        else:
+            thp_path = "/sys/kernel/mm/transparent_hugepage"
+        thp = os.path.join(thp_path, "enabled")
+        defrag = os.path.join(thp_path, "defrag", "enabled")
+        thp_option = params.get("thp_option")
+        if remote_stress:
+            remote_session = test_setup.remote_session(params)
+            enable_thp(test, params, thp, thp_option, session=remote_session,
+                       name="remote")
+            enable_thp(test, params, defrag, thp_option, session=remote_session,
+                       name="remote")
+            remote_session.close()
+
+        if vms_stress:
+            for vm in vms:
+                vm.start()
+                session = vm.wait_for_login()
+                enable_thp(test, params, thp, thp_option, session=session,
+                           name=vm.name)
+                enable_thp(test, params, defrag, thp_option, session=session,
+                           name=vm.name)
+                session.close()
+
+        if host_stress:
+            enable_thp(test, params, thp, thp_option)
+            enable_thp(test, params, defrag, thp_option)
 
     # Ensure stress tool is available in host
     if host_stress:
+        if "vm-bytes" in stress_args:
+            params["%s_args" % stress_tool] = stress_args % host_vm_bytes
         # remove package manager installed tool to avoid conflict
         if not utils_package.package_remove(stress_tool):
             logging.error("Existing %s is not removed")
@@ -183,14 +283,13 @@ def run(test, params, env):
             test.error(info)
 
     if remote_stress:
+        if "vm-bytes" in stress_args:
+            params["%s_args" % stress_tool] = stress_args % remote_vm_bytes
         try:
-            server_ip = params['remote_ip']
-            server_pwd = params['remote_pwd']
-            server_user = params.get('remote_user', 'root')
-            remote_session = remote.wait_for_login('ssh', server_ip, '22', server_user,
-                                                   server_pwd, r"[\#\$]\s*$")
+            remote_session = test_setup.remote_session(params)
             # remove package manager installed tool to avoid conflict
-            if not utils_package.package_remove(stress_tool, session=remote_session):
+            if not utils_package.package_remove(stress_tool,
+                                                session=remote_session):
                 logging.error("Existing %s is not removed")
             if("stess-ng" in stress_tool and
                'Ubuntu' in utils_misc.get_distro(session=remote_session)):
@@ -211,16 +310,29 @@ def run(test, params, env):
 
     try:
         if start_migration_vms:
-            for vm in vms:
-                vm.start()
-                session = vm.wait_for_login()
-                # remove package manager installed tool to avoid conflict
-                if not utils_package.package_remove(stress_tool, session=session):
-                    logging.error("Existing %s is not removed")
-                # configure stress in VM
-                if vms_stress:
+            # configure stress in VM
+            if vms_stress:
+                for vm in vms:
+                    vm.start()
+                    session = vm.wait_for_login()
+                    # handle for POWER8
+                    vm_hp_size = utils_memory.get_huge_page_size(session)
+                    vm_mem_free = utils_memory.freememtotal(session) * 0.95
+                    if vm_bytes == "half":
+                        guest_vm_bytes = mem_free * 0.5
+                    elif vm_bytes == "shortage":
+                        guest_vm_bytes = mem_free * 1.5
+                    if thp_stress:
+                        guest_vm_bytes = utils_numeric.align_value(guest_vm_bytes,
+                                                                   vm_hp_size)
+                    if "vm-bytes" in stress_args:
+                        params["%s_args" % stress_tool] = stress_args % guest_vm_bytes
+
+                    # remove package manager installed tool to avoid conflict
+                    if not utils_package.package_remove(stress_tool, session=session):
+                        logging.error("Existing %s is not removed")
                     if("stress-ng" in stress_tool and
-                       'Ubuntu' in utils_misc.get_distro(session=session)):
+                       'Ubuntu' in vm.get_distro()):
                         params['stress-ng_dependency_packages_list'] = ubuntu_dep
                     try:
                         vstress[vm.name] = utils_test.VMStress(vm, stress_tool, params)
@@ -228,7 +340,7 @@ def run(test, params, env):
                     except utils_test.StressError, info:
                         session.close()
                         test.error(info)
-                session.close()
+                    session.close()
 
         do_stress_migration(vms, src_uri, dest_uri, migration_type, test,
                             params, thread_timeout)
@@ -242,15 +354,27 @@ def run(test, params, env):
             # cleaned up
             if not vm.is_alive():
                 vm.start()
-                vm.wait_for_login()
+            session = vm.wait_for_login()
             try:
                 if vstress[vm.name]:
                     vstress[vm.name].unload_stress()
+                    if thp_stress:
+                        enable_thp(test, params, thp, session=session, name=vm.name)
+                        enable_thp(test, params, defrag, session=session, name=vm.name)
+                    session.close()
             except KeyError:
                 continue
 
         if rstress:
             rstress.unload_stress()
+            if thp_stress:
+                remote_session = test_setup.remote_session(params)
+                enable_thp(test, params, thp, session=remote_session, name="remote")
+                enable_thp(test, params, defrag, session=remote_session, name="remote")
+                remote_session.close()
 
         if hstress:
             hstress.unload_stress()
+            if thp_stress:
+                enable_thp(test, params, thp)
+                enable_thp(test, params, defrag)
