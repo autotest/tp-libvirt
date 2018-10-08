@@ -220,6 +220,10 @@ def run(test, params, env):
                 hostcpu = cpus_list[-1]
                 result = virsh.emulatorpin(vm_name, hostcpu, debug=True)
                 libvirt.check_exit_status(result)
+                cpustats = utils_hotplug.get_cpustats(vm, hostcpu)
+                logging.debug("hostcpu:%s vcputime: %s emulatortime: "
+                              "%s cputime: %s", hostcpu, cpustats[hostcpu][0],
+                              cpustats[hostcpu][1], cpustats[hostcpu][2])
             for vcpu in range(max_vcpu):
                 if pintype == "random":
                     hostcpu = random.choice(cpus_list[:-1])
@@ -229,6 +233,9 @@ def run(test, params, env):
                                        ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
                 cpustats = utils_hotplug.get_cpustats(vm, hostcpu)
+                logging.debug("hostcpu:%s vcputime: %s emulatortime: "
+                              "%s cputime: %s", hostcpu, cpustats[hostcpu][0],
+                              cpustats[hostcpu][1], cpustats[hostcpu][2])
                 if config_pin:
                     if cpustats[hostcpu][0] == 0:
                         fail = True
