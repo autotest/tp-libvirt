@@ -14,11 +14,11 @@ from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import utils_config
 from virttest import utils_numeric
+from virttest import utils_hotplug
 from virttest import virt_vm
 from virttest import data_dir
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
-from virttest.libvirt_xml.devices import memory
 from virttest.staging import utils_memory
 from virttest.staging.utils_memory import drop_caches
 from virttest.staging.utils_memory import read_from_numastat
@@ -224,34 +224,6 @@ def run(test, params, env):
         # Login to check vm status
         vm.wait_for_login().close()
 
-    def create_mem_xml():
-        """
-        Create memory device xml.
-        """
-        mem_xml = memory.Memory()
-        mem_model = params.get("mem_model", "dimm")
-        mem_xml.mem_model = mem_model
-        if tg_size:
-            tg_xml = memory.Memory.Target()
-            tg_xml.size = int(tg_size)
-            tg_xml.size_unit = tg_sizeunit
-            # There is support for non-numa node
-            if numa_cells:
-                tg_xml.node = int(tg_node)
-            mem_xml.target = tg_xml
-        if pg_size:
-            src_xml = memory.Memory.Source()
-            src_xml.pagesize = int(pg_size)
-            src_xml.pagesize_unit = pg_unit
-            src_xml.nodemask = node_mask
-            mem_xml.source = src_xml
-        if mem_addr:
-            mem_xml.address = mem_xml.new_mem_address(
-                **{"attrs": mem_addr})
-
-        logging.debug("Memory device xml: %s", mem_xml)
-        return mem_xml.copy()
-
     def add_device(dev_xml, at_error=False):
         """
         Add memory device by attachment or modify domain xml.
@@ -365,6 +337,7 @@ def run(test, params, env):
     host_known_unplug_errors.append(params.get("host_known_unplug_errors"))
 
     # params for attached device
+    mem_model = params.get("mem_model", "dimm")
     tg_size = params.get("tg_size")
     tg_sizeunit = params.get("tg_sizeunit", 'KiB')
     tg_node = params.get("tg_node", 0)
@@ -418,7 +391,9 @@ def run(test, params, env):
         # To attach the memory device.
         if add_mem_device:
             at_times = int(params.get("attach_times", 1))
-            dev_xml = create_mem_xml()
+            dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size, mem_addr,
+                                                   tg_sizeunit, pg_unit, tg_node,
+                                                   node_mask, mem_model)
             randvar = 0
             rand_value = random.randint(15, 25)
             logging.debug("reboots at %s", rand_value)
@@ -525,7 +500,10 @@ def run(test, params, env):
         unplug_failed_with_known_error = False
         if detach_device:
             if not dev_xml:
-                dev_xml = create_mem_xml()
+                dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
+                                                       mem_addr, tg_sizeunit,
+                                                       pg_unit, tg_node,
+                                                       node_mask, mem_model)
             for x in xrange(at_times):
                 ret = virsh.detach_device(vm_name, dev_xml.xml,
                                           flagstr=attach_option)
