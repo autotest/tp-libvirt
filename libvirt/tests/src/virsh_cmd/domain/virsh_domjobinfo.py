@@ -97,7 +97,7 @@ def run(test, params, env):
     info_list = ["Job type", "Time elapsed",
                  "Data processed", "Data remaining", "Data total",
                  "Memory processed", "Memory remaining",
-                 "Memory total", "Dirty rate",
+                 "Memory total", "Memory bandwidth", "Dirty rate",
                  "Iteration", "Constant pages", "Normal pages",
                  "Normal data", "Expected downtime", "Setup time"]
     if libvirt_version.version_compare(3, 2, 0):
