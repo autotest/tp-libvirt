@@ -69,15 +69,18 @@ def run(test, params, env):
     Test virsh migrate command.
     """
 
-    def set_hpt(resizing, vmxml):
+    def set_feature(vmxml, feature, value):
         """
-        Set the hpt feature for PPC
+        Set guest features for PPC
 
-        :param resizing: The value needed
+        :param state: the htm status
         :param vmxml: guest xml
         """
         features_xml = vm_xml.VMFeaturesXML()
-        features_xml.hpt_resizing = resizing
+        if feature == 'hpt':
+            features_xml.hpt_resizing = value
+        elif feature == 'htm':
+            features_xml.htm = value
         vmxml.features = features_xml
         vmxml.sync()
 
@@ -355,11 +358,12 @@ def run(test, params, env):
                           'ssh_remote_auth': True}
 
     hpt_resize = params.get("hpt_resize", None)
+    htm_state = params.get("htm_state", None)
     qemu_check = params.get("qemu_check", None)
     xml_check_after_mig = params.get("guest_xml_check_after_mig", None)
 
     arch = platform.machine()
-    if (hpt_resize or contrl_index) and 'ppc64' not in arch:
+    if any([hpt_resize, contrl_index, htm_state]) and 'ppc64' not in arch:
         test.cancel("The case is PPC only.")
 
     # For TLS
@@ -427,8 +431,10 @@ def run(test, params, env):
                                                              remote_host=True,
                                                              extra_params=params)
         if hpt_resize:
-            set_hpt(hpt_resize, new_xml)
+            set_feature(new_xml, 'hpt', hpt_resize)
 
+        if htm_state:
+            set_feature(new_xml, 'htm', htm_state)
         # Change the disk of the vm to shared disk and then start VM
         libvirt.set_vm_disk(vm, params)
         if not vm.is_alive():
@@ -440,6 +446,8 @@ def run(test, params, env):
             check_content = qemu_check
             if hpt_resize:
                 check_content = "%s%s" % (qemu_check, hpt_resize)
+            if htm_state:
+                check_content = "%s%s" % (qemu_check, htm_state)
             check_qemu_cmd_line(check_content)
 
         vm_session = vm.wait_for_login()
@@ -544,11 +552,16 @@ def run(test, params, env):
                                              debug=True,
                                              ignore_status=True)).strip()
             if hpt_resize:
-                xml_check_after_mig = "%s'%s'" % (xml_check_after_mig, hpt_resize)
+                check_str = hpt_resize
+            elif htm_state:
+                check_str = htm_state
+            if hpt_resize or htm_state:
+                xml_check_after_mig = "%s'%s'" % (xml_check_after_mig, check_str)
                 if not re.search(xml_check_after_mig, target_guest_dumpxml):
                     remote_virsh_session.close_session()
                     test.fail("Fail to search '%s' in target guest XML:\n%s"
                               % (xml_check_after_mig, target_guest_dumpxml))
+
             if contrl_index:
                 all_ctrls = re.findall(xml_check_after_mig, target_guest_dumpxml)
                 if len(all_ctrls) != int(contrl_index) + 1:
