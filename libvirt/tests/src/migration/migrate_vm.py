@@ -1360,7 +1360,7 @@ def run(test, params, env):
         # Prepare to update VM first disk driver cache
         disk_name = test_dict.get("disk_driver_name")
         disk_type = test_dict.get("disk_driver_type")
-        disk_cache = test_dict.get("disk_driver_cache")
+        disk_cache = test_dict.get("disk_driver_cache", "none")
         if disk_name or disk_type or disk_cache:
             update_disk_driver(vm_name, disk_name, disk_type, disk_cache)
 

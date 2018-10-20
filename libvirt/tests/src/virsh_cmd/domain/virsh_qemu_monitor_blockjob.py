@@ -40,7 +40,7 @@ def copied_migration(test, vm, params, blockjob_type=None, block_target="vda"):
     username = params.get("remote_user")
     password = params.get("migrate_dest_pwd")
     timeout = int(params.get("thread_timeout", 1200))
-    options = "--live %s --unsafe" % copy_option
+    options = "--live %s" % copy_option
 
     # Get vm ip for remote checking
     if vm.is_dead():

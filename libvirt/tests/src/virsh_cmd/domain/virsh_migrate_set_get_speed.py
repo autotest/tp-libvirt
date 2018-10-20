@@ -168,7 +168,7 @@ def run(test, params, env):
         delta = float(params.get("allowed_delta", "0.1"))
         virsh_migrate_timeout = int(params.get("virsh_migrate_timeout", "60"))
         # virsh migrate options
-        virsh_migrate_options = "--live --unsafe --timeout %s" % virsh_migrate_timeout
+        virsh_migrate_options = "--live --timeout %s" % virsh_migrate_timeout
         # Migrate vms to remote host
         mig_first = utlv.MigrationTest()
         virsh_dargs = {"debug": True}

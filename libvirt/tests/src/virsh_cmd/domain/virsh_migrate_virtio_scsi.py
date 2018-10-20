@@ -208,7 +208,7 @@ def run(test, params, env):
                           % vm.name)
             return vm_ip, vm_pwd
 
-        options = "--live --unsafe"
+        options = "--live"
         # Do migration before attaching new devices
         if migrate_in_advance:
             vm_ip, vm_pwd = start_check_vm(vm)
@@ -272,7 +272,7 @@ def run(test, params, env):
         logging.debug("Disks to be checked:\nBefore migration:%s\n"
                       "After migration:%s", disks_before, disks_after)
 
-        options = "--live --unsafe"
+        options = "--live"
         if not migrate_in_advance:
             cleanup_ssh_config(vm)
             mig.do_migration(vms, None, dsturi, "orderly", options, 120)
