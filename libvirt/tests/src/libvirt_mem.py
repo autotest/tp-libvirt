@@ -467,7 +467,8 @@ def run(test, params, env):
             pid = vm.get_pid()
             old_numastat = read_from_numastat(pid, "Total")
             logging.debug("Numastat: %s", old_numastat)
-            consume_vm_mem()
+            # Increase the memory consumed to  1500
+            consume_vm_mem(1500)
             new_numastat = read_from_numastat(pid, "Total")
             logging.debug("Numastat: %s", new_numastat)
             # Only check total memory which is the last element
