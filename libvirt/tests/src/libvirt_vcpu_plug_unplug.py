@@ -238,7 +238,7 @@ def run(test, params, env):
         expect_vcpu_num_bk = expect_vcpu_num.copy()
     # Init expect vcpu pin values
     expect_vcpupin = {}
-    result_vcpu = True
+    result_failed = 0
 
     # Init cpu-list for vcpupin
     host_cpu_count = os.sysconf('SC_NPROCESSORS_CONF')
@@ -318,7 +318,9 @@ def run(test, params, env):
 
         # Run test
         for _ in range(iterations):
-            result_vcpu = utils_hotplug.check_vcpu_value(vm, expect_vcpu_num)
+            if not utils_hotplug.check_vcpu_value(vm, expect_vcpu_num):
+                logging.error("Expected vcpu check failed")
+                result_failed += 1
             # plug vcpu
             if vcpu_plug:
                 # Pin vcpu
@@ -354,30 +356,27 @@ def run(test, params, env):
                     expect_vcpupin = {pin_vcpu: pin_cpu_list}
 
                 if status_error and check_after_plug_fail:
-                    result_vcpu = utils_hotplug.check_vcpu_value(vm,
-                                                                 expect_vcpu_num_bk,
-                                                                 {},
-                                                                 setvcpu_option)
+                    if not utils_hotplug.check_vcpu_value(vm, expect_vcpu_num_bk, {}, setvcpu_option):
+                        logging.error("Expected vcpu check failed")
+                        result_failed += 1
 
                 if not status_error:
                     if restart_libvirtd:
                         utils_libvirtd.libvirtd_restart()
 
                     # Check vcpu number and related commands
-                    result_vcpu = utils_hotplug.check_vcpu_value(vm,
-                                                                 expect_vcpu_num,
-                                                                 expect_vcpupin,
-                                                                 setvcpu_option)
+                    if not utils_hotplug.check_vcpu_value(vm, expect_vcpu_num, expect_vcpupin, setvcpu_option):
+                        logging.error("Expected vcpu check failed")
+                        result_failed += 1
 
                     # Control domain
                     manipulate_domain(vm_name, vm_operation)
 
                     if vm_operation != "null":
                         # Check vcpu number and related commands
-                        result_vcpu = utils_hotplug.check_vcpu_value(vm,
-                                                                     expect_vcpu_num,
-                                                                     expect_vcpupin,
-                                                                     setvcpu_option)
+                        if not utils_hotplug.check_vcpu_value(vm, expect_vcpu_num, expect_vcpupin, setvcpu_option):
+                            logging.error("Expected vcpu check failed")
+                            result_failed += 1
 
                     # Recover domain
                     manipulate_domain(vm_name, vm_operation, recover=True)
@@ -404,10 +403,9 @@ def run(test, params, env):
                             expect_vcpu_num['guest_live'] = vcpu_current_num
                     if vm_operation != "null":
                         # Check vcpu number and related commands
-                        result_vcpu = utils_hotplug.check_vcpu_value(vm,
-                                                                     expect_vcpu_num,
-                                                                     expect_vcpupin,
-                                                                     setvcpu_option)
+                        if not utils_hotplug.check_vcpu_value(vm, expect_vcpu_num, expect_vcpupin, setvcpu_option):
+                            logging.error("Expected vcpu check failed")
+                            result_failed += 1
 
             # Unplug vcpu
             # Since QEMU 2.2.0, by default all current vcpus are non-hotpluggable
@@ -495,20 +493,18 @@ def run(test, params, env):
                         utils_libvirtd.libvirtd_restart()
 
                     # Check vcpu number and related commands
-                    result_vcpu = utils_hotplug.check_vcpu_value(vm,
-                                                                 expect_vcpu_num,
-                                                                 expect_vcpupin,
-                                                                 setvcpu_option)
+                    if not utils_hotplug.check_vcpu_value(vm, expect_vcpu_num, expect_vcpupin, setvcpu_option):
+                        logging.error("Expected vcpu check failed")
+                        result_failed += 1
 
                     # Control domain
                     manipulate_domain(vm_name, vm_operation)
 
                     if vm_operation != "null":
                         # Check vcpu number and related commands
-                        result_vcpu = utils_hotplug.check_vcpu_value(vm,
-                                                                     expect_vcpu_num,
-                                                                     expect_vcpupin,
-                                                                     setvcpu_option)
+                        if not utils_hotplug.check_vcpu_value(vm, expect_vcpu_num, expect_vcpupin, setvcpu_option):
+                            logging.error("Expected vcpu check failed")
+                            result_failed += 1
 
                     # Recover domain
                     manipulate_domain(vm_name, vm_operation, recover=True)
@@ -535,10 +531,9 @@ def run(test, params, env):
                             expect_vcpu_num['guest_live'] = vcpu_current_num
                     if vm_operation != "null":
                         # Check vcpu number and related commands
-                        result_vcpu = utils_hotplug.check_vcpu_value(vm,
-                                                                     expect_vcpu_num,
-                                                                     expect_vcpupin,
-                                                                     setvcpu_option)
+                        if not utils_hotplug.check_vcpu_value(vm, expect_vcpu_num, expect_vcpupin, setvcpu_option):
+                            logging.error("Expected vcpu check failed")
+                            result_failed += 1
         if vm.uptime() < vm_uptime_init:
             test.fail("Unexpected VM reboot detected in between test")
     # Recover env
@@ -551,5 +546,5 @@ def run(test, params, env):
         backup_xml.sync()
 
     if not status_error:
-        if not result_vcpu:
+        if result_failed > 0:
             test.fail("Test Failed")
