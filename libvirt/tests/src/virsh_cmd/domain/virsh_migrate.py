@@ -800,7 +800,7 @@ def run(test, params, env):
     disk_cache = params.get("virsh_migrate_disk_cache", "none")
     params["driver_cache"] = disk_cache
     unsafe_test = False
-    if options.count("unsafe") and disk_cache != "none":
+    if options.count("unsafe") and disk_cache not in ["none", "directsync"]:
         unsafe_test = True
 
     migrate_setup = None
