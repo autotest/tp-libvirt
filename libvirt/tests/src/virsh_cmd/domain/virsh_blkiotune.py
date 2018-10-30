@@ -252,7 +252,12 @@ def run(test, params, env):
     iosche = results_stdout_52lts(process.run(cmd, shell=True))
     oldmode = re.findall("\[(.*?)\]", iosche)[0]
     with open('/sys/block/sda/queue/scheduler', 'w') as scf:
-        scf.write('cfq')
+        if 'cfq' in iosche:
+            scf.write('cfq')
+        elif 'bfq' in iosche:
+            scf.write('bfq')
+        else:
+            test.fail('Unknown scheduler in "/sys/block/sda/queue/scheduler"')
 
     test_dict = dict(params)
     test_dict['vm'] = vm
@@ -303,9 +308,8 @@ def run(test, params, env):
         # Restore guest
         original_vm_xml.sync()
 
-        scf = open('/sys/block/sda/queue/scheduler', 'w')
-        scf.write(oldmode)
-        scf.close()
+        with open('/sys/block/sda/queue/scheduler', 'w') as scf:
+            scf.write(oldmode)
 
         # If we stopped cg, then recover and refresh libvirtd to recognize
         if cgstop:
