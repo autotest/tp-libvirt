@@ -50,6 +50,12 @@ def check_domiftune(params, test_clear):
         if len(out_list) == 3:
             outbound_peak = int(out_list[1])
             outbound_burst = int(out_list[2])
+
+    # --config affect next boot
+    if options == "config":
+        vm.destroy()
+        vm.start()
+
     # get inbound and outbound parameters from virsh cmd output
     if vm and vm.is_alive():
         result = virsh.domiftune(vm_name, interface, options=options)
@@ -108,7 +114,7 @@ def check_domiftune(params, test_clear):
     logging.debug("average_inbound_from_xml=%s, average_outbound_from_xml=%s",
                   average_inbound_from_xml, average_outbound_from_xml)
 
-    if vm and vm.is_alive() and options != "config":
+    if vm and vm.is_alive():
         if test_clear and set_clear and test_inbound:
             if average_inbound_from_xml is not None or \
                average_inbound_from_cmd_output != 0 or \
@@ -245,7 +251,7 @@ def set_domiftune_parameter(params, test):
             # the test since the error is expected.
             status_error = "yes"
 
-    result = virsh.domiftune(vm_name, interface, options, inbound, outbound)
+    result = virsh.domiftune(vm_name, interface, options, inbound, outbound, debug=True)
     status = result.exit_status
 
     if status_error == "yes":
@@ -308,18 +314,34 @@ def run(test, params, env):
     status_error = params.get("status_error", "no")
     start_vm = params.get("start_vm", "yes")
     change_parameters = params.get("change_parameters", "no")
+    interface_ref = params.get("interface_ref", "name")
+
     interface = []
+
     if vm and not vm.is_alive():
         vm.start()
+
     if vm and vm.is_alive():
         virt_xml_obj = vm_xml.VMXML(virsh_instance=virsh)
         interface = virt_xml_obj.get_iface_dev(vm_name)
-        logging.debug("the interface is %s" % interface[0])
+        if_mac = interface[0]
+        # Get interface name
+        vmxml = virt_xml_obj.new_from_dumpxml(vm_name)
+        if_node = vmxml.get_iface_all().get(if_mac)
+        if_name = if_node.find('target').get('dev')
+
+    if interface_ref == "name":
+        interface = if_name
+
+    if interface_ref == "mac":
+        interface = if_mac
+
+    logging.debug("the interface is %s", interface)
 
     test_dict = dict(params)
     test_dict['vm'] = vm
     if interface:
-        test_dict['iface_dev'] = interface[0]
+        test_dict['iface_dev'] = interface
 
     if start_vm == "no" and vm and vm.is_alive():
         vm.destroy()
@@ -329,5 +351,5 @@ def run(test, params, env):
         get_domiftune_parameter(test_dict, test)
     else:
         set_domiftune_parameter(test_dict, test)
-        ret = virsh.domiftune(vm_name, interface[0], 'current', '0', '0')
+        ret = virsh.domiftune(vm_name, interface, 'current', '0', '0')
         libvirt.check_exit_status(ret)
