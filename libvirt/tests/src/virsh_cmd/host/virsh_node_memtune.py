@@ -2,6 +2,7 @@ import os
 import logging
 
 from avocado.core import exceptions
+from avocado.utils import process
 from virttest import virsh
 
 _SYSFS_MEMORY_KSM_PATH = "/sys/kernel/mm/ksm"
@@ -124,7 +125,7 @@ def set_node_memtune_parameter(test, params):
     shm_merge_across_nodes = params.get("shm_merge_across_nodes")
 
     result = virsh.node_memtune(shm_pages_to_scan, shm_sleep_millisecs,
-                                shm_merge_across_nodes, options=options)
+                                shm_merge_across_nodes, options=options, debug=True)
 
     status = result.exit_status
 
@@ -150,10 +151,22 @@ def set_node_memtune_parameter(test, params):
             test.fail(result.stderr)
         else:
             if check_node_memtune(params, ksm_dicts):
-                logging.info(result)
+                logging.info(result.stdout)
             else:
                 test.fail("The memory parameters "
                           "mismatch with result")
+
+
+def check_virsh_manual(cmd, test):
+    """
+    Check virsh manual of given cmd
+    :param cmd: The virsh cmd
+    :param test: The test object
+    """
+    check_cmd = "man virsh| grep %s" % cmd
+    result = process.run(check_cmd, shell=True, ignore_status=False)
+    if result.exit_status:
+        test.fail("Failed to run '%s'" % check_cmd)
 
 
 def run(test, params, env):
@@ -173,6 +186,7 @@ def run(test, params, env):
     # Run test case
     status_error = params.get("status_error", "no")
     change_parameters = params.get("change_parameters", "no")
+    check_manual = ("yes" == params.get("check_manual", "no"))
 
     (ksm_params, change_list) = get_ksm_values_and_change_list()
 
@@ -180,6 +194,9 @@ def run(test, params, env):
     ksm_backup = dict(ksm_params)
 
     # positive and negative testing #########
+
+    if check_manual:
+        check_virsh_manual("node-memory-tune", test)
 
     if status_error == "no":
         if change_parameters == "no":
