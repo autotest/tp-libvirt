@@ -158,7 +158,9 @@ def check_output(output_msg, params):
                    "this feature or command is not currently supported",
                    "ERROR 2": "error: Cannot access storage file",
                    "ERROR 3": "Unable to read TLS confirmation: " +
-                   "Input/output error"}
+                   "Input/output error",
+                   "ERROR 4": "error: Unsafe migration: Migration " +
+                   "without shared storage is unsafe"}
 
     # Check for special case firstly
     migrate_disks = "yes" == params.get("migrate_disks")
@@ -167,9 +169,12 @@ def check_output(output_msg, params):
         logging.debug("To check for migrate-disks...")
         disk = params.get("attach_A_disk_source")
         last_msg = "(as uid:107, gid:107): No such file or directory"
-        expect_msg = "%s '%s' %s" % (ERR_MSGDICT["ERROR 2"],
-                                     disk,
-                                     last_msg)
+        if not libvirt_version.version_compare(4, 5, 0):
+            expect_msg = "%s '%s' %s" % (ERR_MSGDICT["ERROR 2"],
+                                         disk,
+                                         last_msg)
+        else:
+            expect_msg = ERR_MSGDICT["ERROR 4"]
         if output_msg.find(expect_msg) >= 0:
             logging.debug("The expected error '%s' was found", expect_msg)
             return
@@ -210,7 +215,7 @@ def migrate_vm(params):
     if vm_name is None:
         vm_name = params.get("main_vm", "")
     uri = params.get("desuri")
-    options = params.get("virsh_options", "--live --verbose --unsafe")
+    options = params.get("virsh_options", "--live --verbose")
     extra = params.get("extra_args", "")
     su_user = params.get("su_user", "")
     auth_user = params.get("server_user")
@@ -1050,7 +1055,7 @@ def run(test, params, env):
     reboot_vm = "yes" == test_dict.get("reboot_vm", "no")
     abort_job = "yes" == test_dict.get("abort_job", "no")
     ctrl_c = "yes" == test_dict.get("ctrl_c", "no")
-    virsh_options = test_dict.get("virsh_options", "--verbose --live --unsafe")
+    virsh_options = test_dict.get("virsh_options", "--verbose --live")
     remote_path = test_dict.get("remote_libvirtd_conf",
                                 "/etc/libvirt/libvirtd.conf")
     log_file = test_dict.get("libvirt_log", "/var/log/libvirt/libvirtd.log")
@@ -1399,7 +1404,7 @@ def run(test, params, env):
         # Prepare to update VM first disk driver cache
         disk_name = test_dict.get("disk_driver_name")
         disk_type = test_dict.get("disk_driver_type")
-        disk_cache = test_dict.get("disk_driver_cache")
+        disk_cache = test_dict.get("disk_driver_cache", "none")
         if disk_name or disk_type or disk_cache:
             update_disk_driver(vm_name, disk_name, disk_type, disk_cache)
 
@@ -1878,6 +1883,8 @@ def run(test, params, env):
             libvirt.create_local_disk("file", path=attach_B_disk_source, size="0.1",
                                       disk_format="qcow2")
             test_dict["driver_type"] = "qcow2"
+            driver_cache = test_dict.get("disk_driver_cache", "none")
+            test_dict["driver_cache"] = driver_cache
             libvirt.attach_additional_device(vm.name, attach_A_disk_target,
                                              attach_A_disk_source, test_dict,
                                              config=False)
@@ -2299,6 +2306,13 @@ def run(test, params, env):
                                 "<source file='%s/%s'/>"
                                 % (nfs_mount_dir, image_name)}
                 guest_config.sub(pattern2repl)
+
+                logging.debug("Modify remote guest xml's disk cache mode")
+                for driver_type in ["qcow2", "raw"]:
+                    pattern2repl = {r"(?<=driver name='qemu' type='%s').*/>" % (driver_type):
+                                    " cache='%s'/>" % (disk_cache)}
+                    guest_config.sub(pattern2repl)
+
                 logging.debug("Modify remote guest xml's machine type")
                 machine_type = "pc"
                 arch = platform.machine()
