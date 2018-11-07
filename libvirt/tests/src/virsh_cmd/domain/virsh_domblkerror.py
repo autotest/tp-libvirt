@@ -38,6 +38,7 @@ def run(test, params, env):
     pool_name = params.get("domblkerror_pool_name", "fs_pool")
     vol_name = params.get("domblkerror_vol_name", "vol1")
     ubuntu = distro.detect().name == 'Ubuntu'
+    rhel = distro.detect().name == 'rhel'
     nfs_service_package = params.get("nfs_service_package", "nfs-kernel-server")
     nfs_service = None
     session = None
@@ -45,9 +46,11 @@ def run(test, params, env):
 
     vm = env.get_vm(vm_name)
     if error_type == "unspecified error":
-        if not ubuntu:
+        if not ubuntu and not rhel:
             nfs_service_package = "nfs"
-        if not utils_package.package_install(nfs_service_package):
+        elif rhel:
+            nfs_service_package = "nfs-server"
+        if not rhel and not utils_package.package_install(nfs_service_package):
             test.cancel("NFS package not available in guest to test")
         # backup /etc/exports
         shutil.copyfile(export_file, "%s.bak" % export_file)
