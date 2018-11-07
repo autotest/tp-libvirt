@@ -24,6 +24,8 @@ from virttest import utils_selinux
 from virttest import utils_test
 from virttest import virsh
 from virttest import virt_vm
+from virttest import xml_utils
+
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.smartcard import Smartcard
@@ -42,6 +44,43 @@ from virttest.compat_52lts import decode_to_text as to_text
 from provider import libvirt_version
 
 MIGRATE_RET = False
+
+
+def destroy_active_pool_on_remote(params):
+    """
+    This is to destroy active pool with same target path as pool_target
+    on remote host
+    :param params: a dict for parameters
+    :return True if successful, otherwise False
+    """
+    ret = True
+
+    remote_ip = params.get("migrate_dest_host")
+    remote_user = params.get("migrate_dest_user", "root")
+    remote_pwd = params.get("migrate_dest_pwd")
+
+    virsh_dargs = {'remote_ip': remote_ip, 'remote_user': remote_user,
+                   'remote_pwd': remote_pwd, 'unprivileged_user': None,
+                   'ssh_remote_auth': True}
+
+    try:
+        remote_session = virsh.VirshPersistent(**virsh_dargs)
+
+        active_pools = remote_session.pool_list(option="--name")
+
+        for pool in active_pools.stdout.strip().split("\n"):
+            pool_dump = remote_session.pool_dumpxml(pool)
+            xtf = xml_utils.XMLTreeFile(pool_dump)
+            if xtf.findtext('.//target/path') == params.get("pool_target"):
+                ret = remote_session.pool_destroy(pool)
+    except Exception as e:
+        logging.error("Exception when destroy active pool on target: %s", str(e))
+        raise e
+    finally:
+        if remote_session:
+            remote_session.close_session()
+
+    return ret
 
 
 def create_destroy_pool_on_remote(action, params):
@@ -1786,6 +1825,12 @@ def run(test, params, env):
                 raise exceptions.TestError("Create pool on remote host '%s' "
                                            "failed." % server_ip)
             remote_image_list.append(target_image_source)
+        else:
+            pool_destroyed = destroy_active_pool_on_remote(test_dict)
+            if not pool_destroyed:
+                raise test.error("Destroy pool on remote host '%s' failed"
+                                 % server_ip)
+
         if create_target_image:
             if not target_image_size and image_info_dict:
                 target_image_size = image_info_dict.get('vsize')
