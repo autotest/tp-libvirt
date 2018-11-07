@@ -1,4 +1,5 @@
 import logging
+import ast
 
 from virttest import virsh
 from virttest import virt_vm
@@ -48,6 +49,7 @@ def check_perf_result(vm_name, perf_option, events):
     :param perf_option: --enable or  --disable
     :param events: perf event names seperated by comma
     """
+    # logging.debug("events:%s in check_perf_result", events)
     ret_event = ""
     # If there is a event list, get the first event group seperated by ' '
     events_list = events.strip().split(' ')
@@ -82,11 +84,45 @@ def run(test, params, env):
     events = params.get("events")
     virsh_opt = params.get("virsh_opt")
     vm_active = params.get("vm_active")
-    status_error = (params.get("status_error", "no") == "yes")
+    status_error = params.get("status_error", "no") == "yes"
+    status_disable = params.get("status_disable", "no") == "yes"
+    event_item_list = [ast.literal_eval(x)
+                       for x in params.get("event_items", "").split()]
 
     try:
-        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(test_vm.name)
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         backup_xml = vmxml.copy()
+        if event_item_list:
+            perf = vm_xml.VMPerfXML()
+            eventxml_list = []
+            events_no = ''
+            events_yes = ''
+            events_yes_list = []
+            events_no_list = []
+            for i in range(len(event_item_list)):
+                eventxml = perf.EventXML()
+                eventxml.update(event_item_list[i])
+                eventxml_list.append(eventxml)
+                if event_item_list[i]['enabled'] != 'no':
+                    events_yes_list.append(event_item_list[i]['name'])
+                    continue
+                events_no_list.append(event_item_list[i]['name'])
+            events_yes = ','.join(events_yes_list)
+            events_no = ','.join(events_no_list)
+            perf.events = eventxml_list
+            vmxml.perf = perf
+            logging.debug("vm xml: %s", vmxml)
+            vmxml.sync()
+            test_vm.start()
+            # using '--enable' for the normal test
+            result = check_perf_result(vm_name, '--enable', events_yes)
+            if result != "":
+                test.fail("Check domstats output failed for %s" % result)
+            if status_disable:
+                # using '--disable' for the negative test
+                result = check_perf_result(vm_name, '--disable', events_no)
+                if result != "":
+                    test.fail("Check domstats output failed for %s" % result)
 
         # To test disable action, enable the events first
         if perf_option == '--disable':
@@ -100,12 +136,13 @@ def run(test, params, env):
                 else:
                     test.fail("Failed to enable evt before testing disable!")
 
-        result = virsh.perf(vm_name, perf_option, events, virsh_opt,
-                            ignore_status=True, debug=True)
-        status = result.exit_status
+        if not event_item_list:
+            result = virsh.perf(vm_name, perf_option, events, virsh_opt,
+                                ignore_status=True, debug=True)
+            status = result.exit_status
 
-        if status_error:
-            if not status:
+        if any([status_error, status_disable, event_item_list]):
+            if not event_item_list and not status:
                 # if "argument unsupported: parameter" in result.stderr:
                 #    test.cancel(result.stderr)
                 test.fail("Run virsh cmd successfully with wrong command!")
