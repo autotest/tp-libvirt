@@ -124,6 +124,9 @@ def run(test, params, env):
         cmd = "chmod 666 %s" % testnet_xml.xml
         process.run(cmd, shell=True)
 
+    if params.get('net_define_undefine_readonly', 'no') == 'yes':
+        virsh_dargs = {'uri': uri, 'debug': False, 'ignore_status': True,
+                       'readonly': True}
     try:
         # Run test case
         define_result = virsh.net_define(define_options, define_extra,
@@ -256,7 +259,7 @@ def run(test, params, env):
     # If fail_flag is set, it must be transaction test.
     if fail_flag:
         test.fail("Define network for transaction test "
-                  "failed:%s", result_info)
+                  "failed:%s" % result_info)
 
     # The logic to check result:
     # status_error&only undefine:it is negative undefine test only
