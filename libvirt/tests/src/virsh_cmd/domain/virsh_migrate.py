@@ -36,6 +36,9 @@ def run(test, params, env):
     Test virsh migrate command.
     """
 
+    readonly = (params.get("migrate_readonly", "no") == "yes")
+    virsh_args = {"ignore_status": True, "debug": True, "readonly": readonly}
+
     def check_vm_state(vm, state, uri=None, ignore_error=True):
         """
         Return True if vm is in the correct state.
@@ -102,7 +105,7 @@ def run(test, params, env):
                 not params.get("unsupported_conf", "no") == "yes"):
             test.cancel(migration_res.stderr)
 
-    def do_migration(delay, vm, dest_uri, options, extra):
+    def do_migration(delay, vm, dest_uri, options, extra, **virsh_args):
         logging.info("Sleeping %d seconds before migration", delay)
         time.sleep(delay)
         # Migrate the guest.
@@ -545,7 +548,6 @@ def run(test, params, env):
         if isinstance(v, string_types) and v.count("EXAMPLE"):
             test.cancel("Please set real value for %s" % v)
 
-    virsh_args = {"ignore_status": True, "debug": True}
     options = params.get("virsh_migrate_options")
     # Direct migration is supported only for Xen in libvirt
     if options.count("direct") or extra.count("direct"):
@@ -1117,7 +1119,7 @@ def run(test, params, env):
             else:
                 ret_migrate = False
         if not asynch_migration:
-            ret_migrate = do_migration(delay, vm, dest_uri, options, extra)
+            ret_migrate = do_migration(delay, vm, dest_uri, options, extra, **virsh_args)
 
         dest_state = params.get("virsh_migrate_dest_state", "running")
         if ret_migrate and dest_state == "running":
