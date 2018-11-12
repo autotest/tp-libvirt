@@ -14,6 +14,9 @@ from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.vm_xml import VMXML
+from virttest.compat_52lts import decode_to_text as to_text
+
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -52,6 +55,7 @@ def run(test, params, env):
     backup_xml = vmxml.copy()
     # Get varialbles about image.
     img_label = params.get('svirt_attach_disk_disk_label')
+    enable_namespace = 'yes' == params.get('enable_namespace', 'no')
     img_name = "svirt_disk"
     # Default label for the other disks.
     # To ensure VM is able to access other disks.
@@ -123,7 +127,15 @@ def run(test, params, env):
             img_path = cmd_result.stdout.strip()
 
             if pool_type in ["iscsi", "disk"]:
-                extra = "--driver qemu --type lun --rawio --persistent"
+                extra = "--driver qemu --targetbus scsi --persistent"
+                if pool_type == "iscsi":
+                    extra = extra + " --type lun --rawio"
+                else:
+                    if not enable_namespace:
+                        qemu_conf.namespaces = ''
+                        logging.debug("the qemu.conf content is: %s" % qemu_conf)
+                        libvirtd.restart()
+                    extra = extra + " --type disk"
             else:
                 extra = "--persistent --subdriver qcow2"
 
@@ -148,6 +160,7 @@ def run(test, params, env):
         # Do the attach action.
         result = virsh.attach_disk(vm_name, source=img_path, target="vdf",
                                    extra=extra, debug=True)
+        logging.debug(VMXML.new_from_inactive_dumpxml(vm_name))
         if result.exit_status:
             test.fail("Failed to attach disk %s to VM."
                       "Detail: %s." % (img_path, result.stderr))
@@ -184,7 +197,17 @@ def run(test, params, env):
                         inf_msg = "vm process with %s: 0x%x" % (i, cap_dict[i])
                         inf_msg += " have cap_sys_rawio capabilities"
                         logging.debug(inf_msg)
-
+            if pool_type == "disk":
+                if libvirt_version.version_compare(3, 1, 0) and enable_namespace:
+                    vm_pid = vm.get_pid()
+                    output = process.system_output(
+                        "nsenter -t %d -m -- ls -lZ %s" % (vm_pid, img_path))
+                else:
+                    output = process.system_output('ls -lZ %s' % img_path)
+                logging.debug("The default label is %s", default_label)
+                logging.debug("The label after guest started is %s", to_text(output.strip().split()[-2]))
+                if default_label not in to_text(output.strip().split()[-2]):
+                    test.fail("The label is wrong after guest started\n")
         except virt_vm.VMStartError as e:
             # Starting VM failed.
             # VM with set seclabel can not access the image with the
