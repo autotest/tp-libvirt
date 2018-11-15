@@ -187,7 +187,7 @@ def run(test, params, env):
             vmxml.cpuset = vcpu_cpuset
         logging.debug("vm xml is %s", vmxml)
         vmxml.sync()
-        numad_cmd_opt = "-w %s:%s" % (vcpu_num, max_mem / 1024)
+        numad_cmd_opt = "-w %s:%s" % (vcpu_num, max_mem // 1024)
 
         try:
             vm.start()
