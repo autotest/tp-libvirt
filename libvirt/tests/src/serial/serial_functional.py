@@ -83,6 +83,7 @@ class Console(aexpect.ShellSession):
                 obj.stdin.write('\n')
                 time.sleep(50)
                 obj.stdin.write('\n')
+                time.sleep(50)
                 obj.stdin.close()
             self.process = obj
         elif console_type == 'tcp':
