@@ -2338,7 +2338,7 @@ def run(test, params, env):
 
                 # Permit iptables to permit special port to libvirt for
                 # migration on local machine
-                migrate_setup.migrate_pre_setup(src_uri, params, ports=uri_port)
+                migrate_setup.migrate_pre_setup(src_uri, params, ports=uri_port[1:])
 
             except (process.CmdError, remote.SCPError) as e:
                 logging.debug(e)
@@ -2350,7 +2350,7 @@ def run(test, params, env):
                 remote_virsh_session.close_session()
 
             uri = "%s%s%s://%s:%s%s" % (driver, plus, transport,
-                                        client_cn, uri_port, uri_path)
+                                        client_cn, uri_port[1:], uri_path)
             test_dict["desuri"] = uri
             test_dict["vm_name_to_migrate"] = target_vm_name
 
@@ -2366,6 +2366,9 @@ def run(test, params, env):
             status_error = "no"
             test_dict['err_msg'] = None
 
+        if transport in ('tcp', 'tls') and uri_port:
+            migrate_setup.migrate_pre_setup("//%s/" % server_ip, test_dict,
+                                            cleanup=False, ports=uri_port[1:])
         if run_migr_front:
             migrate_vm(test_dict)
 
@@ -2594,7 +2597,7 @@ def run(test, params, env):
         if target_vm_name:
             migrate_setup.migrate_pre_setup(src_uri, params,
                                             cleanup=True,
-                                            ports=uri_port)
+                                            ports=uri_port[1:])
         if migr_vm_back:
             migrate_setup.migrate_pre_setup(src_uri, params,
                                             cleanup=True)
@@ -2780,3 +2783,6 @@ def run(test, params, env):
             n_client_s.package.env_cleanup(True)
 
         cleanup(objs_list)
+        if transport in ('tcp', 'tls') and uri_port:
+            migrate_setup.migrate_pre_setup("//%s/" % server_ip, test_dict,
+                                            cleanup=True, ports=uri_port[1:])
