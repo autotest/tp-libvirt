@@ -1,6 +1,5 @@
 import re
 import logging
-import platform
 
 from avocado.utils import process
 
@@ -108,7 +107,6 @@ def run(test, params, env):
                         "version")
 
     hp_cl = test_setup.HugePageConfig(params)
-    default_hp_size = hp_cl.get_hugepage_size()
     supported_hp_size = hp_cl.get_multi_supported_hugepage_size()
     mount_path = []
     qemu_conf = utils_config.LibvirtQemuConfig()
@@ -164,13 +162,8 @@ def run(test, params, env):
                     test.cancel("node %s memory is empty" % i)
 
         # set hugepage with qemu.conf and mount path
-        arch = platform.machine()
-        if default_hp_size == 2048 and 'ppc64' not in arch:
-            hp_cl.setup()
-            deallocate = True
-        else:
-            _update_qemu_conf()
-            qemu_conf_restore = True
+        _update_qemu_conf()
+        qemu_conf_restore = True
 
         # set hugepage with total number or per-node number
         if nr_pagesize_total:
