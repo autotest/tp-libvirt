@@ -243,8 +243,6 @@ class VMChecker(object):
         """
         Check windows guest after v2v convert.
         """
-        # Make sure windows boot up successfully first
-        self.checker.boot_windows()
         try:
             self.checker.create_session()
         except Exception as detail:
