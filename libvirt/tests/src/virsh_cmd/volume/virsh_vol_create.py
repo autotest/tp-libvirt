@@ -188,11 +188,11 @@ def run(test, params, env):
             return
         rst = process.run(process_vol_cmd, ignore_status=True, shell=True)
         if rst.exit_status:
-            if "Snapshots of snapshots are not supported" in rst.stderr:
+            if "Snapshots of snapshots are not supported" in rst.stderr_text:
                 logging.debug("%s is already a snapshot volume", ori_vol_path)
                 process_vol_name = os.path.basename(ori_vol_path)
             else:
-                logging.error(rst.stderr)
+                logging.error(rst.stderr_text)
                 return
         return process_vol_name
 
