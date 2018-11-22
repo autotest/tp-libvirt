@@ -107,7 +107,10 @@ def run(test, params, env):
             logging.debug(cmdline.split())
 
         # Kill core dump process to speed up test
-        process.run('kill %s' % iohelper_pid)
+        try:
+            process.run('kill %s' % iohelper_pid)
+        except process.CmdError as detail:
+            logging.debug("Dump already done:\n%s", detail)
 
         arch = platform.machine()
 
