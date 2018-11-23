@@ -450,8 +450,12 @@ TIMEOUT 3"""
         Check guest libvirt network
         """
         # Try to install required packages
-        if not utils_package.package_install(['libvirt'], session):
-            test.error("Failed ot install libvirt package on guest")
+        if "ubuntu" in vm.get_distro().lower():
+            pkg = "libvirt-bin"
+        else:
+            pkg = "libvirt"
+        if not utils_package.package_install(pkg, session):
+            test.error("Failed to install libvirt package on guest")
         # Try to load tun module first
         session.cmd("lsmod | grep tun || modprobe  tun")
         # Check network state on guest
