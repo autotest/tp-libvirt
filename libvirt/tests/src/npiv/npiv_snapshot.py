@@ -212,11 +212,16 @@ def run(test, params, env):
     lun_sl = []
     new_disk = ""
     pool_ins = None
+    old_mpath_conf = ""
+    mpath_conf_path = "/etc/multipath.conf"
+    original_mpath_conf_exist = os.path.exists(mpath_conf_path)
 
     vm = env.get_vm(vm_name)
     online_hbas = utils_npiv.find_hbas("hba")
     if not online_hbas:
         raise exceptions.TestSkipError("There is no online hba cards.")
+    old_mpath_conf = utils_npiv.prepare_multipath_conf(conf_path=mpath_conf_path,
+                                                       replace_existing=True)
     first_online_hba = online_hbas[0]
     old_vhbas = utils_npiv.find_hbas("vhba")
     if vm.is_dead():
@@ -439,3 +444,9 @@ def run(test, params, env):
         for new_vhba in new_vhbas:
             virsh.nodedev_destroy(new_vhba)
         utils_npiv.restart_multipathd()
+        if old_mpath_conf:
+            utils_npiv.prepare_multipath_conf(conf_path=mpath_conf_path,
+                                              conf_content=old_mpath_conf,
+                                              replace_existing=True)
+        if not original_mpath_conf_exist and os.path.exists(mpath_conf_path):
+            os.remove(mpath_conf_path)
