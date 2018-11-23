@@ -1,4 +1,5 @@
 import logging
+import time
 
 from avocado.utils import process
 
@@ -125,6 +126,7 @@ def run(test, params, env):
         if not utils_misc.wait_for(lambda: npiv.is_vhbas_added(old_vhbas),
                                    timeout=_TIMEOUT):
             test.fail("vhba not successfully created")
+        time.sleep(2)
         tmp_list = list(set(npiv.find_hbas("vhba")).difference(set(old_vhbas)))
         if len(tmp_list) != 1:
             test.fail("Not 1 vhba created, something wrong.")
