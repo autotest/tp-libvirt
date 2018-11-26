@@ -48,7 +48,7 @@ def run(test, params, env):
                 except aexpect.ShellCmdError:
                     session.close()
                     test.fail("Failed to load module ib700wdt")
-            session.cmd("dmesg | grep %s && lsmod | grep %s" % (model, model))
+            session.cmd("dmesg | grep -i %s && lsmod | grep %s" % (model, model))
             session.cmd("echo 1 > /dev/watchdog")
         except aexpect.ShellCmdError:
             session.close()
@@ -60,9 +60,8 @@ def run(test, params, env):
         """
         def _booting_completed():
             session = vm.wait_for_login()
-            output = session.cmd_status_output("last reboot")
-            second_boot_time = output[1].strip().split("\n")[0].split()[-4]
-            logging.debug(second_boot_time)
+            status, second_boot_time = session.cmd_status_output("uptime --since")
+            logging.debug("The second boot time is %s", second_boot_time)
             session.close()
             return second_boot_time > first_boot_time
 
@@ -152,8 +151,7 @@ def run(test, params, env):
         vm.start()
         session = vm.wait_for_login()
         if action == "reset":
-            output = session.cmd_status_output("last reboot")
-            first_boot_time = output[1].strip().split("\n")[0].split()[-4]
+            status, first_boot_time = session.cmd_status_output("uptime --since")
             logging.info("The first boot time is %s\n", first_boot_time)
         if action == "inject-nmi":
             virsh_session = virsh.VirshSession(virsh_exec=virsh.VIRSH_EXEC, auto_close=True)
