@@ -10,6 +10,7 @@ from virttest import data_dir
 from virttest import virsh
 from virttest.utils_test import libvirt
 from virttest.staging import service
+from virttest import utils_package
 
 NETWORK_SCRIPT = "/etc/sysconfig/network-scripts/ifcfg-"
 
@@ -22,7 +23,6 @@ def run(test, params, env):
     (2) Unbridge a network device(iface-unbridge).
     """
 
-    iface_name = params.get("iface_name")
     bridge_name = params.get("bridge_name")
     ping_ip = params.get("ping_ip", "")
     ping_count = int(params.get("ping_count", "3"))
@@ -34,17 +34,21 @@ def run(test, params, env):
     create_bridge = "yes" == params.get("create_bridge", "yes")
     bridge_status_error = "yes" == params.get("bridge_status_error", "no")
     unbridge_status_error = "yes" == params.get("unbridge_status_error", "no")
+    iface_name = params.get("iface_name")
+    if iface_name == "HOST_INTERFACE":
+        # Get the first active nic to test
+        iface_name = utils_net.get_net_if(state="UP")[0]
+        iface_ip = utils_net.get_ip_address_by_interface(iface_name)
+
     iface_script = NETWORK_SCRIPT + iface_name
     iface_script_bk = os.path.join(data_dir.get_tmp_dir(), "iface-%s.bk" % iface_name)
+    bridge_script = NETWORK_SCRIPT + bridge_name
     check_iface = "yes" == params.get("check_iface", "yes")
+
     if check_iface:
         # Make sure the interface exists
         if not libvirt.check_iface(iface_name, "exists", "--all"):
             test.cancel("Interface '%s' not exists" % iface_name)
-
-        net_iface = utils_net.Interface(name=iface_name)
-        iface_is_up = net_iface.is_up()
-        iface_ip = net_iface.get_ip()
 
         # Back up the interface script
         process.run("cp %s %s" % (iface_script, iface_script_bk), shell=True)
@@ -55,17 +59,32 @@ def run(test, params, env):
         test.cancel("Bridge '%s' already exists" % bridge_name)
 
     # Stop NetworkManager service
+    NM_service = None
     try:
         NM = utils_path.find_command("NetworkManager")
     except utils_path.CmdNotFoundError:
         logging.debug("No NetworkManager service.")
         NM = None
-    NM_is_running = False
     if NM is not None:
         NM_service = service.Factory.create_service("NetworkManager")
         NM_is_running = NM_service.status()
         if NM_is_running:
+            logging.debug("NM_is_running:%s", NM_is_running)
+            logging.debug("Stop NetworkManager...")
             NM_service.stop()
+
+    # Start network service
+    NW_service = service.Factory.create_service("network")
+    NW_status = NW_service.status()
+    if NW_status is None:
+        logging.debug("network service not found")
+        if (not utils_package.package_install('network-scripts') or
+                not utils_package.package_install('initscripts')):
+            test.cancel("Failed to install network service")
+    if NW_status is not True:
+        logging.debug("network service is not running")
+        logging.debug("Start network service...")
+        NW_service.start()
 
     def unbridge_check():
         """
@@ -85,7 +104,8 @@ def run(test, params, env):
     try:
         if create_bridge:
             # Create bridge
-            result = virsh.iface_bridge(iface_name, bridge_name, bridge_option)
+            # Set timeout as the cmd run a long time
+            result = virsh.iface_bridge(iface_name, bridge_name, bridge_option, timeout=240, debug=True)
             libvirt.check_exit_status(result, bridge_status_error)
             if not bridge_status_error:
                 # Get the new create bridge IP address
@@ -117,7 +137,7 @@ def run(test, params, env):
                     list_option = "--inactive"
                 if libvirt.check_iface(bridge_name, "exists", list_option):
                     # Unbridge
-                    result = virsh.iface_unbridge(bridge_name, unbridge_option)
+                    result = virsh.iface_unbridge(bridge_name, unbridge_option, timeout=60)
                     libvirt.check_exit_status(result, unbridge_status_error)
                     if not unbridge_status_error:
                         unbridge_check()
@@ -132,20 +152,19 @@ def run(test, params, env):
     finally:
         if create_bridge and check_iface:
             if libvirt.check_iface(bridge_name, "exists", "--all"):
-                virsh.iface_unbridge(bridge_name)
+                virsh.iface_unbridge(bridge_name, timeout=60)
             if os.path.exists(iface_script_bk):
                 process.run("mv %s %s" % (iface_script_bk, iface_script), shell=True)
-            if iface_is_up:
-                # Need reload script
-                process.run("ifdown %s" % iface_name, shell=True)
-                process.run("ifup %s" % iface_name, shell=True)
-            else:
-                net_iface.down()
-            # Clear the new create bridge if it exists
+            if os.path.exists(bridge_script):
+                process.run("rm -rf %s" % bridge_script, shell=True)
+            # Clear the new create bridge if it still exists
             try:
                 utils_net.bring_down_ifname(bridge_name)
-                process.run("brctl delbr %s" % bridge_name, shell=True)
+                process.run("ip link del dev %s" % bridge_name, shell=True)
             except utils_net.TAPBringDownError:
                 pass
-        if NM_is_running:
-            NM_service.start()
+            # Reload network configuration
+            NW_service.restart()
+            # Recover NetworkManager
+            if NM_is_running:
+                NM_service.start()
