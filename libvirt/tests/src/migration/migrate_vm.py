@@ -24,9 +24,9 @@ from virttest import utils_selinux
 from virttest import utils_test
 from virttest import virsh
 from virttest import virt_vm
-from virttest import xml_utils
 
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.smartcard import Smartcard
 from virttest.libvirt_xml.devices.sound import Sound
@@ -65,14 +65,13 @@ def destroy_active_pool_on_remote(params):
 
     try:
         remote_session = virsh.VirshPersistent(**virsh_dargs)
-
         active_pools = remote_session.pool_list(option="--name")
 
         for pool in active_pools.stdout.strip().split("\n"):
-            pool_dump = remote_session.pool_dumpxml(pool)
-            xtf = xml_utils.XMLTreeFile(pool_dump)
-            if xtf.findtext('.//target/path') == params.get("pool_target"):
-                ret = remote_session.pool_destroy(pool)
+            if pool is not '':
+                pool_dumpxml = pool_xml.PoolXML.new_from_dumpxml(pool, remote_session)
+                if(pool_dumpxml.target_path == params.get("pool_target")):
+                    ret = remote_session.pool_destroy(pool)
     except Exception as e:
         logging.error("Exception when destroy active pool on target: %s", str(e))
         raise e
@@ -1166,7 +1165,7 @@ def run(test, params, env):
     src_uri = test_dict.get("migration_source_uri", "qemu:///system")
 
     # Pre-creation image parameters
-    target_pool_name = test_dict.get("target_pool_name", "temp_pool_1")
+    target_pool_name = test_dict.get("target_pool_name")
     target_pool_type = test_dict.get("target_pool_type", "dir")
 
     # disk_ports for storage migration used by nbd
@@ -1823,14 +1822,14 @@ def run(test, params, env):
         if create_target_image:
             if support_precreation and no_create_pool == "no":
                 create_target_pool = True
-        if create_target_pool:
+        if target_pool_name and create_target_pool:
             create_target_image = False
             pool_created = create_destroy_pool_on_remote("create", test_dict)
             if not pool_created:
                 raise exceptions.TestError("Create pool on remote host '%s' "
                                            "failed." % server_ip)
             remote_image_list.append(target_image_source)
-        else:
+        elif target_pool_name and not create_target_pool:
             pool_destroyed = destroy_active_pool_on_remote(test_dict)
             if not pool_destroyed:
                 raise test.error("Destroy pool on remote host '%s' failed"
