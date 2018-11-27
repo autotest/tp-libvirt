@@ -84,7 +84,13 @@ class Console(aexpect.ShellSession):
                 time.sleep(50)
                 obj.stdin.write('\n')
                 time.sleep(50)
-                obj.stdin.close()
+                # In python 3, stdin.close() will raise a BrokenPiPeError
+                try:
+                    obj.stdin.close()
+                except socket.error as e:
+                    if e.errno != errno.EPIPE:
+                        # Not a broken pipe
+                        raise
             self.process = obj
         elif console_type == 'tcp':
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
