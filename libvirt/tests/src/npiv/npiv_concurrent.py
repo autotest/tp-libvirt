@@ -194,6 +194,9 @@ def run(test, params, env):
     target_buses = [vm0_target_bus, vm1_target_bus]
     wwnns = [vm0_wwnn, vm1_wwnn]
     wwpns = [vm0_wwpn, vm1_wwpn]
+    old_mpath_conf = ""
+    mpath_conf_path = "/etc/multipath.conf"
+    original_mpath_conf_exist = os.path.exists(mpath_conf_path)
 
     new_vhbas = []
     path_to_blks = []
@@ -204,6 +207,8 @@ def run(test, params, env):
         online_hbas = utils_npiv.find_hbas("hba")
         if not online_hbas:
             test.cancel("There is no online hba cards.")
+        old_mpath_conf = utils_npiv.prepare_multipath_conf(conf_path=mpath_conf_path,
+                                                           replace_existing=True)
         first_online_hba = online_hbas[0]
         if len(vm_names) != 2:
             test.cancel("This test needs exactly 2 vms.")
@@ -308,3 +313,9 @@ def run(test, params, env):
         for new_vhba in new_vhbas:
             virsh.nodedev_destroy(new_vhba)
         process.system('service multipathd restart', verbose=True)
+        if old_mpath_conf:
+            utils_npiv.prepare_multipath_conf(conf_path=mpath_conf_path,
+                                              conf_content=old_mpath_conf,
+                                              replace_existing=True)
+        if not original_mpath_conf_exist and os.path.exists(mpath_conf_path):
+            os.remove(mpath_conf_path)
