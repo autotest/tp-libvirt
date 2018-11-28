@@ -62,6 +62,16 @@ def run(test, params, env):
     net_active = "yes" == params.get("net_active")
     expect_msg = params.get("net_define_undefine_err_msg")
 
+    # Edit net xml forward/ip part then define/start to check invalid setting
+    edit_xml = "yes" == params.get("edit_xml", "no")
+    address_v4 = params.get("address_v4")
+    netmask = params.get("netmask")
+    dhcp_ranges_start = params.get("dhcp_ranges_start")
+    dhcp_ranges_end = params.get("dhcp_ranges_end")
+    nat_port_start = params.get("nat_port_start")
+    nat_port_end = params.get("nat_port_end")
+    test_port = "yes" == params.get("test_port", "no")
+
     virsh_dargs = {'uri': uri, 'debug': False, 'ignore_status': True}
     virsh_instance = virsh.VirshPersistent(**virsh_dargs)
 
@@ -128,6 +138,17 @@ def run(test, params, env):
         virsh_dargs = {'uri': uri, 'debug': False, 'ignore_status': True,
                        'readonly': True}
     try:
+        if edit_xml:
+            ipxml_v4 = network_xml.IPXML()
+            ipxml_v4.address = address_v4
+            ipxml_v4.netmask = netmask
+            ipxml_v4.dhcp_ranges = {"start": dhcp_ranges_start, "end": dhcp_ranges_end}
+            testnet_xml.del_ip()
+            testnet_xml.set_ip(ipxml_v4)
+            if test_port:
+                nat_port = {"start": nat_port_start, "end": nat_port_end}
+                testnet_xml.nat_port = nat_port
+            testnet_xml.debug_xml()
         # Run test case
         define_result = virsh.net_define(define_options, define_extra,
                                          **virsh_dargs)
