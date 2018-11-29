@@ -1,6 +1,7 @@
 import os
 import time
 import logging
+import signal
 
 import aexpect
 
@@ -8,6 +9,7 @@ from virttest import virsh
 from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
+from virttest.libvirt_xml.devices.interface import Interface
 
 
 def run(test, params, env):
@@ -34,6 +36,7 @@ def run(test, params, env):
     event_option = params.get("event_option", "")
     status_error = "yes" == params.get("status_error", "no")
     qemu_monitor_test = "yes" == params.get("qemu_monitor_test", "no")
+    signal_name = params.get("signal", None)
     event_cmd = "event"
     if qemu_monitor_test:
         event_cmd = "qemu-monitor-event"
@@ -53,6 +56,15 @@ def run(test, params, env):
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(dom.name)
         vmxml_backup.append(vmxml.copy())
 
+    def create_iface_xml():
+        """
+        Create interface xml file
+        """
+        iface = Interface("network")
+        iface.source = eval("{'network':'default'}")
+        logging.debug("Create new interface xml: %s", iface)
+        return iface
+
     def trigger_events(dom, events_list=[]):
         """
         Trigger various events in events_list
@@ -65,22 +77,64 @@ def run(test, params, env):
         save_path = os.path.join(tmpdir, "%s_event.save" % dom.name)
         new_disk = os.path.join(tmpdir, "%s_new_disk.img" % dom.name)
         print(dom.name)
+        xmlfile = dom.backup_xml()
+        vcpu = vmxml.vcpu
+        iface_xml_obj = create_iface_xml()
+        iface_xml_obj.xmltreefile.write()
+
         try:
             for event in events_list:
-                if event in ['start', 'restore']:
+                if event in ['start', 'restore', 'create', 'define', 'undefine']:
                     if dom.is_alive():
                         dom.destroy()
+                        if event in ['create', 'define']:
+                            dom.undefine()
                 else:
                     if not dom.is_alive():
                         dom.start()
                         dom.wait_for_login().close()
-                if event == "start":
+                        if event == "resume":
+                            dom.pause()
+
+                if event == "undefine":
+                    virsh.undefine(dom.name, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Undefined Removed")
+                elif event == "create":
+                    virsh.create(xmlfile, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Resumed Unpaused")
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Started Booted")
+                elif event == "destroy":
+                    virsh.destroy(dom.name, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Stopped Destroyed")
+                elif event == "define":
+                    virsh.define(xmlfile, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Defined Added")
+                elif event == "start":
                     virsh.start(dom.name, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Resumed Unpaused")
                     expected_events_list.append("'lifecycle' for %s:"
                                                 " Started Booted")
                     dom.wait_for_login().close()
+                elif event == "suspend":
+                    virsh.suspend(dom.name, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Suspended Paused")
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Suspended Paused")
+                elif event == "resume":
+                    virsh.resume(dom.name, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Resumed Unpaused")
                 elif event == "save":
                     virsh.save(dom.name, save_path, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Suspended Paused")
                     expected_events_list.append("'lifecycle' for %s:"
                                                 " Stopped Saved")
                 elif event == "restore":
@@ -90,10 +144,27 @@ def run(test, params, env):
                         virsh.restore(save_path, **virsh_dargs)
                         expected_events_list.append("'lifecycle' for %s:"
                                                     " Started Restored")
-                elif event == "destroy":
-                    virsh.destroy(dom.name, **virsh_dargs)
+                        expected_events_list.append("'lifecycle' for %s:"
+                                                    " Resumed Snapshot")
+                elif event == "edit":
+                    edit_vcpu = str(vcpu + 1)
+                    edit_cmd = [r":%s /[0-9]*<\/vcpu>/" + edit_vcpu + r"<\/vcpu>"]
+                    utlv.exec_virsh_edit(dom.name, edit_cmd)
                     expected_events_list.append("'lifecycle' for %s:"
-                                                " Stopped Destroyed")
+                                                " Defined Updated")
+                elif event == "shutdown":
+                    if signal_name is None:
+                        virsh.shutdown(dom.name, **virsh_dargs)
+                        expected_events_list.append("'lifecycle' for %s:"
+                                                    " Shutdown Finished after guest request")
+                        expected_events_list.append("'lifecycle' for %s:"
+                                                    " Stopped Shutdown")
+                    else:
+                        os.kill(dom.get_pid(), getattr(signal, signal_name))
+                        expected_events_list.append("'lifecycle' for %s:"
+                                                    " Shutdown Finished after host request")
+                        expected_events_list.append("'lifecycle' for %s:"
+                                                    " Stopped Shutdown")
                 elif event == "reset":
                     virsh.reset(dom.name, **virsh_dargs)
                     expected_events_list.append("'reboot' for %s")
@@ -109,14 +180,22 @@ def run(test, params, env):
                     mem_size = int(params.get("mem_size", 512000))
                     virsh.setmem(dom.name, mem_size, **virsh_dargs)
                     expected_events_list.append("'balloon-change' for %s:")
-                elif event == "detach-disk":
+                elif event == "device-added-removed":
                     if not os.path.exists(new_disk):
                         open(new_disk, 'a').close()
-                    # Attach disk firstly, this event will not be catched
                     virsh.attach_disk(dom.name, new_disk, 'vdb', **virsh_dargs)
+                    expected_events_list.append("'device-added' for %s:"
+                                                " virtio-disk1")
                     virsh.detach_disk(dom.name, 'vdb', **virsh_dargs)
                     expected_events_list.append("'device-removed' for %s:"
                                                 " virtio-disk1")
+                    virsh.detach_device(vm_name, iface_xml_obj.xml, **virsh_dargs)
+                    expected_events_list.append("'device-removed' for %s:"
+                                                " net0")
+                    virsh.attach_device(vm_name, iface_xml_obj.xml, **virsh_dargs)
+                    expected_events_list.append("'device-added' for %s:"
+                                                " net0")
+
                 else:
                     test.error("Unsupported event: %s" % event)
                 # Event may not received immediately
@@ -145,10 +224,13 @@ def run(test, params, env):
         :param expected_events_list: A list of expected events
         """
         logging.debug("Actual events: %s", output)
+        event_idx = 0
         for dom_name, event in expected_events_list:
             event_str = "event " + event % ("domain %s" % dom_name)
             logging.debug("Expected event: %s", event_str)
-            if event_str in output:
+            if event_str in output[event_idx:]:
+                event_idx = event_idx+output[event_idx:].index(event_str)
+                logging.debug("Output event: %s", output[event_idx:event_idx+83])
                 continue
             else:
                 test.fail("Not find expected event:%s. Is your "
