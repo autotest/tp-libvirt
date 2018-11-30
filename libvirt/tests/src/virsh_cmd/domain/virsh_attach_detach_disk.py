@@ -154,6 +154,7 @@ def run(test, params, env):
     test_block_dev = "yes" == params.get("at_dt_disk_iscsi_device", "no")
     test_logcial_dev = "yes" == params.get("at_dt_disk_logical_device", "no")
     restart_libvirtd = "yes" == params.get("at_dt_disk_restart_libvirtd", "no")
+    detach_disk_with_print_xml = "yes" == params.get("detach_disk_with_print_xml", "no")
     vg_name = params.get("at_dt_disk_vg", "vg_test_0")
     lv_name = params.get("at_dt_disk_lv", "lv_test_0")
     serial = params.get("at_dt_disk_serial", "")
@@ -294,6 +295,14 @@ def run(test, params, env):
         status = virsh.attach_disk(vm_ref, device_source, device_target,
                                    at_options, debug=True).exit_status
     elif test_cmd == "detach-disk":
+        # For detach disk with print-xml option, it only print information,and not actual disk detachment.
+        if detach_disk_with_print_xml and libvirt_version.version_compare(4, 5, 0):
+            ret = virsh.detach_disk(vm_ref, device_target, at_options)
+            libvirt.check_exit_status(ret)
+            cmd = ("echo \"%s\" | grep -A 16 %s"
+                   % (ret.stdout.strip(), device_source_name))
+            if process.system(cmd, ignore_status=True, shell=True):
+                test.error("Check disk with source image name failed")
         status = virsh.detach_disk(vm_ref, device_target, dt_options,
                                    debug=True).exit_status
 
