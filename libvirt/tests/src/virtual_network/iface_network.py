@@ -685,20 +685,23 @@ TIMEOUT 3"""
                 run_dnsmasq_default_test("interface", bridge['name'], name=net_name)
                 if 'stp' in bridge and bridge['stp'] == 'on':
                     if 'delay' in bridge and bridge['delay'] != '0':
-                        br_delay = float(bridge['delay'])
-                        cmd = ("brctl showstp %s | grep 'bridge forward delay'"
+                        # network xml forward delay value in seconds, while on
+                        # host, check by ip command, the value is in second*100
+                        br_delay = int(bridge['delay'])*100
+                        logging.debug("Expect forward_delay is %s ms" % br_delay)
+                        cmd = ("ip -d link sh %s | grep 'bridge forward_delay'"
                                % bridge['name'])
                         out = to_text(process.system_output(
                             cmd, shell=True, ignore_status=False))
-                        logging.debug("brctl showstp output: %s", out)
-                        pattern = (r"\s*forward delay\s+(\d+.\d+)\s+bridge"
-                                   " forward delay\s+(\d+.\d+)")
+                        logging.debug("bridge statistics output: %s", out)
+                        pattern = (r"\s*bridge forward_delay\s+(\d+)")
                         match_obj = re.search(pattern, out, re.M)
-                        if not match_obj or len(match_obj.groups()) != 2:
+                        if not match_obj:
                             test.fail("Can't see forward delay messages from command")
-                        elif (float(match_obj.groups()[0]) != br_delay or
-                              float(match_obj.groups()[1]) != br_delay):
+                        elif int(match_obj.group(1)) != br_delay:
                             test.fail("Foward delay setting can't take effect")
+                        else:
+                            logging.debug("Foward delay set successfully!")
             if dhcp_start_ipv4 and dhcp_end_ipv4:
                 run_dnsmasq_default_test("dhcp-range", "%s,%s"
                                          % (dhcp_start_ipv4, dhcp_end_ipv4),
