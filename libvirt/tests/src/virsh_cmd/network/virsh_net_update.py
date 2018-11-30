@@ -782,7 +782,9 @@ def run(test, params, env):
                     logging.debug("vm xml is %s", vm.get_xml())
                     session = vm.wait_for_serial_login()
                     if "ip-dhcp" in net_section:
-                        dhclient_cmd = "kill -9 `pidof dhclient` && dhclient -%s" % ip_version[-1]
+                        dhclient_cmd = "(if pgrep dhclient;" \
+                                       "then pkill dhclient; fi) " \
+                                       "&& dhclient -%s" % ip_version[-1]
                         session.cmd(dhclient_cmd)
                         iface_ip = utils_net.get_guest_ip_addr(session, mac,
                                                                ip_version=ip_version,
