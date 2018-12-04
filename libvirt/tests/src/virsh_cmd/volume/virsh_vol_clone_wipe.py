@@ -201,7 +201,6 @@ def run(test, params, env):
         if vol_info["Type"] == "block" and clone_option.count("prealloc-metadata"):
             clone_status_error = True
         if b_luks_encrypted:
-            clone_status_error = True
             wipe_old_vol = True
 
         if pool_type == "disk":
