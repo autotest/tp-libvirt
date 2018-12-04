@@ -43,7 +43,7 @@ def run(test, params, env):
     pvt = libvirt.PoolVolumeTest(test, params)
     address_cache = env.get('address_cache')
     checkpoint = params.get('checkpoint', '')
-    bk_list = ['vnc_autoport', 'vnc_encrypt']
+    bk_list = ['vnc_autoport', 'vnc_encrypt', 'vnc_encrypt_warning']
     error_list = []
 
     def log_fail(msg):
@@ -290,7 +290,7 @@ def run(test, params, env):
                 params[checkpoint] = {'autoport': 'yes'}
                 vm_xml.VMXML.set_graphics_attr(vm_name, params[checkpoint],
                                                virsh_instance=virsh_instance)
-            elif checkpoint == 'vnc_encrypt':
+            elif checkpoint in ['vnc_encrypt', 'vnc_encrypt_warning']:
                 params[checkpoint] = {'passwd': params.get('vnc_passwd', 'redhat')}
                 vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
                         vm_name, virsh_instance=virsh_instance)
