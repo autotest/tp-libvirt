@@ -2336,6 +2336,10 @@ def run(test, params, env):
                 logging.debug("Start remote guest")
                 remote_virsh_session.start(target_vm_name)
 
+                # dumpxml remote guest
+                logging.debug("Remote guest XML:\n%s\n",
+                              remote_virsh_session.dumpxml(target_vm_name).stdout.strip())
+
                 # Permit iptables to permit special port to libvirt for
                 # migration on local machine
                 migrate_setup.migrate_pre_setup(src_uri, params, ports=uri_port[1:])
