@@ -6,6 +6,7 @@ from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_conn
 from virttest.libvirt_xml import domcapability_xml as domcap
+from virttest.libvirt_xml import capability_xml
 from provider import libvirt_version
 import platform
 
@@ -68,6 +69,7 @@ def run(test, params, env):
     if libvirt_version.version_compare(2, 3, 0):
         try:
             maxvcpus = None
+            maxvcpus_cap = None
             dom_capabilities = None
             # make sure we take maxvcpus from right host, helps incase remote
             try:
@@ -79,6 +81,14 @@ def run(test, params, env):
                 raise exceptions.TestFail("Failed to get maxvcpus from "
                                           "domcapabilities xml:\n%s"
                                           % dom_capabilities)
+            try:
+                cap_xml = capability_xml.CapabilityXML()
+                maxvcpus_cap = cap_xml.get_guest_capabilities()['hvm'][platform.machine()]['maxcpus']
+            except Exception as details:
+                logging.debug("Failed to get maxvcpu from virsh "
+                              "capabilities: %s", details)
+                # Let's fall back incase of failure
+                maxvcpus_cap = maxvcpus
             if not maxvcpus:
                 raise exceptions.TestFail("Failed to get max value for vcpu"
                                           "from domcapabilities "
@@ -127,7 +137,7 @@ def run(test, params, env):
                         if not maxvcpus_test == '8':
                             raise exceptions.TestFail("Command output %s is not "
                                                       "expected for %s " % (maxvcpus_test, option))
-                    elif not maxvcpus_test == maxvcpus:
+                    elif not (maxvcpus_test == maxvcpus or maxvcpus_test == maxvcpus_cap):
                         raise exceptions.TestFail("Command output %s is not "
                                                   "expected for %s " % (maxvcpus_test, option))
                 else:
