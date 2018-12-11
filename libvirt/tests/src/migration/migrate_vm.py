@@ -2786,7 +2786,9 @@ def run(test, params, env):
         if n_client_s:
             n_client_s.package.env_cleanup(True)
 
-        cleanup(objs_list)
+        if objs_list and len(objs_list) > 0:
+            logging.debug("Clean up the objects")
+            cleanup(objs_list)
         if transport in ('tcp', 'tls') and uri_port:
             migrate_setup.migrate_pre_setup("//%s/" % server_ip, test_dict,
                                             cleanup=True, ports=uri_port[1:])
