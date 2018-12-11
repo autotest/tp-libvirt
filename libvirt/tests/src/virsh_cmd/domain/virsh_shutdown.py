@@ -5,6 +5,7 @@ from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import ssh_key
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
@@ -123,6 +124,7 @@ def run(test, params, env):
             if status:
                 test.fail("Run failed with right command")
             if not vm.wait_for_shutdown(timeout):
-                test.fail("Failed to shutdown in timeout %s", timeout)
+                test.fail("Failed to shutdown in timeout %s" % timeout)
     finally:
-        xml_backup.sync()
+        if utils_misc.wait_for(utils_libvirtd.libvirtd_is_running, 60):
+            xml_backup.sync()
