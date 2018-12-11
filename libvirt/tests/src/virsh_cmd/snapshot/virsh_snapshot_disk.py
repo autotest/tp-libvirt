@@ -56,7 +56,7 @@ def run(test, params, env):
     vol_format = params.get("vol_format")
     lazy_refcounts = "yes" == params.get("lazy_refcounts")
     options = params.get("snapshot_options", "")
-    export_options = params.get("export_options", "rw,no_root_squash,fsid=0")
+    export_options = params.get("export_options", "rw,no_root_squash")
 
     # Set volume xml attribute dictionary, extract all params start with 'vol_'
     # which are for setting volume xml, except 'lazy_refcounts'.
