@@ -57,7 +57,7 @@ def run(test, params, env):
     pool_type = params.get("pool_type")
     pool_target = params.get("pool_target")
     export_options = params.get("export_options",
-                                "rw,async,no_root_squash,fsid=0")
+                                "rw,async,no_root_squash")
     emulated_image = params.get("emulated_image")
     vol_name = params.get("vol_name")
     vol_format = params.get("vol_format")
