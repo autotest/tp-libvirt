@@ -123,7 +123,8 @@ def run(test, params, env):
         Run the commands parallel and check the output.
         """
         cmd = ("%s & %s" % (virsh_cmd, bash_cmd))
-        ret = process.run(cmd, ignore_status=True, shell=True)
+        ret = process.run(cmd, ignore_status=True, shell=True,
+                          ignore_bg_processes=True)
         output = ret.stdout_text.strip()
         logging.debug("check flags output: %s" % output)
         lines = re.findall(r"flags:.(\d+)", output, re.M)
