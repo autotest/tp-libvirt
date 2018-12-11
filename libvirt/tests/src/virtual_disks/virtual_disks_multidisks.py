@@ -849,8 +849,9 @@ def run(test, params, env):
         "virt_disk_check_partitions_hotunplug", "yes")
     test_slots_order = "yes" == params.get(
         "virt_disk_device_test_order", "no")
-    test_disks_format = "yes" == params.get(
-        "virt_disk_device_test_format", "no")
+    # allow_disk_format_probing configuration was removed since libvirt-4.5
+    test_disks_format = False if libvirt_version.version_compare(4, 5, 0) \
+        else "yes" == params.get("virt_disk_device_test_format", "no")
     test_block_size = "yes" == params.get(
         "virt_disk_device_test_block_size", "no")
     test_file_img_on_disk = "yes" == params.get(
