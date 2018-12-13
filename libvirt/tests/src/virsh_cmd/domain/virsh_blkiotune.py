@@ -250,6 +250,7 @@ def run(test, params, env):
 
     cmd = "cat /sys/block/sda/queue/scheduler"
     iosche = results_stdout_52lts(process.run(cmd, shell=True))
+    logging.debug("iosche value is:%s", iosche)
     oldmode = re.findall("\[(.*?)\]", iosche)[0]
     with open('/sys/block/sda/queue/scheduler', 'w') as scf:
         if 'cfq' in iosche:
