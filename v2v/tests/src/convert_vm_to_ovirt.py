@@ -173,8 +173,9 @@ def run(test, params, env):
             'win2012',
             'win2012r2',
             'win2008',
-            'win2016']
-        win_version = ['6.2', '6.3', '10.0', '6.2', '6.3', '6.0', '10.0']
+            'win2016',
+            'win2019']
+        win_version = ['6.2', '6.3', '10.0', '6.2', '6.3', '6.0', '10.0', '10.0']
         os_map = dict(list(zip(os_list, win_version)))
         vm_arch = params.get('vm_arch')
         os_ver = params.get('os_version')
