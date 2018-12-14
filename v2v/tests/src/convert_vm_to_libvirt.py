@@ -117,8 +117,9 @@ def run(test, params, env):
         vm = env.create_vm("libvirt", "libvirt", vm_name, params, test.bindir)
         # Win10 is not supported by some cpu model,
         # need to modify to 'host-model'
-        if params.get('os_version') in ['win10', 'win2016']:
-            logging.info('Set cpu mode to "host-model" for win10 and win2016')
+        unsupport_list = ['win10', 'win2016', 'win2019']
+        if params.get('os_version') in unsupport_list:
+            logging.info('Set cpu mode to "host-model" for %s.', unsupport_list)
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             cpu_xml = vm_xml.VMCPUXML()
             cpu_xml.mode = 'host-model'
