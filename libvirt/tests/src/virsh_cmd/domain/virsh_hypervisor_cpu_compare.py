@@ -182,9 +182,9 @@ def run(test, params, env):
         msg_pattern = params.get("msg_pattern")
 
         # Check result
-        if status_error and not result.exist_status:
+        if status_error and not result.exit_status:
             test.fail("Expect should fail but got:\n%s" % result.stdout)
-        elif not status_error and result.exist_status:
+        elif not status_error and result.exit_status:
             test.fail("Expect success but got:\n%s" % result.stderr)
 
         if msg_pattern:
