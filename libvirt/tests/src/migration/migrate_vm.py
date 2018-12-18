@@ -2291,7 +2291,7 @@ def run(test, params, env):
                 cmd = "virsh dumpxml %s > %s" % (target_vm_name, xml_path)
                 status, output = run_remote_cmd(cmd, server_ip,
                                                 server_user, server_pwd)
-
+                logging.debug("Remote guest original xml:\n%s\n", output)
                 # Update the disk image to nfs shared storage on remote guest
                 logging.debug("Create a remote file")
                 guest_config = remote.RemoteFile(address=server_ip,
@@ -2305,12 +2305,6 @@ def run(test, params, env):
                                 "<source file='%s/%s'/>"
                                 % (nfs_mount_dir, image_name)}
                 guest_config.sub(pattern2repl)
-
-                logging.debug("Modify remote guest xml's disk cache mode")
-                for driver_type in ["qcow2", "raw"]:
-                    pattern2repl = {r"(?<=driver name='qemu' type='%s').*/>" % (driver_type):
-                                    " cache='%s'/>" % (disk_cache)}
-                    guest_config.sub(pattern2repl)
 
                 logging.debug("Modify remote guest xml's machine type")
                 machine_type = "pc"
