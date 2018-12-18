@@ -13,6 +13,7 @@ from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml import vm_xml
 from virttest.compat_52lts import results_stdout_52lts
+from avocado.utils import process
 
 
 def run(test, params, env):
@@ -107,6 +108,21 @@ def run(test, params, env):
     dns_enable = params.get("dns_enable", "yes")
     guest_iface_num = int(params.get("guest_iface_num", 1))
     newxml = ""
+
+    # As new release use nftables as backend of firewalld, the guest can not get
+    # dhcp ip address from nat network. Current workaround is to add the
+    # bridge interface into the libvirt zone.
+    check_zone_cmd = "firewall-cmd --get-active-zones"
+    outputs = process.run(check_zone_cmd, ignore_status=True).stdout_text
+    if "libvirt" in outputs:
+        iface_cmd = "firewall-cmd --list-interface --zone=libvirt"
+        outputs1 = process.run(iface_cmd, ignore_status=True).stdout_text
+        if net_name not in outputs1:
+            cmd = "firewall-cmd --add-interface=%s --zone=libvirt" % net_name
+            ret = process.run(cmd, ignore_status=True).exit_status
+            logging.debug("Set bridge interface to libvirt zone return %s" % ret)
+        else:
+            logging.debug("%s is already in libvirt zone" % net_name)
 
     def get_hostfile():
         """
@@ -820,7 +836,8 @@ def run(test, params, env):
                     conn_count = 0
                     for k in iface_conn:
                         conn_count = conn_count + int(k)
-                    logging.info("net_conn=%s, conn_count=%s, guest_iface_num=%s")
+                    logging.info("net_conn=%s, conn_count=%s, guest_iface_num=%s"
+                                 % (net_conn, conn_count, guest_iface_num))
                     if (net_conn != conn_count or
                             (loop == 1 and guest_iface_num != net_conn)):
                         test.fail("Can not get expected connection num: "
