@@ -4,6 +4,7 @@ import time
 import logging
 
 from avocado.utils import process
+from avocado.utils import software_manager
 
 from virttest import virsh
 from virttest import utils_libvirtd
@@ -411,6 +412,10 @@ def run(test, params, env):
 
         # For bypass_cache test. Run a shell command to check fd flags while
         # excuting managedsave command
+        software_mgr = software_manager.SoftwareManager()
+        if not software_mgr.check_installed('lsof'):
+            logging.info('Installing lsof package:')
+            software_mgr.install('lsof')
         bash_cmd = ("let i=1; while((i++<400)); do if [ -e %s ]; then (cat /proc"
                     "/$(lsof -w %s|awk '/libvirt_i/{print $2}')/fdinfo/*%s* |"
                     "grep 'flags:.*') && break; else sleep 0.05; fi; done;")
