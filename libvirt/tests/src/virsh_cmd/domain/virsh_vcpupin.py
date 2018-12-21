@@ -47,7 +47,8 @@ def run(test, params, env):
         total_cpu = process.run("ls -d /sys/devices/system/cpu/cpu[0-9]* |wc -l", shell=True).stdout_text.strip()
         vcpus_affinity = {}
         output = virsh.vcpupin(vm_name).stdout
-        for item in output.split('\n')[2:-2].strip():
+        for item in output.split('\n')[2:-2]:
+            item = item.strip()
             split_key = ' '
             if ':' in item:
                 split_key = ':'
