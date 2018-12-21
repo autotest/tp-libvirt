@@ -47,8 +47,11 @@ def run(test, params, env):
         total_cpu = process.run("ls -d /sys/devices/system/cpu/cpu[0-9]* |wc -l", shell=True).stdout_text.strip()
         vcpus_affinity = {}
         output = virsh.vcpupin(vm_name).stdout
-        for item in output.split('\n')[2:-2]:
-            vcpus_affinity[item.split(':')[0].strip()] = item.split(':')[1].strip()
+        for item in output.split('\n')[2:-2].strip():
+            split_key = ' '
+            if ':' in item:
+                split_key = ':'
+            vcpus_affinity[item.split(split_key)[0].strip()] = item.split(split_key)[-1].strip()
         return utils_test.libvirt.cpus_string_to_affinity_list(
             vcpus_affinity[str(vcpu)], int(total_cpu))
 
