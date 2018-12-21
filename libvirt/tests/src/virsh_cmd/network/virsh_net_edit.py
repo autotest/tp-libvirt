@@ -7,6 +7,7 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import xcepts
+from avocado.utils import process
 
 
 def run(test, params, env):
@@ -58,7 +59,7 @@ def run(test, params, env):
     virsh_dargs = {'debug': True, 'ignore_status': True}
     virsh_instance = virsh.VirshPersistent(**virsh_dargs)
 
-    attribute = params.get("attribute", None)
+    change_attribute = params.get("attribute", None)
     old_value = params.get("old_value", None)
     new_value = params.get("new_value", None)
     edit_type = params.get("edit_type", "modify")
@@ -107,6 +108,11 @@ def run(test, params, env):
     # Run test case
     try:
         libvirtd = utils_libvirtd.Libvirtd()
+        if change_attribute == "uuid":
+            # if the attribute need to change is uuid, the old uuid should get
+            # from current network, and new uuid can generate by uuidgen
+            new_value = process.run("uuidgen", shell=True).stdout[:-1]
+            old_value = virsh.net_uuid(net_name).stdout.strip()
         if test_create:
             # Restart libvirtd and check state
             libvirtd.restart()
@@ -128,25 +134,26 @@ def run(test, params, env):
             logging.debug("start the persistent network return: %s", result)
 
         if edit_type == "modify":
-            edit_cmd = r":%%s/%s=\'%s\'/%s=\'%s\'" % (attribute, old_value,
-                                                      attribute, new_value)
-            match_string = "%s=\'%s\'" % (attribute, new_value)
+            edit_cmd = r":%%s/%s=\'%s\'/%s=\'%s\'" % (change_attribute, old_value,
+                                                      change_attribute, new_value)
+            match_string = "%s=\'%s\'" % (change_attribute, new_value)
 
         if edit_type == "delete":
-            match_string = "%s" % attribute
+            match_string = "%s" % change_attribute
             # Pattern to be more accurate
-            if old_value:
-                match_string = "%s=\'%s\'" % (attribute, old_value)
+            if old_value and change_attribute != 'uuid':
+                match_string = "%s=\'%s\'" % (change_attribute, old_value)
+            else:
+                match_string = old_value
             edit_cmd = r":/%s/d" % match_string
 
         edit_net_xml(edit_cmd, status_error, readonly=readonly)
 
         net_state = virsh.net_state_dict()
         # transient Network become persistent after editing
-        # and the status should be the same as persistent network
-        if (not net_state[net_name]['active'] or
-                net_state[net_name]['autostart'] or
-                not net_state[net_name]['persistent']):
+        if not status_error and (not net_state[net_name]['active'] or
+                                 net_state[net_name]['autostart'] or
+                                 not net_state[net_name]['persistent']):
             test.fail("Found wrong network states"
                       " after editing: %s"
                       % net_state)
