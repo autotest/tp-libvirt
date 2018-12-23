@@ -37,21 +37,21 @@ def run(test, params, env):
                 return match.groups()[0]
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
-    expected_result = params.get("expected_result", "not_set")
-    seccomp_sandbox = params.get("seccomp_sandbox", "not_set")
+    expected_result = params.get("expected_result", "off")
+    seccomp_sandbox = params.get("seccomp_sandbox", "off")
+    default_value = params.get("default_value", "false")
     vm = env.get_vm(vm_name)
 
     # Get old qemu -sandbox option.
     orig_qemu_sandbox = get_qemu_command_sandbox_option(vm)
+    orig_qemu_sandbox = orig_qemu_sandbox.split(',')[0]
     logging.debug('Original "-sandbox" option of qemu command is '
                   '"%s".' % orig_qemu_sandbox)
 
     config = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
     try:
-        if seccomp_sandbox == 'not_set':
-            del config.seccomp_sandbox
-        else:
+        if default_value == "true":
             config.seccomp_sandbox = seccomp_sandbox
 
         # Restart libvirtd to make change valid.
