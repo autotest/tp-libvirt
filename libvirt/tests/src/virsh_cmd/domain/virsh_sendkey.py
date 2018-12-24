@@ -27,7 +27,7 @@ def run(test, params, env):
     codeset = params.get("codeset", "")
     holdtime = params.get("holdtime", "")
     sysrq_test = ("yes" == params.get("sendkey_sysrq", "no"))
-    sleep_time = int(params.get("sendkey_sleeptime", 2))
+    sleep_time = int(params.get("sendkey_sleeptime", 5))
     readonly = params.get("readonly", False)
     username = params.get("username")
     password = params.get("password")
