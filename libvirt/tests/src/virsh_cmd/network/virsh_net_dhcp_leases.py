@@ -173,7 +173,8 @@ def run(test, params, env):
             iface_mac = utils_net.generate_mac_address_simple()
             if filter_by_mac:
                 nic_mac = iface_mac
-            op = "--type network --source %s --mac %s" % (net_name, iface_mac)
+            op = "--type network --model virtio --source %s --mac %s" \
+                 % (net_name, iface_mac)
             nic_params = {'mac': iface_mac, 'nettype': 'bridge',
                           'ip_version': 'ipv4'}
             login_timeout = 120
