@@ -1,5 +1,6 @@
 import os
 import logging
+import time
 
 from avocado.utils import path as utils_path
 from avocado.utils import linux_modules
@@ -101,6 +102,7 @@ def run(test, params, env):
 
         # Load module and get scsi disk name
         linux_modules.load_module("scsi_debug lbpu=1 lbpws=1")
+        time.sleep(5)
         scsi_disk = process.run("lsscsi|grep scsi_debug|"
                                 "awk '{print $6}'", shell=True).stdout_text.strip()
         # Create partition
