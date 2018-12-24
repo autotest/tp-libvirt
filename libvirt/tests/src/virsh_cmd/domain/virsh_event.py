@@ -10,6 +10,7 @@ from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices.interface import Interface
+from xml.dom.minidom import parseString
 
 
 def run(test, params, env):
@@ -56,6 +57,9 @@ def run(test, params, env):
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(dom.name)
         vmxml_backup.append(vmxml.copy())
 
+    tmpdir = data_dir.get_tmp_dir()
+    new_disk = os.path.join(tmpdir, "%s_new_disk.img" % dom.name)
+
     def create_iface_xml():
         """
         Create interface xml file
@@ -65,6 +69,22 @@ def run(test, params, env):
         logging.debug("Create new interface xml: %s", iface)
         return iface
 
+    def add_disk(vm_name, init_source, target_device, extra_param):
+        """
+        Add disk/cdrom for test vm
+
+        :param vm_name: guest name
+        :param init_source: source file
+        :param target_device: target of disk device
+        :param extra_param: additional arguments to command
+        """
+        if not os.path.exists(new_disk):
+            open(new_disk, 'a').close()
+        if virsh.is_alive(vm_name) and 'cdrom' in extra_param:
+            virsh.destroy(vm_name)
+        virsh.attach_disk(vm_name, init_source, target_device,
+                          extra_param, **virsh_dargs)
+
     def trigger_events(dom, events_list=[]):
         """
         Trigger various events in events_list
@@ -73,14 +93,9 @@ def run(test, params, env):
         :return: the expected output that virsh event command prints out
         """
         expected_events_list = []
-        tmpdir = data_dir.get_tmp_dir()
         save_path = os.path.join(tmpdir, "%s_event.save" % dom.name)
-        new_disk = os.path.join(tmpdir, "%s_new_disk.img" % dom.name)
         print(dom.name)
         xmlfile = dom.backup_xml()
-        vcpu = vmxml.vcpu
-        iface_xml_obj = create_iface_xml()
-        iface_xml_obj.xmltreefile.write()
 
         try:
             for event in events_list:
@@ -147,14 +162,23 @@ def run(test, params, env):
                         expected_events_list.append("'lifecycle' for %s:"
                                                     " Resumed Snapshot")
                 elif event == "edit":
-                    edit_vcpu = str(vcpu + 1)
-                    edit_cmd = [r":%s /[0-9]*<\/vcpu>/" + edit_vcpu + r"<\/vcpu>"]
+                    #Check whether 'description' element exists.
+                    domxml = virsh.dumpxml(dom.name).stdout.strip()
+                    find_desc = parseString(domxml).getElementsByTagName("description")
+                    if find_desc == []:
+                        #If not exists, add one for it.
+                        logging.info("Adding <description> to guest")
+                        virsh.desc(dom.name, "--config", "Added desc for testvm", **virsh_dargs)
+                    #The edit operation is to delete 'description' element.
+                    edit_cmd = [r":g/<description.*<\/description>/d"]
                     utlv.exec_virsh_edit(dom.name, edit_cmd)
                     expected_events_list.append("'lifecycle' for %s:"
                                                 " Defined Updated")
                 elif event == "shutdown":
                     if signal_name is None:
                         virsh.shutdown(dom.name, **virsh_dargs)
+                        # Wait a few seconds for shutdown finish
+                        time.sleep(3)
                         expected_events_list.append("'lifecycle' for %s:"
                                                     " Shutdown Finished after guest request")
                         expected_events_list.append("'lifecycle' for %s:"
@@ -181,20 +205,43 @@ def run(test, params, env):
                     virsh.setmem(dom.name, mem_size, **virsh_dargs)
                     expected_events_list.append("'balloon-change' for %s:")
                 elif event == "device-added-removed":
-                    if not os.path.exists(new_disk):
-                        open(new_disk, 'a').close()
-                    virsh.attach_disk(dom.name, new_disk, 'vdb', **virsh_dargs)
+                    add_disk(dom.name, new_disk, 'vdb', '')
                     expected_events_list.append("'device-added' for %s:"
                                                 " virtio-disk1")
                     virsh.detach_disk(dom.name, 'vdb', **virsh_dargs)
                     expected_events_list.append("'device-removed' for %s:"
                                                 " virtio-disk1")
-                    virsh.detach_device(vm_name, iface_xml_obj.xml, **virsh_dargs)
+                    iface_xml_obj = create_iface_xml()
+                    iface_xml_obj.xmltreefile.write()
+                    virsh.detach_device(dom.name, iface_xml_obj.xml, **virsh_dargs)
                     expected_events_list.append("'device-removed' for %s:"
                                                 " net0")
-                    virsh.attach_device(vm_name, iface_xml_obj.xml, **virsh_dargs)
+                    virsh.attach_device(dom.name, iface_xml_obj.xml, **virsh_dargs)
                     expected_events_list.append("'device-added' for %s:"
                                                 " net0")
+                elif event == "change-media":
+                    target_device = "hdc"
+                    disk_blk = vm_xml.VMXML.get_disk_blk(dom.name)
+                    logging.info("disk_blk %s", disk_blk)
+                    if target_device not in disk_blk:
+                        logging.info("Adding cdrom to guest")
+                        if dom.is_alive():
+                            dom.destroy()
+                        add_disk(dom.name, "''", target_device,
+                                 "--type cdrom --sourcetype file --config")
+                        dom.start()
+                    all_options = new_disk + " --insert"
+                    virsh.change_media(dom.name, target_device,
+                                       all_options, ignore_status=True, debug=True)
+                    expected_events_list.append("'tray-change' for %s disk ide0-1-0:"
+                                                " opened")
+                    expected_events_list.append("'tray-change' for %s disk ide0-1-0:"
+                                                " closed")
+                    all_options = new_disk + " --eject"
+                    virsh.change_media(dom.name, target_device,
+                                       all_options, ignore_status=True, debug=True)
+                    expected_events_list.append("'tray-change' for %s disk ide0-1-0:"
+                                                " opened")
 
                 else:
                     test.error("Unsupported event: %s" % event)
