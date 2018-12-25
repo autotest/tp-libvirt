@@ -111,19 +111,17 @@ def run(test, params, env):
         for disk in list(disks.values()):
             disk_path = disk['source']
             dir_path = "%s(/.*)?" % os.path.dirname(disk_path)
-            o_r = utils_selinux.verify_defcon(pathname=disk_path,
-                                              readonly=False,
-                                              forcedesc=True)
-            if o_r:
+            try:
                 utils_selinux.del_defcon(img_label_type, pathregex=dir_path)
+            except Exception as err:
+                logging.debug("Delete label failed: %s", err)
             # Using semanage set context persistently
             utils_selinux.set_defcon(context_type=img_label_type,
                                      pathregex=dir_path,
                                      context_range=img_label_range)
-            o_r = utils_selinux.verify_defcon(pathname=disk_path,
-                                              readonly=False,
-                                              forcedesc=True)
-            orig_label_type = backup_labels_of_disks[disk_path].split(":")[2]
+            utils_selinux.verify_defcon(pathname=disk_path,
+                                        readonly=False,
+                                        forcedesc=True)
             os.chown(disk_path, 107, 107)
 
         # Set selinux of host.
@@ -213,11 +211,10 @@ def run(test, params, env):
             # Using semanage set context persistently
             dir_path = "%s(/.*)?" % os.path.dirname(path)
             (img_label_type, img_label_range) = _resolve_label(label)
-            o_r = utils_selinux.verify_defcon(pathname=disk_path,
-                                              readonly=False,
-                                              forcedesc=True)
-            if o_r:
+            try:
                 utils_selinux.del_defcon(img_label_type, pathregex=dir_path)
+            except Exception as err:
+                logging.debug("Delete label failed: %s", err)
             utils_selinux.set_defcon(context_type=img_label_type,
                                      pathregex=dir_path,
                                      context_range=img_label_range)
