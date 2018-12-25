@@ -320,8 +320,8 @@ def run(test, params, env):
             serial.target_model = 'pl011'
             serial.target_type = 'system-serial'
         else:
-            serial.target_model = 'isa-serial'
-            serial.target_type = 'isa-serial'
+            serial.target_model = target_type
+            serial.target_type = target_type
 
     def prepare_serial_device():
         """
@@ -476,10 +476,16 @@ def run(test, params, env):
                 test.fail("Expect exist serial device, "
                           "but found none.")
             cur_serial = serial_cls.new_from_element(serial_elem)
+            if target_type == 'pci-serial':
+                if cur_serial.address is None:
+                    test.fail("Expect serial device address is not assigned")
+                else:
+                    logging.debug("Serial address is: %s", cur_serial.address)
+
             logging.debug("Expected serial XML is:\n%s", expected_serial)
             logging.debug("Current serial XML is:\n%s", cur_serial)
             # Compare current serial and console with oracle.
-            if not expected_serial == cur_serial:
+            if target_type != 'pci-serial' and not expected_serial == cur_serial:
                 # "==" has been override
                 test.fail("Expect serial device:\n%s\nBut got:\n "
                           "%s" % (expected_serial, cur_serial))
@@ -616,7 +622,12 @@ def run(test, params, env):
             if libvirt_version.version_compare(3, 9, 0):
                 exp_ser_devs.insert(2, 'id=serial0')
         else:
-            exp_ser_devs = ['isa-serial', 'chardev=charserial0', 'id=serial0']
+            logging.debug('target_type: %s', target_type)
+            if target_type == 'pci-serial':
+                exp_ser_devs = ['pci-serial', 'chardev=charserial0', 'id=serial0',
+                                'bus=pci.0', 'addr=0x\d+']
+            else:
+                exp_ser_devs = ['isa-serial', 'chardev=charserial0', 'id=serial0']
         exp_ser_dev = ','.join(exp_ser_devs)
 
         if console_target_type != 'serial':
@@ -627,7 +638,7 @@ def run(test, params, env):
         if exp_ser_opt is not None and re.match(exp_ser_opt, ser_opt) is None:
             test.fail('Expect get qemu command serial option "%s", '
                       'but got "%s"' % (exp_ser_opt, ser_opt))
-        if ser_dev != exp_ser_dev:
+        if re.match(exp_ser_dev, ser_dev) is None:
             test.fail(
                 'Expect get qemu command serial device option "%s", '
                 'but got "%s"' % (exp_ser_dev, ser_dev))
@@ -695,6 +706,7 @@ def run(test, params, env):
     username = params.get('username')
     password = params.get('password')
     console_target_type = params.get('console_target_type', 'serial')
+    target_type = params.get('target_type', 'isa-serial')
     console_target_port = params.get('console_target_port', '0')
     second_serial_console = params.get('second_serial_console', 'no') == 'yes'
     custom_pki_path = params.get('custom_pki_path', '/etc/pki/libvirt-chardev')
