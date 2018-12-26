@@ -2301,7 +2301,7 @@ def run(test, params, env):
                                                  port='22',
                                                  remote_path=xml_path)
                 logging.debug("Modify remote guest xml's disk path")
-                pattern2repl = {r".*.qcow2.*":
+                pattern2repl = {r"<source file=.*":
                                 "<source file='%s/%s'/>"
                                 % (nfs_mount_dir, image_name)}
                 guest_config.sub(pattern2repl)
@@ -2343,7 +2343,6 @@ def run(test, params, env):
             except Exception as details:
                 logging.debug(details)
             finally:
-                logging.debug("Recover remote guest's XML")
                 del guest_config
                 remote_virsh_session.close_session()
 
@@ -2592,10 +2591,6 @@ def run(test, params, env):
     finally:
         logging.info("Recovery test environment")
         # Clean up of pre migration setup for local machine
-        if target_vm_name:
-            migrate_setup.migrate_pre_setup(src_uri, params,
-                                            cleanup=True,
-                                            ports=uri_port[1:])
         if migr_vm_back:
             migrate_setup.migrate_pre_setup(src_uri, params,
                                             cleanup=True)
@@ -2706,8 +2701,14 @@ def run(test, params, env):
             # destroy guest on target machine
             remote_virsh_session = None
             try:
+                migrate_setup.migrate_pre_setup(src_uri, params,
+                                                cleanup=True,
+                                                ports=uri_port[1:])
                 remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
+                logging.debug("Destroy remote guest")
                 remote_virsh_session.destroy(target_vm_name)
+                logging.debug("Recover remote guest xml")
+                remote_virsh_session.define(xml_path)
             except (process.CmdError, remote.SCPError) as detail:
                 raise exceptions.TestError(detail)
             finally:
