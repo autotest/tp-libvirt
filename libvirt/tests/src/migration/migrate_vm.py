@@ -2363,9 +2363,10 @@ def run(test, params, env):
             status_error = "no"
             test_dict['err_msg'] = None
 
-        if transport in ('tcp', 'tls') and uri_port:
+        if (transport in ('tcp', 'tls') and uri_port) or disk_port:
+            port = disk_port if disk_port else uri_port[1:]
             migrate_setup.migrate_pre_setup("//%s/" % server_ip, test_dict,
-                                            cleanup=False, ports=uri_port[1:])
+                                            cleanup=False, ports=port)
         if run_migr_front:
             migrate_vm(test_dict)
 
@@ -2784,6 +2785,7 @@ def run(test, params, env):
         if objs_list and len(objs_list) > 0:
             logging.debug("Clean up the objects")
             cleanup(objs_list)
-        if transport in ('tcp', 'tls') and uri_port:
+        if (transport in ('tcp', 'tls') and uri_port) or disk_port:
+            port = disk_port if disk_port else uri_port[1:]
             migrate_setup.migrate_pre_setup("//%s/" % server_ip, test_dict,
-                                            cleanup=True, ports=uri_port[1:])
+                                            cleanup=True, ports=port)
