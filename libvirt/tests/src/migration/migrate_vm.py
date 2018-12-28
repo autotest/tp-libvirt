@@ -1456,9 +1456,9 @@ def run(test, params, env):
 
         # generate remote IP
         if target_ip == "":
-            if config_ipv6 == "yes" and ipv6_addr_des:
+            if config_ipv6 == "yes" and ipv6_addr_des and not server_cn:
                 target_ip = "[%s]" % ipv6_addr_des
-            elif config_ipv6 != "yes" and server_cn:
+            elif server_cn:
                 target_ip = server_cn
             elif config_ipv6 != "yes" and ipv6_addr_des:
                 target_ip = "[%s]" % ipv6_addr_des
