@@ -77,7 +77,7 @@ def run(test, params, env):
         utils_libvirtd.libvirtd_start()
 
     if savefile:
-        virsh.restore(savefile)
+        virsh.restore(savefile, debug=True)
 
     # check status_error
     try:
