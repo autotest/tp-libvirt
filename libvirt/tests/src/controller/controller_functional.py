@@ -495,7 +495,7 @@ def run(test, params, env):
                     setup_controller_xml(str(indx), addr_second)
         setup_os_xml()
         if int(pci_bus_number) > 0:
-            address_params = {'bus': "%0#4x" % int(pci_bus_number)}
+            address_params = {'bus': "%0#4x" % int(pci_bus_number), 'slot': "%0#4x" % int(pci_bus_number)}
             libvirt.set_disk_attr(vm_xml, 'vda', 'address', address_params)
 
         logging.debug("Test VM XML before define is %s" % vm_xml)
