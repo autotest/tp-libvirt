@@ -198,7 +198,7 @@ def run(test, params, env):
         else:
             for index in range(2):
                 numa_dict['id'] = str(index)
-                numa_dict['memory'] = str(max_mem / 2)
+                numa_dict['memory'] = str(max_mem // 2)
                 numa_dict['unit'] = str(max_mem_unit)
                 if vcpu == 2:
                     numa_dict['cpus'] = "%s" % str(index)
@@ -208,9 +208,9 @@ def run(test, params, env):
                             numa_dict['cpus'] = "%s" % str(index)
                         if vcpu > 3:
                             numa_dict['cpus'] = "%s-%s" % (str(index),
-                                                           str(vcpu / 2 - 1))
+                                                           str(vcpu // 2 - 1))
                     else:
-                        numa_dict['cpus'] = "%s-%s" % (str(vcpu / 2),
+                        numa_dict['cpus'] = "%s-%s" % (str(vcpu // 2),
                                                        str(vcpu - 1))
                 numa_dict_list.append(numa_dict)
                 numa_dict = {}
@@ -744,7 +744,7 @@ def run(test, params, env):
             default_hp_unit = "KiB"
             hp_pin_nodes = int(params.get("HP_pin_node_count", "2"))
             vm_max_mem = vmxml.max_mem
-            no_of_HPs = int(vm_max_mem / host_hp_size) + 1
+            no_of_HPs = int(vm_max_mem // host_hp_size) + 1
             # setting hugepages in source machine
             if (int(utils_memory.get_num_huge_pages_free()) < no_of_HPs):
                 hugepage_assign(str(no_of_HPs))
