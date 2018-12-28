@@ -20,6 +20,7 @@ from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import utils_netperf
+from virttest import utils_package
 from virttest import utils_selinux
 from virttest import utils_test
 from virttest import virsh
@@ -2003,6 +2004,18 @@ def run(test, params, env):
 
         netperf_version = test_dict.get("netperf_version")
         if netperf_version:
+            # Install tar on client
+            # Note: tar is used to untar netperf package later.
+            if not utils_package.package_install(["tar"]):
+                test.error("Failed to install tar on client")
+
+            # Install tar on server
+            # Note: tar is used to untar netperf package later.
+            remote_session = remote.wait_for_login('ssh', server_ip, '22', server_user,
+                                                   server_pwd, r"[\#\$]\s*$")
+            if not utils_package.package_install(["tar"], remote_session):
+                test.error("Failed to install tar on server")
+
             ret, n_client_c, n_server_c = setup_netsever_and_launch_netperf(test_dict)
             if not ret:
                 raise exceptions.TestError("Can not start netperf on %s"
