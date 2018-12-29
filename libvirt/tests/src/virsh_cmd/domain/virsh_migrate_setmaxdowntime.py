@@ -5,7 +5,6 @@ import os
 
 from avocado.utils import process
 
-from virttest import nfs
 from virttest import virsh
 from virttest import ssh_key
 from virttest.libvirt_xml import vm_xml
@@ -183,24 +182,9 @@ def run(test, params, env):
     migrate_dargs = {'debug': True, 'ignore_status': True,
                      'postcopy_options': postcopy_options}
 
-    seLinuxBool = None
-    nfs_client = None
-    local_selinux_bak = ""
-
     try:
         # Update the disk using shared storage
         libvirt.set_vm_disk(vm, params)
-
-        # Backup the SELinux status on local host for recovering
-        local_selinux_bak = params.get("selinux_status_bak", "")
-
-        # Configure NFS client on remote host
-        nfs_client = nfs.NFSClient(params)
-        nfs_client.setup()
-
-        logging.info("Enable virt NFS SELinux boolean on target host")
-        seLinuxBool = utils_misc.SELinuxBoolean(params)
-        seLinuxBool.setup()
 
         if not vm.is_alive():
             vm.start()
@@ -259,25 +243,9 @@ def run(test, params, env):
             logging.debug("Recover VM XML...")
             orig_config_xml.sync()
 
-        if seLinuxBool:
-            logging.info("Recover NFS SELinux boolean on remote host...")
-            seLinuxBool.cleanup(True)
-
-        if nfs_client:
-            logging.info("Cleanup NFS client environment...")
-            nfs_client.cleanup()
-
         logging.info("Remove the NFS image...")
         source_file = params.get("source_file")
         libvirt.delete_local_disk("file", path=source_file)
-
-        logging.info("Cleanup NFS server environment...")
-        exp_dir = params.get("export_dir")
-        mount_dir = params.get("mnt_path_name")
-        libvirt.setup_or_cleanup_nfs(False, export_dir=exp_dir,
-                                     mount_dir=mount_dir,
-                                     restore_selinux=local_selinux_bak,
-                                     rm_export_dir=False)
 
         # Recover libvirtd service configuration on local
         if libvirtd_conf:
