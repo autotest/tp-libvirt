@@ -1,6 +1,7 @@
 import logging
 import re
 import os
+import time
 
 from avocado.utils import path as utils_path
 from avocado.utils import process
@@ -397,6 +398,7 @@ def run(test, params, env):
 
         if detach_status == 0 and status_error == 0:
             # Check the xml after detach and clean up if needed.
+            time.sleep(5)
             status, _ = check_dumpxml_iface(vm_name, iface_format)
             if status == 0:
                 detach_status = 1
