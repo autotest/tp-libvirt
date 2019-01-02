@@ -3,7 +3,11 @@ import time
 import signal
 import logging
 
+from avocado.utils import process
+
+from virttest import utils_config
 from virttest.utils_libvirtd import Libvirtd
+from virttest.compat_52lts import results_stdout_52lts
 
 
 def run(test, params, env):
@@ -26,14 +30,38 @@ def run(test, params, env):
         signal_num = getattr(signal, signal_name)
         os.kill(pid, signal_num)
 
+    def start_mark(src_file, dest_file):
+        """
+        Copy the src_file to a tmp file
+        :param src_file: The file should be checked.
+        :param dest_file: The temp file to mark the time point.
+        """
+        # Clean the dest file if existed
+        if os.path.exists(dest_file):
+            os.remove(dest_file)
+        cmdline = 'cp %s %s' % \
+                  (src_file, dest_file)
+        process.run(cmdline, shell=True)
+
     pid_file = '/var/run/libvirtd.pid'
+    message_src_file = '/var/log/messages'
+    message_dest_file = '/tmp/messages_tmp'
     signal_name = params.get("signal", "SIGTERM")
     should_restart = params.get("expect_restart", "yes") == "yes"
     pid_should_change = params.get("expect_pid_change", "yes") == "yes"
+    sysconfig = params.get("sysconfig", None)
+    check_dmesg = params.get("check_dmesg", None)
 
     libvirtd = Libvirtd()
     try:
         libvirtd.start()
+
+        if sysconfig:
+            config = utils_config.LibvirtdSysConfig()
+            setattr(config, sysconfig.split('=')[0], sysconfig.split('=')[1])
+            libvirtd.restart()
+        if check_dmesg:
+            start_mark(message_src_file, message_dest_file)
 
         pid = get_pid(libvirtd)
         logging.debug("Pid of libvirtd is %d" % pid)
@@ -61,6 +89,13 @@ def run(test, params, env):
                     "libvirtd should still running after signal %s"
                     % signal_name)
 
+        if check_dmesg:
+            cmdline = 'diff %s %s' % \
+                      (message_src_file, message_dest_file)
+            res = results_stdout_52lts(process.run(cmdline, shell=True, ignore_status=True))
+            if check_dmesg not in res:
+                test.fail('%s should in %s , but not now' % (check_dmesg, message_src_file))
+
     finally:
         if not libvirtd.is_running():
             if os.path.exists(pid_file):
@@ -68,3 +103,6 @@ def run(test, params, env):
                 libvirtd.start()
                 test.fail("Pid file should not reside")
             libvirtd.start()
+        if sysconfig:
+            config.restore()
+            libvirtd.restart()
