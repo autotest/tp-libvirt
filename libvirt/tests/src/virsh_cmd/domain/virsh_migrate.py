@@ -111,6 +111,9 @@ def run(test, params, env):
         # Migrate the guest.
         migration_res = vm.migrate(dest_uri, options, extra, **virsh_args)
         logging.info("Migration exit status: %d", migration_res.exit_status)
+        logging.info("Migration command: %s", migration_res.command)
+        logging.info("Migration stdout: %s", migration_res.stdout)
+        logging.info("Migration stderr: %s", migration_res.stderr)
         check_migration_result(migration_res)
         if int(migration_res.exit_status) != 0:
             logging.error("Migration failed for %s.", vm_name)
