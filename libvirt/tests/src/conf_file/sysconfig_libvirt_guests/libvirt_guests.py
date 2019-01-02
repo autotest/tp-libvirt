@@ -2,6 +2,7 @@ import os
 import logging
 import re
 import aexpect
+import time
 
 from avocado.utils import path as utils_path
 from avocado.utils import process
@@ -48,6 +49,13 @@ def run(test, params, env):
                                   be shutdown concurrently on shutdown
         :param output: apppended message from /var/log/messages
         """
+        if on_shutdown == "shutdown" and on_boot == "start":
+            second_boot_time = boot_time()
+            logging.debug("The second boot time is %s", second_boot_time)
+            if any([i >= j for i, j in zip(first_boot_time, second_boot_time)]):
+                test.fail("The second boot time for should be larger"
+                          "than its first boot time.")
+
         expect_msg = expect_shutdown_msg(status_error, on_shutdown)
         logging.debug("The expected messages when host shutdown is: %s ", expect_msg)
         for dom in vms:
@@ -144,7 +152,7 @@ def run(test, params, env):
             else:
                 # Now the negative tests are only about ON_SHUTDOWN=shutdown.
                 if on_shutdown == "shutdown":
-                    expect_msg[dom.name] = ("libvirt-guests.sh: "
+                    expect_msg[dom.name] = ("libvirt-guests.sh.*: "
                                             "Shutdown of guest %s "
                                             "failed to complete in "
                                             "time" % dom.name)
@@ -178,6 +186,15 @@ def run(test, params, env):
                             test.fail("Guests are suspended on host shutdown, "
                                       "and been ignored on host boot, there "
                                       "should be save files for the guests.")
+
+    def boot_time():
+        booting_time = []
+        for vm in vms:
+            session = vm.wait_for_login()
+            time = session.cmd_output("uptime --since")
+            booting_time.append(time)
+            session.close()
+        return booting_time
 
     main_vm_name = params.get("main_vm")
     main_vm = env.get_vm(main_vm_name)
@@ -220,6 +237,10 @@ def run(test, params, env):
             dom.start()
     for dom in vms:
         dom.wait_for_login()
+    first_boot_time = []
+    if on_shutdown == "shutdown" and on_boot == "start":
+        first_boot_time = boot_time()
+        logging.debug("The first boot time is %s", first_boot_time)
 
     try:
         # Config the libvirt-guests file
@@ -236,6 +257,7 @@ def run(test, params, env):
         # host shutdown. The purpose can also be fullfilled by restart the
         # libvirt-guests service.
         libvirt_guests_service.restart()
+        time.sleep(10)
         output = tail_messages.get_output()
         logging.debug("Get messages in /var/log/messages: %s" % output)
 
