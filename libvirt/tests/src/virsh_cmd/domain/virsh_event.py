@@ -64,8 +64,9 @@ def run(test, params, env):
         """
         Create interface xml file
         """
-        iface = Interface("network")
-        iface.source = eval("{'network':'default'}")
+        iface = Interface("bridge")
+        iface.source = eval("{'bridge':'virbr0'}")
+        iface.model = "virtio"
         logging.debug("Create new interface xml: %s", iface)
         return iface
 
@@ -216,6 +217,7 @@ def run(test, params, env):
                     virsh.detach_device(dom.name, iface_xml_obj.xml, **virsh_dargs)
                     expected_events_list.append("'device-removed' for %s:"
                                                 " net0")
+                    time.sleep(2)
                     virsh.attach_device(dom.name, iface_xml_obj.xml, **virsh_dargs)
                     expected_events_list.append("'device-added' for %s:"
                                                 " net0")
