@@ -219,7 +219,8 @@ def run(test, params, env):
                 if hotplug:
                     vms_list[i]['disk'].xmltreefile.write()
                     result = virsh.attach_device(vms_list[i]['name'],
-                                                 vms_list[i]['disk'].xml).exit_status
+                                                 vms_list[i]['disk'].xml,
+                                                 debug=True).exit_status
                     os.remove(vms_list[i]['disk'].xml)
 
                     # Check if the return code of attach-device
