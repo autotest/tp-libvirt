@@ -394,26 +394,10 @@ def run(test, params, env):
 
             logging.debug("Checking CPU number gets reflected from inside "
                           "guest")
-            cmd = "lscpu | grep \"^CPU(s):\""
-            # vcpu count gets reflected step by step gradually, so we check
-            # vcpu and compare with previous count by taking 5 seconds, if
-            # there is no change in vpcu count we break the loop.
-            prev_output = -1
-            while True:
-                ret, output = session.cmd_status_output(cmd)
-                if ret:
-                    test.fail("CPU %s failed - %s" % (operation, output))
-                output = filter(str.isdigit, str(output.split(":")[-1].strip()))
+            if not utils_misc.wait_for(lambda: utils_misc.check_if_vm_vcpu_match(cpu_count, vm),
+                                       300, text="wait for vcpu online"):
+                test.fail("CPU %s failed" % operation)
 
-                if int(prev_output) == int(output):
-                    break
-                prev_output = output
-                time.sleep(5)
-            logging.debug("CPUs available from inside guest after %s - %s",
-                          operation, output)
-            if int(output) != cpu_count:
-                test.fail("CPU %s failed as cpus are not "
-                          "reflected from inside guest" % operation)
             logging.debug("CPU %s successful !!!", operation)
         except Exception as info:
             test.fail("CPU %s failed - %s" % (operation, info))
