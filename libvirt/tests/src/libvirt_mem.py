@@ -2,6 +2,7 @@ import os
 import re
 import ast
 import logging
+import platform
 import tempfile
 import random
 
@@ -95,9 +96,12 @@ def run(test, params, env):
         config.restore()
         utils_libvirtd.libvirtd_restart()
 
-    def check_qemu_cmd():
+    def check_qemu_cmd(max_mem_rt, tg_size):
         """
         Check qemu command line options.
+        :param max_mem_rt: size of max memory
+        :param tg_size: Target hotplug memory size
+        :return: None
         """
         cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
         if max_mem_rt:
@@ -121,7 +125,9 @@ def run(test, params, env):
                         (mem_addr['slot'], int(mem_addr['base'], 16)))
             cmd += "'"
         # Run the command
-        process.run(cmd, shell=True)
+        result = process.run(cmd, shell=True, verbose=True, ignore_status=True)
+        if result.exit_status:
+            test.fail('Qemu command check fail.')
 
     def check_guest_meminfo(old_mem, check_option):
         """
@@ -209,6 +215,41 @@ def run(test, params, env):
             utils_misc.log_last_traceback()
             test.fail("Found unmatched memory setting from domain xml")
 
+    def check_mem_align():
+        """
+        Check if set memory align to 256
+        """
+        dom_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        dom_mem = {}
+        dom_mem['maxMemory'] = int(dom_xml.max_mem_rt)
+        dom_mem['memory'] = int(dom_xml.memory)
+        dom_mem['currentMemory'] = int(dom_xml.current_mem)
+
+        cpuxml = dom_xml.cpu
+        numa_cell = cpuxml.numa_cell
+        dom_mem['numacellMemory'] = int(numa_cell[0]['memory'])
+        sum_numa_mem = sum([int(cell['memory']) for cell in numa_cell])
+
+        attached_mem = dom_xml.get_devices(device_type='memory')[0]
+        dom_mem['attached_mem'] = attached_mem.target.size
+
+        all_align = True
+        for key in dom_mem:
+            logging.info('%-20s:%15d', key, dom_mem[key])
+            if dom_mem[key] % 256:
+                logging.error('%s not align to 256', key)
+                all_align = False
+
+        if not all_align:
+            test.fail('Memory not align to 256')
+
+        if dom_mem['memory'] == sum_numa_mem + dom_mem['attached_mem']:
+            logging.info('Check Pass: Memory is equal to (all numa memory + memory device)')
+        else:
+            test.fail('Memory is not equal to (all numa memory + memory device)')
+
+        return dom_mem
+
     def check_save_restore():
         """
         Test save and restore operation
@@ -224,13 +265,14 @@ def run(test, params, env):
         # Login to check vm status
         vm.wait_for_login().close()
 
-    def add_device(dev_xml, at_error=False):
+    def add_device(dev_xml, attach, at_error=False):
         """
         Add memory device by attachment or modify domain xml.
         """
-        if attach_device:
+        if attach:
             ret = virsh.attach_device(vm_name, dev_xml.xml,
-                                      flagstr=attach_option)
+                                      flagstr=attach_option,
+                                      debug=True)
             libvirt.check_exit_status(ret, at_error)
         else:
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
@@ -251,6 +293,8 @@ def run(test, params, env):
             vmxml.max_mem_rt = int(max_mem_rt)
             vmxml.max_mem_rt_slots = max_mem_slots
             vmxml.max_mem_rt_unit = mem_unit
+        if memory_val:
+            vmxml.memory = int(memory_val)
         if vcpu:
             vmxml.vcpu = int(vcpu)
             vcpu_placement = params.get("vcpu_placement", "static")
@@ -324,6 +368,9 @@ def run(test, params, env):
     max_mem = params.get("max_mem")
     max_mem_rt = params.get("max_mem_rt")
     max_mem_slots = params.get("max_mem_slots", "16")
+    memory_val = params.get('memory_val', '')
+    mem_align = 'yes' == params.get('mem_align', 'no')
+    hot_plug = 'yes' == params.get('hot_plug', 'no')
     cur_mem = params.get("current_mem")
     numa_cells = params.get("numa_cells", "").split()
     set_max_mem = params.get("set_max_mem")
@@ -363,6 +410,11 @@ def run(test, params, env):
     if not libvirt_version.version_compare(1, 2, 14):
         test.cancel("Memory hotplug not supported in current libvirt version.")
 
+    if 'align_256m' in params.get('name', ''):
+        arch = platform.machine()
+        if arch.lower() != 'ppc64le':
+            test.cancel('This case is for ppc64le only.')
+
     if align_mem_values:
         # Rounding the following values to 'align'
         max_mem = utils_numeric.align_value(max_mem, align_to_value)
@@ -389,7 +441,7 @@ def run(test, params, env):
         dev_xml = None
 
         # To attach the memory device.
-        if add_mem_device:
+        if add_mem_device and not hot_plug:
             at_times = int(params.get("attach_times", 1))
             dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size, mem_addr,
                                                    tg_sizeunit, pg_unit, tg_node,
@@ -403,9 +455,9 @@ def run(test, params, env):
                 randvar = randvar + 1
                 logging.debug("attaching device count = %s", x)
                 if x == at_times - 1:
-                    add_device(dev_xml, attach_error)
+                    add_device(dev_xml, attach_device, attach_error)
                 else:
-                    add_device(dev_xml)
+                    add_device(dev_xml, attach_device)
                 if hot_reboot:
                     vm.reboot()
                     vm.wait_for_login()
@@ -448,13 +500,32 @@ def run(test, params, env):
                                   flagstr=max_mem_option)
             libvirt.check_exit_status(ret, maxmem_error)
 
+        # Hotplug memory device
+        if add_mem_device and hot_plug:
+            process.run('ps -ef|grep qemu', shell=True, verbose=True)
+            session = vm.wait_for_login()
+            original_mem = vm.get_totalmem_sys()
+            dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
+                                                   mem_addr, tg_sizeunit,
+                                                   pg_unit, tg_node,
+                                                   node_mask, mem_model)
+            add_device(dev_xml, True)
+            mem_after = vm.get_totalmem_sys()
+            params['delta'] = mem_after - original_mem
+
         # Check domain xml after start the domain.
         if test_dom_xml:
             check_dom_xml(at_mem=attach_device)
 
+        if mem_align:
+            dom_mem = check_mem_align()
+            check_qemu_cmd(dom_mem['maxMemory'], dom_mem['attached_mem'])
+            if hot_plug and params['delta'] != dom_mem['attached_mem']:
+                test.fail('Memory after attach not equal to original mem + attached mem')
+
         # Check qemu command line
         if test_qemu_cmd:
-            check_qemu_cmd()
+            check_qemu_cmd(max_mem_rt, tg_size)
 
         # Check guest meminfo after attachment
         if (attach_device and not attach_option.count("config") and
