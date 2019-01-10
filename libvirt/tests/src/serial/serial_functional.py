@@ -148,7 +148,7 @@ class Console(aexpect.ShellSession):
                 if self.console_type in ['tcp', 'unix']:
                     new_data = self.socket.recv(
                         1024, socket.MSG_DONTWAIT)
-                    data += astring.to_text(new_data)
+                    data += astring.to_text(new_data, errors='ignore')
                     return data
                 elif self.console_type == 'udp':
                     new_data, self.peer_addr = self.socket.recvfrom(
