@@ -5,19 +5,11 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_misc
+from virttest import utils_libvirtd
 from virttest import utils_npiv as npiv
 
 
 _TIMEOUT = 5
-
-
-def restart_libvirtd(test):
-    """
-    Restart libvirtd deamon.
-    """
-    cmd_result = process.run("systemctl restart libvirtd.service", shell=True)
-    if cmd_result.exit_status:
-        test.fail("Failed to restart libvirt deamon.")
 
 
 def restart_libvirtd_and_check_vhbaxml(scsi_host, test):
@@ -25,12 +17,13 @@ def restart_libvirtd_and_check_vhbaxml(scsi_host, test):
     Check a vhba's xml before and after restart libvirtd. Return false
     if vhba's xml chnaged.
     """
+    libvirtd = utils_libvirtd.Libvirtd()
     cmd_result = virsh.nodedev_dumpxml(scsi_host)
     scsi_host_xml = cmd_result.stdout.strip()
     if "<device>" not in scsi_host_xml:
         test.fail("node device %s has invalid xml: %s" %
                   (scsi_host, scsi_host_xml))
-    restart_libvirtd(test)
+    libvirtd.restart()
     cmd_result = virsh.nodedev_dumpxml(scsi_host)
     scsi_host_xml_new = cmd_result.stdout.strip()
     if (scsi_host_xml == scsi_host_xml_new):
