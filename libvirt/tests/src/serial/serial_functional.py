@@ -638,7 +638,7 @@ def run(test, params, env):
         if exp_ser_opt is not None and re.match(exp_ser_opt, ser_opt) is None:
             test.fail('Expect get qemu command serial option "%s", '
                       'but got "%s"' % (exp_ser_opt, ser_opt))
-        if re.match(exp_ser_dev, ser_dev) is None:
+        if exp_ser_dev is not None and ser_dev is not None and re.match(exp_ser_dev, ser_dev) is None:
             test.fail(
                 'Expect get qemu command serial device option "%s", '
                 'but got "%s"' % (exp_ser_dev, ser_dev))
