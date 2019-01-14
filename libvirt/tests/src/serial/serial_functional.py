@@ -17,6 +17,7 @@ from virttest.utils_test import libvirt
 from virttest.utils_conn import TLSConnection
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices import librarian
+from virttest.libvirt_xml.devices.graphics import Graphics
 
 from provider import libvirt_version
 
@@ -322,6 +323,16 @@ def run(test, params, env):
         else:
             serial.target_model = target_type
             serial.target_type = target_type
+
+    def prepare_spice_graphics_device():
+        """
+        Prepare a spice graphics device XML according to parameters
+        """
+        graphic = Graphics(type_name='spice')
+        graphic.autoport = "yes"
+        graphic.port = "-1"
+        graphic.tlsPort = "-1"
+        return graphic
 
     def prepare_serial_device():
         """
@@ -742,6 +753,10 @@ def run(test, params, env):
         if console_target_type == 'serial' or second_serial_console:
             logging.debug('Serial device:\n%s', serial_dev)
             vm_xml.add_device(serial_dev)
+            if serial_type == "spiceport":
+                spice_graphics_dev = prepare_spice_graphics_device()
+                logging.debug('Spice graphics device:\n%s', spice_graphics_dev)
+                vm_xml.add_device(spice_graphics_dev)
 
         console_dev = prepare_console_device()
         logging.debug('Console device:\n%s', console_dev)
