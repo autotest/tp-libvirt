@@ -185,7 +185,7 @@ class EnvState(object):
         if vnc_listen == 'not_set':
             del self.qemu_config.vnc_listen
         elif vnc_listen in ['valid_ipv4', 'valid_ipv6']:
-            expected_ip = str(expected_result['vnc_ips'][0])
+            expected_ip = str(expected_result['vnc_ips'][0].addr)
             self.qemu_config.vnc_listen = expected_ip
         else:
             self.qemu_config.vnc_listen = vnc_listen
@@ -701,7 +701,7 @@ def get_expected_vnc_options(params, networks, expected_result):
             vnc_listen = params.get("vnc_listen", "127.0.0.1")
 
         if vnc_listen in ['valid_ipv4', 'valid_ipv6']:
-            listen_address = str(expected_result['vnc_ips'][0])
+            listen_address = str(expected_result['vnc_ips'][0].addr)
         else:
             listen_address = vnc_listen
 
