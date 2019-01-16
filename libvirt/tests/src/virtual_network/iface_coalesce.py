@@ -1,5 +1,6 @@
 import logging
 import time
+import re
 
 
 from virttest import virt_vm
@@ -338,7 +339,13 @@ def run(test, params, env):
                 # Check whether physical interface has been added into one bridge. if yes, skip macvtap test
                 # If interface already added to a bridge, the output of the nmcli
                 # command will include "connection.slave-type: bridge"
-                if "bridge" not in process.run('nmcli con show %s' % interface).stdout_text:
+                out = process.run('nmcli dev show %s' % interface).stdout_text
+                con_l = re.findall(r'GENERAL.CONNECTION:(.+?)\n', out)
+                if not con_l:
+                    test.cancel("no connection for the interface")
+                else:
+                    con = con_l[0].strip()
+                if "bridge" not in process.run('nmcli con show "%s"' % con).stdout_text:
                     params['forward_iface'] = interface
                     params['net_forward'] = "{'mode':'bridge', 'dev': '%s'}" % interface
                 else:
