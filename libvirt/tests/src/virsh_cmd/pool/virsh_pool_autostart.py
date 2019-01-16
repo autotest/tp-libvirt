@@ -111,11 +111,12 @@ def run(test, params, env):
 
     # Run Testcase
     pvt = utlv.PoolVolumeTest(test, params)
-    emulated_image = "emulated-image"
     kwargs = {'image_size': '1G', 'pre_disk_vol': ['100M'],
               'source_name': source_name, 'source_path': source_path,
               'source_format': source_format, 'persistent': True,
-              'ip_protocal': ip_protocal}
+              'ip_protocal': ip_protocal, 'emulated_image': "emulated-image",
+              'pool_target': pool_target}
+    params.update(kwargs)
     pool = pool_name
     clean_mount = False
     new_device = None
@@ -123,8 +124,7 @@ def run(test, params, env):
         if pre_def_pool:
             # Step(1)
             # Pool define
-            pvt.pre_pool(pool_name, pool_type, pool_target, emulated_image,
-                         **kwargs)
+            pvt.pre_pool(**params)
             # Remove the partition for disk pool
             # For sometimes the partition will cause pool start failed
             if pool_type == "disk":
@@ -226,8 +226,7 @@ def run(test, params, env):
                 for src in source_list:
                     process.system("umount %s" % pool_target)
             if pre_def_pool:
-                pvt.cleanup_pool(pool_name, pool_type, pool_target,
-                                 emulated_image, **kwargs)
+                pvt.cleanup_pool(**params)
             if new_device:
                 utlv.delete_local_disk(disk_type, vgname=vg_name, lvname=lv_name)
                 lv_utils.vg_remove(vg_name)

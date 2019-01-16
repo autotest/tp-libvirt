@@ -35,8 +35,7 @@ def run(test, params, env):
         image_source = vm.get_first_disk_devices()['source']
 
         # Setup gluster
-        host_ip = libvirt.setup_or_cleanup_gluster(True, vol_name,
-                                                   brick_path, pool_name)
+        host_ip = libvirt.setup_or_cleanup_gluster(True, brick_path=brick_path,  **params)
         logging.debug("host ip: %s ", host_ip)
         image_info = utils_misc.get_image_info(image_source)
         image_dest = "/mnt/%s" % disk_img
@@ -256,9 +255,9 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
         logging.info("Restoring vm...")
         vmxml_backup.sync()
-        if utils_misc.is_mounted(mnt_src, default_pool, 'glusterfs'):
+        if utils_misc.is_mounted(mnt_src, default_pool, 'fuse.glusterfs', verbose=True):
             process.run("umount %s" % default_pool,
                         ignore_status=True, shell=True)
 
         if gluster_disk:
-            libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
+            libvirt.setup_or_cleanup_gluster(False, brick_path=brick_path, **params)

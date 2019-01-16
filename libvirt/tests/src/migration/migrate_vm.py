@@ -372,8 +372,7 @@ def prepare_gluster_disk(params):
                                 image_name + '.' + image_format)
 
     # Setup gluster.
-    host_ip = libvirt.setup_or_cleanup_gluster(True, vol_name,
-                                               brick_path, pool_name)
+    host_ip = libvirt.setup_or_cleanup_gluster(True, **params)
     logging.debug("host ip: %s ", host_ip)
     image_info = utils_misc.get_image_info(image_source)
     if image_info["format"] == disk_format:
@@ -2734,7 +2733,7 @@ def run(test, params, env):
 
         libvirtd = utils_libvirtd.Libvirtd()
         if disk_src_protocol == "gluster":
-            libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path, pool_name)
+            libvirt.setup_or_cleanup_gluster(False, **test_dict)
             libvirtd.restart()
 
         if disk_src_protocol == "iscsi":

@@ -495,7 +495,8 @@ def run(test, params, env):
             libvirt.setup_or_cleanup_iscsi(is_setup=False,
                                            restart_tgtd=restart_tgtd)
         elif disk_src_protocol == 'gluster':
-            libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
+            logging.info("clean gluster env")
+            libvirt.setup_or_cleanup_gluster(False, brick_path=brick_path, **params)
             libvirtd.restart()
         elif disk_src_protocol == 'netfs':
             restore_selinux = params.get('selinux_status_bak')

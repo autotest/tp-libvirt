@@ -46,16 +46,17 @@ def run(test, params, env):
     if pre_def_pool and pool_ins.pool_exists(pool_name):
         test.fail("Pool %s already exist" % pool_name)
 
-    emulated_image = "emulated-image"
     kwargs = {'image_size': '1G', 'source_path': source_path,
-              'source_name': source_name, 'source_format': source_format}
+              'source_name': source_name, 'source_format': source_format,
+              'emulated_image': "emulated-image", 'pool_target': pool_target,
+              'pool_name': pool_name}
+    params.update(kwargs)
     pvt = utlv.PoolVolumeTest(test, params)
     old_uuid = None
     new_device_name = None
     if pre_def_pool:
         try:
-            pvt.pre_pool(pool_name, pool_type, pool_target, emulated_image,
-                         **kwargs)
+            pvt.pre_pool(**params)
             virsh.pool_dumpxml(pool_name, to_file=pool_xml_f)
             old_uuid = virsh.pool_uuid(pool_name).stdout.strip()
             if no_disk_label:
@@ -89,8 +90,7 @@ def run(test, params, env):
             cmd = "sed -i '/<uuid>/d' %s" % pool_xml_f
             process.run(cmd, shell=True)
         except Exception as details:
-            pvt.cleanup_pool(pool_name, pool_type, pool_target,
-                             emulated_image, **kwargs)
+            pvt.cleanup_pool(**params)
             if new_device_name:
                 utlv.setup_or_cleanup_iscsi(False)
             test.error("Error occurred when prepare pool xml:\n %s"
@@ -131,8 +131,7 @@ def run(test, params, env):
             else:
                 logging.debug("Command fail as expected")
     finally:
-        pvt.cleanup_pool(pool_name, pool_type, pool_target,
-                         emulated_image, **kwargs)
+        pvt.cleanup_pool(**params)
         if new_device_name:
             utlv.setup_or_cleanup_iscsi(False)
         if os.path.exists(pool_xml_f):

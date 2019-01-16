@@ -207,7 +207,8 @@ def run(test, params, env):
             gluster_host_ip = libvirt.setup_or_cleanup_gluster(
                     is_setup=True,
                     vol_name=gluster_vol_name,
-                    pool_name=gluster_pool_name)
+                    pool_name=gluster_pool_name,
+                    **params)
             device_source = "gluster://%s/%s/%s" % (gluster_host_ip,
                                                     gluster_vol_name,
                                                     gluster_img_name)
@@ -343,7 +344,8 @@ def run(test, params, env):
         elif backend_storage_type == "gluster":
             libvirt.setup_or_cleanup_gluster(is_setup=False,
                                              vol_name=gluster_vol_name,
-                                             pool_name=gluster_pool_name)
+                                             pool_name=gluster_pool_name,
+                                             **params)
         elif backend_storage_type == "ceph":
             # Remove ceph configure file if created.
             if ceph_cfg:
