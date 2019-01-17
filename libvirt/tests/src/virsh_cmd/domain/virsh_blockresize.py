@@ -97,7 +97,7 @@ def run(test, params, env):
             if image_format in ["qed", "qcow2"]:
                 # qcow2 and qed want a VIR_ROUND_UP value based on 512 byte
                 # sectors - hence this less than visually appealing formula
-                expected_size = (((value * 1000) + 512 - 1) / 512) * 512
+                expected_size = (((value * 1000) + 512 - 1) // 512) * 512
             else:
                 # Raw images...
                 # Ugh - there's some rather ugly looking math when kb
