@@ -10,6 +10,8 @@ from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices.interface import Interface
+from virttest import utils_misc
+
 from xml.dom.minidom import parseString
 
 
@@ -180,16 +182,20 @@ def run(test, params, env):
                         virsh.shutdown(dom.name, **virsh_dargs)
                         # Wait a few seconds for shutdown finish
                         time.sleep(3)
-                        expected_events_list.append("'lifecycle' for %s:"
-                                                    " Shutdown Finished after guest request")
-                        expected_events_list.append("'lifecycle' for %s:"
-                                                    " Stopped Shutdown")
+                        if utils_misc.compare_qemu_version(2, 9, 0):
+                            #Shutdown reason distinguished from qemu_2.9.0-9
+                            expected_events_list.append("'lifecycle' for %s:"
+                                                        " Shutdown Finished after guest request")
                     else:
                         os.kill(dom.get_pid(), getattr(signal, signal_name))
+                        if utils_misc.compare_qemu_version(2, 9, 0):
+                            expected_events_list.append("'lifecycle' for %s:"
+                                                        " Shutdown Finished after host request")
+                    if not utils_misc.compare_qemu_version(2, 9, 0):
                         expected_events_list.append("'lifecycle' for %s:"
-                                                    " Shutdown Finished after host request")
-                        expected_events_list.append("'lifecycle' for %s:"
-                                                    " Stopped Shutdown")
+                                                    " Shutdown Finished")
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Stopped Shutdown")
                 elif event == "reset":
                     virsh.reset(dom.name, **virsh_dargs)
                     expected_events_list.append("'reboot' for %s")
@@ -331,6 +337,7 @@ def run(test, params, env):
                     time.sleep(int(event_timeout))
                 elif event_loop:
                     virsh_session.send_ctrl("^C")
+                    time.sleep(5)
                 ret_output = virsh_session.get_stripped_output()
                 if qemu_monitor_test:
                     # Not check for qemu-monitor-event output
