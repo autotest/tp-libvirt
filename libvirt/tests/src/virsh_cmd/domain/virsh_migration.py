@@ -52,7 +52,7 @@ def run(test, params, env):
         except Exception as info:
             test.fail(info)
         for vm in vm_list:
-            if not migrate_setup.check_vm_state(vm, vm_state, dest_uri):
+            if not migrate_setup.check_vm_state(vm.name, vm_state, dest_uri):
                 test.fail("Migrated VMs failed to be in %s state at "
                           "destination" % vm_state)
             logging.info("Guest state is '%s' at destination is as expected",

@@ -50,7 +50,7 @@ def post_migration_check(vms, uptime, test, params, uri=None):
                      vm_uptime)
         if vm_uptime < uptime[vm.name]:
             test.fail("vm went for a reboot during migration")
-        if not migrate_setup.check_vm_state(vm, vm_state, uri):
+        if not migrate_setup.check_vm_state(vm.name, vm_state, uri):
             test.fail("Migrated VMs failed to be in %s state at "
                       "destination" % vm_state)
         logging.info("Guest state is '%s' at destination is as expected",
