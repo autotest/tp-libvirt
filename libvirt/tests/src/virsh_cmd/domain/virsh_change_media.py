@@ -90,9 +90,10 @@ def run(test, params, env):
         if vm.is_alive():
             virsh.destroy(vm_name)
 
+        device_target_bus = params.get("device_target_bus", "ide")
         virsh.attach_disk(vm_name, init_source,
                           target_device,
-                          "--type %s --sourcetype file --config" % device_type,
+                          "--type %s --sourcetype file --targetbus %s --config" % (device_type, device_target_bus),
                           debug=True)
 
     def update_device(vm_name, init_iso, options, start_vm):
@@ -108,15 +109,16 @@ def run(test, params, env):
             disk_alias_update = ""
         else:
             disk_alias_update = disk_alias
+        device_target_bus = params.get("device_target_bus", "ide")
         snippet = """
 <disk type='file' device='%s'>
 <driver name='qemu' type='raw'/>
 <source file='%s'/>
-<target dev='%s'/>
+<target dev='%s' bus='%s'/>
 <readonly/>
 <alias name='%s'/>
 </disk>
-""" % (device_type, init_iso, target_device, disk_alias_update)
+""" % (device_type, init_iso, target_device, device_target_bus, disk_alias_update)
         logging.info("Update xml is %s", snippet)
         with open(update_iso_xml, "w") as update_iso_file:
             update_iso_file.write(snippet)
