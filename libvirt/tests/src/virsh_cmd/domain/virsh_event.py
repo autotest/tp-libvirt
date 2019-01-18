@@ -1,5 +1,6 @@
 import os
 import time
+import re
 import logging
 import signal
 
@@ -229,6 +230,7 @@ def run(test, params, env):
                                                 " net0")
                 elif event == "change-media":
                     target_device = "hdc"
+                    device_target_bus = params.get("device_target_bus", "ide")
                     disk_blk = vm_xml.VMXML.get_disk_blk(dom.name)
                     logging.info("disk_blk %s", disk_blk)
                     if target_device not in disk_blk:
@@ -236,19 +238,20 @@ def run(test, params, env):
                         if dom.is_alive():
                             dom.destroy()
                         add_disk(dom.name, "''", target_device,
-                                 "--type cdrom --sourcetype file --config")
+                                 ("--type cdrom --sourcetype file --driver qemu " +
+                                  "--config --targetbus %s" % device_target_bus))
                         dom.start()
                     all_options = new_disk + " --insert"
                     virsh.change_media(dom.name, target_device,
                                        all_options, ignore_status=True, debug=True)
-                    expected_events_list.append("'tray-change' for %s disk ide0-1-0:"
+                    expected_events_list.append("'tray-change' for %s disk" + " .*%s.*:" % device_target_bus +
                                                 " opened")
-                    expected_events_list.append("'tray-change' for %s disk ide0-1-0:"
+                    expected_events_list.append("'tray-change' for %s disk" + " .*%s.*:" % device_target_bus +
                                                 " closed")
                     all_options = new_disk + " --eject"
                     virsh.change_media(dom.name, target_device,
                                        all_options, ignore_status=True, debug=True)
-                    expected_events_list.append("'tray-change' for %s disk ide0-1-0:"
+                    expected_events_list.append("'tray-change' for %s disk" + " .*%s.*:" % device_target_bus +
                                                 " opened")
 
                 else:
@@ -282,10 +285,10 @@ def run(test, params, env):
         event_idx = 0
         for dom_name, event in expected_events_list:
             event_str = "event " + event % ("domain %s" % dom_name)
-            logging.debug("Expected event: %s", event_str)
-            if event_str in output[event_idx:]:
-                event_idx = event_idx+output[event_idx:].index(event_str)
-                logging.debug("Output event: %s", output[event_idx:event_idx+83])
+            match = re.search(event_str, output[event_idx:])
+            if match:
+                event_idx = event_idx + match.start(0) + len(match.group(0))
+                logging.debug("Output event: %s", output[event_idx:])
                 continue
             else:
                 test.fail("Not find expected event:%s. Is your "
