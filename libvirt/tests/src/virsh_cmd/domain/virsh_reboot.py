@@ -102,12 +102,16 @@ def run(test, params, env):
                     # old libvirt doesn't support reboot
                     status = -2
             time.sleep(5)
-            cmdoutput = virsh.domstate(vm_ref, '--reason', ignore_status=True, debug=True)
-            domstate_status = cmdoutput.exit_status
-            output = "running" in cmdoutput.stdout
-            if domstate_status or (not output):
-                test.fail("Cmd error: %s Error status: %s" % (cmdoutput.stderr, cmdoutput.stdout))
-            else:
+            # avoid the check if it is negative test
+            if not status_error:
+                cmdoutput = virsh.domstate(vm_ref, '--reason',
+                                           ignore_status=True, debug=True)
+                domstate_status = cmdoutput.exit_status
+                output = "running" in cmdoutput.stdout
+                if domstate_status or (not output):
+                    test.fail("Cmd error: %s Error status: %s" %
+                              (cmdoutput.stderr, cmdoutput.stdout))
+            elif pre_domian_status != 'shutoff':
                 vm.wait_for_login().close()
         output = virsh.dom_list(ignore_status=True).stdout.strip()
 
