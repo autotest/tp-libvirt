@@ -3,7 +3,6 @@ import time
 
 from virttest import virsh
 from virttest import utils_package
-from virttest.utils_test import libvirt
 
 from provider import libvirt_version
 
@@ -35,7 +34,6 @@ def run(test, params, env):
     uri = params.get("virsh_uri")
     simultaneous = params.get("sendkey_simultaneous", "yes") == "yes"
     unprivileged_user = params.get('unprivileged_user')
-    crash_dir = "/var/crash"
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
             unprivileged_user = 'testacl'
@@ -70,12 +68,6 @@ def run(test, params, env):
                 vm.destroy()
                 vm.start()
                 session = vm.wait_for_login()
-        if "KEY_C" in keystrokes or "usb" in codeset:
-            session.cmd("rm -rf {0}; mkdir {0}".format(crash_dir))
-        if "usb" in codeset:
-            libvirt.add_panic_device(vm_name)
-            vm.start()
-            session = vm.wait_for_login()
         LOG_FILE = "/var/log/messages"
         if "ubuntu" in vm.get_distro().lower():
             LOG_FILE = "/var/log/syslog"
@@ -186,16 +178,6 @@ def run(test, params, env):
                         get_status = 1
                     else:
                         get_status = 0
-                        session.close()
-                # crash
-                elif "KEY_C" in keystrokes or "usb" in codeset:
-                    session = vm.wait_for_login()
-                    output = session.cmd_output("ls %s" % crash_dir)
-                    logging.debug("Crash file is %s" % output)
-                    if output:
-                        get_status = 0
-                    else:
-                        get_status = 1
                         session.close()
 
                 if get_status == 0:
