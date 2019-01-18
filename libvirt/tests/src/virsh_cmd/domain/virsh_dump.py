@@ -9,8 +9,10 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_config
-from virttest.libvirt_xml import vm_xml
 from virttest import data_dir
+from virttest import utils_package
+from virttest.libvirt_xml import vm_xml
+
 
 from provider import libvirt_version
 
@@ -180,6 +182,11 @@ def run(test, params, env):
     # Configure dump_image_format in /etc/libvirt/qemu.conf.
     qemu_config = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
+
+    # Install lsof pkg if not installed
+    if not utils_package.package_install("lsof"):
+        test.cancel("Failed to install lsof in host\n")
+
     if len(dump_image_format):
         qemu_config.dump_image_format = dump_image_format
         libvirtd.restart()
