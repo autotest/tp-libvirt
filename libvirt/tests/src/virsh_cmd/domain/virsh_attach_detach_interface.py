@@ -196,7 +196,7 @@ def run(test, params, env):
     save_restore = params.get("save_restore", "no")
     restart_libvirtd = params.get("restart_libvirtd", "no")
     attach_cmd = params.get("attach_cmd", "attach-interface")
-    virsh_dargs = {'ignore_status': True, 'uri': uri}
+    virsh_dargs = {'ignore_status': True, 'debug': True, 'uri': uri}
 
     # Get iface name if iface_type is direct
     if iface_type == "direct":
@@ -296,7 +296,7 @@ def run(test, params, env):
                 attach_result = virsh.attach_interface(vm_ref, options, **virsh_dargs)
             elif attach_cmd == "attach-device":
                 attach_result = virsh.attach_device(vm_name, xml_file,
-                                                    ignore_status=True)
+                                                    ignore_status=True, debug=True)
         attach_status = attach_result.exit_status
         logging.debug(attach_result)
 
