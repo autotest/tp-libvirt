@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 
 from avocado.utils import process
 
@@ -34,6 +35,7 @@ def run(test, params, env):
     error_msg = params.get('error_msg', '')
     bridge_name = 'br_mtu' + utils_misc.generate_random_string(3)
     add_pkg = params.get('add_pkg', '')
+    model = params.get('model', 'virtio')
 
     def set_network(size, net='default'):
         """
@@ -45,14 +47,16 @@ def run(test, params, env):
         default_xml.sync()
         logging.debug(virsh.net_dumpxml(net))
 
-    def set_interface(mtu_size='', source_network='default', iface_type='network'):
+    def set_interface(mtu_size='', source_network='default',
+                      iface_type='network', iface_model='virtio'):
         """
         Set mtu size to a certain interface
         """
         interface_type = 'bridge' if iface_type in ('bridge', 'openvswitch') else iface_type
         iface_dict = {
             'type': interface_type,
-            'source': "{'%s': '%s'}" % (interface_type, source_network)
+            'source': "{'%s': '%s'}" % (interface_type, source_network),
+            'model': iface_model
         }
 
         if iface_type == 'openvswitch':
@@ -116,6 +120,8 @@ def run(test, params, env):
             m_iface.source = {'network': kwargs['source_net']}
         if 'mtu' in kwargs:
             m_iface.mtu = {'size': kwargs['mtu']}
+        if 'model_net' in kwargs:
+            m_iface.model = kwargs['model_net']
         logging.debug(m_iface.get_xml())
         logging.debug(m_iface)
         return m_iface
@@ -132,9 +138,9 @@ def run(test, params, env):
         ifconfig_info = process.run('ifconfig|grep mtu|grep %s' % dev,
                                     shell=True, verbose=True).stdout_text
         if 'mtu %s' % mtu_size in ifconfig_info:
-            logging.info('PASS on ifconfig check.')
+            logging.info('PASS on ifconfig check for vnet.')
         else:
-            error += 'Fail on ifconfig check.'
+            error += 'Fail on ifconfig check for vnet.'
         if qemu:
             qemu_mtu_info = process.run('ps aux|grep qemu-kvm',
                                         shell=True, verbose=True).stdout_text
@@ -156,6 +162,8 @@ def run(test, params, env):
         logging.debug(output)
         if 'mtu %s' % mtu_size not in output:
             test.fail('MTU check inside vm failed.')
+        else:
+            logging.debug("MTU check inside vm passed.")
 
     try:
         bk_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -181,7 +189,7 @@ def run(test, params, env):
                         bridge_name=br
                     )
                     virsh.net_create(test_net, debug=True)
-                    virsh.net_dumpxml(test_net, debug=True)
+                    virsh.net_dumpxml(bridge_name, debug=True)
                 if mtu_type == 'interface':
                     iface_type = net_type
                     bridge_name = br
@@ -199,7 +207,7 @@ def run(test, params, env):
             source_net = bridge_name if net_type in ('bridge', 'openvswitch') else 'default'
 
             # set mtu in vm interface
-            set_interface(iface_mtu, source_network=source_net, iface_type=iface_type)
+            set_interface(iface_mtu, source_network=source_net, iface_type=iface_type, iface_model=model)
             vm.start()
             vm_login = vm.wait_for_serial_login if net_type in ('bridge', 'openvswitch') else vm.wait_for_login
             vm_login().close()
@@ -208,7 +216,8 @@ def run(test, params, env):
             # Test mtu after save vm
             if check in ('save', 'hotplug_save'):
                 if check == 'hotplug_save':
-                    iface = create_iface('network', source_net='default', mtu=mtu_size)
+                    iface = create_iface('network', source_net='default',
+                                         mtu=mtu_size, model_net=model)
                     params['mac'] = iface.mac_address
                     virsh.attach_device(vm_name, iface.xml, debug=True)
                     virsh.dumpxml(vm_name, debug=True)
@@ -229,6 +238,7 @@ def run(test, params, env):
 
             if check == 'hotplug_save':
                 virsh.detach_interface(vm_name, 'network %s' % params['mac'], debug=True)
+                time.sleep(5)
                 dom_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
                 if params['mac'] in str(dom_xml):
                     test.fail('Failed to detach interface with mtu after save-restore')
@@ -298,8 +308,9 @@ def run(test, params, env):
         bk_xml.sync()
         bk_netxml.sync()
         if 'test_net' in locals():
-            virsh.net_destroy(test_net, debug=True)
+            virsh.net_destroy(bridge_name, debug=True)
         if params.get('con_name'):
             process.run('nmcli con del %s' % params['con_name'], verbose=True)
         if add_pkg:
+            process.run("ovs-vsctl del-br %s" % br, verbose=True)
             utils_package.package_remove(add_pkg)
