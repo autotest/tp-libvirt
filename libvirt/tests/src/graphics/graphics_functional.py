@@ -167,7 +167,7 @@ class EnvState(object):
         if spice_listen == 'not_set':
             del self.qemu_config.spice_listen
         elif spice_listen in ['valid_ipv4', 'valid_ipv6']:
-            expected_ip = str(expected_result['spice_ips'][0])
+            expected_ip = str(expected_result['spice_ips'][0].addr)
             self.qemu_config.spice_listen = expected_ip
         else:
             self.qemu_config.spice_listen = spice_listen
@@ -647,7 +647,7 @@ def get_expected_spice_options(params, networks, expected_result):
             spice_listen = params.get("spice_listen", "127.0.0.1")
 
         if spice_listen in ['valid_ipv4', 'valid_ipv6']:
-            listen_address = str(expected_result['spice_ips'][0])
+            listen_address = str(expected_result['spice_ips'][0].addr)
         else:
             listen_address = spice_listen
 
@@ -885,7 +885,7 @@ def generate_spice_graphic_xml(params, expected_result):
     elif listen_type == 'address':
         address = params.get("spice_listen_address", "127.0.0.1")
         if address in ['valid_ipv4', 'valid_ipv6']:
-            address = str(expected_result['spice_ips'][0])
+            address = str(expected_result['spice_ips'][0].addr)
         listen = {'type': 'address', 'address': address}
         graphic.listens = [listen]
 
@@ -915,7 +915,7 @@ def generate_vnc_graphic_xml(params, expected_result):
     elif listen_type == 'address':
         address = params.get("vnc_listen_address", "127.0.0.1")
         if address in ['valid_ipv4', 'valid_ipv6']:
-            address = str(expected_result['vnc_ips'][0])
+            address = str(expected_result['vnc_ips'][0].addr)
         listen = {'type': 'address', 'address': address}
         graphic.listens = [listen]
     return graphic
