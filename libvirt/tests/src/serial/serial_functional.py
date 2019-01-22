@@ -153,7 +153,7 @@ class Console(aexpect.ShellSession):
                 elif self.console_type == 'udp':
                     new_data, self.peer_addr = self.socket.recvfrom(
                         1024, socket.MSG_DONTWAIT)
-                    data += astring.to_text(new_data)
+                    data += astring.to_text(new_data, errors='ignore')
                     return data
                 elif self.console_type in ['file', 'pipe', 'tls']:
                     try:
@@ -635,33 +635,37 @@ def run(test, params, env):
         else:
             logging.debug('target_type: %s', target_type)
             if target_type == 'pci-serial':
-                exp_ser_devs = ['pci-serial', 'chardev=charserial0', 'id=serial0',
-                                'bus=pci.0', 'addr=0x\d+']
+                exp_ser_devs = ['pci-serial', 'chardev=charserial0',
+                                'id=serial0', 'bus=pci.0', 'addr=0x\d+']
             else:
-                exp_ser_devs = ['isa-serial', 'chardev=charserial0', 'id=serial0']
+                exp_ser_devs = ['isa-serial', 'chardev=charserial0',
+                                'id=serial0']
         exp_ser_dev = ','.join(exp_ser_devs)
 
-        if console_target_type != 'serial':
+        if console_target_type != 'serial' or serial_type == 'spicevmc':
             exp_ser_opt = None
             exp_ser_dev = None
+        logging.debug("exp_ser_opt: %s", exp_ser_opt)
+        logging.debug("ser_opt: %s", ser_opt)
 
         # Check options against expectation
         if exp_ser_opt is not None and re.match(exp_ser_opt, ser_opt) is None:
             test.fail('Expect get qemu command serial option "%s", '
                       'but got "%s"' % (exp_ser_opt, ser_opt))
-        if exp_ser_dev is not None and ser_dev is not None and re.match(exp_ser_dev, ser_dev) is None:
+        if exp_ser_dev is not None and ser_dev is not None \
+           and re.match(exp_ser_dev, ser_dev) is None:
             test.fail(
                 'Expect get qemu command serial device option "%s", '
                 'but got "%s"' % (exp_ser_dev, ser_dev))
 
         if console_target_type == 'virtio':
-            exp_con_opts = [serial_type, 'id=charconsole0']
+            exp_con_opts = [serial_type, 'id=charconsole1']
             exp_con_opt = ','.join(exp_con_opts)
 
             exp_con_devs = []
             if console_target_type == 'virtio':
                 exp_con_devs.append('virtconsole')
-            exp_con_devs += ['chardev=charconsole0', 'id=console0']
+            exp_con_devs += ['chardev=charconsole1', 'id=console1']
             exp_con_dev = ','.join(exp_con_devs)
             if con_opt != exp_con_opt:
                 test.fail(
@@ -740,8 +744,9 @@ def run(test, params, env):
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
     try:
-        vm_xml.remove_all_device_by_type('serial')
-        vm_xml.remove_all_device_by_type('console')
+        if console_target_type != 'virtio':
+            vm_xml.remove_all_device_by_type('serial')
+            vm_xml.remove_all_device_by_type('console')
         if serial_type == "tls":
             test_dict = dict(params)
             tls_obj = TLSConnection(test_dict)
@@ -780,7 +785,8 @@ def run(test, params, env):
         if not define_and_check():
             logging.debug("Can't define the VM, exiting.")
             return
-        check_xml()
+        if console_target_type != 'virtio':
+            check_xml()
 
         expected_fails = []
         if serial_type == 'nmdm' and platform.system() != 'FreeBSD':
