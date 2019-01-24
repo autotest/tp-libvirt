@@ -147,9 +147,13 @@ def check_output(test, output_msg, params):
                           with some conditions satisfied
     """
     err_msg = params.get("err_msg", None)
-    if err_msg and err_msg in output_msg:
-        logging.debug("Expected error '%s' was found", err_msg)
-        return
+    status_error = params.get("status_error", "no")
+    if status_error == "yes" and err_msg:
+        if err_msg in output_msg:
+            logging.debug("Expected error '%s' was found", err_msg)
+            return
+        else:
+            test.fail("The expected error '%s' was not found in output '%s'" % (err_msg, output_msg))
 
     ERR_MSGDICT = {"Bug 1249587": "error: Operation not supported: " +
                    "pre-creation of storage targets for incremental " +
@@ -1057,7 +1061,6 @@ def run(test, params, env):
     vm_name = test_dict.get("main_vm")
     vm = env.get_vm(vm_name)
     start_vm = test_dict.get("start_vm", "no")
-    status_error = test_dict.get("status_error", "no")
     transport = test_dict.get("transport")
     plus = test_dict.get("conn_plus", "+")
     config_ipv6 = test_dict.get("config_ipv6", "no")
@@ -1137,6 +1140,15 @@ def run(test, params, env):
     block_time = test_dict.get("block_time")
     restart_vm = "yes" == test_dict.get("restart_vm", "no")
     diff_cpu_vendor = "yes" == test_dict.get("diff_cpu_vendor", "no")
+
+    # Get err_msg and status_error parameters
+    err_msg = test_dict.get("err_msg", None)
+    if err_msg == "error: internal error: unable to execute QEMU command 'nbd-server-add': Block node is read-only":
+        if utils_misc.compare_qemu_version(2, 10, 0, is_rhev=True):
+            test_dict["status_error"] = "yes"
+        else:
+            test_dict["status_error"] = "no"
+    status_error = test_dict.get("status_error", "no")
 
     # Get iothread parameters.
     driver_iothread = test_dict.get("driver_iothread")
@@ -1896,11 +1908,15 @@ def run(test, params, env):
         # nfs setup.
         # Case 1: --copy-storage-all without --migrate-disks will copy all images to
         #         remote host.
-        # Check points:
+        # Check points for qemu-kvm >=2.10.0:
+        # 1. Migration fails with error "Block node is read-only"
+        #
+        # Check points for qemu-kvm <2.10.0:
         # 1. Migration operation succeeds and guest on remote is running
         # 2. All Disks in guest on remote host can be r/w
         # 3. Libvirtd.log on remote host should include "nbd-server-add" message for
         #    all disks
+        #
         # Case 2: --copy-storage-all with --migrate-disks <all non-shared-images> will
         #         copy images specified in --migrate-disks to remote host.
         # Check points:
