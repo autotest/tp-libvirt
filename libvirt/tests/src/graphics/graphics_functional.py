@@ -224,6 +224,14 @@ def check_addr_port(all_ips, expected_ips, ports, test):
                     'Expect not listening on %s:%s but true.' % (ip, port))
 
 
+def get_graphic_passwd(libvirt_vm):
+    vmxml = VMXML.new_from_dumpxml(libvirt_vm.name, options="--security-info")
+    if hasattr(vmxml.get_graphics_devices(), 'passwd'):
+        return vmxml.get_graphics_devices()[0].passwd
+    else:
+        return None
+
+
 def qemu_spice_options(libvirt_vm):
     """
     Get spice options from VM's qemu command line as dicts.
@@ -249,6 +257,10 @@ def qemu_spice_options(libvirt_vm):
                 spice_dict[key] = value
         else:
             spice_dict[opt] = 'yes'
+
+    xml_passwd = get_graphic_passwd(libvirt_vm)
+    if xml_passwd is not None:
+        spice_dict['passwd'] = xml_passwd
     for key in spice_dict:
         logging.debug("%s: %s", key, spice_dict[key])
     return spice_dict, plaintext_channels, tls_channels
@@ -285,6 +297,7 @@ def qemu_vnc_options(libvirt_vm):
         addr = addr[1:-1]
     vnc_dict['addr'] = addr
 
+    xml_passwd = get_graphic_passwd(libvirt_vm)
     if len(vnc_opt_split) == 2:
         vnc_opt = vnc_opt_split[1]
         for opt in vnc_opt.split(','):
@@ -292,7 +305,11 @@ def qemu_vnc_options(libvirt_vm):
                 key, value = opt.split('=')
                 vnc_dict[key] = value
             else:
-                vnc_dict[opt] = 'yes'
+                if opt == 'password':
+                    if xml_passwd is not None:
+                        vnc_dict['passwd'] = xml_passwd
+                else:
+                    vnc_dict[opt] = 'yes'
     for key in vnc_dict:
         logging.debug("%s: %s", key, vnc_dict[key])
     return vnc_dict
@@ -631,6 +648,7 @@ def get_expected_spice_options(params, networks, expected_result):
     zlib_compression = params.get("zlib_compression", "not_set")
     playback_compression = params.get("playback_compression", "not_set")
     listen_type = params.get("spice_listen_type", "not_set")
+    graphic_passwd = params.get("graphic_passwd")
 
     expected_port = expected_result['spice_port']
     expected_tls_port = expected_result['spice_tls_port']
@@ -674,6 +692,8 @@ def get_expected_spice_options(params, networks, expected_result):
         expected_opts['zlib-glz-wan-compression'] = zlib_compression
     if playback_compression != 'not_set':
         expected_opts['playback-compression'] = playback_compression
+    if graphic_passwd:
+        expected_opts['passwd'] = graphic_passwd
 
     expected_result['spice_options'] = expected_opts
 
@@ -688,6 +708,7 @@ def get_expected_vnc_options(params, networks, expected_result):
     auto_unix_socket = params.get("vnc_auto_unix_socket", 'not_set')
     tls_x509_verify = params.get("vnc_tls_x509_verify", 'not_set')
     listen_type = params.get("vnc_listen_type", "not_set")
+    graphic_passwd = params.get("graphic_passwd")
 
     expected_port = expected_result['vnc_port']
 
@@ -726,6 +747,8 @@ def get_expected_vnc_options(params, networks, expected_result):
             expected_opts['x509verify'] = x509_dir
         else:
             expected_opts['x509'] = x509_dir
+    if graphic_passwd:
+        expected_opts['passwd'] = graphic_passwd
 
     expected_result['vnc_options'] = expected_opts
 
@@ -844,6 +867,8 @@ def generate_spice_graphic_xml(params, expected_result):
     zlib_compression = params.get("zlib_compression", "not_set")
     playback_compression = params.get("playback_compression", "not_set")
     listen_type = params.get("spice_listen_type", "not_set")
+    graphic_passwd = params.get("graphic_passwd")
+    spice_passwd_place = params.get("spice_passwd_place", "not_set")
 
     graphic = Graphics(type_name='spice')
 
@@ -889,6 +914,8 @@ def generate_spice_graphic_xml(params, expected_result):
         listen = {'type': 'address', 'address': address}
         graphic.listens = [listen]
 
+    if graphic_passwd and spice_passwd_place == "guest":
+        graphic.passwd = graphic_passwd
     return graphic
 
 
@@ -899,6 +926,8 @@ def generate_vnc_graphic_xml(params, expected_result):
     autoport = params.get("vnc_autoport", "yes")
     port = params.get("vnc_port", "not_set")
     listen_type = params.get("vnc_listen_type", "not_set")
+    graphic_passwd = params.get("graphic_passwd")
+    vnc_passwd_place = params.get("vnc_passwd_place", "not_set")
 
     graphic = Graphics(type_name='vnc')
 
@@ -918,6 +947,9 @@ def generate_vnc_graphic_xml(params, expected_result):
             address = str(expected_result['vnc_ips'][0])
         listen = {'type': 'address', 'address': address}
         graphic.listens = [listen]
+
+    if graphic_passwd and vnc_passwd_place == "guest":
+        graphic.passwd = graphic_passwd
     return graphic
 
 
@@ -1027,6 +1059,7 @@ def run(test, params, env):
     spice_xml = params.get("spice_xml", "no") == 'yes'
     vnc_xml = params.get("vnc_xml", "no") == 'yes'
     is_negative = params.get("negative_test", "no") == 'yes'
+    graphic_passwd = params.get("graphic_passwd")
 
     sockets = block_ports(params)
     networks = setup_networks(params, test)
@@ -1037,6 +1070,19 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
+
+    config = utils_config.LibvirtQemuConfig()
+    libvirtd = utils_libvirtd.Libvirtd()
+
+    if graphic_passwd:
+        spice_passwd_place = params.get("spice_passwd_place", "not_set")
+        vnc_passwd_place = params.get("vnc_passwd_place", "not_set")
+        if spice_passwd_place == "qemu":
+            config['spice_password'] = '"%s"' % graphic_passwd
+            libvirtd.restart()
+        if vnc_passwd_place == "qemu":
+            config['vnc_password'] = '"%s"' % graphic_passwd
+            libvirtd.restart()
     try:
         vm_xml.remove_all_graphics()
         if spice_xml:
@@ -1094,3 +1140,5 @@ def run(test, params, env):
         vm_xml_backup.sync()
         os.system('rm -f /dev/shm/spice*')
         env_state.restore()
+        config.restore()
+        libvirtd.restart()
