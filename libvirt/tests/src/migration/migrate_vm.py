@@ -2224,6 +2224,11 @@ def run(test, params, env):
                 except OSError:
                     pass
 
+        if (transport in ('tcp', 'tls') and uri_port) or disk_port:
+            port = disk_port if disk_port else uri_port[1:]
+            migrate_setup.migrate_pre_setup("//%s/" % server_ip, test_dict,
+                                            cleanup=False, ports=port)
+
         # Case for --disk_ports option.
         # Start the storage migration on a thread
         # The storage migration needs 3-5s to start. After that, check the port
@@ -2375,10 +2380,6 @@ def run(test, params, env):
             status_error = "no"
             test_dict['err_msg'] = None
 
-        if (transport in ('tcp', 'tls') and uri_port) or disk_port:
-            port = disk_port if disk_port else uri_port[1:]
-            migrate_setup.migrate_pre_setup("//%s/" % server_ip, test_dict,
-                                            cleanup=False, ports=port)
         if run_migr_front:
             migrate_vm(test_dict)
 
