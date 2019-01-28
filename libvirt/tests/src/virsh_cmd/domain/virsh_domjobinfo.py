@@ -104,6 +104,8 @@ def run(test, params, env):
         info_list.insert(1, "Operation")
         if libvirt_version.version_compare(3, 9, 0):
             info_list.insert(info_list.index("Dirty rate")+1, "Page size")
+            if libvirt_version.version_compare(5, 0, 0):
+                info_list.insert(info_list.index("Iteration")+1, "Postcopy requests")
     logging.debug("The expected info_list for running job is %s", info_list)
 
     # run test case
