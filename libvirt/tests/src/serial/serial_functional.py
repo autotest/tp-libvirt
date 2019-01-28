@@ -636,7 +636,7 @@ def run(test, params, env):
             logging.debug('target_type: %s', target_type)
             if target_type == 'pci-serial':
                 exp_ser_devs = ['pci-serial', 'chardev=charserial0',
-                                'id=serial0', 'bus=pci.0', 'addr=0x\d+']
+                                'id=serial0', 'bus=pci.\d+', 'addr=0x\d+']
             else:
                 exp_ser_devs = ['isa-serial', 'chardev=charserial0',
                                 'id=serial0']
