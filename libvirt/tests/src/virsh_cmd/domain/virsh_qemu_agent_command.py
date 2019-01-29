@@ -107,7 +107,7 @@ def run(test, params, env):
     # Prepare domain
     try:
         reset_domain(test, vm, vm_state, needs_agent, guest_cpu_busy, password)
-    except exceptions.TestNAError as details:
+    except exceptions.TestCancel as details:
         reset_env(vm_name, xml_file)
         test.cancel(details)
     except Exception as details:
