@@ -73,7 +73,7 @@ def check_output(test, output_msg, params):
     :param output_msg: the given output messages
     :param params: the dictionary including necessary parameters
 
-    :raise TestNAError: raised if the known error is found together
+    :raise TestCancel: raised if the known error is found together
                         with some conditions satisfied
     """
     ERR_MSGDICT = {"Bug 1249587": "error: Operation not supported: " +

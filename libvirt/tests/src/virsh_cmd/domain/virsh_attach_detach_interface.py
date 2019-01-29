@@ -202,7 +202,7 @@ def run(test, params, env):
     if iface_type == "direct":
         iface_source = utils_net.get_net_if(state="UP")[0]
     # Get a bridge name for test if iface_type is bridge.
-    # If there is no bridge other than virbr0, raise TestNAError
+    # If there is no bridge other than virbr0, raise TestCancel
     if iface_type == "bridge":
         host_bridge = utils_net.Bridge()
         bridge_list = host_bridge.list_br()
