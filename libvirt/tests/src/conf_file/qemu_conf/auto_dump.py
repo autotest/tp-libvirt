@@ -115,7 +115,7 @@ def run(test, params, env):
         arch = platform.machine()
 
         if arch == 'x86_64':
-                # Check if bypass cache flag set or unset accordingly.
+            # Check if bypass cache flag set or unset accordingly.
             if (flags & 0o40000) and bypass_cache != '1':
                 test.fail('auto_dump_bypass_cache is %s but flags '
                           'is %o' % (bypass_cache, flags))
