@@ -318,6 +318,25 @@ def run(test, params, env):
                       "is power of 2", item, pagesize)
         return item
 
+    def check_migration_res(result):
+        """
+        Check if the migration result is as expected
+
+        :param result: the output of migration
+        :raise: test.fail if test is failed
+        """
+        if not err_msg:
+            if int(result.exit_status) != 0:
+                test.fail(results_stderr_52lts(result).strip())
+        else:
+            logging.debug(result)
+            if not re.search(err_msg, results_stderr_52lts(result).strip()):
+                test.fail("Can not find the expected patterns '%s' in "
+                          "output '%s'" % (err_msg,
+                                           results_stderr_52lts(result).strip()))
+            else:
+                logging.debug("It is the expected error message")
+
     check_parameters(test, params)
 
     # Params for NFS shared storage
@@ -361,6 +380,11 @@ def run(test, params, env):
     htm_state = params.get("htm_state", None)
     qemu_check = params.get("qemu_check", None)
     xml_check_after_mig = params.get("guest_xml_check_after_mig", None)
+
+    # params for cache matrix test
+    cache = params.get("cache")
+    remove_cache = "yes" == params.get("remove_cache", "no")
+    err_msg = params.get("err_msg")
 
     arch = platform.machine()
     if any([hpt_resize, contrl_index, htm_state]) and 'ppc64' not in arch:
@@ -435,8 +459,14 @@ def run(test, params, env):
 
         if htm_state:
             set_feature(new_xml, 'htm', htm_state)
+
+        if cache:
+            params["driver_cache"] = cache
+        if remove_cache:
+            params["enable_cache"] = "no"
         # Change the disk of the vm to shared disk and then start VM
         libvirt.set_vm_disk(vm, params)
+
         if not vm.is_alive():
             vm.start()
 
@@ -505,8 +535,7 @@ def run(test, params, env):
                 mig_result = migration_test.ret
                 logging.error(details)
 
-        if int(mig_result.exit_status) != 0:
-            test.fail(results_stderr_52lts(mig_result).strip())
+        check_migration_res(mig_result)
 
         if check_complete_job:
             search_str_domjobinfo = params.get("search_str_domjobinfo", None)
@@ -570,11 +599,12 @@ def run(test, params, env):
                               "but found %s" % (int(contrl_index) + 1, len(all_ctrls)))
             remote_virsh_session.close_session()
 
-        server_session = remote.wait_for_login('ssh', server_ip, '22',
-                                               server_user, server_pwd,
-                                               r"[\#\$]\s*$")
-        check_vm_network_accessed(server_session)
-        server_session.close()
+        if int(mig_result.exit_status) == 0:
+            server_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                   server_user, server_pwd,
+                                                   r"[\#\$]\s*$")
+            check_vm_network_accessed(server_session)
+            server_session.close()
     except exceptions.TestFail as details:
         is_TestFail = True
         test_exception = details
