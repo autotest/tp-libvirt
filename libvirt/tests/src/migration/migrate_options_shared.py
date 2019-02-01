@@ -198,8 +198,6 @@ def run(test, params, env):
         time.sleep(10)
         # Migrate the guest.
         migration_res = vm.migrate(dest_uri, options, extra, **virsh_args)
-        logging.info("Migration out: %s", results_stdout_52lts(migration_res).strip())
-        logging.info("Migration error: %s", results_stderr_52lts(migration_res).strip())
         if int(migration_res.exit_status) != 0:
             logging.error("Migration failed for %s.", vm_name)
             return migration_res
@@ -325,17 +323,25 @@ def run(test, params, env):
         :param result: the output of migration
         :raise: test.fail if test is failed
         """
-        if not err_msg:
+        logging.info("Migration out: %s", results_stdout_52lts(result).strip())
+        logging.info("Migration error: %s", results_stderr_52lts(result).strip())
+
+        if status_error:  # Migration should fail
+            if err_msg:   # Special error messages are expected
+                if not re.search(err_msg, results_stderr_52lts(result).strip()):
+                    test.fail("Can not find the expected patterns '%s' in "
+                              "output '%s'" % (err_msg,
+                                               results_stderr_52lts(result).strip()))
+                else:
+                    logging.debug("It is the expected error message")
+            else:
+                if int(result.exit_status) != 0:
+                    logging.debug("Migration failure is expected result")
+                else:
+                    test.fail("Migration success is unexpected result")
+        else:
             if int(result.exit_status) != 0:
                 test.fail(results_stderr_52lts(result).strip())
-        else:
-            logging.debug(result)
-            if not re.search(err_msg, results_stderr_52lts(result).strip()):
-                test.fail("Can not find the expected patterns '%s' in "
-                          "output '%s'" % (err_msg,
-                                           results_stderr_52lts(result).strip()))
-            else:
-                logging.debug("It is the expected error message")
 
     check_parameters(test, params)
 
@@ -371,6 +377,8 @@ def run(test, params, env):
     contrl_index = params.get("new_contrl_index", None)
     grep_str_remote_log = params.get("grep_str_remote_log", "")
     grep_str_local_log = params.get("grep_str_local_log", "")
+    disable_verify_peer = "yes" == params.get("disable_verify_peer", "no")
+    status_error = "yes" == params.get("status_error", "no")
     stress_in_vm = "yes" == params.get("stress_in_vm", "no")
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
@@ -432,20 +440,22 @@ def run(test, params, env):
             add_ctrls(new_xml, dev_index=contrl_index)
 
         if extra.count("--tls"):
-            qemu_conf_dict = {"migrate_tls_x509_verify": "1"}
             # Setup TLS
             tls_obj = TLSConnection(params)
             if tls_recovery == "yes":
                 objs_list.append(tls_obj)
                 tls_obj.auto_recover = True
                 tls_obj.conn_setup()
-            # Setup qemu configure
-            logging.debug("Configure the qemu")
-            cleanup_libvirtd_log(log_file)
-            qemu_conf = libvirt.customize_libvirt_config(qemu_conf_dict,
-                                                         config_type="qemu",
-                                                         remote_host=True,
-                                                         extra_params=params)
+            if not disable_verify_peer:
+                qemu_conf_dict = {"migrate_tls_x509_verify": "1"}
+                # Setup qemu configure
+                logging.debug("Configure the qemu")
+                cleanup_libvirtd_log(log_file)
+                qemu_conf = libvirt.customize_libvirt_config(qemu_conf_dict,
+                                                             config_type="qemu",
+                                                             remote_host=True,
+                                                             extra_params=params)
+
         # Setup libvirtd
         if config_libvirtd:
             logging.debug("Configure the libvirtd")
@@ -508,7 +518,7 @@ def run(test, params, env):
 
         # For --postcopy enable
         postcopy_options = params.get("postcopy_options")
-        if postcopy_options and not extra.count(postcopy_options):
+        if postcopy_options:
             extra = "%s %s" % (extra, postcopy_options)
 
         if not asynch_migration:
@@ -631,7 +641,7 @@ def run(test, params, env):
             if remote_virsh_session:
                 remote_virsh_session.close_session()
 
-            if extra.count("--tls"):
+            if extra.count("--tls") and not disable_verify_peer:
                 logging.debug("Recover the qemu configuration")
                 libvirt.customize_libvirt_config(None,
                                                  config_type="qemu",
