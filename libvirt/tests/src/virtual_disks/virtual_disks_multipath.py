@@ -26,11 +26,13 @@ def run(test, params, env):
     mpath_conf_path = params.get('mpath_conf_path', '/etc/multipath.conf')
     mpath_conf_bkup_path = params.get('mpath_conf_bkup_path',
                                       '/etc/multipath.conf.bkup')
+    mpath_conf_exist = False
 
     def prepare_multipath_conf():
         """
         Prepare the multipath.conf to make sure iscsi lun can be seen as a
         multipath device.
+        :return: True means the multipath.conf exists at first, False means not.
         """
         mpath_conf_content = ("defaults {\n"
                               "    user_friendly_names yes\n"
@@ -41,18 +43,23 @@ def run(test, params, env):
         if os.path.exists(mpath_conf_bkup_path):
             os.remove(mpath_conf_bkup_path)
         if os.path.exists(mpath_conf_path):
+            mpath_conf_exist = True
             shutil.move(mpath_conf_path, mpath_conf_bkup_path)
         with open(mpath_conf_path, 'wt') as mpath_conf_file:
             mpath_conf_file.write(mpath_conf_content)
+        return mpath_conf_exist
 
-    def recover_multipath_conf():
+    def recover_multipath_conf(remove_mpath_conf=False):
         """
         Recover the multipath.conf.
+        :param remove_mpath_conf: True to remove multipath.conf.
         """
         if os.path.exists(mpath_conf_bkup_path):
             if os.path.exists(mpath_conf_path):
                 os.remove(mpath_conf_path)
             shutil.move(mpath_conf_bkup_path, mpath_conf_path)
+        if os.path.exists(mpath_conf_path) and remove_mpath_conf:
+            os.remove(mpath_conf_path)
 
     def check_in_vm(vm, old_parts):
         """
@@ -96,7 +103,7 @@ def run(test, params, env):
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     try:
         # Setup backend storage
-        prepare_multipath_conf()
+        mpath_conf_exist = prepare_multipath_conf()
         mpath.restart_multipathd()
         old_mpath_devs = mpath.find_mpath_devs()
         libvirt.setup_or_cleanup_iscsi(is_setup=True)
@@ -136,4 +143,5 @@ def run(test, params, env):
         vmxml_backup.sync()
         # Clean up backend storage
         libvirt.setup_or_cleanup_iscsi(is_setup=False)
-        recover_multipath_conf()
+        recover_multipath_conf(not mpath_conf_exist)
+        mpath.restart_multipathd()
