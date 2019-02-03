@@ -1,6 +1,7 @@
 import os
 import logging
 import time
+import math
 import re
 import threading
 import platform
@@ -197,6 +198,7 @@ def run(test, params, env):
         logging.info("Sleeping 10 seconds before migration")
         time.sleep(10)
         # Migrate the guest.
+        virsh_args.update({"ignore_status": True})
         migration_res = vm.migrate(dest_uri, options, extra, **virsh_args)
         logging.info("Migration out: %s", results_stdout_52lts(migration_res).strip())
         logging.info("Migration error: %s", results_stderr_52lts(migration_res).strip())
@@ -278,6 +280,75 @@ def run(test, params, env):
         except Exception as detail:
             logging.debug(detail)
 
+    def control_migrate_speed(to_speed=1):
+        """
+        Control migration duration
+
+        :param to_speed: the speed value in Mbps to be set for migration
+        :return int: the new migration speed after setting
+        """
+        virsh_args.update({"ignore_status": False})
+        old_speed = virsh.migrate_getspeed(vm_name, **virsh_args)
+        logging.debug("Current migration speed is %s MiB/s\n", old_speed.stdout.strip())
+        logging.debug("Set migration speed to %d MiB/s\n", to_speed)
+        cmd_result = virsh.migrate_setspeed(vm_name, to_speed, "", **virsh_args)
+        actual_speed = virsh.migrate_getspeed(vm_name, **virsh_args)
+        logging.debug("New migration speed is %s MiB/s\n", actual_speed.stdout.strip())
+        return int(actual_speed.stdout.strip())
+
+    def check_setspeed(params):
+        """
+        Set/get migration speed
+
+        :param params: the parameters used
+        :raise: test.fail if speed set does not take effect
+        """
+        expected_value = int(params.get("migrate_speed", '41943040')) // (1024 * 1024)
+        actual_value = control_migrate_speed(to_speed=expected_value)
+        params.update({'compare_to_value': actual_value})
+        if actual_value != expected_value:
+            test.fail("Migration speed is expected to be '%d MiB/s', but '%d MiB/s' "
+                      "found" % (expected_value, actual_value))
+
+    def check_domjobinfo(params):
+        """
+        Check given item in domjobinfo of the guest is as expected
+
+        :param params: the parameters used
+        :raise: test.fail if the value of given item is unexpected
+        """
+        jobinfo_item = params.get("jobinfo_item")
+        compare_to_value = params.get("compare_to_value")
+        diff_rate = float(params.get("diff_rate", "0"))
+        if not jobinfo_item or not compare_to_value:
+            return
+        jobinfo = virsh.domjobinfo(vm_name, **virsh_args)
+        for item in jobinfo.stdout.splitlines():
+            if item.count(jobinfo_item):
+                groups = re.findall(r'[0-9.]+', item.strip())
+                logging.debug('%s%s\n', item, groups[0])
+                if (math.fabs(float(groups[0]) - float(compare_to_value)) //
+                   float(compare_to_value) > diff_rate):
+                    test.fail("{} {} has too much difference from "
+                              "{}".format(jobinfo_item, groups[0], compare_to_value))
+                break
+
+    def do_actions_during_migrate(params):
+        """
+        The entry point to execute action list during migration
+
+        :param params: the parameters used
+        """
+        actions_during_migration = params.get("actions_during_migration")
+        if not actions_during_migration:
+            return
+        for action in actions_during_migration.split(","):
+            if action == 'setspeed':
+                check_setspeed(params)
+            elif action == 'domjobinfo':
+                check_domjobinfo(params)
+            time.sleep(3)
+
     def check_timeout_postcopy(params):
         """
         Check the vm state on target host after timeout
@@ -357,7 +428,8 @@ def run(test, params, env):
     params["mnt_path_name"] = params.get("nfs_mount_dir")
 
     # Local variables
-    virsh_args = {"ignore_status": True, "debug": True}
+    virsh_args = {"debug": True}
+    virsh_opt = params.get("virsh_opt", "")
     server_ip = params.get("server_ip")
     server_user = params.get("server_user", "root")
     server_pwd = params.get("server_pwd")
@@ -369,9 +441,11 @@ def run(test, params, env):
     check_complete_job = "yes" == params.get("check_complete_job", "no")
     config_libvirtd = "yes" == params.get("config_libvirtd", "no")
     contrl_index = params.get("new_contrl_index", None)
+    asynch_migration = "yes" == params.get("asynch_migrate", "no")
     grep_str_remote_log = params.get("grep_str_remote_log", "")
     grep_str_local_log = params.get("grep_str_local_log", "")
     stress_in_vm = "yes" == params.get("stress_in_vm", "no")
+    low_speed = params.get("low_speed", None)
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
                           'ssh_remote_auth': True}
@@ -407,7 +481,6 @@ def run(test, params, env):
     is_TestError = False
     is_TestFail = False
     is_TestSkip = False
-    asynch_migration = False
 
     # Objects to be cleaned up in the end
     objs_list = []
@@ -486,6 +559,9 @@ def run(test, params, env):
         if hpt_resize and hpt_resize != 'disabled':
             trigger_hpt_resize(vm_session)
 
+        if low_speed:
+            control_migrate_speed()
+
         if stress_in_vm:
             pkg_name = 'stress'
             logging.debug("Check if stress tool is installed")
@@ -500,8 +576,9 @@ def run(test, params, env):
             stress_thread.start()
 
         if extra.count("timeout-postcopy"):
-            asynch_migration = True
             func_name = check_timeout_postcopy
+        if params.get("actions_during_migration"):
+            func_name = do_actions_during_migrate
         if extra.count("comp-xbzrle-cache"):
             cache = get_usable_compress_cache(memory.get_page_size())
             extra = "%s %s" % (extra, cache)
@@ -521,7 +598,7 @@ def run(test, params, env):
             try:
                 migration_test.do_migration(vms, None, dest_uri, 'orderly',
                                             options, thread_timeout=900,
-                                            ignore_status=True,
+                                            ignore_status=True, virsh_opt=virsh_opt,
                                             func=func_name, extra_opts=extra,
                                             func_params=params)
                 mig_result = migration_test.ret
