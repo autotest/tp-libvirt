@@ -420,12 +420,12 @@ def run(test, params, env):
                 if len(ret) == 0:
                     logging.info("All common checkpoints passed")
             if checkpoint == 'quiet':
-                if len(output.strip()) != 0:
+                if len(output.strip().splitlines()) > 10:
                     test.fail('Output is not empty in quiet mode')
             if checkpoint == 'dependency':
                 if 'libguestfs-winsupport' not in output:
                     test.fail('libguestfs-winsupport not in dependency')
-                if 'VMF' not in output:
+                if all(pkg_pattern not in output for pkg_pattern in ['VMF', 'edk2-ovmf']):
                     test.fail('OVMF/AAVMF not in dependency')
                 if 'qemu-kvm-rhev' in output:
                     test.fail('qemu-kvm-rhev is in dependency')
