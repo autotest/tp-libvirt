@@ -243,14 +243,14 @@ def run(test, params, env):
                         dom.start()
                     all_options = new_disk + " --insert"
                     virsh.change_media(dom.name, target_device,
-                                       all_options, ignore_status=True, debug=True)
+                                       all_options, **virsh_dargs)
                     expected_events_list.append("'tray-change' for %s disk" + " .*%s.*:" % device_target_bus +
                                                 " opened")
                     expected_events_list.append("'tray-change' for %s disk" + " .*%s.*:" % device_target_bus +
                                                 " closed")
                     all_options = new_disk + " --eject"
                     virsh.change_media(dom.name, target_device,
-                                       all_options, ignore_status=True, debug=True)
+                                       all_options, **virsh_dargs)
                     expected_events_list.append("'tray-change' for %s disk" + " .*%s.*:" % device_target_bus +
                                                 " opened")
 
@@ -322,7 +322,8 @@ def run(test, params, env):
         elif qemu_monitor_test:
             result = virsh.qemu_monitor_event(event=event_name,
                                               event_timeout=event_timeout,
-                                              options=event_option, **virsh_dargs)
+                                              options=event_option,
+                                              **virsh_dargs)
             utlv.check_exit_status(result, status_error)
         else:
             result = virsh.event(event=event_name,
@@ -333,6 +334,7 @@ def run(test, params, env):
         if not status_error:
             if not event_list_option:
                 expected_events_list = []
+                virsh_dargs['ignore_status'] = False
                 for dom in vms:
                     expected_events_list.extend(trigger_events(dom, events_list))
                 if event_timeout:
