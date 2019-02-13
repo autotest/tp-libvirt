@@ -2591,7 +2591,7 @@ def run(test, params, env):
                                               virsh_options, src_uri)
             logging.debug("Start migrating: %s", cmd)
             status, output = run_remote_cmd(cmd, server_ip, server_user,
-                                            server_pwd)
+                                            server_pwd, timeout=300)
             logging.info(output)
 
             if status:
