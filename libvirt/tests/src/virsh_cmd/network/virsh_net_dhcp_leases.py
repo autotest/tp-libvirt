@@ -152,7 +152,9 @@ def run(test, params, env):
     cmd = "ps aux|grep dnsmasq|grep -v grep | grep -v default | awk '{print $2}'"
     pid_list = results_stdout_52lts(process.run(cmd, shell=True)).strip().split('\n')
     for pid in pid_list:
-        utils_misc.safe_kill(pid, signal.SIGKILL)
+        if pid:
+            pid_n = int(pid)
+            utils_misc.safe_kill(pid_n, signal.SIGKILL)
     # Create new network
     if prepare_net:
         create_network()
