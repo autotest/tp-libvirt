@@ -150,7 +150,8 @@ def run(test, params, env):
             virsh.net_destroy(net)
             virsh.net_undefine(net)
     cmd = "ps aux|grep dnsmasq|grep -v grep | grep -v default | awk '{print $2}'"
-    pid_list = results_stdout_52lts(process.run(cmd, shell=True)).strip().split('\n')
+    pid_list = results_stdout_52lts(process.run(cmd, shell=True)).strip().splitlines()
+    logging.debug(pid_list)
     for pid in pid_list:
         utils_misc.safe_kill(pid, signal.SIGKILL)
     # Create new network
