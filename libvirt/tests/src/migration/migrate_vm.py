@@ -307,7 +307,7 @@ def add_disk_xml(device_type, source_file,
         exceptions.TestSkipError("Only support 'cdrom' and 'floppy'"
                                  " device type: %s" % device_type)
 
-    dev_dict = {'cdrom': {'bus': 'ide', 'dev': 'hdc'},
+    dev_dict = {'cdrom': {'bus': 'scsi', 'dev': 'sdb'},
                 'floppy': {'bus': 'fdc', 'dev': 'fda'}}
     if image_size:
         cmd = "qemu-img create %s %s" % (source_file, image_size)
