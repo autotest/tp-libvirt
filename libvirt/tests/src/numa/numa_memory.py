@@ -1,5 +1,6 @@
 import os
 import logging
+import platform
 
 from avocado.utils import process
 from avocado.core import exceptions
@@ -109,6 +110,11 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     backup_xml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
 
+    # Get host numa node list
+    host_numa_node = utils_misc.NumaInfo()
+    node_list = host_numa_node.online_nodes_withmem
+    logging.debug("host node list is %s", " ".join(node_list))
+
     # Prepare numatune memory parameter dict
     mem_tuple = ('memory_mode', 'memory_placement', 'memory_nodeset')
     numa_memory = {}
@@ -116,6 +122,21 @@ def run(test, params, env):
         value = params.get(mem_param)
         if value:
             numa_memory[mem_param.split('_')[1]] = value
+    arch = platform.machine()
+    if 'ppc64' in arch:
+        try:
+            ppc_memory_nodeset = ""
+            nodes = numa_memory["nodeset"]
+            if '-' in nodes:
+                for nnode in range(int(nodes.split('-')[0]), int(nodes.split('-')[1]) + 1):
+                    ppc_memory_nodeset += str(node_list[nnode]) + ','
+            else:
+                node_lst = nodes.split(',')
+                for nnode in range(len(node_lst)):
+                    ppc_memory_nodeset += str(node_list[int(node_lst[nnode])]) + ','
+            numa_memory["nodeset"] = ppc_memory_nodeset[:-1]
+        except (KeyError, IndexError):
+            pass
 
     # Prepare libvirtd session with log level as 1
     config_path = os.path.join(data_dir.get_tmp_dir(), "virt-test.conf")
@@ -144,11 +165,6 @@ def run(test, params, env):
                                   step=1)
         if not ret:
             test.fail("Libvirtd hang after restarted")
-
-        # Get host numa node list
-        host_numa_node = utils_misc.NumaInfo()
-        node_list = host_numa_node.online_nodes_withmem
-        logging.debug("host node list is %s", node_list)
 
         # Get host cpu list
         tmp_list = []
