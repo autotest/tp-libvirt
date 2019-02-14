@@ -515,6 +515,12 @@ def run(test, params, env):
     test_json_pseudo_protocol = "yes" == params.get("json_pseudo_protocol", "no")
     disk_snapshot_with_sanlock = "yes" == params.get("disk_internal_with_sanlock", "no")
 
+    # Create /etc/ceph/ceph.conf file to suppress false warning error message.
+    process.run("mkdir -p /etc/ceph", ignore_status=True, shell=True)
+    cmd = ("echo 'mon_host = {0}' >/etc/ceph/ceph.conf"
+           .format(mon_host))
+    process.run(cmd, ignore_status=True, shell=True)
+
     # Start vm and get all partions in vm.
     if vm.is_dead():
         vm.start()
@@ -866,6 +872,9 @@ def run(test, params, env):
             test.fail("VM failed to start."
                       "Error: %s" % str(details))
     finally:
+        # Remove /etc/ceph/ceph.conf file if exists.
+        if os.path.exists('/etc/ceph/ceph.conf'):
+            os.remove('/etc/ceph/ceph.conf')
         # Delete snapshots.
         snapshot_lists = virsh.snapshot_list(vm_name)
         if len(snapshot_lists) > 0:

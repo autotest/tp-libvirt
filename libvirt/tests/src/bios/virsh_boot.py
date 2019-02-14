@@ -594,6 +594,12 @@ def run(test, params, env):
     vmxml_backup = vm_xml.VMXML.new_from_dumpxml(vm_name)
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     try:
+        # Create /etc/ceph/ceph.conf file to suppress false warning error message.
+        process.run("mkdir -p /etc/ceph", ignore_status=True, shell=True)
+        cmd = ("echo 'mon_host = {0}' >/etc/ceph/ceph.conf"
+               .format(params.get("mon_host")))
+        process.run(cmd, ignore_status=True, shell=True)
+
         setup_test_env(params, test)
         apply_boot_options(vmxml, params)
         blk_source = vm.get_first_disk_devices()['source']
@@ -658,6 +664,9 @@ def run(test, params, env):
                 remote_session.close()
         logging.debug("Succeed to boot %s" % vm_name)
     finally:
+        # Remove /etc/ceph/ceph.conf file if exists.
+        if os.path.exists('/etc/ceph/ceph.conf'):
+            os.remove('/etc/ceph/ceph.conf')
         logging.debug("Start to cleanup")
         if vm.is_alive:
             vm.destroy()
