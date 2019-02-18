@@ -284,9 +284,18 @@ def run(test, params, env):
                         try:
                             polkit = test_setup.LibvirtPolkitConfig(params)
                             polkit_rules_path = polkit.polkit_rules_path
-                            cmd = "sed -i '/.secret./{n;s/QEMU/secret/g;s/pool_name/secret_uuid/;s/virt-dir-pool/%s/;}' %s" % (luks_secret_uuid, polkit_rules_path)
-                            process.system(cmd, ignore_status=True)
-                            rule = open(polkit_rules_path, 'r+').read()
+                            with open(polkit_rules_path, 'r+') as f:
+                                rule = f.readlines()
+                                for index, v in enumerate(rule):
+                                    if v.find("secret") >= 0:
+                                        nextline = rule[index + 1]
+                                        s = nextline.replace("QEMU", "secret").replace(
+                                                "pool_name", "secret_uuid").replace(
+                                                        "virt-dir-pool", "%s" % luks_secret_uuid)
+                                        rule[index + 1] = s
+                                rule = ''.join(rule)
+                            with open(polkit_rules_path, 'w+') as f:
+                                f.write(rule)
                             logging.debug(rule)
                             polkit.polkitd.restart()
                         except IOError as e:
