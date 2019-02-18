@@ -173,7 +173,7 @@ def run(test, params, env):
             if disk_dist != disk_src_restore:
                 test.fail("Failed to check hooks for"
                           " managedsave operation")
-            vm.destroy()
+            vm.dstroy()
             if os.path.exists(disk_dist):
                 os.remove(disk_dist)
             vmxml_backup.sync()
@@ -382,7 +382,7 @@ def run(test, params, env):
             # Wait for timeout and if not succeeded, detach again (during testing, detaching interface failed from q35 VM even setting timeout)
             if len(vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices("interface")) != interface_num:
                 ret = virsh.detach_interface(vm_name,
-                                         "network --mac %s" % mac_addr)
+                                        "network --mac %s" % mac_addr)
                 libvirt.check_exit_status(ret)
             if utils_misc.wait_for(is_detached_interface, timeout=50) is not True:
                 test.fail("Detaching interface failed.")
