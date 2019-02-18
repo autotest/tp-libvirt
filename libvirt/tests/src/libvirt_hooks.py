@@ -9,9 +9,10 @@ from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_misc
 from virttest import utils_libvirtd
+from virttest import data_dir
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
-from virttest import data_dir
+from virttest.libvirt_xml.devices.controller import Controller
 
 
 def run(test, params, env):
@@ -28,6 +29,7 @@ def run(test, params, env):
     virsh_dargs = {'debug': True, 'ignore_status': False}
     hook_file = params.get("hook_file", "/etc/libvirt/hooks/qemu")
     hook_log = params.get("hook_log", "/tmp/qemu.log")
+    machine_type = params.get("machine_type", "")
 
     def prepare_hook_file(hook_op):
         """
@@ -298,21 +300,76 @@ def run(test, params, env):
             assert check_hooks(hook_str)
             hook_str = hook_file + " " + net_name + " started begin -"
             assert check_hooks(hook_str)
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
 
-            # plug a interface
-            if vm.is_dead():
-                vm.start()
-                vm.wait_for_login().close()
+            # Remove all controllers, interfaces and addresses in vm dumpxml
+            vm_inactive_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            vm_inactive_xml.remove_all_device_by_type('controller')
+            type_dict = {'address': '/devices/*/address'}
+            try:
+                for elem in vm_inactive_xml.xmltreefile.findall(type_dict['address']):
+                    vm_inactive_xml.xmltreefile.remove(elem)
+            except (AttributeError, TypeError) as details:
+                test.fail("Fail to remove address.")
+            vm_inactive_xml.xmltreefile.write()
+            machine_list = vm_inactive_xml.os.machine.split("-")
+
+            # Modify machine type according to the requirements and Add controllers to VM according to machine type
+
+            def generate_controller(controller_dict):
+                controller_xml = Controller("controller")
+                controller_xml.model = controller_dict['model']
+                controller_xml.type = controller_dict['type']
+                controller_xml.index = controller_dict['index']
+                return controller_xml
+
+            if machine_type == 'pc':
+                vm_inactive_xml.set_os_attrs(**{"machine": machine_list[0] + "-i440fx-" + machine_list[2]})
+                pc_Dict0 = {'model': 'pci-root', 'type': 'pci', 'index': 0}
+                pc_Dict1 = {'model': 'pci-bridge', 'type': 'pci', 'index': 1}
+                vm_inactive_xml.add_device(generate_controller(pc_Dict0))
+                vm_inactive_xml.add_device(generate_controller(pc_Dict1))
+            elif machine_type == 'q35':
+                vm_inactive_xml.set_os_attrs(**{"machine": machine_list[0] + "-q35-" + machine_list[2]})
+                q35_Dict0 = {'model': 'pcie-root', 'type': 'pci', 'index': 0}
+                q35_Dict1 = {'model': 'pcie-root-port', 'type': 'pci', 'index': 1}
+                q35_Dict2 = {'model': 'pcie-to-pci-bridge', 'type': 'pci', 'index': 2}
+                vm_inactive_xml.add_device(generate_controller(q35_Dict0))
+                vm_inactive_xml.add_device(generate_controller(q35_Dict1))
+                vm_inactive_xml.add_device(generate_controller(q35_Dict2))
+            vm_inactive_xml.sync()
+
+            # Plug a interface and Unplug the interface
+            vm.start()
+            vm.wait_for_login().close()
+            interface_num = len(vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices("interface"))
             mac_addr = "52:54:00:9a:53:a9"
+            logging.debug(vm_xml.VMXML.new_from_dumpxml(vm_name))
+
+            def is_attached_interface():
+                return len(vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices("interface")) == interface_num + 1
+
             ret = virsh.attach_interface(vm_name,
-                                         ("network %s --mac %s" %
-                                          (net_name, mac_addr)))
+                                         ("network %s --mac %s" % (net_name, mac_addr)))
             libvirt.check_exit_status(ret)
+            if utils_misc.wait_for(is_attached_interface, timeout=20) is not True:
+                test.fail("Attaching interface failed.")
             hook_str = hook_file + " " + net_name + " plugged begin -"
             assert check_hooks(hook_str)
-            ret = virsh.detach_interface(vm_name,
-                                         "network --mac %s" % mac_addr)
+
+            def is_detached_interface():
+                return len(vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices("interface")) == interface_num
+
+            ret = virsh.detach_interface(vm_name, "network --mac %s" % mac_addr)
             libvirt.check_exit_status(ret)
+            utils_misc.wait_for(is_detached_interface, timeout=50)
+            # Wait for timeout and if not succeeded, detach again (during testing, detaching interface failed from q35 VM for the first time when using this function)
+            if len(vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices("interface")) != interface_num:
+                ret = virsh.detach_interface(vm_name, "network --mac %s" % mac_addr)
+                libvirt.check_exit_status(ret)
+            if utils_misc.wait_for(is_detached_interface, timeout=50) is not True:
+                test.fail("Detaching interface failed.")
             hook_str = hook_file + " " + net_name + " unplugged begin -"
             assert check_hooks(hook_str)
             # remove the log file
