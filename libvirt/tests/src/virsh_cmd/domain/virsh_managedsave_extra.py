@@ -52,8 +52,9 @@ def run(test, params, env):
                                      % save_img_xml, **virsh_dargs)
             virsh.managedsave_dumpxml(vm_name, ' > %s' % managed_save_xml,
                                       **virsh_dargs)
-            result = process.run('diff %s %s' % (save_img_xml, managed_save_xml),
-                                 shell=True, verbose=True)
+            result_need_check = process.run('diff %s %s' %
+                                            (save_img_xml, managed_save_xml),
+                                            shell=True, verbose=True)
         if checkpoint == 'secure_info':
             # Check managedsave-dumpxml with option --security-info
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -120,18 +121,24 @@ def run(test, params, env):
         if params.get('check_cmd_error', '') == 'yes':
             ms_command = params.get('ms_command', '')
             if ms_command == 'edit':
-                result = virsh.managedsave_edit(vm_name, ms_extra_options, debug=True)
+                result_need_check = virsh.managedsave_edit(vm_name,
+                                                           ms_extra_options,
+                                                           debug=True)
             if ms_command == 'dumpxml':
-                result = virsh.managedsave_dumpxml(vm_name, ms_extra_options, debug=True)
+                result_need_check = virsh.managedsave_dumpxml(vm_name,
+                                                              ms_extra_options,
+                                                              debug=True)
             if ms_command == 'define':
-                result = virsh.managedsave_define(vm_name, bkxml.xml, ms_extra_options,
-                                                  debug=True)
+                result_need_check = virsh.managedsave_define(vm_name,
+                                                             bkxml.xml,
+                                                             ms_extra_options,
+                                                             debug=True)
         # If needs to check result, check it
-        if 'result' in locals():
+        if 'result_need_check' in locals():
             logging.info('Check command result.')
-            libvirt.check_exit_status(result, status_error)
+            libvirt.check_exit_status(result_need_check, status_error)
             if error_msg:
-                libvirt.check_result(result, [error_msg])
+                libvirt.check_result(result_need_check, [error_msg])
 
     finally:
         if params.get('clean_managed_save'):

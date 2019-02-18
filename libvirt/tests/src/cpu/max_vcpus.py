@@ -43,14 +43,14 @@ def run(test, params, env):
         if check == 'no_iommu':
             logging.info('Set vcpu to %s', guest_vcpu)
             vmxml.vcpu = int(guest_vcpu)
-            result = virsh.define(vmxml.xml, debug=True)
+            result_need_check = virsh.define(vmxml.xml, debug=True)
 
         # Set iommu device but not set ioapci in features
         if check == 'with_iommu':
             logging.info('Set vcpu to %s', guest_vcpu)
             vmxml.vcpu = int(guest_vcpu)
             set_iommu(vmxml)
-            result = virsh.define(vmxml.xml, debug=True)
+            result_need_check = virsh.define(vmxml.xml, debug=True)
 
         # Add ioapic and iommu device in xml
         if check.startswith('ioapic_iommu'):
@@ -76,7 +76,7 @@ def run(test, params, env):
 
             if status_error:
                 if start_fail:
-                    result = virsh.start(vm_name, debug=True)
+                    result_need_check = virsh.start(vm_name, debug=True)
 
             else:
                 # Login guest and check guest cpu number
@@ -96,8 +96,8 @@ def run(test, params, env):
                     test.fail('Not all CPU(s) are online')
 
         # Check result if there's result to check
-        if 'result' in locals():
-            libvirt.check_result(result, err_msg)
+        if 'result_need_check' in locals():
+            libvirt.check_result(result_need_check, err_msg)
 
     finally:
         bkxml.sync()
