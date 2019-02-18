@@ -9,9 +9,11 @@ from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_misc
 from virttest import utils_libvirtd
+from virttest import utils_misc
+from virttest import data_dir
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
-from virttest import data_dir
+from virttest.libvirt_xml.devices.controller import Controller
 
 
 def run(test, params, env):
@@ -28,6 +30,7 @@ def run(test, params, env):
     virsh_dargs = {'debug': True, 'ignore_status': False}
     hook_file = params.get("hook_file", "/etc/libvirt/hooks/qemu")
     hook_log = params.get("hook_log", "/tmp/qemu.log")
+    machine_type = params.get("machine_type", "")
 
     def prepare_hook_file(hook_op):
         """
@@ -298,21 +301,91 @@ def run(test, params, env):
             assert check_hooks(hook_str)
             hook_str = hook_file + " " + net_name + " started begin -"
             assert check_hooks(hook_str)
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
 
-            # plug a interface
-            if vm.is_dead():
-                vm.start()
-                vm.wait_for_login().close()
+            # Remove all controllers, interfaces and addresses in vm dumpxml
+            vm_inactive_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            vm_inactive_xml.remove_all_device_by_type('controller')
+            type_dict = {'address': '/devices/*/address'}
+            try:
+                for elem in vm_inactive_xml.xmltreefile.findall(type_dict['address']):
+                    vm_inactive_xml.xmltreefile.remove(elem)
+            except (AttributeError, TypeError) as details:
+                logging.error("Fail to remove address: %s", details)
+                return False
+            vm_inactive_xml.xmltreefile.write()
+            machine_list = vm_inactive_xml.os.machine.split("-")
+
+            # Modify machine type according to the requirements and Add controllers to VM according to machine type
+            if machine_type == 'pc':
+                vm_inactive_xml.set_os_attrs(**{"machine": machine_list[0] + "-i440fx-" + machine_list[2]})
+                controller_pci_root = Controller("controller")
+                controller_pci_root.model = "pci-root"
+                controller_pci_root.type = "pci"
+                controller_pci_root.index = 0
+                vm_inactive_xml.add_device(controller_pci_root)
+                controller_pci_bridge = Controller("controller")
+                controller_pci_bridge.model = "pci-bridge"
+                controller_pci_bridge.type = "pci"
+                controller_pci_bridge.index = 1
+                vm_inactive_xml.add_device(controller_pci_bridge)
+            elif machine_type == 'q35':
+                vm_inactive_xml.set_os_attrs(**{"machine": machine_list[0] + "-q35-" + machine_list[2]})
+                controller_pcie_root = Controller("controller")
+                controller_pcie_root.model = "pcie-root"
+                controller_pcie_root.type = "pci"
+                controller_pcie_root.index = 0
+                vm_inactive_xml.add_device(controller_pcie_root)
+                controller_pcie_root_port = Controller("controller")
+                controller_pcie_root_port.model = "pcie-root-port"
+                controller_pcie_root_port.type = "pci"
+                controller_pcie_root_port.index = 1
+                vm_inactive_xml.add_device(controller_pcie_root_port)
+                controller_pcie_to_pci_bridge = Controller("controller")
+                controller_pcie_to_pci_bridge.model = "pcie-to-pci-bridge"
+                controller_pcie_to_pci_bridge.type = "pci"
+                controller_pcie_to_pci_bridge.index = 2
+                vm_inactive_xml.add_device(controller_pcie_to_pci_bridge)
+            vm_inactive_xml.sync()
+
+            # Plug a interface and Unplug the interface
+            vm.start()
+            vm.wait_for_login().close()
+            interface_num = len(vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices("interface"))
             mac_addr = "52:54:00:9a:53:a9"
+
+            def is_attached_interface():
+                if len(vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices("interface")) != interface_num + 1:
+                    return False
+                else:
+                    return True
+
             ret = virsh.attach_interface(vm_name,
-                                         ("network %s --mac %s" %
-                                          (net_name, mac_addr)))
+                                         ("network %s --mac %s" % (net_name, mac_addr)))
             libvirt.check_exit_status(ret)
+            if utils_misc.wait_for(is_attached_interface, timeout=20) is not True:
+                test.fail("Attaching interface failed.")
             hook_str = hook_file + " " + net_name + " plugged begin -"
             assert check_hooks(hook_str)
+
+            def is_detached_interface():
+                if len(vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices("interface")) != interface_num:
+                    return False
+                else:
+                    return True
+
             ret = virsh.detach_interface(vm_name,
                                          "network --mac %s" % mac_addr)
             libvirt.check_exit_status(ret)
+            utils_misc.wait_for(is_detached_interface, timeout=50)
+            # Wait for timeout and if not succeeded, detach again (during testing, detaching interface failed from q35 VM even setting timeout)
+            if len(vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices("interface")) != interface_num:
+                ret = virsh.detach_interface(vm_name,
+                                         "network --mac %s" % mac_addr)
+                libvirt.check_exit_status(ret)
+            if utils_misc.wait_for(is_detached_interface, timeout=50) is not True:
+                test.fail("Detaching interface failed.")
             hook_str = hook_file + " " + net_name + " unplugged begin -"
             assert check_hooks(hook_str)
             # remove the log file
