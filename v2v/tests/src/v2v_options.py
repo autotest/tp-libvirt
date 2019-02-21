@@ -44,6 +44,7 @@ def run(test, params, env):
     remote_host = params.get("remote_host", "EXAMPLE")
     vpx_dc = params.get("vpx_dc", "EXAMPLE")
     esx_ip = params.get("esx_ip", "EXAMPLE")
+    source_user = params.get("username", "root")
     output_mode = params.get("output_mode")
     output_storage = params.get("output_storage", "default")
     disk_img = params.get("input_disk_image", "")
@@ -275,41 +276,85 @@ def run(test, params, env):
         for line in source_strip:
             source_info[line.split(':')[0]] = line.split(':', 1)[1].strip()
         logging.debug('Source info to check: %s', source_info)
-        checklist = ['nr vCPUs',  'hypervisor type', 'source name', 'memory',
-                     'display', 'CPU features', 'disks', 'NICs']
+        checklist = ['nr vCPUs', 'hypervisor type', 'source name', 'memory',
+                     'disks', 'NICs']
+        if hypervisor in ['kvm', 'xen']:
+            checklist.extend(['display', 'CPU features'])
         for key in checklist:
             if key not in source_info:
                 test.fail('%s info missing' % key)
 
+        v2v_virsh = None
+        close_virsh = False
+        if hypervisor == 'kvm':
+            v2v_virsh = virsh
+        else:
+            virsh_dargs = {'uri': ic_uri,
+                           'remote_ip': remote_host,
+                           'remote_user': source_user,
+                           'remote_pwd': source_pwd,
+                           'debug': True}
+            v2v_virsh = virsh.VirshPersistent(**virsh_dargs)
+            close_virsh = True
+
         # Check single values
         fail = []
-        xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        try:
+            xml = vm_xml.VMXML.new_from_inactive_dumpxml(
+                vm_name, virsh_instance=v2v_virsh)
+        finally:
+            if close_virsh:
+                v2v_virsh.close_session()
+
         check_map = {}
         check_map['nr vCPUs'] = xml.vcpu
         check_map['hypervisor type'] = xml.hypervisor_type
         check_map['source name'] = xml.vm_name
         check_map['memory'] = str(int(xml.max_mem) * 1024) + ' (bytes)'
-        check_map['display'] = xml.get_graphics_devices()[0].type_name
+
+        if hypervisor in ['kvm', 'xen']:
+            check_map['display'] = xml.get_graphics_devices()[0].type_name
 
         logging.info('KEY:\tSOURCE<-> XML')
         for key in check_map:
             logging.info('%-15s:%18s <-> %s', key,
                          source_info[key], check_map[key])
-            if source_info[key] != str(check_map[key]):
+            if str(check_map[key]) not in source_info[key]:
                 fail.append(key)
 
         # Check disk info
         disk = list(xml.get_disk_all().values())[0]
-        bus, type = disk.find('target').get(
-            'bus'), disk.find('driver').get('type')
-        path = disk.find('source').get('file')
-        disks_info = "%s (%s) [%s]" % (path, type, bus)
+
+        def _get_disk_subelement_attr_value(obj, attr, subattr):
+            if obj.find(attr) is not None:
+                return obj.find(attr).get(subattr)
+        bus = _get_disk_subelement_attr_value(disk, 'target', 'bus')
+        driver_type = _get_disk_subelement_attr_value(disk, 'driver', 'type')
+        path = _get_disk_subelement_attr_value(disk, 'source', 'file')
+
+        # For esx, disk output is like "disks: json: { ... } (raw) [scsi]"
+        # For xen, disk output is like "disks: json: { ... } [ide]"
+        # For kvm, disk output is like "/rhel8.0-2.qcow2 (qcow2) [virtio-blk]"
+        if hypervisor == 'kvm':
+            disks_info_pattern = "%s \(%s\) \[%s" % (path, driver_type, bus)
+        elif hypervisor == 'esx':
+            # replace '.vmdk' with '-flat.vmdk', this is done in v2v
+            path_pattern1 = path.split()[1].replace('.vmdk', '-flat.vmdk')
+            # In newer qemu version, '_' is replaced with '%5f'.
+            path_pattern2 = path_pattern1.replace('_', '%5f')
+            # For esx, '(raw)' is fixed? Let's see if others will be met.
+            disks_info_pattern = '|'.join(
+                [
+                    "https://%s/folder/%s\?dcPath=data&dsName=esx.*} \(raw\) \[%s" %
+                    (remote_host, i, bus) for i in [
+                        path_pattern1, path_pattern2]])
+        elif hypervisor == 'xen':
+            disks_info_pattern = "file\.path.*%s.*file\.host.*%s.* \[%s" % (
+                path, remote_host, bus)
+
         source_disks = source_info['disks'].split()
-        source_disks_path = source_disks[0]
-        source_disks_type = source_disks[1].strip('()')
-        source_disks_bus = source_disks[2].strip('[]')
-        logging.info('disks:%s<->%s', source_info['disks'], disks_info)
-        if source_disks_path != path or source_disks_type != type or bus not in source_disks_bus:
+        logging.info('disks:%s<->%s', source_info['disks'], disks_info_pattern)
+        if not re.search(disks_info_pattern, source_info['disks']):
             fail.append('disks')
 
         # Check nic info
@@ -324,11 +369,12 @@ def run(test, params, env):
             fail.append('NICs')
 
         # Check cpu features
-        feature_list = xml.features.get_feature_list()
-        logging.info('CPU features:%s<->%s',
-                     source_info['CPU features'], feature_list)
-        if sorted(source_info['CPU features'].split(',')) != sorted(feature_list):
-            fail.append('CPU features')
+        if hypervisor in ['kvm', 'xen']:
+            feature_list = xml.features.get_feature_list()
+            logging.info('CPU features:%s<->%s',
+                         source_info['CPU features'], feature_list)
+            if sorted(source_info['CPU features'].split(',')) != sorted(feature_list):
+                fail.append('CPU features')
 
         if fail:
             test.fail('Source info not correct for: %s' % fail)
@@ -392,7 +438,7 @@ def run(test, params, env):
                         pass
                 if not utils_misc.wait_for(check_alloc, timeout=600, step=10.0):
                     test.fail('Allocation check failed.')
-            if '-of' in cmd and '--no-copy' not in cmd and checkpoint != 'quiet':
+            if '-of' in cmd and '--no-copy' not in cmd and '--print-source' not in cmd and checkpoint != 'quiet':
                 expected_format = re.findall(r"-of\s(\w+)", cmd)[0]
                 img_path = get_img_path(output)
                 check_image(img_path, "format", expected_format)
@@ -611,7 +657,7 @@ def run(test, params, env):
         # Setup ssh-agent access to xen hypervisor
         if hypervisor == 'xen':
             user = params.get("xen_host_user", "root")
-            passwd = params.get("xen_host_passwd", "redhat")
+            source_pwd = passwd = params.get("xen_host_passwd", "redhat")
             logging.info("set up ssh-agent access ")
             ssh_key.setup_ssh_key(remote_host, user=user,
                                   port=22, password=passwd)
@@ -629,7 +675,7 @@ def run(test, params, env):
 
         # Create password file for access to ESX hypervisor
         if hypervisor == 'esx':
-            vpx_passwd = params.get("vpx_password")
+            source_pwd = vpx_passwd = params.get("vpx_password")
             vpx_passwd_file = os.path.join(
                 data_dir.get_tmp_dir(), "vpx_passwd")
             logging.info("Building ESX no password interactive verification.")
