@@ -11,6 +11,7 @@ from avocado.core import exceptions
 from virttest import virsh
 from virttest import libvirt_storage
 from virttest import libvirt_xml
+from virttest import test_setup
 from virttest.utils_test import libvirt as utlv
 from virttest.staging import service
 from virttest.libvirt_xml import secret_xml
@@ -279,6 +280,26 @@ def run(test, params, env):
                 if params.get('setup_libvirt_polkit') == 'yes':
                     process.run("chmod 666 %s" % vol_xml, ignore_status=True,
                                 shell=True)
+                    if luks_encrypted and libvirt_version.version_compare(4, 5, 0):
+                        try:
+                            polkit = test_setup.LibvirtPolkitConfig(params)
+                            polkit_rules_path = polkit.polkit_rules_path
+                            with open(polkit_rules_path, 'r+') as f:
+                                rule = f.readlines()
+                                for index, v in enumerate(rule):
+                                    if v.find("secret") >= 0:
+                                        nextline = rule[index + 1]
+                                        s = nextline.replace("QEMU", "secret").replace(
+                                                "pool_name", "secret_uuid").replace(
+                                                        "virt-dir-pool", "%s" % luks_secret_uuid)
+                                        rule[index + 1] = s
+                                rule = ''.join(rule)
+                            with open(polkit_rules_path, 'w+') as f:
+                                f.write(rule)
+                            logging.debug(rule)
+                            polkit.polkitd.restart()
+                        except IOError as e:
+                            logging.error(e)
                 # Run virsh_vol_create to create vol
                 logging.debug("Create volume from XML: %s" % newvol.xmltreefile)
                 cmd_result = virsh.vol_create(
