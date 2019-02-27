@@ -34,6 +34,7 @@ def run(test, params, env):
         multipath device.
         :return: True means the multipath.conf exists at first, False means not.
         """
+        multipath_conf_exist = False
         mpath_conf_content = ("defaults {\n"
                               "    user_friendly_names yes\n"
                               "    path_grouping_policy multibus\n"
@@ -43,11 +44,11 @@ def run(test, params, env):
         if os.path.exists(mpath_conf_bkup_path):
             os.remove(mpath_conf_bkup_path)
         if os.path.exists(mpath_conf_path):
-            mpath_conf_exist = True
+            multipath_conf_exist = True
             shutil.move(mpath_conf_path, mpath_conf_bkup_path)
         with open(mpath_conf_path, 'wt') as mpath_conf_file:
             mpath_conf_file.write(mpath_conf_content)
-        return mpath_conf_exist
+        return multipath_conf_exist
 
     def recover_multipath_conf(remove_mpath_conf=False):
         """
