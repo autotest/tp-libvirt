@@ -342,21 +342,25 @@ TIMEOUT 3"""
         net_forward = ast.literal_eval(params.get("net_forward", "{}"))
         net_ipv4 = params.get("net_ipv4")
         net_ipv6 = params.get("net_ipv6")
-        ipt_rules = ("INPUT -i %s -p udp -m udp --dport 53 -j ACCEPT" % br_name,
-                     "INPUT -i %s -p tcp -m tcp --dport 53 -j ACCEPT" % br_name,
-                     "INPUT -i %s -p udp -m udp --dport 67 -j ACCEPT" % br_name,
-                     "INPUT -i %s -p tcp -m tcp --dport 67 -j ACCEPT" % br_name,
-                     "FORWARD -i {0} -o {0} -j ACCEPT".format(br_name),
-                     "FORWARD -o %s -j REJECT --reject-with icmp" % br_name,
-                     "FORWARD -i %s -j REJECT --reject-with icmp" % br_name,
-                     "OUTPUT -o %s -p udp -m udp --dport 68 -j ACCEPT" % br_name)
         net_dev_in = ""
         net_dev_out = ""
         if "dev" in net_forward:
             net_dev_in = " -i %s" % net_forward["dev"]
             net_dev_out = " -o %s" % net_forward["dev"]
+        ipt_rules = (
+            "INPUT -i %s -p udp -m udp --dport 53 -j ACCEPT" % br_name,
+            "INPUT -i %s -p tcp -m tcp --dport 53 -j ACCEPT" % br_name,
+            "FORWARD -i {0} -o {0} -j ACCEPT".format(br_name),
+            "FORWARD -o %s -j REJECT --reject-with icmp" % br_name,
+            "FORWARD -i %s -j REJECT --reject-with icmp" % br_name)
         if check_ipv4:
             ipv4_rules = list(ipt_rules)
+            ipv4_rules.extend(
+                ["INPUT -i %s -p udp -m udp --dport 67 -j ACCEPT" % br_name,
+                 "INPUT -i %s -p tcp -m tcp --dport 67 -j ACCEPT" % br_name,
+                 "OUTPUT -o %s -p udp -m udp --dport 68 -j ACCEPT" % br_name,
+                 "POSTROUTING -o %s -p udp -m udp --dport 68 "
+                 "-j CHECKSUM --checksum-fill" % br_name])
             ctr_rule = ""
             nat_rules = []
             if "mode" in net_forward and net_forward["mode"] == "nat":
@@ -368,7 +372,7 @@ TIMEOUT 3"""
                               " --to-ports {1}-{2}".format(net_ipv4, p_start, p_end)),
                              ("POSTROUTING -s {0} ! -d {0} -p udp -j MASQUERADE"
                               " --to-ports {1}-{2}".format(net_ipv4, p_start, p_end)),
-                             ("POSTROUTING -s {0} ! -d {0} -p udp"
+                             ("POSTROUTING -s {0} ! -d {0}"
                               " -j MASQUERADE".format(net_ipv4))]
             if nat_rules:
                 ipv4_rules.extend(nat_rules)
@@ -399,6 +403,8 @@ TIMEOUT 3"""
             return ipv4_rules
         if check_ipv6:
             ipv6_rules = list(ipt_rules)
+            ipt6_rules.extend([
+                ("INPUT -i %s -p udp -m udp --dport 547 -j ACCEPT" % br_name)])
             if (net_ipv6 and "mode" in net_forward and
                     net_forward["mode"] in ["nat", "route"]):
                 rules = [("FORWARD -d %s%s -o %s -j ACCEPT"
@@ -407,10 +413,19 @@ TIMEOUT 3"""
                           % (net_ipv6, br_name, net_dev_out))]
                 ipv6_rules.extend(rules)
             output = to_text(process.system_output("ip6tables-save"))
-            logging.debug("iptables: %s", output)
-            for ipt in ipv6_rules:
-                if not output.count(ipt):
-                    test.fail("Can't find ipbtable rule:\n%s" % ipt)
+            logging.debug("ip6tables: %s", output)
+            if "mode" in net_forward and net_forward["mode"] == "open":
+                if re.search(r"%s|%s" % (net_ipv6, br_name), output, re.M):
+                    test.fail("Find ip6table rule for open mode")
+                utils_libvirtd.libvirtd_restart()
+                output_again = to_text(process.system_output('ip6tables-save'))
+                if re.search(r"%s|%s" % (net_ipv6, br_name), output_again, re.M):
+                    test.fail("Find ip6table rule for open mode after restart "
+                              "libvirtd")
+            else:
+                for ipt in ipv6_rules:
+                    if not re.search(r"%s" % ipt, output, re.M):
+                        test.fail("Can't find ip6table rule:\n%s" % ipt)
             return ipv6_rules
 
     def run_ip_test(session, ip_ver):
@@ -528,6 +543,7 @@ TIMEOUT 3"""
     password = params.get("password")
     forward = ast.literal_eval(params.get("net_forward", "{}"))
     ipt_rules = []
+    ipt6_rules = []
 
     # Destroy VM first
     if vm.is_alive():
@@ -864,7 +880,7 @@ TIMEOUT 3"""
                     if restart_error:
                         test.fail("VM started unexpectedly")
                 if test_ipv6_address:
-                    ipt_rules = check_ipt_rules(check_ipv6=True)
+                    ipt6_rules = check_ipt_rules(check_ipv4=False, check_ipv6=True)
                     if not ("mode" in forward and forward["mode"] == "open"):
                         run_ip_test(session, "ipv6")
                 if test_ipv4_address:
@@ -888,6 +904,12 @@ TIMEOUT 3"""
             for ipt in ipt_rules:
                 if re.search(r"%s" % ipt, output_des, re.M):
                     test.fail("Find iptable rule %s after net destroyed" % ipt)
+        if ipt6_rules:
+            output_des = to_text(process.system_output('ip6tables-save'))
+            for ipt in ipt6_rules:
+                if re.search(r"%s" % ipt, output_des, re.M):
+                    test.fail("Find ip6table rule %s after net destroyed" % ipt)
+
     finally:
         # Recover VM.
         if vm.is_alive():
