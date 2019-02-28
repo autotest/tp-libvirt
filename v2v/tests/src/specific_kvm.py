@@ -50,9 +50,8 @@ def run(test, params, env):
     checkpoint = params.get('checkpoint', '')
     debug_kernel = 'debug_kernel' == checkpoint
     multi_kernel_list = ['multi_kernel', 'debug_kernel']
-    backup_list = ['virtio_on', 'virtio_off', 'floppy', 'floppy_devmap',
-                   'fstab_cdrom', 'fstab_virtio', 'multi_disks', 'sata_disk',
-                   'network_virtio', 'network_rtl8139', 'network_e1000',
+    backup_list = ['floppy', 'floppy_devmap', 'fstab_cdrom', 'multi_disks',
+                   'sata_disk', 'network_rtl8139', 'network_e1000',
                    'multi_netcards', 'spice', 'spice_encrypt', 'spice_qxl',
                    'spice_cirrus', 'vnc_qxl', 'vnc_cirrus', 'blank_2nd_disk',
                    'listen_none', 'listen_socket', 'only_net', 'only_br']
@@ -269,7 +268,7 @@ def run(test, params, env):
         """
         Specify entry in fstab file
         """
-        type_list = ['cdrom', 'uuid', 'label', 'virtio', 'sr0', 'invalid']
+        type_list = ['cdrom', 'uuid', 'label', 'sr0', 'invalid']
         if type not in type_list:
             test.error('Not support %s in fstab' % type)
         session = kwargs['session']
@@ -294,7 +293,7 @@ def run(test, params, env):
             line = utils_misc.generate_random_string(6)
             session.cmd('echo "%s" >> /etc/fstab' % line)
         else:
-            map = {'uuid': 'UUID', 'label': 'LABEL', 'virtio': '/vd'}
+            map = {'uuid': 'UUID', 'label': 'LABEL'}
             logging.info(type)
             if session.cmd_status('cat /etc/fstab|grep %s' % map[type]):
                 # Specify device by UUID
@@ -304,15 +303,6 @@ def run(test, params, env):
                     # Replace path for UUID
                     origin = entry[0].strip(':')
                     replace = entry[1].replace('"', '')
-                # Specify virtio device
-                elif type == 'virtio':
-                    entry = session.cmd('cat /etc/fstab|grep /boot').strip()
-                    # Get the ID (no matter what, usually UUID)
-                    origin = entry.split()[0]
-                    key = origin.split('=')[1]
-                    blkinfo = session.cmd('blkid|grep %s' % key).strip()
-                    # Replace with virtio disk path
-                    replace = blkinfo.split()[0].strip(':')
                 # Specify device by label
                 elif type == 'label':
                     blk = make_label(session)
@@ -559,10 +549,6 @@ def run(test, params, env):
                 if disk.get('device') == 'disk':
                     disk_count += 1
             params['ori_disks'] = disk_count
-        if checkpoint == 'virtio_on':
-            change_disk_bus('virtio')
-        if checkpoint == 'virtio_off':
-            change_disk_bus('ide')
         if checkpoint == 'sata_disk':
             change_disk_bus('sata')
         if checkpoint.startswith('floppy'):
@@ -576,8 +562,6 @@ def run(test, params, env):
                 img_path = data_dir.get_tmp_dir() + '/cdrom.iso'
                 utlv.create_local_disk('iso', img_path)
                 attach_removable_media('cdrom', img_path, 'hdc')
-            if checkpoint == 'fstab_virtio':
-                change_disk_bus('virtio')
             specify_fstab_entry(checkpoint[6:])
         if checkpoint == 'running':
             virsh.start(vm_name)
