@@ -113,7 +113,7 @@ def run(test, params, env):
     # Get host numa node list
     host_numa_node = utils_misc.NumaInfo()
     node_list = host_numa_node.online_nodes_withmem
-    logging.debug("host node list is %s", " ".join(node_list))
+    logging.debug("host node list is %s", " ".join(map(str, node_list)))
 
     # Prepare numatune memory parameter dict
     mem_tuple = ('memory_mode', 'memory_placement', 'memory_nodeset')
