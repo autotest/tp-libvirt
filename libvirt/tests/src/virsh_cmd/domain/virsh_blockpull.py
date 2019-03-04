@@ -281,6 +281,11 @@ def run(test, params, env):
         # Set vm xml and guest agent
         if replace_vm_disk:
             if disk_src_protocol == "rbd" and disk_type == "network":
+                # Create /etc/ceph/ceph.conf file to suppress false warning error message.
+                process.run("mkdir -p /etc/ceph", ignore_status=True, shell=True)
+                cmd = ("echo 'mon_host = {0}' >/etc/ceph/ceph.conf"
+                       .format(params.get("mon_host")))
+                process.run(cmd, ignore_status=True, shell=True)
                 src_host = params.get("disk_source_host", "EXAMPLE_HOSTS")
                 mon_host = params.get("mon_host", "EXAMPLE_MON_HOST")
                 if src_host.count("EXAMPLE") or mon_host.count("EXAMPLE"):
@@ -456,6 +461,9 @@ def run(test, params, env):
                 test.fail("blockpull failed: %s" % output)
 
     finally:
+        # Remove /etc/ceph/ceph.conf file if exists.
+        if os.path.exists('/etc/ceph/ceph.conf'):
+            os.remove('/etc/ceph/ceph.conf')
         if vm.is_alive():
             vm.destroy(gracefully=False)
         # Recover xml of vm.
