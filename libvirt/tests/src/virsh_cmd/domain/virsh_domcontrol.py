@@ -109,7 +109,13 @@ def run(test, params, env):
                     if vm.is_alive():
                         test.fail("Run failed with right command")
     else:
-        # Check domain contorl interface state without job on domain.
+        if remote_uri:
+            # check remote domain status
+            if not virsh.is_alive(vm_name, uri=remote_uri):
+                # If remote domain is not running, start remote domain
+                virsh.start(vm_name, uri=remote_uri)
+
+        # Check domain control interface state without job on domain.
         ret = virsh.domcontrol(vm_ref, options, readonly=readonly,
                                ignore_status=True, debug=True, uri=remote_uri)
         status = ret.exit_status
@@ -127,6 +133,10 @@ def run(test, params, env):
         virsh.managedsave_remove(vm_name, ignore_status=True)
     if os.path.exists(tmp_file):
         os.unlink(tmp_file)
+    if remote_uri:
+        if virsh.is_alive(vm_name, uri=remote_uri):
+            # Destroy remote domain
+            virsh.destroy(vm_name, uri=remote_uri)
     if pre_vm_state == "suspend":
         vm.resume()
     if process:
