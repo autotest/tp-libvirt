@@ -699,7 +699,7 @@ def run(test, params, env):
             first_disk = vm.get_first_disk_devices()
             blk_source = first_disk['source']
             # Convert the image to remote storage
-            disk_cmd = ("rbd -m %s %s info %s || qemu-img convert"
+            disk_cmd = ("rbd -m %s %s info %s 2> /dev/null|| qemu-img convert"
                         " -O %s %s %s" % (mon_host, key_opt,
                                           disk_src_name, disk_format,
                                           blk_source, disk_path))
@@ -718,7 +718,7 @@ def run(test, params, env):
                         (disk_format, img_file, img_file))
             process.run(disk_cmd, ignore_status=False, shell=True)
             # Convert the image to remote storage
-            disk_cmd = ("rbd -m %s %s info %s || qemu-img convert -O"
+            disk_cmd = ("rbd -m %s %s info %s 2> /dev/null|| qemu-img convert -O"
                         " %s %s %s" % (mon_host, key_opt, disk_src_name,
                                        disk_format, img_file, disk_path))
             process.run(disk_cmd, ignore_status=False, shell=True)
