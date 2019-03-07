@@ -60,12 +60,12 @@ def run(test, params, env):
             if '-' in nodes:
                 for n in range(int(nodes.split('-')[0]), int(nodes.split('-')[1])):
                     ppc_memory_nodeset += str(node_list[n]) + ','
-                ppc_memory_nodeset += str(node_list[n + 1])
+                ppc_memory_nodeset += str(node_list[int(nodes.split('-')[1])])
             else:
                 node_lst = nodes.split(',')
                 for n in range(len(node_lst) - 1):
-                    ppc_memory_nodeset += str(node_list[node_lst[n]]) + ','
-                ppc_memory_nodeset += str(node_list[node_lst[n + 1]])
+                    ppc_memory_nodeset += str(node_list[int(node_lst[n])]) + ','
+                ppc_memory_nodeset += str(node_list[int(node_lst[-1])])
             params['memory_nodeset'] = ppc_memory_nodeset
         except IndexError:
             test.cancel("No of numas in config does not match with no of "
@@ -80,11 +80,12 @@ def run(test, params, env):
         # Modify qemu command line
         try:
             if params['qemu_cmdline_mem_backend_1']:
-                qemu_cmdline = "memory-backend-ram,.*?id=ram-node1,\
-.*?host-nodes=%s,.*?host-nodes=%s,policy=bind" % \
-                    (params['memory_nodeset'].split(',')[0],
-                     params['memory_nodeset'].split(',')[1])
-                params['qemu_cmdline_mem_backend_1'] = qemu_cmdline
+                if len(params['memory_nodeset'].split(',')) > 1:
+                    qemu_cmdline = "memory-backend-ram,.*?id=ram-node1," \
+                                   ".*?host-nodes=%s,.*?host-nodes=%s,policy=bind" % \
+                        (params['memory_nodeset'].split(',')[0],
+                         params['memory_nodeset'].split(',')[1])
+                    params['qemu_cmdline_mem_backend_1'] = qemu_cmdline
         except utils_params.ParamNotFound:
             pass
         try:
