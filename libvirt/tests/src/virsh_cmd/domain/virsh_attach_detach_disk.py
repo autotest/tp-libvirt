@@ -329,6 +329,7 @@ def run(test, params, env):
     # been a bug. The change in xml file is done after the guest is resumed.
     if pre_vm_state == "paused":
         vm.resume()
+        time.sleep(5)
 
     # Check audit log
     check_audit_after_cmd = True
