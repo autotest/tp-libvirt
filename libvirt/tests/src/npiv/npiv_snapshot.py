@@ -136,22 +136,6 @@ def get_file_in_vm(session, file_path):
     return file_existence, file_content
 
 
-def get_vm_blks(vm_name):
-    """
-    Get the list of vm's block devices
-    """
-    blk_list = []
-    data = virsh.domblklist(vm_name).stdout.splitlines()
-    for rec in data:
-        if rec.startswith("Target") or rec.startswith("---"):
-            continue
-        else:
-            pos = rec.find(" ")
-            if rec[:pos]:
-                blk_list.append(rec[:pos])
-    return blk_list
-
-
 def mkfs_and_mount(session, mount_disk):
     """
     Mkfs a block device and mount it to /mnt in vm
@@ -371,7 +355,7 @@ def run(test, params, env):
 
         # virsh snapshot-create-as vm s --disk-only --diskspec vda,file=path
         if snapshot_disk_only:
-            vm_blks = get_vm_blks(vm_name)
+            vm_blks = list(vm.get_disk_devices().keys())
             options = "%s --disk-only" % snapshot_name
             for vm_blk in vm_blks:
                 snapshot_file = snapshot_dir + "/" + vm_blk + "." + snapshot_name
@@ -426,7 +410,7 @@ def run(test, params, env):
             logging.debug("result of snapshot-delete: %s",
                           result.stdout.strip())
             if snapshot_disk_only:
-                vm_blks = get_vm_blks(vm_name)
+                vm_blks = list(vm.get_disk_devices().keys())
                 for vm_blk in vm_blks:
                     snapshot_file = snapshot_dir + "/" + vm_blk + "." + snap
                     if os.path.exists(snapshot_file):
