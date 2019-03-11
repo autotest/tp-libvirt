@@ -110,21 +110,6 @@ def run(test, params, env):
     guest_iface_num = int(params.get("guest_iface_num", 1))
     newxml = ""
 
-    # As new release use nftables as backend of firewalld, the guest can not get
-    # dhcp ip address from nat network. Current workaround is to add the
-    # bridge interface into the libvirt zone.
-    check_zone_cmd = "firewall-cmd --get-active-zones"
-    outputs = process.run(check_zone_cmd, ignore_status=True).stdout_text
-    if "libvirt" in outputs:
-        iface_cmd = "firewall-cmd --list-interface --zone=libvirt"
-        outputs1 = process.run(iface_cmd, ignore_status=True).stdout_text
-        if net_name not in outputs1:
-            cmd = "firewall-cmd --add-interface=%s --zone=libvirt" % net_name
-            ret = process.run(cmd, ignore_status=True).exit_status
-            logging.debug("Set bridge interface to libvirt zone return %s" % ret)
-        else:
-            logging.debug("%s is already in libvirt zone" % net_name)
-
     def get_hostfile():
         """
         Get the content of hostfile
@@ -293,6 +278,7 @@ def run(test, params, env):
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         vmxml_backup = vmxml.copy()
 
+    backup_files = []
     try:
         for loop in range(loop_time):
             if loop_time > 1:
@@ -454,7 +440,6 @@ def run(test, params, env):
 
             if loop == 0:
                 try:
-                    backup_files = []
                     # Define and start network
                     test_xml.debug_xml()
                     test_xml.define()
