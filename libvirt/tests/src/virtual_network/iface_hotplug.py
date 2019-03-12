@@ -1,5 +1,6 @@
 import logging
 import time
+import ast
 
 from virttest import utils_libvirtd
 from virttest import utils_misc
@@ -65,6 +66,12 @@ def run(test, params, env):
     err_msgs1 = params.get("err_msgs1")
     err_msgs2 = params.get("err_msgs2")
     err_msg_rom = params.get("err_msg_rom")
+    del_pci = "yes" == params.get("add_pci", "no")
+    del_mac = "yes" == params.get("del_mac", "no")
+    set_pci = "yes" == params.get("set_pci", "no")
+    set_mac = "yes" == params.get("set_mac", "no")
+    status_error = "yes" == params.get("status_error", "no")
+    pci_addr = params.get("pci")
 
     # stree_test require detach operation
     stress_test_detach_device = False
@@ -277,14 +284,30 @@ def run(test, params, env):
 
             # Detach hot/cold-plugged interface at last
             if detach_device:
-                for iface in iface_list:
-                    if 'iface_xml' in iface:
+                logging.debug("detach interface here***************")
+                if attach_device:
+                    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+                    iface_xml_ls = vmxml.get_devices("interface")
+                    iface_xml_ls_det = iface_xml_ls[1:]
+                    for iface_xml_det in iface_xml_ls_det:
+                        if del_mac:
+                            iface_xml_det.del_mac_address()
+                        if del_pci:
+                            iface_xml_det.del_address()
+                        if set_mac:
+                            mac = utils_net.generate_mac_address_simple()
+                            iface_xml_det.set_mac_address(mac)
+                        if set_pci:
+                            pci_dict = ast.literal_eval(pci_addr)
+                            addr = iface_xml_det.new_iface_address(**{"attrs": pci_dict})
+                            iface_xml_det.set_address(addr)
                         ret = virsh.detach_device(vm_name,
-                                                  iface['iface_xml'].xml,
+                                                  iface_xml_det.xml,
                                                   flagstr="",
                                                   ignore_status=True)
-                        libvirt.check_exit_status(ret)
-                    else:
+                        libvirt.check_exit_status(ret, status_error)
+                else:
+                    for iface in iface_list:
                         options = ("%s --mac %s" %
                                    (iface_type, iface['mac']))
                         ret = virsh.detach_interface(vm_name, options,
@@ -292,19 +315,20 @@ def run(test, params, env):
                         libvirt.check_exit_status(ret)
 
                 # Check if interface was detached
-                for iface in iface_list:
-                    if 'mac' in iface:
-                        polltime = time.time() + poll_timeout
-                        while True:
-                            # Check interface in dumpxml output
-                            if not vm_xml.VMXML.get_iface_by_mac(vm_name,
-                                                                 iface['mac']):
-                                break
-                            else:
-                                time.sleep(2)
-                                if time.time() > polltime:
-                                    test.fail("Interface still "
-                                              "exists after detachment")
+                if not status_error:
+                    for iface in iface_list:
+                        if 'mac' in iface:
+                            polltime = time.time() + poll_timeout
+                            while True:
+                                # Check interface in dumpxml output
+                                if not vm_xml.VMXML.get_iface_by_mac(vm_name,
+                                                                     iface['mac']):
+                                    break
+                                else:
+                                    time.sleep(2)
+                                    if time.time() > polltime:
+                                        test.fail("Interface still "
+                                                  "exists after detachment")
             session.close()
         except virt_vm.VMStartError as e:
             logging.info(str(e))
