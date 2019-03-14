@@ -15,10 +15,12 @@ def run(test, params, env):
 
     guest_stress = params.get("guest_stress", "no") == "yes"
     host_stress = params.get("host_stress", "no") == "yes"
+    stress_events = params.get("stress_events", "reboot")
     vms = env.get_all_vms()
     vms_uptime_init = {}
-    for vm in vms:
-        vms_uptime_init[vm.name] = vm.uptime()
+    if "reboot" not in stress_events:
+        for vm in vms:
+            vms_uptime_init[vm.name] = vm.uptime()
     stress_event = utils_stress.VMStressEvents(params, env)
     if guest_stress:
         try:
@@ -40,10 +42,11 @@ def run(test, params, env):
             utils_test.unload_stress("stress_in_vms", params=params, vms=vms)
         if host_stress:
             utils_test.unload_stress("stress_on_host", params=params)
-        fail = False
-        for vm in vms:
-            if vm.uptime() < vms_uptime_init[vm.name]:
-                logging.error("Unexpected reboot of VM: %s between test", vm.name)
-                fail = True
-        if fail:
-            test.fail("Unexpected VM reboot detected")
+        if "reboot" not in stress_events:
+            fail = False
+            for vm in vms:
+                if vm.uptime() < vms_uptime_init[vm.name]:
+                    logging.error("Unexpected reboot of VM: %s between test", vm.name)
+                    fail = True
+            if fail:
+                test.fail("Unexpected VM reboot detected")
