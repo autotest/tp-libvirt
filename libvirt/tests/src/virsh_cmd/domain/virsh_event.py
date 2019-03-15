@@ -3,14 +3,18 @@ import time
 import re
 import logging
 import signal
-
 import aexpect
+import shutil
+
+from aexpect import ShellTimeoutError
+from aexpect import ShellProcessTerminatedError
 
 from virttest import virsh
 from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices.interface import Interface
+from virttest.libvirt_xml.devices.panic import Panic
 from virttest import utils_misc
 
 from xml.dom.minidom import parseString
@@ -41,7 +45,11 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     qemu_monitor_test = "yes" == params.get("qemu_monitor_test", "no")
     signal_name = params.get("signal", None)
+    panic_model = params.get("panic_model")
+    addr_type = params.get("addr_type")
+    addr_iobase = params.get("addr_iobase")
     event_cmd = "event"
+    dump_path = '/var/lib/libvirt/qemu/dump'
     if qemu_monitor_test:
         event_cmd = "qemu-monitor-event"
     events_list = params.get("events_list")
@@ -103,7 +111,7 @@ def run(test, params, env):
 
         try:
             for event in events_list:
-                if event in ['start', 'restore', 'create', 'define', 'undefine']:
+                if event in ['start', 'restore', 'create', 'define', 'undefine', 'edit', 'crash']:
                     if dom.is_alive():
                         dom.destroy()
                         if event in ['create', 'define']:
@@ -197,6 +205,33 @@ def run(test, params, env):
                                                     " Shutdown Finished")
                     expected_events_list.append("'lifecycle' for %s:"
                                                 " Stopped Shutdown")
+                elif event == "crash":
+                    if not vmxml.xmltreefile.find('devices').findall('panic'):
+                        # Set panic device
+                        panic_dev = Panic()
+                        panic_dev.model = panic_model
+                        panic_dev.addr_type = addr_type
+                        panic_dev.addr_iobase = addr_iobase
+                        vmxml.add_device(panic_dev)
+                    vmxml.on_crash = "coredump-restart"
+                    vmxml.sync()
+                    logging.info("Guest xml now is: %s", vmxml)
+                    dom.start()
+                    session = dom.wait_for_login()
+                    # Stop kdump in the guest
+                    session.cmd("systemctl stop kdump", ignore_all_errors=True)
+                    # Enable sysRq
+                    session.cmd("echo 1 > /proc/sys/kernel/sysrq")
+                    try:
+                        # Crash the guest
+                        session.cmd("echo c > /proc/sysrq-trigger", timeout=60)
+                    except (ShellTimeoutError, ShellProcessTerminatedError) as details:
+                        logging.info(details)
+                    session.close()
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Crashed Panicked")
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Resumed Unpaused")
                 elif event == "reset":
                     virsh.reset(dom.name, **virsh_dargs)
                     expected_events_list.append("'reboot' for %s")
@@ -284,11 +319,13 @@ def run(test, params, env):
         logging.debug("Actual events: %s", output)
         event_idx = 0
         for dom_name, event in expected_events_list:
+            if event in expected_events_list[0]:
+                event_idx = 0
             event_str = "event " + event % ("domain %s" % dom_name)
+            logging.info("Expected event: %s", event_str)
             match = re.search(event_str, output[event_idx:])
             if match:
                 event_idx = event_idx + match.start(0) + len(match.group(0))
-                logging.debug("Output event: %s", output[event_idx:])
                 continue
             else:
                 test.fail("Not find expected event:%s. Is your "
@@ -355,3 +392,6 @@ def run(test, params, env):
         virsh_session.close()
         for xml in vmxml_backup:
             xml.sync()
+        if os.path.exists(dump_path):
+            shutil.rmtree(dump_path)
+            os.mkdir(dump_path)
