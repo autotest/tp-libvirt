@@ -101,7 +101,9 @@ class VMChecker(object):
         """
         The graphic type in VM XML is different for different target.
         """
-        graphic_type = 'vnc'
+        # 'ori_graphic' only can be set when hypervior is KVM. For Xen and
+        # Esx, it will always be 'None' and 'vnc' will be set by default.
+        graphic_type = self.params.get('ori_graphic', 'vnc')
         # Video modle will change to QXL if convert target is ovirt/RHEVM
         if self.target == 'ovirt':
             graphic_type = 'spice'
@@ -244,7 +246,8 @@ class VMChecker(object):
         Check windows guest after v2v convert.
         """
         try:
-            self.checker.create_session()
+            # Sometimes windows guests needs >10mins to finish drivers installation
+            self.checker.create_session(timeout=900)
         except Exception as detail:
             raise exceptions.TestError('Failed to connect to windows guest: %s' %
                                        detail)
