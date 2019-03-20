@@ -739,10 +739,12 @@ def run(test, params, env):
                             (json_str, front_end_img_file))
                 disk_path = front_end_img_file
                 process.run(disk_cmd, ignore_status=False, shell=True)
-        # If hot plug, start VM first, otherwise stop VM if running.
+        # If hot plug, start VM first, and then wait the OS boot.
+        # Otherwise stop VM if running.
         if start_vm:
             if vm.is_dead():
                 vm.start()
+            vm.wait_for_login().close()
         else:
             if not vm.is_dead():
                 vm.destroy()
@@ -773,6 +775,7 @@ def run(test, params, env):
                 # Make sure the additional VM is running
                 if additional_vm.is_dead():
                     additional_vm.start()
+                    additional_vm.wait_for_login().close()
                 ret = virsh.attach_device(guest_name, additional_xml_file,
                                           "", debug=True)
                 libvirt.check_result(ret, skip_if=unsupported_err)
