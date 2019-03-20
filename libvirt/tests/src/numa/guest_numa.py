@@ -80,11 +80,16 @@ def run(test, params, env):
         # Modify qemu command line
         try:
             if params['qemu_cmdline_mem_backend_1']:
-                if len(params['memory_nodeset'].split(',')) > 1:
-                    qemu_cmdline = "memory-backend-ram,.*?id=ram-node1," \
-                                   ".*?host-nodes=%s,.*?host-nodes=%s,policy=bind" % \
-                        (params['memory_nodeset'].split(',')[0],
-                         params['memory_nodeset'].split(',')[1])
+                memory_nodeset = sorted(params['memory_nodeset'].split(','))
+                if len(memory_nodeset) > 1:
+                    if int(memory_nodeset[1]) - int(memory_nodeset[0]) == 1:
+                        qemu_cmdline = "memory-backend-ram,.*?id=ram-node1," \
+                                       ".*?host-nodes=%s-%s,policy=bind" % \
+                                       (memory_nodeset[0], memory_nodeset[1])
+                    else:
+                        qemu_cmdline = "memory-backend-ram,.*?id=ram-node1," \
+                                       ".*?host-nodes=%s,.*?host-nodes=%s,policy=bind" % \
+                                       (memory_nodeset[0], memory_nodeset[1])
                     params['qemu_cmdline_mem_backend_1'] = qemu_cmdline
         except utils_params.ParamNotFound:
             pass
