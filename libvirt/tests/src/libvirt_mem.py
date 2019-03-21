@@ -491,6 +491,9 @@ def run(test, params, env):
                 if start_error:
                     pass
                 else:
+                    except_msg = "memory hotplug isn't supported by this QEMU binary"
+                    if except_msg in detail.reason:
+                        test.cancel(detail)
                     test.fail(detail)
 
         # Set memory operation
