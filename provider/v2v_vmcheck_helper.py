@@ -232,10 +232,15 @@ class VMChecker(object):
         vm_xorg_log = self.checker.get_vm_xorg()
         if vm_xorg_log:
             if expect_video not in vm_xorg_log:
-                err_msg = "Not find %s in Xorg log", expect_video
-                self.log_err(err_msg)
-            else:
-                logging.info("PASS")
+                err_msg = "Not find %s in Xorg log" % expect_video
+                logging.info(err_msg)
+                # RHEL8 desn't include any qxl string in xorg log.
+                # If expect_video is in lspci output, we think it passed.
+                if re.search(expect_video, pci_devs, re.IGNORECASE) is None:
+                    err_msg += " And Not find %s device by lspci" % expect_video
+                    self.log_err(err_msg)
+                    return
+            logging.info("PASS")
         else:
             logging.warning("Xorg log file not exist, skip checkpoint")
 
