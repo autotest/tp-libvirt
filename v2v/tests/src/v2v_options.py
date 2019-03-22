@@ -506,10 +506,14 @@ def run(test, params, env):
                 check_source(output_stdout)
             if checkpoint == 'machine_readable':
                 if os.path.exists(params.get('example_file', '')):
-                    expect_output = open(params['example_file']).read().strip()
-                    logging.debug(expect_output)
-                    if expect_output != output_stdout.strip():
-                        test.fail('machine readable content not correct')
+                    # Checking items in example_file exist in latest
+                    # output regardless of the orders and new items.
+                    with open(params['example_file']) as f:
+                        for line in f:
+                            if line.strip() not in output_stdout.strip():
+                                test.fail(
+                                    '%s not in --machine-readable output' %
+                                    line.strip())
                 else:
                     test.error('No content to compare with')
             if checkpoint == 'compress':
@@ -630,7 +634,7 @@ def run(test, params, env):
         if checkpoint == 'quiet':
             v2v_options += ' -q'
         elif checkpoint not in ['length_of_error', 'empty_nic_source_network',
-                                'empty_nic_source_bridge']:
+                                'empty_nic_source_bridge', 'machine_readable']:
             v2v_options += " -v -x"
 
         # Prepare for libvirt unprivileged user session connection
