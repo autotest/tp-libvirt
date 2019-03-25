@@ -29,6 +29,8 @@ from virttest.libvirt_xml.devices.lease import Lease
 from virttest import data_dir
 from virttest.compat_52lts import results_stdout_52lts
 
+from provider import libvirt_version
+
 
 def run(test, params, env):
     """
@@ -555,8 +557,12 @@ def run(test, params, env):
     if test_snapshot:
         unsupported_err.append('live disk snapshot not supported')
     if test_disk_readonly:
-        unsupported_err.append('Could not create file: Permission denied')
-        unsupported_err.append('Permission denied')
+        if not libvirt_version.version_compare(5, 0, 0):
+            unsupported_err.append('Could not create file: Permission denied')
+            unsupported_err.append('Permission denied')
+        else:
+            unsupported_err.append('unsupported configuration: external snapshot ' +
+                                   'for readonly disk vdb is not supported')
     if test_disk_internal_snapshot:
         unsupported_err.append('unsupported configuration: internal snapshot for disk ' +
                                'vdb unsupported for storage type raw')
