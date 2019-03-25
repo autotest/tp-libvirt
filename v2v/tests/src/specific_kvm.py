@@ -75,7 +75,7 @@ def run(test, params, env):
             f.write(source_pwd)
     elif hypervisor == "xen":
         source_ip = params.get("xen_hostname")
-        source_pwd = params.get("xen_pwd")
+        source_pwd = params.get("xen_host_passwd")
         # Set up ssh access using ssh-agent and authorized_keys
         ssh_key.setup_ssh_key(source_ip, source_user, source_pwd)
         try:
