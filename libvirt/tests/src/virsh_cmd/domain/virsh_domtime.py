@@ -84,19 +84,32 @@ def run(test, params, env):
         get_begin = time.time()
         # Guest RTC local timezone time
         output, _ = run_cmd(session, 'hwclock')
-        time_str, _ = re.search(r"(.+)  (\S+ seconds)", output).groups()
-
         try:
-            # output format 1: Tue 01 Mar 2016 01:53:46 PM CST
-            # Remove timezone info from output
-            new_str = re.sub(r'\s+\S+$', '', time_str)
+            # output format 1 before RHEL8:
+            # Fri 22 Mar 2019 03:51:46 PM CST  -0.696378 seconds
+            time_str, _ = re.search(r"(.+)  (\S+ seconds)", output).groups()
+        except AttributeError:
+            # output format 2 after RHEL8:
+            # 2019-03-22 18:41:10.889529+08:00
+            time_str = output
+
+        if not re.search(r'[a-zA-Z]', output):
+            # for output format 2, "local_hw" is obtained as follows:
+            new_str = output.split('.')[0]
             times['local_hw'] = datetime.datetime.strptime(
-                new_str, r"%a %d %b %Y %I:%M:%S %p")
-        except ValueError:
-            # There are two possible output format for `hwclock`
-            # output format 2: Sat Feb 14 07:31:33 2009
-            times['local_hw'] = datetime.datetime.strptime(
-                time_str, r"%a %b %d %H:%M:%S %Y")
+                                new_str, r"%Y-%m-%d %H:%M:%S")
+        else:
+            try:
+                # output format 1.1: Tue 01 Mar 2016 01:53:46 PM CST
+                # Remove timezone info from output
+                new_str = re.sub(r'\s+\S+$', '', time_str)
+                times['local_hw'] = datetime.datetime.strptime(
+                    new_str, r"%a %d %b %Y %I:%M:%S %p")
+            except ValueError:
+                # There are two possible output format for `hwclock`
+                # output format 1.2: Sat Feb 14 07:31:33 2009
+                times['local_hw'] = datetime.datetime.strptime(
+                    time_str, r"%a %b %d %H:%M:%S %Y")
         delta = time.time() - get_begin
         times['local_hw'] -= datetime.timedelta(seconds=delta)
 
