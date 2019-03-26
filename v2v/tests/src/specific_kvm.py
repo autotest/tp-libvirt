@@ -57,7 +57,6 @@ def run(test, params, env):
     status_error = 'yes' == params.get('status_error', 'no')
     checkpoint = params.get('checkpoint', '')
     debug_kernel = 'debug_kernel' == checkpoint
-    multi_kernel_list = ['multi_kernel', 'debug_kernel']
     backup_list = ['floppy', 'floppy_devmap', 'fstab_cdrom',
                    'sata_disk', 'network_rtl8139', 'network_e1000',
                    'spice', 'spice_encrypt', 'spice_qxl',
@@ -163,39 +162,48 @@ def run(test, params, env):
         else:
             log_fail("Disk counts is wrong")
 
-    @vm_shell
-    def check_vmlinuz_initramfs(v2v_result):
+    def check_vmlinuz_initramfs(v2v_output):
         """
         Check if vmlinuz matches initramfs on multi-kernel case
         """
-        logging.info('Checking if vmlinuz matches initramfs')
-        kernels = re.search(
-            'kernel packages in this guest:.*?(\(kernel.*?\).*?){2,}',
-            v2v_result, re.DOTALL)
-        try:
-            lines = kernels.group(0)
-            kernel_list = re.findall('\((.*?)\)', lines)
-            for kernel in kernel_list:
-                vmlinuz = re.search(r'/boot/vmlinuz-(.*?),', kernel).group(1)
-                initramfs = \
-                    re.search(r'/boot/initramfs-(.*?)\.img', kernel).group(1)
-                logging.debug('vmlinuz version is: %s' % vmlinuz)
-                logging.debug('initramfs version is: %s' % initramfs)
-                if vmlinuz != initramfs:
-                    log_fail('vmlinuz not match with initramfs')
-        except Exception as e:
-            test.error('Error on find kernel info \n %s' % str(e))
+        logging.debug('Checking if vmlinuz matches initramfs')
+        kernel_strs = re.findall('(\* kernel.*?\/boot\/config){1,}', v2v_output, re.DOTALL)
+        if len(kernel_strs) == 0:
+            test.error("Not find kernel information")
+
+        # Remove duplicate items by set
+        logging.debug('Boots and kernel info: %s' % set(kernel_strs))
+        for str_i in set(kernel_strs):
+            # Fine all versions
+            kernel_vers = re.findall('((?:\d+\.){1,}\d+-(?:\d+\.){1,}\w+)', str_i)
+            logging.debug('kernel related versions: %s' % kernel_vers)
+            # kernel_vers = [kernel, vmlinuz, initramfs] and they should be same
+            if len(kernel_vers) < 3 or len(set(kernel_vers)) != 1:
+                log_fail("kernel versions does not match: %s" % kernel_vers)
 
     def check_boot_kernel(vmcheck):
         """
         Check if converted vm use the latest kernel
         """
-        current_kernel = vmcheck.session.cmd('uname -r').strip()
-        logging.debug('Current kernel: %s' % current_kernel)
-        if current_kernel == '3.10.0-799.el7.x86_64':
-            logging.debug('The kernel is the latest kernel')
-        else:
-            log_fail('VM should choose lastest kernel not %s' % current_kernel)
+        _, current_kernel = vmcheck.run_cmd('uname -r')
+
+        if 'debug' in current_kernel:
+            log_fail('Current kernel is a debug kernel: %s' % current_kernel)
+
+        # 'sort -V' can satisfy our testing, even though it's not strictly perfect.
+        # The last one is always the latest kernel version
+        kernel_normal_list = vmcheck.run_cmd('rpm -q kernel | sort -V')[1].strip().splitlines()
+        status, kernel_debug = vmcheck.run_cmd('rpm -q kernel-debug')
+        if status != 0:
+            test.error('Not found kernel-debug package')
+        all_kernel_list = kernel_normal_list + kernel_debug.strip().splitlines()
+        logging.debug('All kernels: %s' % all_kernel_list)
+        if len(all_kernel_list) < 3:
+            test.error('Needs at least 2 normal kernels and 1 debug kernel in VM')
+
+        # The latest non-debug kernel must be kernel_normal_list[-1]
+        if current_kernel.strip() != kernel_normal_list[-1].lstrip('kernel-'):
+            log_fail('Check boot kernel failed')
 
     def check_floppy_exist(vmcheck):
         """
@@ -534,6 +542,7 @@ def run(test, params, env):
             logging.debug(vmxml)
             if checkpoint == 'multi_kernel':
                 check_boot_kernel(vmchecker.checker)
+                check_vmlinuz_initramfs(output)
             if checkpoint == 'floppy':
                 # Convert to rhv will remove all removeable devices(floppy, cdrom)
                 if output_mode in ['local', 'libvirt']:
