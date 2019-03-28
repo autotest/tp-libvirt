@@ -93,7 +93,7 @@ def run(test, params, env):
         if not cfg_content:
             test.error('Missing content for search')
         logging.info('Search "%s" in /etc/modprobe.conf', cfg_content)
-        pattern = '\s+'.join(cfg_content.split())
+        pattern = r'\s+'.join(cfg_content.split())
         if not re.search(pattern, content):
             log_fail('Not found "%s"' % cfg_content)
 
@@ -111,6 +111,32 @@ def run(test, params, env):
             log_fail('Content of device.map not correct')
         else:
             logging.info('device.map has been remaped to "/dev/vd*"')
+
+    def check_resume_swap(vmcheck):
+        """
+        Check the content of grub files meet expectation.
+        """
+        # Only for grub2
+        chkfiles = ['/etc/default/grub',
+                    '/boot/grub2/grub.cfg',
+                    '/etc/grub2.cfg']
+
+        for file_i in chkfiles:
+            status, content = vmcheck.run_cmd('cat %s' % file_i)
+            if status != 0:
+                log_fail('%s does not exist' % file_i)
+            resume_dev_count = content.count('resume=/dev/')
+            if resume_dev_count == 0 or resume_dev_count != content.count(
+                    'resume=/dev/vd'):
+                reason = 'Maybe the VM\'s swap pariton is lvm'
+                log_fail(
+                    'Content of %s is not correct or %s' %
+                    (file_i, reason))
+
+        content = vmcheck.session.cmd('cat /proc/cmdline')
+        logging.debug('Content of /proc/cmdline:\n%s', content)
+        if 'resume=/dev/vd' not in content:
+            log_fail('Content of /proc/cmdline is not correct')
 
     def check_result(result, status_error):
         """
@@ -147,6 +173,8 @@ def run(test, params, env):
                 check_modprobe(vmchecker.checker)
             if checkpoint == 'device_map':
                 check_device_map(vmchecker.checker)
+            if checkpoint == 'resume_swap':
+                check_resume_swap(vmchecker.checker)
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
         log_check = utils_v2v.check_log(params, output)
@@ -164,8 +192,8 @@ def run(test, params, env):
             'v2v_opts': '-v -x', 'input_mode': 'libvirt',
             'storage': params.get('output_storage', 'default'),
             'network': params.get('network'),
-            'bridge':  params.get('bridge'),
-            'target':  params.get('target')
+            'bridge': params.get('bridge'),
+            'target': params.get('target')
         }
 
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
