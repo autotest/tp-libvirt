@@ -7,6 +7,8 @@ import logging
 from avocado.utils import process
 from avocado.utils import stacktrace
 
+from aexpect.exceptions import ExpectTimeoutError
+
 from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_net
@@ -116,8 +118,13 @@ TIMEOUT 3"""
             source['dev'] = net_ifs[0]
         del iface.source
         iface.source = source
-        iface_model = params.get("iface_model", "virtio")
-        iface.model = iface_model
+        if iface_model:
+            iface.model = iface_model
+        if iface_rom:
+            iface.rom = eval(iface_rom)
+        if iface_boot:
+            vmxml.remove_all_boots()
+            iface.boot = iface_boot
         logging.debug("New interface xml file: %s", iface)
         vmxml.devices = xml_devices
         vmxml.xmltreefile.write()
@@ -520,6 +527,9 @@ TIMEOUT 3"""
     iface_bandwidth_outbound = params.get("iface_bandwidth_outbound", "{}")
     iface_num = params.get("iface_num", "1")
     iface_source = params.get("iface_source", "{}")
+    iface_rom = params.get("iface_rom")
+    iface_boot = params.get("iface_boot")
+    iface_model = params.get("iface_model")
     multiple_guests = params.get("multiple_guests")
     create_network = "yes" == params.get("create_network", "no")
     attach_iface = "yes" == params.get("attach_iface", "no")
@@ -542,6 +552,7 @@ TIMEOUT 3"""
     username = params.get("username")
     password = params.get("password")
     forward = ast.literal_eval(params.get("net_forward", "{}"))
+    boot_failure = "yes" == params.get("boot_failure", "no")
     ipt_rules = []
     ipt6_rules = []
 
@@ -651,11 +662,19 @@ TIMEOUT 3"""
 
         # Edit the interface xml.
         if change_iface_option:
-            modify_iface_xml()
+            try:
+                modify_iface_xml()
+            except xcepts.LibvirtXMLError as details:
+                logging.info(str(details))
+                if define_error:
+                    if not str(details).count("Failed to define"):
+                        test.fail("VM sync failed msg not expected")
+                    return
+                else:
+                    test.fail("Failed to sync VM")
         # Attach interface if needed
         if attach_iface:
             iface_type = params.get("iface_type", "network")
-            iface_model = params.get("iface_model", "virtio")
             for i in range(int(iface_num)):
                 logging.info("Try to attach interface loop %s" % i)
                 options = ("%s %s --model %s --config" %
@@ -781,12 +800,17 @@ TIMEOUT 3"""
                 test.fail("VM started unexpectedly")
             if pxe_boot:
                 # Just check network boot messages here
-                vm.serial_console.read_until_output_matches(
-                    ["Loading vmlinuz", "Loading initrd.img"],
-                    utils_misc.strip_console_codes)
-                output = vm.serial_console.get_stripped_output()
-                logging.debug("Boot messages: %s", output)
-
+                try:
+                    vm.serial_console.read_until_output_matches(
+                        ["Loading vmlinuz", "Loading initrd.img"],
+                        utils_misc.strip_console_codes)
+                    output = vm.serial_console.get_stripped_output()
+                    logging.debug("Boot messages: %s", output)
+                except ExpectTimeoutError as details:
+                    if boot_failure:
+                        logging.info("Fail to boot from pxe as expected")
+                    else:
+                        test.fail("Fail to boot from pxe")
             else:
                 if serial_login:
                     session = vm.wait_for_serial_login(username=username,
