@@ -7,11 +7,15 @@ import random
 import socket
 import shutil
 import logging
+import threading
+import queue
+import time
 
 from avocado.core import exceptions
 from avocado.utils import process
 
 from virttest.libvirt_xml.vm_xml import VMXML
+from virttest import data_dir
 from virttest import virt_vm
 from virttest import utils_net
 from virttest import utils_misc
@@ -21,6 +25,8 @@ from virttest.utils_test.libvirt import LibvirtNetwork
 from virttest.libvirt_xml.devices.graphics import Graphics
 
 from provider import libvirt_version
+
+q = queue.Queue()
 
 
 class PortAllocator(object):
@@ -1012,6 +1018,71 @@ def block_ports(params):
     return sockets
 
 
+def run_remote_viewer(virt_viewer_file):
+    """
+    Run remote-viewer command
+
+    :param virt_viewer_file: remote-viewer's config file
+    """
+    cmd = "remote-viewer --debug %s" % virt_viewer_file
+    res = process.run(cmd, shell=True, verbose=True, ignore_status=True)
+    q.put(res.stdout_text)
+
+
+def check_connection(graphic_type, port, graphic_passwd, rv_log_str, test):
+    """
+    Use remote-viewer to connect guest
+
+    :param graphic_type: graphic type
+    :param port: port value
+    :param graphic_passwd: graphic password
+    :param rv_log_str: remote-viewer debug log string
+    :param test: test instance
+    :return: True or False
+    """
+    if graphic_passwd:
+        virt_viewer_conf = """
+[virt-viewer]
+type=%s
+host=127.0.0.1
+port=%s
+username=root
+password=%s
+""" % (graphic_type, port, graphic_passwd)
+    else:
+        virt_viewer_conf = """
+[virt-viewer]
+type=%s
+host=127.0.0.1
+port=%s
+username=root
+""" % (graphic_type, port)
+
+    # Write virt-viewer config into a tmpfile
+    virt_viewer_file = os.path.join(data_dir.get_tmp_dir(), "avocado_virt_viewer")
+    with open(virt_viewer_file, 'w') as fd:
+        fd.write(virt_viewer_conf)
+        time.sleep(1)
+
+    # run remote-viewer command
+    rv_start = threading.Thread(target=run_remote_viewer, args=(virt_viewer_file, ))
+    rv_start.start()
+    rv_start.join(3)
+
+    # stop remote-viewer command
+    utils_misc.kill_process_by_pattern("remote-viewer")
+
+    if os.path.exists(virt_viewer_file):
+        os.remove(virt_viewer_file)
+
+    rv_result = q.get()
+    if rv_log_str in rv_result:
+        logging.info("Using remote-viewer connect guest successful.")
+        return True
+    else:
+        test.fail('Using remote-viewer connect guest failed.')
+
+
 def run(test, params, env):
     """
     Test of libvirt SPICE related features.
@@ -1060,6 +1131,7 @@ def run(test, params, env):
     vnc_xml = params.get("vnc_xml", "no") == 'yes'
     is_negative = params.get("negative_test", "no") == 'yes'
     graphic_passwd = params.get("graphic_passwd")
+    remote_viewer_check = params.get("remote_viewer_check", "no") == 'yes'
 
     sockets = block_ports(params)
     networks = setup_networks(params, test)
@@ -1119,9 +1191,20 @@ def run(test, params, env):
             spice_opts, plaintext_channels, tls_channels = qemu_spice_options(vm)
             check_spice_result(spice_opts, plaintext_channels, tls_channels,
                                expected_result, all_ips, test)
+            # Use remote-viewer to connect guest
+            if remote_viewer_check:
+                rv_log_str = params.get("rv_log_str")
+                check_connection('spice', expected_result['spice_port'],
+                                 graphic_passwd, rv_log_str, test)
+
         if vnc_xml:
             vnc_opts = qemu_vnc_options(vm)
             check_vnc_result(vnc_opts, expected_result, all_ips, test)
+            # Use remote-viewer to connect guest
+            if remote_viewer_check:
+                rv_log_str = params.get("rv_log_str")
+                check_connection('vnc', expected_result['vnc_port'],
+                                 graphic_passwd, rv_log_str, test)
 
         if is_negative:
             test.fail("Expect negative result. But start succeed!")
