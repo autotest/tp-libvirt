@@ -16,6 +16,7 @@ from virttest import utils_package
 from virttest import virt_vm, remote
 from virttest import utils_libguestfs
 from virttest import libvirt_storage
+from virttest import ceph
 
 from virttest.utils_config import LibvirtQemuConfig
 from virttest.utils_config import LibvirtSanLockConfig
@@ -517,11 +518,10 @@ def run(test, params, env):
     test_json_pseudo_protocol = "yes" == params.get("json_pseudo_protocol", "no")
     disk_snapshot_with_sanlock = "yes" == params.get("disk_internal_with_sanlock", "no")
 
-    # Create /etc/ceph/ceph.conf file to suppress false warning error message.
-    process.run("mkdir -p /etc/ceph", ignore_status=True, shell=True)
-    cmd = ("echo 'mon_host = {0}' >/etc/ceph/ceph.conf"
-           .format(mon_host))
-    process.run(cmd, ignore_status=True, shell=True)
+    # Prepare a blank params to confirm if delete the configure at the end of the test
+    ceph_cfg = ""
+    # Create config file if it doesn't exist
+    ceph_cfg = ceph.create_config_file(mon_host)
 
     # Start vm and get all partions in vm.
     if vm.is_dead():
@@ -881,9 +881,9 @@ def run(test, params, env):
             test.fail("VM failed to start."
                       "Error: %s" % str(details))
     finally:
-        # Remove /etc/ceph/ceph.conf file if exists.
-        if os.path.exists('/etc/ceph/ceph.conf'):
-            os.remove('/etc/ceph/ceph.conf')
+        # Remove ceph configure file if created.
+        if ceph_cfg:
+            os.remove(ceph_cfg)
         # Delete snapshots.
         snapshot_lists = virsh.snapshot_list(vm_name)
         if len(snapshot_lists) > 0:

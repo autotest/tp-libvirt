@@ -14,6 +14,7 @@ from virttest.libvirt_xml.devices.disk import Disk
 from virttest.utils_test import libvirt as utlv
 from virttest import utils_misc
 from virttest import data_dir
+from virttest import ceph
 
 from provider import libvirt_version
 
@@ -593,13 +594,12 @@ def run(test, params, env):
     # Back VM XML
     vmxml_backup = vm_xml.VMXML.new_from_dumpxml(vm_name)
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-    try:
-        # Create /etc/ceph/ceph.conf file to suppress false warning error message.
-        process.run("mkdir -p /etc/ceph", ignore_status=True, shell=True)
-        cmd = ("echo 'mon_host = {0}' >/etc/ceph/ceph.conf"
-               .format(params.get("mon_host")))
-        process.run(cmd, ignore_status=True, shell=True)
 
+    # Prepare a blank params to confirm if delete the configure at the end of the test
+    ceph_cfg = ''
+    try:
+        # Create config file if it doesn't exist
+        ceph_cfg = ceph.create_config_file(params.get("mon_host"))
         setup_test_env(params, test)
         apply_boot_options(vmxml, params)
         blk_source = vm.get_first_disk_devices()['source']
@@ -664,9 +664,9 @@ def run(test, params, env):
                 remote_session.close()
         logging.debug("Succeed to boot %s" % vm_name)
     finally:
-        # Remove /etc/ceph/ceph.conf file if exists.
-        if os.path.exists('/etc/ceph/ceph.conf'):
-            os.remove('/etc/ceph/ceph.conf')
+        # Remove ceph configure file if created.
+        if ceph_cfg:
+            os.remove(ceph_cfg)
         logging.debug("Start to cleanup")
         if vm.is_alive:
             vm.destroy()
