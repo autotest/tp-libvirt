@@ -111,7 +111,7 @@ def run(test, params, env):
 
         try:
             for event in events_list:
-                if event in ['start', 'restore', 'create', 'define', 'undefine', 'edit', 'crash']:
+                if event in ['start', 'restore', 'create', 'define', 'undefine', 'crash']:
                     if dom.is_alive():
                         dom.destroy()
                         if event in ['create', 'define']:
