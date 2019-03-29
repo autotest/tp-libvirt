@@ -10,6 +10,7 @@ import logging
 import threading
 import queue
 import time
+import datetime
 
 from avocado.core import exceptions
 from avocado.utils import process
@@ -859,6 +860,25 @@ def check_vnc_result(vnc_opts, expected_result, all_ips, test):
     check_addr_port(all_ips, expected_vnc_ips, expected_vnc_ports, test)
 
 
+def set_passwd_valid_time_in_graphic(graphic, valid_time, graphic_passwd):
+    """
+    Set password valid time
+
+    :param graphic: a graphics device XML
+    :param valid_time: password valid time
+    :param graphic_passwd: graphic password
+    :return graphic: a graphics device XML
+    """
+    if valid_time:
+        assert graphic_passwd != ""
+        assert graphic_passwd is not None
+        graphic.passwd = graphic_passwd
+        start = datetime.datetime.utcnow()
+        end = start + datetime.timedelta(seconds=int(valid_time))
+        graphic.passwdValidTo = end.strftime("%Y-%m-%dT%H:%M:%S")
+    return graphic
+
+
 def generate_spice_graphic_xml(params, expected_result):
     """
     Generate SPICE graphics XML using input parameters.
@@ -875,6 +895,7 @@ def generate_spice_graphic_xml(params, expected_result):
     listen_type = params.get("spice_listen_type", "not_set")
     graphic_passwd = params.get("graphic_passwd")
     spice_passwd_place = params.get("spice_passwd_place", "not_set")
+    valid_time = params.get("valid_time")
 
     graphic = Graphics(type_name='spice')
 
@@ -922,6 +943,9 @@ def generate_spice_graphic_xml(params, expected_result):
 
     if graphic_passwd and spice_passwd_place == "guest":
         graphic.passwd = graphic_passwd
+
+    # set password valid time
+    graphic = set_passwd_valid_time_in_graphic(graphic, valid_time, graphic_passwd)
     return graphic
 
 
@@ -934,6 +958,7 @@ def generate_vnc_graphic_xml(params, expected_result):
     listen_type = params.get("vnc_listen_type", "not_set")
     graphic_passwd = params.get("graphic_passwd")
     vnc_passwd_place = params.get("vnc_passwd_place", "not_set")
+    valid_time = params.get("valid_time")
 
     graphic = Graphics(type_name='vnc')
 
@@ -956,6 +981,9 @@ def generate_vnc_graphic_xml(params, expected_result):
 
     if graphic_passwd and vnc_passwd_place == "guest":
         graphic.passwd = graphic_passwd
+
+    # set password valid time
+    graphic = set_passwd_valid_time_in_graphic(graphic, valid_time, graphic_passwd)
     return graphic
 
 
@@ -1018,28 +1046,34 @@ def block_ports(params):
     return sockets
 
 
-def run_remote_viewer(virt_viewer_file):
+def run_remote_viewer(virt_viewer_file, opt_str):
     """
     Run remote-viewer command
 
     :param virt_viewer_file: remote-viewer's config file
+    :param opt_str: remote-viewer parameter
     """
-    cmd = "remote-viewer --debug %s" % virt_viewer_file
+    if not opt_str:
+        opt_str = ""
+    cmd = "remote-viewer --debug %s %s" % (opt_str, virt_viewer_file)
     res = process.run(cmd, shell=True, verbose=True, ignore_status=True)
     q.put(res.stdout_text)
 
 
-def check_connection(graphic_type, port, graphic_passwd, rv_log_str, test):
+def check_connection(graphic_type, port, graphic_passwd, test, rv_log_str, rv_log_auth, opt_str, valid_time):
     """
     Use remote-viewer to connect guest
 
     :param graphic_type: graphic type
     :param port: port value
     :param graphic_passwd: graphic password
-    :param rv_log_str: remote-viewer debug log string
     :param test: test instance
-    :return: True or False
+    :param rv_log_str: remote-viewer debug log string
+    :param rv_log_auth: authentication failed information in remote-viewer debug log
+    :param opt_str: remote-viewer parameter
+    :param valid_time: password valid time
     """
+
     if graphic_passwd:
         virt_viewer_conf = """
 [virt-viewer]
@@ -1064,23 +1098,52 @@ username=root
         fd.write(virt_viewer_conf)
         time.sleep(1)
 
-    # run remote-viewer command
-    rv_start = threading.Thread(target=run_remote_viewer, args=(virt_viewer_file, ))
-    rv_start.start()
-    rv_start.join(3)
+    try:
+        if valid_time:
+            # run remote-viewer command
+            rv_start = threading.Thread(target=run_remote_viewer,
+                                        args=(virt_viewer_file, opt_str))
+            rv_start.start()
+            rv_start.join(int(valid_time) + 3)
 
-    # stop remote-viewer command
-    utils_misc.kill_process_by_pattern("remote-viewer")
+            # check connection exist or not
+            res = process.run("pidof remote-viewer", shell=True, verbose=True)
+            if res.exit_status:
+                test.fail("Connection fail after password expired.")
+            else:
+                logging.info("Keep connection after password expired.")
 
-    if os.path.exists(virt_viewer_file):
-        os.remove(virt_viewer_file)
+            # stop remote-viewer command
+            utils_misc.kill_process_by_pattern("remote-viewer")
 
-    rv_result = q.get()
-    if rv_log_str in rv_result:
-        logging.info("Using remote-viewer connect guest successful.")
-        return True
-    else:
-        test.fail('Using remote-viewer connect guest failed.')
+            rv_result = q.get()
+            # check review-viewer log
+            if (rv_log_str in rv_result) and (rv_log_auth not in rv_result):
+                logging.info("Password expired but remote-viewer keep connection.")
+            else:
+                test.fail('After password expired, connection closed.')
+
+        # check guest connection
+        rv_start = threading.Thread(target=run_remote_viewer,
+                                    args=(virt_viewer_file, opt_str))
+        rv_start.start()
+        rv_start.join(3)
+
+        # stop remote-viewer command
+        utils_misc.kill_process_by_pattern("remote-viewer")
+
+        rv_result = q.get()
+        if valid_time:
+            cmp_str = rv_log_auth
+        else:
+            cmp_str = rv_log_str
+        if cmp_str in rv_result:
+            logging.info("Using remote-viewer to check guest successful.")
+        else:
+            test.fail('Using remote-viewer to check guest failed.')
+    finally:
+        if os.path.exists(virt_viewer_file):
+            os.remove(virt_viewer_file)
 
 
 def run(test, params, env):
@@ -1132,6 +1195,7 @@ def run(test, params, env):
     is_negative = params.get("negative_test", "no") == 'yes'
     graphic_passwd = params.get("graphic_passwd")
     remote_viewer_check = params.get("remote_viewer_check", "no") == 'yes'
+    valid_time = params.get("valid_time")
 
     sockets = block_ports(params)
     networks = setup_networks(params, test)
@@ -1194,8 +1258,10 @@ def run(test, params, env):
             # Use remote-viewer to connect guest
             if remote_viewer_check:
                 rv_log_str = params.get("rv_log_str")
-                check_connection('spice', expected_result['spice_port'],
-                                 graphic_passwd, rv_log_str, test)
+                rv_log_auth = params.get("rv_log_auth")
+                opt_str = params.get('opt_str')
+                check_connection('spice', expected_result['spice_port'], graphic_passwd,
+                                 test, rv_log_str, rv_log_auth, opt_str, valid_time)
 
         if vnc_xml:
             vnc_opts = qemu_vnc_options(vm)
@@ -1203,8 +1269,10 @@ def run(test, params, env):
             # Use remote-viewer to connect guest
             if remote_viewer_check:
                 rv_log_str = params.get("rv_log_str")
-                check_connection('vnc', expected_result['vnc_port'],
-                                 graphic_passwd, rv_log_str, test)
+                rv_log_auth = params.get("rv_log_auth")
+                opt_str = params.get('opt_str')
+                check_connection('vnc', expected_result['vnc_port'], graphic_passwd,
+                                 test, rv_log_str, rv_log_auth, opt_str, valid_time)
 
         if is_negative:
             test.fail("Expect negative result. But start succeed!")
