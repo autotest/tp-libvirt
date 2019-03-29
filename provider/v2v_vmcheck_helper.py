@@ -218,7 +218,17 @@ class VMChecker(object):
             logging.info("The guest is uefi mode,skip the checkpoint")
         elif not self.checker.get_grub_device():
             err_msg = "Not find vd? in disk partition"
-            self.log_err(err_msg)
+            if self.hypervisor != 'kvm':
+                self.log_err(err_msg)
+            else:
+                # Just warning the err if converting from KVM. It may
+                # happen that disk's bus type in xml is not the real bus
+                # type be used when preparing the image. Ex, if the image
+                # is installed with IDE, then you import the image with
+                # bus virtio, the device.map file will be inconsistent with
+                # the xml.
+                # V2V doesn't modify device.map file for this scenario.
+                logging.warning(err_msg)
         else:
             logging.info("PASS")
 
