@@ -522,7 +522,6 @@ def run(test, params, env):
 
         if mem_align:
             dom_mem = check_mem_align()
-            check_qemu_cmd(dom_mem['maxMemory'], dom_mem['attached_mem'])
             if hot_plug and params['delta'] != dom_mem['attached_mem']:
                 test.fail('Memory after attach not equal to original mem + attached mem')
 
