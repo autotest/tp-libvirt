@@ -8,9 +8,12 @@ import socket
 import shutil
 import logging
 import threading
-import queue
 import time
 import datetime
+try:
+    import queue as Queue
+except ImportError:
+    import Queue
 
 from avocado.core import exceptions
 from avocado.utils import process
@@ -27,7 +30,7 @@ from virttest.libvirt_xml.devices.graphics import Graphics
 
 from provider import libvirt_version
 
-q = queue.Queue()
+q = Queue.Queue()
 
 
 class PortAllocator(object):
