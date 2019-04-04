@@ -168,13 +168,13 @@ def set_host_timezone(test, timezone="America/New_York"):
     """
     timezone_file = "/usr/share/zoneinfo/%s" % timezone
     if process.run("ls %s" % timezone_file, ignore_status=True, shell=True).exit_status:
-        test.error("Invalid timezone file: %s", timezone_file)
+        test.error("Invalid timezone file: %s" % timezone_file)
     else:
         process.run("unlink /etc/localtime", ignore_status=True, shell=True)
         result = process.run("ln -s %s /etc/localtime" % timezone_file,
                              ignore_status=True, shell=True)
         if result.exit_status:
-            test.error("Set timezone failed: %s", result)
+            test.error("Set timezone failed: %s" % result)
         else:
             logging.debug("Set host timezone to %s", timezone)
 
@@ -194,7 +194,7 @@ def set_vm_timezone(test, vm, timezone="America/New_York", windows=False):
         session = vm.wait_for_login()
         if session.cmd_status("ls %s" % timezone_file):
             session.close()
-            test.error("Not correct timezone:%s", timezone_file)
+            test.error("Not correct timezone:%s" % timezone_file)
         else:
             session.cmd("unlink /etc/localtime")
             cmd_s, cmd_o = session.cmd_status_output("ln -s %s /etc/localtime"
@@ -212,7 +212,7 @@ def set_vm_timezone(test, vm, timezone="America/New_York", windows=False):
         cmd_s, cmd_o = session.cmd_status_output(cmd)
         session.close()
     if cmd_s:
-        test.error("Set vm timezone failed: %s", cmd_o)
+        test.error("Set vm timezone failed: %s" % cmd_o)
     else:
         logging.debug("Set vm timezone to %s", timezone)
 
@@ -498,7 +498,7 @@ def test_specific_timer(test, vm, params):
                           " in vm" % t_name)
         # Try to set specific timer
         if not vm_clock_source(vm, 'current', t_name):
-            test.error("Set clock source to % in vm failed", t_name)
+            test.error("Set clock source to % in vm failed" % t_name)
         time.sleep(2)
         if t_present == 'no':
             if vm_clock_source(vm, 'current') == t_name:
