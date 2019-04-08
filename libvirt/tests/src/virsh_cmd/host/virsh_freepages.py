@@ -105,7 +105,7 @@ def run(test, params, env):
             node_meminfo = host_numa_node.read_from_node_meminfo(node, 'MemFree')
             return int(node_meminfo) / 4
         else:
-            return hp_cl.get_free_hugepages(node, pagesize)
+            return hp_cl.get_node_num_huge_pages(node, pagesize, type='free')
 
     def check_hugepages_allocated_status(is_type_check, pagesize, quantity):
         """
