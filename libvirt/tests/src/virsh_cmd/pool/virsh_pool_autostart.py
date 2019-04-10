@@ -87,7 +87,8 @@ def run(test, params, env):
                     error_msg = "Dir pool should be always active when libvirtd restart. "
                     error_msg += "See https://bugzilla.redhat.com/show_bug.cgi?id=1238610"
                     logging.error(error_msg)
-                test.fail("Pool %s isn't %s as expected" % (checkpoint, expect_value))
+                else:
+                    test.fail("Pool %s isn't %s as expected" % (checkpoint, expect_value))
             else:
                 logging.debug("Pool %s is %s as expected", checkpoint, actual_value)
 
