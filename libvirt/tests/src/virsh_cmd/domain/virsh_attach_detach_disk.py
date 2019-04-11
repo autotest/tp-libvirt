@@ -237,10 +237,11 @@ def run(test, params, env):
             s_at_options += " --mode shareable"
 
         s_attach = virsh.attach_disk(vm_name, device_source, device_target,
-                                     s_at_options).exit_status
+                                     s_at_options, debug=True).exit_status
         if s_attach != 0:
             logging.error("Attaching device failed before testing detach-disk")
-
+        else:
+            logging.debug("Attaching device succeeded before testing detach-disk")
         if test_twice:
             device_target2 = params.get("at_dt_disk_device_target2",
                                         device_target)
