@@ -5,6 +5,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import xcepts
 from virttest.utils_test import libvirt
 from virttest import utils_hotplug
 
@@ -51,6 +52,7 @@ def run(test, params, env):
         3. use invalid cpuset as cputune cpuset in xml to define vcpu affinity
         4. use duplicate vcpu in xml to define vcpu affinity
         5. use offline host cpu as cputune cpuset to run virsh vcpupin
+        6. set vcpu affinity for none exists vcpu and check xml result
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -85,9 +87,20 @@ def run(test, params, env):
         affinity = vcpu_cpuset if not cputune_cpuset else cputune_cpuset
         affinity = {vcpu: affinity}
         virsh.vcpuinfo(vm_name, debug=True)
+
+        vmxml_live = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        logging.debug(vmxml_live)
+
+        # if vcpu >= maxvcpu, the cputune should not exist in xml
+        if int(vcpu) >= int(maxvcpu):
+            try:
+                if hasattr(vmxml_live, 'cputune'):
+                    test.fail("cputune tag is set when vcpu >= maxvcpu")
         # check the expected vcpu affinity with the one got from running vm
-        if not utils_hotplug.check_affinity(vm, affinity):
-            test.fail("vcpu affinity check fail")
+                elif not utils_hotplug.check_affinity(vm, affinity):
+                    test.fail("vcpu affinity check fail")
+            except xcepts.LibvirtXMLError:
+                pass
 
     try:
         hostcpu_num = int(cpu.total_cpus_count())
