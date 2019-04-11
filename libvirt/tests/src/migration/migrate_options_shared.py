@@ -308,28 +308,69 @@ def run(test, params, env):
             test.fail("Migration speed is expected to be '%d MiB/s', but '%d MiB/s' "
                       "found" % (expected_value, actual_value))
 
-    def check_domjobinfo(params):
+    def check_domjobinfo(params, option=""):
         """
         Check given item in domjobinfo of the guest is as expected
 
         :param params: the parameters used
+        :param option: options for domjobinfo
         :raise: test.fail if the value of given item is unexpected
         """
+        def search_jobinfo(jobinfo):
+            """
+            Find value of given item in domjobinfo
+
+            :param jobinfo: cmdResult object
+            :raise: test.fail if not found
+            """
+            for item in jobinfo.stdout.splitlines():
+                if item.count(jobinfo_item):
+                    groups = re.findall(r'[0-9.]+', item.strip())
+                    logging.debug("In '%s' search '%s'\n", item, groups[0])
+                    if (math.fabs(float(groups[0]) - float(compare_to_value)) //
+                       float(compare_to_value) > diff_rate):
+                        test.fail("{} {} has too much difference from "
+                                  "{}".format(jobinfo_item,
+                                              groups[0],
+                                              compare_to_value))
+                break
+
         jobinfo_item = params.get("jobinfo_item")
         compare_to_value = params.get("compare_to_value")
+        logging.debug("compare_to_value:%s", compare_to_value)
         diff_rate = float(params.get("diff_rate", "0"))
         if not jobinfo_item or not compare_to_value:
             return
-        jobinfo = virsh.domjobinfo(vm_name, **virsh_args)
-        for item in jobinfo.stdout.splitlines():
-            if item.count(jobinfo_item):
-                groups = re.findall(r'[0-9.]+', item.strip())
-                logging.debug('%s%s\n', item, groups[0])
-                if (math.fabs(float(groups[0]) - float(compare_to_value)) //
-                   float(compare_to_value) > diff_rate):
-                    test.fail("{} {} has too much difference from "
-                              "{}".format(jobinfo_item, groups[0], compare_to_value))
-                break
+        vm_ref = '{}{}'.format(vm_name, option)
+        jobinfo = virsh.domjobinfo(vm_ref, **virsh_args)
+        search_jobinfo(jobinfo)
+
+        check_domjobinfo_remote = params.get("check_domjobinfo_remote")
+        if check_domjobinfo_remote:
+            remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
+            jobinfo = remote_virsh_session.domjobinfo(vm_ref, **virsh_args)
+            search_jobinfo(jobinfo)
+            remote_virsh_session.close_session()
+
+    def check_maxdowntime(params):
+        """
+        Set/get migration maxdowntime
+
+        :param params: the parameters used
+        :raise: test.fail if maxdowntime set does not take effect
+        """
+        expected_value = int(float(params.get("migrate_maxdowntime", '0.3')) * 1000)
+        virsh_args.update({"ignore_status": False})
+        old_value = int(virsh.migrate_getmaxdowntime(vm_name).stdout.strip())
+        logging.debug("Current migration maxdowntime is %d ms", old_value)
+        logging.debug("Set migration maxdowntime to %d ms", expected_value)
+        virsh.migrate_setmaxdowntime(vm_name, expected_value, **virsh_args)
+        actual_value = int(virsh.migrate_getmaxdowntime(vm_name).stdout.strip())
+        logging.debug("New migration maxdowntime is %d ms", actual_value)
+        if actual_value != expected_value:
+            test.fail("Migration maxdowntime is expected to be '%d ms', but '%d ms' "
+                      "found" % (expected_value, actual_value))
+        params.update({'compare_to_value': actual_value})
 
     def do_actions_during_migrate(params):
         """
@@ -345,6 +386,8 @@ def run(test, params, env):
                 check_setspeed(params)
             elif action == 'domjobinfo':
                 check_domjobinfo(params)
+            elif action == 'setmaxdowntime':
+                check_maxdowntime(params)
             time.sleep(3)
 
     def check_timeout_postcopy(params):
@@ -570,7 +613,7 @@ def run(test, params, env):
             trigger_hpt_resize(vm_session)
 
         if low_speed:
-            control_migrate_speed()
+            control_migrate_speed(int(low_speed))
 
         if stress_in_vm:
             pkg_name = 'stress'
@@ -625,31 +668,11 @@ def run(test, params, env):
         check_migration_res(mig_result)
 
         if check_complete_job:
-            search_str_domjobinfo = params.get("search_str_domjobinfo", None)
-            opts = "--completed"
-            args = vm_name + " " + opts
+            opts = " --completed"
             check_virsh_command_and_option("domjobinfo", opts)
-            jobinfo = results_stdout_52lts(virsh.domjobinfo(args, debug=True,
-                                           ignore_status=True)).strip()
-            logging.debug("Local job info on completion:\n%s", jobinfo)
-            if extra.count("comp-xbzrle-cache") and search_str_domjobinfo:
-                search_str_domjobinfo = "%s %s" % (search_str_domjobinfo, cache//1024)
-            if search_str_domjobinfo:
-                if not re.search(search_str_domjobinfo, jobinfo):
-                    test.fail("Fail to search '%s' on local:\n%s"
-                              % (search_str_domjobinfo, jobinfo))
-            # Check remote host
-            if not remote_virsh_session:
-                remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
-            jobinfo = results_stdout_52lts(remote_virsh_session.domjobinfo(args, debug=True,
-                                                                           ignore_status=True)).strip()
-            logging.debug("Remote job info on completion:\n%s", jobinfo)
-            if search_str_domjobinfo:
-                if not re.search(search_str_domjobinfo, jobinfo):
-                    remote_virsh_session.close_session()
-                    test.fail("Fail to search '%s' on remote:\n%s"
-                              % (search_str_domjobinfo, jobinfo))
-            remote_virsh_session.close_session()
+            if extra.count("comp-xbzrle-cache"):
+                params.update({'compare_to_value': cache // 1024})
+            check_domjobinfo(params, option=opts)
 
         if grep_str_local_log:
             cmd = "grep -E '%s' %s" % (grep_str_local_log, log_file)
