@@ -5,6 +5,7 @@ import math
 import re
 import threading
 import platform
+import tempfile
 
 from avocado.utils import process
 from avocado.utils import memory
@@ -13,9 +14,11 @@ from avocado.core import exceptions
 from virttest import libvirt_vm
 from virttest import utils_test
 from virttest import defaults
+from virttest import data_dir
 from virttest import virsh
 from virttest import remote
 from virttest import utils_package
+from virttest import xml_utils
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -112,26 +115,6 @@ def run(test, params, env):
             else:
                 logging.info("'%s' is found in dmesg", content % hpt_order)
 
-    def check_qemu_cmd_line(content, err_ignore=False):
-        """
-        Check the specified content in the qemu command line
-
-        :param content: the desired string to search
-        :param err_ignore: True to return False when fail
-                           False to raise exception when fail
-
-        :return: True if exist, False otherwise
-        """
-        cmd = 'ps -ef|grep qemu|grep -v grep'
-        qemu_line = results_stdout_52lts(process.run(cmd, shell=True))
-        if content not in qemu_line:
-            if err_ignore:
-                return False
-            else:
-                test.fail("Expected '%s' was not found in "
-                          "qemu command line" % content)
-        return True
-
     def check_vm_network_accessed(session=None):
         """
         The operations to the VM need to be done before or after
@@ -224,7 +207,8 @@ def run(test, params, env):
             os.remove(log_file)
         cmd = "rm -f %s" % log_file
         logging.debug("Delete remote libvirt log file '%s'", log_file)
-        run_remote_cmd(cmd)
+        cmd_parms = {'server_ip': server_ip, 'server_user': server_user, 'server_pwd': server_pwd}
+        remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
 
     def cleanup_dest(vm):
         """
@@ -248,23 +232,6 @@ def run(test, params, env):
 
         except Exception as detail:
             logging.error("Cleaning up destination failed.\n%s", detail)
-
-    def run_remote_cmd(cmd):
-        """
-        A function to run a command on remote host.
-
-        :param cmd: the command to be executed
-
-        :return: CmdResult object
-        """
-        remote_runner = remote.RemoteRunner(host=server_ip,
-                                            username=server_user,
-                                            password=server_pwd)
-        cmdResult = remote_runner.run(cmd, ignore_status=True)
-        if cmdResult.exit_status:
-            test.fail("Failed to run '%s' on remote: %s"
-                      % (cmd, results_stderr_52lts(cmdResult).strip()))
-        return cmdResult
 
     def run_stress_in_vm():
         """
@@ -390,6 +357,25 @@ def run(test, params, env):
                 check_maxdowntime(params)
             time.sleep(3)
 
+    def attach_channel_xml():
+        """
+        Create channel xml and attach it to guest configuration
+        """
+        # Check if pty channel exists already
+        for elem in new_xml.devices.by_device_tag('channel'):
+            if elem.type_name == channel_type_name:
+                logging.debug("{0} channel already exists in guest. "
+                              "No need to add new one".format(channel_type_name))
+                return
+
+        params = {'channel_type_name': channel_type_name,
+                  'target_type': target_type,
+                  'target_name': target_name}
+        channel_xml = libvirt.create_channel_xml(params)
+        virsh.attach_device(domain_opt=vm_name, file_opt=channel_xml.xml,
+                            flagstr="--config", ignore_status=False)
+        logging.debug("New VMXML with channel:\n%s", virsh.dumpxml(vm_name))
+
     def check_timeout_postcopy(params):
         """
         Check the vm state on target host after timeout
@@ -503,7 +489,21 @@ def run(test, params, env):
 
     hpt_resize = params.get("hpt_resize", None)
     htm_state = params.get("htm_state", None)
+
+    # For pty channel test
+    add_channel = "yes" == params.get("add_channel", "no")
+    channel_type_name = params.get("channel_type_name", None)
+    target_type = params.get("target_type", None)
+    target_name = params.get("target_name", None)
+    cmd_run_in_remote_guest = params.get("cmd_run_in_remote_guest", None)
+    cmd_run_in_remote_guest_1 = params.get("cmd_run_in_remote_guest_1", None)
+    cmd_run_in_remote_host = params.get("cmd_run_in_remote_host", None)
+    cmd_run_in_remote_host_1 = params.get("cmd_run_in_remote_host_1", None)
+    cmd_run_in_remote_host_2 = params.get("cmd_run_in_remote_host_2", None)
+
+    # For qemu command line checking
     qemu_check = params.get("qemu_check", None)
+
     xml_check_after_mig = params.get("guest_xml_check_after_mig", None)
 
     # params for cache matrix test
@@ -549,12 +549,13 @@ def run(test, params, env):
         test.error("Backing up xmlfile failed.")
 
     try:
-        # Change VM xml in below part
-        if contrl_index:
-            new_xml.remove_all_device_by_type('controller')
-            logging.debug("After removing controllers, current XML:\n%s\n", new_xml)
-            add_ctrls(new_xml, dev_index=contrl_index)
+        # Create a remote runner for later use
+        runner_on_target = remote.RemoteRunner(host=server_ip,
+                                               username=server_user,
+                                               password=server_pwd)
 
+        # Change the configuration files if needed before starting guest
+        # For qemu.conf
         if extra.count("--tls"):
             # Setup TLS
             tls_obj = TLSConnection(params)
@@ -571,7 +572,6 @@ def run(test, params, env):
                                                              config_type="qemu",
                                                              remote_host=True,
                                                              extra_params=params)
-
         # Setup libvirtd
         if config_libvirtd:
             logging.debug("Configure the libvirtd")
@@ -580,6 +580,15 @@ def run(test, params, env):
             libvirtd_conf = libvirt.customize_libvirt_config(libvirtd_conf_dict,
                                                              remote_host=True,
                                                              extra_params=params)
+        # Prepare required guest xml before starting guest
+        if contrl_index:
+            new_xml.remove_all_device_by_type('controller')
+            logging.debug("After removing controllers, current XML:\n%s\n", new_xml)
+            add_ctrls(new_xml, dev_index=contrl_index)
+
+        if add_channel:
+            attach_channel_xml()
+
         if hpt_resize:
             set_feature(new_xml, 'hpt', hpt_resize)
 
@@ -590,6 +599,7 @@ def run(test, params, env):
             params["driver_cache"] = cache
         if remove_cache:
             params["enable_cache"] = "no"
+
         # Change the disk of the vm to shared disk and then start VM
         libvirt.set_vm_disk(vm, params)
 
@@ -598,17 +608,20 @@ def run(test, params, env):
 
         logging.debug("Guest xml after starting:\n%s", vm_xml.VMXML.new_from_dumpxml(vm_name))
 
+        # Check qemu command line after guest is started
         if qemu_check:
             check_content = qemu_check
             if hpt_resize:
                 check_content = "%s%s" % (qemu_check, hpt_resize)
             if htm_state:
                 check_content = "%s%s" % (qemu_check, htm_state)
-            check_qemu_cmd_line(check_content)
+            libvirt.check_qemu_cmd_line(check_content)
 
+        # Check local guest network connection before migration
         vm_session = vm.wait_for_login()
         check_vm_network_accessed()
 
+        # Preparation for the running guest before migration
         if hpt_resize and hpt_resize != 'disabled':
             trigger_hpt_resize(vm_session)
 
@@ -641,6 +654,7 @@ def run(test, params, env):
         if postcopy_options:
             extra = "%s %s" % (extra, postcopy_options)
 
+        # Execute migration process
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
         else:
@@ -667,6 +681,46 @@ def run(test, params, env):
 
         check_migration_res(mig_result)
 
+        if add_channel:
+            # Get the channel device source path of remote guest
+            if not remote_virsh_session:
+                remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
+            file_path = tempfile.mktemp(dir=data_dir.get_tmp_dir())
+            remote_virsh_session.dumpxml(vm_name, to_file=file_path,
+                                         debug=True,
+                                         ignore_status=True)
+            local_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            local_vmxml.xmltreefile = xml_utils.XMLTreeFile(file_path)
+            for elem in local_vmxml.devices.by_device_tag('channel'):
+                logging.debug("Found channel device {}".format(elem))
+                if elem.type_name == channel_type_name:
+                    host_source = elem.source.get('path')
+                    logging.debug("Remote guest uses {} for channel device".format(host_source))
+                    break
+            remote_virsh_session.close_session()
+            if not host_source:
+                test.fail("Can not find source for %s channel on remote host" % channel_type_name)
+
+            # Prepare to wait for message on remote host from the channel
+            cmd_parms = {'server_ip': server_ip, 'server_user': server_user, 'server_pwd': server_pwd}
+            cmd_result = remote.run_remote_cmd(cmd_run_in_remote_host % host_source,
+                                               cmd_parms,
+                                               runner_on_target)
+
+            # Send message from remote guest to the channel file
+            remote_vm_obj = utils_test.RemoteVMManager(cmd_parms)
+            vm_ip = vm.get_address()
+            vm_pwd = params.get("password")
+            remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd)
+            cmd_result = remote_vm_obj.run_command(vm_ip, cmd_run_in_remote_guest_1)
+            remote_vm_obj.run_command(vm_ip, cmd_run_in_remote_guest % results_stdout_52lts(cmd_result).strip())
+            logging.debug("Sending message is done")
+
+            # Check message on remote host from the channel
+            remote.run_remote_cmd(cmd_run_in_remote_host_1, cmd_parms, runner_on_target)
+            logging.debug("Receiving message is done")
+            remote.run_remote_cmd(cmd_run_in_remote_host_2, cmd_parms, runner_on_target)
+
         if check_complete_job:
             opts = " --completed"
             check_virsh_command_and_option("domjobinfo", opts)
@@ -681,7 +735,8 @@ def run(test, params, env):
                 test.fail(results_stderr_52lts(cmdRes).strip())
         if grep_str_remote_log:
             cmd = "grep -E '%s' %s" % (grep_str_remote_log, log_file)
-            run_remote_cmd(cmd)
+            cmd_parms = {'server_ip': server_ip, 'server_user': server_user, 'server_pwd': server_pwd}
+            remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
 
         if xml_check_after_mig:
             if not remote_virsh_session:
