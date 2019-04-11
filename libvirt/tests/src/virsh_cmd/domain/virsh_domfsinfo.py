@@ -191,6 +191,9 @@ def run(test, params, env):
             result = virsh.attach_disk(domain, source, target, "--live",
                                        ignore_status=False, debug=True)
         else:
+            session = vm.wait_for_login()
+            session.cmd("umount %s" %mount_dir)
+            session.close()
             result = virsh.detach_disk(domain, target, "--live",
                                        ignore_status=False, debug=True)
         # It need more time for attachment to take effect
@@ -251,7 +254,7 @@ def run(test, params, env):
             check_output(cmd_output, mount_dir, test, expected=False)
         elif hotplug_unplug:
             blk_target = re.findall(r'[a-z]+', new_part)[0]
-            disk_pat = "%s\s+%s\s+%s\s+%s\s+" % (mount_dir, new_part, fs_type, blk_target)
+            disk_pat = "%s\s+%s\s+%s\s+%s" % (mount_dir, new_part, fs_type, blk_target)
             check_output(cmd_output, disk_pat, test, expected=True)
             # Unplug domain disk
             hotplug_domain_disk(vm_name, target=new_part, hotplug=False)
