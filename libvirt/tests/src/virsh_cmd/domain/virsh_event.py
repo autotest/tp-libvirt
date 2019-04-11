@@ -154,10 +154,12 @@ def run(test, params, env):
                                                 " Suspended Paused")
                     expected_events_list.append("'lifecycle' for %s:"
                                                 " Suspended Paused")
+                    time.sleep(5)
                 elif event == "resume":
                     virsh.resume(dom.name, **virsh_dargs)
                     expected_events_list.append("'lifecycle' for %s:"
                                                 " Resumed Unpaused")
+                    time.sleep(5)
                 elif event == "save":
                     virsh.save(dom.name, save_path, **virsh_dargs)
                     expected_events_list.append("'lifecycle' for %s:"
@@ -173,6 +175,7 @@ def run(test, params, env):
                                                     " Started Restored")
                         expected_events_list.append("'lifecycle' for %s:"
                                                     " Resumed Snapshot")
+                    time.sleep(5)
                 elif event == "edit":
                     #Check whether 'description' element exists.
                     domxml = virsh.dumpxml(dom.name).stdout.strip()
