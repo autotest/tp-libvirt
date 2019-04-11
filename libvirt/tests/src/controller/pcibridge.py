@@ -191,7 +191,7 @@ def run(test, params, env):
 
             logging.debug('iface list after detach: %s', iface_list_after_detach)
             if iface_list_after_detach:
-                test.fail('Failed to detach device: %s', iface)
+                test.fail('Failed to detach device: %s' % iface)
 
             # Check again inside vm
             session = vm.wait_for_serial_login()
