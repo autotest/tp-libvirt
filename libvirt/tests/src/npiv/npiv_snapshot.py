@@ -87,21 +87,6 @@ def prepare_scsi_pool(pool_name, wwnn, wwpn, parent_scsi, pool_target):
         raise exceptions.TestFail("Failed to prepare pool:%s", pool_name)
 
 
-def create_qcow2_blk(path_to_dev, size):
-    """
-    Create a qcow2 file to a block device
-
-    :params path_to_dev: path to block device
-    :params size: size of the qcow2 file
-    """
-    cmd = "qemu-img create -f qcow2 %s %s" % (path_to_dev, size)
-    try:
-        process.run(cmd, shell=True)
-    except process.cmdError as detail:
-        raise exceptions.TestError("Failed to create qcow2 with %s: %s"
-                                   % (path_to_dev, str(detail)))
-
-
 def create_file_in_vm(session, file_path, file_content="test"):
     """
     Create a file in vm
@@ -243,17 +228,9 @@ def run(test, params, env):
             if not new_blks:
                 raise exceptions.TestFail("block device not found with scsi_%s",
                                           new_vhba_scsibus)
-            first_blk_dev = new_blks[0]
-            utils_misc.wait_for(
-                lambda: get_symbols_by_blk(first_blk_dev),
-                timeout=_TIMEOUT)
-            lun_sl = get_symbols_by_blk(first_blk_dev)
-            if not lun_sl:
-                raise exceptions.TestFail("lun symbolic links not found under "
-                                          "/dev/disk/by-path/ for blk dev %s" %
-                                          first_blk_dev)
-            lun_dev = lun_sl[0]
-            path_to_blk = os.path.join(_BY_PATH_DIR, lun_dev)
+            vol_list = utlv.get_vol_list(pool_name, vol_check=True,
+                                         timeout=_TIMEOUT*3)
+            path_to_blk = list(vol_list.values())[0]
         elif vd_format in ['mpath', 'by_path']:
             old_mpath_devs = utils_npiv.find_mpath_devs()
             new_vhba = utils_npiv.nodedev_create_from_xml(
