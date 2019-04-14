@@ -91,12 +91,20 @@ def run(test, params, env):
         """
         net_device = []
         net_name = []
-        test_res = process.run("echo 0 > %s/sriov_numvfs" % pci_address, shell=True)
+        # cleanup env and create vfs
+        cmd = "echo 0 > %s/sriov_numvfs" % pci_address
+        if driver == "mlx4_core":
+            cmd = "modprobe -r mlx4_en ; modprobe -r mlx4_ib ; modprobe -r mlx4_core"
+        process.run(cmd, shell=True)
         pci_list = virsh.nodedev_list(cap='pci').stdout.strip().splitlines()
         net_list = virsh.nodedev_list(cap='net').stdout.strip().splitlines()
         pci_list_before = set(pci_list)
         net_list_before = set(net_list)
-        test_res = process.run("echo %d > %s/sriov_numvfs" % (vf_num, pci_address), shell=True)
+        cmd = "echo %d > %s/sriov_numvfs" % (vf_num, pci_address)
+        if driver == "mlx4_core":
+            cmd = "modprobe -v mlx4_core num_vfs=%d port_type_array=2,2 probe_vf=%d" \
+                    % (vf_num, vf_num)
+        test_res = process.run(cmd, shell=True)
         if test_res.exit_status != 0:
             test.fail("Fail to create vfs")
         pci_list_sriov = virsh.nodedev_list(cap='pci').stdout.strip().splitlines()
@@ -106,18 +114,20 @@ def run(test, params, env):
                 net_list_sriov = virsh.nodedev_list(cap='net').stdout.strip().splitlines()
                 net_list_sriov = set(net_list_sriov)
                 net_diff = list(net_list_sriov.difference(net_list_before))
-                if len(net_diff) != int(vf_num):
+                net_count = len(net_diff)
+                if ((driver != "mlx4_core" and net_count != vf_num) or
+                        (driver == "mlx4_core" and net_count != 2*(vf_num + 1))):
                     net_diff = []
                     return False
                 return net_diff
             except process.CmdError:
-                raise test.fail("Get net list with 'virsh list' failed\n")
+                raise test.fail("Get net list with 'virsh nodedev-list' failed\n")
 
         pci_list_sriov = set(pci_list_sriov)
         pci_diff = list(pci_list_sriov.difference(pci_list_before))
-        net_diff = utils_misc.wait_for(_vf_init_completed, timeout=60)
+        net_diff = utils_misc.wait_for(_vf_init_completed, timeout=180)
         if not net_diff:
-            test.fail("Get net list with 'virsh list' failed\n")
+            test.fail("Get net list with 'virsh nodedev-list' failed\n")
         for net in net_diff:
             net = net.split('_')
             length = len(net)
@@ -130,7 +140,7 @@ def run(test, params, env):
             net_device.append(vf_net_name)
         logging.debug(sorted(net_name))
         logging.debug(sorted(net_device))
-        if sorted(net_name) != sorted(net_device):
+        if driver != "mlx4_core" and sorted(net_name) != sorted(net_device):
             test.fail("The net name get from nodedev-list is wrong\n")
 
     def get_ip_by_mac(mac_addr, timeout=120):
@@ -305,6 +315,7 @@ def run(test, params, env):
             new_iface = Interface('direct')
             new_iface.source = {"dev": vf_name, "mode": "passthrough"}
             new_iface.mac_address = utils_net.generate_mac_address_simple()
+            new_iface.model = "virtio"
         if vf_type == "macvtap_network":
             netxml = create_macvtap_network()
             result = virsh.net_define(netxml.xml, ignore_status=True)
@@ -619,7 +630,6 @@ def run(test, params, env):
     else:
         if not vm.is_dead():
             vm.destroy()
-
     driver_dir = "/sys/bus/pci/drivers/%s" % driver
     pci_dirs = glob.glob("%s/0000*" % driver_dir)
     pci_device_dir = "/sys/bus/pci/devices"
@@ -642,7 +652,7 @@ def run(test, params, env):
             vf_num = max_vfs
             create_vfs(vf_num)
         else:
-            vf_num = max_vfs // 2 + 1
+            vf_num = int(max_vfs // 2 + 1)
             create_vfs(vf_num)
 
         vf_list = []
@@ -732,8 +742,13 @@ def run(test, params, env):
     finally:
         if vm.is_alive():
             vm.destroy(gracefully=False)
-        process.run("echo 0 > %s/sriov_numvfs" % pci_address, shell=True)
+        backup_xml.sync()
+        if driver == "mlx4_core":
+            # Reload mlx4 driver to default setting
+            process.run("modprobe -r mlx4_en ; modprobe -r mlx4_ib ; modprobe -r mlx4_core", shell=True)
+            process.run("modprobe mlx4_core; modprobe mlx4_ib;  modprobe mlx4_en", shell=True)
+        else:
+            process.run("echo 0 > %s/sriov_numvfs" % pci_address, shell=True)
         if vf_type == "vf_pool" or vf_type == "macvtap_network":
             virsh.net_destroy(net_name)
             virsh.net_undefine(net_name, ignore_status=True)
-        backup_xml.sync()
