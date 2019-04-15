@@ -191,9 +191,12 @@ def run(test, params, env):
             result = virsh.attach_disk(domain, source, target, "--live",
                                        ignore_status=False, debug=True)
         else:
-            session = vm.wait_for_login()
-            session.cmd("umount %s" %mount_dir)
-            session.close()
+            try:
+                session = vm.wait_for_login()
+                session.cmd("umount %s" % mount_dir)
+                session.close()
+            except:
+                test.fail("fail to unmount the disk before unpluging the disk")
             result = virsh.detach_disk(domain, target, "--live",
                                        ignore_status=False, debug=True)
         # It need more time for attachment to take effect
