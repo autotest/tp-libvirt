@@ -26,6 +26,11 @@ def run(test, params, env):
     target = params.get("target")
     hypervisor = params.get("hypervisor")
     input_mode = params.get("input_mode")
+    input_transport = params.get("input_transport")
+    vddk_libdir = params.get('vddk_libdir')
+    # nfs mount source
+    vddk_libdir_src = params.get('vddk_libdir_src')
+    vddk_thumbprint = params.get('vddk_thumbprint')
     storage = params.get('storage')
     storage_name = params.get('storage_name')
     network = params.get('network')
@@ -128,7 +133,13 @@ def run(test, params, env):
                   'network': network, 'bridge': bridge,
                   'storage': storage, 'hostname': source_ip,
                   'new_name': vm_name + utils_misc.generate_random_string(3),
-                  'output_method': output_method, 'storage_name': storage_name}
+                  'output_method': output_method, 'storage_name': storage_name,
+                  'input_transport': input_transport, 'vcenter_host': vpx_ip,
+                  'vcenter_password': vpx_pwd,
+                  'vddk_thumbprint': vddk_thumbprint,
+                  'vddk_libdir': vddk_libdir,
+                  'vddk_libdir_src': vddk_libdir_src,
+                  }
     if vpx_dc:
         v2v_params.update({"vpx_dc": vpx_dc})
     if esx_ip:
@@ -148,7 +159,6 @@ def run(test, params, env):
     try:
         # Execute virt-v2v command
         v2v_ret = utils_v2v.v2v_cmd(v2v_params)
-        logging.debug("virt-v2v verbose messages:\n%s", v2v_ret)
         if v2v_ret.exit_status != 0:
             test.fail("Convert VM failed")
 
