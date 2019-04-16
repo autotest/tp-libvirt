@@ -577,6 +577,7 @@ TIMEOUT 3"""
     test_ipv4_address = "yes" == params.get("test_ipv4_address", "no")
     test_ipv6_address = "yes" == params.get("test_ipv6_address", "no")
     test_guest_libvirt = "yes" == params.get("test_guest_libvirt", "no")
+    test_dns_forwarders = "yes" == params.get("test_dns_forwarders", "no")
     net_no_bridge = "yes" == params.get("no_bridge", "no")
     net_no_mac = "yes" == params.get("no_mac", "no")
     net_no_ip = "yes" == params.get("no_ip", "no")
@@ -592,6 +593,7 @@ TIMEOUT 3"""
     ipt_rules = []
     ipt6_rules = []
     define_macvtap = "yes" == params.get("define_macvtap", "no")
+    net_dns_forwarders = params.get("net_dns_forwarders", "").split()
 
     # Destroy VM first
     if vm.is_alive() and not update_device:
@@ -832,7 +834,19 @@ TIMEOUT 3"""
                                           dns_srv["weight"]))
             if net_dns_hostip and net_dns_hostnames:
                 run_dnsmasq_addnhosts_test(net_dns_hostip, net_dns_hostnames)
-
+        if test_dns_forwarders:
+            if net_name == "isolatedtest":
+                run_dnsmasq_default_test("no-resolv", name=net_name)
+            else:
+                net_dns_forwarder = [ast.literal_eval(x) for x in net_dns_forwarders]
+                for forwarder in net_dns_forwarder:
+                    if ('domain' in forwarder) and ('addr' in forwarder):
+                        run_dnsmasq_default_test("server", "/%s/%s" % (forwarder['domain'], forwarder['addr']))
+                    elif "domain" in forwarder:
+                        run_dnsmasq_default_test("server", "/%s/#" % forwarder['domain'])
+                    elif "addr" in forwarder:
+                        run_dnsmasq_default_test("server", "%s" % forwarder['addr'])
+                        run_dnsmasq_default_test("no-resolv")
         # Run bandwidth test for network
         if test_qos_bandwidth and not update_device:
             run_bandwidth_test(check_net=True)
