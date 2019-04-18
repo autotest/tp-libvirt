@@ -67,7 +67,7 @@ def run(test, params, env):
             for key, value in item.items():
                 if value == 'require':
                     features.append(key)
-        return list(set(features) | set(utils_misc.get_model_features(modelname)))
+        return list(set(features))
 
     def check_cpu(xml, cpu_match):
         """
