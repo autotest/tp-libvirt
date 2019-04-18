@@ -84,19 +84,27 @@ def run(test, params, env):
         get_begin = time.time()
         # Guest RTC local timezone time
         output, _ = run_cmd(session, 'hwclock')
-        time_str, _ = re.search(r"(.+)  (\S+ seconds)", output).groups()
-
         try:
-            # output format 1: Tue 01 Mar 2016 01:53:46 PM CST
-            # Remove timezone info from output
-            new_str = re.sub(r'\s+\S+$', '', time_str)
-            times['local_hw'] = datetime.datetime.strptime(
-                new_str, r"%a %d %b %Y %I:%M:%S %p")
-        except ValueError:
-            # There are two possible output format for `hwclock`
-            # output format 2: Sat Feb 14 07:31:33 2009
-            times['local_hw'] = datetime.datetime.strptime(
-                time_str, r"%a %b %d %H:%M:%S %Y")
+            time_str, _ = re.search(r"(.+)  (\S+ seconds)", output).groups()
+
+            try:
+                # output format 1: Tue 01 Mar 2016 01:53:46 PM CST
+                # Remove timezone info from output
+                new_str = re.sub(r'\s+\S+$', '', time_str)
+                times['local_hw'] = datetime.datetime.strptime(
+                    new_str, r"%a %d %b %Y %I:%M:%S %p")
+            except ValueError:
+                # There are known three possible output format for `hwclock`
+                # output format 2: Sat Feb 14 07:31:33 2009
+                times['local_hw'] = datetime.datetime.strptime(
+                    time_str, r"%a %b %d %H:%M:%S %Y")
+        except AttributeError:
+            try:  # output format 3: 2019-03-22 05:16:18.224511-04:00
+                time_str = output.split(".")[0]
+                times['local_hw'] = datetime.datetime.strptime(
+                    time_str, r"%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                test.fail("Unknown hwclock output format in guest: %s", output)
         delta = time.time() - get_begin
         times['local_hw'] -= datetime.timedelta(seconds=delta)
 
