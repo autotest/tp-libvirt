@@ -112,6 +112,8 @@ def run(test, params, env):
         cur_mpath_devs = mpath.find_mpath_devs()
         new_mpath_devs = list(set(cur_mpath_devs).difference(
             set(old_mpath_devs)))
+        if not new_mpath_devs:
+            test.fail("No newly added multipath devices found.")
         logging.debug("newly added mpath devs are: %s", new_mpath_devs)
         # Prepare disk xml
         disk_params = {}
