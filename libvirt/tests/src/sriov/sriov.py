@@ -717,12 +717,14 @@ def run(test, params, env):
             result = virsh.net_create(netxml.xml, ignore_status=True, debug=True)
             utils_test.libvirt.check_exit_status(result, expected_error)
         if nfv:
-            for os_machine_type in (machine_type, vmxml.os.machine):
-                'q35' in os_machine_type or test.cancel("nfv only run with q35 machine type")
             vf_driver = os.readlink(os.path.join(pci_device_dir, vf_list[0], "driver")).split('/')[-1]
             vmxml.remove_all_device_by_type('controller')
             remove_devices(vmxml, 'address')
             remove_devices(vmxml, 'usb')
+            osxml = vmxml.os
+            if "i440fx" in vmxml.os.machine:
+                osxml.machine = "q35"
+                vmxml.os = osxml
             add_numa(vmxml)
             bus_id = setup_controller(nic_num, controller_index, ctl_models)
             vmxml.sync()
