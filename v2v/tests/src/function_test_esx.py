@@ -206,7 +206,7 @@ def run(test, params, env):
         vpx_passwd_file = params.get("vpx_passwd_file")
         with open(vpx_passwd_file, 'w') as pwd_f:
             pwd_f.write(vpx_passwd)
-        v2v_params['v2v_opts'] += " --password-file %s" % vpx_passwd_file
+        v2v_params['v2v_opts'] += " -ip %s" % vpx_passwd_file
 
         if params.get('output_format'):
             v2v_params.update({'output_format': params['output_format']})

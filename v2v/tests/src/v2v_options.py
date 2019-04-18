@@ -686,7 +686,7 @@ def run(test, params, env):
             pwd_f = open(vpx_passwd_file, 'w')
             pwd_f.write(vpx_passwd)
             pwd_f.close()
-            output_option += " --password-file %s" % vpx_passwd_file
+            output_option += " -ip %s" % vpx_passwd_file
 
         # if don't specify any output option for virt-v2v, 'default' pool
         # will be used.
