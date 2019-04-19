@@ -25,6 +25,7 @@ def run(test, params, env):
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
     vpx_hostname = params.get('vpx_hostname')
+    vpx_passwd = params.get("vpx_password")
     esx_ip = params.get('esx_hostname')
     vpx_dc = params.get('vpx_dc')
     vm_name = params.get('main_vm')
@@ -39,6 +40,12 @@ def run(test, params, env):
     checkpoint = params.get('checkpoint', '')
     error_list = []
     remote_host = vpx_hostname
+    # For VDDK
+    input_transport = params.get("input_transport")
+    vddk_libdir = params.get('vddk_libdir')
+    # nfs mount source
+    vddk_libdir_src = params.get('vddk_libdir_src')
+    vddk_thumbprint = params.get('vddk_thumbprint')
 
     def log_fail(msg):
         """
@@ -193,7 +200,13 @@ def run(test, params, env):
             'storage': params.get('output_storage', 'default'),
             'network': params.get('network'),
             'bridge': params.get('bridge'),
-            'target': params.get('target')
+            'target': params.get('target'),
+            'input_transport': input_transport,
+            'vcenter_host': vpx_hostname,
+            'vcenter_password': vpx_passwd,
+            'vddk_thumbprint': vddk_thumbprint,
+            'vddk_libdir': vddk_libdir,
+            'vddk_libdir_src': vddk_libdir_src,
         }
 
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
@@ -201,7 +214,6 @@ def run(test, params, env):
         remote_uri = v2v_uri.get_uri(remote_host, vpx_dc, esx_ip)
 
         # Create password file for access to ESX hypervisor
-        vpx_passwd = params.get("vpx_password")
         logging.debug("vpx password is %s" % vpx_passwd)
         vpx_passwd_file = params.get("vpx_passwd_file")
         with open(vpx_passwd_file, 'w') as pwd_f:
