@@ -8,6 +8,7 @@ from virttest import libvirt_storage
 from virttest.utils_test import libvirt
 from virttest import data_dir
 from virttest import utils_package
+from virttest import ceph
 from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml import xcepts
 
@@ -154,6 +155,8 @@ def run(test, params, env):
 
     sec_uuid = ""
     img_file = ""
+    # Prepare a blank params to confirm if delete the configure at the end of the test
+    ceph_cfg = ""
     libvirt_pool = libvirt_storage.StoragePool()
     try:
         # Create secret xml and set value
@@ -170,6 +173,8 @@ def run(test, params, env):
                              % (iscsi_host, iscsi_dev, auth_type, auth_username))
 
         if sec_usage == "ceph":
+            # Create config file if it doesn't exist
+            ceph_cfg = ceph.create_config_file(ceph_mon_ip)
             setup_ceph_auth()
             rbd_pool = ceph_disk_name.split('/')[0]
             pool_options += (" --source-host %s --source-name %s"
@@ -209,6 +214,9 @@ def run(test, params, env):
     finally:
         # Clean up
         logging.info("Start to cleanup")
+        # Remove ceph configure file if created.
+        if ceph_cfg:
+            os.remove(ceph_cfg)
         if os.path.exists(img_file):
             os.remove(img_file)
         virsh.secret_undefine(sec_uuid, ignore_status=True)
