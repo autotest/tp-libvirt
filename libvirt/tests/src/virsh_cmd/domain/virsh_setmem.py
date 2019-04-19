@@ -1,3 +1,5 @@
+from __future__ import division
+from past.utils import old_div
 import re
 import os
 import logging
@@ -162,7 +164,7 @@ def run(test, params, env):
         if numerator > denominator:
             numerator = denominator
             denominator = float(actual)
-        return 100 - (100 * (numerator / denominator))
+        return 100 - (100 * (old_div(numerator, denominator)))
 
     def is_old_libvirt():
         """

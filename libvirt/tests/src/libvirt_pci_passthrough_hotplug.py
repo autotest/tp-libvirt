@@ -13,6 +13,9 @@
 # Host device hotplug test
 
 
+from builtins import map
+from builtins import str
+from builtins import range
 import os
 import logging
 import aexpect
@@ -72,7 +75,7 @@ def run(test, params, env):
     virsh_dump = params.get("virsh_dump", "no")
     flood_ping = params.get("flood_ping", "no")
     # Check the parameters from configuration file.
-    for each_param in params.itervalues():
+    for each_param in params.values():
         if "ENTER_YOUR" in each_param:
             test.cancel("Please enter the configuration details of %s."
                         % each_param)
@@ -200,7 +203,7 @@ def run(test, params, env):
             logging.info(o_ping)
             if s_ping:
                 test.fail("Ping test failed")
-        except aexpect.ShellError, detail:
+        except aexpect.ShellError as detail:
             test.error("Succeed to set ip on guest, but failed "
                        "to bring up interface.\n"
                        "Detail: %s." % detail)

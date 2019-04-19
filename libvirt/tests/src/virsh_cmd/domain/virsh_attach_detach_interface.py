@@ -1,3 +1,5 @@
+from builtins import hex
+from builtins import str
 import logging
 import re
 import os
@@ -63,7 +65,7 @@ def check_dumpxml_iface(vm_name, checked_dict=None):
     iface_features = vm_xml.VMXML.get_iface_by_mac(vm_name, checked_dict['mac'])
     if iface_features is not None:
         logging.info("vm current iface dict is %s", iface_features)
-        for key in checked_dict.keys():
+        for key in list(checked_dict.keys()):
             if checked_dict[key] is not None:
                 if isinstance(iface_features[key], dict):
                     value = eval(checked_dict[key])

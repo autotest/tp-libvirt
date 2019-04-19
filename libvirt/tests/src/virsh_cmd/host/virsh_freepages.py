@@ -1,3 +1,6 @@
+from __future__ import division
+from builtins import str
+from past.utils import old_div
 import logging
 import time
 
@@ -53,7 +56,7 @@ def check_freepages(output, expect_result_list):
     check_result = []
     for expect in expect_result_list:
         check_pass = False
-        if "Node" in expect.keys():
+        if "Node" in list(expect.keys()):
             # Find cell with same Node
             for cell in all_freepages:
                 logging.info(set(cell.items()))
@@ -78,7 +81,7 @@ def modify_expect(cell, expect, pagesize='4KiB'):
     For 4KiB freepages checking, if the gap between freepages command return
     with system current freememory is less than 4*1024Kib, check would pass.
     """
-    if pagesize in expect.keys():
+    if pagesize in list(expect.keys()):
         if abs(int(float(expect[pagesize])) - int(float(cell[pagesize]))) < 1024:
             expect[pagesize] = cell[pagesize]
 
@@ -103,7 +106,7 @@ def run(test, params, env):
         """
         if pagesize == '4':
             node_meminfo = host_numa_node.read_from_node_meminfo(node, 'MemFree')
-            return int(node_meminfo) / 4
+            return old_div(int(node_meminfo), 4)
         else:
             return hp_cl.get_node_num_huge_pages(node, pagesize, type='free')
 

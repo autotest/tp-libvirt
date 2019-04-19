@@ -1,3 +1,4 @@
+from builtins import range
 import os
 import logging
 
@@ -253,7 +254,7 @@ def run(test, params, env):
         libvirtd.start()
 
         run_func = globals()[func_name]
-        for i in xrange(repeat):
+        for i in range(repeat):
             run_func(params, libvirtd, vm)
 
         stopped = libvirtd.wait_for_stop(timeout=5)

@@ -1,7 +1,10 @@
 """
 Test module for Storage Discard.
 """
+from __future__ import division
 
+from builtins import str
+from past.utils import old_div
 import re
 import logging
 import time
@@ -170,7 +173,7 @@ def sig_delta(size1, size2, tolerable_shift=0.8):
         s2 += 1
     if int(s1) == 0:
         s1 += 1
-    return ((abs(s1 - s2) / s2) > tolerable_shift)
+    return ((old_div(abs(s1 - s2), s2)) > tolerable_shift)
 
 
 def do_fstrim(test, fstrim_type, vm, status_error=False):

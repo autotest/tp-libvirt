@@ -1,3 +1,6 @@
+from __future__ import division
+from builtins import range
+from past.utils import old_div
 import re
 
 from virttest import virsh
@@ -59,8 +62,8 @@ def run(test, params, env):
         """
 
         # Normalise to seconds from nano seconds
-        total = float((actual_stats['system'] + actual_stats['user'] +
-                       actual_stats['idle'] + actual_stats['iowait']) / (10 ** 9))
+        total = float(old_div((actual_stats['system'] + actual_stats['user'] +
+                       actual_stats['idle'] + actual_stats['iowait']), (10 ** 9)))
 
         expected = get_expected_stat(cpu)
         if not total <= expected['total']:
@@ -79,8 +82,8 @@ def run(test, params, env):
         """
 
         # Normalise to seconds from nano seconds and get for one cpu
-        total = float(((actual_stats['system'] + actual_stats['user'] +
-                        actual_stats['idle'] + actual_stats['iowait']) / (10 ** 9)))
+        total = float((old_div((actual_stats['system'] + actual_stats['user'] +
+                        actual_stats['idle'] + actual_stats['iowait']), (10 ** 9))))
         expected = get_expected_stat()
         if not total <= expected['total']:
             test.fail("Commands 'virsh nodecpustats' not succeeded"

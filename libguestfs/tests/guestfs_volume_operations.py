@@ -1,3 +1,6 @@
+from __future__ import division
+from builtins import str
+from past.utils import old_div
 import re
 import os
 import logging
@@ -518,7 +521,7 @@ def test_shrink_volume(test, vm, params):
     mountpoint = params.get("gf_mountpoint", "/mnt")
     file_path = "%s/test_shrink_volume.img" % mountpoint
     try:
-        dd_size1 = int(volumesize) / 2
+        dd_size1 = old_div(int(volumesize), 2)
         logging.debug(session.cmd_output("ls /dev/"))
         status, output = session.cmd_status_output("mount %s %s" % (lv_device,
                                                                     mountpoint), timeout=10)
@@ -545,7 +548,7 @@ def test_shrink_volume(test, vm, params):
 
     gf = utils_test.libguestfs.GuestfishTools(params)
 
-    size2 = int(volumesize) / 2 - 5
+    size2 = old_div(int(volumesize), 2) - 5
     lvresize_result = gf.lvresize(lv_device, size2)
     logging.debug(lvresize_result)
     if lvresize_result.exit_status:
@@ -671,7 +674,7 @@ def test_expand_volume(test, vm, params):
     mountpoint = params.get("gf_mountpoint", "/mnt")
     file_path = "%s/test_expand_volume.img" % mountpoint
     try:
-        dd_size1 = int(volumesize) / 2
+        dd_size1 = old_div(int(volumesize), 2)
         status, output = session.cmd_status_output("mount %s %s" % (lv_device,
                                                                     mountpoint), timeout=20)
         if status:

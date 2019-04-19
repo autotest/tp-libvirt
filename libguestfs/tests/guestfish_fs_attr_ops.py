@@ -1,3 +1,6 @@
+from __future__ import division
+from builtins import str
+from past.utils import old_div
 import logging
 import os
 import re
@@ -932,7 +935,7 @@ def test_ntfsresize_opts(test, vm, params):
     bsize = int(List[bsize_index + 1])
     blocks = int(List[blocks_index + 1])
 
-    expected_blocks = blocks / 2
+    expected_blocks = old_div(blocks, 2)
     new_size = expected_blocks * bsize
 
     # ntfsresize_opts: resize
@@ -1099,14 +1102,14 @@ def test_resize2fs_size(test, vm, params):
             block_count = int(items.split(':')[1].strip())
         if 'Block size' in items:
             block_size = int(items.split(':')[1].strip())
-    filesystem_size = block_size / 2 * block_count
+    filesystem_size = old_div(block_size, 2 * block_count)
     gf.e2fsck_f(mount_point)
     gf.resize2fs_size(mount_point, filesystem_size)
     new_t_result = gf.tune2fs_l(mount_point)
     for items in new_t_result.stdout.split('\n'):
         if 'Block count' in items:
             new_block_count = int(items.split(':')[1].strip())
-    expected_blockcount = block_count / 2
+    expected_blockcount = old_div(block_count, 2)
     if expected_blockcount != new_block_count:
         gf.close_session()
         test.fail("test_resize2fs_size failed.")

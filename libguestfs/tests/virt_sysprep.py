@@ -1,3 +1,6 @@
+from __future__ import division
+from builtins import str
+from past.utils import old_div
 import logging
 import os
 
@@ -190,7 +193,7 @@ def run(test, params, env):
         test_image = clone_image
 
         if sysprep_type == "resize":
-            img_size = image_info_dict['vsize'] / 1024 / 1024 / 1024
+            img_size = old_div(image_info_dict['vsize'], 1024 / 1024 / 1024)
             resize_image = "%s_resize.img" % clone_image
             cmd = "qemu-img create -f raw %s %dG" % (resize_image, (img_size + 1))
             process.run(cmd, shell=True)

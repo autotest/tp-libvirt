@@ -1,3 +1,8 @@
+from __future__ import division
+from builtins import hex
+from builtins import str
+from builtins import range
+from past.utils import old_div
 import re
 import os
 import logging
@@ -209,8 +214,8 @@ def run(test, params, env):
             if bus > checknum:
                 checknum = bus
         if device_num:
-            if (device_num + 6) / 31 > checknum:
-                checknum = int((device_num + 6) / 31) + 1
+            if old_div((device_num + 6), 31) > checknum:
+                checknum = int(old_div((device_num + 6), 31)) + 1
         if checknum == 1 and cntlr_num != -1:
             test.fail('Multiple controller is not be used')
         else:

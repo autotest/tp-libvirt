@@ -1,3 +1,5 @@
+from builtins import str
+from builtins import range
 import re
 import logging
 import platform
@@ -74,7 +76,7 @@ def run(test, params, env):
             pass
         pkeys = ('memnode_nodeset', 'page_nodenum')
         for pkey in pkeys:
-            for key in params.keys():
+            for key in list(params.keys()):
                 if pkey in key:
                     params[key] = str(node_list[int(params[key])])
         # Modify qemu command line

@@ -1,3 +1,5 @@
+from __future__ import division
+from past.utils import old_div
 import logging
 
 from virttest import ssh_key
@@ -187,7 +189,7 @@ def run(test, params, env):
         # Migrate vms again with new bandwidth
         second_bandwidth = params.get("second_bandwidth", "times")
         if second_bandwidth == "half":
-            second_bandwidth = bandwidth / 2
+            second_bandwidth = old_div(bandwidth, 2)
             speed_times = 2
         elif second_bandwidth == "times":
             second_bandwidth = bandwidth * 2

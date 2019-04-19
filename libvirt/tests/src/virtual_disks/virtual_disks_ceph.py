@@ -1,3 +1,5 @@
+from builtins import zip
+from builtins import str
 import os
 import re
 import time
@@ -630,7 +632,7 @@ def run(test, params, env):
                              "/var/lib/libvirt/sanlock/test-disk-resource-lock"] = "Failed to chown test-disk-resource-loc"
             sanlock_cmd_dict["sanlock client add_lockspace -s TEST_LS:1:" +
                              "/var/lib/libvirt/sanlock/TEST_LS:0"] = "Failed to client add_lockspace -s TEST_LS:0"
-            for sanlock_cmd in sanlock_cmd_dict.keys():
+            for sanlock_cmd in list(sanlock_cmd_dict.keys()):
                 result = process.run(sanlock_cmd, shell=True)
                 if result.exit_status:
                     test.error(sanlock_cmd_dict[sanlock_cmd])

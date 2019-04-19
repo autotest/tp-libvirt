@@ -1,3 +1,5 @@
+from builtins import str
+from builtins import range
 import logging
 import ast
 import collections
@@ -114,7 +116,7 @@ def run(test, params, env):
             order_expect = order_pre.copy()
             order_expect[vcpu] = len(order_pre) + 1
         elif "disable" in cpu_option:
-            for vcpuid, order in order_pre.items():
+            for vcpuid, order in list(order_pre.items()):
                 if order > order_pre[vcpu]:
                     order_pre[vcpuid] = order - 1
             order_pre.pop(vcpu)
@@ -156,7 +158,7 @@ def run(test, params, env):
 
         # run virsh setvcpu and check vcpus in xml
         if check == "coldplug":
-            for cpus, option in setvcpu_option.items():
+            for cpus, option in list(setvcpu_option.items()):
                 result_to_check = virsh.setvcpu(vm_name, cpus, option, debug=True)
                 cpulist = libvirt.cpus_parser(cpus)
                 check_vcpu_status(cpulist, option)
@@ -178,7 +180,7 @@ def run(test, params, env):
             setvcpu_option = d.copy()
 
         if check.startswith("hotplug"):
-            for cpus, option in setvcpu_option.items():
+            for cpus, option in list(setvcpu_option.items()):
                 vmxml_pre = vm_xml.VMXML.new_from_dumpxml(vm_name)
                 cpus_online_pre = vm.get_cpu_count()
                 result_to_check = virsh.setvcpu(vm_name, cpus, option, debug=True)

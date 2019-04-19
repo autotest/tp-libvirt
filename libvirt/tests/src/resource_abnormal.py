@@ -1,3 +1,7 @@
+from __future__ import division
+from builtins import str
+from past.utils import old_div
+from builtins import object
 import os
 import time
 import stat
@@ -131,8 +135,8 @@ class Vol_create(object):
             if volxml.create(self.pool_name):
                 self.test.fail("Volume '%s' created succeed but"
                                " expect failed!" % self.vol_new_name)
-            volxml.capacity = 1024 * 1024 * 1024 / 2
-            volxml.allocation = 1024 * 1024 * 1024 / 2
+            volxml.capacity = old_div(1024 * 1024 * 1024, 2)
+            volxml.allocation = old_div(1024 * 1024 * 1024, 2)
             if not volxml.create(self.pool_name):
                 self.test.fail("Volume '%s' created failed!"
                                % self.vol_new_name)
@@ -177,7 +181,7 @@ class Virt_clone(object):
             source_file = disk_node.find('source').get('file')
             self.image_size = utils_misc.get_image_info(source_file)['dsize']
             # Set the size to be image_size
-            iscsi_size = "%sM" % (self.image_size / 1024 / 1024)
+            iscsi_size = "%sM" % (old_div(self.image_size, 1024 / 1024))
             params['image_size'] = iscsi_size
             self.iscsi_dev = qemu_storage.Iscsidev(params, test.virtdir,
                                                    "iscsi")
@@ -939,7 +943,7 @@ def disk_lack(params):
     disk_size = params.get('image_size')
     mount_dir = params.get('mount_dir')
     # Will use 2/3 space of disk
-    use_size = int(disk_size[0:-1]) * 2 / 3
+    use_size = old_div(int(disk_size[0:-1]) * 2, 3)
     tmp_file = os.path.join(mount_dir, "tmp")
     process.run('dd if=/dev/zero of=%s bs=1G count=%s &' % (tmp_file, use_size), shell=True)
 

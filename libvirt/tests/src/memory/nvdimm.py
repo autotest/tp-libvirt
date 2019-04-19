@@ -1,3 +1,4 @@
+from builtins import map
 import os
 import logging
 import time
@@ -61,7 +62,7 @@ def run(test, params, env):
         """
         Create cpu xml for test
         """
-        cpu_params = {k: v for k, v in params.items() if k.startswith('cpuxml_')}
+        cpu_params = {k: v for k, v in list(params.items()) if k.startswith('cpuxml_')}
         logging.debug(cpu_params)
         cpu_xml = vm_xml.VMCPUXML()
         cpu_xml.xml = "<cpu><numa/></cpu>"
@@ -119,7 +120,7 @@ def run(test, params, env):
 
         # Add an nvdimm mem device to vm xml
         nvdimm_params = {k.replace('nvdimmxml_', ''): v
-                         for k, v in params.items() if k.startswith('nvdimmxml_')}
+                         for k, v in list(params.items()) if k.startswith('nvdimmxml_')}
         nvdimm_xml = create_nvdimm_xml(**nvdimm_params)
         vmxml.add_device(nvdimm_xml)
         vmxml.sync()
@@ -128,7 +129,7 @@ def run(test, params, env):
         virsh.start(vm_name, debug=True, ignore_status=False)
 
         # Check qemu command line one by one
-        map(libvirt.check_qemu_cmd_line, qemu_checks)
+        list(map(libvirt.check_qemu_cmd_line, qemu_checks))
 
         alive_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
 
@@ -148,7 +149,7 @@ def run(test, params, env):
                 "echo '%s' >/mnt/foo" % test_str,
                 "umount /mnt"
             ]
-            map(vm_session.cmd, cmd_list)
+            list(map(vm_session.cmd, cmd_list))
             vm_session.close()
 
             # Shutdown the guest, then start it, remount /dev/pmem0,
@@ -235,7 +236,7 @@ def run(test, params, env):
 
             # Add 2nd nvdimm device to vm xml
             nvdimm2_params = {k.replace('nvdimmxml2_', ''): v
-                              for k, v in params.items() if k.startswith('nvdimmxml2_')}
+                              for k, v in list(params.items()) if k.startswith('nvdimmxml2_')}
             nvdimm2_xml = create_nvdimm_xml(**nvdimm2_params)
 
             ori_devices = vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices('memory')

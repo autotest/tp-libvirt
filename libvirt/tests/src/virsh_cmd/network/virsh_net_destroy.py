@@ -102,10 +102,10 @@ def run(test, params, env):
         has_default_net = False
         for iface in iface_devices:
             source = iface.get_source()
-            if 'network' in source.keys() and source['network'] == 'default':
+            if 'network' in list(source.keys()) and source['network'] == 'default':
                 has_default_net = True
                 break
-            elif 'bridge' in source.keys() and source['bridge'] == 'virbr0':
+            elif 'bridge' in list(source.keys()) and source['bridge'] == 'virbr0':
                 has_default_net = True
                 break
         if not has_default_net:

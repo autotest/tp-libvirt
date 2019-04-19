@@ -1,6 +1,10 @@
 """
 Test libvirt SPICE and VNC features.
 """
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import object
 import re
 import os
 import random
@@ -13,7 +17,7 @@ import datetime
 try:
     import queue as Queue
 except ImportError:
-    import Queue
+    import queue
 
 from avocado.core import exceptions
 from avocado.utils import process
@@ -30,7 +34,7 @@ from virttest.libvirt_xml.devices.graphics import Graphics
 
 from provider import libvirt_version
 
-q = Queue.Queue()
+q = queue.Queue()
 
 
 class PortAllocator(object):

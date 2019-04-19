@@ -1,3 +1,5 @@
+from builtins import str
+from builtins import range
 import re
 import os
 import ast
@@ -291,7 +293,7 @@ def run(test, params, env):
         # Build vm xml.
         dparams = {}
         if device_num > 1:
-            for i in xrange(device_num):
+            for i in range(device_num):
                 dparams[i] = {"rng_model": params.get(
                     "rng_model_%s" % i, "virtio")}
                 dparams[i].update({"backend_model": params.get(
@@ -325,7 +327,7 @@ def run(test, params, env):
 
             if test_qemu_cmd:
                 if device_num > 1:
-                    for i in xrange(device_num):
+                    for i in range(device_num):
                         check_qemu_cmd(dparams[i])
                 else:
                     check_qemu_cmd(params)

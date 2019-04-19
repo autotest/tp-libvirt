@@ -1,3 +1,5 @@
+from builtins import hex
+from builtins import range
 import re
 import logging
 
@@ -64,7 +66,7 @@ def run(test, params, env):
         dom_capa = domcapability_xml.DomCapabilityXML()
         modelname = dom_capa.get_hostmodel_name()
         for item in dom_capa.get_additional_feature_list('host-model'):
-            for key, value in item.items():
+            for key, value in list(item.items()):
                 if value == 'require':
                     features.append(key)
         return list(set(features) | set(utils_misc.get_model_features(modelname)))

@@ -1,3 +1,6 @@
+from builtins import map
+from builtins import str
+from builtins import range
 import logging
 import re
 import random
@@ -247,7 +250,7 @@ def run(test, params, env):
                 return
         # Get the host cpu count
         host_online_cpu_count = len(cpus_list)
-        online_cpu_max = max(map(int, cpus_list))
+        online_cpu_max = max(list(map(int, cpus_list)))
         host_cpu_count = cpuutils.total_cpus_count()
         cpu_max = int(host_cpu_count) - 1
         if (host_online_cpu_count < 2) and (not cpu_list == "x"):

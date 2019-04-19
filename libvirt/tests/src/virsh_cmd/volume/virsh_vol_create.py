@@ -1,3 +1,4 @@
+from builtins import str
 import os
 import logging
 import re
@@ -96,7 +97,7 @@ def run(test, params, env):
     # Set volume xml attribute dictionary, extract all params start with 'vol_'
     # which are for setting volume xml, except 'lazy_refcounts'.
     vol_arg = {}
-    for key in params.keys():
+    for key in list(params.keys()):
         if key.startswith('vol_'):
             if key[4:] in ['capacity', 'allocation', 'owner', 'group']:
                 vol_arg[key[4:]] = int(params[key])
@@ -201,7 +202,7 @@ def run(test, params, env):
         """
         Check volume vol_name in pool pool_name
         """
-        src_volumes = src_pv.list_volumes().keys()
+        src_volumes = list(src_pv.list_volumes().keys())
         logging.debug("Current volumes in %s: %s", pool_name, src_volumes)
         if expect_exist:
             if vol_name not in src_volumes:
@@ -212,7 +213,7 @@ def run(test, params, env):
             post_xml = volxml.new_from_vol_dumpxml(vol_name, pool_name)
             logging.debug("Volume %s XML: %s" % (vol_name,
                                                  post_xml.xmltreefile))
-            if 'format' in post_xml.keys() and vol_format is not None:
+            if 'format' in list(post_xml.keys()) and vol_format is not None:
                 if post_xml.format != vol_format:
                     test.fail("Volume format %s is not expected"
                               % vol_format + " as defined.")

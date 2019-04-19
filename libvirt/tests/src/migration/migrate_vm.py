@@ -1,3 +1,5 @@
+from builtins import str
+from builtins import range
 import logging
 import os
 import re
@@ -194,7 +196,7 @@ def check_output(output_msg, params):
                                       "was not found",
                                       output_msg, ERR_MSGDICT['ERROR 3'])
 
-    for (key, value) in ERR_MSGDICT.items():
+    for (key, value) in list(ERR_MSGDICT.items()):
         if output_msg.find(value) >= 0:
             if key == "ERROR 1" and params.get("support_precreation") is True:
                 logging.debug("The error is not expected: '%s'.", value)
@@ -284,7 +286,7 @@ def config_libvirt(params):
     libvirtd = utils_libvirtd.Libvirtd()
     libvirtd_conf = utils_config.LibvirtdConfig()
 
-    for k, v in params.items():
+    for k, v in list(params.items()):
         libvirtd_conf[k] = v
 
     logging.debug("the libvirtd config file content is:\n %s" % libvirtd_conf)
@@ -513,7 +515,7 @@ def custom_cpu(vm_name, cpu_model, cpu_vendor, cpu_model_fallback="allow",
     cpu_xml.vendor = cpu_vendor
     cpu_xml.fallback = cpu_model_fallback
     if cpu_feature_dict:
-        for k, v in cpu_feature_dict.items():
+        for k, v in list(cpu_feature_dict.items()):
             cpu_xml.add_feature(k, v)
     vmxml['cpu'] = cpu_xml
     vmxml.sync()
@@ -954,7 +956,7 @@ def check_domjobinfo_on_complete(test, source_jobinfo, target_jobinfo):
     source_info = read_domjobinfo(test, source_jobinfo)
     target_info = read_domjobinfo(test, target_jobinfo)
 
-    for key, value in source_info.items():
+    for key, value in list(source_info.items()):
         if key in ["Expected downtime"]:
             continue
         if key not in target_info:

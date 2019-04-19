@@ -1,3 +1,5 @@
+from __future__ import division
+from past.utils import old_div
 import logging
 
 import aexpect
@@ -200,7 +202,7 @@ def test_resized_vm(test, vm, params):
         new_disk_size = int(new_disk_size)
 
     real_increased_size = abs(new_disk_size - old_disk_size)
-    delta = (real_increased_size - 2147483648) / 2147483648
+    delta = old_div((real_increased_size - 2147483648), 2147483648)
     if delta > 0.1:
         gf.close_session()
         utils_test.libguestfs.cleanup_vm(disk=vt.outdisk)

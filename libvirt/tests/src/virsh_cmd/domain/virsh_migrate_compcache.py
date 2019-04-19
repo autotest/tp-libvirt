@@ -1,3 +1,6 @@
+from __future__ import division
+from builtins import str
+from past.utils import old_div
 import logging
 import subprocess
 import time
@@ -155,11 +158,11 @@ def run(test, params, env):
             unit = compressed_size.split()[-1].strip()
             value = int(float(value))
             if unit == "KiB":
-                size = int(int(size) / 1024)
+                size = int(old_div(int(size), 1024))
             elif unit == "MiB":
-                size = int(int(size) / 1048576)
+                size = int(old_div(int(size), 1048576))
             elif unit == "GiB":
-                size = int(int(size) / 1073741824)
+                size = int(old_div(int(size), 1073741824))
             if value != size:
                 test.fail("Compression cache is not match"
                           " with setted")

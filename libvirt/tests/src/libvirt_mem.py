@@ -1,3 +1,5 @@
+from builtins import str
+from builtins import range
 import os
 import re
 import ast
@@ -449,7 +451,7 @@ def run(test, params, env):
             randvar = 0
             rand_value = random.randint(15, 25)
             logging.debug("reboots at %s", rand_value)
-            for x in xrange(at_times):
+            for x in range(at_times):
                 # If any error excepted, command error status should be
                 # checked in the last time
                 randvar = randvar + 1
@@ -578,7 +580,7 @@ def run(test, params, env):
                                                        mem_addr, tg_sizeunit,
                                                        pg_unit, tg_node,
                                                        node_mask, mem_model)
-            for x in xrange(at_times):
+            for x in range(at_times):
                 ret = virsh.detach_device(vm_name, dev_xml.xml,
                                           flagstr=attach_option)
                 if ret.stderr and host_known_unplug_errors:

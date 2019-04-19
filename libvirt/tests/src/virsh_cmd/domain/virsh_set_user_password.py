@@ -1,3 +1,4 @@
+from builtins import str
 import logging
 
 from avocado.utils import process
@@ -84,7 +85,7 @@ def run(test, params, env):
                 session = remote.wait_for_login("ssh", vm_ip, "22", set_user_name, new_passwd,
                                                 r"[\#\$]\s*$", timeout=30)
                 session.close()
-            except remote.LoginAuthenticationError, e:
+            except remote.LoginAuthenticationError as e:
                 logging.debug(e)
 
             # Login with old password
@@ -105,7 +106,7 @@ def run(test, params, env):
                 session = remote.wait_for_login("ssh", vm_ip, "22", set_user_name, ori_passwd,
                                                 r"[\#\$]\s*$", timeout=30)
                 session.close()
-            except remote.LoginAuthenticationError, e:
+            except remote.LoginAuthenticationError as e:
                 logging.debug(e)
 
             if start_ga:

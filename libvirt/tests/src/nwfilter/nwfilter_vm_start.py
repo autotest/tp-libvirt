@@ -1,3 +1,4 @@
+from builtins import range
 import re
 import logging
 
@@ -41,7 +42,7 @@ def run(test, params, env):
     # Prepare vm filterref parameters dict list
     filter_param_list = []
     params_key = []
-    for i in params.keys():
+    for i in list(params.keys()):
         if 'parameter_name_' in i:
             params_key.append(i)
     params_key.sort()

@@ -1,3 +1,5 @@
+from __future__ import division
+from past.utils import old_div
 import logging
 
 from virttest import virsh
@@ -18,7 +20,7 @@ def unify_to_MiB(unit, size):
     :return: unit and the converted tseg size
     """
     if unit == "KiB":
-        size = int(int(size) / 1024)
+        size = int(old_div(int(size), 1024))
     elif unit == 'GiB':
         size = int(int(size) * 1024)
     return 'MiB', size

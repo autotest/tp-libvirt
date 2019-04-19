@@ -1,3 +1,6 @@
+from __future__ import division
+from builtins import range
+from past.utils import old_div
 import logging
 
 from virttest import libvirt_vm
@@ -103,7 +106,7 @@ def do_stress_migration(vms, srcuri, desturi, migration_type, test, params,
             migrate_setup.do_migration(vms, srcuri, desturi, migration_type,
                                        options=migrate_options,
                                        thread_timeout=thread_timeout)
-        except Exception, info:
+        except Exception as info:
             test.fail(info)
 
         uptime = post_migration_check(vms, uptime, test, params, uri=desturi)
@@ -117,7 +120,7 @@ def do_stress_migration(vms, srcuri, desturi, migration_type, test, params,
                 migrate_setup.do_migration(vms, desturi, srcuri, migration_type,
                                            options=migrate_options,
                                            thread_timeout=thread_timeout)
-            except Exception, info:
+            except Exception as info:
                 test.fail(info)
             finally:
                 for vm in vms:
@@ -163,7 +166,7 @@ def run(test, params, env):
     mem_total = utils_memory.memtotal()
     vm_reserved = len(vms) * memory
     if vm_bytes == "half":
-        vm_bytes = (mem_total - vm_reserved) / 2
+        vm_bytes = old_div((mem_total - vm_reserved), 2)
     elif vm_bytes == "shortage":
         vm_bytes = mem_total - vm_reserved + 524288
     if "vm-bytes" in stress_args:
@@ -179,7 +182,7 @@ def run(test, params, env):
         try:
             hstress = utils_test.HostStress(stress_tool, params)
             hstress.load_stress_tool()
-        except utils_test.StressError, info:
+        except utils_test.StressError as info:
             test.error(info)
 
     if remote_stress:
@@ -199,7 +202,7 @@ def run(test, params, env):
             rstress = utils_test.HostStress(stress_tool, params, remote_server=True)
             rstress.load_stress_tool()
             remote_session.close()
-        except utils_test.StressError, info:
+        except utils_test.StressError as info:
             remote_session.close()
             test.error(info)
 
@@ -225,7 +228,7 @@ def run(test, params, env):
                     try:
                         vstress[vm.name] = utils_test.VMStress(vm, stress_tool, params)
                         vstress[vm.name].load_stress_tool()
-                    except utils_test.StressError, info:
+                    except utils_test.StressError as info:
                         session.close()
                         test.error(info)
                 session.close()

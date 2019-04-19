@@ -113,7 +113,7 @@ def check_domfsinfo(domfsinfo, expected_results, test):
         fs_name = real_fs.get("Name")
         for expect_fs in expected_results:
             if fs_name == expect_fs.get("Name"):
-                for key, value in expect_fs.items():
+                for key, value in list(expect_fs.items()):
                     if real_fs[key] != value.encode(encoding).decode(encoding):
                         test.fail("Expect filesystem %s has attribute %s=%s, "
                                   "but got %s=%s from virsh command" %

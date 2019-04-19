@@ -1,3 +1,5 @@
+from builtins import zip
+from builtins import str
 import logging
 import time
 import shutil
@@ -44,7 +46,7 @@ def run(test, params, env):
         else:
             # Process for server
             server_vms.append(vm)
-    pair_vms = zip(server_vms, client_vms)
+    pair_vms = list(zip(server_vms, client_vms))
 
     if len(server_vms) != len(client_vms):
         test.cancel("This test requires server and client vms in 1:1 ratio")
@@ -60,7 +62,7 @@ def run(test, params, env):
         if len(profile_pattren) != len(profile_values):
             test.cancel("Profile pattrens not matching values passed: fix the cfg file with right pattren")
         profile_pattren.append('serverip')
-        pat_repl = dict(zip(profile_pattren, profile_values))
+        pat_repl = dict(list(zip(profile_pattren, profile_values)))
     elif stress_type == "netperf":
         ports = params.get("ports", "16604")
         test_protocol = params.get("test_protocols", "TCP_STREAM")

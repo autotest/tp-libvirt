@@ -1,3 +1,4 @@
+from builtins import str
 import os
 import logging
 
@@ -122,7 +123,7 @@ def run(test, params, env):
 
         # Check result
         try:
-            for name, v_expect in dparams.items():
+            for name, v_expect in list(dparams.items()):
                 if v_expect != sourcexml[name]:
                     test.fail("Expect to find %s=%s, but got %s=%s"
                               % (name, v_expect, name, sourcexml[name]))
