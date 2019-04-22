@@ -8,7 +8,6 @@ import threading
 from six import itervalues, string_types
 from avocado.utils import process
 from avocado.utils import path
-from avocado.core import exceptions
 
 from virttest import remote
 from virttest import defaults
@@ -1303,76 +1302,62 @@ def run(test, params, env):
             if not re.search(new_nic_mac, vm_dest_xml):
                 check_dest_xml = False
 
-    except exceptions.TestCancel as detail:
-        skip_exception = True
-    except exceptions.TestFail as detail:
-        fail_exception = True
-    except Exception as detail:
-        exception = True
-        logging.error("%s: %s", detail.__class__, detail)
+        # Check test result.
+        if status_error == 'yes':
+            if ret_migrate:
+                test.fail("Migration finished with unexpected status.")
+        else:
+            if not ret_migrate:
+                test.fail("Migration finished with unexpected status.")
+            if not check_dest_persistent:
+                test.fail("VM is not persistent on destination.")
+            if not check_src_undefine:
+                test.fail("VM is not undefined on source.")
+            if not check_dest_dname:
+                test.fail("Wrong VM name %s on destination." % dname)
+            if not check_dest_xml:
+                test.fail("Wrong xml configuration on destination.")
+            if not check_unsafe_result:
+                test.fail("Migration finished in unsafe mode.")
 
-    # Whatever error occurs, we have to clean up all environment.
-    # Make sure vm.connect_uri is the destination uri.
-    vm.connect_uri = dest_uri
-    if (options.count("dname") or extra.count("dname") and
-            status_error != 'yes'):
-        # Use the VM object to remove
-        vm.name = extra.split()[1].strip()
-        cleanup_dest(vm, src_uri)
-        vm.name = vm_name
-    else:
-        cleanup_dest(vm, src_uri)
+    finally:
+        # Whatever error occurs, we have to clean up all environment.
+        # Make sure vm.connect_uri is the destination uri.
+        vm.connect_uri = dest_uri
+        if (options.count("dname") or extra.count("dname") and
+                status_error != 'yes'):
+            # Use the VM object to remove
+            vm.name = extra.split()[1].strip()
+            cleanup_dest(vm, src_uri)
+            vm.name = vm_name
+        else:
+            cleanup_dest(vm, src_uri)
 
-    # Recover source (just in case).
-    # Simple sync cannot be used here, because the vm may not exists and
-    # it cause the sync to fail during the internal backup.
-    vm.destroy()
-    vm.undefine()
-    orig_config_xml.define()
+        # Recover source (just in case).
+        # Simple sync cannot be used here, because the vm may not exists and
+        # it cause the sync to fail during the internal backup.
+        vm.destroy()
+        vm.undefine()
+        orig_config_xml.define()
 
-    # cleanup xml created during memory hotplug test
-    if mem_hotplug:
-        if os.path.isfile(mem_xml):
-            data_dir.clean_tmp_files()
-            logging.debug("Cleanup mem hotplug xml")
+        # cleanup xml created during memory hotplug test
+        if mem_hotplug:
+            if os.path.isfile(mem_xml):
+                data_dir.clean_tmp_files()
+                logging.debug("Cleanup mem hotplug xml")
 
-    # cleanup hugepages
-    if enable_HP or enable_HP_pin:
-        logging.info("Cleanup Hugepages")
-        # cleaning source hugepages
-        hugepage_assign("0")
-        # cleaning destination hugepages
-        hugepage_assign(
-            "0", target_ip=server_ip, user=server_user, password=server_pwd)
+        # cleanup hugepages
+        if enable_HP or enable_HP_pin:
+            logging.info("Cleanup Hugepages")
+            # cleaning source hugepages
+            hugepage_assign("0")
+            # cleaning destination hugepages
+            hugepage_assign(
+                "0", target_ip=server_ip, user=server_user, password=server_pwd)
 
-    if attach_scsi_disk:
-        libvirt.delete_local_disk("file", path=scsi_disk)
+        if attach_scsi_disk:
+            libvirt.delete_local_disk("file", path=scsi_disk)
 
-    logging.info("Remove the NFS image...")
-    source_file = params.get("source_file")
-    libvirt.delete_local_disk("file", path=source_file)
-
-    if skip_exception:
-        test.cancel(detail)
-    if fail_exception:
-        test.fail(detail)
-    if exception:
-        test.error("Error occurred. \n%s: %s" % (detail.__class__, detail))
-
-    # Check test result.
-    if status_error == 'yes':
-        if ret_migrate:
-            test.fail("Migration finished with unexpected status.")
-    else:
-        if not ret_migrate:
-            test.fail("Migration finished with unexpected status.")
-        if not check_dest_persistent:
-            test.fail("VM is not persistent on destination.")
-        if not check_src_undefine:
-            test.fail("VM is not undefined on source.")
-        if not check_dest_dname:
-            test.fail("Wrong VM name %s on destination." % dname)
-        if not check_dest_xml:
-            test.fail("Wrong xml configuration on destination.")
-        if not check_unsafe_result:
-            test.fail("Migration finished in unsafe mode.")
+        logging.info("Remove the NFS image...")
+        source_file = params.get("source_file")
+        libvirt.delete_local_disk("file", path=source_file)
