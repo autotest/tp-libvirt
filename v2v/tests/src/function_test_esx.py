@@ -26,7 +26,7 @@ def run(test, params, env):
         raise ValueError('Missing command: virt-v2v')
     vpx_hostname = params.get('vpx_hostname')
     vpx_passwd = params.get("vpx_password")
-    esx_ip = params.get('esx_hostname')
+    esxi_host = esx_ip = params.get('esx_hostname')
     vpx_dc = params.get('vpx_dc')
     vm_name = params.get('main_vm')
     output_mode = params.get('output_mode')
@@ -46,6 +46,8 @@ def run(test, params, env):
     # nfs mount source
     vddk_libdir_src = params.get('vddk_libdir_src')
     vddk_thumbprint = params.get('vddk_thumbprint')
+    src_uri_type = params.get('src_uri_type')
+    esxi_password = params.get('esxi_password')
 
     def log_fail(msg):
         """
@@ -207,6 +209,9 @@ def run(test, params, env):
             'vddk_thumbprint': vddk_thumbprint,
             'vddk_libdir': vddk_libdir,
             'vddk_libdir_src': vddk_libdir_src,
+            'src_uri_type': src_uri_type,
+            'esxi_password': esxi_password,
+            'esxi_host': esxi_host
         }
 
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
@@ -214,10 +219,12 @@ def run(test, params, env):
         remote_uri = v2v_uri.get_uri(remote_host, vpx_dc, esx_ip)
 
         # Create password file for access to ESX hypervisor
-        logging.debug("vpx password is %s" % vpx_passwd)
         vpx_passwd_file = params.get("vpx_passwd_file")
         with open(vpx_passwd_file, 'w') as pwd_f:
-            pwd_f.write(vpx_passwd)
+            if src_uri_type == 'esx':
+                pwd_f.write(esxi_password)
+            else:
+                pwd_f.write(vpx_passwd)
         v2v_params['v2v_opts'] += " -ip %s" % vpx_passwd_file
 
         if params.get('output_format'):
