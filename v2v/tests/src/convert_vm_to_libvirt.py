@@ -36,6 +36,12 @@ def run(test, params, env):
     input_mode = params.get("input_mode")
     target = params.get("target")
     v2v_opts = params.get("v2v_opts")
+    # For VDDK
+    input_transport = params.get("input_transport")
+    vddk_libdir = params.get('vddk_libdir')
+    # nfs mount source
+    vddk_libdir_src = params.get('vddk_libdir_src')
+    vddk_thumbprint = params.get('vddk_thumbprint')
 
     # Prepare step for different hypervisor
     if hypervisor == "esx":
@@ -95,7 +101,13 @@ def run(test, params, env):
     v2v_params = {'target': target, 'hypervisor': hypervisor,
                   'main_vm': vm_name, 'input_mode': input_mode,
                   'network': network, 'bridge': bridge,
-                  'storage': pool_name, 'hostname': source_ip}
+                  'storage': pool_name, 'hostname': source_ip,
+                  'input_transport': input_transport, 'vcenter_host': vpx_ip,
+                  'vcenter_password': vpx_pwd,
+                  'vddk_thumbprint': vddk_thumbprint,
+                  'vddk_libdir': vddk_libdir,
+                  'vddk_libdir_src': vddk_libdir_src,
+                  }
     if vpx_dc:
         v2v_params.update({"vpx_dc": vpx_dc})
     if esx_ip:
