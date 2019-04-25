@@ -221,7 +221,7 @@ def run(test, params, env):
             for vcpu in range(int(guest_vcpu_count)):
                 vcpu_pid = vm.get_vcpus_pid()[vcpu]
                 # Check the result of vcpupin command.
-                check_vcpupin(vm.name, vcpu, str(','.join(cpus_list)), pid, vcpu_pid)
+                check_vcpupin(vm.name, vcpu, str(','.join(list(map(str, cpuutils.cpu_online_list())))), pid, vcpu_pid)
             return
 
         if multi_dom:
