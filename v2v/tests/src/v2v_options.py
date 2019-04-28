@@ -394,6 +394,18 @@ def run(test, params, env):
             if not_in_man in man_page:
                 test.fail('"%s" not removed from man page' % not_in_man)
 
+    def check_print_estimate(estimate_file):
+        """
+        Check disk size and total size in file of estimate created by v2v
+        """
+        import json
+        with open(estimate_file) as fp:
+            content = json.load(fp)
+        logging.debug('json file content:\n%s' % content)
+
+        if sum(content['disks']) != content['total']:
+            test.fail("The disks' size doesn't same as total value")
+
     def check_result(cmd, result, status_error):
         """
         Check virt-v2v command result
@@ -539,6 +551,8 @@ def run(test, params, env):
                 msg_content = params['msg_content']
                 if msg_content in messages:
                     test.fail('Found "%s" in /var/log/messages' % msg_content)
+            if checkpoint == 'print_estimate_tofile':
+                check_print_estimate(estimate_file)
         log_check = utils_v2v.check_log(params, output)
         if log_check:
             test.fail(log_check)
@@ -754,6 +768,10 @@ def run(test, params, env):
             process.run('touch %s' % simulate_dom_md)
             process.run('chmod -R 777 /tmp/rhv/')
 
+        if checkpoint == 'print_estimate_tofile':
+            estimate_file = utils_misc.generate_tmp_file_name('v2v_print_estimate')
+            v2v_options += " --machine-readable=file:%s" % estimate_file
+
         # Running virt-v2v command
         cmd = "%s %s %s %s" % (utils_v2v.V2V_EXEC, input_option,
                                output_option, v2v_options)
@@ -834,3 +852,5 @@ def run(test, params, env):
             os.rmdir(params['mount_point'])
         if checkpoint == 'simulate_nfs':
             process.run('rm -rf /tmp/rhv/')
+        if os.path.exists(estimate_file):
+            os.remove(estimate_file)
