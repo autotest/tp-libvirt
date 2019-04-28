@@ -22,6 +22,7 @@ def run(test, params, env):
     negative test:
         1. run virsh setvcpu with more than one vcpu on active vm and check error
         2. run virsh setvcpu to hotplug/unplug invalid vcpu and check error
+        3. enable/disable vcpu0 when vm is active/inactive and check error
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -31,6 +32,7 @@ def run(test, params, env):
     vcpus_enabled = ast.literal_eval(params.get("vcpus_enabled", "{0}"))
     vcpus_hotplug = ast.literal_eval(params.get("vcpus_hotpluggable", "{0}"))
     setvcpu_option = ast.literal_eval(params.get("setvcpu_option", "{}"))
+    setvcpu_action = params.get("setvcpu_action", "")
     start_timeout = int(params.get("start_timeout", "60"))
     check = params.get("check", "")
     err_msg = params.get("err_msg", "")
@@ -154,16 +156,22 @@ def run(test, params, env):
         vmxml.sync()
         logging.debug(vmxml)
 
+        # assemble setvcpu_option
+        if isinstance(setvcpu_option, str):
+            setvcpu_option = {setvcpu_option: setvcpu_action}
+
         # run virsh setvcpu and check vcpus in xml
         if check == "coldplug":
             for cpus, option in setvcpu_option.items():
                 result_to_check = virsh.setvcpu(vm_name, cpus, option, debug=True)
-                cpulist = libvirt.cpus_parser(cpus)
-                check_vcpu_status(cpulist, option)
+                if not status_error:
+                    cpulist = libvirt.cpus_parser(cpus)
+                    check_vcpu_status(cpulist, option)
 
         # start vm
-        virsh.start(vm_name, debug=True, ignore_status=False)
-        vm.wait_for_login(timeout=start_timeout)
+        if check.startswith("hotplug"):
+            virsh.start(vm_name, debug=True, ignore_status=False)
+            vm.wait_for_login(timeout=start_timeout)
 
         # turn setvcpu_option to an ordered dict
         if isinstance(setvcpu_option, tuple):
