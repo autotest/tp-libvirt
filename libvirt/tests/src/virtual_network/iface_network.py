@@ -67,9 +67,12 @@ TIMEOUT 3"""
         with open(pxe_file, 'w') as p_file:
             p_file.write(boot_txt)
 
-    def modify_iface_xml():
+    def modify_iface_xml(sync=True):
         """
         Modify interface xml options
+
+        :param sync: whether or not sync vmxml after the iface xml modified,
+                    default to be True
         """
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         if pxe_boot:
@@ -89,6 +92,8 @@ TIMEOUT 3"""
         iface_index = xml_devices.index(
             xml_devices.by_device_tag("interface")[0])
         iface = xml_devices[iface_index]
+        if not sync:
+            params.setdefault('original_iface', vmxml.devices[iface_index])
         iface_bandwidth = {}
         iface_inbound = ast.literal_eval(iface_bandwidth_inbound)
         iface_outbound = ast.literal_eval(iface_bandwidth_outbound)
@@ -126,9 +131,12 @@ TIMEOUT 3"""
             vmxml.remove_all_boots()
             iface.boot = iface_boot
         logging.debug("New interface xml file: %s", iface)
-        vmxml.devices = xml_devices
-        vmxml.xmltreefile.write()
-        vmxml.sync()
+        if sync:
+            vmxml.devices = xml_devices
+            vmxml.xmltreefile.write()
+            vmxml.sync()
+        else:
+            return iface
 
     def run_dnsmasq_default_test(key, value=None, exists=True, name="default"):
         """
@@ -222,13 +230,23 @@ TIMEOUT 3"""
                 tc_burst = int(se.group(5))
             assert tc_burst == int(bandwidth["burst"])
 
-    def check_filter_rules(ifname, bandwidth):
+    def check_filter_rules(ifname, bandwidth, expect_none=False):
         """
         Check bandwidth settings via 'tc filter' output
+
+        :param ifname: name of iface to be checked
+        :param bandwidth: bandwidth to be match with
+        :param expect_none: whether or not expect nothing in output,
+                            default to be False
+        :return: if expect nothing from the output,
+                            return True if the output is empty,
+                            else return False
         """
         cmd = "tc -d filter show dev %s parent ffff:" % ifname
         filter_output = to_text(process.system_output(cmd))
         logging.debug("Bandwidth filter output: %s", filter_output)
+        if expect_none:
+            return not filter_output.strip()
         if not filter_output.count("filter protocol all pref"):
             test.fail("Can't find 'protocol all' settings in filter rules")
         filter_pattern = ".*police.*rate (\d+)(K?M?)bit burst (\d+)(K?M?)b.*"
@@ -549,6 +567,9 @@ TIMEOUT 3"""
     net_no_mac = "yes" == params.get("no_mac", "no")
     net_no_ip = "yes" == params.get("no_ip", "no")
     net_with_dev = "yes" == params.get("with_dev", "no")
+    update_device = 'yes' == params.get('update_device', 'no')
+    remove_bandwidth = 'yes' == params.get('remove_bandwidth', 'no')
+    loop = int(params.get('loop', 0))
     username = params.get("username")
     password = params.get("password")
     forward = ast.literal_eval(params.get("net_forward", "{}"))
@@ -557,7 +578,7 @@ TIMEOUT 3"""
     ipt6_rules = []
 
     # Destroy VM first
-    if vm.is_alive():
+    if vm.is_alive() and not update_device:
         vm.destroy(gracefully=False)
 
     # Back up xml file.
@@ -663,7 +684,12 @@ TIMEOUT 3"""
         # Edit the interface xml.
         if change_iface_option:
             try:
-                modify_iface_xml()
+                if update_device:
+                    updated_iface = modify_iface_xml(sync=False)
+                    virsh.update_device(vm_name, updated_iface.xml,
+                                        ignore_status=False, debug=True)
+                else:
+                    modify_iface_xml()
             except xcepts.LibvirtXMLError as details:
                 logging.info(str(details))
                 if define_error:
@@ -787,15 +813,25 @@ TIMEOUT 3"""
                 run_dnsmasq_addnhosts_test(net_dns_hostip, net_dns_hostnames)
 
         # Run bandwidth test for network
-        if test_qos_bandwidth:
+        if test_qos_bandwidth and not update_device:
             run_bandwidth_test(check_net=True)
+
+        # If to remove bandwidth from iface,
+        # update iface xml to the original one
+        if remove_bandwidth:
+            ori_iface = params['original_iface']
+            logging.debug(ori_iface)
+            virsh.update_device(vm_name, ori_iface.xml,
+                                ignore_status=False, debug=True)
+
         # Check routes if needed
         if routes:
             check_host_routes()
 
         try:
             # Start the VM.
-            vm.start()
+            if not update_device:
+                vm.start()
             if start_error:
                 test.fail("VM started unexpectedly")
             if pxe_boot:
@@ -933,6 +969,24 @@ TIMEOUT 3"""
             for ipt in ipt6_rules:
                 if re.search(r"%s" % ipt, output_des, re.M):
                     test.fail("Find ip6table rule %s after net destroyed" % ipt)
+        if remove_bandwidth:
+            iface_name = libvirt.get_ifname_host(vm_name, iface_mac)
+            cur_xml = virsh.dumpxml(vm_name).stdout_text
+            logging.debug(cur_xml)
+            if 'bandwidth' in cur_xml:
+                test.fail('bandwidth still in xml')
+            if not check_filter_rules(iface_name, 0, expect_none=True):
+                test.fail('There should be nothing in output')
+        if update_device and loop:
+            loop -= 1
+            if loop:
+                # Rerun this procedure again with updated params
+                # Reset params of the corresponding loop
+                loop_prefix = 'loop' + str(loop) + '_'
+                for k in {k: v for k, v in params.items() if k.startswith(loop_prefix)}:
+                    params[k.lstrip(loop_prefix)] = params[k]
+                params['loop'] = str(loop)
+                run(test, params, env)
 
     finally:
         # Recover VM.
