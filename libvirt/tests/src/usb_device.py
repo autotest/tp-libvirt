@@ -4,6 +4,7 @@ import logging
 from avocado.utils import process
 
 from virttest import virsh
+from virttest import utils_misc
 from virttest import utils_package
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.controller import Controller
@@ -12,7 +13,9 @@ from virttest.libvirt_xml.devices.hub import Hub
 
 def run(test, params, env):
     """
-    Test libvirt usb feature based on the following matrix:
+    please insert a usb disk into the host machine before test
+
+    test libvirt usb feature based on the following matrix:
         the combination usage of machine type q35/i440fx, pci/pcie
     bus controller and usb controller
 
@@ -29,8 +32,11 @@ def run(test, params, env):
     usb20_controller:
         ich9-ehci1,ich9-uhci1,ich9-uhci2,ich9-uhci3
 
-    1. cold-plug/hot-unplug USB host device to/from VM
-    2. passthrough host usb device with vid/pid or bus/device hostdev
+    Test scenarios:
+    1. by default, cold-plug/hot-unplug usb host device to/from vm
+    2. passthrough usb host device with vid/pid or bus/device hostdev
+    3. cold-plug/unplug usb host device to/from vm
+    4. hot-plug/unplug usb host device to/from vm
     """
 
     vm_name = params.get("main_vm")
@@ -44,6 +50,8 @@ def run(test, params, env):
     passthrough = "yes" == params.get("passthrough", "no")
     vid_pid = "yes" == params.get("vid_pid", "no")
     bus_dev = "yes" == params.get("bus_dev", "no")
+    hotplug = "yes" == params.get("hotplug", "no")
+    coldunplug = "yes" == params.get("coldunplug", "no")
 
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
@@ -75,8 +83,8 @@ def run(test, params, env):
             if vid_pid:
                 source = product.copy()
             if bus_dev:
-                source['bus'] = line.split()[1]
-                source['device'] = line.split()[3].rstrip(':')
+                source['bus'] = int(line.split()[1])
+                source['device'] = int(line.split()[3].rstrip(':'))
             source_list.append(source.copy())
         logging.debug("usb device product dict {}, source dict {}".format(product_list, source_list))
         if not source_list or not product_list:
@@ -178,6 +186,7 @@ def run(test, params, env):
             test.fail("package usbutils installation fail")
 
         # assemble the xml of usb passthrough device
+        hostdev_list = []
         if passthrough:
             hostdevs = vmxml.get_devices(device_type="hostdev")
             for dev in hostdevs:
@@ -196,7 +205,10 @@ def run(test, params, env):
                 if bus_dev:
                     source_xml.untyped_address = source_xml.new_untyped_address(**addr)
                 dev.source = source_xml
-                vmxml.add_device(dev)
+                if hotplug:
+                    hostdev_list.append(dev)
+                else:
+                    vmxml.add_device(dev)
 
         # start vm
         vmxml.sync()
@@ -216,18 +228,39 @@ def run(test, params, env):
         if not utils_package.package_install(pkg, session):
             test.fail("package usbutils installation fails")
 
+        # hotplug usb passthrough device
+        if passthrough and hotplug:
+            for hostdev in hostdev_list:
+                virsh.attach_device(vm_name, hostdev.xml, flagstr="--live",
+                                    debug=True, ignore_status=False)
+                utils_misc.wait_for(lambda: not session.cmd_status(
+                                     "lsusb | grep {}".format(hostdev.source.product_id)), 10)
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            logging.debug("vmxml after attaching {}".format(vmxml))
+
         # check usb device
         usb_device_check(session, src_host)
 
         if passthrough:
             # detach usb passthrough device from vm
             hostdevs = vmxml.get_devices('hostdev')
-            logging.debug("detach usb device {}".format(hostdevs))
+            if coldunplug:
+                if not vm.shutdown():
+                    test.fail("vm shutdown fail")
+
             for dev in hostdevs:
                 if dev.hostdev_type == "usb":
-                    virsh.detach_device(vm_name, dev.xml, flagstr="--live", debug=True, ignore_status=False)
+                    logging.debug("detach usb device {}".format(dev.source))
+                    if coldunplug:
+                        vmxml.del_device(dev)
+                    else:
+                        virsh.detach_device(vm_name, dev.xml, flagstr="--live", debug=True, ignore_status=False)
 
             # check the hostdev element in xml after detaching
+            if coldunplug:
+                vmxml.sync()
+                vm.start()
+                vm.wait_for_login(timeout=start_timeout).close()
             vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
             hostdevs = vmxml.get_devices('hostdev')
             logging.debug("hostdevs: {}".format(hostdevs))
