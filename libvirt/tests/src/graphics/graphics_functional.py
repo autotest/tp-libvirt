@@ -282,10 +282,9 @@ def qemu_vnc_options(libvirt_vm):
     """
     pid = libvirt_vm.get_pid()
     res = process.run("ps -p %s -o cmd h" % pid, shell=True)
-    match = re.search(r'-vnc\s*(\S*)', res.stdout_text)
+    match = re.search(r'-vnc\s+(\S*)', res.stdout_text)
     if match:
         vnc_opt = match.groups()[0]
-    logging.debug('Qemu VNC option is: %s', vnc_opt)
     vnc_dict = {}
 
     vnc_opt_split = vnc_opt.split(',', 1)
@@ -298,9 +297,15 @@ def qemu_vnc_options(libvirt_vm):
     #In RHEL6.9, like '-vnc unix:/var/lib/libvirt/qemu/*.vnc'
     #In RHEL7.3, like '-vnc unix:/var/lib/libvirt/qemu/*vnc.sock'
     #In RHEL7.5, like '-vnc vnc=unix:/var/lib/libvirt/qemu/*vnc.sock'
+    #In RHEL7.7, like '-vnc vnc=unix:/var/lib/libvirt/qemu/*vnc.sock'
 
-    #Note, for RHEL7.5, 'vnc=' is added before regular arguments.
+    #Note, for RHEL7.5 and RHEL7.7, 'vnc=' is added before regular arguments.
     #For compatibility, one more handling is added for this change.
+
+    #In RHEL8.0,the format of vnc tls argument in qemu command line is completely different.
+    #just as follow:
+    #'tls-creds-x509,id=vnc-tls-creds0,dir=/etc/pki/libvirt-vnc,endpoint=server,verify-peer=no
+    #-vnc vnc=unix:/var/lib/libvirt/qemu/*/vnc.sock,tls-creds=vnc-tls-creds0'
     addr = addr.split('=')[1] if '=' in addr else addr
 
     if addr.startswith('[') and addr.endswith(']'):
@@ -318,8 +323,16 @@ def qemu_vnc_options(libvirt_vm):
                 if opt == 'password':
                     if xml_passwd is not None:
                         vnc_dict['passwd'] = xml_passwd
-                else:
+                if opt == 'tls':
                     vnc_dict[opt] = 'yes'
+    if libvirt_version.version_compare(5, 0, 0):
+        if re.search(r'(tls-creds-x509.*?\s+)', res.stdout_text):
+            vnc_out = re.search(r'(tls-creds-x509.*?\s+)', res.stdout_text).group(0)
+            if re.match("tls-creds-x509,id=[a-z0-9-]+", vnc_out):
+                vnc_dict['tls'] = "yes"
+                vnc_dict['id'] = re.match("tls-creds-x509,id=([a-z0-9-]+)", vnc_out).group(1)
+            if re.search("dir=[a-z/-]+", vnc_out):
+                vnc_dict['dir'] = re.search("dir=([a-z/-]+)", vnc_out).group(1)
     for key in vnc_dict:
         logging.debug("%s: %s", key, vnc_dict[key])
     return vnc_dict
@@ -756,7 +769,12 @@ def get_expected_vnc_options(params, networks, expected_result):
         if tls_x509_verify == '1':
             expected_opts['x509verify'] = x509_dir
         else:
-            expected_opts['x509'] = x509_dir
+            if libvirt_version.version_compare(5, 0, 0):
+                expected_opts['dir'] = x509_dir
+                expected_opts['id'] = "vnc-tls-creds0"
+                expected_opts['tls-creds'] = "vnc-tls-creds0"
+            else:
+                expected_opts['x509'] = x509_dir
     if graphic_passwd:
         expected_opts['passwd'] = graphic_passwd
 
