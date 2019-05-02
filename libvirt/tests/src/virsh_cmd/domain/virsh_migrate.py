@@ -394,7 +394,9 @@ def run(test, params, env):
 
             logging.debug("Checking CPU number gets reflected from inside "
                           "guest")
-            if not utils_misc.wait_for(lambda: utils_misc.check_if_vm_vcpu_match(cpu_count, vm),
+            if not utils_misc.wait_for(lambda: utils_misc.check_if_vm_vcpu_match(cpu_count,
+                                                                                 vm,
+                                                                                 connect_uri=uri),
                                        300, text="wait for vcpu online"):
                 test.fail("CPU %s failed" % operation)
 
@@ -1112,7 +1114,7 @@ def run(test, params, env):
         if ret_migrate and dest_state == "running":
             if (not options.count("dname") and not extra.count("dname")):
                 # Check VM uptime after migrating to destination
-                migrated_vm_uptime = vm.uptime(dest_uri)
+                migrated_vm_uptime = vm.uptime(connect_uri=dest_uri)
                 logging.info("Check VM uptime in destination after "
                              "migration: %s", migrated_vm_uptime)
                 if vm_uptime > migrated_vm_uptime:
