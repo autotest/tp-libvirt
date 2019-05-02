@@ -447,8 +447,9 @@ def run(test, params, env):
                                                    tg_sizeunit, pg_unit, tg_node,
                                                    node_mask, mem_model)
             randvar = 0
-            rand_value = random.randint(15, 25)
-            logging.debug("reboots at %s", rand_value)
+            if rand_reboot:
+                rand_value = random.randint(15, 25)
+                logging.debug("reboots at %s", rand_value)
             for x in xrange(at_times):
                 # If any error excepted, command error status should be
                 # checked in the last time
@@ -462,11 +463,11 @@ def run(test, params, env):
                     vm.reboot()
                     vm.wait_for_login()
                 if rand_reboot and randvar == rand_value:
+                    vm.reboot()
+                    vm.wait_for_login()
                     randvar = 0
                     rand_value = random.randint(15, 25)
                     logging.debug("reboots at %s", rand_value)
-                    vm.reboot()
-                    vm.wait_for_login()
 
         # Check domain xml after attach device.
         if test_dom_xml:
