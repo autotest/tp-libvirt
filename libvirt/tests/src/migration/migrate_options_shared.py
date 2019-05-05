@@ -82,7 +82,9 @@ def run(test, params, env):
         """
         features_xml = vm_xml.VMFeaturesXML()
         if feature == 'hpt':
-            features_xml.hpt_resizing = value
+            hpt_xml = vm_xml.VMFeaturesHptXML()
+            hpt_xml.resizing = value
+            features_xml.hpt = hpt_xml
         elif feature == 'htm':
             features_xml.htm = value
         vmxml.features = features_xml
