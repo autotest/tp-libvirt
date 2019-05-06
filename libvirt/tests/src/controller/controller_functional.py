@@ -446,7 +446,7 @@ def run(test, params, env):
                 test.fail("Can't find target pci device"
                           " '%s' on guest " % addr_str)
 
-    os_machine = params.get('os_machine', None)
+    os_machine = params.get('machine_type', None)
     libvirt.check_machine_type_arch(os_machine)
     cntlr_type = params.get('controller_type', None)
     model = params.get('controller_model', None)
