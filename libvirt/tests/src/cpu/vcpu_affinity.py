@@ -8,6 +8,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 from virttest.utils_test import libvirt
 from virttest import utils_hotplug
+from virttest import utils_libvirtd
 
 
 def check_vcpu_placement(test, params):
@@ -46,6 +47,7 @@ def run(test, params, env):
         3. use offline-to-online host cpu as cpuset to run virsh vcpupin
         4. set vcpu placement in xml to auto and check xml result
         5. set vcpu cpuset in xml without placement defined and check xml result
+        6. specify vcpu affinity for inactive vcpu
     negative test:
         1. use outrange cpuset as vcpu cpuset in xml to define vcpu affinity
         2. use outrange cpuset as cputune cpuset in xml to define vcpu affinity
@@ -58,6 +60,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     cpuset_mask = params.get("cpuset_mask", "")
     vcpu = params.get("vcpu", "0")
+    setvcpus_option = params.get("setvcpus_option", "0")
     maxvcpu = params.get("maxvcpu", "8")
     current_vcpu = params.get("current_vcpu", "3")
     check = params.get("check", "")
@@ -67,7 +70,7 @@ def run(test, params, env):
     define_fail = "yes" == params.get("define_fail", "no")
     start_fail = "yes" == params.get("start_fail", "no")
     runtime_fail = "yes" == params.get("runtime_fail", "no")
-    vm_down = "yes" == params.get("vm_down", "no")
+    hotplug_vcpu = "yes" == params.get("hotplug_vcpu", "no")
 
     vcpu_cpuset = params.get("vcpu_cpuset", "")
     cputune_cpuset = params.get("cputune_cpuset", "")
@@ -96,11 +99,11 @@ def run(test, params, env):
             try:
                 if hasattr(vmxml_live, 'cputune'):
                     test.fail("cputune tag is set when vcpu >= maxvcpu")
-        # check the expected vcpu affinity with the one got from running vm
-                elif not utils_hotplug.check_affinity(vm, affinity):
-                    test.fail("vcpu affinity check fail")
             except xcepts.LibvirtXMLError:
                 pass
+        # check the expected vcpu affinity with the one got from running vm
+        elif not utils_hotplug.check_affinity(vm, affinity):
+            test.fail("vcpu affinity check fail")
 
     try:
         hostcpu_num = int(cpu.total_cpus_count())
@@ -143,38 +146,46 @@ def run(test, params, env):
         else:
             vmxml.sync()
 
+        # test vcpu cpuset in offline/online host cpu scenario
+        if check.endswith("offline_hostcpu"):
+            for x in offline_hostcpus.split(','):
+                if cpu.offline(x):
+                    test.fail("fail to offline cpu{}".format(x))
+                logging.debug("offline host cpu {}".format(x))
+
         # start the vm
         if status_error and start_fail:
             result_to_check = virsh.start(vm_name, debug=True)
 
         if (not status_error) or runtime_fail:
-            result_to_check = virsh.start(vm_name, debug=True, ignore_status=False)
+            vm.start()
             vm.wait_for_login(timeout=start_timeout).close()
 
-            # test vcpu cpuset in offline/online  host cpu scenario
-            if check.endswith("offline_hostcpu"):
-                if vm_down:
-                    vm.shutdown()
-                for x in offline_hostcpus.split(','):
-                    if cpu.offline(x):
-                        test.fail("fail to offline cpu{}".format(x))
-                    logging.debug("offline host cpu {}".format(x))
-                if vm_down:
-                    vm.start()
-                    vm.wait_for_login(timeout=start_timeout).close()
-                if not status_error:
-                    # online host cpu
-                    if cpu.online(cputune_cpuset):
-                        test.fail("fail to online cpu{}".format(cputune_cpuset))
+            # test vcpu cpuset in offline/online host cpu scenario
+            if check.endswith("offline_hostcpu") and not status_error:
+                # online host cpu
+                if cpu.online(cputune_cpuset):
+                    test.fail("fail to online cpu{}".format(cputune_cpuset))
 
             # run virsh vcpupin to config vcpu affinity
             if check.startswith("cputune") and (not config_xml):
                 result_to_check = virsh.vcpupin(vm_name, vcpu, cputune_cpuset, debug=True)
 
-            if check == "vcpu_placement":
-                check_vcpu_placement(test, params)
-            elif not status_error:
-                check_vcpu_affinity()
+            # hotplug vcpu test scenario
+            if hotplug_vcpu:
+                virsh.setvcpus(vm_name, setvcpus_option, debug=True, ignore_status=False)
+
+            libvirtd_restart = False
+            while True:
+                if check == "vcpu_placement":
+                    check_vcpu_placement(test, params)
+                elif not status_error:
+                    check_vcpu_affinity()
+                if libvirtd_restart:
+                    break
+                # restart libvirtd and check vcpu affinity again
+                utils_libvirtd.Libvirtd().restart()
+                libvirtd_restart = True
 
         if 'result_to_check' in locals():
             if err_msg:
