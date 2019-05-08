@@ -179,19 +179,20 @@ def run(test, params, env):
             result = virsh.detach_device(vm_name, iface.xml, debug=True)
             libvirt.check_exit_status(result)
 
-            logging.debug(virsh.dumpxml(vm_name))
-
             # Check if the iface with given mac address has been
             # successfully detached
-            xml_after_detach = VMXML.new_from_dumpxml(vm_name)
-            iface_list_after_detach = [
-                iface for iface in xml_after_detach.get_devices('interface')
-                if iface.mac_address == mac
-            ]
+            def is_hotunplug_interface_ok():
+                xml_after_detach = VMXML.new_from_dumpxml(vm_name)
+                iface_list_after_detach = [
+                    iface for iface in xml_after_detach.get_devices('interface')
+                    if iface.mac_address == mac
+                ]
+                logging.debug('iface list after detach: %s', iface_list_after_detach)
+                return iface_list_after_detach == []
 
-            logging.debug('iface list after detach: %s', iface_list_after_detach)
-            if iface_list_after_detach:
+            if not utils_misc.wait_for(is_hotunplug_interface_ok, timeout=20):
                 test.fail('Failed to detach device: %s' % iface)
+            logging.debug(virsh.dumpxml(vm_name))
 
             # Check again inside vm
             session = vm.wait_for_serial_login()
