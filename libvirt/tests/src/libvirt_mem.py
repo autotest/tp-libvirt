@@ -353,6 +353,7 @@ def run(test, params, env):
     pre_vm_state = params.get("pre_vm_state", "running")
     attach_device = "yes" == params.get("attach_device", "no")
     detach_device = "yes" == params.get("detach_device", "no")
+    detach_with_dimm_no = "yes" == params.get("detach_with_dimm_no", "no")
     attach_error = "yes" == params.get("attach_error", "no")
     start_error = "yes" == params.get("start_error", "no")
     detach_error = "yes" == params.get("detach_error", "no")
@@ -401,7 +402,7 @@ def run(test, params, env):
 
     config = utils_config.LibvirtQemuConfig()
     setup_hugepages_flag = params.get("setup_hugepages")
-    if (setup_hugepages_flag == "yes"):
+    if setup_hugepages_flag == "yes":
         setup_hugepages(int(pg_size))
 
     # Back up xml file.
@@ -574,14 +575,36 @@ def run(test, params, env):
         # Detach the memory device
         unplug_failed_with_known_error = False
         if detach_device:
-            if not dev_xml:
-                dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
-                                                       mem_addr, tg_sizeunit,
-                                                       pg_unit, tg_node,
-                                                       node_mask, mem_model)
+            if detach_with_dimm_no:
+                if "config" in attach_option:
+                    vmxml_dimm = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+                else:
+                    vmxml_dimm = vm_xml.VMXML.new_from_dumpxml(vm_name)
+                logging.debug("Guest xml = %s", vmxml_dimm)
+                dimm_dir = data_dir.get_tmp_dir()
+                dimm_no = 0
+                with open(vmxml_dimm.xml) as fd:
+                    for result in re.findall('(\<memory model)(.*?)(\<\/memory\>\n)', fd.read(), re.S):
+                        dimm_fn = dimm_dir + "/dimm" + str(dimm_no) + ".xml"
+                        with open(dimm_fn, "w") as dimm_fd:
+                            xmltxt = result[0] + result[1] + result[2]
+                            dimm_fd.write(xmltxt)
+                        dimm_no = dimm_no + 1
+            else:
+                if not dev_xml:
+                    dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
+                                                           mem_addr, tg_sizeunit,
+                                                           pg_unit, tg_node,
+                                                           node_mask, mem_model)
             for x in xrange(at_times):
-                ret = virsh.detach_device(vm_name, dev_xml.xml,
-                                          flagstr=attach_option)
+                if detach_with_dimm_no:
+                    dimm_xml = dimm_dir + "/dimm" + str(x) + ".xml"
+                    logging.debug("Detaching dimm : %s", dimm_xml)
+                    ret = virsh.detach_device(vm_name, dimm_xml,
+                                              flagstr=attach_option, **virsh_dargs)
+                else:
+                    ret = virsh.detach_device(vm_name, dev_xml.xml,
+                                              flagstr=attach_option, **virsh_dargs)
                 if ret.stderr and host_known_unplug_errors:
                     for known_error in host_known_unplug_errors:
                         if (known_error[0] == known_error[-1]) and \
@@ -592,7 +615,7 @@ def run(test, params, env):
                             logging.debug("Known error occured in Host, while"
                                           " hot unplug: %s", known_error)
                 if unplug_failed_with_known_error:
-                    break
+                    continue
                 try:
                     libvirt.check_exit_status(ret, detach_error)
                 except Exception as detail:
@@ -658,6 +681,6 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
         logging.info("Restoring vm...")
-        if (setup_hugepages_flag == "yes"):
+        if setup_hugepages_flag == "yes":
             restore_hugepages()
         vmxml_backup.sync()
