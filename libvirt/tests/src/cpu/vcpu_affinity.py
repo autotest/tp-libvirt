@@ -60,7 +60,9 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     cpuset_mask = params.get("cpuset_mask", "")
     vcpu = params.get("vcpu", "0")
-    setvcpus_option = params.get("setvcpus_option", "0")
+    setvcpus_option = params.get("setvcpus_option", "")
+    setvcpus_count = params.get("setvcpus_count", "0")
+    vcpupin_option = params.get("vcpupin_option", "")
     maxvcpu = params.get("maxvcpu", "8")
     current_vcpu = params.get("current_vcpu", "3")
     check = params.get("check", "")
@@ -90,6 +92,7 @@ def run(test, params, env):
         affinity = vcpu_cpuset if not cputune_cpuset else cputune_cpuset
         affinity = {vcpu: affinity}
         virsh.vcpuinfo(vm_name, debug=True)
+        host_cpu_count = cpu.total_cpus_count()
 
         vmxml_live = vm_xml.VMXML.new_from_dumpxml(vm_name)
         logging.debug(vmxml_live)
@@ -101,6 +104,14 @@ def run(test, params, env):
                     test.fail("cputune tag is set when vcpu >= maxvcpu")
             except xcepts.LibvirtXMLError:
                 pass
+        elif "config" in vcpupin_option:
+            vcpu_affinity = utils_hotplug.affinity_from_vcpupin(vm, vcpu, vcpupin_option)
+            affinity = libvirt.cpus_string_to_affinity_list(
+                str(affinity[vcpu]), host_cpu_count)
+            logging.debug("vcpu_affinity {}".format(vcpu_affinity))
+            logging.debug("affinity {}".format(affinity))
+            if vcpu_affinity[int(vcpu)] != affinity:
+                test.fail("vcpu affinity check fail")
         # check the expected vcpu affinity with the one got from running vm
         elif not utils_hotplug.check_affinity(vm, affinity):
             test.fail("vcpu affinity check fail")
@@ -169,11 +180,11 @@ def run(test, params, env):
 
             # run virsh vcpupin to config vcpu affinity
             if check.startswith("cputune") and (not config_xml):
-                result_to_check = virsh.vcpupin(vm_name, vcpu, cputune_cpuset, debug=True)
+                result_to_check = virsh.vcpupin(vm_name, vcpu, cputune_cpuset, vcpupin_option, debug=True)
 
             # hotplug vcpu test scenario
             if hotplug_vcpu:
-                virsh.setvcpus(vm_name, setvcpus_option, debug=True, ignore_status=False)
+                virsh.setvcpus(vm_name, setvcpus_count, setvcpus_option, debug=True, ignore_status=False)
 
             libvirtd_restart = False
             while True:
