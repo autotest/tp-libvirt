@@ -197,7 +197,7 @@ def run(test, params, env):
                 dev = vmxml.get_device_class('hostdev')()
                 source_xml = dev.Source()
                 dev.mode = 'subsystem'
-                dev.hostdev_type = 'usb'
+                dev.type = 'usb'
                 dev.managed = 'no'
                 if vid_pid:
                     source_xml.vendor_id = addr['vendor_id']
@@ -249,7 +249,7 @@ def run(test, params, env):
                     test.fail("vm shutdown fail")
 
             for dev in hostdevs:
-                if dev.hostdev_type == "usb":
+                if dev.type == "usb":
                     logging.debug("detach usb device {}".format(dev.source))
                     if coldunplug:
                         vmxml.del_device(dev)
@@ -265,7 +265,7 @@ def run(test, params, env):
             hostdevs = vmxml.get_devices('hostdev')
             logging.debug("hostdevs: {}".format(hostdevs))
             for dev in hostdevs:
-                if dev.hostdev_type == "usb":
+                if dev.type == "usb":
                     test.fail("detach usb device fail")
 
     finally:

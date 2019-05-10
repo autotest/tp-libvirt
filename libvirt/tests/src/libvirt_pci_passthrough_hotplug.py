@@ -112,7 +112,7 @@ def run(test, params, env):
     pci_address = pci_xml.cap.get_address_dict()
     dev = VMXML.get_device_class('hostdev')()
     dev.mode = 'subsystem'
-    dev.hostdev_type = 'pci'
+    dev.type = 'pci'
     dev.managed = 'no'
     dev.source = dev.new_source(**pci_address)
 
