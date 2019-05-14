@@ -1454,6 +1454,12 @@ def run(test, params, env):
             vm_xml_cxt = to_text(process.system_output("virsh dumpxml %s" % vm_name, shell=True))
             logging.debug("The VM XML with gluster disk source: \n%s", vm_xml_cxt)
 
+            # Check if gluster server is deployed locally
+            if host_ip == client_ip:
+                logging.debug("Enable port 24007 and 49152:49216")
+                migrate_setup.migrate_pre_setup(src_uri, params, ports="24007")
+                migrate_setup.migrate_pre_setup(src_uri, params)
+
         # generate remote IP
         if target_ip == "":
             if config_ipv6 == "yes" and ipv6_addr_des and not server_cn:
@@ -2632,6 +2638,12 @@ def run(test, params, env):
         # Delete all rules in chain or all chains
         if add_iptables_rules:
             process.run("iptables -F", ignore_status=True, shell=True)
+
+        # Disable ports 24007 and 49152:49216
+        if gluster_disk and host_ip == client_ip:
+            logging.debug("Disable 24007 and 49152:49216 in Firewall")
+            migrate_setup.migrate_pre_setup(src_uri, params, cleanup=True, ports="24007")
+            migrate_setup.migrate_pre_setup(src_uri, params, cleanup=True)
 
         # Restore libvirtd conf and restart libvirtd
         if libvirtd_conf:
