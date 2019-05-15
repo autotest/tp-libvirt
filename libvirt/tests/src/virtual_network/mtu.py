@@ -233,8 +233,9 @@ def run(test, params, env):
 
             # Check in both host and vm
             check_mtu(mtu_size, check_qemu)
-            check_mtu_in_vm(vm_login, mtu_size)
-            vm_login(timeout=60).close()
+            if mtu_type == 'interface' or with_iface:
+                check_mtu_in_vm(vm_login, mtu_size)
+                vm_login(timeout=60).close()
 
             if check == 'hotplug_save':
                 virsh.detach_interface(vm_name, 'network %s' % params['mac'], debug=True)
