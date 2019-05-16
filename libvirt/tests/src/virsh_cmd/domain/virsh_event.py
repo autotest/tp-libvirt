@@ -16,7 +16,7 @@ from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices.interface import Interface
 from virttest.libvirt_xml.devices.panic import Panic
 from virttest import utils_misc
-
+from provider import libvirt_version
 from xml.dom.minidom import parseString
 
 
@@ -152,8 +152,9 @@ def run(test, params, env):
                     virsh.suspend(dom.name, **virsh_dargs)
                     expected_events_list.append("'lifecycle' for %s:"
                                                 " Suspended Paused")
-                    expected_events_list.append("'lifecycle' for %s:"
-                                                " Suspended Paused")
+                    if not libvirt_version.version_compare(5, 3, 0):
+                        expected_events_list.append("'lifecycle' for %s:"
+                                                    " Suspended Paused")
                 elif event == "resume":
                     virsh.resume(dom.name, **virsh_dargs)
                     expected_events_list.append("'lifecycle' for %s:"
