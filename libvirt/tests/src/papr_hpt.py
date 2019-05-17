@@ -141,6 +141,9 @@ def run(test, params, env):
             logging.debug('cpu_arch is: %s', cpu_arch)
             if skip_p8 and cpu_arch == 'power8':
                 test.cancel('This case is not for POWER8')
+            if maxpagesize and not utils_misc.compare_qemu_version(3, 1, 0):
+                test.cancel('Qemu version is too low, '
+                            'does not support maxpagesize setting')
             set_hpt(vmxml, True, **hpt_attrs)
             if cpu_attrs or numa_cell:
                 if numa_cell:
