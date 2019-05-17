@@ -125,7 +125,7 @@ def run(test, params, env):
 
         pci_list_sriov = set(pci_list_sriov)
         pci_diff = list(pci_list_sriov.difference(pci_list_before))
-        net_diff = utils_misc.wait_for(_vf_init_completed, timeout=180)
+        net_diff = utils_misc.wait_for(_vf_init_completed, timeout=300)
         if not net_diff:
             test.fail("Get net list with 'virsh nodedev-list' failed\n")
         for net in net_diff:
