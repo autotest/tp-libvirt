@@ -107,7 +107,6 @@ def run(test, params, env):
         test_res = process.run(cmd, shell=True)
         if test_res.exit_status != 0:
             test.fail("Fail to create vfs")
-        pci_list_sriov = virsh.nodedev_list(cap='pci').stdout.strip().splitlines()
 
         def _vf_init_completed():
             try:
@@ -123,9 +122,10 @@ def run(test, params, env):
             except process.CmdError:
                 raise test.fail("Get net list with 'virsh nodedev-list' failed\n")
 
+        net_diff = utils_misc.wait_for(_vf_init_completed, timeout=300)
+        pci_list_sriov = virsh.nodedev_list(cap='pci').stdout.strip().splitlines()
         pci_list_sriov = set(pci_list_sriov)
         pci_diff = list(pci_list_sriov.difference(pci_list_before))
-        net_diff = utils_misc.wait_for(_vf_init_completed, timeout=300)
         if not net_diff:
             test.fail("Get net list with 'virsh nodedev-list' failed\n")
         for net in net_diff:
