@@ -52,6 +52,7 @@ def run(test, params, env):
     bus_dev = "yes" == params.get("bus_dev", "no")
     hotplug = "yes" == params.get("hotplug", "no")
     coldunplug = "yes" == params.get("coldunplug", "no")
+    usb_alias = "yes" == params.get("usb_alias", "no")
 
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
@@ -95,6 +96,8 @@ def run(test, params, env):
 
     def usb_disk_check(session, src_guest=None):
         """
+        check usb storage disks passed from host with dd operation and product id
+
         :param session: a console session of vm
         :param src_guest: a dict of the source xml of usb device from vm
         """
@@ -118,6 +121,9 @@ def run(test, params, env):
 
     def usb_device_check(session, src_host=None):
         """
+        check usb devices passed from host with xml file, output of lsusb, and
+        usb storage disk.
+
         :param session: a console session of vm
         :param src_host: a dict of the source xml of usb device from host
         """
@@ -149,6 +155,24 @@ def run(test, params, env):
         if passthrough:
             usb_disk_check(session, src_guest)
 
+    def check_controller_alias(alias):
+        """
+        check usb controller alias from qemu command line with xml config file
+
+        :param alias: a {model:alias} dict of the usb controller
+        """
+        output = process.run("ps -ef | grep {}".format(vm_name), shell=True).stdout_text
+        logging.debug('"ps -ef | grep {}" output {}'.format(vm_name, output))
+        for model in usb_model.split(','):
+            device = (model if model == "qemu-xhci" else
+                      ('-').join([model.split('-')[0], "usb", model.split('-')[1]]))
+            pattern = ("masterbus={}".format(alias['ich9-ehci1'])
+                       if "ich9-uhci" in model else "id={}".format(alias[model]))
+            pattern = "-device {},".format(device) + pattern
+            logging.debug("usb controller model {}, pattern {}".format(model, pattern))
+            if not re.search(pattern, output):
+                test.fail("controller alias check fail")
+
     try:
         # remove usb controller/device from xml
         controllers = vmxml.get_devices(device_type="controller")
@@ -168,12 +192,21 @@ def run(test, params, env):
             pci_bridge.model = model
             vmxml.add_device(pci_bridge)
 
+        controller_alias = {}
+        random_id = process.run("uuidgen").stdout_text.strip()
         # assemble the xml of usb controller
-        for model in usb_model.split(','):
+        for i, model in enumerate(usb_model.split(',')):
             controller = Controller("controller")
             controller.type = "usb"
             controller.index = usb_index
             controller.model = model
+            if usb_alias:
+                alias_str = "ua-usb" + str(i) + random_id
+                controller_alias[model] = alias_str
+                alias = {"name": alias_str}
+                if "ich9" not in model:
+                    controller.index = i
+                controller.alias = alias
             vmxml.add_device(controller)
 
         if usb_hub:
@@ -223,6 +256,8 @@ def run(test, params, env):
             logging.debug("check usb controller {} in vm".format(model_type))
             if session.cmd_status("dmesg | grep {}".format(model_type)):
                 test.fail("usb controller check fail")
+        if usb_alias:
+            check_controller_alias(controller_alias)
 
         # install package usbutils in vm
         if not utils_package.package_install(pkg, session):
@@ -245,8 +280,7 @@ def run(test, params, env):
             # detach usb passthrough device from vm
             hostdevs = vmxml.get_devices('hostdev')
             if coldunplug:
-                if not vm.shutdown():
-                    test.fail("vm shutdown fail")
+                vm.destroy()
 
             for dev in hostdevs:
                 if dev.type == "usb":
