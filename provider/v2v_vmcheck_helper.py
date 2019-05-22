@@ -10,6 +10,7 @@ from virttest import utils_v2v
 from virttest import utils_sasl
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
+from virttest.compat_52lts import results_stdout_52lts
 
 V2V_7_3_VERSION = 'virt-v2v-1.32.1-1.el7'
 RETRY_TIMES = 10
@@ -78,6 +79,7 @@ class VMChecker(object):
         self.errors.append(msg)
 
     def run(self):
+        self.check_metadata_libosinfo()
         if self.os_type == 'linux':
             self.check_linux_vm()
         elif self.os_type == 'windows':
@@ -126,6 +128,58 @@ class VMChecker(object):
         if self.os_version in ['win7', 'win2008r2']:
             video_model = 'qxl'
         return video_model
+
+    def check_metadata_libosinfo(self):
+        """
+        Check if metadata libosinfo attributes value in vm xml match with given param.
+
+        Note: This is not a mandatory checking, if you need to check it, you have to
+        set related parameters correctly.
+        """
+        logging.info("Checking metadata libosinfo")
+        # 'os_short_id' must be set for libosinfo checking, you can query it by
+        # 'osinfo-query os'
+        short_id = self.params.get('os_short_id')
+        if not short_id:
+            reason = 'short_id is not set'
+            logging.info('Skip Checking metadata libosinfo parameters: %s' % reason)
+            return
+
+        # Need target or output_mode be set explicitly
+        if not self.params.get('target') and not self.params.get('output_mode'):
+            reason = 'Both target and output_mode are not set'
+            logging.info('Skip Checking metadata libosinfo parameters: %s' % reason)
+            return
+
+        supported_output = ['libvirt', 'local']
+        # Skip checking if any of them is not in supported list
+        if self.params.get('target') not in supported_output or self.params.get(
+                'output_mode') not in supported_output:
+            reason = 'target or output_mode is not in %s' % supported_output
+            logging.info('Skip Checking metadata libosinfo parameters: %s' % reason)
+            return
+
+        cmd = 'osinfo-query os --fields=short-id | tail -n +3'
+        # Too much debug output if verbose is True
+        output = process.run(cmd, timeout=20, shell=True, ignore_status=True)
+        short_id_all = results_stdout_52lts(output).splitlines()
+        if short_id not in [os_id.strip() for os_id in short_id_all]:
+            raise exceptions.TestError('Invalid short_id: %s' % short_id)
+
+        cmd = "osinfo-query os --fields=id short-id='%s'| tail -n +3" % short_id
+        output = process.run(cmd, timeout=20, verbose=True, shell=True, ignore_status=True)
+        long_id = results_stdout_52lts(output).strip()
+        # '<libosinfo:os id' was changed to '<ns0:os id' after calling
+        # vm_xml.VMXML.new_from_inactive_dumpxml.
+        # It's problably a problem in vm_xml.
+        # <TODO>  Fix it
+        #libosinfo_pattern = r'<libosinfo:os id="%s"/>' % long_id
+        # A temp workaround for above problem
+        libosinfo_pattern = r'<.*?:os id="%s"/>' % long_id
+        logging.info('libosinfo pattern: %s' % libosinfo_pattern)
+
+        if not re.search(libosinfo_pattern, self.vmxml):
+            self.log_err('Not find metadata libosinfo')
 
     def check_vm_xml(self):
         """
