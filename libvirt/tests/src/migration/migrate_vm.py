@@ -181,8 +181,8 @@ def check_output(test, output_msg, params):
             return
         else:
             test.fail("The actual output:\n%s\n"
-                      "The expected error '%s' was not found",
-                      output_msg, expect_msg)
+                      "The expected error '%s' was not found"
+                      % (output_msg, expect_msg))
 
     if params.get("target_vm_name"):
         if output_msg.find(ERR_MSGDICT['ERROR 3']) >= 0:
@@ -190,8 +190,8 @@ def check_output(test, output_msg, params):
             return
         else:
             test.fail("The actual output:\n%s\n"
-                      "The expected error '%s' was not found",
-                      output_msg, ERR_MSGDICT['ERROR 3'])
+                      "The expected error '%s' was not found"
+                      % (output_msg, ERR_MSGDICT['ERROR 3']))
 
     for (key, value) in ERR_MSGDICT.items():
         if output_msg.find(value) >= 0:
@@ -858,7 +858,7 @@ def check_vm_disk_after_migration(test, vm, params):
     remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd, timeout=60)
     cmdres = remote_vm_obj.run_command(vm_ip, cmd, ignore_status=True)
     if cmdres.exit_status:
-        test.fail("Command '%s' result: %s\n", cmd, cmdres)
+        test.fail("Command '%s' result: %s\n" % (cmd, cmdres))
     disks = cmdres.stdout.strip().split("\n")
     logging.debug("Get disks in remote VM: %s", disks)
     for disk in disks:
@@ -876,7 +876,7 @@ def check_vm_disk_after_migration(test, vm, params):
             logging.debug("Execute command on remote VM: %s", cmd)
             cmdres = remote_vm_obj.run_command(vm_ip, cmd, ignore_status=True)
             if cmdres.exit_status:
-                test.fail("Command '%s' result: %s\n", cmd, cmdres)
+                test.fail("Command '%s' result: %s\n" % (cmd, cmdres))
 
 
 def check_migration_disk_port(params):
@@ -910,7 +910,7 @@ def check_migration_disk_port(params):
     logging.debug("Check the disk port specified is in use")
     if not re.search(pattern1, output) or not re.search(pattern2, output):
         test.fail("Can not find the expected patterns"
-                  " '%s, %s' in output '%s'")
+                  " '%s, %s' in output '%s'" % (pattern1, pattern2, output))
 
 
 def update_disk_driver_with_iothread(vm_name, iothread):
@@ -1871,8 +1871,8 @@ def run(test, params, env):
         elif target_pool_name and not create_target_pool:
             pool_destroyed = destroy_active_pool_on_remote(test_dict)
             if not pool_destroyed:
-                raise test.error("Destroy pool on remote host '%s' failed"
-                                 % server_ip)
+                test.error("Destroy pool on remote host '%s' failed"
+                           % server_ip)
 
         if create_target_image:
             if not target_image_size and image_info_dict:
@@ -2147,7 +2147,7 @@ def run(test, params, env):
                                      " [%s].", p.pid)
                         time.sleep(delay)
                     else:
-                        test.error("Fail to cancel migration: [%s]", p.pid)
+                        test.error("Fail to cancel migration: [%s]" % p.pid)
                 else:
                     p.kill()
                     test.fail("Migration process is dead")
@@ -2195,7 +2195,7 @@ def run(test, params, env):
                                       "compression cache: %s", default_cache)
                     else:
                         test.fail("Failed to find "
-                                  "default compression cache %s", default_cache)
+                                  "default compression cache %s" % default_cache)
                     cmd = "virsh domjobinfo %s %s" % (vm_name, opts)
                     logging.debug("Get remote job info")
                     status, output = run_remote_cmd(cmd, server_ip, server_user,
@@ -2222,7 +2222,7 @@ def run(test, params, env):
                     logging.debug(stderr)
                     err_str = ".*error.*migration.*job: canceled by client"
                     if not re.search(err_str, stderr):
-                        test.fail("Can't find error: %s." % (err_str))
+                        test.fail("Can't find error: %s." % err_str)
                     else:
                         logging.info("Find error: %s.", err_str)
 
