@@ -1,4 +1,3 @@
-import re
 import logging
 import netaddr
 from virttest import utils_test
@@ -15,9 +14,9 @@ def run(test, params, env):
     a). NIC:
         1. Get params.
         2. Get the pci device for specific net_name.
-        3. Attach pci device to guest.
-        4. Start guest and set the ip to all the physical functions.
-        5. Ping to server_ip from each physical function
+        3. Attach Physical Function's/Virtual Function's to single guest
+        4. Start guest and set the ip to all the functions.
+        5. Ping to server_ip from each function
            to verify the new network device.
     b). STORAGE:
         1. Get params.
@@ -34,13 +33,13 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     sriov = ('yes' == params.get("libvirt_pci_SRIOV", 'no'))
     device_type = params.get("libvirt_pci_device_type", "NIC")
+    vm_vfs = int(params.get("number_vfs", 2))
     pci_dev = None
-    device_name = None
     pci_address = None
     bus_info = []
     if device_type == "NIC":
-        pci_dev = params.get("libvirt_pci_net_dev_label")
-        device_name = params.get("libvirt_pci_net_dev_name", "None")
+        pf_filter = params.get("pf_filter", "0000:01:00.0")
+        vf_filter = params.get("vf_filter", "Virtual Function")
     else:
         pci_dev = params.get("libvirt_pci_storage_dev_label")
 
@@ -50,13 +49,14 @@ def run(test, params, env):
     netmask = params.get("libvirt_pci_net_mask", "ENTER.YOUR.Mask")
 
     # Check the parameters from configuration file.
-    if (pci_dev.count("ENTER")):
-        test.cancel("Please enter your device name for test.")
-    if (device_type == "NIC" and (net_ip.count("ENTER") or
-                                  server_ip.count("ENTER") or
-                                  netmask.count("ENTER"))):
-        test.cancel("Please enter the ips and netmask for NIC "
-                    "test in config file")
+    if (device_type == "NIC"):
+        if (pf_filter.count("ENTER")):
+            test.cancel("Please enter your NIC Adapter details for test.")
+        if (net_ip.count("ENTER") or server_ip.count("ENTER") or netmask.count("ENTER")):
+            test.cancel("Please enter the ips and netmask for NIC "
+                        "test in config file")
+    elif (pci_dev.count("ENTER")):
+        test.cancel("Please enter your Storage Adapter details for test.")
     fdisk_list_before = None
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
@@ -64,39 +64,24 @@ def run(test, params, env):
         if not vm.is_alive():
             vm.start()
         session = vm.wait_for_login()
-        output = session.cmd_output("lspci -nn")
-        nic_list_before = output.splitlines()
+        nic_list_before = vm.get_pci_devices()
+        obj = PciAssignable(pf_filter_re=pf_filter,
+                            vf_filter_re=vf_filter)
+        # get all functions id's
+        pci_ids = obj.get_same_group_devs(pf_filter)
+        pci_devs = []
+        for val in pci_ids:
+            temp = val.replace(":", "_")
+            pci_devs.extend(["pci_"+temp])
         if sriov:
             # The SR-IOV setup of the VF's should be done by test_setup
-            # based on the driver options.
-            # Usage of the PciAssignable for setting up of the VF's
-            # is generic, and eliminates the need to hardcode the driver
-            # and number of VF's to be created.
+            # PciAssignable class.
 
-            sriov_setup = PciAssignable(
-                driver=params.get("driver"),
-                driver_option=params.get("driver_option"),
-                host_set_flag=params.get("host_set_flag", 1),
-                vf_filter_re=params.get("vf_filter_re"),
-                pf_filter_re=params.get("pf_filter_re"),
-                pa_type=params.get("pci_assignable"))
-
-            # For Infiniband Controllers, we have to set the link
-            # for the VF's before pass-through.
-            cont = sriov_setup.get_controller_type()
-            if cont == "Infiniband controller":
-                sriov_setup.set_linkvf_ib()
-
-            # Based on the PF Device specified, all the VF's
-            # belonging to the same iommu group, will be
-            # pass-throughed to the guest.
-            pci_id = pci_dev.replace("_", ".").strip("pci.").replace(".", ":", 2)
-            pci_ids = sriov_setup.get_same_group_devs(pci_id)
-            pci_devs = []
-            for val in pci_ids:
-                temp = val.replace(":", "_")
-                pci_devs.extend(["pci_"+temp])
-            pci_id = re.sub('[:.]', '_', pci_id)
+            for pf in pci_ids:
+                obj.set_vf(pf, vm_vfs)
+                cont = obj.get_controller_type()
+                if cont == "Infiniband controller":
+                    obj.set_linkvf_ib()
             for val in pci_devs:
                 val = val.replace(".", "_")
                 # Get the virtual functions of the pci devices
@@ -112,15 +97,6 @@ def run(test, params, env):
                     pci_address = pci_xml.cap.get_address_dict()
                     vmxml.add_hostdev(pci_address)
         else:
-            pci_id = pci_dev.replace("_", ".").strip("pci.").replace(".", ":", 2)
-            obj = PciAssignable()
-            # get all functions id's
-            pci_ids = obj.get_same_group_devs(pci_id)
-            pci_devs = []
-            for val in pci_ids:
-                temp = val.replace(":", "_")
-                pci_devs.extend(["pci_"+temp])
-            pci_id = re.sub('[:.]', '_', pci_id)
             for val in pci_devs:
                 val = val.replace(".", "_")
                 pci_xml = NodedevXML.new_from_dumpxml(val)
@@ -144,15 +120,13 @@ def run(test, params, env):
         session = vm.wait_for_login()
         # The Network configuration is generic irrespective of PF or SRIOV VF
         if device_type == "NIC":
-            output = session.cmd_output("lspci -nn")
-            nic_list_after = output.splitlines()
+            nic_list_after = vm.get_pci_devices()
             net_ip = netaddr.IPAddress(net_ip)
-            if nic_list_after == nic_list_before:
-                test.fail("passthrough Adapter not found in guest.")
+            if sorted(nic_list_after) == sorted(nic_list_before):
+                test.fail("Passthrough Adapter not found in guest.")
             else:
-                logging.debug("Adapter passthorughed to guest successfully")
-            output = session.cmd_output("lspci -nn | grep %s" % device_name)
-            nic_list = output.splitlines()
+                logging.debug("Adapter passthroughed to guest successfully")
+            nic_list = list(set(nic_list_after).difference(set(nic_list_before)))
             for val in range(len(nic_list)):
                 bus_info.append(str(nic_list[val]).split(' ', 1)[0])
                 nic_list[val] = str(nic_list[val]).split(' ', 1)[0][:-2]
@@ -192,4 +166,6 @@ def run(test, params, env):
         backup_xml.sync()
         # For SR-IOV , VF's should be cleaned up in the post-processing.
         if sriov:
-            sriov_setup.release_devs()
+            if obj.get_vfs_count() != 0:
+                for pci_pf in pci_ids:
+                    obj.set_vf(pci_pf, vf_no="0")
