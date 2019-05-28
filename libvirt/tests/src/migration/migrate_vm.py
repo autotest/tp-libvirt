@@ -2413,7 +2413,7 @@ def run(test, params, env):
             test_dict['err_msg'] = None
 
         if run_migr_front:
-            migrate_vm(test_dict)
+            migrate_vm(test, test_dict)
 
         if target_vm_name:
             # Check the libvirtd service is running on both hosts.
