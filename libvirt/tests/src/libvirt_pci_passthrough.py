@@ -17,9 +17,10 @@ def run(test, params, env):
     a). NIC:
         1. Get params.
         2. Get the pci device for specific net_name.
-        3. Attach Physical Function's/Virtual Function's to single guest
-        4. Start guest and set the ip to all the functions.
-        5. Ping to server_ip from each function
+        3. Attach Physical Function's to single guest.
+        4. Attach Virtual Function's to single/multiple guest's.
+        5. Start guest and set the ip to all the functions.
+        6. Ping to server_ip from each function
            to verify the new network device.
     b). STORAGE:
         1. Get params.
@@ -40,33 +41,35 @@ def run(test, params, env):
         if operation == "suspend":
             # Suspend
             logging.info("Performing VM Suspend with device pass-through")
-            result = virsh.suspend(vm_name, ignore_status=True, debug=True)
+            result = virsh.suspend(vm.name, ignore_status=True, debug=True)
             libvirt.check_exit_status(result)
-            libvirt.check_vm_state(vm_name, 'paused')
+            libvirt.check_vm_state(vm.name, 'paused')
             time.sleep(10)
             # Resume
             logging.info("Performing VM Resume with device pass-through")
-            result = virsh.resume(vm_name, ignore_status=True, debug=True)
+            result = virsh.resume(vm.name, ignore_status=True, debug=True)
             libvirt.check_exit_status(result)
-            libvirt.check_vm_state(vm_name, 'running')
+            libvirt.check_vm_state(vm.name, 'running')
         elif operation == "shutdown":
             # Shutdown and Start the VM
             try:
                 logging.info("Performing VM Shutdown with device pass-through")
                 vm.shutdown()
                 vm.wait_for_shutdown()
-                libvirt.check_vm_state(vm_name, 'shut off')
+                libvirt.check_vm_state(vm.name, 'shut off')
                 logging.info("Performing VM Start with device pass-through")
                 vm.start()
-                libvirt.check_vm_state(vm_name, 'running')
+                libvirt.check_vm_state(vm.name, 'running')
                 vm.wait_for_login().close()
+                time.sleep(20)
             except virt_vm.VMStartError as detail:
                 test.fail("VM failed to start."
                           "Error: %s" % str(detail))
         elif operation == "reboot":
             # Reboot
             logging.info("Performing VM Reboot with device pass-through")
-            result = virsh.reboot(vm_name, ignore_status=True, debug=True)
+            result = virsh.reboot(vm.name, ignore_status=True, debug=True)
+            time.sleep(30)
             if supported_err in result.stderr.strip():
                 logging.info("Reboot is not supported")
             else:
@@ -79,8 +82,10 @@ def run(test, params, env):
             test.fail("Passthroughed adapter not found after lifecycle operation")
 
     # get the params from params
-    vm_name = params.get("main_vm")
-    vm = env.get_vm(vm_name)
+    if params.get('libvirt_pci_SRIOV') == 'no':
+        vms = [env.get_vm(params["main_vm"])]
+    else:
+        vms = env.get_all_vms()
     operation = params.get("operation")
     supported_err = params.get("supported_err", "")
     iteration = int(params.get("iteration_val", "1"))
@@ -112,8 +117,11 @@ def run(test, params, env):
     elif (pci_dev.count("ENTER")):
         test.cancel("Please enter your Storage Adapter details for test.")
     fdisk_list_before = None
-    vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
-    backup_xml = vmxml.copy()
+    backup_xml_list = []
+    for vm in vms:
+        # Back up the xml file
+        vmxml = VMXML.new_from_inactive_dumpxml(vm.name)
+        backup_xml_list.append(vmxml.copy())
     if device_type == "NIC":
         if not vm.is_alive():
             vm.start()
@@ -130,12 +138,13 @@ def run(test, params, env):
         if sriov:
             # The SR-IOV setup of the VF's should be done by test_setup
             # PciAssignable class.
-
+            nvf_multi = len(vms) * vm_vfs
             for pf in pci_ids:
-                obj.set_vf(pf, vm_vfs)
+                obj.set_vf(pf, nvf_multi)
                 cont = obj.get_controller_type()
                 if cont == "Infiniband controller":
                     obj.set_linkvf_ib()
+            vf1 = []
             for val in pci_devs:
                 val = val.replace(".", "_")
                 # Get the virtual functions of the pci devices
@@ -147,18 +156,27 @@ def run(test, params, env):
                 for val in virt_functions:
                     pci_dev = utils_test.libvirt.pci_label_from_address(val,
                                                                         radix=16)
-                    pci_xml = NodedevXML.new_from_dumpxml(pci_dev)
+                    vf1.append(pci_dev)
+            # Assign all the VF's to single VM or equal no.of VF's for multiple VM's.
+            i = 0
+            for vm in vms:
+                for each in range(int(len(vf1) / len(vms))):
+                    pci_xml = NodedevXML.new_from_dumpxml(vf1[i])
                     pci_address = pci_xml.cap.get_address_dict()
+                    vmxml = VMXML.new_from_inactive_dumpxml(vm.name)
                     vmxml.add_hostdev(pci_address)
+                    vmxml.sync()
+                    i += 1
         else:
             for val in pci_devs:
                 val = val.replace(".", "_")
                 pci_xml = NodedevXML.new_from_dumpxml(val)
                 pci_address = pci_xml.cap.get_address_dict()
                 vmxml.add_hostdev(pci_address)
+                vmxml.sync()
 
     elif device_type == "STORAGE":
-        # Store the result of "fdisk -l" in guest.
+        # Store the 1result of "fdisk -l" in guest.
         if not vm.is_alive():
             vm.start()
         session = vm.wait_for_login()
@@ -172,59 +190,62 @@ def run(test, params, env):
     try:
         for itr in range(iteration):
             logging.info("Currently executing iteration number: '%s'", itr)
-            vmxml.sync()
-            vm.start()
-            session = vm.wait_for_login()
-            # The Network configuration is generic irrespective of PF or SRIOV VF
-            if device_type == "NIC":
-                if sorted(vm.get_pci_devices()) != sorted(nic_list_before):
-                    logging.debug("Adapter passthroughed to guest successfully")
-                else:
-                    test.fail("Passthrough adapter not found in guest.")
-                net_ip = netaddr.IPAddress(net_ip)
-                nic_list_after = vm.get_pci_devices()
-                nic_list = list(set(nic_list_after).difference(set(nic_list_before)))
-                for val in range(len(nic_list)):
-                    bus_info.append(str(nic_list[val]).split(' ', 1)[0])
-                    nic_list[val] = str(nic_list[val]).split(' ', 1)[0][:-2]
-                bus_info.sort()
-                if not sriov:
-                    # check all functions get same iommu group
-                    if len(set(nic_list)) != 1:
-                        test.fail("Multifunction Device passthroughed but "
-                                  "functions are in different iommu group")
-                # ping to server from each function
-                for val in bus_info:
-                    nic_name = str(utils_misc.get_interface_from_pci_id(val, session))
-                    session.cmd("ip addr flush dev %s" % nic_name)
-                    session.cmd("ip addr add %s/%s dev %s"
-                                % (net_ip, netmask, nic_name))
-                    session.cmd("ip link set %s up" % nic_name)
-                    # Pinging using nic_name is having issue,
-                    # hence replaced with IPAddress
-                    s_ping, o_ping = utils_test.ping(server_ip, count=5,
-                                                     interface=net_ip, timeout=30,
-                                                     session=session)
-                    logging.info(o_ping)
-                    if s_ping != 0:
-                        err_msg = "Ping test fails, error info: '%s'"
-                        test.fail(err_msg % o_ping)
-                    # Each interface should have unique IP
-                    net_ip = net_ip + 1
+            for vm in vms:
+                bus_info = []
+                vm.start()
+                session = vm.wait_for_login()
+                # The Network configuration is generic irrespective of PF or SRIOV VF
+                if device_type == "NIC":
+                    if sorted(vm.get_pci_devices()) != sorted(nic_list_before):
+                        logging.debug("Adapter passthroughed to guest successfully")
+                    else:
+                        test.fail("Passthrough adapter not found in guest.")
+                    net_ip = netaddr.IPAddress(net_ip)
+                    nic_list_after = vm.get_pci_devices()
+                    nic_list = list(set(nic_list_after).difference(set(nic_list_before)))
+                    for val in range(len(nic_list)):
+                        bus_info.append(str(nic_list[val]).split(' ', 1)[0])
+                        nic_list[val] = str(nic_list[val]).split(' ', 1)[0][:-2]
+                    bus_info.sort()
+                    if not sriov:
+                        # check all functions get same iommu group
+                        if len(set(nic_list)) != 1:
+                            test.fail("Multifunction Device passthroughed but "
+                                      "functions are in different iommu group")
+                    # ping to server from each function
+                    for val in bus_info:
+                        nic_name = str(utils_misc.get_interface_from_pci_id(val, session))
+                        session.cmd("ip addr flush dev %s" % nic_name)
+                        session.cmd("ip addr add %s/%s dev %s"
+                                    % (net_ip, netmask, nic_name))
+                        session.cmd("ip link set %s up" % nic_name)
+                        # Pinging using nic_name is having issue,
+                        # hence replaced with IPAddress
+                        s_ping, o_ping = utils_test.ping(server_ip, count=5,
+                                                         interface=net_ip, timeout=30,
+                                                         session=session)
+                        logging.info(o_ping)
+                        time.sleep(10)
+                        if s_ping != 0:
+                            err_msg = "Ping test fails, error info: '%s'"
+                            test.fail(err_msg % o_ping)
+                        # Each interface should have unique IP
+                        net_ip = net_ip + 1
 
-            elif device_type == "STORAGE":
-                # Get the result of "fdisk -l" in guest, and
-                # compare the result with fdisk_list_before.
-                output = session.cmd_output("fdisk -l|grep \"Disk identifier:\"")
-                fdisk_list_after = output.splitlines()
-                if fdisk_list_after == fdisk_list_before:
-                    test.fail("Didn't find the disk attached to guest.")
+                elif device_type == "STORAGE":
+                    # Get the result of "fdisk -l" in guest, and
+                    # compare the result with fdisk_list_before.
+                    output = session.cmd_output("fdisk -l|grep \"Disk identifier:\"")
+                    fdisk_list_after = output.splitlines()
+                    if fdisk_list_after == fdisk_list_before:
+                        test.fail("Didn't find the disk attached to guest.")
 
-            # Execute VM Life-cycle Operation with device pass-through
-            guest_lifecycle()
+                # Execute VM Life-cycle Operation with device pass-through
+                guest_lifecycle()
 
     finally:
-        backup_xml.sync()
+        for backup_xml in backup_xml_list:
+            backup_xml.sync()
         if session:
             session.close()
         # For SR-IOV , VF's should be cleaned up in the post-processing.
