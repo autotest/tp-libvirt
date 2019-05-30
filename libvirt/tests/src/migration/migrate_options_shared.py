@@ -50,24 +50,6 @@ def check_parameters(test, params):
             test.cancel("Please assign a value for %s!" % arg)
 
 
-def setup_libvirtd_conf_dict(params):
-    """
-    Read and set the required parameters to dict
-
-    :param params: the parameters to be used
-    :return: a dict that includes required parameters
-    """
-    conf_dict = {}
-    conf_dict['keepalive_interval'] = params.get("keepalive_interval", '5')
-    conf_dict['log_level'] = params.get("log_level", '3')
-    conf_dict['log_outputs'] = '"%s:file:%s"' % (params.get("log_level", '3'),
-                                                 params.get("libvirt_log",
-                                                 "/var/log/libvirt/libvirtd.log"))
-    logging.debug("Assemble libvirtd configuration dict as below:%s\n",
-                  conf_dict)
-    return conf_dict
-
-
 def run(test, params, env):
     """
     Test virsh migrate command.
@@ -357,6 +339,8 @@ def run(test, params, env):
                 check_domjobinfo(params)
             elif action == 'setmaxdowntime':
                 check_maxdowntime(params)
+            elif action == 'converge':
+                check_converge(params)
             time.sleep(3)
 
     def attach_channel_xml():
@@ -394,9 +378,62 @@ def run(test, params, env):
             remote_virsh_session.close_session()
             test.fail("After timeout '%s' seconds, "
                       "the vm state on target host should "
-                      "be 'running', but '%s' found",
-                      timeout, vm_state)
+                      "be 'running', but '%s' found" % (timeout, vm_state))
         remote_virsh_session.close_session()
+
+    def check_converge(params):
+        """
+        Handle option '--auto-converge --auto-converge-initial
+        --auto-converge-increment '.
+        'Auto converge throttle' in domjobinfo should start with
+        the initial value and increase with correct increment
+        and max value is 99.
+
+        :param params: The parameters used
+        :raise: exceptions.TestFail when unexpected or no throttle
+                       is found
+        """
+        initial = int(params.get("initial", 20))
+        increment = int(params.get("increment", 10))
+        max_converge = int(params.get("max_converge", 99))
+        allow_throttle_list = [initial + count * increment
+                               for count in range(0, (100 - initial) // increment + 1)
+                               if (initial + count * increment) < 100]
+        allow_throttle_list.append(max_converge)
+        logging.debug("The allowed 'Auto converge throttle' value "
+                      "is %s", allow_throttle_list)
+
+        throttle = 0
+        jobtype = "None"
+
+        while throttle < 100:
+            cmd_result = virsh.domjobinfo(vm_name, debug=True,
+                                          ignore_status=True)
+            if cmd_result.exit_status:
+                logging.debug(cmd_result.stderr)
+                test.error("Failed to get domjobinfo: %s" % cmd_result.stderr)
+            jobinfo = cmd_result.stdout
+            for line in jobinfo.splitlines():
+                key = line.split(':')[0]
+                if key.count("Job type"):
+                    jobtype = line.split(':')[-1].strip()
+                elif key.count("Auto converge throttle"):
+                    throttle = int(line.split(':')[-1].strip())
+                    logging.debug("Auto converge throttle:%s", str(throttle))
+            if throttle and throttle not in allow_throttle_list:
+                test.fail("Invalid auto converge throttle "
+                          "value '%s'" % throttle)
+            if throttle == 99:
+                logging.debug("'Auto converge throttle' reaches maximum "
+                              "allowed value 99")
+                break
+            if jobtype == "None" or jobtype == "Completed":
+                logging.debug("Jobtype:%s", jobtype)
+                if not throttle:
+                    test.fail("'Auto converge throttle' is "
+                              "not found in the domjobinfo")
+                break
+            time.sleep(5)
 
     def get_usable_compress_cache(pagesize):
         """
@@ -417,6 +454,26 @@ def run(test, params, env):
         logging.debug("%d is smallest one that is bigger than '%s' and "
                       "is power of 2", item, pagesize)
         return item
+
+    def update_config_file(config_type, new_conf, remote_host=True,
+                           params=None):
+        """
+        Update the specified configuration file with dict
+
+        :param config_type: Like libvirtd, qemu
+        :param new_conf: The str including new configuration
+        :param remote_host: True to also update in remote host
+        :param params: The dict including parameters to connect remote host
+        :return: utils_config.LibvirtConfigCommon object
+        """
+        logging.debug("Update configuration file")
+        cleanup_libvirtd_log(log_file)
+        config_dict = eval(new_conf)
+        updated_conf = libvirt.customize_libvirt_config(config_dict,
+                                                        config_type=config_type,
+                                                        remote_host=remote_host,
+                                                        extra_params=params)
+        return updated_conf
 
     def check_migration_res(result):
         """
@@ -476,7 +533,6 @@ def run(test, params, env):
     dest_uri = params.get("virsh_migrate_desturi")
     log_file = params.get("libvirt_log", "/var/log/libvirt/libvirtd.log")
     check_complete_job = "yes" == params.get("check_complete_job", "no")
-    config_libvirtd = "yes" == params.get("config_libvirtd", "no")
     contrl_index = params.get("new_contrl_index", None)
     asynch_migration = "yes" == params.get("asynch_migrate", "no")
     grep_str_remote_log = params.get("grep_str_remote_log", "")
@@ -565,23 +621,21 @@ def run(test, params, env):
                 objs_list.append(tls_obj)
                 tls_obj.auto_recover = True
                 tls_obj.conn_setup()
-            if not disable_verify_peer:
-                qemu_conf_dict = {"migrate_tls_x509_verify": "1"}
-                # Setup qemu configure
-                logging.debug("Configure the qemu")
-                cleanup_libvirtd_log(log_file)
-                qemu_conf = libvirt.customize_libvirt_config(qemu_conf_dict,
-                                                             config_type="qemu",
-                                                             remote_host=True,
-                                                             extra_params=params)
+
+        # Setup qemu.conf
+        qemu_conf_dict = params.get("qemu_conf_dict")
+        if qemu_conf_dict:
+            qemu_conf = update_config_file('qemu',
+                                           qemu_conf_dict,
+                                           params=params)
+
         # Setup libvirtd
-        if config_libvirtd:
-            logging.debug("Configure the libvirtd")
-            cleanup_libvirtd_log(log_file)
-            libvirtd_conf_dict = setup_libvirtd_conf_dict(params)
-            libvirtd_conf = libvirt.customize_libvirt_config(libvirtd_conf_dict,
-                                                             remote_host=True,
-                                                             extra_params=params)
+        libvirtd_conf_dict = params.get("libvirtd_conf_dict")
+        if libvirtd_conf_dict:
+            libvirtd_conf = update_config_file('libvirtd',
+                                               libvirtd_conf_dict,
+                                               params=params)
+
         # Prepare required guest xml before starting guest
         if contrl_index:
             new_xml.remove_all_device_by_type('controller')
@@ -807,13 +861,14 @@ def run(test, params, env):
                                                  is_recover=True,
                                                  config_object=qemu_conf)
 
-            if config_libvirtd:
-                logging.debug("Recover the libvirtd configuration")
-                libvirt.customize_libvirt_config(None,
-                                                 remote_host=True,
-                                                 extra_params=params,
-                                                 is_recover=True,
-                                                 config_object=libvirtd_conf)
+            for update_conf in [libvirtd_conf, qemu_conf]:
+                if update_conf:
+                    logging.debug("Recover the configurations")
+                    libvirt.customize_libvirt_config(None,
+                                                     remote_host=True,
+                                                     extra_params=params,
+                                                     is_recover=True,
+                                                     config_object=update_conf)
 
             logging.info("Remove local NFS image")
             source_file = params.get("source_file")
