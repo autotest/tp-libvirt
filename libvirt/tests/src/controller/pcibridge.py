@@ -139,7 +139,13 @@ def run(test, params, env):
 
             # Create interface to be hotplugged
             logging.info('Create interface to be hotplugged')
-            iface = create_iface(iface_model, iface_source)
+            target_bus = cur_pci_br[0].index
+            target_bus = hex(int(target_bus))
+            logging.debug('target_bus: %s', target_bus)
+
+            new_iface_kwargs = {'address': iface_kwargs['address'] % target_bus}
+            logging.debug('address: %s', new_iface_kwargs['address'])
+            iface = create_iface(iface_model, iface_source, **new_iface_kwargs)
             mac = iface.mac_address
 
             result = virsh.attach_device(vm_name, iface.xml, debug=True)
