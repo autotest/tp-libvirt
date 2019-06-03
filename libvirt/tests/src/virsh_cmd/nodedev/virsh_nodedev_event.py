@@ -178,7 +178,6 @@ def run(test, params, env):
             if nodedev_event_timestamp:
                 timestamp = time.strftime("%Y-%m-%d")
                 if timestamp in ret_output:
-                    print ("print the output with timestamp")
                     check_event_output(ret_output, expected_event_list)
             else:
                 check_event_output(ret_output, expected_event_list)

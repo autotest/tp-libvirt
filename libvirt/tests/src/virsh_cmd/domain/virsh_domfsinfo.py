@@ -8,6 +8,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
+from virttest import utils_disk
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import lv_utils
 from virttest.utils_test import libvirt
@@ -217,9 +218,9 @@ def run(test, params, env):
         if hotplug_unplug:
             session = vm.wait_for_login()
             new_device = libvirt.create_local_disk("file", path=disk_path, size="1")
-            parts_list_before_attach = libvirt.get_parts_list(session)
+            parts_list_before_attach = utils_disk.get_parts_list(session)
             hotplug_domain_disk(vm_name, disk_target, new_device)
-            parts_list_after_attach = libvirt.get_parts_list(session)
+            parts_list_after_attach = utils_disk.get_parts_list(session)
             new_part = list(set(parts_list_after_attach).difference(set(parts_list_before_attach)))[0]
             logging.debug("The new partition is %s", new_part)
             libvirt.mkfs("/dev/%s" % new_part, fs_type, session=session)

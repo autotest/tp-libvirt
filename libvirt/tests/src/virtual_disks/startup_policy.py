@@ -9,6 +9,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
+from virttest import utils_disk
 from virttest import utils_misc
 from virttest import virt_vm, remote
 from virttest.libvirt_xml import vm_xml
@@ -168,7 +169,7 @@ def run(test, params, env):
         """
         try:
             session = vm.wait_for_login()
-            new_parts = libvirt.get_parts_list(session)
+            new_parts = utils_disk.get_parts_list(session)
             logging.debug("new parted:%s", new_parts)
             added_parts = list(set(new_parts).difference(set(old_parts)))
             logging.info("Added parts:%s", added_parts)
@@ -336,7 +337,7 @@ def run(test, params, env):
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
-    old_parts = libvirt.get_parts_list(session)
+    old_parts = utils_disk.get_parts_list(session)
     session.close()
     vm.destroy(gracefully=False)
 
