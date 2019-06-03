@@ -2190,10 +2190,7 @@ def run(test, params, env):
                                                ignore_status=True).stdout
                     default_cache = params.get("default_cache")
                     if (default_cache and
-                       "Compression cache: {}".format(default_cache) in jobinfo):
-                        logging.debug("Find the default "
-                                      "compression cache: %s", default_cache)
-                    else:
+                       "Compression cache: {}".format(default_cache) not in jobinfo):
                         test.fail("Failed to find "
                                   "default compression cache %s" % default_cache)
                     cmd = "virsh domjobinfo %s %s" % (vm_name, opts)
