@@ -12,6 +12,7 @@ from virttest import virsh
 from virttest import libvirt_storage
 from virttest import libvirt_xml
 from virttest import test_setup
+from virttest import utils_disk
 from virttest.utils_test import libvirt as utlv
 from virttest.staging import service
 from virttest.libvirt_xml import secret_xml
@@ -253,14 +254,14 @@ def run(test, params, env):
             pool_vol_num -= 1
             # disk partition for new volume
             if src_pool_type == "disk":
-                vol_name = utlv.new_disk_vol_name(src_pool_name)
+                vol_name = utils_disk.new_disk_vol_name(src_pool_name)
                 if vol_name is None:
                     test.error("Fail to generate volume name")
             if by_xml:
                 # According to BZ#1138523, we need inpect the right name
                 # (disk partition) for new volume
                 if src_pool_type == "disk":
-                    vol_name = utlv.new_disk_vol_name(src_pool_name)
+                    vol_name = utils_disk.new_disk_vol_name(src_pool_name)
                     if vol_name is None:
                         test.error("Fail to generate volume name")
                 vol_arg['name'] = vol_name

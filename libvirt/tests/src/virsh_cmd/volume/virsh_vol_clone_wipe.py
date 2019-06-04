@@ -15,6 +15,7 @@ from virttest import libvirt_storage
 from virttest import data_dir
 from virttest import virsh
 from virttest import utils_misc
+from virttest import utils_disk
 from virttest import libvirt_xml
 
 from provider import libvirt_version
@@ -204,7 +205,7 @@ def run(test, params, env):
             wipe_old_vol = True
 
         if pool_type == "disk":
-            new_vol_name = utlv.new_disk_vol_name(pool_name)
+            new_vol_name = utils_disk.new_disk_vol_name(pool_name)
             if new_vol_name is None:
                 test.error("Fail to generate volume name")
             # update polkit rule as the volume name changed

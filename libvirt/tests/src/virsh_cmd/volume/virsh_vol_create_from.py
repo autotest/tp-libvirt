@@ -8,6 +8,7 @@ from virttest import data_dir
 from virttest import libvirt_storage
 from virttest.utils_test import libvirt as utlv
 from virttest import utils_misc
+from virttest import utils_disk
 
 from provider import libvirt_version
 
@@ -77,7 +78,7 @@ def run(test, params, env):
         # According to BZ#1138523, we need inpect the right name
         # (disk partition) for new volume
         if dest_pool_type == "disk":
-            dest_vol_name = utlv.new_disk_vol_name(dest_pool_name)
+            dest_vol_name = utils_disk.new_disk_vol_name(dest_pool_name)
             if dest_vol_name is None:
                 test.error("Fail to generate volume name")
         if dest_pool_type == "disk":
