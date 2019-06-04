@@ -4,6 +4,7 @@ import logging
 
 from virttest import virsh
 from virttest import data_dir
+from virttest import utils_disk
 from virttest import utils_misc
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
@@ -63,12 +64,12 @@ def run(test, params, env):
         tmp_file = "/mnt/test.file"
         try:
             # Create extra image and attach to guest, then mount
-            old_parts = libvirt.get_parts_list(session)
+            old_parts = utils_disk.get_parts_list(session)
             ret = virsh.attach_disk(vm_name, device_source, "vdd")
             if ret.exit_status:
                 test.fail("Attaching device failed before testing agent:%s" % ret.stdout.strip())
             time.sleep(1)
-            new_parts = libvirt.get_parts_list(session)
+            new_parts = utils_disk.get_parts_list(session)
             added_part = list(set(new_parts).difference(set(old_parts)))
             session.cmd("mkfs.ext3 -F /dev/{0} && mount /dev/{0} /mnt".format(added_part[0]))
 

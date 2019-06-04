@@ -12,6 +12,7 @@ from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_package
 from virttest import ceph
+from virttest import utils_disk
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
@@ -84,7 +85,7 @@ def run(test, params, env):
             session = vm.wait_for_login()
             if platform.platform().count('ppc64'):
                 time.sleep(10)
-            new_parts = libvirt.get_parts_list(session)
+            new_parts = utils_disk.get_parts_list(session)
             added_parts = list(set(new_parts).difference(set(old_parts)))
             logging.info("Added parts:%s", added_parts)
             if len(added_parts) != 1:
@@ -150,7 +151,7 @@ def run(test, params, env):
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
-    old_parts = libvirt.get_parts_list(session)
+    old_parts = utils_disk.get_parts_list(session)
     session.close()
     vm.destroy(gracefully=False)
 

@@ -11,6 +11,7 @@ from avocado.utils import process
 from virttest import remote
 from virttest import virt_vm
 from virttest import virsh
+from virttest import utils_disk
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import vol_xml
@@ -123,7 +124,7 @@ def run(test, params, env):
                 test.fail("Failed to query/install parted, make sure"
                           " that you have usable repo in guest")
 
-            new_parts = libvirt.get_parts_list(session)
+            new_parts = utils_disk.get_parts_list(session)
             added_parts = list(set(new_parts).difference(set(old_parts)))
             logging.info("Added parts:%s", added_parts)
             if len(added_parts) != 1:
@@ -197,7 +198,7 @@ def run(test, params, env):
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
-    old_parts = libvirt.get_parts_list(session)
+    old_parts = utils_disk.get_parts_list(session)
     session.close()
     vm.destroy(gracefully=False)
 

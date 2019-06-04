@@ -5,6 +5,7 @@ import platform
 import aexpect
 
 from virttest import virsh
+from virttest import utils_disk
 from virttest import utils_misc
 from virttest import virt_vm, remote
 from virttest.utils_test import libvirt
@@ -40,7 +41,7 @@ def run(test, params, env):
             session = vm.wait_for_login()
             if platform.platform().count('ppc64'):
                 time.sleep(10)
-            new_partitions = libvirt.get_parts_list(session)
+            new_partitions = utils_disk.get_parts_list(session)
             added_partitions = list(set(new_partitions).difference(set(old_partitions)))
             if not added_partitions:
                 logging.debug("No new partitions found in vm.")
@@ -188,7 +189,7 @@ def run(test, params, env):
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
-    old_partitions = libvirt.get_parts_list(session)
+    old_partitions = utils_disk.get_parts_list(session)
     session.close()
     vm.destroy(gracefully=False)
 
