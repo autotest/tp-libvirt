@@ -44,6 +44,12 @@ def run(test, params, env):
     checkpoint = params.get('checkpoint', '')
     error_list = []
 
+    # create different sasl_user name for different job
+    if output_mode == 'rhev':
+        params.update({'sasl_user': params.get("sasl_user") +
+                       utils_misc.generate_random_string(3)})
+        logging.info('sals user name is %s' % params.get("sasl_user"))
+
     def log_fail(msg):
         """
         Log error and update error list
@@ -85,14 +91,16 @@ def run(test, params, env):
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                     timeout=v2v_timeout):
                     test.fail('Import VM failed')
+            # Create vmchecker before virsh.start so that the vm can be undefined
+            # if started failed.
+            vmchecker = VMChecker(test, params, env)
+            params['vmchecker'] = vmchecker
             if output_mode == 'libvirt':
                 try:
                     virsh.start(vm_name, debug=True, ignore_status=False)
                 except Exception as e:
                     test.fail('Start vm failed: %s' % str(e))
             # Check guest following the checkpoint document after convertion
-            vmchecker = VMChecker(test, params, env)
-            params['vmchecker'] = vmchecker
             if params.get('skip_vm_check') != 'yes':
                 if checkpoint != 'win2008r2_ostk':
                     ret = vmchecker.run()
@@ -106,7 +114,9 @@ def run(test, params, env):
         if log_check:
             log_fail(log_check)
         if len(error_list):
-            test.fail('%d checkpoints failed: %s' % (len(error_list), error_list))
+            test.fail(
+                '%d checkpoints failed: %s' %
+                (len(error_list), error_list))
 
     try:
         v2v_params = {

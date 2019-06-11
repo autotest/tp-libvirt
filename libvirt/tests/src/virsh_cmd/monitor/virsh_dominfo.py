@@ -1,7 +1,4 @@
-from avocado.utils import process
-
-from virttest import libvirt_vm
-from virttest import remote
+from virttest import ssh_key
 from virttest import virsh
 from virttest import utils_libvirtd
 
@@ -30,36 +27,10 @@ def run(test, params, env):
     extra = params.get("dominfo_extra", "")
     status_error = params.get("status_error", "no")
     libvirtd = params.get("libvirtd", "on")
-
-    def remote_test(params, vm_name):
-        """
-        Test remote case.
-        """
-        remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
-        local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
-        remote_pwd = params.get("remote_pwd", "")
-        status = 0
-        output = ""
-        err = ""
-        try:
-            if remote_ip.count("EXAMPLE.COM") or local_ip.count("EXAMPLE.COM"):
-                test.cancel("remote_ip and/or local_ip parameters "
-                            "not changed from default values.")
-            uri = libvirt_vm.complete_uri(local_ip)
-            session = remote.remote_login("ssh", remote_ip, "22", "root",
-                                          remote_pwd, "#")
-            session.cmd_output('LANG=C')
-            command = "virsh -c %s dominfo %s" % (uri, vm_name)
-            status, output = session.cmd_status_output(command,
-                                                       internal_timeout=5)
-            if status != 0:
-                err = output
-            session.close()
-        except process.CmdError:
-            status = 1
-            output = ""
-            err = "remote test failed"
-        return status, output, err
+    remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
+    remote_pwd = params.get("remote_pwd", "")
+    remote_user = params.get("remote_user", "root")
+    remote_uri = params.get("remote_uri")
 
     # run test case
     if vm_ref == "id":
@@ -76,13 +47,15 @@ def run(test, params, env):
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()
 
-    if vm_ref != "remote":
-        result = virsh.dominfo(vm_ref, ignore_status=True)
-        status = result.exit_status
-        output = result.stdout.strip()
-        err = result.stderr.strip()
-    else:
-        status, output, err = remote_test(params, vm_name)
+    if remote_uri:
+        if remote_ip.count("EXAMPLE.COM"):
+            test.cancel("please configure remote_ip first.")
+        ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
+
+    result = virsh.dominfo(vm_ref, ignore_status=True, debug=True, uri=remote_uri)
+    status = result.exit_status
+    output = result.stdout.strip()
+    err = result.stderr.strip()
 
     # recover libvirtd service start
     if libvirtd == "off":

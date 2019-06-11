@@ -11,6 +11,8 @@ from virttest import data_dir
 from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_package
+from virttest import ceph
+from virttest import utils_disk
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
@@ -83,7 +85,7 @@ def run(test, params, env):
             session = vm.wait_for_login()
             if platform.platform().count('ppc64'):
                 time.sleep(10)
-            new_parts = libvirt.get_parts_list(session)
+            new_parts = utils_disk.get_parts_list(session)
             added_parts = list(set(new_parts).difference(set(old_parts)))
             logging.info("Added parts:%s", added_parts)
             if len(added_parts) != 1:
@@ -149,7 +151,7 @@ def run(test, params, env):
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
-    old_parts = libvirt.get_parts_list(session)
+    old_parts = utils_disk.get_parts_list(session)
     session.close()
     vm.destroy(gracefully=False)
 
@@ -226,8 +228,12 @@ def run(test, params, env):
             enable_auth = "yes" == params.get("enable_auth")
             key_file = os.path.join(data_dir.get_tmp_dir(), "ceph.key")
             key_opt = ""
+            # Prepare a blank params to confirm if delete the configure at the end of the test
+            ceph_cfg = ""
             if not utils_package.package_install(["ceph-common"]):
                 test.error("Failed to install ceph-common")
+            # Create config file if it doesn't exist
+            ceph_cfg = ceph.create_config_file(ceph_mon_ip)
             if enable_auth:
                 # If enable auth, prepare a local file to save key
                 if ceph_client_name and ceph_client_key:
@@ -339,6 +345,9 @@ def run(test, params, env):
                                              vol_name=gluster_vol_name,
                                              pool_name=gluster_pool_name)
         elif backend_storage_type == "ceph":
+            # Remove ceph configure file if created.
+            if ceph_cfg:
+                os.remove(ceph_cfg)
             cmd = ("rbd -m {0} {1} info {2} && rbd -m {0} {1} rm "
                    "{2}".format(ceph_mon_ip, key_opt, ceph_disk_name))
             cmd_result = process.run(cmd, ignore_status=True, shell=True)

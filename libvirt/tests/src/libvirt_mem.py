@@ -2,7 +2,9 @@ import os
 import re
 import ast
 import logging
+import platform
 import tempfile
+import random
 
 from six.moves import xrange
 
@@ -11,12 +13,14 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import utils_config
 from virttest import utils_numeric
+from virttest import utils_hotplug
 from virttest import virt_vm
 from virttest import data_dir
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
-from virttest.libvirt_xml.devices import memory
+from virttest.staging import utils_memory
 from virttest.staging.utils_memory import drop_caches
 from virttest.staging.utils_memory import read_from_numastat
 
@@ -41,15 +45,6 @@ def run(test, params, env):
     new_max_mem = None
     new_cur_mem = None
 
-    def get_vm_memtotal(session):
-        """
-        Get guest total memory
-        """
-        proc_meminfo = session.cmd_output("cat /proc/meminfo")
-        # verify format and units are expected
-        return int(re.search(r'MemTotal:\s+(\d+)\s+[kK]B',
-                             proc_meminfo).group(1))
-
     def consume_vm_mem(size=1000, timeout=360):
         """
         To consume guest memory, default size is 1000M
@@ -63,9 +58,50 @@ def run(test, params, env):
         session.cmd(sh_cmd, timeout=timeout)
         session.close()
 
-    def check_qemu_cmd():
+    def mount_hugepages(page_size):
+        """
+        To mount hugepages
+
+        :param page_size: unit is kB, it can be 4,2048,1048576,etc
+        """
+        if page_size == 4:
+            perm = ""
+        else:
+            perm = "pagesize=%dK" % page_size
+
+        tlbfs_status = utils_misc.is_mounted("hugetlbfs", "/dev/hugepages",
+                                             "hugetlbfs")
+        if tlbfs_status:
+            utils_misc.umount("hugetlbfs", "/dev/hugepages", "hugetlbfs")
+        utils_misc.mount("hugetlbfs", "/dev/hugepages", "hugetlbfs", perm)
+
+    def setup_hugepages(page_size=2048, shp_num=2000):
+        """
+        To setup hugepages
+
+        :param page_size: unit is kB, it can be 4,2048,1048576,etc
+        :param shp_num: number of hugepage, string type
+        """
+        mount_hugepages(page_size)
+        utils_memory.set_num_huge_pages(shp_num)
+        config.hugetlbfs_mount = ["/dev/hugepages"]
+        utils_libvirtd.libvirtd_restart()
+
+    def restore_hugepages(page_size=4):
+        """
+        To recover hugepages
+        :param page_size: unit is kB, it can be 4,2048,1048576,etc
+        """
+        mount_hugepages(page_size)
+        config.restore()
+        utils_libvirtd.libvirtd_restart()
+
+    def check_qemu_cmd(max_mem_rt, tg_size):
         """
         Check qemu command line options.
+        :param max_mem_rt: size of max memory
+        :param tg_size: Target hotplug memory size
+        :return: None
         """
         cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
         if max_mem_rt:
@@ -89,7 +125,9 @@ def run(test, params, env):
                         (mem_addr['slot'], int(mem_addr['base'], 16)))
             cmd += "'"
         # Run the command
-        process.run(cmd, shell=True)
+        result = process.run(cmd, shell=True, verbose=True, ignore_status=True)
+        if result.exit_status:
+            test.fail('Qemu command check fail.')
 
     def check_guest_meminfo(old_mem, check_option):
         """
@@ -106,8 +144,8 @@ def run(test, params, env):
         session.cmd(cmd)
         # Wait a while for new memory to be detected.
         utils_misc.wait_for(
-            lambda: get_vm_memtotal(session) != int(old_mem), 20, first=15.0)
-        new_mem = get_vm_memtotal(session)
+            lambda: vm.get_totalmem_sys(online) != int(old_mem), 30, first=20.0)
+        new_mem = vm.get_totalmem_sys(online)
         session.close()
         logging.debug("Memtotal on guest: %s", new_mem)
         no_of_times = 1
@@ -177,6 +215,41 @@ def run(test, params, env):
             utils_misc.log_last_traceback()
             test.fail("Found unmatched memory setting from domain xml")
 
+    def check_mem_align():
+        """
+        Check if set memory align to 256
+        """
+        dom_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        dom_mem = {}
+        dom_mem['maxMemory'] = int(dom_xml.max_mem_rt)
+        dom_mem['memory'] = int(dom_xml.memory)
+        dom_mem['currentMemory'] = int(dom_xml.current_mem)
+
+        cpuxml = dom_xml.cpu
+        numa_cell = cpuxml.numa_cell
+        dom_mem['numacellMemory'] = int(numa_cell[0]['memory'])
+        sum_numa_mem = sum([int(cell['memory']) for cell in numa_cell])
+
+        attached_mem = dom_xml.get_devices(device_type='memory')[0]
+        dom_mem['attached_mem'] = attached_mem.target.size
+
+        all_align = True
+        for key in dom_mem:
+            logging.info('%-20s:%15d', key, dom_mem[key])
+            if dom_mem[key] % 256:
+                logging.error('%s not align to 256', key)
+                all_align = False
+
+        if not all_align:
+            test.fail('Memory not align to 256')
+
+        if dom_mem['memory'] == sum_numa_mem + dom_mem['attached_mem']:
+            logging.info('Check Pass: Memory is equal to (all numa memory + memory device)')
+        else:
+            test.fail('Memory is not equal to (all numa memory + memory device)')
+
+        return dom_mem
+
     def check_save_restore():
         """
         Test save and restore operation
@@ -192,41 +265,14 @@ def run(test, params, env):
         # Login to check vm status
         vm.wait_for_login().close()
 
-    def create_mem_xml():
-        """
-        Create memory device xml.
-        """
-        mem_xml = memory.Memory()
-        mem_model = params.get("mem_model", "dimm")
-        mem_xml.mem_model = mem_model
-        if tg_size:
-            tg_xml = memory.Memory.Target()
-            tg_xml.size = int(tg_size)
-            tg_xml.size_unit = tg_sizeunit
-            # There is support for non-numa node
-            if numa_cells:
-                tg_xml.node = int(tg_node)
-            mem_xml.target = tg_xml
-        if pg_size:
-            src_xml = memory.Memory.Source()
-            src_xml.pagesize = int(pg_size)
-            src_xml.pagesize_unit = pg_unit
-            src_xml.nodemask = node_mask
-            mem_xml.source = src_xml
-        if mem_addr:
-            mem_xml.address = mem_xml.new_mem_address(
-                **{"attrs": mem_addr})
-
-        logging.debug("Memory device xml: %s", mem_xml)
-        return mem_xml.copy()
-
-    def add_device(dev_xml, at_error=False):
+    def add_device(dev_xml, attach, at_error=False):
         """
         Add memory device by attachment or modify domain xml.
         """
-        if attach_device:
+        if attach:
             ret = virsh.attach_device(vm_name, dev_xml.xml,
-                                      flagstr=attach_option)
+                                      flagstr=attach_option,
+                                      debug=True)
             libvirt.check_exit_status(ret, at_error)
         else:
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
@@ -247,6 +293,8 @@ def run(test, params, env):
             vmxml.max_mem_rt = int(max_mem_rt)
             vmxml.max_mem_rt_slots = max_mem_slots
             vmxml.max_mem_rt_unit = mem_unit
+        if memory_val:
+            vmxml.memory = int(memory_val)
         if vcpu:
             vmxml.vcpu = int(vcpu)
             vcpu_placement = params.get("vcpu_placement", "static")
@@ -268,8 +316,8 @@ def run(test, params, env):
             if align_mem_values:
                 for cell in range(cells.__len__()):
                     memory_value = str(utils_numeric.align_value(
-                                           cells[cell]["memory"],
-                                           align_to_value))
+                        cells[cell]["memory"],
+                        align_to_value))
                     cells[cell]["memory"] = memory_value
             cpu_xml = vm_xml.VMCPUXML()
             cpu_xml.xml = "<cpu><numa/></cpu>"
@@ -320,15 +368,23 @@ def run(test, params, env):
     max_mem = params.get("max_mem")
     max_mem_rt = params.get("max_mem_rt")
     max_mem_slots = params.get("max_mem_slots", "16")
+    memory_val = params.get('memory_val', '')
+    mem_align = 'yes' == params.get('mem_align', 'no')
+    hot_plug = 'yes' == params.get('hot_plug', 'no')
     cur_mem = params.get("current_mem")
     numa_cells = params.get("numa_cells", "").split()
     set_max_mem = params.get("set_max_mem")
     align_mem_values = "yes" == params.get("align_mem_values", "no")
     align_to_value = int(params.get("align_to_value", "65536"))
-    known_unplug_errors = []
-    known_unplug_errors.append(params.get("known_unplug_errors"))
+    hot_reboot = "yes" == params.get("hot_reboot", "no")
+    rand_reboot = "yes" == params.get("rand_reboot", "no")
+    guest_known_unplug_errors = []
+    guest_known_unplug_errors.append(params.get("guest_known_unplug_errors"))
+    host_known_unplug_errors = []
+    host_known_unplug_errors.append(params.get("host_known_unplug_errors"))
 
     # params for attached device
+    mem_model = params.get("mem_model", "dimm")
     tg_size = params.get("tg_size")
     tg_sizeunit = params.get("tg_sizeunit", 'KiB')
     tg_node = params.get("tg_node", 0)
@@ -341,12 +397,23 @@ def run(test, params, env):
     numa_memnode = [ast.literal_eval(x)
                     for x in params.get("numa_memnode", "").split()]
     at_times = int(params.get("attach_times", 1))
+    online = params.get("mem_online", "no")
+
+    config = utils_config.LibvirtQemuConfig()
+    setup_hugepages_flag = params.get("setup_hugepages")
+    if (setup_hugepages_flag == "yes"):
+        setup_hugepages(int(pg_size))
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     if not libvirt_version.version_compare(1, 2, 14):
         test.cancel("Memory hotplug not supported in current libvirt version.")
+
+    if 'align_256m' in params.get('name', ''):
+        arch = platform.machine()
+        if arch.lower() != 'ppc64le':
+            test.cancel('This case is for ppc64le only.')
 
     if align_mem_values:
         # Rounding the following values to 'align'
@@ -368,22 +435,39 @@ def run(test, params, env):
         if attach_device:
             vm.start()
             session = vm.wait_for_login()
-            old_mem_total = get_vm_memtotal(session)
+            old_mem_total = vm.get_totalmem_sys(online)
             logging.debug("Memtotal on guest: %s", old_mem_total)
             session.close()
         dev_xml = None
 
         # To attach the memory device.
-        if add_mem_device:
+        if add_mem_device and not hot_plug:
             at_times = int(params.get("attach_times", 1))
-            dev_xml = create_mem_xml()
+            dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size, mem_addr,
+                                                   tg_sizeunit, pg_unit, tg_node,
+                                                   node_mask, mem_model)
+            randvar = 0
+            if rand_reboot:
+                rand_value = random.randint(15, 25)
+                logging.debug("reboots at %s", rand_value)
             for x in xrange(at_times):
                 # If any error excepted, command error status should be
                 # checked in the last time
+                randvar = randvar + 1
+                logging.debug("attaching device count = %s", x)
                 if x == at_times - 1:
-                    add_device(dev_xml, attach_error)
+                    add_device(dev_xml, attach_device, attach_error)
                 else:
-                    add_device(dev_xml)
+                    add_device(dev_xml, attach_device)
+                if hot_reboot:
+                    vm.reboot()
+                    vm.wait_for_login()
+                if rand_reboot and randvar == rand_value:
+                    vm.reboot()
+                    vm.wait_for_login()
+                    randvar = 0
+                    rand_value = random.randint(15, 25)
+                    logging.debug("reboots at %s", rand_value)
 
         # Check domain xml after attach device.
         if test_dom_xml:
@@ -408,6 +492,9 @@ def run(test, params, env):
                 if start_error:
                     pass
                 else:
+                    except_msg = "memory hotplug isn't supported by this QEMU binary"
+                    if except_msg in detail.reason:
+                        test.cancel(detail)
                     test.fail(detail)
 
         # Set memory operation
@@ -417,13 +504,32 @@ def run(test, params, env):
                                   flagstr=max_mem_option)
             libvirt.check_exit_status(ret, maxmem_error)
 
+        # Hotplug memory device
+        if add_mem_device and hot_plug:
+            process.run('ps -ef|grep qemu', shell=True, verbose=True)
+            session = vm.wait_for_login()
+            original_mem = vm.get_totalmem_sys()
+            dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
+                                                   mem_addr, tg_sizeunit,
+                                                   pg_unit, tg_node,
+                                                   node_mask, mem_model)
+            add_device(dev_xml, True)
+            mem_after = vm.get_totalmem_sys()
+            params['delta'] = mem_after - original_mem
+
         # Check domain xml after start the domain.
         if test_dom_xml:
             check_dom_xml(at_mem=attach_device)
 
+        if mem_align:
+            dom_mem = check_mem_align()
+            check_qemu_cmd(dom_mem['maxMemory'], dom_mem['attached_mem'])
+            if hot_plug and params['delta'] != dom_mem['attached_mem']:
+                test.fail('Memory after attach not equal to original mem + attached mem')
+
         # Check qemu command line
         if test_qemu_cmd:
-            check_qemu_cmd()
+            check_qemu_cmd(max_mem_rt, tg_size)
 
         # Check guest meminfo after attachment
         if (attach_device and not attach_option.count("config") and
@@ -469,18 +575,33 @@ def run(test, params, env):
         unplug_failed_with_known_error = False
         if detach_device:
             if not dev_xml:
-                dev_xml = create_mem_xml()
+                dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
+                                                       mem_addr, tg_sizeunit,
+                                                       pg_unit, tg_node,
+                                                       node_mask, mem_model)
             for x in xrange(at_times):
                 ret = virsh.detach_device(vm_name, dev_xml.xml,
                                           flagstr=attach_option)
+                if ret.stderr and host_known_unplug_errors:
+                    for known_error in host_known_unplug_errors:
+                        if (known_error[0] == known_error[-1]) and \
+                           known_error.startswith(("'")):
+                            known_error = known_error[1:-1]
+                        if known_error in ret.stderr:
+                            unplug_failed_with_known_error = True
+                            logging.debug("Known error occured in Host, while"
+                                          " hot unplug: %s", known_error)
+                if unplug_failed_with_known_error:
+                    break
                 try:
                     libvirt.check_exit_status(ret, detach_error)
                 except Exception as detail:
                     dmesg_file = tempfile.mktemp(dir=data_dir.get_tmp_dir())
                     try:
                         session = vm.wait_for_login()
-                        utils_misc.verify_dmesg(dmesg_log_file=dmesg_file, ignore_result=True, session=session,
-                                                level_check=5)
+                        utils_misc.verify_dmesg(dmesg_log_file=dmesg_file,
+                                                ignore_result=True,
+                                                session=session, level_check=5)
                     except Exception:
                         session.close()
                         test.fail("After memory unplug Unable to connect to VM"
@@ -488,7 +609,8 @@ def run(test, params, env):
                     session.close()
                     if os.path.exists(dmesg_file):
                         with open(dmesg_file, 'r') as f:
-                            flag = re.findall(r'memory memory\d+?: Offline failed', f.read())
+                            flag = re.findall(
+                                r'memory memory\d+?: Offline failed', f.read())
                         if not flag:
                             # The attached memory is used by vm, and it could not be unplugged
                             # The result is expected
@@ -500,14 +622,16 @@ def run(test, params, env):
             dmesg_file = tempfile.mktemp(dir=data_dir.get_tmp_dir())
             try:
                 session = vm.wait_for_login()
-                utils_misc.verify_dmesg(dmesg_log_file=dmesg_file, ignore_result=True, session=session, level_check=4)
+                utils_misc.verify_dmesg(dmesg_log_file=dmesg_file,
+                                        ignore_result=True, session=session,
+                                        level_check=4)
             except Exception:
                 session.close()
                 test.fail("After memory unplug Unable to connect to VM"
                           " or unable to collect dmesg")
             session.close()
-            if known_unplug_errors and os.path.exists(dmesg_file):
-                for known_error in known_unplug_errors:
+            if guest_known_unplug_errors and os.path.exists(dmesg_file):
+                for known_error in guest_known_unplug_errors:
                     if (known_error[0] == known_error[-1]) and \
                        known_error.startswith(("'")):
                         known_error = known_error[1:-1]
@@ -534,4 +658,6 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
         logging.info("Restoring vm...")
+        if (setup_hugepages_flag == "yes"):
+            restore_hugepages()
         vmxml_backup.sync()

@@ -51,6 +51,7 @@ def run(test, params, env):
         new_iface.target = {'dev': iface_target}
         new_filterref = new_iface.new_filterref(**filterref_dict)
         new_iface.filterref = new_filterref
+        new_iface.model = "virtio"
         logging.debug("new interface xml is: %s" % new_iface)
 
         # Attach interface to vm

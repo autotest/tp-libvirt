@@ -15,6 +15,7 @@ from virttest import utils_sasl
 from virttest import libvirt_vm
 from virttest import data_dir
 from virttest import utils_selinux
+from virttest import ssh_key
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
@@ -30,33 +31,83 @@ def run(test, params, env):
             test.cancel("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
+    hypervisor = params.get("hypervisor")
     vm_name = params.get('main_vm', 'EXAMPLE')
     target = params.get('target')
     remote_host = params.get('remote_host', 'EXAMPLE')
+    input_mode = params.get("input_mode")
     output_mode = params.get('output_mode')
     output_format = params.get('output_format')
-    output_storage = params.get('output_storage', 'default')
+    source_user = params.get("username", "root")
+    storage = params.get('output_storage')
+    storage_name = params.get('storage_name')
     bridge = params.get('bridge')
     network = params.get('network')
     ntp_server = params.get('ntp_server')
+    vpx_dc = params.get("vpx_dc")
+    esx_ip = params.get("esx_hostname")
     address_cache = env.get('address_cache')
     pool_name = params.get('pool_name', 'v2v_test')
     pool_type = params.get('pool_type', 'dir')
     pool_target = params.get('pool_target_path', 'v2v_pool')
     pvt = utlv.PoolVolumeTest(test, params)
-    v2v_timeout = int(params.get('v2v_timeout', 1200))
+    v2v_opts = params.get('v2v_opts', '-v -x')
+    v2v_timeout = int(params.get('v2v_timeout', 3600))
     skip_check = 'yes' == params.get('skip_check', 'no')
     status_error = 'yes' == params.get('status_error', 'no')
     checkpoint = params.get('checkpoint', '')
     debug_kernel = 'debug_kernel' == checkpoint
-    multi_kernel_list = ['multi_kernel', 'debug_kernel']
-    backup_list = ['virtio_on', 'virtio_off', 'floppy', 'floppy_devmap',
-                   'fstab_cdrom', 'fstab_virtio', 'multi_disks', 'sata_disk',
-                   'network_virtio', 'network_rtl8139', 'network_e1000',
-                   'multi_netcards', 'spice', 'spice_encrypt', 'spice_qxl',
+    backup_list = ['floppy', 'floppy_devmap', 'fstab_cdrom',
+                   'sata_disk', 'network_rtl8139', 'network_e1000',
+                   'spice', 'spice_encrypt', 'spice_qxl',
                    'spice_cirrus', 'vnc_qxl', 'vnc_cirrus', 'blank_2nd_disk',
                    'listen_none', 'listen_socket', 'only_net', 'only_br']
     error_list = []
+
+    # Prepare step for different hypervisor
+    if hypervisor == "esx":
+        source_ip = params.get("vpx_hostname")
+        source_pwd = params.get("vpx_password")
+        vpx_passwd_file = params.get("vpx_passwd_file")
+        # Create password file to access ESX hypervisor
+        with open(vpx_passwd_file, 'w') as f:
+            f.write(source_pwd)
+    elif hypervisor == "xen":
+        source_ip = params.get("xen_hostname")
+        source_pwd = params.get("xen_host_passwd")
+        # Set up ssh access using ssh-agent and authorized_keys
+        ssh_key.setup_ssh_key(source_ip, source_user, source_pwd)
+        try:
+            utils_misc.add_identities_into_ssh_agent()
+        except Exception as e:
+            process.run("ssh-agent -k")
+            test.error("Fail to setup ssh-agent \n %s" % str(e))
+    elif hypervisor == "kvm":
+        source_ip = None
+        source_pwd = None
+    else:
+        test.cancel("Unspported hypervisor: %s" % hypervisor)
+
+    # Create libvirt URI
+    v2v_uri = utils_v2v.Uri(hypervisor)
+    remote_uri = v2v_uri.get_uri(source_ip, vpx_dc, esx_ip)
+    logging.debug("libvirt URI for converting: %s", remote_uri)
+
+    # Make sure the VM exist before convert
+    v2v_virsh = None
+    close_virsh = False
+    if hypervisor == 'kvm':
+        v2v_virsh = virsh
+    else:
+        virsh_dargs = {'uri': remote_uri,
+                       'remote_ip': source_ip,
+                       'remote_user': source_user,
+                       'remote_pwd': source_pwd,
+                       'debug': True}
+        v2v_virsh = virsh.VirshPersistent(**virsh_dargs)
+        close_virsh = True
+    if not v2v_virsh.domain_exists(vm_name):
+        test.error("VM '%s' not exist" % vm_name)
 
     def log_fail(msg):
         """
@@ -111,39 +162,48 @@ def run(test, params, env):
         else:
             log_fail("Disk counts is wrong")
 
-    @vm_shell
-    def check_vmlinuz_initramfs(v2v_result):
+    def check_vmlinuz_initramfs(v2v_output):
         """
         Check if vmlinuz matches initramfs on multi-kernel case
         """
-        logging.info('Checking if vmlinuz matches initramfs')
-        kernels = re.search(
-            'kernel packages in this guest:.*?(\(kernel.*?\).*?){2,}',
-            v2v_result, re.DOTALL)
-        try:
-            lines = kernels.group(0)
-            kernel_list = re.findall('\((.*?)\)', lines)
-            for kernel in kernel_list:
-                vmlinuz = re.search(r'/boot/vmlinuz-(.*?),', kernel).group(1)
-                initramfs = \
-                    re.search(r'/boot/initramfs-(.*?)\.img', kernel).group(1)
-                logging.debug('vmlinuz version is: %s' % vmlinuz)
-                logging.debug('initramfs version is: %s' % initramfs)
-                if vmlinuz != initramfs:
-                    log_fail('vmlinuz not match with initramfs')
-        except Exception as e:
-            test.error('Error on find kernel info \n %s' % str(e))
+        logging.debug('Checking if vmlinuz matches initramfs')
+        kernel_strs = re.findall('(\* kernel.*?\/boot\/config){1,}', v2v_output, re.DOTALL)
+        if len(kernel_strs) == 0:
+            test.error("Not find kernel information")
+
+        # Remove duplicate items by set
+        logging.debug('Boots and kernel info: %s' % set(kernel_strs))
+        for str_i in set(kernel_strs):
+            # Fine all versions
+            kernel_vers = re.findall('((?:\d+\.){1,}\d+-(?:\d+\.){1,}\w+)', str_i)
+            logging.debug('kernel related versions: %s' % kernel_vers)
+            # kernel_vers = [kernel, vmlinuz, initramfs] and they should be same
+            if len(kernel_vers) < 3 or len(set(kernel_vers)) != 1:
+                log_fail("kernel versions does not match: %s" % kernel_vers)
 
     def check_boot_kernel(vmcheck):
         """
         Check if converted vm use the latest kernel
         """
-        current_kernel = vmcheck.session.cmd('uname -r').strip()
-        logging.debug('Current kernel: %s' % current_kernel)
-        if current_kernel == '3.10.0-799.el7.x86_64':
-            logging.debug('The kernel is the latest kernel')
-        else:
-            log_fail('VM should choose lastest kernel not %s' % current_kernel)
+        _, current_kernel = vmcheck.run_cmd('uname -r')
+
+        if 'debug' in current_kernel:
+            log_fail('Current kernel is a debug kernel: %s' % current_kernel)
+
+        # 'sort -V' can satisfy our testing, even though it's not strictly perfect.
+        # The last one is always the latest kernel version
+        kernel_normal_list = vmcheck.run_cmd('rpm -q kernel | sort -V')[1].strip().splitlines()
+        status, kernel_debug = vmcheck.run_cmd('rpm -q kernel-debug')
+        if status != 0:
+            test.error('Not found kernel-debug package')
+        all_kernel_list = kernel_normal_list + kernel_debug.strip().splitlines()
+        logging.debug('All kernels: %s' % all_kernel_list)
+        if len(all_kernel_list) < 3:
+            test.error('Needs at least 2 normal kernels and 1 debug kernel in VM')
+
+        # The latest non-debug kernel must be kernel_normal_list[-1]
+        if current_kernel.strip() != kernel_normal_list[-1].lstrip('kernel-'):
+            log_fail('Check boot kernel failed')
 
     def check_floppy_exist(vmcheck):
         """
@@ -185,7 +245,7 @@ def run(test, params, env):
                 continue
             target = disk.find('target')
             target.set('bus', dest)
-            target.set('dev', dev_table[dest] + 'd' + string.lowercase[index])
+            target.set('dev', dev_table[dest] + 'd' + string.ascii_lowercase[index])
             disk.remove(disk.find('address'))
             index += 1
         vmxml.sync()
@@ -269,7 +329,7 @@ def run(test, params, env):
         """
         Specify entry in fstab file
         """
-        type_list = ['cdrom', 'uuid', 'label', 'virtio', 'sr0', 'invalid']
+        type_list = ['cdrom', 'uuid', 'label', 'sr0', 'invalid']
         if type not in type_list:
             test.error('Not support %s in fstab' % type)
         session = kwargs['session']
@@ -294,7 +354,7 @@ def run(test, params, env):
             line = utils_misc.generate_random_string(6)
             session.cmd('echo "%s" >> /etc/fstab' % line)
         else:
-            map = {'uuid': 'UUID', 'label': 'LABEL', 'virtio': '/vd'}
+            map = {'uuid': 'UUID', 'label': 'LABEL'}
             logging.info(type)
             if session.cmd_status('cat /etc/fstab|grep %s' % map[type]):
                 # Specify device by UUID
@@ -304,15 +364,6 @@ def run(test, params, env):
                     # Replace path for UUID
                     origin = entry[0].strip(':')
                     replace = entry[1].replace('"', '')
-                # Specify virtio device
-                elif type == 'virtio':
-                    entry = session.cmd('cat /etc/fstab|grep /boot').strip()
-                    # Get the ID (no matter what, usually UUID)
-                    origin = entry.split()[0]
-                    key = origin.split('=')[1]
-                    blkinfo = session.cmd('blkid|grep %s' % key).strip()
-                    # Replace with virtio disk path
-                    replace = blkinfo.split()[0].strip(':')
                 # Specify device by label
                 elif type == 'label':
                     blk = make_label(session)
@@ -391,8 +442,11 @@ def run(test, params, env):
         Return firewalld service status of vm
         """
         session = kwargs['session']
+        # Example: Active: active (running) since Fri 2019-03-15 01:03:39 CST; 3min 48s ago
         firewalld_status = session.cmd('systemctl status firewalld.service|grep Active:',
                                        ok_status=[0, 3]).strip()
+        # Exclude the time string because time changes if vm restarts
+        firewalld_status = re.search('Active:\s\w*\s\(\w*\)', firewalld_status).group()
         logging.info('Status of firewalld: %s', firewalld_status)
         params[checkpoint] = firewalld_status
 
@@ -403,6 +457,8 @@ def run(test, params, env):
         firewalld_status = vmcheck.session.cmd('systemctl status '
                                                'firewalld.service|grep Active:',
                                                ok_status=[0, 3]).strip()
+        # Exclude the time string because time changes if vm restarts
+        firewalld_status = re.search('Active:\s\w*\s\(\w*\)', firewalld_status).group()
         logging.info('Status of firewalld after v2v: %s', firewalld_status)
         if firewalld_status != expect_status:
             log_fail('Status of firewalld changed after conversion')
@@ -415,7 +471,10 @@ def run(test, params, env):
         session = kwargs['session']
         for cmd in cmd_list:
             logging.info('Send command "%s"', cmd)
-            status, output = session.cmd_status_output(cmd)
+            # 'chronyc waitsync' needs more than 2mins to sync clock,
+            # We set timeout to 300s will not have side-effects for other
+            # commands.
+            status, output = session.cmd_status_output(cmd, timeout=300)
             logging.debug('Command output:\n%s', output)
             if status != 0:
                 test.error('Command "%s" failed' % cmd)
@@ -426,9 +485,12 @@ def run(test, params, env):
         Check time drift after convertion.
         """
         logging.info('Check time drift')
-        output = vmcheck.session.cmd('ntpdate -q %s' % ntp_server)
+        output = vmcheck.session.cmd('chronyc tracking')
         logging.debug(output)
-        drift = abs(float(output.split()[-2]))
+        if 'Not synchronised' in output:
+            log_fail('Time not synchronised')
+        lst_offset = re.search('Last offset *?: *(.*) ', output).group(1)
+        drift = abs(float(lst_offset))
         logging.debug('Time drift is: %f', drift)
         if drift > 3:
             log_fail('Time drift exceeds 3 sec')
@@ -480,8 +542,11 @@ def run(test, params, env):
             logging.debug(vmxml)
             if checkpoint == 'multi_kernel':
                 check_boot_kernel(vmchecker.checker)
+                check_vmlinuz_initramfs(output)
             if checkpoint == 'floppy':
-                check_floppy_exist(vmchecker.checker)
+                # Convert to rhv will remove all removeable devices(floppy, cdrom)
+                if output_mode in ['local', 'libvirt']:
+                    check_floppy_exist(vmchecker.checker)
             if checkpoint == 'multi_disks':
                 check_disks(vmchecker.checker)
             if checkpoint == 'multi_netcards':
@@ -522,15 +587,30 @@ def run(test, params, env):
 
     try:
         v2v_params = {
-            'hostname': remote_host, 'hypervisor': 'kvm', 'v2v_opts': '-v -x',
-            'storage': output_storage, 'network': network, 'bridge': bridge,
-            'target': target, 'main_vm': vm_name, 'input_mode': 'libvirt',
-            'new_name': vm_name + '_' + utils_misc.generate_random_string(3)
-        }
+            'target': target,
+            'hypervisor': hypervisor,
+            'main_vm': vm_name,
+            'input_mode': input_mode,
+            'network': network,
+            'bridge': bridge,
+            'storage': storage,
+            'hostname': source_ip,
+            'v2v_opts': v2v_opts,
+            'new_name': vm_name + utils_misc.generate_random_string(3)}
+        if vpx_dc:
+            v2v_params.update({"vpx_dc": vpx_dc})
+        if esx_ip:
+            v2v_params.update({"esx_ip": esx_ip})
+        output_format = params.get('output_format')
         if output_format:
             v2v_params.update({'output_format': output_format})
         # Build rhev related options
         if output_mode == 'rhev':
+            # Create different sasl_user name for different job
+            params.update({'sasl_user': params.get("sasl_user") +
+                           utils_misc.generate_random_string(3)})
+            logging.info('sals user name is %s' % params.get("sasl_user"))
+
             # Create SASL user on the ovirt host
             user_pwd = "[['%s', '%s']]" % (params.get("sasl_user"),
                                            params.get("sasl_pwd"))
@@ -546,23 +626,26 @@ def run(test, params, env):
         # Set libguestfs environment variable
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
 
+        # Save origin graphic type for result checking if source is KVM
+        if hypervisor == 'kvm':
+            ori_vm_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            params['ori_graphic'] = ori_vm_xml.xmltreefile.find(
+                'devices').find('graphics').get('type')
+
         backup_xml = None
-        if checkpoint in backup_list:
-            backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        # Only kvm guest's xml needs to be backup currently
+        if checkpoint in backup_list and hypervisor == 'kvm':
+            backup_xml = ori_vm_xml
         if checkpoint == 'multi_disks':
-            attach_disk_path = os.path.join(data_dir.get_tmp_dir(), 'attach_disks')
-            utlv.attach_disks(env.get_vm(vm_name), attach_disk_path,
-                              None, params)
-            new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(
+                vm_name, virsh_instance=v2v_virsh)
             disk_count = 0
             for disk in list(new_xml.get_disk_all().values()):
                 if disk.get('device') == 'disk':
                     disk_count += 1
+            if disk_count <= 1:
+                test.error('Not enough disk devices')
             params['ori_disks'] = disk_count
-        if checkpoint == 'virtio_on':
-            change_disk_bus('virtio')
-        if checkpoint == 'virtio_off':
-            change_disk_bus('ide')
         if checkpoint == 'sata_disk':
             change_disk_bus('sata')
         if checkpoint.startswith('floppy'):
@@ -576,8 +659,6 @@ def run(test, params, env):
                 img_path = data_dir.get_tmp_dir() + '/cdrom.iso'
                 utlv.create_local_disk('iso', img_path)
                 attach_removable_media('cdrom', img_path, 'hdc')
-            if checkpoint == 'fstab_virtio':
-                change_disk_bus('virtio')
             specify_fstab_entry(checkpoint[6:])
         if checkpoint == 'running':
             virsh.start(vm_name)
@@ -606,13 +687,12 @@ def run(test, params, env):
         if checkpoint.startswith('network'):
             change_network_model(checkpoint[8:])
         if checkpoint == 'multi_netcards':
-            attach_network_card('virtio')
-            attach_network_card('e1000')
             params['mac_address'] = []
-            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
+                vm_name, virsh_instance=v2v_virsh)
             network_list = vmxml.get_iface_all()
             for mac in network_list:
-                if network_list[mac].get('type') == 'network':
+                if network_list[mac].get('type') in ['bridge', 'network']:
                     params['mac_address'].append(mac)
             if len(params['mac_address']) < 2:
                 test.error('Not enough network interface')
@@ -636,6 +716,10 @@ def run(test, params, env):
                     video = vmxml.xmltreefile.find(
                         'devices').find('video').find('model')
                     video.set('type', video_type)
+                    # cirrus doesn't support 'ram' and 'vgamem' attribute
+                    if video_type == 'cirrus':
+                        [video.attrib.pop(attr_i) for attr_i in [
+                            'ram', 'vgamem'] if attr_i in video.attrib]
                     vmxml.sync()
         if checkpoint.startswith('listen'):
             listen_type = checkpoint.split('_')[-1]
@@ -664,14 +748,17 @@ def run(test, params, env):
             cmd = ['rm -f /etc/securetty']
             vm_cmd(cmd)
         if checkpoint == 'ntpd_on':
-            logging.info('Set service ntpd on')
-            cmd = ['yum -y install ntp',
-                   'systemctl start ntpd']
+            logging.info('Set service chronyd on')
+            cmd = ['yum -y install chrony',
+                   'systemctl start chronyd',
+                   'chronyc add server %s' % ntp_server]
             vm_cmd(cmd)
         if checkpoint == 'sync_ntp':
             logging.info('Sync time with %s', ntp_server)
-            cmd = ['yum -y install ntpdate',
-                   'ntpdate %s' % ntp_server]
+            cmd = ['yum -y install chrony',
+                   'systemctl start chronyd',
+                   'chronyc add server %s' % ntp_server,
+                   'chronyc waitsync']
             vm_cmd(cmd)
         if checkpoint == 'blank_2nd_disk':
             disk_path = os.path.join(data_dir.get_tmp_dir(), 'blank.img')
@@ -703,12 +790,13 @@ def run(test, params, env):
             logging.info('Disk type is %s', disk['type'])
             if disk['type'] != 'file':
                 test.error('Guest is not with file image')
-        virsh.dumpxml(vm_name, debug=True)
         v2v_result = utils_v2v.v2v_cmd(v2v_params)
         if v2v_params.get('new_name'):
             vm_name = params['main_vm'] = v2v_params['new_name']
         check_result(v2v_result, status_error)
     finally:
+        if close_virsh:
+            v2v_virsh.close_session()
         if params.get('vmchecker'):
             params['vmchecker'].cleanup()
         if output_mode == 'libvirt':
@@ -728,3 +816,5 @@ def run(test, params, env):
             large_file = os.path.join(data_dir.get_tmp_dir(), 'file.large')
             if os.path.isfile(large_file):
                 os.remove(large_file)
+        # Cleanup constant files
+        utils_v2v.cleanup_constant_files(params)

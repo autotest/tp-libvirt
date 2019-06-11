@@ -105,7 +105,7 @@ def run(test, params, env):
             node_meminfo = host_numa_node.read_from_node_meminfo(node, 'MemFree')
             return int(node_meminfo) / 4
         else:
-            return hp_cl.get_free_hugepages(node, pagesize)
+            return hp_cl.get_node_num_huge_pages(node, pagesize, type='free')
 
     def check_hugepages_allocated_status(is_type_check, pagesize, quantity):
         """
@@ -138,18 +138,21 @@ def run(test, params, env):
             for node in node_list:
                 try:
                     allocate_pages = hp_cl.get_node_num_huge_pages(node, pagesize)
-                    free_pages = hp_cl.get_free_hugepages(node, pagesize)
+                    free_pages = hp_cl.get_node_num_huge_pages(node, pagesize, type='free')
+                    if allocate_pages != free_pages:
+                        # Check if allocated hugepages is equal to freepages for
+                        # each node
+                        logging.warning("allocated %sKiB hugepages is not equal to "
+                                        "free pages on node%s." % (pagesize, node))
+                        oth_node.append(node)
+                        continue
                     hp_sum += allocate_pages
                 except ValueError as exc:
                     logging.warning("%s", str(exc))
                     logging.debug('move node %s out of testing node list', node)
-                    node_list.remove(node)
                     oth_node.append(node)
-                if allocate_pages != free_pages:
-                    # Check if allocated hugepages is equal to freepages for
-                    # each node
-                    test.error("allocated %sKiB hugepages is not equal to "
-                               "free pages on node%s." % (pagesize, node))
+            for node in oth_node:
+                node_list.remove(node)
             if hp_sum != actual_quantity:
                 test.error("the sum of %sKiB hugepages of all nodes is not "
                            "equal to kernel allocated totally." % pagesize)

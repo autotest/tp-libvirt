@@ -14,6 +14,7 @@ from virttest.libvirt_xml.devices.disk import Disk
 from virttest.utils_test import libvirt as utlv
 from virttest import utils_misc
 from virttest import data_dir
+from virttest import ceph
 
 from provider import libvirt_version
 
@@ -217,6 +218,10 @@ def setup_test_env(params, test):
     global cleanup_iso_file
     global cleanup_image_file
 
+    os_version = params.get("os_version")
+    if not os_version.count("EXAMPLE"):
+        os_version = os_version.split(".")[0]
+
     if boot_type == "ovmf":
         if not libvirt_version.version_compare(2, 0, 0):
             test.error("OVMF doesn't support in current"
@@ -225,8 +230,11 @@ def setup_test_env(params, test):
         if not utils_package.package_install('OVMF'):
             test.error("OVMF package install failed")
 
-        if not utils_package.package_install('qemu-kvm-rhev'):
+        if os_version == "RHEL-7" and not \
+                utils_package.package_install('qemu-kvm-rhev'):
             test.error("qemu-kvm-rhev package install failed")
+        elif not utils_package.package_install('qemu-kvm'):
+            test.error("qemu-kvm package install failed")
 
     if boot_type == "seabios" and \
             not utils_package.package_install('seabios-bin'):
@@ -586,7 +594,12 @@ def run(test, params, env):
     # Back VM XML
     vmxml_backup = vm_xml.VMXML.new_from_dumpxml(vm_name)
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+
+    # Prepare a blank params to confirm if delete the configure at the end of the test
+    ceph_cfg = ''
     try:
+        # Create config file if it doesn't exist
+        ceph_cfg = ceph.create_config_file(params.get("mon_host"))
         setup_test_env(params, test)
         apply_boot_options(vmxml, params)
         blk_source = vm.get_first_disk_devices()['source']
@@ -651,6 +664,9 @@ def run(test, params, env):
                 remote_session.close()
         logging.debug("Succeed to boot %s" % vm_name)
     finally:
+        # Remove ceph configure file if created.
+        if ceph_cfg:
+            os.remove(ceph_cfg)
         logging.debug("Start to cleanup")
         if vm.is_alive:
             vm.destroy()

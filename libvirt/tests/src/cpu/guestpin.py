@@ -37,13 +37,15 @@ def run(test, params, env):
         """
         bt = None
         if not reset:
-            if condn == "stress":
+            if condn == "avocadotest":
                 bt = utils_test.run_avocado_bg(vm, params, test)
                 if not bt:
                     test.cancel("guest stress failed to start")
                 # Allow stress to start
                 time.sleep(condn_sleep_sec)
                 return bt
+            elif condn == "stress":
+                utils_test.load_stress("stress_in_vms", params=params, vms=[vm])
             elif condn in ["save", "managedsave"]:
                 # No action
                 pass
@@ -91,8 +93,10 @@ def run(test, params, env):
             elif condn == "suspend":
                 result = virsh.resume(vm_name, ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
-            elif condn == "stress":
+            elif condn == "avocadotest":
                 guestbt.join(ignore_status=True)
+            elif condn == "stress":
+                utils_test.unload_stress("stress_in_vms", params=params, vms=[vm])
             elif condn == "hotplug":
                 result = virsh.setvcpus(vm_name, current_vcpu, "--live",
                                         ignore_status=True, debug=True)
@@ -216,6 +220,10 @@ def run(test, params, env):
                 hostcpu = cpus_list[-1]
                 result = virsh.emulatorpin(vm_name, hostcpu, debug=True)
                 libvirt.check_exit_status(result)
+                cpustats = utils_hotplug.get_cpustats(vm, hostcpu)
+                logging.debug("hostcpu:%s vcputime: %s emulatortime: "
+                              "%s cputime: %s", hostcpu, cpustats[hostcpu][0],
+                              cpustats[hostcpu][1], cpustats[hostcpu][2])
             for vcpu in range(max_vcpu):
                 if pintype == "random":
                     hostcpu = random.choice(cpus_list[:-1])
@@ -225,6 +233,9 @@ def run(test, params, env):
                                        ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
                 cpustats = utils_hotplug.get_cpustats(vm, hostcpu)
+                logging.debug("hostcpu:%s vcputime: %s emulatortime: "
+                              "%s cputime: %s", hostcpu, cpustats[hostcpu][0],
+                              cpustats[hostcpu][1], cpustats[hostcpu][2])
                 if config_pin:
                     if cpustats[hostcpu][0] == 0:
                         fail = True

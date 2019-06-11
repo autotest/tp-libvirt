@@ -1,7 +1,9 @@
 import os
 import logging
+import random
 
 from avocado.utils import process
+from avocado.utils import cpu
 from virttest import virsh
 
 SYSFS_SYSTEM_PATH = "/sys/devices/system/cpu"
@@ -102,23 +104,18 @@ def get_online_cpu(option=''):
     return cpu_map
 
 
-def run(test, params, env):
+def check_result(result, option, status_error, test):
     """
-    Test the command virsh nodecpumap
-
-    (1) Call virsh nodecpumap
-    (2) Call virsh nodecpumap with pretty option
-    (3) Call virsh nodecpumap with an unexpected option
+    Check result of virsh nodecpumap
+    :param result: The Cmd object of virsh nodecpumap
+    :param option: The option of virsh nodecpumap
+    :param status_error: Expect status error or not
+    :param test: The test object
+    :return: Success or raise Exception
     """
 
-    option = params.get("virsh_node_options")
-    status_error = params.get("status_error")
-
-    result = virsh.nodecpumap(option, ignore_status=True, debug=True)
     output = result.stdout.strip()
     status = result.exit_status
-
-    # Check result
     if status_error == "yes":
         if status == 0:
             test.fail("Run successfully with wrong command!")
@@ -154,3 +151,54 @@ def run(test, params, env):
                 online += 1
         if online != int(out_value[1]):
             test.fail("Online cpu is not expected")
+
+
+def turn_off_on_cpu(cpu, off, test):
+    """
+    Turn off/on cpu
+    :param cpu: CPU name like 'cpu3'
+    :param off: Turn off or turn on the cpu.
+                True means off, False means on
+    :param test: The test object
+    :return: Success or raise exception
+    """
+
+    if off:
+        logging.debug("Turn off %s", cpu)
+        cmd = "echo 0 > %s/%s/online" % (SYSFS_SYSTEM_PATH, cpu)
+    else:
+        logging.debug("Turn on %s", cpu)
+        cmd = "echo 1 > %s/%s/online" % (SYSFS_SYSTEM_PATH, cpu)
+
+    ret = process.run(cmd, shell=True, ignore_status=True)
+    if ret.exit_status:
+        test.fail("Failed to set cpu: %s" % ret.stderr_text)
+
+
+def run(test, params, env):
+    """
+    Test the command virsh nodecpumap
+
+    (1) Call virsh nodecpumap
+    (2) Call virsh nodecpumap with pretty option
+    (3) Call virsh nodecpumap with an unexpected option
+    """
+
+    option = params.get("virsh_node_options")
+    status_error = params.get("status_error")
+    cpu_off_on_test = params.get("cpu_off_on", "no") == "yes"
+    online_cpus = cpu.cpu_online_list()
+    test_cpu = random.choice(online_cpus)
+
+    if cpu_off_on_test:
+        # Turn off CPU
+        cpu.offline(test_cpu)
+
+    result = virsh.nodecpumap(option, ignore_status=True, debug=True)
+    check_result(result, option, status_error, test)
+
+    if cpu_off_on_test:
+        # Turn on CPU and check again
+        cpu.online(test_cpu)
+        result = virsh.nodecpumap(option, ignore_status=True, debug=True)
+        check_result(result, option, status_error, test)

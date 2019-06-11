@@ -75,7 +75,12 @@ def run(test, params, env):
 
         # Check status_error
         if status_error:
-            if status == 0 or err == "":
+            #if Qemu version > 2.11, zero_size shrink can be supported.
+            qemu_version = utils_misc.get_qemu_version()
+            is_rhev_installed = qemu_version['is_rhev']
+            zero_size_hit = (resize_value == "0"
+                             and utils_misc.compare_qemu_version(2, 11, 0, is_rhev=is_rhev_installed))
+            if (status == 0 or err == "") and (not zero_size_hit):
                 test.fail("Expect failure, but run successfully!")
             # No need to do more test
             return
@@ -97,7 +102,7 @@ def run(test, params, env):
             if image_format in ["qed", "qcow2"]:
                 # qcow2 and qed want a VIR_ROUND_UP value based on 512 byte
                 # sectors - hence this less than visually appealing formula
-                expected_size = (((value * 1000) + 512 - 1) / 512) * 512
+                expected_size = (((value * 1000) + 512 - 1) // 512) * 512
             else:
                 # Raw images...
                 # Ugh - there's some rather ugly looking math when kb

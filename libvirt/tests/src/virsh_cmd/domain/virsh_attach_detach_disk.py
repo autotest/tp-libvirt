@@ -14,6 +14,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
 from virttest.staging import lv_utils
+from virttest import utils_disk
 from virttest import utils_misc
 from virttest import data_dir
 
@@ -47,7 +48,7 @@ def run(test, params, env):
             attached = False
             if os_type == "linux":
                 session = vm.wait_for_login()
-                new_parts = libvirt.get_parts_list(session)
+                new_parts = utils_disk.get_parts_list(session)
                 added_parts = list(set(new_parts).difference(set(old_parts)))
                 logging.debug("Added parts: %s" % added_parts)
                 for i in range(len(added_parts)):
@@ -103,6 +104,20 @@ def run(test, params, env):
             logging.error(str(e))
             return False
 
+    def check_shareable(at_with_shareable, test_twice):
+        """
+        check if current libvirt version support shareable option
+
+        at_with_shareable: True or False. Whether attach disk with shareable option
+        test_twice: True or False. Whether perform operations twice
+        return: True or cancel the test
+        """
+        if at_with_shareable or test_twice:
+            if libvirt_version.version_compare(3, 9, 0):
+                return True
+            else:
+                test.cancel("Current libvirt version doesn't support shareable feature")
+
     # Get test command.
     test_cmd = params.get("at_dt_disk_test_cmd", "attach-disk")
 
@@ -140,6 +155,7 @@ def run(test, params, env):
     test_block_dev = "yes" == params.get("at_dt_disk_iscsi_device", "no")
     test_logcial_dev = "yes" == params.get("at_dt_disk_logical_device", "no")
     restart_libvirtd = "yes" == params.get("at_dt_disk_restart_libvirtd", "no")
+    detach_disk_with_print_xml = "yes" == params.get("detach_disk_with_print_xml", "no")
     vg_name = params.get("at_dt_disk_vg", "vg_test_0")
     lv_name = params.get("at_dt_disk_lv", "lv_test_0")
     serial = params.get("at_dt_disk_serial", "")
@@ -147,7 +163,7 @@ def run(test, params, env):
     address2 = params.get("at_dt_disk_address2", "")
     cache_options = params.get("cache_options", "")
     time_sleep = params.get("time_sleep", 3)
-    if at_with_shareable:
+    if check_shareable(at_with_shareable, test_twice):
         at_options += " --mode shareable"
     if serial:
         at_options += (" --serial %s" % serial)
@@ -169,7 +185,7 @@ def run(test, params, env):
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
-    old_parts = libvirt.get_parts_list(session)
+    old_parts = utils_disk.get_parts_list(session)
     session.close()
     vm.destroy(gracefully=False)
 
@@ -218,13 +234,15 @@ def run(test, params, env):
         s_at_options = "--driver qemu --config"
         #Since lock feature is introduced in libvirt 3.9.0 afterwards, disk shareable options
         #need be set if disk needs be attached multitimes
-        if at_with_shareable or (test_twice and libvirt_version.version_compare(3, 9, 0)):
-            s_at_options += ' --mode shareable'
+        if check_shareable(at_with_shareable, test_twice):
+            s_at_options += " --mode shareable"
+
         s_attach = virsh.attach_disk(vm_name, device_source, device_target,
-                                     s_at_options).exit_status
+                                     s_at_options, debug=True).exit_status
         if s_attach != 0:
             logging.error("Attaching device failed before testing detach-disk")
-
+        else:
+            logging.debug("Attaching device succeeded before testing detach-disk")
         if test_twice:
             device_target2 = params.get("at_dt_disk_device_target2",
                                         device_target)
@@ -276,15 +294,17 @@ def run(test, params, env):
         vm_ref = ""
 
     if test_cmd == "attach-disk":
-
-        #Since lock feature is introduced in libvirt 3.9.0 afterwards, disk shareable options
-        #need be set if disk needs be attached multitimes
-        if test_twice and libvirt_version.version_compare(3, 9, 0):
-            if not at_with_shareable:
-                at_options += " --mode shareable"
         status = virsh.attach_disk(vm_ref, device_source, device_target,
                                    at_options, debug=True).exit_status
     elif test_cmd == "detach-disk":
+        # For detach disk with print-xml option, it only print information,and not actual disk detachment.
+        if detach_disk_with_print_xml and libvirt_version.version_compare(4, 5, 0):
+            ret = virsh.detach_disk(vm_ref, device_target, at_options)
+            libvirt.check_exit_status(ret)
+            cmd = ("echo \"%s\" | grep -A 16 %s"
+                   % (ret.stdout.strip(), device_source_name))
+            if process.system(cmd, ignore_status=True, shell=True):
+                test.error("Check disk with source image name failed")
         status = virsh.detach_disk(vm_ref, device_target, dt_options,
                                    debug=True).exit_status
 
@@ -311,6 +331,7 @@ def run(test, params, env):
     # been a bug. The change in xml file is done after the guest is resumed.
     if pre_vm_state == "paused":
         vm.resume()
+        time.sleep(5)
 
     # Check audit log
     check_audit_after_cmd = True
@@ -438,6 +459,7 @@ def run(test, params, env):
         # Recover VM.
         if vm.is_alive():
             vm.destroy(gracefully=False)
+        logging.debug("Restore the VM XML")
         backup_xml.sync()
         if os.path.exists(save_file):
             os.remove(save_file)

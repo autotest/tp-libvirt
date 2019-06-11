@@ -8,6 +8,7 @@ from virttest import libvirt_xml
 from virttest import libvirt_vm
 from virttest import utils_test
 from virttest.utils_test import libvirt
+from virttest import utils_misc
 
 
 def run(test, params, env):
@@ -29,13 +30,15 @@ def run(test, params, env):
     stress_param = params.get("stress_param", "")
     add_by_virsh = ("yes" == params.get("add_by_virsh"))
     del_by_virsh = ("yes" == params.get("del_by_virsh"))
+    hotplug_timeout = int(params.get("hotplug_timeout", 30))
     test_set_max = max_count * 2
 
     # Save original configuration
     orig_config_xml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     # Set min/max of vcpu
-    libvirt_xml.VMXML.set_vm_vcpus(vm_name, test_set_max, min_count, topology_correction=True)
+    libvirt_xml.VMXML.set_vm_vcpus(vm_name, test_set_max, min_count,
+                                   topology_correction=True)
 
     # prepare VM instance
     vm = libvirt_vm.VM(vm_name, params, test.bindir, env.get("address_cache"))
@@ -49,9 +52,9 @@ def run(test, params, env):
         params["stress_args"] = stress_param
     load_vms.append(vm)
     if stress_type in ['cpu', 'memory']:
-        utils_test.load_stress("stress_in_vms", load_vms, params)
+        utils_test.load_stress("stress_in_vms", params, vms=load_vms)
     else:
-        utils_test.load_stress("iozone_in_vms", load_vms, params)
+        utils_test.load_stress("iozone_in_vms", params, vms=load_vms)
 
     session = vm.wait_for_login()
     try:
@@ -66,10 +69,16 @@ def run(test, params, env):
             # 1.1 check add status
             if add_status:
                 if add_result.stderr.count("support"):
-                    test.cancel("No need to test any more:\n %s"
+                    test.cancel("vcpu hotplug not supported, "
+                                "no need to test any more:\n %s"
                                 % add_result.stderr.strip())
                 test.fail("Test failed for:\n %s"
                           % add_result.stderr.strip())
+            if not utils_misc.wait_for(lambda: utils_misc.check_if_vm_vcpu_match(max_count, vm),
+                                       hotplug_timeout,
+                                       text="wait for vcpu online"):
+                test.fail("vcpu hotplug failed")
+
             if 'ppc' not in platform.machine():
                 # 1.2 check dmesg
                 domain_add_dmesg = session.cmd_output("dmesg -c")
@@ -130,7 +139,7 @@ def run(test, params, env):
                 #       remove these codes used to handle kinds of exceptions
                 if re.search("The command cpu-del has not been found",
                              del_result.stderr):
-                    test.cancel("unhotplug failed")
+                    test.cancel("vcpu hotunplug not supported")
                 if re.search("cannot change vcpu count", del_result.stderr):
                     test.cancel("unhotplug failed")
                 if re.search("got wrong number of vCPU pids from QEMU monitor",
@@ -139,11 +148,15 @@ def run(test, params, env):
                 # process all tips that contains keyword 'support'
                 # for example, "unsupported"/"hasn't been support" and so on
                 if re.search("support", del_result.stderr):
-                    test.cancel("unhotplug failed")
+                    test.cancel("vcpu hotunplug not supported")
 
                 # besides above, regard it failed
                 test.fail("Test fail for:\n %s"
                           % del_result.stderr.strip())
+            if not utils_misc.wait_for(lambda: utils_misc.check_if_vm_vcpu_match(min_count, vm),
+                                       hotplug_timeout,
+                                       text="wait for vcpu offline"):
+                test.fail("vcpu hotunplug failed")
             if 'ppc' not in platform.machine():
                 domain_del_dmesg = session.cmd_output("dmesg -c")
                 if not domain_del_dmesg.count("CPU %d is now offline"
@@ -155,7 +168,7 @@ def run(test, params, env):
         # unplug operation will encounter kind of errors.
         pass
     finally:
-        utils_test.unload_stress("stress_in_vms", load_vms)
+        utils_test.unload_stress("stress_in_vms", params, load_vms)
         if session:
             session.close()
         # Cleanup

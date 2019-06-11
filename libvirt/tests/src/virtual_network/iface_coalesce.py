@@ -1,5 +1,6 @@
 import logging
 import time
+import re
 
 
 from virttest import virt_vm
@@ -73,7 +74,7 @@ def run(test, params, env):
 
     2. For bridge host network
     This mode need true bridge in host network.
-    'brctl addbr br0'
+    'nmcli con add type bridge con-name br0 ifname br0'
 
     1) guest interface type 'bridge' and set coalesce:
     <interface type='bridge'>
@@ -335,8 +336,16 @@ def run(test, params, env):
                 params['net_virtualport'] = "openvswitch"
             if network_type == "macvtap":
                 # For bridge type of macvtap network, one true physical interface shold be added
-                # Check whether physical interface has been added into one bridger. if yes, skip macvtap test
-                if interface not in process.run('brctl show').stdout_text:
+                # Check whether physical interface has been added into one bridge. if yes, skip macvtap test
+                # If interface already added to a bridge, the output of the nmcli
+                # command will include "connection.slave-type: bridge"
+                out = process.run('nmcli dev show %s' % interface).stdout_text
+                con_l = re.findall(r'GENERAL.CONNECTION:(.+?)\n', out)
+                if not con_l:
+                    test.cancel("no connection for the interface")
+                else:
+                    con = con_l[0].strip()
+                if "bridge" not in process.run('nmcli con show "%s"' % con).stdout_text:
                     params['forward_iface'] = interface
                     params['net_forward'] = "{'mode':'bridge', 'dev': '%s'}" % interface
                 else:

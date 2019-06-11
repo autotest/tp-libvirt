@@ -14,6 +14,9 @@ from virttest import virt_vm
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.console import Console
 
+from provider import libvirt_version
+
+
 # Define qemu log path.
 QEMU_LOG_PATH = "/var/log/libvirt/qemu"
 
@@ -132,9 +135,38 @@ def run(test, params, env):
         if not process.run(cmd, timeout=90, ignore_status=True, shell=True).exit_status:
             test.fail("pipe node: %s is not closed in qemu gracefully." % pipe_node)
 
+    def check_service_status(service_name, service_start=False):
+        """
+        Check service status and return service PID
+
+        :param service_name: service name
+        :param service_start: whether to start service or not
+        :return: service PID
+        """
+        # Check service status
+        cmd = ("systemctl status %s | grep 'Active: active'" % service_name)
+        ret = process.run(cmd, ignore_status=True, shell=True, verbose=True)
+        if ret.exit_status:
+            # If service isn't active and setting 'service_start', start service.
+            if service_start:
+                ret = process.run("systemctl start %s" % service_name, shell=True)
+                if ret.exit_status:
+                    test.fail("%s start failed." % service_name)
+            # If service isn't active and don't set 'service_start', return error.
+            else:
+                test.fail("%s is not active." % service_name)
+        cmd = ("systemctl status %s | grep 'Main PID:'" % service_name)
+        ret = process.run(cmd, ignore_status=True, shell=True, verbose=True)
+        if ret.exit_status:
+            test.fail("Get %s status failed." % service_name)
+        return ret.stdout_text.split()[2]
+
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     expected_result = params.get("expected_result", "virtlogd_disabled")
     stdio_handler = params.get("stdio_handler", "not_set")
+    start_vm = "yes" == params.get("start_vm", "yes")
+    reload_virtlogd = "yes" == params.get("reload_virtlogd", "no")
+    restart_libvirtd = "yes" == params.get("restart_libvirtd", "no")
     vm = env.get_vm(vm_name)
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
@@ -145,6 +177,11 @@ def run(test, params, env):
     try:
         if stdio_handler != 'not_set':
             config['stdio_handler'] = "'%s'" % stdio_handler
+        if restart_libvirtd:
+            virtlogd_pid = check_service_status("virtlogd", service_start=True)
+            logging.info("virtlogd pid: %s", virtlogd_pid)
+            check_service_status("libvirtd", service_start=True)
+
         # Restart libvirtd to make change valid.
         if not libvirtd.restart():
             if expected_result != 'unbootable':
@@ -155,73 +192,98 @@ def run(test, params, env):
             test.fail('Libvirtd is not expected to be started '
                       'with stdio_handler=%s' % stdio_handler)
 
-        # Stop all VMs if VMs are already started.
-        for tmp_vm in env.get_all_vms():
-            if tmp_vm.is_alive():
-                tmp_vm.destroy(gracefully=False)
+        if not start_vm:
+            if reload_virtlogd:
+                virtlogd_pid = check_service_status("virtlogd", service_start=True)
+                logging.info("virtlogd PID: %s", virtlogd_pid)
+                ret = process.run("systemctl reload virtlogd", shell=True)
+                if ret.exit_status:
+                    test.fail("virtlogd reload failed.")
+                reload_virtlogd_pid = check_service_status("virtlogd", service_start=True)
+                logging.info("After reload, virtlogd PID: %s", reload_virtlogd_pid)
+                if virtlogd_pid != reload_virtlogd_pid:
+                    test.fail("After reload, virtlogd PID changed.")
+        else:
+            # Stop all VMs if VMs are already started.
+            for tmp_vm in env.get_all_vms():
+                if tmp_vm.is_alive():
+                    tmp_vm.destroy(gracefully=False)
 
-        # Sleep a few seconds to let VM syn underlying data
-        time.sleep(3)
+            # Sleep a few seconds to let VM syn underlying data
+            time.sleep(3)
 
-        # Remove VM previous log file.
-        clean_up_vm_log_file(vm_name)
+            # Remove VM previous log file.
+            clean_up_vm_log_file(vm_name)
 
-        # Check if virtlogd socket is running.
-        cmd = ("systemctl status virtlogd.socket|grep 'Active: active'")
-        configure(cmd, errorMsg="virtlogd.socket is not running")
+            # Check if virtlogd socket is running.
+            cmd = ("systemctl status virtlogd.socket|grep 'Active: active'")
+            configure(cmd, errorMsg="virtlogd.socket is not running")
 
-        # Configure serial console.
-        configure_serial_console(vm_name)
+            # Configure serial console.
+            configure_serial_console(vm_name)
 
-        logging.info("final vm:")
-        logging.info(VMXML.new_from_inactive_dumpxml(vm_name))
+            logging.info("final vm:")
+            logging.info(VMXML.new_from_inactive_dumpxml(vm_name))
 
-        # Start VM.
-        try:
-            vm.start()
-        except virt_vm.VMStartError as detail:
-            test.fail("VM failed to start."
-                      "Error: %s" % str(detail))
-        # Check VM log file has right permission and owner.
-        check_vm_log_file_permission_and_owner(vm_name)
-        utils_package.package_install(['lsof'])
-        # Check VM log file is opened by virtlogd.
-        cmd = ("lsof -w %s|grep 'virtlogd'" % guest_log_file)
-        errorMessage = "VM log file: %s is not opened by:virtlogd." % guest_log_file
-        configure(cmd, guest_log_file, errorMessage)
+            # Start VM.
+            try:
+                vm.start()
+            except virt_vm.VMStartError as detail:
+                test.fail("VM failed to start."
+                          "Error: %s" % str(detail))
+            # Check VM log file has right permission and owner.
+            check_vm_log_file_permission_and_owner(vm_name)
+            utils_package.package_install(['lsof'])
+            # Check VM log file is opened by virtlogd.
+            cmd = ("lsof -w %s|grep 'virtlogd'" % guest_log_file)
+            errorMessage = "VM log file: %s is not opened by:virtlogd." % guest_log_file
+            configure(cmd, guest_log_file, errorMessage)
 
-        # Check VM started log is written into log file correctly.
-        check_info_in_vm_log_file(vm_name, matchedMsg="char device redirected to /dev/pts")
+            # Check VM started log is written into log file correctly.
+            check_info_in_vm_log_file(vm_name, matchedMsg="char device redirected to /dev/pts")
 
-        # Get pipe node opened by virtlogd for VM log file.
-        cmd = ("lsof  -w |grep pipe|grep virtlogd|tail -n 1|awk '{print $9}'")
-        pipe_node = configure(cmd)
+            # Get pipe node opened by virtlogd for VM log file.
+            pipe_node_field = "$9"
+            # On latest release,No.8 field in lsof returning is pipe node number.
+            if libvirt_version.version_compare(4, 3, 0):
+                pipe_node_field = "$8"
+            cmd = ("lsof  -w |grep pipe|grep virtlogd|tail -n 1|awk '{print %s}'" % pipe_node_field)
+            pipe_node = configure(cmd)
 
-        # Check if qemu-kvm use pipe node provided by virtlogd.
-        cmd = ("lsof  -w |grep pipe|grep qemu-kvm|grep %s" % pipe_node)
-        errorMessage = ("Can not find matched pipe node: %s "
-                        "from pipe list used by qemu-kvm." % pipe_node)
-        configure(cmd, errorMsg=errorMessage)
+            if restart_libvirtd:
+                libvirtd.restart()
+                new_virtlogd_pid = check_service_status("virtlogd", service_start=True)
+                logging.info("After libvirtd restart, virtlogd PID: %s", new_virtlogd_pid)
+                new_pipe_node = configure(cmd)
+                logging.info("After libvirtd restart, pipe node: %s", new_pipe_node)
+                if pipe_node != new_pipe_node and new_pipe_node != new_virtlogd_pid:
+                    test.fail("After libvirtd restart, pipe node changed.")
 
-        # Shutdown VM.
-        if not vm.shutdown():
-            vm.destroy(gracefully=True)
+            # Check if qemu-kvm use pipe node provided by virtlogd.
+            cmd = ("lsof  -w |grep pipe|grep qemu-kvm|grep %s" % pipe_node)
+            errorMessage = ("Can not find matched pipe node: %s "
+                            "from pipe list used by qemu-kvm." % pipe_node)
+            configure(cmd, errorMsg=errorMessage)
 
-        # Check VM shutdown log is written into log file correctly.
-        check_info_in_vm_log_file(vm_name, matchedMsg="shutting down")
+            # Shutdown VM.
+            if not vm.shutdown():
+                vm.destroy(gracefully=True)
 
-        # Check pipe is closed gracefully after VM shutdown.
-        check_pipe_closed(pipe_node)
+            # Check VM shutdown log is written into log file correctly.
+            check_info_in_vm_log_file(vm_name, matchedMsg="shutting down")
 
-        # Start VM again.
-        try:
-            vm.start()
-        except virt_vm.VMStartError as detail:
-            test.fail("VM failed to start."
-                      "Error: %s" % str(detail))
-        # Check the new VM start log is appended to the end of the VM log file.
-        check_info_in_vm_log_file(vm_name, cmd="tail -n 5",
-                                  matchedMsg="char device redirected to /dev/pts")
+            # Check pipe is closed gracefully after VM shutdown.
+            check_pipe_closed(pipe_node)
+
+            # Start VM again.
+            try:
+                vm.start()
+            except virt_vm.VMStartError as detail:
+                test.fail("VM failed to start."
+                          "Error: %s" % str(detail))
+            # Check the new VM start log is appended to the end of the VM log file.
+            check_info_in_vm_log_file(vm_name, cmd="tail -n 5",
+                                      matchedMsg="char device redirected to /dev/pts")
 
     finally:
         config.restore()

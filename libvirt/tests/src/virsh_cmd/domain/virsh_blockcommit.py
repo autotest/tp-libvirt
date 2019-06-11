@@ -11,6 +11,7 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
 from virttest import libvirt_storage
+from virttest import ceph
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
@@ -217,6 +218,8 @@ def run(test, params, env):
 
     snapshot_external_disks = []
     cmd_session = None
+    # Prepare a blank params to confirm if delete the configure at the end of the test
+    ceph_cfg = ''
     try:
         if disk_src_protocol == 'iscsi' and disk_type == 'network':
             if not libvirt_version.version_compare(1, 0, 4):
@@ -228,6 +231,8 @@ def run(test, params, env):
             if disk_src_protocol == "rbd" and disk_type == "network":
                 src_host = params.get("disk_source_host", "EXAMPLE_HOSTS")
                 mon_host = params.get("mon_host", "EXAMPLE_MON_HOST")
+                # Create config file if it doesn't exist
+                ceph_cfg = ceph.create_config_file(mon_host)
                 if src_host.count("EXAMPLE") or mon_host.count("EXAMPLE"):
                     test.cancel("Please provide rbd host first.")
             if backing_file_relative_path:
@@ -459,6 +464,9 @@ def run(test, params, env):
                             if not ret:
                                 test.fail("Domain image backing "
                                           "chain check failed")
+                            cmd_result = virsh.blockjob(vm_name, blk_target, '',
+                                                        ignore_status=True, debug=True)
+                            libvirt.check_exit_status(cmd_result)
                         elif "--base" in blockcommit_options:
                             chain_lst = snap_src_lst[::-1]
                             base_index = chain_lst.index(blk_source)
@@ -517,6 +525,9 @@ def run(test, params, env):
                                                   debug=True)
             libvirt.check_exit_status(cmd_result, snap_in_mirror_err)
     finally:
+        # Remove ceph configure file if created
+        if ceph_cfg:
+            os.remove(ceph_cfg)
         if vm.is_alive():
             vm.destroy(gracefully=False)
         # Recover xml of vm.

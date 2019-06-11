@@ -1,6 +1,7 @@
 import logging
 import re
 import os
+import time
 
 from avocado.utils import path as utils_path
 from avocado.utils import process
@@ -166,6 +167,7 @@ def run(test, params, env):
     start_vm = params.get("start_vm")
     # Should attach must be pass for detach test.
     correct_attach = "yes" == params.get("correct_attach", "no")
+    readonly = ("yes" == params.get("readonly", "no"))
 
     # Interface specific attributes.
     iface_type = params.get("at_detach_iface_type", "network")
@@ -194,13 +196,13 @@ def run(test, params, env):
     save_restore = params.get("save_restore", "no")
     restart_libvirtd = params.get("restart_libvirtd", "no")
     attach_cmd = params.get("attach_cmd", "attach-interface")
-    virsh_dargs = {'ignore_status': True, 'uri': uri}
+    virsh_dargs = {'ignore_status': True, 'debug': True, 'uri': uri}
 
     # Get iface name if iface_type is direct
     if iface_type == "direct":
         iface_source = utils_net.get_net_if(state="UP")[0]
     # Get a bridge name for test if iface_type is bridge.
-    # If there is no bridge other than virbr0, raise TestNAError
+    # If there is no bridge other than virbr0, raise TestCancel
     if iface_type == "bridge":
         host_bridge = utils_net.Bridge()
         bridge_list = host_bridge.list_br()
@@ -282,6 +284,8 @@ def run(test, params, env):
         # Set attach-interface options and Start attach-interface test
         if correct_attach:
             options = set_options("network", "default", iface_mac, "", "attach")
+            if readonly:
+                virsh_dargs.update({'readonly': True, 'debug': True})
             attach_result = virsh.attach_interface(vm_name, options,
                                                    **virsh_dargs)
         else:
@@ -292,7 +296,7 @@ def run(test, params, env):
                 attach_result = virsh.attach_interface(vm_ref, options, **virsh_dargs)
             elif attach_cmd == "attach-device":
                 attach_result = virsh.attach_device(vm_name, xml_file,
-                                                    ignore_status=True)
+                                                    ignore_status=True, debug=True)
         attach_status = attach_result.exit_status
         logging.debug(attach_result)
 
@@ -394,6 +398,7 @@ def run(test, params, env):
 
         if detach_status == 0 and status_error == 0:
             # Check the xml after detach and clean up if needed.
+            time.sleep(5)
             status, _ = check_dumpxml_iface(vm_name, iface_format)
             if status == 0:
                 detach_status = 1

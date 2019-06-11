@@ -9,6 +9,7 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
 from virttest import libvirt_storage
+from virttest import ceph
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import snapshot_xml
@@ -264,6 +265,8 @@ def run(test, params, env):
         test.fail("There are snapshots created for %s already" % vm_name)
 
     snapshot_external_disks = []
+    # Prepare a blank params to confirm if delete the configure at the end of the test
+    ceph_cfg = ""
     try:
         if disk_src_protocol == 'iscsi' and disk_type == 'network':
             if not libvirt_version.version_compare(1, 0, 4):
@@ -283,6 +286,8 @@ def run(test, params, env):
             if disk_src_protocol == "rbd" and disk_type == "network":
                 src_host = params.get("disk_source_host", "EXAMPLE_HOSTS")
                 mon_host = params.get("mon_host", "EXAMPLE_MON_HOST")
+                # Create config file if it doesn't exist
+                ceph_cfg = ceph.create_config_file(mon_host)
                 if src_host.count("EXAMPLE") or mon_host.count("EXAMPLE"):
                     test.cancel("Please provide ceph host first.")
             if backing_file_relative_path:
@@ -456,6 +461,9 @@ def run(test, params, env):
                 test.fail("blockpull failed: %s" % output)
 
     finally:
+        # Remove ceph configure file if created
+        if ceph_cfg:
+            os.remove(ceph_cfg)
         if vm.is_alive():
             vm.destroy(gracefully=False)
         # Recover xml of vm.

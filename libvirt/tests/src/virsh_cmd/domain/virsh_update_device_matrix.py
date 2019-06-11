@@ -31,7 +31,8 @@ def create_disk(vm_name, disk_iso, disk_type, target_dev, mode=""):
 
 
 def create_attach_xml(update_xmlfile, disk_type, target_bus,
-                      target_dev, source_iso="", disk_mode=""):
+                      target_dev, source_iso="", disk_mode="",
+                      disk_alias=None):
     """
     Create a xml file to update a device.
 
@@ -41,6 +42,7 @@ def create_attach_xml(update_xmlfile, disk_type, target_bus,
     :param target_bus: disk's target bus
     :param target_dev: disk's target device name
     :param disk_mode: readonly or shareable
+    :param disk_alias: disk's alias name
     """
     if source_iso:
         libvirt.create_local_disk("iso", source_iso)
@@ -56,6 +58,8 @@ def create_attach_xml(update_xmlfile, disk_type, target_bus,
             disk.readonly = True
         if disk_mode == "shareable":
             disk.share = True
+    if disk_alias:
+        disk.alias = dict(name=disk_alias)
     disk.xmltreefile.write()
     shutil.copyfile(disk.xml, update_xmlfile)
 
@@ -225,7 +229,7 @@ def run(test, params, env):
                         "rhel7": "Red Hat Enterprise Linux Server release 7",
                         "fedora": "Fedora release"}
         version_file = "/etc/redhat-release"
-        if not rhel_release.has_key(release_ver):
+        if release_ver not in rhel_release:
             logging.error("Can't support this version of guest: %s",
                           release_ver)
             return False
@@ -365,12 +369,14 @@ def run(test, params, env):
         vm_ref = hex(int(dom_id))
 
     try:
+        # Get disk alias
+        disk_alias = libvirt.get_disk_alias(vm, orig_iso)
 
         # Firstly detach the disk.
         update_xmlfile = os.path.join(data_dir.get_tmp_dir(),
                                       "update.xml")
         create_attach_xml(update_xmlfile, disk_type, target_bus,
-                          target_dev, "", disk_mode)
+                          target_dev, "", disk_mode, disk_alias)
         ret = virsh.update_device(vm_ref, filearg=update_xmlfile,
                                   flagstr=dt_flag, ignore_status=True,
                                   debug=True)
@@ -393,7 +399,7 @@ def run(test, params, env):
             if not vm.pause():
                 raise exceptions.TestFail("Cann't pause the domain")
         create_attach_xml(update_xmlfile, disk_type, target_bus,
-                          target_dev, test_iso, disk_mode)
+                          target_dev, test_iso, disk_mode, disk_alias)
         ret = virsh.update_device(vm_ref, filearg=update_xmlfile,
                                   flagstr=at_flag, ignore_status=True,
                                   debug=True)

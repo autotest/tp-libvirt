@@ -8,6 +8,7 @@ import shutil
 from virttest import remote
 from virttest import virt_vm
 from virttest import virsh
+from virttest import utils_disk
 from virttest import utils_npiv as mpath
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
@@ -26,12 +27,15 @@ def run(test, params, env):
     mpath_conf_path = params.get('mpath_conf_path', '/etc/multipath.conf')
     mpath_conf_bkup_path = params.get('mpath_conf_bkup_path',
                                       '/etc/multipath.conf.bkup')
+    mpath_conf_exist = False
 
     def prepare_multipath_conf():
         """
         Prepare the multipath.conf to make sure iscsi lun can be seen as a
         multipath device.
+        :return: True means the multipath.conf exists at first, False means not.
         """
+        multipath_conf_exist = False
         mpath_conf_content = ("defaults {\n"
                               "    user_friendly_names yes\n"
                               "    path_grouping_policy multibus\n"
@@ -41,18 +45,23 @@ def run(test, params, env):
         if os.path.exists(mpath_conf_bkup_path):
             os.remove(mpath_conf_bkup_path)
         if os.path.exists(mpath_conf_path):
+            multipath_conf_exist = True
             shutil.move(mpath_conf_path, mpath_conf_bkup_path)
         with open(mpath_conf_path, 'wt') as mpath_conf_file:
             mpath_conf_file.write(mpath_conf_content)
+        return multipath_conf_exist
 
-    def recover_multipath_conf():
+    def recover_multipath_conf(remove_mpath_conf=False):
         """
         Recover the multipath.conf.
+        :param remove_mpath_conf: True to remove multipath.conf.
         """
         if os.path.exists(mpath_conf_bkup_path):
             if os.path.exists(mpath_conf_path):
                 os.remove(mpath_conf_path)
             shutil.move(mpath_conf_bkup_path, mpath_conf_path)
+        if os.path.exists(mpath_conf_path) and remove_mpath_conf:
+            os.remove(mpath_conf_path)
 
     def check_in_vm(vm, old_parts):
         """
@@ -65,7 +74,7 @@ def run(test, params, env):
             session = vm.wait_for_login()
             if platform.platform().count('ppc64'):
                 time.sleep(10)
-            new_parts = libvirt.get_parts_list(session)
+            new_parts = utils_disk.get_parts_list(session)
             added_parts = list(set(new_parts).difference(set(old_parts)))
             logging.info("Added parts:%s", added_parts)
             if len(added_parts) != 1:
@@ -79,8 +88,7 @@ def run(test, params, env):
             status, output = session.cmd_status_output(cmd)
             session.close()
             if status:
-                test.fail("Disk operation in VM failed:\nexit code:\n%s\noutput:\n%s",
-                          status, output)
+                test.fail("Disk operation in VM failed:%s" % output)
         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as err:
             test.fail("Error happens when check disk in vm: %s" % err)
 
@@ -91,13 +99,13 @@ def run(test, params, env):
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
-    old_parts = libvirt.get_parts_list(session)
+    old_parts = utils_disk.get_parts_list(session)
     session.close()
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     try:
         # Setup backend storage
-        prepare_multipath_conf()
+        mpath_conf_exist = prepare_multipath_conf()
         mpath.restart_multipathd()
         old_mpath_devs = mpath.find_mpath_devs()
         libvirt.setup_or_cleanup_iscsi(is_setup=True)
@@ -137,4 +145,5 @@ def run(test, params, env):
         vmxml_backup.sync()
         # Clean up backend storage
         libvirt.setup_or_cleanup_iscsi(is_setup=False)
-        recover_multipath_conf()
+        recover_multipath_conf(not mpath_conf_exist)
+        mpath.restart_multipathd()

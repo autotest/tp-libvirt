@@ -18,6 +18,7 @@ def run(test, params, env):
     extra = params.get("net_autostart_extra", "")  # extra cmd-line params.
     net_name = params.get("net_autostart_net_name", "autotest")
     net_transient = "yes" == params.get("net_transient", "no")
+    readonly = ("yes" == params.get("readonly", "no"))
 
     # Prepare environment and record current net_state_dict
     backup = network_xml.NetworkXML.new_all_networks_dict()
@@ -101,7 +102,7 @@ def run(test, params, env):
 
         # Run test case
         # Use function in virsh module directly for both normal and error test
-        result = virsh.net_autostart(net_ref, extra)
+        result = virsh.net_autostart(net_ref, extra, readonly=readonly)
         status = result.exit_status
         if status:
             logging.debug("autostart cmd return:\n%s" % result.stderr.strip())

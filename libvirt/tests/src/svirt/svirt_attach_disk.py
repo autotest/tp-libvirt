@@ -13,7 +13,13 @@ from virttest import libvirt_xml
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest.utils_test import libvirt as utlv
+from virttest.utils_test import libvirt
 from virttest.libvirt_xml.vm_xml import VMXML
+from virttest.libvirt_xml.devices.disk import Disk
+from virttest.libvirt_xml.devices import seclabel
+from virttest.compat_52lts import decode_to_text as to_text
+
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -35,6 +41,7 @@ def run(test, params, env):
     sec_relabel = params.get("svirt_attach_disk_vm_sec_relabel", "yes")
     sec_dict = {'type': sec_type, 'model': sec_model, 'label': sec_label,
                 'relabel': sec_relabel}
+    disk_seclabel = params.get("disk_seclabel", "no")
     # Get variables about pool vol
     with_pool_vol = 'yes' == params.get("with_pool_vol", "no")
     check_cap_rawio = "yes" == params.get("check_cap_rawio", "no")
@@ -44,7 +51,10 @@ def run(test, params, env):
     pool_target = params.get("pool_target")
     emulated_image = params.get("emulated_image")
     vol_name = params.get("vol_name")
-    vol_format = params.get("vol_format")
+    vol_format = params.get("vol_format", "qcow2")
+    device_target = params.get("disk_target")
+    device_bus = params.get("disk_target_bus")
+    device_type = params.get("device_type", "file")
     # Get variables about VM and get a VM object and VMXML instance.
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -52,6 +62,8 @@ def run(test, params, env):
     backup_xml = vmxml.copy()
     # Get varialbles about image.
     img_label = params.get('svirt_attach_disk_disk_label')
+    sec_disk_dict = {'model': sec_model, 'label': img_label, 'relabel': sec_relabel}
+    enable_namespace = 'yes' == params.get('enable_namespace', 'no')
     img_name = "svirt_disk"
     # Default label for the other disks.
     # To ensure VM is able to access other disks.
@@ -69,6 +81,8 @@ def run(test, params, env):
     pvt = None
     qemu_conf = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
+    disk_xml = Disk(type_name=device_type)
+    disk_xml.device = "disk"
     try:
         # set qemu conf
         if check_cap_rawio:
@@ -76,11 +90,6 @@ def run(test, params, env):
             qemu_conf.group = 'root'
             logging.debug("the qemu.conf content is: %s" % qemu_conf)
             libvirtd.restart()
-
-        # Set the context of the VM.
-        vmxml.set_seclabel([sec_dict])
-        vmxml.sync()
-        logging.debug("the domain xml is: %s" % vmxml.xmltreefile)
 
         if with_pool_vol:
             # Create dst pool for create attach vol img
@@ -96,6 +105,7 @@ def run(test, params, env):
                 # format is not supported and will be 'raw' as default.
                 pv = libvirt_storage.PoolVolume(pool_name)
                 vols = list(pv.list_volumes().keys())
+                vol_format = "raw"
                 if vols:
                     vol_name = vols[0]
                 else:
@@ -123,9 +133,17 @@ def run(test, params, env):
             img_path = cmd_result.stdout.strip()
 
             if pool_type in ["iscsi", "disk"]:
-                extra = "--driver qemu --type lun --rawio --persistent"
+                source_type = "dev"
+                if pool_type == "iscsi":
+                    disk_xml.device = "lun"
+                    disk_xml.rawio = "yes"
+                else:
+                    if not enable_namespace:
+                        qemu_conf.namespaces = ''
+                        logging.debug("the qemu.conf content is: %s" % qemu_conf)
+                        libvirtd.restart()
             else:
-                extra = "--persistent --subdriver qcow2"
+                source_type = "file"
 
             # set host_sestatus as nfs pool will reset it
             utils_selinux.set_status(host_sestatus)
@@ -135,6 +153,7 @@ def run(test, params, env):
             if result.exit_status:
                 test.cancel("Failed to set virt_use_nfs value")
         else:
+            source_type = "file"
             # Init a QemuImg instance.
             params['image_name'] = img_name
             tmp_dir = data_dir.get_tmp_dir()
@@ -142,15 +161,31 @@ def run(test, params, env):
             # Create a image.
             img_path, result = image.create(params)
             # Set the context of the image.
-            utils_selinux.set_context_of_file(filename=img_path, context=img_label)
-            extra = "--persistent"
+            if sec_relabel == "no":
+                utils_selinux.set_context_of_file(filename=img_path, context=img_label)
+
+        disk_xml.target = {"dev": device_target, "bus": device_bus}
+        disk_xml.driver = {"name": "qemu", "type": vol_format}
+        if disk_seclabel == "yes":
+            source_seclabel = []
+            sec_xml = seclabel.Seclabel()
+            sec_xml.update(sec_disk_dict)
+            source_seclabel.append(sec_xml)
+            disk_source = disk_xml.new_disk_source(**{"attrs": {source_type: img_path},
+                                                      "seclabels": source_seclabel})
+        else:
+            disk_source = disk_xml.new_disk_source(**{"attrs": {source_type: img_path}})
+            # Set the context of the VM.
+            vmxml.set_seclabel([sec_dict])
+            vmxml.sync()
+
+        disk_xml.source = disk_source
+        logging.debug(disk_xml)
 
         # Do the attach action.
-        result = virsh.attach_disk(vm_name, source=img_path, target="vdf",
-                                   extra=extra, debug=True)
-        if result.exit_status:
-            test.fail("Failed to attach disk %s to VM."
-                      "Detail: %s." % (img_path, result.stderr))
+        cmd_result = virsh.attach_device(domainarg=vm_name, filearg=disk_xml.xml, flagstr='--persistent')
+        libvirt.check_exit_status(cmd_result, expect_error=False)
+        logging.debug("the domain xml is: %s" % vmxml.xmltreefile)
 
         # Start VM to check the VM is able to access the image or not.
         try:
@@ -184,7 +219,17 @@ def run(test, params, env):
                         inf_msg = "vm process with %s: 0x%x" % (i, cap_dict[i])
                         inf_msg += " have cap_sys_rawio capabilities"
                         logging.debug(inf_msg)
-
+            if pool_type == "disk":
+                if libvirt_version.version_compare(3, 1, 0) and enable_namespace:
+                    vm_pid = vm.get_pid()
+                    output = process.system_output(
+                        "nsenter -t %d -m -- ls -Z %s" % (vm_pid, img_path))
+                else:
+                    output = process.system_output('ls -Z %s' % img_path)
+                logging.debug("The default label is %s", default_label)
+                logging.debug("The label after guest started is %s", to_text(output.strip().split()[-2]))
+                if default_label not in to_text(output.strip().split()[-2]):
+                    test.fail("The label is wrong after guest started\n")
         except virt_vm.VMStartError as e:
             # Starting VM failed.
             # VM with set seclabel can not access the image with the
@@ -193,12 +238,8 @@ def run(test, params, env):
                 test.fail("Test failed in positive case."
                           "error: %s" % e)
 
-        try:
-            virsh.detach_disk(vm_name, target="vdf", extra="--persistent",
-                              debug=True)
-        except process.CmdError:
-            test.fail("Detach disk 'vdf' from VM %s failed."
-                      % vm.name)
+        cmd_result = virsh.detach_device(domainarg=vm_name, filearg=disk_xml.xml)
+        libvirt.check_exit_status(cmd_result, status_error)
     finally:
         # clean up
         vm.destroy()

@@ -6,14 +6,16 @@ import os
 import os.path
 import logging
 import aexpect
+import itertools
+from string import ascii_lowercase
+
 from six import iteritems
 
-from string import ascii_lowercase
+from avocado.utils import astring
 
 from virttest import virt_vm, virsh, remote, utils_misc, data_dir
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.vm_xml import VMXML
-from virttest.staging.backports import itertools
 
 from provider import libvirt_version
 
@@ -610,7 +612,7 @@ class VirtualDiskBasic(AttachDeviceBase):
             # Write simple unique data to file before end
             image_file.seek(byte_size - len(image_file_path) - 1)
             # newline required by aexpect in function()
-            image_file.write(image_file_path + '\n')
+            image_file.write((image_file_path + '\n').encode(encoding=astring.ENCODING))
 
     def init_device(self, index):
         """

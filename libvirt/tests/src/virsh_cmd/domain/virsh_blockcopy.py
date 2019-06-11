@@ -518,8 +518,8 @@ def run(test, params, env):
                         bandwidth += 'B'
                     else:
                         bandwidth += 'M'
-                    if not utl.check_blockjob(vm_name, target, "bandwidth",
-                                              bandwidth):
+                    if not (bandwidth in ['0B', '0M']) and not utl.check_blockjob(vm_name, target, "bandwidth",
+                                                                                  bandwidth):
                         raise exceptions.TestFail("Check bandwidth failed")
                 val = options.count("--pivot") + options.count("--finish")
                 # Don't wait for job finish when using --byte option

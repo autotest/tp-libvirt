@@ -25,7 +25,8 @@ def run(test, params, env):
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
     vpx_hostname = params.get('vpx_hostname')
-    esx_ip = params.get('esx_hostname')
+    vpx_passwd = params.get("vpx_password")
+    esxi_host = esx_ip = params.get('esx_hostname')
     vpx_dc = params.get('vpx_dc')
     vm_name = params.get('main_vm')
     output_mode = params.get('output_mode')
@@ -39,6 +40,14 @@ def run(test, params, env):
     checkpoint = params.get('checkpoint', '')
     error_list = []
     remote_host = vpx_hostname
+    # For VDDK
+    input_transport = params.get("input_transport")
+    vddk_libdir = params.get('vddk_libdir')
+    # nfs mount source
+    vddk_libdir_src = params.get('vddk_libdir_src')
+    vddk_thumbprint = params.get('vddk_thumbprint')
+    src_uri_type = params.get('src_uri_type')
+    esxi_password = params.get('esxi_password')
 
     def log_fail(msg):
         """
@@ -93,7 +102,7 @@ def run(test, params, env):
         if not cfg_content:
             test.error('Missing content for search')
         logging.info('Search "%s" in /etc/modprobe.conf', cfg_content)
-        pattern = '\s+'.join(cfg_content.split())
+        pattern = r'\s+'.join(cfg_content.split())
         if not re.search(pattern, content):
             log_fail('Not found "%s"' % cfg_content)
 
@@ -111,6 +120,32 @@ def run(test, params, env):
             log_fail('Content of device.map not correct')
         else:
             logging.info('device.map has been remaped to "/dev/vd*"')
+
+    def check_resume_swap(vmcheck):
+        """
+        Check the content of grub files meet expectation.
+        """
+        # Only for grub2
+        chkfiles = ['/etc/default/grub',
+                    '/boot/grub2/grub.cfg',
+                    '/etc/grub2.cfg']
+
+        for file_i in chkfiles:
+            status, content = vmcheck.run_cmd('cat %s' % file_i)
+            if status != 0:
+                log_fail('%s does not exist' % file_i)
+            resume_dev_count = content.count('resume=/dev/')
+            if resume_dev_count == 0 or resume_dev_count != content.count(
+                    'resume=/dev/vd'):
+                reason = 'Maybe the VM\'s swap pariton is lvm'
+                log_fail(
+                    'Content of %s is not correct or %s' %
+                    (file_i, reason))
+
+        content = vmcheck.session.cmd('cat /proc/cmdline')
+        logging.debug('Content of /proc/cmdline:\n%s', content)
+        if 'resume=/dev/vd' not in content:
+            log_fail('Content of /proc/cmdline is not correct')
 
     def check_result(result, status_error):
         """
@@ -147,6 +182,8 @@ def run(test, params, env):
                 check_modprobe(vmchecker.checker)
             if checkpoint == 'device_map':
                 check_device_map(vmchecker.checker)
+            if checkpoint == 'resume_swap':
+                check_resume_swap(vmchecker.checker)
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
         log_check = utils_v2v.check_log(params, output)
@@ -164,8 +201,17 @@ def run(test, params, env):
             'v2v_opts': '-v -x', 'input_mode': 'libvirt',
             'storage': params.get('output_storage', 'default'),
             'network': params.get('network'),
-            'bridge':  params.get('bridge'),
-            'target':  params.get('target')
+            'bridge': params.get('bridge'),
+            'target': params.get('target'),
+            'input_transport': input_transport,
+            'vcenter_host': vpx_hostname,
+            'vcenter_password': vpx_passwd,
+            'vddk_thumbprint': vddk_thumbprint,
+            'vddk_libdir': vddk_libdir,
+            'vddk_libdir_src': vddk_libdir_src,
+            'src_uri_type': src_uri_type,
+            'esxi_password': esxi_password,
+            'esxi_host': esxi_host
         }
 
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
@@ -173,12 +219,13 @@ def run(test, params, env):
         remote_uri = v2v_uri.get_uri(remote_host, vpx_dc, esx_ip)
 
         # Create password file for access to ESX hypervisor
-        vpx_passwd = params.get("vpx_password")
-        logging.debug(vpx_passwd)
-        vpx_passwd_file = os.path.join(data_dir.get_tmp_dir(), "vpx_passwd")
+        vpx_passwd_file = params.get("vpx_passwd_file")
         with open(vpx_passwd_file, 'w') as pwd_f:
-            pwd_f.write(vpx_passwd)
-        v2v_params['v2v_opts'] += " --password-file %s" % vpx_passwd_file
+            if src_uri_type == 'esx':
+                pwd_f.write(esxi_password)
+            else:
+                pwd_f.write(vpx_passwd)
+        v2v_params['v2v_opts'] += " -ip %s" % vpx_passwd_file
 
         if params.get('output_format'):
             v2v_params.update({'output_format': params['output_format']})
@@ -204,7 +251,7 @@ def run(test, params, env):
             utils_package.package_install('OVMF')
         if checkpoint == 'root_ask':
             v2v_params['v2v_opts'] += ' --root ask'
-            v2v_params['custom_inputs'] = params.get('choice', '1')
+            v2v_params['custom_inputs'] = params.get('choice', '2')
         if checkpoint.startswith('root_') and checkpoint != 'root_ask':
             root_option = params.get('root_option')
             v2v_params['v2v_opts'] += ' --root %s' % root_option
@@ -250,3 +297,5 @@ def run(test, params, env):
             logging.info('Unset http_proxy&https_proxy')
             os.environ.pop('http_proxy')
             os.environ.pop('https_proxy')
+        # Cleanup constant files
+        utils_v2v.cleanup_constant_files(params)

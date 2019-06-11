@@ -36,6 +36,8 @@ def run(test, params, env):
         if iface_target:
             iface.target = {'dev': iface_target}
         iface.mac_address = mac
+        if iface_rom:
+            iface.rom = eval(iface_rom)
         logging.debug("Create new interface xml: %s", iface)
         return iface
 
@@ -47,6 +49,7 @@ def run(test, params, env):
     iface_model = params.get("iface_model")
     iface_target = params.get("iface_target")
     iface_mac = params.get("iface_mac")
+    iface_rom = params.get("iface_rom")
     attach_device = "yes" == params.get("attach_device", "no")
     attach_iface = "yes" == params.get("attach_iface", "no")
     attach_option = params.get("attach_option", "")
@@ -61,6 +64,7 @@ def run(test, params, env):
     poll_timeout = int(params.get("poll_timeout", 10))
     err_msgs1 = params.get("err_msgs1")
     err_msgs2 = params.get("err_msgs2")
+    err_msg_rom = params.get("err_msg_rom")
 
     # stree_test require detach operation
     stress_test_detach_device = False
@@ -115,7 +119,8 @@ def run(test, params, env):
                     iface_xml_obj.xmltreefile.write()
                     ret = virsh.attach_device(vm_name, iface_xml_obj.xml,
                                               flagstr=attach_option,
-                                              ignore_status=True)
+                                              ignore_status=True,
+                                              debug=True)
                 elif attach_iface:
                     logging.info("Try to attach interface loop %s" % i)
                     mac = utils_net.generate_mac_address_simple()
@@ -138,9 +143,10 @@ def run(test, params, env):
                         logging.debug("options %s are mutually exclusive" % attach_option)
                         if not ("--current" in sep_options and len(sep_options) > 1):
                             test.fail("return mutualy exclusive, but it is unexpected")
+                    elif err_msg_rom in ret.stderr:
+                        logging.debug("Attach failed with expect err msg: %s" % err_msg_rom)
                     else:
-                        logging.error("Command output %s" % ret.stdout.strip())
-                        test.fail("Failed to attach-interface")
+                        test.fail("Failed to attach-interface: %s" % ret.stderr.strip())
                 elif stress_test:
                     if attach_device:
                         # Detach the device immediately for stress test

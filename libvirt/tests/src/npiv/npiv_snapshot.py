@@ -87,21 +87,6 @@ def prepare_scsi_pool(pool_name, wwnn, wwpn, parent_scsi, pool_target):
         raise exceptions.TestFail("Failed to prepare pool:%s", pool_name)
 
 
-def create_qcow2_blk(path_to_dev, size):
-    """
-    Create a qcow2 file to a block device
-
-    :params path_to_dev: path to block device
-    :params size: size of the qcow2 file
-    """
-    cmd = "qemu-img create -f qcow2 %s %s" % (path_to_dev, size)
-    try:
-        process.run(cmd, shell=True)
-    except process.cmdError as detail:
-        raise exceptions.TestError("Failed to create qcow2 with %s: %s"
-                                   % (path_to_dev, str(detail)))
-
-
 def create_file_in_vm(session, file_path, file_content="test"):
     """
     Create a file in vm
@@ -134,22 +119,6 @@ def get_file_in_vm(session, file_path):
         file_existence = True
         file_content = output
     return file_existence, file_content
-
-
-def get_vm_blks(vm_name):
-    """
-    Get the list of vm's block devices
-    """
-    blk_list = []
-    data = virsh.domblklist(vm_name).stdout.splitlines()
-    for rec in data:
-        if rec.startswith("Target") or rec.startswith("---"):
-            continue
-        else:
-            pos = rec.find(" ")
-            if rec[:pos]:
-                blk_list.append(rec[:pos])
-    return blk_list
 
 
 def mkfs_and_mount(session, mount_disk):
@@ -212,11 +181,16 @@ def run(test, params, env):
     lun_sl = []
     new_disk = ""
     pool_ins = None
+    old_mpath_conf = ""
+    mpath_conf_path = "/etc/multipath.conf"
+    original_mpath_conf_exist = os.path.exists(mpath_conf_path)
 
     vm = env.get_vm(vm_name)
     online_hbas = utils_npiv.find_hbas("hba")
     if not online_hbas:
         raise exceptions.TestSkipError("There is no online hba cards.")
+    old_mpath_conf = utils_npiv.prepare_multipath_conf(conf_path=mpath_conf_path,
+                                                       replace_existing=True)
     first_online_hba = online_hbas[0]
     old_vhbas = utils_npiv.find_hbas("vhba")
     if vm.is_dead():
@@ -254,17 +228,9 @@ def run(test, params, env):
             if not new_blks:
                 raise exceptions.TestFail("block device not found with scsi_%s",
                                           new_vhba_scsibus)
-            first_blk_dev = new_blks[0]
-            utils_misc.wait_for(
-                lambda: get_symbols_by_blk(first_blk_dev),
-                timeout=_TIMEOUT)
-            lun_sl = get_symbols_by_blk(first_blk_dev)
-            if not lun_sl:
-                raise exceptions.TestFail("lun symbolic links not found under "
-                                          "/dev/disk/by-path/ for blk dev %s" %
-                                          first_blk_dev)
-            lun_dev = lun_sl[0]
-            path_to_blk = os.path.join(_BY_PATH_DIR, lun_dev)
+            vol_list = utlv.get_vol_list(pool_name, vol_check=True,
+                                         timeout=_TIMEOUT*3)
+            path_to_blk = list(vol_list.values())[0]
         elif vd_format in ['mpath', 'by_path']:
             old_mpath_devs = utils_npiv.find_mpath_devs()
             new_vhba = utils_npiv.nodedev_create_from_xml(
@@ -366,7 +332,7 @@ def run(test, params, env):
 
         # virsh snapshot-create-as vm s --disk-only --diskspec vda,file=path
         if snapshot_disk_only:
-            vm_blks = get_vm_blks(vm_name)
+            vm_blks = list(vm.get_disk_devices().keys())
             options = "%s --disk-only" % snapshot_name
             for vm_blk in vm_blks:
                 snapshot_file = snapshot_dir + "/" + vm_blk + "." + snapshot_name
@@ -421,7 +387,7 @@ def run(test, params, env):
             logging.debug("result of snapshot-delete: %s",
                           result.stdout.strip())
             if snapshot_disk_only:
-                vm_blks = get_vm_blks(vm_name)
+                vm_blks = list(vm.get_disk_devices().keys())
                 for vm_blk in vm_blks:
                     snapshot_file = snapshot_dir + "/" + vm_blk + "." + snap
                     if os.path.exists(snapshot_file):
@@ -439,3 +405,9 @@ def run(test, params, env):
         for new_vhba in new_vhbas:
             virsh.nodedev_destroy(new_vhba)
         utils_npiv.restart_multipathd()
+        if old_mpath_conf:
+            utils_npiv.prepare_multipath_conf(conf_path=mpath_conf_path,
+                                              conf_content=old_mpath_conf,
+                                              replace_existing=True)
+        if not original_mpath_conf_exist and os.path.exists(mpath_conf_path):
+            os.remove(mpath_conf_path)

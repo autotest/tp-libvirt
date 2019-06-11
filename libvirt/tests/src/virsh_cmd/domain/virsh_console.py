@@ -1,4 +1,5 @@
 import logging
+import platform
 
 import aexpect
 
@@ -180,6 +181,13 @@ def run(test, params, env):
     domid = ""
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
+
+    # PAPR guests don't usually have a true serial device (ttyS0),
+    # they only have the hypervisor console (/dev/hvc0)
+    if 'ppc64' in platform.machine():
+        params["console_device"] = 'hvc0'
+
+    update_console = params.get("update_console", "yes")
     console_dev = params.get("console_device", "ttyS0")
     console_speed = params.get("console_speed", "115200")
     if unprivileged_user:
@@ -200,9 +208,10 @@ def run(test, params, env):
 
     try:
         # Guarantee cleanup after config vm console failed.
-        if vm.is_qemu():
-            vm_console_config(vm, test, device=console_dev,
-                              speed=console_speed)
+        if update_console == "yes":
+            if vm.is_qemu():
+                vm_console_config(vm, test, device=console_dev,
+                                  speed=console_speed)
 
         # Prepare vm state for test
         if vm_state != "shutoff":
@@ -251,7 +260,8 @@ def run(test, params, env):
         if not vm.is_alive():
             vm.start()
             vm.wait_for_login()
-        vm.set_kernel_console(console_dev, console_speed, remove=True)
+        if update_console == "yes":
+            vm.set_kernel_console(console_dev, console_speed, remove=True)
 
         # Recover vm
         if vm.is_alive():

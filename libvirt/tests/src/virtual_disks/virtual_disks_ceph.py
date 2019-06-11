@@ -2,18 +2,22 @@ import os
 import re
 import time
 import logging
+import shutil
 import aexpect
+
 from collections import OrderedDict
 
 from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import utils_disk
 from virttest import utils_misc
 from virttest import utils_package
 from virttest import virt_vm, remote
 from virttest import utils_libguestfs
 from virttest import libvirt_storage
+from virttest import ceph
 
 from virttest.utils_config import LibvirtQemuConfig
 from virttest.utils_config import LibvirtSanLockConfig
@@ -26,6 +30,8 @@ from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml.devices.lease import Lease
 from virttest import data_dir
 from virttest.compat_52lts import results_stdout_52lts
+
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -41,6 +47,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     virsh_dargs = {'debug': True, 'ignore_status': True}
+    additional_xml_file = os.path.join(data_dir.get_tmp_dir(), "additional_disk.xml")
 
     def config_ceph():
         """
@@ -340,7 +347,7 @@ def run(test, params, env):
         """
         try:
             session = vm_obj.wait_for_login()
-            new_parts = libvirt.get_parts_list(session)
+            new_parts = utils_disk.get_parts_list(session)
             added_parts = list(set(new_parts).difference(set(old_parts)))
             logging.info("Added parts:%s", added_parts)
             if len(added_parts) != 1:
@@ -512,11 +519,16 @@ def run(test, params, env):
     test_json_pseudo_protocol = "yes" == params.get("json_pseudo_protocol", "no")
     disk_snapshot_with_sanlock = "yes" == params.get("disk_internal_with_sanlock", "no")
 
+    # Prepare a blank params to confirm if delete the configure at the end of the test
+    ceph_cfg = ""
+    # Create config file if it doesn't exist
+    ceph_cfg = ceph.create_config_file(mon_host)
+
     # Start vm and get all partions in vm.
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
-    old_parts = libvirt.get_parts_list(session)
+    old_parts = utils_disk.get_parts_list(session)
     session.close()
     vm.destroy(gracefully=False)
     if additional_guest:
@@ -546,8 +558,12 @@ def run(test, params, env):
     if test_snapshot:
         unsupported_err.append('live disk snapshot not supported')
     if test_disk_readonly:
-        unsupported_err.append('Could not create file: Permission denied')
-        unsupported_err.append('Permission denied')
+        if not libvirt_version.version_compare(5, 0, 0):
+            unsupported_err.append('Could not create file: Permission denied')
+            unsupported_err.append('Permission denied')
+        else:
+            unsupported_err.append('unsupported configuration: external snapshot ' +
+                                   'for readonly disk vdb is not supported')
     if test_disk_internal_snapshot:
         unsupported_err.append('unsupported configuration: internal snapshot for disk ' +
                                'vdb unsupported for storage type raw')
@@ -567,7 +583,6 @@ def run(test, params, env):
                 virsh.secret_undefine(dirty_secret_uuid)
         # Prepare test environment.
         qemu_config = LibvirtQemuConfig()
-        san_lock_config = LibvirtSanLockConfig()
 
         if disk_snapshot_with_sanlock:
             # Install necessary package:sanlock,libvirt-lock-sanlock
@@ -585,6 +600,7 @@ def run(test, params, env):
             qemu_config.lock_manager = 'sanlock'
 
             # Update qemu-sanlock.conf.
+            san_lock_config = LibvirtSanLockConfig()
             san_lock_config.user = 'sanlock'
             san_lock_config.group = 'sanlock'
             san_lock_config.host_id = 1
@@ -690,7 +706,7 @@ def run(test, params, env):
             first_disk = vm.get_first_disk_devices()
             blk_source = first_disk['source']
             # Convert the image to remote storage
-            disk_cmd = ("rbd -m %s %s info %s || qemu-img convert"
+            disk_cmd = ("rbd -m %s %s info %s 2> /dev/null|| qemu-img convert"
                         " -O %s %s %s" % (mon_host, key_opt,
                                           disk_src_name, disk_format,
                                           blk_source, disk_path))
@@ -709,7 +725,7 @@ def run(test, params, env):
                         (disk_format, img_file, img_file))
             process.run(disk_cmd, ignore_status=False, shell=True)
             # Convert the image to remote storage
-            disk_cmd = ("rbd -m %s %s info %s || qemu-img convert -O"
+            disk_cmd = ("rbd -m %s %s info %s 2> /dev/null|| qemu-img convert -O"
                         " %s %s %s" % (mon_host, key_opt, disk_src_name,
                                        disk_format, img_file, disk_path))
             process.run(disk_cmd, ignore_status=False, shell=True)
@@ -730,10 +746,12 @@ def run(test, params, env):
                             (json_str, front_end_img_file))
                 disk_path = front_end_img_file
                 process.run(disk_cmd, ignore_status=False, shell=True)
-        # If hot plug, start VM first, otherwise stop VM if running.
+        # If hot plug, start VM first, and then wait the OS boot.
+        # Otherwise stop VM if running.
         if start_vm:
             if vm.is_dead():
                 vm.start()
+            vm.wait_for_login().close()
         else:
             if not vm.is_dead():
                 vm.destroy()
@@ -753,6 +771,9 @@ def run(test, params, env):
                 if "secret_usage" in params:
                     params.pop("secret_usage")
             xml_file = libvirt.create_disk_xml(params)
+            if additional_guest:
+                # Copy xml_file for additional guest VM.
+                shutil.copyfile(xml_file, additional_xml_file)
             opts = params.get("attach_option", "")
             ret = virsh.attach_device(vm_name, xml_file,
                                       flagstr=opts, debug=True)
@@ -761,7 +782,8 @@ def run(test, params, env):
                 # Make sure the additional VM is running
                 if additional_vm.is_dead():
                     additional_vm.start()
-                ret = virsh.attach_device(guest_name, xml_file,
+                    additional_vm.wait_for_login().close()
+                ret = virsh.attach_device(guest_name, additional_xml_file,
                                           "", debug=True)
                 libvirt.check_result(ret, skip_if=unsupported_err)
         elif attach_disk:
@@ -846,7 +868,7 @@ def run(test, params, env):
         # Check disk in vm after detachment.
         if attach_device or attach_disk:
             session = vm.wait_for_login()
-            new_parts = libvirt.get_parts_list(session)
+            new_parts = utils_disk.get_parts_list(session)
             if len(new_parts) != len(old_parts):
                 test.fail("Disk still exists in vm"
                           " after detachment")
@@ -855,11 +877,14 @@ def run(test, params, env):
     except virt_vm.VMStartError as details:
         for msg in unsupported_err:
             if msg in str(details):
-                test.skip(details)
+                test.cancel(str(details))
         else:
             test.fail("VM failed to start."
                       "Error: %s" % str(details))
     finally:
+        # Remove ceph configure file if created.
+        if ceph_cfg:
+            os.remove(ceph_cfg)
         # Delete snapshots.
         snapshot_lists = virsh.snapshot_list(vm_name)
         if len(snapshot_lists) > 0:

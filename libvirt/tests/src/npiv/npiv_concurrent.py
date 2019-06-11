@@ -34,8 +34,7 @@ def convert_img_to_dev(test, src_fmt, dest_fmt, img_src, blk_dev):
     try:
         result = process.run(cmd, shell=True)
     except process.cmdError as detail:
-        test.fail("Failed to convert img with exception %s",
-                  detail)
+        test.fail("Failed to convert img with exception %s" % detail)
 
 
 def create_file_in_vm(vm, file_name, content, repeat):
@@ -128,8 +127,7 @@ def get_blks_by_scsi(test, scsi_bus, blk_prefix="sd"):
         result = process.run(cmd, shell=True)
         logging.debug("multipath result: %s", result.stdout_text.strip())
     except process.cmdError as detail:
-        test.error("Error happend for multipath: %s",
-                   str(detail))
+        test.error("Error happend for multipath: %s" % detail)
     blk_names = result.stdout_text.strip().splitlines()
     return blk_names
 
@@ -147,7 +145,7 @@ def get_symbols_by_blk(test, blkdev, method="by-path"):
     symbolic_links = []
     dir_path = os.path.join("/dev/disk/", method)
     if not os.path.exists(dir_path):
-        test.fail("Dir path %s does not exist!", dir_path)
+        test.fail("Dir path %s does not exist!" % dir_path)
     logging.debug("dir_path=%s, blkdev=%s", dir_path, blkdev)
     try:
         cmd = "ls -al %s | grep %s | grep -v %s\[1-9\] |"
@@ -156,7 +154,7 @@ def get_symbols_by_blk(test, blkdev, method="by-path"):
         cmd %= (dir_path, blkdev, blkdev)
         result = process.run(cmd, shell=True)
     except process.cmdError as detail:
-        test.error("cmd wrong with error %s", str(detail))
+        test.error("cmd wrong with error %s" % detail)
     symbolic_links = result.stdout_text.strip().splitlines()
     return symbolic_links
 
@@ -196,6 +194,9 @@ def run(test, params, env):
     target_buses = [vm0_target_bus, vm1_target_bus]
     wwnns = [vm0_wwnn, vm1_wwnn]
     wwpns = [vm0_wwpn, vm1_wwpn]
+    old_mpath_conf = ""
+    mpath_conf_path = "/etc/multipath.conf"
+    original_mpath_conf_exist = os.path.exists(mpath_conf_path)
 
     new_vhbas = []
     path_to_blks = []
@@ -206,6 +207,8 @@ def run(test, params, env):
         online_hbas = utils_npiv.find_hbas("hba")
         if not online_hbas:
             test.cancel("There is no online hba cards.")
+        old_mpath_conf = utils_npiv.prepare_multipath_conf(conf_path=mpath_conf_path,
+                                                           replace_existing=True)
         first_online_hba = online_hbas[0]
         if len(vm_names) != 2:
             test.cancel("This test needs exactly 2 vms.")
@@ -246,8 +249,7 @@ def run(test, params, env):
                                     timeout=_TIMEOUT)
                 new_blks = get_blks_by_scsi(test, new_vhba_scsibus)
                 if not new_blks:
-                    test.fail("blk dev not found with scsi_%s",
-                              new_vhba_scsibus)
+                    test.fail("blk dev not found with scsi_%s" % new_vhba_scsibus)
                 first_blk_dev = new_blks[0]
                 utils_misc.wait_for(
                         lambda: get_symbols_by_blk(test, first_blk_dev),
@@ -294,7 +296,7 @@ def run(test, params, env):
             if vm.is_alive:
                 vm.destroy(gracefully=True)
             else:
-                test.fail("%s is not running", vm.name)
+                test.fail("%s is not running" % vm.name)
             vm.start()
             session = vm.wait_for_login()
             if check_file_in_vm(session, _VM_FILE_PATH, vm.name, _REPEAT):
@@ -303,7 +305,7 @@ def run(test, params, env):
                 test.fail("Failed to check the test file in vm")
             session.close()
     except Exception as detail:
-        test.fail("Test failed with exception: %s", detail)
+        test.fail("Test failed with exception: %s" % detail)
     finally:
         logging.debug("Start to clean up env...")
         for vmxml_backup in vmxml_backups:
@@ -311,3 +313,9 @@ def run(test, params, env):
         for new_vhba in new_vhbas:
             virsh.nodedev_destroy(new_vhba)
         process.system('service multipathd restart', verbose=True)
+        if old_mpath_conf:
+            utils_npiv.prepare_multipath_conf(conf_path=mpath_conf_path,
+                                              conf_content=old_mpath_conf,
+                                              replace_existing=True)
+        if not original_mpath_conf_exist and os.path.exists(mpath_conf_path):
+            os.remove(mpath_conf_path)

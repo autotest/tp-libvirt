@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 import shutil
 
@@ -7,6 +8,7 @@ import aexpect
 from virttest import virt_vm
 from virttest import virsh
 from virttest import remote
+from virttest import data_dir
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 
@@ -163,10 +165,7 @@ def run(test, params, env):
 
     # Back up xml file.
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    if readonly:
-        device_source = os.path.join(test.tmpdir, device_source_name)
-    else:
-        device_source = os.path.join(test.virtdir, device_source_name)
+    device_source = os.path.join(data_dir.get_tmp_dir(), device_source_name)
 
     # Create virtual device file.
     if test_block_dev:
@@ -240,6 +239,7 @@ def run(test, params, env):
         status = virsh.detach_device(vm_ref, device_xml, readonly=readonly, flagstr=dt_options,
                                      debug=True).exit_status
 
+        time.sleep(2)
         # Resume guest after command. On newer libvirt this is fixed as it has
         # been a bug. The change in xml file is done after the guest is
         # resumed.

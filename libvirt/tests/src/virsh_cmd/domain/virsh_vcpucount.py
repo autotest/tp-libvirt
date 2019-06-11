@@ -3,6 +3,7 @@ import logging
 
 from virttest import virsh
 from virttest import libvirt_xml
+from virttest.utils_test import libvirt
 
 
 def reset_domain(vm, vm_state, maxvcpu, curvcpu, sockets,
@@ -175,6 +176,7 @@ def run(test, params, env):
     sockets = int(params.get("sockets", "1"))
     cores = int(params.get("cores", "4"))
     threads = int(params.get("threads", "1"))
+    expect_msg = params.get("vcpucount_err_msg")
     livevcpu = curvcpu + threads
     set_option = ["--config", "--config --maximum", "--live", "--guest"]
 
@@ -232,6 +234,8 @@ def run(test, params, env):
                     test.fail("Run successfully with wrong command!")
                 else:
                     logging.info("Run failed as expected")
+                    if expect_msg:
+                        libvirt.check_result(result, expect_msg.split(';'))
             else:
                 if vcpucount_status != 0:
                     test.fail("Run command failed with options %s" %

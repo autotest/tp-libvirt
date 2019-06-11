@@ -152,9 +152,9 @@ def run(test, params, env):
     try:
         # increase workload
         if load_type in ['cpu', 'memory']:
-            utils_test.load_stress("stress_in_vms", load_vms, params)
+            utils_test.load_stress("stress_in_vms", params=params, vms=load_vms)
         else:
-            utils_test.load_stress("iozone_in_vms", load_vms, params)
+            utils_test.load_stress("iozone_in_vms", params=params, vms=load_vms)
 
         if test_type == "multi":
             for i in range(test_count):

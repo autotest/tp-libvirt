@@ -12,6 +12,7 @@ from virttest import remote
 from virttest import data_dir
 from virttest import virt_vm
 from virttest import virsh
+from virttest import utils_disk
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml import secret_xml
@@ -79,7 +80,7 @@ def run(test, params, env):
         """
         try:
             session = vm.wait_for_login()
-            new_parts = libvirt.get_parts_list(session)
+            new_parts = utils_disk.get_parts_list(session)
             added_parts = list(set(new_parts).difference(set(old_parts)))
             logging.info("Added parts:%s", added_parts)
             if len(added_parts) != 1:
@@ -125,6 +126,18 @@ def run(test, params, env):
             test.fail("Can't see disk option '%s' "
                       "in command line" % cmd)
 
+    def check_auth_plaintext(vm_name, password):
+        """
+        Check if libvirt passed the plaintext of the chap authentication
+        password to qemu.
+        :param vm_name: The name of vm to be checked.
+        :param password: The plaintext of password used for chap authentication.
+        :return: True if using plaintext, False if not.
+        """
+        cmd = ("ps -ef | grep -v grep | grep qemu-kvm | grep %s | grep %s"
+               % (vm_name, password))
+        return process.system(cmd, ignore_status=True, shell=True) == 0
+
     # Disk specific attributes.
     device = params.get("virt_disk_device", "disk")
     device_target = params.get("virt_disk_device_target", "vdd")
@@ -161,7 +174,7 @@ def run(test, params, env):
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
-    old_parts = libvirt.get_parts_list(session)
+    old_parts = utils_disk.get_parts_list(session)
     session.close()
     vm.destroy(gracefully=False)
 
@@ -324,6 +337,14 @@ def run(test, params, env):
                 check_snapshot()
                 if os.path.exists(save_file):
                     os.remove(save_file)
+            # Test libvirt doesn't pass the plaintext of chap password to qemu,
+            # this function is implemented in libvirt 4.3.0-1.
+            if (libvirt_version.version_compare(4, 3, 0) and
+                    (auth_uuid or auth_usage) and
+                    chap_passwd):
+                if(check_auth_plaintext(vm_name, chap_passwd)):
+                    test.fail("Libvirt should not pass plaintext of chap "
+                              "password to qemu-kvm.")
 
     finally:
         # Delete snapshots.

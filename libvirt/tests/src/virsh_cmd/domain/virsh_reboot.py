@@ -10,6 +10,7 @@ from virttest import virt_vm
 from virttest import virsh
 from virttest import remote
 from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 
 
@@ -40,6 +41,7 @@ def run(test, params, env):
     mode = params.get("reboot_mode", "")
     pre_domian_status = params.get("reboot_pre_domian_status", "running")
     reboot_readonly = "yes" == params.get("reboot_readonly", "no")
+    wait_time = int(params.get('wait_time', 5))
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     try:
         # Add or remove qemu-agent from guest before test
@@ -100,7 +102,21 @@ def run(test, params, env):
                 if not virsh.has_command_help_match('reboot', '\s+--mode\s+'):
                     # old libvirt doesn't support reboot
                     status = -2
-            else:
+            # avoid the check if it is negative test
+            if not status_error:
+                cmdoutput = ''
+
+                def _wait_for_vm_running():
+                    cmdoutput = virsh.domstate(vm_ref, '--reason',
+                                               ignore_status=True, debug=True)
+                    domstate_status = cmdoutput.exit_status
+                    output = "running" in cmdoutput.stdout
+                    return not domstate_status and output
+                if not utils_misc.wait_for(_wait_for_vm_running,
+                                           timeout=wait_time, step=1):
+                    test.fail("Cmd error: %s Error status: %s" %
+                              (cmdoutput.stderr, cmdoutput.stdout))
+            elif pre_domian_status != 'shutoff':
                 vm.wait_for_login().close()
         output = virsh.dom_list(ignore_status=True).stdout.strip()
 

@@ -36,6 +36,9 @@ def run(test, params, env):
     Test virsh migrate command.
     """
 
+    readonly = (params.get("migrate_readonly", "no") == "yes")
+    virsh_args = {"ignore_status": True, "debug": True, "readonly": readonly}
+
     def check_vm_state(vm, state, uri=None, ignore_error=True):
         """
         Return True if vm is in the correct state.
@@ -98,15 +101,19 @@ def run(test, params, env):
         :raise: test.cancel when some known messages found
         """
         logging.debug("Migration result:\n%s", migration_res)
-        if migration_res.stderr.find("error: unsupported configuration:") >= 0:
+        if (migration_res.stderr.find("error: unsupported configuration:") >= 0 and
+                not params.get("unsupported_conf", "no") == "yes"):
             test.cancel(migration_res.stderr)
 
-    def do_migration(delay, vm, dest_uri, options, extra):
+    def do_migration(delay, vm, dest_uri, options, extra, **virsh_args):
         logging.info("Sleeping %d seconds before migration", delay)
         time.sleep(delay)
         # Migrate the guest.
-        migration_res = vm.migrate(dest_uri, options, extra, True, True)
+        migration_res = vm.migrate(dest_uri, options, extra, **virsh_args)
         logging.info("Migration exit status: %d", migration_res.exit_status)
+        logging.info("Migration command: %s", migration_res.command)
+        logging.info("Migration stdout: %s", migration_res.stdout)
+        logging.info("Migration stderr: %s", migration_res.stderr)
         check_migration_result(migration_res)
         if int(migration_res.exit_status) != 0:
             logging.error("Migration failed for %s.", vm_name)
@@ -194,7 +201,7 @@ def run(test, params, env):
         else:
             for index in range(2):
                 numa_dict['id'] = str(index)
-                numa_dict['memory'] = str(max_mem / 2)
+                numa_dict['memory'] = str(max_mem // 2)
                 numa_dict['unit'] = str(max_mem_unit)
                 if vcpu == 2:
                     numa_dict['cpus'] = "%s" % str(index)
@@ -204,9 +211,9 @@ def run(test, params, env):
                             numa_dict['cpus'] = "%s" % str(index)
                         if vcpu > 3:
                             numa_dict['cpus'] = "%s-%s" % (str(index),
-                                                           str(vcpu / 2 - 1))
+                                                           str(vcpu // 2 - 1))
                     else:
-                        numa_dict['cpus'] = "%s-%s" % (str(vcpu / 2),
+                        numa_dict['cpus'] = "%s-%s" % (str(vcpu // 2),
                                                        str(vcpu - 1))
                 numa_dict_list.append(numa_dict)
                 numa_dict = {}
@@ -387,26 +394,12 @@ def run(test, params, env):
 
             logging.debug("Checking CPU number gets reflected from inside "
                           "guest")
-            cmd = "lscpu | grep \"^CPU(s):\""
-            # vcpu count gets reflected step by step gradually, so we check
-            # vcpu and compare with previous count by taking 5 seconds, if
-            # there is no change in vpcu count we break the loop.
-            prev_output = -1
-            while True:
-                ret, output = session.cmd_status_output(cmd)
-                if ret:
-                    test.fail("CPU %s failed - %s" % (operation, output))
-                output = filter(str.isdigit, str(output.split(":")[-1].strip()))
+            if not utils_misc.wait_for(lambda: utils_misc.check_if_vm_vcpu_match(cpu_count,
+                                                                                 vm,
+                                                                                 connect_uri=uri),
+                                       300, text="wait for vcpu online"):
+                test.fail("CPU %s failed" % operation)
 
-                if int(prev_output) == int(output):
-                    break
-                prev_output = output
-                time.sleep(5)
-            logging.debug("CPUs available from inside guest after %s - %s",
-                          operation, output)
-            if int(output) != cpu_count:
-                test.fail("CPU %s failed as cpus are not "
-                          "reflected from inside guest" % operation)
             logging.debug("CPU %s successful !!!", operation)
         except Exception as info:
             test.fail("CPU %s failed - %s" % (operation, info))
@@ -740,7 +733,7 @@ def run(test, params, env):
             default_hp_unit = "KiB"
             hp_pin_nodes = int(params.get("HP_pin_node_count", "2"))
             vm_max_mem = vmxml.max_mem
-            no_of_HPs = int(vm_max_mem / host_hp_size) + 1
+            no_of_HPs = int(vm_max_mem // host_hp_size) + 1
             # setting hugepages in source machine
             if (int(utils_memory.get_num_huge_pages_free()) < no_of_HPs):
                 hugepage_assign(str(no_of_HPs))
@@ -798,7 +791,7 @@ def run(test, params, env):
     disk_cache = params.get("virsh_migrate_disk_cache", "none")
     params["driver_cache"] = disk_cache
     unsafe_test = False
-    if options.count("unsafe") and disk_cache != "none":
+    if options.count("unsafe") and disk_cache not in ["none", "directsync"]:
         unsafe_test = True
 
     migrate_setup = None
@@ -1115,13 +1108,13 @@ def run(test, params, env):
             else:
                 ret_migrate = False
         if not asynch_migration:
-            ret_migrate = do_migration(delay, vm, dest_uri, options, extra)
+            ret_migrate = do_migration(delay, vm, dest_uri, options, extra, **virsh_args)
 
         dest_state = params.get("virsh_migrate_dest_state", "running")
         if ret_migrate and dest_state == "running":
             if (not options.count("dname") and not extra.count("dname")):
                 # Check VM uptime after migrating to destination
-                migrated_vm_uptime = vm.uptime(dest_uri)
+                migrated_vm_uptime = vm.uptime(connect_uri=dest_uri)
                 logging.info("Check VM uptime in destination after "
                              "migration: %s", migrated_vm_uptime)
                 if vm_uptime > migrated_vm_uptime:

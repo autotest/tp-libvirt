@@ -6,6 +6,8 @@ from avocado.utils import process
 from virttest import utils_config
 from virttest import utils_libvirtd
 
+from provider import libvirt_version
+
 
 def run(test, params, env):
     """
@@ -37,8 +39,14 @@ def run(test, params, env):
                 return match.groups()[0]
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
-    expected_result = params.get("expected_result", "not_set")
-    seccomp_sandbox = params.get("seccomp_sandbox", "not_set")
+    seccomp_sandbox = params.get("seccomp_sandbox", "")
+    default_value = "yes" == params.get("default_value", "no")
+    if libvirt_version.version_compare(3, 9, 0):
+        expected_result = params.get("expected_result", "on")
+        if expected_result == "on":
+            expected_result = "on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny"
+    else:
+        expected_result = params.get("expected_result", "")
     vm = env.get_vm(vm_name)
 
     # Get old qemu -sandbox option.
@@ -49,9 +57,7 @@ def run(test, params, env):
     config = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
     try:
-        if seccomp_sandbox == 'not_set':
-            del config.seccomp_sandbox
-        else:
+        if not default_value:
             config.seccomp_sandbox = seccomp_sandbox
 
         # Restart libvirtd to make change valid.

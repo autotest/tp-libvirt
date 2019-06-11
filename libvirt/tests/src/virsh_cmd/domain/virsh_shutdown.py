@@ -1,5 +1,3 @@
-from avocado.core import exceptions
-
 from avocado.utils import process
 
 from virttest import remote
@@ -7,7 +5,9 @@ from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import ssh_key
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 
 from provider import libvirt_version
 
@@ -34,6 +34,9 @@ def run(test, params, env):
     pre_domian_status = params.get("reboot_pre_domian_status", "running")
     libvirtd = params.get("libvirtd", "on")
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    timeout = eval(params.get("shutdown_timeout", "60"))
+    readonly = "yes" == params.get("shutdown_readonly", "no")
+    expect_msg = params.get("shutdown_err_msg")
 
     # Libvirt acl test related params
     uri = params.get("virsh_uri")
@@ -44,8 +47,8 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
-            raise exceptions.TestSkipError("API acl test not supported in"
-                                           " current libvirt version.")
+            test.cancel("API acl test not supported in"
+                        " current libvirt version.")
 
     try:
         # Add or remove qemu-agent from guest before test
@@ -70,10 +73,12 @@ def run(test, params, env):
             utils_libvirtd.libvirtd_stop()
 
         if vm_ref != "remote":
-            status = virsh.shutdown(vm_ref, mode,
+            result = virsh.shutdown(vm_ref, mode,
                                     unprivileged_user=unprivileged_user,
                                     uri=uri, debug=True,
-                                    ignore_status=True).exit_status
+                                    ignore_status=True,
+                                    readonly=readonly)
+            status = result.exit_status
         else:
             remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
             remote_pwd = params.get("remote_pwd", None)
@@ -82,8 +87,8 @@ def run(test, params, env):
             local_pwd = params.get("local_pwd", "password")
             local_user = params.get("username", "root")
             if remote_ip.count("EXAMPLE.COM") or local_ip.count("EXAMPLE.COM"):
-                raise exceptions.TestSkipError("Remote test parameters"
-                                               " unchanged from default")
+                test.cancel("Remote test parameters"
+                            " unchanged from default")
             status = 0
             try:
                 remote_uri = libvirt_vm.complete_uri(local_ip)
@@ -112,10 +117,14 @@ def run(test, params, env):
         # check status_error
         if status_error:
             if not status:
-                raise exceptions.TestFail("Run successfully with wrong"
-                                          " command!")
+                test.fail("Run successfully with wrong command!")
+            if expect_msg:
+                libvirt.check_result(result, expect_msg.split(';'))
         else:
             if status:
-                raise exceptions.TestFail("Run failed with right command")
+                test.fail("Run failed with right command")
+            if not vm.wait_for_shutdown(timeout):
+                test.fail("Failed to shutdown in timeout %s" % timeout)
     finally:
-        xml_backup.sync()
+        if utils_misc.wait_for(utils_libvirtd.libvirtd_is_running, 60):
+            xml_backup.sync()

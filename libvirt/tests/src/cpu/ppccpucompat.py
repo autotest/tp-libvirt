@@ -1,5 +1,6 @@
 import os
 import time
+import logging
 
 from avocado.utils import cpu
 
@@ -8,6 +9,7 @@ from virttest import virt_vm
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import utils_misc
+from virttest import utils_package
 from virttest import utils_test
 
 
@@ -44,9 +46,11 @@ def run(test, params, env):
         elif 'rpt' in feature:
             cmd = 'grep "MMU.*: Radix" /proc/cpuinfo'
         elif 'isa' in feature:
+            utils_package.package_install('gcc', session)
             cmd = "echo 'int main(){asm volatile (\".long 0x7c0005e6\");"
             cmd += "return 0;}' > ~/a.c;cc ~/a.c;taskset -c %s ./a.out" % vcpu
-        status = session.cmd_status(cmd)
+        status, output = session.cmd_status_output(cmd)
+        logging.debug(output)
         session.close()
         if feature != "isa2.7":
             if status != 0:
@@ -93,6 +97,7 @@ def run(test, params, env):
                                            sockets=sockets, cores=cores,
                                            threads=threads, add_topology=True)
         libvirt_xml.VMXML.set_cpu_mode(vm_name, model=guest_version)
+        logging.debug(virsh.dumpxml(vm_name))
         try:
             vm.start()
         except virt_vm.VMStartError as detail:

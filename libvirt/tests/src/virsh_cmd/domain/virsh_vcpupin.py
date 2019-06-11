@@ -48,7 +48,11 @@ def run(test, params, env):
         vcpus_affinity = {}
         output = virsh.vcpupin(vm_name).stdout
         for item in output.split('\n')[2:-2]:
-            vcpus_affinity[item.split(':')[0].strip()] = item.split(':')[1].strip()
+            item = item.strip()
+            split_key = ' '
+            if ':' in item:
+                split_key = ':'
+            vcpus_affinity[item.split(split_key)[0].strip()] = item.split(split_key)[-1].strip()
         return utils_test.libvirt.cpus_string_to_affinity_list(
             vcpus_affinity[str(vcpu)], int(total_cpu))
 
@@ -196,6 +200,15 @@ def run(test, params, env):
     cpus_list = list(map(str, cpuutils.cpu_online_list()))
     logging.info("Active cpus in host are %s", cpus_list)
 
+    # If the cpus_list has too many cpus, then only test the
+    # cpus of the head, middle and tail part
+    lenght = len(cpus_list)
+    if lenght > 30:
+        cpus_list = cpus_list[:10] + \
+                    cpus_list[lenght//2 - 5: lenght//2 + 5] + \
+                    cpus_list[lenght - 10:]
+        logging.info('Will run test on cpus: %s', cpus_list)
+
     try:
         # Control multi domain vcpu affinity
         multi_dom = ("yes" == params.get("multi_dom_pin", "no"))
@@ -208,7 +221,7 @@ def run(test, params, env):
             for vcpu in range(int(guest_vcpu_count)):
                 vcpu_pid = vm.get_vcpus_pid()[vcpu]
                 # Check the result of vcpupin command.
-                check_vcpupin(vm.name, vcpu, str(','.join(cpus_list)), pid, vcpu_pid)
+                check_vcpupin(vm.name, vcpu, str(','.join(list(map(str, cpuutils.cpu_online_list())))), pid, vcpu_pid)
             return
 
         if multi_dom:

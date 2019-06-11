@@ -2,6 +2,7 @@ import os
 import logging
 import re
 import aexpect
+import time
 
 from avocado.utils import path as utils_path
 from avocado.utils import process
@@ -48,10 +49,17 @@ def run(test, params, env):
                                   be shutdown concurrently on shutdown
         :param output: apppended message from /var/log/messages
         """
+        if on_shutdown == "shutdown" and on_boot == "start":
+            second_boot_time = boot_time()
+            logging.debug("The second boot time is %s", second_boot_time)
+            if any([i >= j for i, j in zip(first_boot_time, second_boot_time)]):
+                test.fail("The second boot time for should be larger"
+                          "than its first boot time.")
+
         expect_msg = expect_shutdown_msg(status_error, on_shutdown)
         logging.debug("The expected messages when host shutdown is: %s ", expect_msg)
         for dom in vms:
-            if not expect_msg[dom.name] in output:
+            if not re.search(expect_msg[dom.name], output):
                 logging.debug("expect_mesg is: %s", expect_msg[dom.name])
                 if status_error == "no":
                     test.fail("guest should be %s on shutdown" % on_shutdown)
@@ -99,7 +107,7 @@ def run(test, params, env):
         check whether the guests has been shut down concurrently
         on host shutdown.
         """
-        pattern = r".+ libvirt-guests.sh: Starting shutdown on guest: .+"
+        pattern = r".+ libvirt-guests.sh.*: Starting shutdown on guest: .+"
         shut_start_line_nums = []
         for line_num, line in enumerate(output.splitlines()):
             if re.search(pattern, line):
@@ -107,7 +115,7 @@ def run(test, params, env):
         logging.debug("the line_numbers contains shutdown messages is: %s ",
                       shut_start_line_nums)
 
-        pattern = r".+ libvirt-guests.sh: Shutdown of guest.+complete"
+        pattern = r".+ libvirt-guests.sh.*: Shutdown of guest.+complete"
         for line_num, line in enumerate(output.splitlines()):
             if re.search(pattern, line):
                 shut_complete_first_line = line_num
@@ -134,17 +142,17 @@ def run(test, params, env):
         for dom in vms:
             if status_error == "no":
                 if on_shutdown == "shutdown":
-                    expect_msg[dom.name] = ("libvirt-guests.sh: "
+                    expect_msg[dom.name] = ("libvirt-guests.sh.*: "
                                             "Shutdown of guest %s "
                                             "complete" % dom.name)
                 else:
-                    expect_msg[dom.name] = ("libvirt-guests.sh: "
+                    expect_msg[dom.name] = ("libvirt-guests.sh.*: "
                                             "Suspending %s: done"
                                             % dom.name)
             else:
                 # Now the negative tests are only about ON_SHUTDOWN=shutdown.
                 if on_shutdown == "shutdown":
-                    expect_msg[dom.name] = ("libvirt-guests.sh: "
+                    expect_msg[dom.name] = ("libvirt-guests.sh.*: "
                                             "Shutdown of guest %s "
                                             "failed to complete in "
                                             "time" % dom.name)
@@ -179,6 +187,15 @@ def run(test, params, env):
                                       "and been ignored on host boot, there "
                                       "should be save files for the guests.")
 
+    def boot_time():
+        booting_time = []
+        for vm in vms:
+            session = vm.wait_for_login()
+            time = session.cmd_output("uptime --since")
+            booting_time.append(time)
+            session.close()
+        return booting_time
+
     main_vm_name = params.get("main_vm")
     main_vm = env.get_vm(main_vm_name)
 
@@ -197,6 +214,9 @@ def run(test, params, env):
     vms = [main_vm]
     if main_vm.is_alive:
         main_vm.destroy(gracefully=False)
+
+    if not utils_misc.start_rsyslogd():
+        test.error("Rsyslogd service start fail")
 
     try:
         utils_path.find_command("virt-clone")
@@ -217,6 +237,10 @@ def run(test, params, env):
             dom.start()
     for dom in vms:
         dom.wait_for_login()
+    first_boot_time = []
+    if on_shutdown == "shutdown" and on_boot == "start":
+        first_boot_time = boot_time()
+        logging.debug("The first boot time is %s", first_boot_time)
 
     try:
         # Config the libvirt-guests file
@@ -233,7 +257,9 @@ def run(test, params, env):
         # host shutdown. The purpose can also be fullfilled by restart the
         # libvirt-guests service.
         libvirt_guests_service.restart()
+        time.sleep(10)
         output = tail_messages.get_output()
+        logging.debug("Get messages in /var/log/messages: %s" % output)
 
         # check the guests state when host shutdown
         chk_on_shutdown(status_error, on_shutdown, parallel_shutdown, output)

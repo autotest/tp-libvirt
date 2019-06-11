@@ -3,6 +3,7 @@ import time
 
 from virttest import virsh
 from virttest import utils_package
+from virttest import utils_test
 
 from provider import libvirt_version
 
@@ -26,7 +27,7 @@ def run(test, params, env):
     codeset = params.get("codeset", "")
     holdtime = params.get("holdtime", "")
     sysrq_test = ("yes" == params.get("sendkey_sysrq", "no"))
-    sleep_time = int(params.get("sendkey_sleeptime", 2))
+    sleep_time = int(params.get("sendkey_sleeptime", 5))
     readonly = params.get("readonly", False)
     username = params.get("username")
     password = params.get("password")
@@ -55,8 +56,16 @@ def run(test, params, env):
                       ignore_status=False)
 
     vm = env.get_vm(vm_name)
-    session = vm.wait_for_login()
+    vm.wait_for_login().close()
 
+    # Boot the guest in text only mode so that send-key commands would succeed
+    # in creating a file
+    try:
+        utils_test.update_boot_option(vm, args_added="3")
+    except Exception as info:
+        test.error(info)
+
+    session = vm.wait_for_login()
     if sysrq_test:
         # In postprocess of previous testcase would pause and resume the VM
         # that would change the domstate to running (unpaused) and cause

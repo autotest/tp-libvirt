@@ -1,7 +1,6 @@
 import os
 import time
 import logging
-from avocado.core import exceptions
 from virttest import virsh
 from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
@@ -66,99 +65,99 @@ def run(test, params, env):
             if vm_state != "transient":
                 if attach:
                     if not inactive_attached:
-                        raise exceptions.TestFail("Inactive domain XML not updated"
-                                                  " when --config options used for"
-                                                  " attachment")
+                        test.fail("Inactive domain XML not updated"
+                                  " when --config options used for"
+                                  " attachment")
                     if vm_state != "shutoff":
                         if active_attached:
-                            raise exceptions.TestFail("Active domain XML updated"
-                                                      " when --config options used"
-                                                      " for attachment")
+                            test.fail("Active domain XML updated"
+                                      " when --config options used"
+                                      " for attachment")
                 else:
                     if inactive_attached:
-                        raise exceptions.TestFail("Inactive domain XML not updated"
-                                                  " when --config options used for"
-                                                  " detachment")
+                        test.fail("Inactive domain XML not updated"
+                                  " when --config options used for"
+                                  " detachment")
                     if vm_state != "shutoff":
                         if not active_attached:
-                            raise exceptions.TestFail("Active domain XML updated"
-                                                      " when --config options used"
-                                                      " for detachment")
+                            test.fail("Active domain XML updated"
+                                      " when --config options used"
+                                      " for detachment")
         elif flags.count("live") and not flags.count("config"):
             if attach:
                 if vm_state in ["paused", "running", "transient"]:
                     if not active_attached:
-                        raise exceptions.TestFail("Active domain XML not updated"
-                                                  " when --live options used for"
-                                                  " attachment")
+                        test.fail("Active domain XML not updated"
+                                  " when --live options used for"
+                                  " attachment")
                 if vm_state in ["paused", "running"]:
                     if inactive_attached:
-                        raise exceptions.TestFail("Inactive domain XML updated"
-                                                  " when --live options used for"
-                                                  " attachment")
+                        test.fail("Inactive domain XML updated"
+                                  " when --live options used for"
+                                  " attachment")
             else:
                 if vm_state in ["paused", "running", "transient"]:
                     if active_attached:
-                        raise exceptions.TestFail("Active domain XML not updated"
-                                                  " when --live options used for"
-                                                  " detachment")
+                        test.fail("Active domain XML not updated"
+                                  " when --live options used for"
+                                  " detachment")
                 if vm_state in ["paused", "running"]:
                     if not inactive_attached:
-                        raise exceptions.TestFail("Inactive domain XML updated"
-                                                  " when --live options used for"
-                                                  " detachment")
+                        test.fail("Inactive domain XML updated"
+                                  " when --live options used for"
+                                  " detachment")
         elif flags.count("live") and flags.count("config"):
             if attach:
                 if vm_state in ["paused", "running"]:
                     if not active_attached:
-                        raise exceptions.TestFail("Active domain XML not updated"
-                                                  " when --live --config options"
-                                                  " used for attachment")
+                        test.fail("Active domain XML not updated"
+                                  " when --live --config options"
+                                  " used for attachment")
                     if not inactive_attached:
-                        raise exceptions.TestFail("Inactive domain XML not updated"
-                                                  " when --live --config options "
-                                                  "used for attachment")
+                        test.fail("Inactive domain XML not updated"
+                                  " when --live --config options "
+                                  "used for attachment")
             else:
                 if vm_state in ["paused", "running"]:
                     if active_attached:
-                        raise exceptions.TestFail("Active domain XML not updated "
-                                                  "when --live --config options "
-                                                  "used for detachment")
+                        test.fail("Active domain XML not updated "
+                                  "when --live --config options "
+                                  "used for detachment")
                     if inactive_attached:
-                        raise exceptions.TestFail("Inactive domain XML not updated"
-                                                  " when --live --config options "
-                                                  "used for detachment")
+                        test.fail("Inactive domain XML not updated"
+                                  " when --live --config options "
+                                  "used for detachment")
         elif flags.count("current") or flags == "":
             if attach:
                 if vm_state in ["paused", "running", "transient"]:
                     if not active_attached:
-                        raise exceptions.TestFail("Active domain XML not updated"
-                                                  " when --current options used "
-                                                  "for attachment")
+                        test.fail("Active domain XML not updated"
+                                  " when --current options used "
+                                  "for attachment")
                 if vm_state in ["paused", "running"]:
                     if inactive_attached:
-                        raise exceptions.TestFail("Inactive domain XML updated "
-                                                  "when --current options used "
-                                                  "for live attachment")
+                        test.fail("Inactive domain XML updated "
+                                  "when --current options used "
+                                  "for live attachment")
                 if vm_state == "shutoff" and not inactive_attached:
-                    raise exceptions.TestFail("Inactive domain XML not updated "
-                                              "when --current options used for "
-                                              "attachment")
+                    test.fail("Inactive domain XML not updated "
+                              "when --current options used for "
+                              "attachment")
             else:
                 if vm_state in ["paused", "running", "transient"]:
                     if active_attached:
-                        raise exceptions.TestFail("Active domain XML not updated"
-                                                  " when --current options used "
-                                                  "for detachment")
+                        test.fail("Active domain XML not updated"
+                                  " when --current options used "
+                                  "for detachment")
                 if vm_state in ["paused", "running"]:
                     if not inactive_attached:
-                        raise exceptions.TestFail("Inactive domain XML updated "
-                                                  "when --current options used "
-                                                  "for live detachment")
+                        test.fail("Inactive domain XML updated "
+                                  "when --current options used "
+                                  "for live detachment")
                 if vm_state == "shutoff" and inactive_attached:
-                    raise exceptions.TestFail("Inactive domain XML not updated "
-                                              "when --current options used for "
-                                              "detachment")
+                    test.fail("Inactive domain XML not updated "
+                              "when --current options used for "
+                              "detachment")
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -176,8 +175,8 @@ def run(test, params, env):
     virsh_dargs = {"debug": True, "ignore_status": True}
 
     if device_type not in ['cdrom', 'floppy']:
-        raise exceptions.TestSkipError("Got a invalid device type:/n%s"
-                                       % device_type)
+        test.cancel("Got a invalid device type:/n%s"
+                    % device_type)
 
     # Backup for recovery.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -233,14 +232,14 @@ def run(test, params, env):
                 vm.start()
                 vm.wait_for_login().close()
             if not vm.pause():
-                raise exceptions.TestSkipError("Cann't pause the domain")
+                test.cancel("Cann't pause the domain")
             time.sleep(5)
         elif pre_vm_state == "transient":
             logging.info("Creating %s..." % vm_name)
             vm.undefine()
             if virsh.create(vmxml_for_test.xml, **virsh_dargs).exit_status:
                 vmxml_backup.define()
-                raise exceptions.TestSkipError("Cann't create the domain")
+                test.cancel("Cann't create the domain")
 
         # Libvirt will ignore --source when action is eject
         attach = True
@@ -272,9 +271,7 @@ def run(test, params, env):
                     ret = virsh.change_media(vm_ref, target_device, all_options,
                                              ignore_status=True, debug=True)
         if not status_error and ret.exit_status:
-            raise exceptions.TestFail("Please check: Bug 1289069 - Ejecting "
-                                      "locked cdrom tray using update-device"
-                                      " fails but next try succeeds")
+            test.fail("Change media failed: %s" % ret.stderr.strip())
         libvirt.check_exit_status(ret, status_error)
         if not ret.exit_status:
             check_result(vm_name, device_source, device_type, target_device,
@@ -283,7 +280,7 @@ def run(test, params, env):
         if action_twice:
             if pre_vm_state == "paused":
                 if not vm.pause():
-                    raise exceptions.TestFail("Cann't pause the domain")
+                    test.fail("Cann't pause the domain")
                 time.sleep(5)
             attach = True
             device_source = new_iso
@@ -330,9 +327,7 @@ def run(test, params, env):
                     ret = virsh.change_media(vm_ref, target_device, all_options,
                                              ignore_status=True, debug=True)
             if not status_error and ret.exit_status:
-                raise exceptions.TestFail("Please check: Bug 1289069 - Ejecting "
-                                          "locked cdrom tray using update-device"
-                                          " fails but next try succeeds")
+                test.fail("Change media failed: %s" % ret.stderr.strip())
             libvirt.check_exit_status(ret, status_error)
             if not ret.exit_status:
                 check_result(vm_name, device_source, device_type, target_device,

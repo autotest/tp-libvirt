@@ -10,6 +10,7 @@ from virttest import utils_misc
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import test_setup
+from virttest import utils_params
 from virttest.utils_test import libvirt as utlv
 
 from provider import libvirt_version
@@ -49,6 +50,56 @@ def run(test, params, env):
     """
     Test guest numa setting
     """
+    host_numa_node = utils_misc.NumaInfo()
+    node_list = host_numa_node.online_nodes
+    arch = platform.machine()
+    if 'ppc64' in arch:
+        try:
+            ppc_memory_nodeset = ""
+            nodes = params['memory_nodeset']
+            if '-' in nodes:
+                for n in range(int(nodes.split('-')[0]), int(nodes.split('-')[1])):
+                    ppc_memory_nodeset += str(node_list[n]) + ','
+                ppc_memory_nodeset += str(node_list[int(nodes.split('-')[1])])
+            else:
+                node_lst = nodes.split(',')
+                for n in range(len(node_lst) - 1):
+                    ppc_memory_nodeset += str(node_list[int(node_lst[n])]) + ','
+                ppc_memory_nodeset += str(node_list[int(node_lst[-1])])
+            params['memory_nodeset'] = ppc_memory_nodeset
+        except IndexError:
+            test.cancel("No of numas in config does not match with no of "
+                        "online numas in system")
+        except utils_params.ParamNotFound:
+            pass
+        pkeys = ('memnode_nodeset', 'page_nodenum')
+        for pkey in pkeys:
+            for key in params.keys():
+                if pkey in key:
+                    params[key] = str(node_list[int(params[key])])
+        # Modify qemu command line
+        try:
+            if params['qemu_cmdline_mem_backend_1']:
+                memory_nodeset = sorted(params['memory_nodeset'].split(','))
+                if len(memory_nodeset) > 1:
+                    if int(memory_nodeset[1]) - int(memory_nodeset[0]) == 1:
+                        qemu_cmdline = "memory-backend-ram,.*?id=ram-node1," \
+                                       ".*?host-nodes=%s-%s,policy=bind" % \
+                                       (memory_nodeset[0], memory_nodeset[1])
+                    else:
+                        qemu_cmdline = "memory-backend-ram,.*?id=ram-node1," \
+                                       ".*?host-nodes=%s,.*?host-nodes=%s,policy=bind" % \
+                                       (memory_nodeset[0], memory_nodeset[1])
+                    params['qemu_cmdline_mem_backend_1'] = qemu_cmdline
+        except utils_params.ParamNotFound:
+            pass
+        try:
+            if params['qemu_cmdline_mem_backend_0']:
+                qemu_cmdline = params['qemu_cmdline_mem_backend_0']
+                params['qemu_cmdline_mem_backend_0'] = qemu_cmdline.replace(
+                    ".*?host-nodes=1", ".*?host-nodes=%s" % params['memnode_nodeset_0'])
+        except utils_params.ParamNotFound:
+            pass
     vcpu_num = int(params.get("vcpu_num", 2))
     max_mem = int(params.get("max_mem", 1048576))
     max_mem_unit = params.get("max_mem_unit", 'KiB')
@@ -108,7 +159,6 @@ def run(test, params, env):
                         "version")
 
     hp_cl = test_setup.HugePageConfig(params)
-    default_hp_size = hp_cl.get_hugepage_size()
     supported_hp_size = hp_cl.get_multi_supported_hugepage_size()
     mount_path = []
     qemu_conf = utils_config.LibvirtQemuConfig()
@@ -136,8 +186,6 @@ def run(test, params, env):
 
     try:
         # Get host numa node list
-        host_numa_node = utils_misc.NumaInfo()
-        node_list = host_numa_node.online_nodes
         logging.debug("host node list is %s", node_list)
         used_node = []
         if numa_memory.get('nodeset'):
@@ -164,13 +212,8 @@ def run(test, params, env):
                     test.cancel("node %s memory is empty" % i)
 
         # set hugepage with qemu.conf and mount path
-        arch = platform.machine()
-        if default_hp_size == 2048 and 'ppc64' not in arch:
-            hp_cl.setup()
-            deallocate = True
-        else:
-            _update_qemu_conf()
-            qemu_conf_restore = True
+        _update_qemu_conf()
+        qemu_conf_restore = True
 
         # set hugepage with total number or per-node number
         if nr_pagesize_total:

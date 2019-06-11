@@ -80,6 +80,9 @@ def run(test, params, env):
     new_vhbas = []
     source_dev = ""
     mpath_vol_path = ""
+    old_mpath_conf = ""
+    mpath_conf_path = "/etc/multipath.conf"
+    original_mpath_conf_exist = os.path.exists(mpath_conf_path)
 
     if pool_type == "scsi":
         if ('EXAMPLE' in pool_wwnn) or ('EXAMPLE' in pool_wwpn):
@@ -91,6 +94,8 @@ def run(test, params, env):
                     "No wwpn and wwnn provided for vhba.")
     online_hbas_list = utils_npiv.find_hbas("hba")
     logging.debug("The online hbas are: %s", online_hbas_list)
+    old_mpath_conf = utils_npiv.prepare_multipath_conf(conf_path=mpath_conf_path,
+                                                       replace_existing=True)
     if not online_hbas_list:
         raise exceptions.TestSkipError(
             "Host doesn't have online hba cards")
@@ -407,3 +412,9 @@ def run(test, params, env):
                                 _DELAY_TIME*5, 0.0, 5.0)
         else:
             utils_npiv.restart_multipathd()
+        if old_mpath_conf:
+            utils_npiv.prepare_multipath_conf(conf_path=mpath_conf_path,
+                                              conf_content=old_mpath_conf,
+                                              replace_existing=True)
+        if not original_mpath_conf_exist and os.path.exists(mpath_conf_path):
+            os.remove(mpath_conf_path)

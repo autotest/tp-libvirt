@@ -11,9 +11,8 @@ from aexpect import ShellProcessTerminatedError
 
 from avocado.utils import process
 
-from virttest import libvirt_vm
 from virttest import data_dir
-from virttest import remote
+from virttest import ssh_key
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
@@ -92,6 +91,7 @@ def run(test, params, env):
     kill_action = params.get("kill_action", "normal")
     check_libvirtd_log = params.get("check_libvirtd_log", "no")
     err_msg = params.get("err_msg", "")
+    remote_uri = params.get("remote_uri")
 
     domid = vm.get_id()
     domuuid = vm.get_uuid()
@@ -191,6 +191,8 @@ def run(test, params, env):
                     virsh.start(vm_name, ignore_status=True)
                 else:
                     virsh.start(vm_name, ignore_status=False)
+                    if start_action == "restart_libvirtd":
+                        libvirtd.restart()
             elif vm_action == "kill":
                 if kill_action == "stop_libvirtd":
                     libvirtd.stop()
@@ -236,29 +238,18 @@ def run(test, params, env):
         if vm_action == "kill":
             time.sleep(2)
 
-        if vm_ref == "remote":
+        if remote_uri:
             remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
-            local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
             remote_pwd = params.get("remote_pwd", None)
-            if remote_ip.count("EXAMPLE.COM") or local_ip.count("EXAMPLE.COM"):
+            remote_user = params.get("remote_user", "root")
+            if remote_ip.count("EXAMPLE.COM"):
                 test.cancel("Test 'remote' parameters not setup")
-            status = 0
-            try:
-                remote_uri = libvirt_vm.complete_uri(local_ip)
-                session = remote.remote_login("ssh", remote_ip, "22", "root",
-                                              remote_pwd, "#")
-                session.cmd_output('LANG=C')
-                command = "virsh -c %s domstate %s" % (remote_uri, vm_name)
-                status, output = session.cmd_status_output(command,
-                                                           internal_timeout=5)
-                session.close()
-            except process.CmdError:
-                status = 1
-        else:
-            result = virsh.domstate(vm_ref, extra, ignore_status=True,
-                                    debug=True)
-            status = result.exit_status
-            output = result.stdout.strip()
+            ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
+
+        result = virsh.domstate(vm_ref, extra, ignore_status=True,
+                                debug=True, uri=remote_uri)
+        status = result.exit_status
+        output = result.stdout.strip()
 
         # check status_error
         if status_error:

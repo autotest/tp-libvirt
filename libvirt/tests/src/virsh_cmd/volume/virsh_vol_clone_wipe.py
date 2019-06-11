@@ -201,7 +201,6 @@ def run(test, params, env):
         if vol_info["Type"] == "block" and clone_option.count("prealloc-metadata"):
             clone_status_error = True
         if b_luks_encrypted:
-            clone_status_error = True
             wipe_old_vol = True
 
         if pool_type == "disk":
@@ -213,6 +212,10 @@ def run(test, params, env):
                 vol_pat = r"lookup\('vol_name'\) == ('\S+')"
                 new_value = "lookup('vol_name') == '%s'" % new_vol_name
                 utlv.update_polkit_rule(params, vol_pat, new_value)
+
+        bad_cloned_vol_name = params.get("bad_cloned_vol_name", "")
+        if bad_cloned_vol_name:
+            new_vol_name = bad_cloned_vol_name
 
         # Clone volume
         clone_result = virsh.vol_clone(vol_name, new_vol_name, pool_name,
@@ -261,6 +264,7 @@ def run(test, params, env):
         elif clone_status_error and clone_result.exit_status == 0:
             test.fail("Expect clone volume fail, but run"
                       " successfully.")
+
         if wipe_old_vol:
             # Wipe the old volume
             if alg:
@@ -293,6 +297,11 @@ def run(test, params, env):
             elif wipe_status_error and wipe_result.exit_status == 0:
                 test.fail("Expect wipe volume fail, but run"
                           " successfully.")
+
+        if bad_cloned_vol_name:
+            pattern = "volume name '%s' cannot contain '/'" % new_vol_name
+            if re.search(pattern, clone_result.stderr) is None:
+                test.fail("vol-clone failed with unexpected reason")
     finally:
         # Clean up
         try:

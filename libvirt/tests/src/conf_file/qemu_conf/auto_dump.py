@@ -107,12 +107,15 @@ def run(test, params, env):
             logging.debug(cmdline.split())
 
         # Kill core dump process to speed up test
-        process.run('kill %s' % iohelper_pid)
+        try:
+            process.run('kill %s' % iohelper_pid)
+        except process.CmdError as detail:
+            logging.debug("Dump already done:\n%s", detail)
 
         arch = platform.machine()
 
         if arch == 'x86_64':
-                # Check if bypass cache flag set or unset accordingly.
+            # Check if bypass cache flag set or unset accordingly.
             if (flags & 0o40000) and bypass_cache != '1':
                 test.fail('auto_dump_bypass_cache is %s but flags '
                           'is %o' % (bypass_cache, flags))

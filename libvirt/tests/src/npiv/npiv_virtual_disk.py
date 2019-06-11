@@ -131,13 +131,21 @@ def run(test, params, env):
     lun_dev_path = ""
     lun_sl = []
     new_disk = ""
+    old_mpath_conf = ""
+    mpath_conf_path = "/etc/multipath.conf"
+    original_mpath_conf_exist = os.path.exists(mpath_conf_path)
     vm = env.get_vm(vm_name)
     try:
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        vmxml_backup = vmxml.copy()
+        old_disk_count = vmxml.get_disk_count(vm_name)
         # Prepare vHBA
         online_hbas = utils_npiv.find_hbas("hba")
         old_vhbas = utils_npiv.find_hbas("vhba")
         if not online_hbas:
             raise exceptions.TestSkipError("Host doesn't have online hba!")
+        old_mpath_conf = utils_npiv.prepare_multipath_conf(conf_path=mpath_conf_path,
+                                                           replace_existing=True)
         first_online_hba = online_hbas[0]
         new_vhba = utils_npiv.nodedev_create_from_xml(
                 {"nodedev_parent": first_online_hba,
@@ -181,10 +189,7 @@ def run(test, params, env):
         copyfile(lun_disk_xml, disk_xml)
         if not vm.is_alive():
             vm.start()
-        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        vmxml_backup = vmxml.copy()
         session = vm.wait_for_login()
-        old_disk_count = vmxml.get_disk_count(vm_name)
         libvirt_vm = lib_vm.VM(vm_name, vm.params, vm.root_dir,
                                vm.address_cache)
         old_disks = libvirt_vm.get_disks()
@@ -220,3 +225,9 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
         vmxml_backup.sync()
         process.system('service multipathd restart', verbose=True)
+        if old_mpath_conf:
+            utils_npiv.prepare_multipath_conf(conf_path=mpath_conf_path,
+                                              conf_content=old_mpath_conf,
+                                              replace_existing=True)
+        if not original_mpath_conf_exist and os.path.exists(mpath_conf_path):
+            os.remove(mpath_conf_path)

@@ -1,5 +1,6 @@
 import re
 import logging
+import signal
 
 from virttest import utils_net
 from virttest import utils_misc
@@ -7,6 +8,8 @@ from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import network_xml
 from virttest.utils_test import libvirt as utlv
+from virttest.compat_52lts import results_stdout_52lts
+from avocado.utils import process
 
 from provider import libvirt_version
 
@@ -29,6 +32,7 @@ def run(test, params, env):
     hotplug_iface = "yes" == params.get("hotplug_interface", "no")
     filter_by_mac = "yes" == params.get("filter_by_mac", "no")
     invalid_mac = "yes" == params.get("invalid_mac", "no")
+    expect_msg = params.get("leases_err_msg")
     # Generate a random string as the MAC address
     nic_mac = None
     if invalid_mac:
@@ -136,6 +140,20 @@ def run(test, params, env):
         vm.destroy(gracefully=False)
     login_nic_index = 0
     new_nic_index = 0
+    # Cleanup dirty dnsmaq, firstly get all network,and destroy all networks except
+    # default
+    net_state = virsh.net_state_dict(only_names=True)
+    logging.debug("current networks: %s, destroy and undefine networks "
+                  "except default!", net_state)
+    for net in net_state:
+        if net != "default":
+            virsh.net_destroy(net)
+            virsh.net_undefine(net)
+    cmd = "ps aux|grep dnsmasq|grep -v grep | grep -v default | awk '{print $2}'"
+    pid_list = results_stdout_52lts(process.run(cmd, shell=True)).strip().splitlines()
+    logging.debug(pid_list)
+    for pid in pid_list:
+        utils_misc.safe_kill(pid, signal.SIGKILL)
     # Create new network
     if prepare_net:
         create_network()
@@ -156,7 +174,8 @@ def run(test, params, env):
             iface_mac = utils_net.generate_mac_address_simple()
             if filter_by_mac:
                 nic_mac = iface_mac
-            op = "--type network --source %s --mac %s" % (net_name, iface_mac)
+            op = "--type network --model virtio --source %s --mac %s" \
+                 % (net_name, iface_mac)
             nic_params = {'mac': iface_mac, 'nettype': 'bridge',
                           'ip_version': 'ipv4'}
             login_timeout = 120
@@ -189,6 +208,9 @@ def run(test, params, env):
             utlv.check_exit_status(result, status_error)
             lease = get_net_dhcp_leases(result.stdout.strip())
             check_net_lease(lease, expected_find)
+        else:
+            if expect_msg:
+                utlv.check_result(result, expect_msg.split(';'))
     finally:
         # Delete the new attached interface
         if new_nic_index > 0:

@@ -4,12 +4,14 @@ import re
 import base64
 import locale
 
+from avocado.core import exceptions
 from avocado.utils import process
 from avocado.core import exceptions
 
 from virttest import virsh
 from virttest import libvirt_storage
 from virttest import libvirt_xml
+from virttest import test_setup
 from virttest.utils_test import libvirt as utlv
 from virttest.staging import service
 from virttest.libvirt_xml import secret_xml
@@ -121,7 +123,7 @@ def run(test, params, env):
         try:
             encryption_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
                                          ret.stdout.strip())[0].lstrip()
-        except IndexError as e:
+        except IndexError as detail:
             test.error("Fail to get newly created secret uuid")
         logging.debug("Secret uuid %s", encryption_uuid)
 
@@ -187,11 +189,11 @@ def run(test, params, env):
             return
         rst = process.run(process_vol_cmd, ignore_status=True, shell=True)
         if rst.exit_status:
-            if "Snapshots of snapshots are not supported" in rst.stderr:
+            if "Snapshots of snapshots are not supported" in rst.stderr_text:
                 logging.debug("%s is already a snapshot volume", ori_vol_path)
                 process_vol_name = os.path.basename(ori_vol_path)
             else:
-                logging.error(rst.stderr)
+                logging.error(rst.stderr_text)
                 return
         return process_vol_name
 
@@ -245,6 +247,9 @@ def run(test, params, env):
         while pool_vol_num > 0:
             # Set volume xml file
             vol_name = prefix_vol_name + "_%s" % pool_vol_num
+            bad_vol_name = params.get("bad_vol_name", "")
+            if bad_vol_name:
+                vol_name = bad_vol_name
             pool_vol_num -= 1
             # disk partition for new volume
             if src_pool_type == "disk":
@@ -253,6 +258,11 @@ def run(test, params, env):
                     test.error("Fail to generate volume name")
             if by_xml:
                 # According to BZ#1138523, we need inpect the right name
+                # (disk partition) for new volume
+                if src_pool_type == "disk":
+                    vol_name = utlv.new_disk_vol_name(src_pool_name)
+                    if vol_name is None:
+                        test.error("Fail to generate volume name")
                 vol_arg['name'] = vol_name
                 volxml = libvirt_xml.VolXML()
                 newvol = volxml.new_vol(**vol_arg)
@@ -270,6 +280,26 @@ def run(test, params, env):
                 if params.get('setup_libvirt_polkit') == 'yes':
                     process.run("chmod 666 %s" % vol_xml, ignore_status=True,
                                 shell=True)
+                    if luks_encrypted and libvirt_version.version_compare(4, 5, 0):
+                        try:
+                            polkit = test_setup.LibvirtPolkitConfig(params)
+                            polkit_rules_path = polkit.polkit_rules_path
+                            with open(polkit_rules_path, 'r+') as f:
+                                rule = f.readlines()
+                                for index, v in enumerate(rule):
+                                    if v.find("secret") >= 0:
+                                        nextline = rule[index + 1]
+                                        s = nextline.replace("QEMU", "secret").replace(
+                                                "pool_name", "secret_uuid").replace(
+                                                        "virt-dir-pool", "%s" % luks_secret_uuid)
+                                        rule[index + 1] = s
+                                rule = ''.join(rule)
+                            with open(polkit_rules_path, 'w+') as f:
+                                f.write(rule)
+                            logging.debug(rule)
+                            polkit.polkitd.restart()
+                        except IOError as e:
+                            logging.error(e)
                 # Run virsh_vol_create to create vol
                 logging.debug("Create volume from XML: %s" % newvol.xmltreefile)
                 cmd_result = virsh.vol_create(
@@ -289,17 +319,24 @@ def run(test, params, env):
             try:
                 utlv.check_exit_status(cmd_result, status_error)
                 check_vol(src_pool_name, vol_name, not status_error)
+                if bad_vol_name:
+                    pattern = "volume name '%s' cannot contain '/'" % vol_name
+                    logging.debug("pattern: %s", pattern)
+                    if "\\" in pattern and by_xml:
+                        pattern = pattern.replace("\\", "\\\\")
+                    if re.search(pattern, cmd_result.stderr) is None:
+                        test.fail("vol-create failed with unexpected reason")
                 if not status_error:
                     vol_path = virsh.vol_path(vol_name,
                                               src_pool_name).stdout.strip()
                     logging.debug("Full path of %s: %s", vol_name, vol_path)
                     vol_path_list.append(vol_path)
-            except exceptions.TestFail as e:
+            except exceptions.TestFail as detail:
                 stderr = cmd_result.stderr
                 if any(err in stderr for err in fmt_err_list):
                     test.cancel(skip_msg)
                 else:
-                    raise e
+                    test.fail("Create volume fail:\n%s" % detail)
         # Post process vol by other programs
         process_vol_by = params.get("process_vol_by")
         process_vol_type = params.get("process_vol_type", "")
@@ -310,12 +347,12 @@ def run(test, params, env):
                 try:
                     virsh.pool_refresh(src_pool_name, ignore_status=False)
                     check_vol(src_pool_name, process_vol, expect_vol_exist)
-                except (process.CmdError, exceptions.TestFail) as e:
+                except (process.CmdError, exceptions.TestFail) as detail:
                     if process_vol_type == "thin":
-                        logging.error(str(e))
+                        logging.error(str(detail))
                         test.cancel("You may encounter bug BZ#1060287")
                     else:
-                        raise e
+                        test.fail("Fail to refresh pool:\n%s" % detail)
             else:
                 test.fail("Post process volume failed")
     finally:

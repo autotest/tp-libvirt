@@ -10,6 +10,7 @@ from virttest import utils_v2v
 from virttest import utils_sasl
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
+from virttest.compat_52lts import results_stdout_52lts
 
 V2V_7_3_VERSION = 'virt-v2v-1.32.1-1.el7'
 RETRY_TIMES = 10
@@ -78,6 +79,7 @@ class VMChecker(object):
         self.errors.append(msg)
 
     def run(self):
+        self.check_metadata_libosinfo()
         if self.os_type == 'linux':
             self.check_linux_vm()
         elif self.os_type == 'windows':
@@ -101,7 +103,9 @@ class VMChecker(object):
         """
         The graphic type in VM XML is different for different target.
         """
-        graphic_type = 'vnc'
+        # 'ori_graphic' only can be set when hypervior is KVM. For Xen and
+        # Esx, it will always be 'None' and 'vnc' will be set by default.
+        graphic_type = self.params.get('ori_graphic', 'vnc')
         # Video modle will change to QXL if convert target is ovirt/RHEVM
         if self.target == 'ovirt':
             graphic_type = 'spice'
@@ -124,6 +128,58 @@ class VMChecker(object):
         if self.os_version in ['win7', 'win2008r2']:
             video_model = 'qxl'
         return video_model
+
+    def check_metadata_libosinfo(self):
+        """
+        Check if metadata libosinfo attributes value in vm xml match with given param.
+
+        Note: This is not a mandatory checking, if you need to check it, you have to
+        set related parameters correctly.
+        """
+        logging.info("Checking metadata libosinfo")
+        # 'os_short_id' must be set for libosinfo checking, you can query it by
+        # 'osinfo-query os'
+        short_id = self.params.get('os_short_id')
+        if not short_id:
+            reason = 'short_id is not set'
+            logging.info('Skip Checking metadata libosinfo parameters: %s' % reason)
+            return
+
+        # Need target or output_mode be set explicitly
+        if not self.params.get('target') and not self.params.get('output_mode'):
+            reason = 'Both target and output_mode are not set'
+            logging.info('Skip Checking metadata libosinfo parameters: %s' % reason)
+            return
+
+        supported_output = ['libvirt', 'local']
+        # Skip checking if any of them is not in supported list
+        if self.params.get('target') not in supported_output or self.params.get(
+                'output_mode') not in supported_output:
+            reason = 'target or output_mode is not in %s' % supported_output
+            logging.info('Skip Checking metadata libosinfo parameters: %s' % reason)
+            return
+
+        cmd = 'osinfo-query os --fields=short-id | tail -n +3'
+        # Too much debug output if verbose is True
+        output = process.run(cmd, timeout=20, shell=True, ignore_status=True)
+        short_id_all = results_stdout_52lts(output).splitlines()
+        if short_id not in [os_id.strip() for os_id in short_id_all]:
+            raise exceptions.TestError('Invalid short_id: %s' % short_id)
+
+        cmd = "osinfo-query os --fields=id short-id='%s'| tail -n +3" % short_id
+        output = process.run(cmd, timeout=20, verbose=True, shell=True, ignore_status=True)
+        long_id = results_stdout_52lts(output).strip()
+        # '<libosinfo:os id' was changed to '<ns0:os id' after calling
+        # vm_xml.VMXML.new_from_inactive_dumpxml.
+        # It's problably a problem in vm_xml.
+        # <TODO>  Fix it
+        #libosinfo_pattern = r'<libosinfo:os id="%s"/>' % long_id
+        # A temp workaround for above problem
+        libosinfo_pattern = r'<.*?:os id="%s"/>' % long_id
+        logging.info('libosinfo pattern: %s' % libosinfo_pattern)
+
+        if not re.search(libosinfo_pattern, self.vmxml):
+            self.log_err('Not find metadata libosinfo')
 
     def check_vm_xml(self):
         """
@@ -216,7 +272,17 @@ class VMChecker(object):
             logging.info("The guest is uefi mode,skip the checkpoint")
         elif not self.checker.get_grub_device():
             err_msg = "Not find vd? in disk partition"
-            self.log_err(err_msg)
+            if self.hypervisor != 'kvm':
+                self.log_err(err_msg)
+            else:
+                # Just warning the err if converting from KVM. It may
+                # happen that disk's bus type in xml is not the real bus
+                # type be used when preparing the image. Ex, if the image
+                # is installed with IDE, then you import the image with
+                # bus virtio, the device.map file will be inconsistent with
+                # the xml.
+                # V2V doesn't modify device.map file for this scenario.
+                logging.warning(err_msg)
         else:
             logging.info("PASS")
 
@@ -232,10 +298,15 @@ class VMChecker(object):
         vm_xorg_log = self.checker.get_vm_xorg()
         if vm_xorg_log:
             if expect_video not in vm_xorg_log:
-                err_msg = "Not find %s in Xorg log", expect_video
-                self.log_err(err_msg)
-            else:
-                logging.info("PASS")
+                err_msg = "Not find %s in Xorg log" % expect_video
+                logging.info(err_msg)
+                # RHEL8 desn't include any qxl string in xorg log.
+                # If expect_video is in lspci output, we think it passed.
+                if re.search(expect_video, pci_devs, re.IGNORECASE) is None:
+                    err_msg += " And Not find %s device by lspci" % expect_video
+                    self.log_err(err_msg)
+                    return
+            logging.info("PASS")
         else:
             logging.warning("Xorg log file not exist, skip checkpoint")
 
@@ -243,10 +314,9 @@ class VMChecker(object):
         """
         Check windows guest after v2v convert.
         """
-        # Make sure windows boot up successfully first
-        self.checker.boot_windows()
         try:
-            self.checker.create_session()
+            # Sometimes windows guests needs >10mins to finish drivers installation
+            self.checker.create_session(timeout=900)
         except Exception as detail:
             raise exceptions.TestError('Failed to connect to windows guest: %s' %
                                        detail)
@@ -281,7 +351,8 @@ class VMChecker(object):
             expect_adapter = 'QXL'
         if self.os_version in ['win2003', 'win2008']:
             expect_adapter = 'Standard VGA Graphics Adapter'
-        if self.os_version in ['win8', 'win8.1', 'win10', 'win2012', 'win2012r2', 'win2016']:
+        bdd_list = ['win8', 'win8.1', 'win10', 'win2012', 'win2012r2', 'win2016', 'win2019']
+        if self.os_version in bdd_list:
             expect_adapter = 'Basic Display Driver'
         expect_drivers.append(expect_adapter)
         check_drivers = expect_drivers[:]

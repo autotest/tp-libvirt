@@ -6,7 +6,6 @@ import re
 import pwd
 import logging
 import shutil
-import string
 
 import aexpect
 
@@ -19,6 +18,7 @@ from virttest import utils_misc
 from virttest import utils_v2v
 from virttest import virsh
 from virttest import remote
+from virttest import libvirt_storage
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.compat_52lts import decode_to_text as to_text
@@ -44,6 +44,7 @@ def run(test, params, env):
     remote_host = params.get("remote_host", "EXAMPLE")
     vpx_dc = params.get("vpx_dc", "EXAMPLE")
     esx_ip = params.get("esx_ip", "EXAMPLE")
+    source_user = params.get("username", "root")
     output_mode = params.get("output_mode")
     output_storage = params.get("output_storage", "default")
     disk_img = params.get("input_disk_image", "")
@@ -63,13 +64,14 @@ def run(test, params, env):
     output_uri = params.get("oc_uri", "")
     pool_name = params.get("pool_name", "v2v_test")
     pool_type = params.get("pool_type", "dir")
-    pool_target = params.get("pool_target_path", "v2v_pool")
+    pool_target = params.get("pool_target", "v2v_pool")
     emulated_img = params.get("emulated_image_path", "v2v-emulated-img")
     pvt = utlv.PoolVolumeTest(test, params)
     new_v2v_user = False
     address_cache = env.get('address_cache')
     params['vmcheck_flag'] = False
     checkpoint = params.get('checkpoint', '')
+    error_flag = 'strict'
 
     def create_pool(user_pool=False, pool_name=pool_name, pool_target=pool_target):
         """
@@ -274,41 +276,85 @@ def run(test, params, env):
         for line in source_strip:
             source_info[line.split(':')[0]] = line.split(':', 1)[1].strip()
         logging.debug('Source info to check: %s', source_info)
-        checklist = ['nr vCPUs',  'hypervisor type', 'source name', 'memory',
-                     'display', 'CPU features', 'disks', 'NICs']
+        checklist = ['nr vCPUs', 'hypervisor type', 'source name', 'memory',
+                     'disks', 'NICs']
+        if hypervisor in ['kvm', 'xen']:
+            checklist.extend(['display', 'CPU features'])
         for key in checklist:
             if key not in source_info:
                 test.fail('%s info missing' % key)
 
+        v2v_virsh = None
+        close_virsh = False
+        if hypervisor == 'kvm':
+            v2v_virsh = virsh
+        else:
+            virsh_dargs = {'uri': ic_uri,
+                           'remote_ip': remote_host,
+                           'remote_user': source_user,
+                           'remote_pwd': source_pwd,
+                           'debug': True}
+            v2v_virsh = virsh.VirshPersistent(**virsh_dargs)
+            close_virsh = True
+
         # Check single values
         fail = []
-        xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        try:
+            xml = vm_xml.VMXML.new_from_inactive_dumpxml(
+                vm_name, virsh_instance=v2v_virsh)
+        finally:
+            if close_virsh:
+                v2v_virsh.close_session()
+
         check_map = {}
         check_map['nr vCPUs'] = xml.vcpu
         check_map['hypervisor type'] = xml.hypervisor_type
         check_map['source name'] = xml.vm_name
         check_map['memory'] = str(int(xml.max_mem) * 1024) + ' (bytes)'
-        check_map['display'] = xml.get_graphics_devices()[0].type_name
+
+        if hypervisor in ['kvm', 'xen']:
+            check_map['display'] = xml.get_graphics_devices()[0].type_name
 
         logging.info('KEY:\tSOURCE<-> XML')
         for key in check_map:
             logging.info('%-15s:%18s <-> %s', key,
                          source_info[key], check_map[key])
-            if source_info[key] != str(check_map[key]):
+            if str(check_map[key]) not in source_info[key]:
                 fail.append(key)
 
         # Check disk info
         disk = list(xml.get_disk_all().values())[0]
-        bus, type = disk.find('target').get(
-            'bus'), disk.find('driver').get('type')
-        path = disk.find('source').get('file')
-        disks_info = "%s (%s) [%s]" % (path, type, bus)
+
+        def _get_disk_subelement_attr_value(obj, attr, subattr):
+            if obj.find(attr) is not None:
+                return obj.find(attr).get(subattr)
+        bus = _get_disk_subelement_attr_value(disk, 'target', 'bus')
+        driver_type = _get_disk_subelement_attr_value(disk, 'driver', 'type')
+        path = _get_disk_subelement_attr_value(disk, 'source', 'file')
+
+        # For esx, disk output is like "disks: json: { ... } (raw) [scsi]"
+        # For xen, disk output is like "disks: json: { ... } [ide]"
+        # For kvm, disk output is like "/rhel8.0-2.qcow2 (qcow2) [virtio-blk]"
+        if hypervisor == 'kvm':
+            disks_info_pattern = "%s \(%s\) \[%s" % (path, driver_type, bus)
+        elif hypervisor == 'esx':
+            # replace '.vmdk' with '-flat.vmdk', this is done in v2v
+            path_pattern1 = path.split()[1].replace('.vmdk', '-flat.vmdk')
+            # In newer qemu version, '_' is replaced with '%5f'.
+            path_pattern2 = path_pattern1.replace('_', '%5f')
+            # For esx, '(raw)' is fixed? Let's see if others will be met.
+            disks_info_pattern = '|'.join(
+                [
+                    "https://%s/folder/%s\?dcPath=data&dsName=esx.*} \(raw\) \[%s" %
+                    (remote_host, i, bus) for i in [
+                        path_pattern1, path_pattern2]])
+        elif hypervisor == 'xen':
+            disks_info_pattern = "file\.path.*%s.*file\.host.*%s.* \[%s" % (
+                path, remote_host, bus)
+
         source_disks = source_info['disks'].split()
-        source_disks_path = source_disks[0]
-        source_disks_type = source_disks[1].strip('()')
-        source_disks_bus = source_disks[2].strip('[]')
-        logging.info('disks:%s<->%s', source_info['disks'], disks_info)
-        if source_disks_path != path or source_disks_type != type or bus not in source_disks_bus:
+        logging.info('disks:%s<->%s', source_info['disks'], disks_info_pattern)
+        if not re.search(disks_info_pattern, source_info['disks']):
             fail.append('disks')
 
         # Check nic info
@@ -323,11 +369,12 @@ def run(test, params, env):
             fail.append('NICs')
 
         # Check cpu features
-        feature_list = xml.features.get_feature_list()
-        logging.info('CPU features:%s<->%s',
-                     source_info['CPU features'], feature_list)
-        if sorted(source_info['CPU features'].split(',')) != sorted(feature_list):
-            fail.append('CPU features')
+        if hypervisor in ['kvm', 'xen']:
+            feature_list = xml.features.get_feature_list()
+            logging.info('CPU features:%s<->%s',
+                         source_info['CPU features'], feature_list)
+            if sorted(source_info['CPU features'].split(',')) != sorted(feature_list):
+                fail.append('CPU features')
 
         if fail:
             test.fail('Source info not correct for: %s' % fail)
@@ -347,12 +394,25 @@ def run(test, params, env):
             if not_in_man in man_page:
                 test.fail('"%s" not removed from man page' % not_in_man)
 
+    def check_print_estimate(estimate_file):
+        """
+        Check disk size and total size in file of estimate created by v2v
+        """
+        import json
+        with open(estimate_file) as fp:
+            content = json.load(fp)
+        logging.debug('json file content:\n%s' % content)
+
+        if sum(content['disks']) != content['total']:
+            test.fail("The disks' size doesn't same as total value")
+
     def check_result(cmd, result, status_error):
         """
         Check virt-v2v command result
         """
-        utlv.check_exit_status(result, status_error)
-        output = result.stdout + result.stderr
+        utils_v2v.check_exit_status(result, status_error, error_flag)
+        output = to_text(result.stdout + result.stderr, errors=error_flag)
+        output_stdout = to_text(result.stdout, errors=error_flag)
         if status_error:
             if checkpoint == 'length_of_error':
                 log_lines = output.split('\n')
@@ -390,7 +450,7 @@ def run(test, params, env):
                         pass
                 if not utils_misc.wait_for(check_alloc, timeout=600, step=10.0):
                     test.fail('Allocation check failed.')
-            if '-of' in cmd and '--no-copy' not in cmd and checkpoint != 'quiet':
+            if '-of' in cmd and '--no-copy' not in cmd and '--print-source' not in cmd and checkpoint != 'quiet':
                 expected_format = re.findall(r"-of\s(\w+)", cmd)[0]
                 img_path = get_img_path(output)
                 check_image(img_path, "format", expected_format)
@@ -418,12 +478,12 @@ def run(test, params, env):
                 if len(ret) == 0:
                     logging.info("All common checkpoints passed")
             if checkpoint == 'quiet':
-                if len(output.strip()) != 0:
+                if len(output.strip().splitlines()) > 10:
                     test.fail('Output is not empty in quiet mode')
             if checkpoint == 'dependency':
                 if 'libguestfs-winsupport' not in output:
                     test.fail('libguestfs-winsupport not in dependency')
-                if 'VMF' not in output:
+                if all(pkg_pattern not in output for pkg_pattern in ['VMF', 'edk2-ovmf']):
                     test.fail('OVMF/AAVMF not in dependency')
                 if 'qemu-kvm-rhev' in output:
                     test.fail('qemu-kvm-rhev is in dependency')
@@ -452,23 +512,32 @@ def run(test, params, env):
                 target_str = '%s "eth0" mac: %s' % (
                     params[checkpoint][0], params[checkpoint][1])
                 logging.info('Expect log: %s', target_str)
-                if target_str not in result.stdout.lower():
+                if target_str not in output_stdout.lower():
                     test.fail('Expect log not found: %s' % target_str)
             if checkpoint == 'print_source':
-                check_source(result.stdout)
+                check_source(output_stdout)
             if checkpoint == 'machine_readable':
                 if os.path.exists(params.get('example_file', '')):
-                    expect_output = open(params['example_file']).read().strip()
-                    logging.debug(expect_output)
-                    if expect_output != result.stdout.strip():
-                        test.fail('machine readable content not correct')
+                    # Checking items in example_file exist in latest
+                    # output regardless of the orders and new items.
+                    with open(params['example_file']) as f:
+                        for line in f:
+                            if line.strip() not in output_stdout.strip():
+                                test.fail(
+                                    '%s not in --machine-readable output' %
+                                    line.strip())
                 else:
                     test.error('No content to compare with')
             if checkpoint == 'compress':
                 img_path = get_img_path(output)
                 logging.info('Image path: %s', img_path)
-                disk_check = process.run(
-                    'qemu-img check %s' % img_path).stdout_text
+
+                qemu_img_cmd = 'qemu-img check %s' % img_path
+                qemu_img_locking_feature_support = libvirt_storage.check_qemu_image_lock_support()
+                if qemu_img_locking_feature_support:
+                    qemu_img_cmd = 'qemu-img check %s -U' % img_path
+
+                disk_check = process.run(qemu_img_cmd).stdout_text
                 logging.info(disk_check)
                 compress_info = disk_check.split(',')[-1].split('%')[0].strip()
                 compress_rate = float(compress_info)
@@ -482,6 +551,8 @@ def run(test, params, env):
                 msg_content = params['msg_content']
                 if msg_content in messages:
                     test.fail('Found "%s" in /var/log/messages' % msg_content)
+            if checkpoint == 'print_estimate_tofile':
+                check_print_estimate(estimate_file)
         log_check = utils_v2v.check_log(params, output)
         if log_check:
             test.fail(log_check)
@@ -577,7 +648,7 @@ def run(test, params, env):
         if checkpoint == 'quiet':
             v2v_options += ' -q'
         elif checkpoint not in ['length_of_error', 'empty_nic_source_network',
-                                'empty_nic_source_bridge']:
+                                'empty_nic_source_bridge', 'machine_readable']:
             v2v_options += " -v -x"
 
         # Prepare for libvirt unprivileged user session connection
@@ -596,8 +667,7 @@ def run(test, params, env):
                     data_dir.get_tmp_dir(), os.path.basename(disk_img))
                 logging.info('Copy image file %s to %s', disk_img, disk_path)
                 shutil.copyfile(disk_img, disk_path)
-                input_option = string.replace(
-                    input_option, disk_img, disk_path)
+                input_option = input_option.replace(disk_img, disk_path)
                 os.chown(disk_path, user_info.pw_uid, user_info.pw_gid)
             elif not no_root:
                 test.cancel("Only support convert local disk")
@@ -605,7 +675,7 @@ def run(test, params, env):
         # Setup ssh-agent access to xen hypervisor
         if hypervisor == 'xen':
             user = params.get("xen_host_user", "root")
-            passwd = params.get("xen_host_passwd", "redhat")
+            source_pwd = passwd = params.get("xen_host_passwd", "redhat")
             logging.info("set up ssh-agent access ")
             ssh_key.setup_ssh_key(remote_host, user=user,
                                   port=22, password=passwd)
@@ -623,14 +693,21 @@ def run(test, params, env):
 
         # Create password file for access to ESX hypervisor
         if hypervisor == 'esx':
-            vpx_passwd = params.get("vpx_password")
+            source_pwd = vpx_passwd = params.get("vpx_password")
             vpx_passwd_file = os.path.join(
                 data_dir.get_tmp_dir(), "vpx_passwd")
             logging.info("Building ESX no password interactive verification.")
             pwd_f = open(vpx_passwd_file, 'w')
             pwd_f.write(vpx_passwd)
             pwd_f.close()
-            output_option += " --password-file %s" % vpx_passwd_file
+            output_option += " -ip %s" % vpx_passwd_file
+
+        # if don't specify any output option for virt-v2v, 'default' pool
+        # will be used.
+        if output_mode is None:
+            # Cleanup first to avoid failure if 'default' pool exists.
+            pvt.cleanup_pool(pool_name, pool_type, pool_target, emulated_img)
+            pvt.pre_pool(pool_name, pool_type, pool_target, emulated_img)
 
         # Create libvirt dir pool
         if output_mode == "libvirt":
@@ -691,6 +768,10 @@ def run(test, params, env):
             process.run('touch %s' % simulate_dom_md)
             process.run('chmod -R 777 /tmp/rhv/')
 
+        if checkpoint == 'print_estimate_tofile':
+            estimate_file = utils_misc.generate_tmp_file_name('v2v_print_estimate')
+            v2v_options += " --machine-readable=file:%s" % estimate_file
+
         # Running virt-v2v command
         cmd = "%s %s %s %s" % (utils_v2v.V2V_EXEC, input_option,
                                output_option, v2v_options)
@@ -700,6 +781,9 @@ def run(test, params, env):
 
         if params.get('cmd_free') == 'yes':
             cmd = params.get('check_command')
+            # only set error to 'ignore' to avoid exception for RHEL7-84978
+            if "guestfish" in cmd:
+                error_flag = "replace"
 
         # Set timeout to kill v2v process before conversion succeed
         if checkpoint == 'disk_not_exist':
@@ -751,6 +835,8 @@ def run(test, params, env):
             else:
                 virsh.remove_domain(vm_name)
             cleanup_pool()
+        if output_mode is None:
+            pvt.cleanup_pool(pool_name, pool_type, pool_target, emulated_img)
         vmcheck_flag = params.get("vmcheck_flag")
         if vmcheck_flag:
             vmcheck = utils_v2v.VMCheck(test, params, env)
@@ -766,3 +852,5 @@ def run(test, params, env):
             os.rmdir(params['mount_point'])
         if checkpoint == 'simulate_nfs':
             process.run('rm -rf /tmp/rhv/')
+        if os.path.exists(estimate_file):
+            os.remove(estimate_file)

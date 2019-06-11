@@ -1,13 +1,23 @@
 import os
 import time
+import re
 import logging
-
+import signal
 import aexpect
+import shutil
+
+from aexpect import ShellTimeoutError
+from aexpect import ShellProcessTerminatedError
 
 from virttest import virsh
 from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
+from virttest.libvirt_xml.devices.interface import Interface
+from virttest.libvirt_xml.devices.panic import Panic
+from virttest import utils_misc
+from provider import libvirt_version
+from xml.dom.minidom import parseString
 
 
 def run(test, params, env):
@@ -34,7 +44,12 @@ def run(test, params, env):
     event_option = params.get("event_option", "")
     status_error = "yes" == params.get("status_error", "no")
     qemu_monitor_test = "yes" == params.get("qemu_monitor_test", "no")
+    signal_name = params.get("signal", None)
+    panic_model = params.get("panic_model")
+    addr_type = params.get("addr_type")
+    addr_iobase = params.get("addr_iobase")
     event_cmd = "event"
+    dump_path = '/var/lib/libvirt/qemu/dump'
     if qemu_monitor_test:
         event_cmd = "qemu-monitor-event"
     events_list = params.get("events_list")
@@ -53,6 +68,35 @@ def run(test, params, env):
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(dom.name)
         vmxml_backup.append(vmxml.copy())
 
+    tmpdir = data_dir.get_tmp_dir()
+    new_disk = os.path.join(tmpdir, "%s_new_disk.img" % dom.name)
+
+    def create_iface_xml():
+        """
+        Create interface xml file
+        """
+        iface = Interface("bridge")
+        iface.source = eval("{'bridge':'virbr0'}")
+        iface.model = "virtio"
+        logging.debug("Create new interface xml: %s", iface)
+        return iface
+
+    def add_disk(vm_name, init_source, target_device, extra_param):
+        """
+        Add disk/cdrom for test vm
+
+        :param vm_name: guest name
+        :param init_source: source file
+        :param target_device: target of disk device
+        :param extra_param: additional arguments to command
+        """
+        if not os.path.exists(new_disk):
+            open(new_disk, 'a').close()
+        if virsh.is_alive(vm_name) and 'cdrom' in extra_param:
+            virsh.destroy(vm_name)
+        virsh.attach_disk(vm_name, init_source, target_device,
+                          extra_param, **virsh_dargs)
+
     def trigger_events(dom, events_list=[]):
         """
         Trigger various events in events_list
@@ -61,26 +105,64 @@ def run(test, params, env):
         :return: the expected output that virsh event command prints out
         """
         expected_events_list = []
-        tmpdir = data_dir.get_tmp_dir()
         save_path = os.path.join(tmpdir, "%s_event.save" % dom.name)
-        new_disk = os.path.join(tmpdir, "%s_new_disk.img" % dom.name)
         print(dom.name)
+        xmlfile = dom.backup_xml()
+
         try:
             for event in events_list:
-                if event in ['start', 'restore']:
+                if event in ['start', 'restore', 'create', 'define', 'undefine', 'crash']:
                     if dom.is_alive():
                         dom.destroy()
+                        if event in ['create', 'define']:
+                            dom.undefine()
                 else:
                     if not dom.is_alive():
                         dom.start()
                         dom.wait_for_login().close()
-                if event == "start":
+                        if event == "resume":
+                            dom.pause()
+
+                if event == "undefine":
+                    virsh.undefine(dom.name, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Undefined Removed")
+                elif event == "create":
+                    virsh.create(xmlfile, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Resumed Unpaused")
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Started Booted")
+                elif event == "destroy":
+                    virsh.destroy(dom.name, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Stopped Destroyed")
+                elif event == "define":
+                    virsh.define(xmlfile, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Defined Added")
+                elif event == "start":
                     virsh.start(dom.name, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Resumed Unpaused")
                     expected_events_list.append("'lifecycle' for %s:"
                                                 " Started Booted")
                     dom.wait_for_login().close()
+                elif event == "suspend":
+                    virsh.suspend(dom.name, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Suspended Paused")
+                    if not libvirt_version.version_compare(5, 3, 0):
+                        expected_events_list.append("'lifecycle' for %s:"
+                                                    " Suspended Paused")
+                elif event == "resume":
+                    virsh.resume(dom.name, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Resumed Unpaused")
                 elif event == "save":
                     virsh.save(dom.name, save_path, **virsh_dargs)
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Suspended Paused")
                     expected_events_list.append("'lifecycle' for %s:"
                                                 " Stopped Saved")
                 elif event == "restore":
@@ -90,10 +172,67 @@ def run(test, params, env):
                         virsh.restore(save_path, **virsh_dargs)
                         expected_events_list.append("'lifecycle' for %s:"
                                                     " Started Restored")
-                elif event == "destroy":
-                    virsh.destroy(dom.name, **virsh_dargs)
+                        expected_events_list.append("'lifecycle' for %s:"
+                                                    " Resumed Snapshot")
+                elif event == "edit":
+                    #Check whether 'description' element exists.
+                    domxml = virsh.dumpxml(dom.name).stdout.strip()
+                    find_desc = parseString(domxml).getElementsByTagName("description")
+                    if find_desc == []:
+                        #If not exists, add one for it.
+                        logging.info("Adding <description> to guest")
+                        virsh.desc(dom.name, "--config", "Added desc for testvm", **virsh_dargs)
+                    #The edit operation is to delete 'description' element.
+                    edit_cmd = [r":g/<description.*<\/description>/d"]
+                    utlv.exec_virsh_edit(dom.name, edit_cmd)
                     expected_events_list.append("'lifecycle' for %s:"
-                                                " Stopped Destroyed")
+                                                " Defined Updated")
+                elif event == "shutdown":
+                    if signal_name is None:
+                        virsh.shutdown(dom.name, **virsh_dargs)
+                        # Wait a few seconds for shutdown finish
+                        time.sleep(3)
+                        if utils_misc.compare_qemu_version(2, 9, 0):
+                            #Shutdown reason distinguished from qemu_2.9.0-9
+                            expected_events_list.append("'lifecycle' for %s:"
+                                                        " Shutdown Finished after guest request")
+                    else:
+                        os.kill(dom.get_pid(), getattr(signal, signal_name))
+                        if utils_misc.compare_qemu_version(2, 9, 0):
+                            expected_events_list.append("'lifecycle' for %s:"
+                                                        " Shutdown Finished after host request")
+                    if not utils_misc.compare_qemu_version(2, 9, 0):
+                        expected_events_list.append("'lifecycle' for %s:"
+                                                    " Shutdown Finished")
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Stopped Shutdown")
+                elif event == "crash":
+                    if not vmxml.xmltreefile.find('devices').findall('panic'):
+                        # Set panic device
+                        panic_dev = Panic()
+                        panic_dev.model = panic_model
+                        panic_dev.addr_type = addr_type
+                        panic_dev.addr_iobase = addr_iobase
+                        vmxml.add_device(panic_dev)
+                    vmxml.on_crash = "coredump-restart"
+                    vmxml.sync()
+                    logging.info("Guest xml now is: %s", vmxml)
+                    dom.start()
+                    session = dom.wait_for_login()
+                    # Stop kdump in the guest
+                    session.cmd("systemctl stop kdump", ignore_all_errors=True)
+                    # Enable sysRq
+                    session.cmd("echo 1 > /proc/sys/kernel/sysrq")
+                    try:
+                        # Crash the guest
+                        session.cmd("echo c > /proc/sysrq-trigger", timeout=60)
+                    except (ShellTimeoutError, ShellProcessTerminatedError) as details:
+                        logging.info(details)
+                    session.close()
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Crashed Panicked")
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Resumed Unpaused")
                 elif event == "reset":
                     virsh.reset(dom.name, **virsh_dargs)
                     expected_events_list.append("'reboot' for %s")
@@ -109,14 +248,48 @@ def run(test, params, env):
                     mem_size = int(params.get("mem_size", 512000))
                     virsh.setmem(dom.name, mem_size, **virsh_dargs)
                     expected_events_list.append("'balloon-change' for %s:")
-                elif event == "detach-disk":
-                    if not os.path.exists(new_disk):
-                        open(new_disk, 'a').close()
-                    # Attach disk firstly, this event will not be catched
-                    virsh.attach_disk(dom.name, new_disk, 'vdb', **virsh_dargs)
+                elif event == "device-added-removed":
+                    add_disk(dom.name, new_disk, 'vdb', '')
+                    expected_events_list.append("'device-added' for %s:"
+                                                " virtio-disk1")
                     virsh.detach_disk(dom.name, 'vdb', **virsh_dargs)
                     expected_events_list.append("'device-removed' for %s:"
                                                 " virtio-disk1")
+                    iface_xml_obj = create_iface_xml()
+                    iface_xml_obj.xmltreefile.write()
+                    virsh.detach_device(dom.name, iface_xml_obj.xml, **virsh_dargs)
+                    expected_events_list.append("'device-removed' for %s:"
+                                                " net0")
+                    time.sleep(2)
+                    virsh.attach_device(dom.name, iface_xml_obj.xml, **virsh_dargs)
+                    expected_events_list.append("'device-added' for %s:"
+                                                " net0")
+                elif event == "change-media":
+                    target_device = "hdc"
+                    device_target_bus = params.get("device_target_bus", "ide")
+                    disk_blk = vm_xml.VMXML.get_disk_blk(dom.name)
+                    logging.info("disk_blk %s", disk_blk)
+                    if target_device not in disk_blk:
+                        logging.info("Adding cdrom to guest")
+                        if dom.is_alive():
+                            dom.destroy()
+                        add_disk(dom.name, "''", target_device,
+                                 ("--type cdrom --sourcetype file --driver qemu " +
+                                  "--config --targetbus %s" % device_target_bus))
+                        dom.start()
+                    all_options = new_disk + " --insert"
+                    virsh.change_media(dom.name, target_device,
+                                       all_options, **virsh_dargs)
+                    expected_events_list.append("'tray-change' for %s disk" + " .*%s.*:" % device_target_bus +
+                                                " opened")
+                    expected_events_list.append("'tray-change' for %s disk" + " .*%s.*:" % device_target_bus +
+                                                " closed")
+                    all_options = new_disk + " --eject"
+                    virsh.change_media(dom.name, target_device,
+                                       all_options, **virsh_dargs)
+                    expected_events_list.append("'tray-change' for %s disk" + " .*%s.*:" % device_target_bus +
+                                                " opened")
+
                 else:
                     test.error("Unsupported event: %s" % event)
                 # Event may not received immediately
@@ -145,10 +318,15 @@ def run(test, params, env):
         :param expected_events_list: A list of expected events
         """
         logging.debug("Actual events: %s", output)
+        event_idx = 0
         for dom_name, event in expected_events_list:
+            if event in expected_events_list[0]:
+                event_idx = 0
             event_str = "event " + event % ("domain %s" % dom_name)
-            logging.debug("Expected event: %s", event_str)
-            if event_str in output:
+            logging.info("Expected event: %s", event_str)
+            match = re.search(event_str, output[event_idx:])
+            if match:
+                event_idx = event_idx + match.start(0) + len(match.group(0))
                 continue
             else:
                 test.fail("Not find expected event:%s. Is your "
@@ -182,7 +360,8 @@ def run(test, params, env):
         elif qemu_monitor_test:
             result = virsh.qemu_monitor_event(event=event_name,
                                               event_timeout=event_timeout,
-                                              options=event_option, **virsh_dargs)
+                                              options=event_option,
+                                              **virsh_dargs)
             utlv.check_exit_status(result, status_error)
         else:
             result = virsh.event(event=event_name,
@@ -193,6 +372,7 @@ def run(test, params, env):
         if not status_error:
             if not event_list_option:
                 expected_events_list = []
+                virsh_dargs['ignore_status'] = False
                 for dom in vms:
                     expected_events_list.extend(trigger_events(dom, events_list))
                 if event_timeout:
@@ -200,6 +380,7 @@ def run(test, params, env):
                     time.sleep(int(event_timeout))
                 elif event_loop:
                     virsh_session.send_ctrl("^C")
+                    time.sleep(5)
                 ret_output = virsh_session.get_stripped_output()
                 if qemu_monitor_test:
                     # Not check for qemu-monitor-event output
@@ -212,3 +393,6 @@ def run(test, params, env):
         virsh_session.close()
         for xml in vmxml_backup:
             xml.sync()
+        if os.path.exists(dump_path):
+            shutil.rmtree(dump_path)
+            os.mkdir(dump_path)

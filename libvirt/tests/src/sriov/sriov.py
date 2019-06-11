@@ -91,33 +91,43 @@ def run(test, params, env):
         """
         net_device = []
         net_name = []
-        test_res = process.run("echo 0 > %s/sriov_numvfs" % pci_address, shell=True)
+        # cleanup env and create vfs
+        cmd = "echo 0 > %s/sriov_numvfs" % pci_address
+        if driver == "mlx4_core":
+            cmd = "modprobe -r mlx4_en ; modprobe -r mlx4_ib ; modprobe -r mlx4_core"
+        process.run(cmd, shell=True)
         pci_list = virsh.nodedev_list(cap='pci').stdout.strip().splitlines()
         net_list = virsh.nodedev_list(cap='net').stdout.strip().splitlines()
         pci_list_before = set(pci_list)
         net_list_before = set(net_list)
-        test_res = process.run("echo %d > %s/sriov_numvfs" % (vf_num, pci_address), shell=True)
+        cmd = "echo %d > %s/sriov_numvfs" % (vf_num, pci_address)
+        if driver == "mlx4_core":
+            cmd = "modprobe -v mlx4_core num_vfs=%d port_type_array=2,2 probe_vf=%d" \
+                    % (vf_num, vf_num)
+        test_res = process.run(cmd, shell=True)
         if test_res.exit_status != 0:
             test.fail("Fail to create vfs")
-        pci_list_sriov = virsh.nodedev_list(cap='pci').stdout.strip().splitlines()
 
         def _vf_init_completed():
             try:
                 net_list_sriov = virsh.nodedev_list(cap='net').stdout.strip().splitlines()
                 net_list_sriov = set(net_list_sriov)
                 net_diff = list(net_list_sriov.difference(net_list_before))
-                if len(net_diff) != int(vf_num):
+                net_count = len(net_diff)
+                if ((driver != "mlx4_core" and net_count != vf_num) or
+                        (driver == "mlx4_core" and net_count != 2*(vf_num + 1))):
                     net_diff = []
                     return False
                 return net_diff
             except process.CmdError:
-                raise test.fail("Get net list with 'virsh list' failed\n")
+                raise test.fail("Get net list with 'virsh nodedev-list' failed\n")
 
+        net_diff = utils_misc.wait_for(_vf_init_completed, timeout=300)
+        pci_list_sriov = virsh.nodedev_list(cap='pci').stdout.strip().splitlines()
         pci_list_sriov = set(pci_list_sriov)
         pci_diff = list(pci_list_sriov.difference(pci_list_before))
-        net_diff = utils_misc.wait_for(_vf_init_completed, timeout=60)
         if not net_diff:
-            test.fail("Get net list with 'virsh list' failed\n")
+            test.fail("Get net list with 'virsh nodedev-list' failed\n")
         for net in net_diff:
             net = net.split('_')
             length = len(net)
@@ -130,7 +140,7 @@ def run(test, params, env):
             net_device.append(vf_net_name)
         logging.debug(sorted(net_name))
         logging.debug(sorted(net_device))
-        if sorted(net_name) != sorted(net_device):
+        if driver != "mlx4_core" and sorted(net_name) != sorted(net_device):
             test.fail("The net name get from nodedev-list is wrong\n")
 
     def get_ip_by_mac(mac_addr, timeout=120):
@@ -305,6 +315,7 @@ def run(test, params, env):
             new_iface = Interface('direct')
             new_iface.source = {"dev": vf_name, "mode": "passthrough"}
             new_iface.mac_address = utils_net.generate_mac_address_simple()
+            new_iface.model = "virtio"
         if vf_type == "macvtap_network":
             netxml = create_macvtap_network()
             result = virsh.net_define(netxml.xml, ignore_status=True)
@@ -369,6 +380,11 @@ def run(test, params, env):
         if option == "--config":
             result = virsh.start(vm_name)
             utils_test.libvirt.check_exit_status(result, expect_error=False)
+        # For option == "--persistent", after VM destroyed and then start, the device should still be there.
+        if option == "--persistent":
+            virsh.destroy(vm_name)
+            result = virsh.start(vm_name, debug=True)
+            utils_test.libvirt.check_exit_status(result, expect_error=False)
         live_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         logging.debug(live_xml)
         get_ip_by_mac(mac_addr, timeout=60)
@@ -398,8 +414,168 @@ def run(test, params, env):
                     test.fail("The dev name or mode of macvtap interface is wrong after attach\n")
         return interface
 
+    def setup_controller(nic_num, controller_index, ctl_models):
+        """
+        Create controllers bond to numa node in the guest xml
+
+        :param nic_num: number of nic card bond to numa node
+        :param controller_index: index num used to create controllers
+        :param ctl_models: contoller topo for numa bond
+        """
+        index = controller_index
+        if nic_num == 2:
+            ctl_models.append('pcie-switch-upstream-port')
+            ctl_models.append('pcie-switch-downstream-port')
+            ctl_models.append('pcie-switch-downstream-port')
+        for i in range(index):
+            controller = Controller("controller")
+            controller.type = "pci"
+            controller.index = i
+            if i == 0:
+                controller.model = 'pcie-root'
+            else:
+                controller.model = 'pcie-root-port'
+            vmxml.add_device(controller)
+        set_address = False
+        for model in ctl_models:
+            controller = Controller("controller")
+            controller.type = "pci"
+            controller.index = index
+            controller.model = model
+            if set_address or model == "pcie-switch-upstream-port":
+                attrs = {'type': 'pci', 'domain': '0', 'slot': '0',
+                         'bus': index - 1, 'function': '0'}
+                controller.address = controller.new_controller_address(**{"attrs": attrs})
+                logging.debug(controller)
+            if controller.model == "pcie-expander-bus":
+                controller.node = "0"
+                controller.target = {'busNr': '100'}
+                set_address = True
+            else:
+                set_address = False
+            logging.debug(controller)
+            vmxml.add_device(controller)
+            index += 1
+        return index - 1
+
+    def add_numa(vmxml):
+        """
+        Add numa node in the guest xml
+
+        :param vmxml: The instance of VMXML clas
+        """
+        vcpu = vmxml.vcpu
+        max_mem = vmxml.max_mem
+        max_mem_unit = vmxml.max_mem_unit
+        numa_dict = {}
+        numa_dict_list = []
+        # Compute the memory size for each numa node
+        if vcpu == 1:
+            numa_dict['id'] = '0'
+            numa_dict['cpus'] = '0'
+            numa_dict['memory'] = str(max_mem)
+            numa_dict['unit'] = str(max_mem_unit)
+            numa_dict_list.append(numa_dict)
+        else:
+            for index in range(2):
+                numa_dict['id'] = str(index)
+                numa_dict['memory'] = str(max_mem // 2)
+                numa_dict['unit'] = str(max_mem_unit)
+                if vcpu == 2:
+                    numa_dict['cpus'] = str(index)
+                else:
+                    if index == 0:
+                        if vcpu == 3:
+                            numa_dict['cpus'] = str(index)
+                        if vcpu > 3:
+                            numa_dict['cpus'] = "%s-%s" % (index,
+                                                           vcpu // 2 - 1)
+                    else:
+                        numa_dict['cpus'] = "%s-%s" % (vcpu // 2,
+                                                       str(vcpu - 1))
+                numa_dict_list.append(numa_dict)
+                numa_dict = {}
+        # Add cpu device with numa node setting in domain xml
+        vmxml_cpu = vm_xml.VMCPUXML()
+        vmxml_cpu.xml = "<cpu><numa/></cpu>"
+        vmxml_cpu.numa_cell = numa_dict_list
+        vmxml.cpu = vmxml_cpu
+
+    def create_iface_list(bus_id, nic_num, vf_list):
+        """
+            Create hostdev interface list bond to numa node
+
+            :param bus_id: bus_id in pci address which decides the controller attached to
+            :param nic_num: number of nic card bond to numa node
+            :param vf_list: sriov vf list
+        """
+        iface_list = []
+        for num in range(nic_num):
+            vf_addr = vf_list[num]
+            iface = create_hostdev_interface(vf_addr, managed, model)
+            bus_id -= num
+            attrs = {'type': 'pci', 'domain': '0', 'slot': '0',
+                     'bus': bus_id, 'function': '0'}
+            iface.address = iface.new_iface_address(**{"attrs": attrs})
+            iface_list.append(iface)
+        return iface_list
+
+    def check_guestos(iface_list):
+        """
+            Check whether vf bond to numa node can get ip successfully in guest os
+
+            :param iface_list: hostdev interface list
+        """
+        for iface in iface_list:
+            mac_addr = iface.mac_address
+            get_ip_by_mac(mac_addr, timeout=60)
+
+    def check_numa(vf_driver):
+        """
+        Check whether vf bond to correct numa node in guest os
+
+        :param vf_driver: vf driver
+        """
+        if vm.serial_console:
+            vm.cleanup_serial_console()
+        vm.create_serial_console()
+        session = vm.wait_for_serial_login(timeout=240)
+        vf_pci = "/sys/bus/pci/drivers/%s" % vf_driver
+        vf_dir = session.cmd_output("ls -d %s/00*" % vf_pci).strip().split('\n')
+        for vf in vf_dir:
+            numa_node = session.cmd_output('cat %s/numa_node' % vf).strip().split('\n')[-1]
+            logging.debug("The vf is attached to numa node %s\n", numa_node)
+            if numa_node != "0":
+                test.fail("The vf is not attached to numa node 0\n")
+        session.close()
+
+    def remove_devices(vmxml, device_type):
+        """
+        Remove all addresses for all devices who has one.
+
+        :param vm_xml: The VM XML to be modified
+        :param device_type: The device type for removing
+
+        :return: True if success, otherwise, False
+        """
+        if device_type not in ['address', 'usb']:
+            return
+        type_dict = {'address': '/devices/*/address',
+                     'usb': '/devices/*'}
+        try:
+            for elem in vmxml.xmltreefile.findall(type_dict[device_type]):
+                if device_type == 'usb':
+                    if elem.get('bus') == 'usb':
+                        vmxml.xmltreefile.remove(elem)
+                else:
+                    vmxml.xmltreefile.remove(elem)
+        except (AttributeError, TypeError) as details:
+            test.error("Fail to remove '%s': %s" % (device_type, details))
+        vmxml.xmltreefile.write()
+
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(params["main_vm"])
+    machine_type = params.get("machine_type", "pc")
     operation = params.get("operation")
     driver = params.get("driver", "ixgbe")
     status_error = params.get("status_error", "no") == "yes"
@@ -418,6 +594,10 @@ def run(test, params, env):
     inactive_pool = "yes" == params.get("inactive_pool", "no")
     duplicate_vf = "yes" == params.get("duplicate_vf", "no")
     expected_error = params.get("error_msg", "")
+    nic_num = int(params.get("nic_num", "1"))
+    nfv = params.get("nfv", "no") == "yes"
+    ctl_models = params.get("ctl_models", "").split(' ')
+    controller_index = int(params.get("controller_index", "12"))
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
@@ -450,7 +630,6 @@ def run(test, params, env):
     else:
         if not vm.is_dead():
             vm.destroy()
-
     driver_dir = "/sys/bus/pci/drivers/%s" % driver
     pci_dirs = glob.glob("%s/0000*" % driver_dir)
     pci_device_dir = "/sys/bus/pci/devices"
@@ -473,7 +652,7 @@ def run(test, params, env):
             vf_num = max_vfs
             create_vfs(vf_num)
         else:
-            vf_num = max_vfs // 2 + 1
+            vf_num = int(max_vfs // 2 + 1)
             create_vfs(vf_num)
 
         vf_list = []
@@ -486,7 +665,7 @@ def run(test, params, env):
             vf_name = os.listdir('%s/%s/net' % (pci_device_dir, vf))[0]
             vf_name_list.append(vf_name)
 
-        if attach == "yes":
+        if attach == "yes" and not nfv:
             vf_addr = vf_list[0]
             new_iface = create_interface()
             if inactive_pool:
@@ -537,11 +716,41 @@ def run(test, params, env):
             utils_test.libvirt.check_exit_status(result, expected_error)
             result = virsh.net_create(netxml.xml, ignore_status=True, debug=True)
             utils_test.libvirt.check_exit_status(result, expected_error)
+        if nfv:
+            vf_driver = os.readlink(os.path.join(pci_device_dir, vf_list[0], "driver")).split('/')[-1]
+            vmxml.remove_all_device_by_type('controller')
+            remove_devices(vmxml, 'address')
+            remove_devices(vmxml, 'usb')
+            osxml = vmxml.os
+            if "i440fx" in vmxml.os.machine:
+                osxml.machine = "q35"
+                vmxml.os = osxml
+            add_numa(vmxml)
+            bus_id = setup_controller(nic_num, controller_index, ctl_models)
+            vmxml.sync()
+            logging.debug(vmxml)
+            iface_list = create_iface_list(bus_id, nic_num, vf_list)
+            for iface in iface_list:
+                process.run("cat %s" % iface.xml, shell=True).stdout_text
+                result = virsh.attach_device(vm_name, file_opt=iface.xml, flagstr=option,
+                                             ignore_status=True, debug=True)
+                utils_test.libvirt.check_exit_status(result, expect_error=False)
+            result = virsh.start(vm_name, debug=True)
+            utils_test.libvirt.check_exit_status(result, expect_error=False)
+            live_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            logging.debug(live_xml)
+            check_guestos(iface_list)
+            check_numa(vf_driver)
     finally:
         if vm.is_alive():
             vm.destroy(gracefully=False)
-        process.run("echo 0 > %s/sriov_numvfs" % pci_address, shell=True)
+        backup_xml.sync()
+        if driver == "mlx4_core":
+            # Reload mlx4 driver to default setting
+            process.run("modprobe -r mlx4_en ; modprobe -r mlx4_ib ; modprobe -r mlx4_core", shell=True)
+            process.run("modprobe mlx4_core; modprobe mlx4_ib;  modprobe mlx4_en", shell=True)
+        else:
+            process.run("echo 0 > %s/sriov_numvfs" % pci_address, shell=True)
         if vf_type == "vf_pool" or vf_type == "macvtap_network":
             virsh.net_destroy(net_name)
             virsh.net_undefine(net_name, ignore_status=True)
-        backup_xml.sync()
