@@ -14,6 +14,10 @@ from virttest.compat_52lts import results_stdout_52lts
 
 V2V_7_3_VERSION = 'virt-v2v-1.32.1-1.el7'
 RETRY_TIMES = 10
+# Temporary workaround <Fix in future with a better solution>
+FEATURE_SUPPORT = {
+    'genid': 'virt-v2v-1.40.1-1.el7',
+    'libosinfo': 'virt-v2v-1.40.2-2.el7'}
 
 
 class VMChecker(object):
@@ -36,9 +40,11 @@ class VMChecker(object):
         self.setup_session()
         self.checker = utils_v2v.VMCheck(test, params, env)
         self.checker.virsh_session_id = self.virsh_session_id
-        self.virsh_instance = virsh.VirshPersistent(session_id=self.virsh_session_id)
-        self.vmxml = virsh.dumpxml(self.vm_name,
-                                   session_id=self.virsh_session_id).stdout.strip()
+        self.virsh_instance = virsh.VirshPersistent(
+            session_id=self.virsh_session_id)
+        self.vmxml = virsh.dumpxml(
+            self.vm_name,
+            session_id=self.virsh_session_id).stdout.strip()
 
     def cleanup(self):
         self.close_virsh_session()
@@ -62,7 +68,8 @@ class VMChecker(object):
             logging.info('Trying %d times', index + 1)
             try:
                 if self.target == "ovirt":
-                    self.virsh_session = utils_sasl.VirshSessionSASL(self.params)
+                    self.virsh_session = utils_sasl.VirshSessionSASL(
+                        self.params)
                     self.virsh_session_id = self.virsh_session.get_id()
                 else:
                     self.virsh_session = virsh.VirshPersistent()
@@ -93,9 +100,10 @@ class VMChecker(object):
         Compare virt-v2v version against given version.
         """
         cmd = 'rpm -q virt-v2v|grep virt-v2v'
-        v2v_version = LooseVersion(process.run(cmd, shell=True).stdout_text.strip())
+        v2v_version = LooseVersion(process.run(
+            cmd, shell=True).stdout_text.strip())
         compare_version = LooseVersion(compare_version)
-        if v2v_version > compare_version:
+        if v2v_version >= compare_version:
             return True
         return False
 
@@ -142,13 +150,26 @@ class VMChecker(object):
         short_id = self.params.get('os_short_id')
         if not short_id:
             reason = 'short_id is not set'
-            logging.info('Skip Checking metadata libosinfo parameters: %s' % reason)
+            logging.info(
+                'Skip Checking metadata libosinfo parameters: %s' %
+                reason)
+            return
+
+        # Checking if the feature is supported
+        if not self.compare_version(FEATURE_SUPPORT['libosinfo']):
+            reason = "Unsupported if v2v < %s" % FEATURE_SUPPORT['libosinfo']
+            logging.info(
+                'Skip Checking metadata libosinfo parameters: %s' %
+                reason)
             return
 
         # Need target or output_mode be set explicitly
-        if not self.params.get('target') and not self.params.get('output_mode'):
+        if not self.params.get(
+                'target') and not self.params.get('output_mode'):
             reason = 'Both target and output_mode are not set'
-            logging.info('Skip Checking metadata libosinfo parameters: %s' % reason)
+            logging.info(
+                'Skip Checking metadata libosinfo parameters: %s' %
+                reason)
             return
 
         supported_output = ['libvirt', 'local']
@@ -156,7 +177,9 @@ class VMChecker(object):
         if self.params.get('target') not in supported_output or self.params.get(
                 'output_mode') not in supported_output:
             reason = 'target or output_mode is not in %s' % supported_output
-            logging.info('Skip Checking metadata libosinfo parameters: %s' % reason)
+            logging.info(
+                'Skip Checking metadata libosinfo parameters: %s' %
+                reason)
             return
 
         cmd = 'osinfo-query os --fields=short-id | tail -n +3'
@@ -167,7 +190,12 @@ class VMChecker(object):
             raise exceptions.TestError('Invalid short_id: %s' % short_id)
 
         cmd = "osinfo-query os --fields=id short-id='%s'| tail -n +3" % short_id
-        output = process.run(cmd, timeout=20, verbose=True, shell=True, ignore_status=True)
+        output = process.run(
+            cmd,
+            timeout=20,
+            verbose=True,
+            shell=True,
+            ignore_status=True)
         long_id = results_stdout_52lts(output).strip()
         # '<libosinfo:os id' was changed to '<ns0:os id' after calling
         # vm_xml.VMXML.new_from_inactive_dumpxml.
@@ -315,11 +343,13 @@ class VMChecker(object):
         Check windows guest after v2v convert.
         """
         try:
-            # Sometimes windows guests needs >10mins to finish drivers installation
+            # Sometimes windows guests needs >10mins to finish drivers
+            # installation
             self.checker.create_session(timeout=900)
         except Exception as detail:
-            raise exceptions.TestError('Failed to connect to windows guest: %s' %
-                                       detail)
+            raise exceptions.TestError(
+                'Failed to connect to windows guest: %s' %
+                detail)
         logging.info("Wait 60 seconds for installing drivers")
         time.sleep(60)
         # Close and re-create session in case connection reset by peer during
@@ -327,7 +357,7 @@ class VMChecker(object):
         for retry in range(RETRY_TIMES):
             try:
                 self.checker.run_cmd('dir')
-            except:
+            except BaseException:
                 self.checker.session.close()
                 self.checker.create_session()
             else:
@@ -351,7 +381,14 @@ class VMChecker(object):
             expect_adapter = 'QXL'
         if self.os_version in ['win2003', 'win2008']:
             expect_adapter = 'Standard VGA Graphics Adapter'
-        bdd_list = ['win8', 'win8.1', 'win10', 'win2012', 'win2012r2', 'win2016', 'win2019']
+        bdd_list = [
+            'win8',
+            'win8.1',
+            'win10',
+            'win2012',
+            'win2012r2',
+            'win2016',
+            'win2019']
         if self.os_version in bdd_list:
             expect_adapter = 'Basic Display Driver'
         expect_drivers.append(expect_adapter)
@@ -395,8 +432,8 @@ class VMChecker(object):
         """
         logging.info('Check graphics parameters')
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
-                self.vm_name, options='--security-info',
-                virsh_instance=self.virsh_instance)
+            self.vm_name, options='--security-info',
+            virsh_instance=self.virsh_instance)
         graphic = vmxml.xmltreefile.find('devices').find('graphics')
         status = True
         for key in param:
