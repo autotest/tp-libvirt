@@ -91,9 +91,10 @@ def run(test, params, env):
             virsh.destroy(vm_name)
 
         device_target_bus = params.get("device_target_bus", "ide")
+        readonly = "--mode readonly" if params.get("readonly", True) else ""
         virsh.attach_disk(vm_name, init_source,
                           target_device,
-                          "--type %s --sourcetype file --targetbus %s --config" % (device_type, device_target_bus),
+                          "--type %s --sourcetype file --targetbus %s %s --config" % (device_type, device_target_bus, readonly),
                           debug=True)
 
     def update_device(vm_name, init_iso, options, start_vm):
@@ -110,15 +111,16 @@ def run(test, params, env):
         else:
             disk_alias_update = disk_alias
         device_target_bus = params.get("device_target_bus", "ide")
+        readonly = "<readonly/>" if params.get("readonly", True) else ""
         snippet = """
 <disk type='file' device='%s'>
 <driver name='qemu' type='raw'/>
 <source file='%s'/>
 <target dev='%s' bus='%s'/>
-<readonly/>
+%s
 <alias name='%s'/>
 </disk>
-""" % (device_type, init_iso, target_device, device_target_bus, disk_alias_update)
+""" % (device_type, init_iso, target_device, device_target_bus, readonly, disk_alias_update)
         logging.info("Update xml is %s", snippet)
         with open(update_iso_xml, "w") as update_iso_file:
             update_iso_file.write(snippet)
