@@ -411,7 +411,16 @@ def run(test, params, env):
                                           ignore_status=True)
             if cmd_result.exit_status:
                 logging.debug(cmd_result.stderr)
-                test.error("Failed to get domjobinfo: %s" % cmd_result.stderr)
+                # Check if migration is completed
+                if "domain is not running" in cmd_result.stderr:
+                    args = vm_name + " --completed"
+                    cmd_result = virsh.domjobinfo(args, debug=True,
+                                                  ignore_status=True)
+                    if cmd_result.exit_status:
+                        test.error("Failed to get domjobinfo and domjobinfo "
+                                   "--completed: %s" % cmd_result.stderr)
+                else:
+                    test.error("Failed to get domjobinfo: %s" % cmd_result.stderr)
             jobinfo = cmd_result.stdout
             for line in jobinfo.splitlines():
                 key = line.split(':')[0]
