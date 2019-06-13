@@ -31,7 +31,7 @@ def run(test, params, env):
 
     # Wait guest agent channel to be connected to avoid XML differ
     try:
-        if not utils_misc.wait_for(agent_connected, 30):
+        if not utils_misc.wait_for(agent_connected, 60):
             logging.warning('Agent channel not connected')
     except LibvirtXMLNotFoundError:
         pass
