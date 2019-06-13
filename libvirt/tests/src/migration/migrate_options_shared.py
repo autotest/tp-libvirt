@@ -6,6 +6,7 @@ import re
 import threading
 import platform
 import tempfile
+import copy
 
 from avocado.utils import process
 from avocado.utils import memory
@@ -13,6 +14,7 @@ from avocado.core import exceptions
 
 from virttest import libvirt_vm
 from virttest import utils_test
+from virttest import utils_misc
 from virttest import defaults
 from virttest import data_dir
 from virttest import virsh
@@ -25,6 +27,7 @@ from virttest.utils_test import libvirt
 from virttest.utils_conn import TLSConnection
 from virttest.compat_52lts import results_stdout_52lts, results_stderr_52lts
 from virttest.libvirt_xml.devices.controller import Controller
+from provider import libvirt_version
 
 
 def check_parameters(test, params):
@@ -229,7 +232,7 @@ def run(test, params, env):
         except Exception as detail:
             logging.debug(detail)
 
-    def control_migrate_speed(to_speed=1):
+    def control_migrate_speed(to_speed=1, opts=""):
         """
         Control migration duration
 
@@ -237,11 +240,11 @@ def run(test, params, env):
         :return int: the new migration speed after setting
         """
         virsh_args.update({"ignore_status": False})
-        old_speed = virsh.migrate_getspeed(vm_name, **virsh_args)
+        old_speed = virsh.migrate_getspeed(vm_name, extra=opts, **virsh_args)
         logging.debug("Current migration speed is %s MiB/s\n", old_speed.stdout.strip())
         logging.debug("Set migration speed to %d MiB/s\n", to_speed)
-        cmd_result = virsh.migrate_setspeed(vm_name, to_speed, "", **virsh_args)
-        actual_speed = virsh.migrate_getspeed(vm_name, **virsh_args)
+        cmd_result = virsh.migrate_setspeed(vm_name, to_speed, extra=opts, **virsh_args)
+        actual_speed = virsh.migrate_getspeed(vm_name, extra=opts, **virsh_args)
         logging.debug("New migration speed is %s MiB/s\n", actual_speed.stdout.strip())
         return int(actual_speed.stdout.strip())
 
@@ -303,6 +306,125 @@ def run(test, params, env):
             search_jobinfo(jobinfo)
             remote_virsh_session.close_session()
 
+    def search_jobinfo_output(jobinfo, items_to_check, postcopy_req=False):
+        """
+        Check the results of domjobinfo
+
+        :param jobinfo: cmdResult object
+        :param items_to_check: expected value
+        :param postcopy_req: True for postcopy migration and False for precopy
+        :return: False if not found
+        """
+        expected_value = copy.deepcopy(items_to_check)
+        logging.debug("The items_to_check is %s", expected_value)
+        for item in jobinfo.splitlines():
+            item_key = item.strip().split(':')[0]
+            if "all_items" in expected_value and len(item_key) > 0:
+                if expected_value["all_items"][0] == item_key:
+                    del expected_value["all_items"][0]
+                else:
+                    test.fail("The item {} should be {}"
+                              .format(item_key,
+                                      expected_value["all_items"][0]))
+
+            if item_key in expected_value:
+                item_value = ':'.join(item.strip().split(':')[1:]).strip()
+                if item_value != expected_value.get(item_key):
+                    test.fail("The value of {} is {} which is not "
+                              "expected".format(item_key,
+                                                item_value))
+                else:
+                    del expected_value[item_key]
+            if postcopy_req and item_key == "Postcopy requests":
+                if int(item.strip().split(':')[1]) <= 0:
+                    test.fail("The value of Postcopy requests is incorrect")
+
+        # Check if all the items in expect_dict checked or not
+        if "all_items" in expected_value:
+            if len(expected_value["all_items"]) > 0:
+                test.fail("Missing item: {} from all_items"
+                          .format(expected_value["all_items"]))
+            else:
+                del expected_value["all_items"]
+        if len(expected_value) != 0:
+            test.fail("Missing item: {}".format(expected_value))
+
+    def set_migratepostcopy():
+        """
+        Switch to postcopy during migration
+        """
+        res = virsh.migrate_postcopy(vm_name)
+        logging.debug("Command output: %s", res)
+
+        def check_domstate_postcopy():
+            vm_stat = virsh.domstate(vm_name, extra="--reason")
+            logging.debug("Command output: %s", vm_stat)
+            check_status = re.findall(r"paused \(post-copy\)", vm_stat.stdout)
+            if len(check_status) > 0:
+                return True
+        if not utils_misc.wait_for(check_domstate_postcopy, 10):
+            test.fail("vm status is expected to 'paused (post-copy)'")
+
+    def check_domjobinfo_output(option="", is_mig_compelete=False):
+        """
+        Check all items in domjobinfo of the guest on both remote and local
+
+        :param option: options for domjobinfo
+        :param is_mig_compelete: False for domjobinfo checking during migration,
+                            True for domjobinfo checking after migration
+        :raise: test.fail if the value of given item is unexpected
+        """
+        expected_list_during_mig = ["Job type", "Operation", "Time elapsed",
+                                    "Data processed", "Data remaining",
+                                    "Data total", "Memory processed",
+                                    "Memory remaining", "Memory total",
+                                    "Memory bandwidth", "Dirty rate", "Page size",
+                                    "Iteration", "Constant pages", "Normal pages",
+                                    "Normal data", "Expected downtime", "Setup time"]
+        if libvirt_version.version_compare(4, 10, 0):
+            expected_list_during_mig.insert(13, "Postcopy requests")
+
+        expected_list_after_mig = (expected_list_during_mig[:-2:]
+                                   + ['Total downtime', 'Downtime w/o network']
+                                   + expected_list_during_mig[-1:])
+        expected_list_after_mig.insert(3, 'Time elapsed w/o network')
+
+        expect_dict = {"src_notdone": {"Job type": "Unbounded",
+                                       "Operation": "Outgoing migration",
+                                       "all_items": expected_list_during_mig},
+                       "dest_notdone": {"error": "Operation not supported: mig"
+                                                 "ration statistics are availab"
+                                                 "le only on the source host"},
+                       "src_done": {"Job type": "Completed",
+                                    "Operation": "Outgoing migration",
+                                    "all_items": expected_list_after_mig},
+                       "dest_done": {"Job type": "Completed",
+                                     "Operation": "Incoming migration",
+                                     "all_items": expected_list_after_mig}}
+        pc_opt = False
+        if postcopy_options:
+            pc_opt = True
+            if is_mig_compelete:
+                expect_dict["dest_done"].clear()
+                expect_dict["dest_done"]["Job type"] = "None"
+            else:
+                set_migratepostcopy()
+
+        vm_ref = '{}{}'.format(vm_name, option)
+        src_jobinfo = virsh.domjobinfo(vm_ref, **virsh_args)
+        cmd = "virsh domjobinfo {} {}".format(vm_name, option)
+        cmd_parms = {'server_ip': server_ip, 'server_user': server_user,
+                     'server_pwd': server_pwd}
+        dest_jobinfo = remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
+
+        if not is_mig_compelete:
+            search_jobinfo_output(src_jobinfo.stdout, expect_dict["src_notdone"],
+                                  postcopy_req=pc_opt)
+            search_jobinfo_output(dest_jobinfo.stderr, expect_dict["dest_notdone"])
+        else:
+            search_jobinfo_output(src_jobinfo.stdout, expect_dict["src_done"])
+            search_jobinfo_output(dest_jobinfo.stdout, expect_dict["dest_done"])
+
     def check_maxdowntime(params):
         """
         Set/get migration maxdowntime
@@ -341,6 +463,8 @@ def run(test, params, env):
                 check_maxdowntime(params)
             elif action == 'converge':
                 check_converge(params)
+            elif action == 'domjobinfo_output_all':
+                check_domjobinfo_output()
             time.sleep(3)
 
     def attach_channel_xml():
@@ -533,6 +657,7 @@ def run(test, params, env):
     dest_uri = params.get("virsh_migrate_desturi")
     log_file = params.get("libvirt_log", "/var/log/libvirt/libvirtd.log")
     check_complete_job = "yes" == params.get("check_complete_job", "no")
+    check_domjobinfo_results = "yes" == params.get("check_domjobinfo_results")
     contrl_index = params.get("new_contrl_index", None)
     asynch_migration = "yes" == params.get("asynch_migrate", "no")
     grep_str_remote_log = params.get("grep_str_remote_log", "")
@@ -681,9 +806,6 @@ def run(test, params, env):
         if hpt_resize and hpt_resize != 'disabled':
             trigger_hpt_resize(vm_session)
 
-        if low_speed:
-            control_migrate_speed(int(low_speed))
-
         if stress_in_vm:
             pkg_name = 'stress'
             logging.debug("Check if stress tool is installed")
@@ -709,6 +831,11 @@ def run(test, params, env):
         postcopy_options = params.get("postcopy_options")
         if postcopy_options:
             extra = "%s %s" % (extra, postcopy_options)
+
+        if low_speed:
+            control_migrate_speed(int(low_speed))
+            if postcopy_options and libvirt_version.version_compare(5, 0, 1):
+                control_migrate_speed(int(low_speed), opts=postcopy_options)
 
         # Execute migration process
         if not asynch_migration:
@@ -783,6 +910,8 @@ def run(test, params, env):
             if extra.count("comp-xbzrle-cache"):
                 params.update({'compare_to_value': cache // 1024})
             check_domjobinfo(params, option=opts)
+            if check_domjobinfo_results:
+                check_domjobinfo_output(option=opts, is_mig_compelete=True)
 
         if grep_str_local_log:
             cmd = "grep -E '%s' %s" % (grep_str_local_log, log_file)
