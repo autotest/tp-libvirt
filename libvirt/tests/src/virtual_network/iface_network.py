@@ -372,20 +372,34 @@ TIMEOUT 3"""
         if "dev" in net_forward:
             net_dev_in = " -i %s" % net_forward["dev"]
             net_dev_out = " -o %s" % net_forward["dev"]
+        if libvirt_version.version_compare(5, 1, 0):
+            input_chain = "LIBVIRT_INP"
+            output_chain = "LIBVIRT_OUT"
+            postrouting_chain = "LIBVIRT_PRT"
+            forward_filter = "LIBVIRT_FWX"
+            forward_in = "LIBVIRT_FWI"
+            forward_out = "LIBVIRT_FWO"
+        else:
+            input_chain = "INPUT"
+            output_chain = "OUTPUT"
+            postrouting_chain = "POSTROUTING"
+            forward_filter = "FORWARD"
+            forward_in = "FORWARD"
+            forward_out = "FORWARD"
         ipt_rules = (
-            "INPUT -i %s -p udp -m udp --dport 53 -j ACCEPT" % br_name,
-            "INPUT -i %s -p tcp -m tcp --dport 53 -j ACCEPT" % br_name,
-            "FORWARD -i {0} -o {0} -j ACCEPT".format(br_name),
-            "FORWARD -o %s -j REJECT --reject-with icmp" % br_name,
-            "FORWARD -i %s -j REJECT --reject-with icmp" % br_name)
+            "%s -i %s -p udp -m udp --dport 53 -j ACCEPT" % (input_chain, br_name),
+            "%s -i %s -p tcp -m tcp --dport 53 -j ACCEPT" % (input_chain, br_name),
+            "{0} -i {1} -o {1} -j ACCEPT".format(forward_filter, br_name),
+            "%s -o %s -j REJECT --reject-with icmp" % (forward_in, br_name),
+            "%s -i %s -j REJECT --reject-with icmp" % (forward_out, br_name))
         if check_ipv4:
             ipv4_rules = list(ipt_rules)
             ipv4_rules.extend(
-                ["INPUT -i %s -p udp -m udp --dport 67 -j ACCEPT" % br_name,
-                 "INPUT -i %s -p tcp -m tcp --dport 67 -j ACCEPT" % br_name,
-                 "OUTPUT -o %s -p udp -m udp --dport 68 -j ACCEPT" % br_name,
-                 "POSTROUTING -o %s -p udp -m udp --dport 68 "
-                 "-j CHECKSUM --checksum-fill" % br_name])
+                ["%s -i %s -p udp -m udp --dport 67 -j ACCEPT" % (input_chain, br_name),
+                 "%s -i %s -p tcp -m tcp --dport 67 -j ACCEPT" % (input_chain, br_name),
+                 "%s -o %s -p udp -m udp --dport 68 -j ACCEPT" % (output_chain, br_name),
+                 "%s -o %s -p udp -m udp --dport 68 "
+                 "-j CHECKSUM --checksum-fill" % (postrouting_chain, br_name)])
             ctr_rule = ""
             nat_rules = []
             if "mode" in net_forward and net_forward["mode"] == "nat":
@@ -393,20 +407,20 @@ TIMEOUT 3"""
                 p_start = nat_port["start"]
                 p_end = nat_port["end"]
                 ctr_rule = " -m .* RELATED,ESTABLISHED"
-                nat_rules = [("POSTROUTING -s {0} ! -d {0} -p tcp -j MASQUERADE"
-                              " --to-ports {1}-{2}".format(net_ipv4, p_start, p_end)),
-                             ("POSTROUTING -s {0} ! -d {0} -p udp -j MASQUERADE"
-                              " --to-ports {1}-{2}".format(net_ipv4, p_start, p_end)),
-                             ("POSTROUTING -s {0} ! -d {0}"
-                              " -j MASQUERADE".format(net_ipv4))]
+                nat_rules = [("{0} -s {1} ! -d {1} -p tcp -j MASQUERADE"
+                              " --to-ports {2}-{3}".format(postrouting_chain, net_ipv4, p_start, p_end)),
+                             ("{0} -s {1} ! -d {1} -p udp -j MASQUERADE"
+                              " --to-ports {2}-{3}".format(postrouting_chain, net_ipv4, p_start, p_end)),
+                             ("{0} -s {1} ! -d {1}"
+                              " -j MASQUERADE".format(postrouting_chain, net_ipv4))]
             if nat_rules:
                 ipv4_rules.extend(nat_rules)
             if (net_ipv4 and "mode" in net_forward and
                     net_forward["mode"] in ["nat", "route"]):
-                rules = [("FORWARD -d %s%s -o %s%s -j ACCEPT"
-                          % (net_ipv4, net_dev_in, br_name, ctr_rule)),
-                         ("FORWARD -s %s -i %s%s -j ACCEPT"
-                          % (net_ipv4, br_name, net_dev_out))]
+                rules = [("%s -d %s%s -o %s%s -j ACCEPT"
+                          % (forward_in, net_ipv4, net_dev_in, br_name, ctr_rule)),
+                         ("%s -s %s -i %s%s -j ACCEPT"
+                          % (forward_out, net_ipv4, br_name, net_dev_out))]
                 ipv4_rules.extend(rules)
 
             output = to_text(process.system_output('iptables-save'))
@@ -432,10 +446,10 @@ TIMEOUT 3"""
                 ("INPUT -i %s -p udp -m udp --dport 547 -j ACCEPT" % br_name)])
             if (net_ipv6 and "mode" in net_forward and
                     net_forward["mode"] in ["nat", "route"]):
-                rules = [("FORWARD -d %s%s -o %s -j ACCEPT"
-                          % (net_ipv6, net_dev_in, br_name)),
-                         ("FORWARD -s %s -i %s%s -j ACCEPT"
-                          % (net_ipv6, br_name, net_dev_out))]
+                rules = [("%s -d %s%s -o %s -j ACCEPT"
+                          % (forward_in, net_ipv6, net_dev_in, br_name)),
+                         ("%s -s %s -i %s%s -j ACCEPT"
+                          % (forward_out, net_ipv6, br_name, net_dev_out))]
                 ipv6_rules.extend(rules)
             output = to_text(process.system_output("ip6tables-save"))
             logging.debug("ip6tables: %s", output)
