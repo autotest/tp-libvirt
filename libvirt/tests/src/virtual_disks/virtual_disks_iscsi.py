@@ -99,15 +99,8 @@ def run(test, params, env):
             if not added_part:
                 logging.error("Cann't see added partition in VM")
                 return False
-
-            cmd = ("fdisk -l /dev/{0} && mkfs.ext4 -F /dev/{0} && "
-                   "mkdir -p test && mount /dev/{0} test && echo"
-                   " teststring > test/testfile && umount test"
-                   .format(added_part))
-            s, o = session.cmd_status_output(cmd)
-            logging.info("Check disk operation in VM:\n%s", o)
-            if s != 0:
-                return False
+            utils_disk.linux_disk_check(session, added_part)
+            session.close()
             return True
 
         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
@@ -171,12 +164,13 @@ def run(test, params, env):
     secret_uuid = ""
 
     # Start vm and get all partions in vm.
-    if vm.is_dead():
-        vm.start()
-    session = vm.wait_for_login()
-    old_parts = utils_disk.get_parts_list(session)
-    session.close()
-    vm.destroy(gracefully=False)
+    if device == "lun":
+        if vm.is_dead():
+            vm.start()
+        session = vm.wait_for_login()
+        old_parts = utils_disk.get_parts_list(session)
+        session.close()
+        vm.destroy(gracefully=False)
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -273,6 +267,10 @@ def run(test, params, env):
                 disk_xml.auth = disk_auth
 
         disk_xml.source = disk_source
+        if device != "lun":
+            device_str = "serial_" + device_target
+            disk_xml.serial = device_str
+
         # Sync VM xml.
         vmxml.add_device(disk_xml)
 
@@ -328,8 +326,17 @@ def run(test, params, env):
         else:
             # Check partitions in VM.
             if check_partitions:
-                if not check_in_vm(device_target, old_parts):
-                    test.fail("Check disk partitions in VM failed")
+                if device == "lun":
+                    if not check_in_vm(device_target, old_parts):
+                        test.fail("Check disk partitions in VM failed")
+                else:
+                    session = vm.wait_for_login()
+                    added_part = utils_disk.get_disk_by_serial(device_str, session=session)
+                    if not added_part:
+                        test.fail("Unable to get disk with serial {}".format(device_str))
+                    utils_disk.linux_disk_check(session, added_part)
+                    session.close()
+
             # Test domain save/restore/snapshot.
             if test_save_snapshot:
                 save_file = os.path.join(data_dir.get_tmp_dir(), "%.save" % vm_name)
@@ -347,6 +354,10 @@ def run(test, params, env):
                               "password to qemu-kvm.")
 
     finally:
+        # Close session.
+        if 'session' in locals():
+            session.close()
+
         # Delete snapshots.
         libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)
 
