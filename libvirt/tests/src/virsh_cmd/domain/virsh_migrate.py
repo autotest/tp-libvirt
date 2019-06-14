@@ -490,6 +490,34 @@ def run(test, params, env):
         if not utils_misc.wait_for(check_vm_state_dest, timeout=timeout):
             test.fail("VM failed to be in running state at destination")
 
+    def check_numa_node_memfree(test, vm_maxmem, key='MemFree', session=None):
+        """
+        Method to check whether Numa node free mem have half of VM maxmem
+        if the host have multiple numa node as we create 2 guest numa and
+        have to be pinned each. If host have only one numa node then make
+        sure VM max memory is available in host numa node for both guest
+        numa can be pinned to that. It can check for both source and target
+        host.
+
+        :param test: Test Object
+        :param vm_maxmem: VM's max memory
+        :param key: Numa node meminfo attribute
+        :param session: Remote host session object
+        :return: list of host numa nodes that can be pinned by VM
+        """
+        numa_node = utils_misc.NumaInfo(session=session)
+        node_list = numa_node.online_nodes
+        for node in node_list:
+            free_mem = numa_node.read_from_node_meminfo(node, 'MemFree')
+            if (int(free_mem) < int(vm_maxmem) // 2):
+                node_list.remove(node)
+        if len(node_list == 1):
+            free_mem = int(numa_node.read_from_node_meminfo(node_list[0], 'MemFree'))
+            if int(free_mem) < int(vm_maxmem):
+                test.cancel("Numa nodes doesn't have enough "
+                            "memory")
+        return node_list
+
     # For negative scenarios, there_desturi_nonexist and there_desturi_missing
     # let the test takes desturi from variants in cfg and for other scenarios
     # let us use API to form complete uri
@@ -701,23 +729,20 @@ def run(test, params, env):
 
     # To check Unsupported conditions for Numa scenarios
     if enable_numa_pin:
-        host_numa_node = utils_misc.NumaInfo()
-        host_numa_node_list = host_numa_node.online_nodes
-        for each_node in host_numa_node_list:
-            free_mem = host_numa_node.read_from_node_meminfo(each_node,
-                                                             'MemFree')
-            if (int(free_mem) < int(vmxml.max_mem)):
-                logging.debug("Host Numa node: %s doesnt have enough "
-                              "memory", each_node)
-                host_numa_node_list.remove(each_node)
-        memory_mode = params.get("memory_mode", 'strict')
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+        host_numa_nodes = check_numa_node_memfree(test, vmxml.max_mem)
+        session = test_setup.remote_session(params)
+        rhost_numa_nodes = check_numa_node_memfree(test, vmxml.max_mem,
+                                                   session=session)
+        if session:
+            session.close()
+        numa_node_list = list(set(host_numa_nodes).intersection(set(rhost_numa_nodes)))
+        # To check if numa node in source and target are available
+        if (len(numa_node_list) == 0):
+            test.cancel("No source/target host numa node available to pin")
+
+        memory_mode = params.get("memory_mode", 'strict')
         vcpu = vmxml.vcpu
-
-        # To check if Host numa node available
-        if (len(host_numa_node_list) == 0):
-            test.cancel("No host numa node available to pin")
-
         # To check preferred memory mode not used for 2 numa nodes
         # if vcpu > 1, two guest Numa nodes are created in create_numa()
         if (int(vcpu) > 1) and (memory_mode == "preferred"):
@@ -856,7 +881,7 @@ def run(test, params, env):
                 memnode_mode.append(params.get("memnode_mode_2", 'preferred'))
                 memory_dict, memnode_list = numa_pin(memory_mode, memnode_mode,
                                                      numa_dict_list,
-                                                     host_numa_node_list)
+                                                     numa_node_list)
                 logging.debug(memory_dict)
                 logging.debug(memnode_list)
                 if memory_dict:
