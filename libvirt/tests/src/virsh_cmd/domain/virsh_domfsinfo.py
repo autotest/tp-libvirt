@@ -196,7 +196,7 @@ def run(test, params, env):
                 session.cmd("umount %s" % mount_dir)
                 session.close()
             except:
-                test.fail("fail to unmount the disk before unpluging the disk")
+                test.error("fail to unmount the disk before unpluging the disk")
             result = virsh.detach_disk(domain, target, "--live",
                                        ignore_status=False, debug=True)
         # It need more time for attachment to take effect
