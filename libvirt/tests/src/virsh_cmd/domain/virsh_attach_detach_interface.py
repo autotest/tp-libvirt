@@ -255,8 +255,8 @@ def run(test, params, env):
             vm.destroy()
             vm.start()
             # Generate attached xml
-            xml_file_tmp = libvirt.modify_vm_iface(vm_name, "get_xml", iface_format)
             new_iface = Interface(type_name=iface_type)
+            xml_file_tmp = libvirt.modify_vm_iface(vm_name, "get_xml", iface_format)
             new_iface.xml = xml_file_tmp
             new_iface.del_address()
             xml_file = new_iface.xml
