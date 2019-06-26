@@ -496,7 +496,8 @@ def run(test, params, env):
             logging.debug("Expected serial XML is:\n%s", expected_serial)
             logging.debug("Current serial XML is:\n%s", cur_serial)
             # Compare current serial and console with oracle.
-            if target_type != 'pci-serial' and not expected_serial == cur_serial:
+            if (target_type != 'pci-serial' and machine_type != 'pseries'
+                    and not expected_serial == cur_serial):
                 # "==" has been override
                 test.fail("Expect serial device:\n%s\nBut got:\n "
                           "%s" % (expected_serial, cur_serial))
@@ -728,6 +729,7 @@ def run(test, params, env):
     auto_recover = params.get('auto_recover', 'no')
     client_pwd = params.get('client_pwd', None)
     server_pwd = params.get('server_pwd', None)
+    machine_type = params.get('machine_type', '')
 
     args_list = [client_pwd, server_pwd]
 
