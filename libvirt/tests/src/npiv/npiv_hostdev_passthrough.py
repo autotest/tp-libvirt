@@ -37,9 +37,13 @@ def run(test, params, env):
         :return: True if check successfully.
        """
         try:
-            session = vm.wait_for_login()
-            new_parts = utils_disk.get_parts_list(session)
-            added_parts = list(set(new_parts).difference(set(old_parts)))
+            def get_attached_disk():
+                session = vm.wait_for_login()
+                new_parts = utils_disk.get_parts_list(session)
+                session.close()
+                added_parts = list(set(new_parts).difference(set(old_parts)))
+                return added_parts
+            added_parts = utils_misc.wait_for(get_attached_disk, _TIMEOUT)
             logging.info("Added parts:%s", added_parts)
             if len(added_parts) != 1:
                 logging.error("The number of new partitions is invalid in VM")
