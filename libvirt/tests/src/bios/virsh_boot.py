@@ -15,6 +15,7 @@ from virttest.utils_test import libvirt as utlv
 from virttest import utils_misc
 from virttest import data_dir
 from virttest import ceph
+from virttest.libvirt_xml.devices.controller import Controller
 
 from provider import libvirt_version
 
@@ -470,6 +471,10 @@ def set_domain_disk(vmxml, blk_source, params, test):
     non_release_os_url = params.get("non_release_os_url", "")
     download_file_path = os.path.join(data_dir.get_tmp_dir(), "non_released_os.qcow2")
     brick_path = os.path.join(test.virtdir, "gluster-pool")
+    usb_index = params.get("usb_index", "0")
+    bus_controller = params.get("bus_controller", "")
+    usb_controller = params.get("usb_controller", "")
+    usb_model = params.get("usb_model", "")
 
     global cleanup_iscsi
     global cleanup_gluster
@@ -486,6 +491,28 @@ def set_domain_disk(vmxml, blk_source, params, test):
             else:
                 cleanup_iscsi = True
                 disk_params.update({'source_file': iscsi_target})
+    elif source_protocol == 'usb':
+
+        # assemble the xml of usb controller
+        controllers = vmxml.get_devices(device_type="controller")
+        for dev in controllers:
+            if dev.type == "usb":
+                vmxml.del_device(dev)
+
+        for model in usb_model.split(','):
+            controller = Controller("controller")
+            controller.type = "usb"
+            controller.index = usb_index
+            controller.model = model
+            vmxml.add_device(controller)
+
+        # prepare virtual disk device
+        dir_name = os.path.dirname(blk_source)
+        device_name = os.path.join(dir_name, "usb_virtual_disk.qcow2")
+        cmd = ("qemu-img convert -O {} {} {}".format(disk_format, blk_source, device_name))
+        process.run(cmd, shell=True)
+        disk_params.update({'source_file': device_name})
+
     elif source_protocol == 'gluster':
         if disk_type == 'network':
             kwargs = {'vol_name': vol_name,
