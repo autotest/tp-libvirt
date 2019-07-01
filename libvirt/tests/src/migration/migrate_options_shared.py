@@ -358,13 +358,9 @@ def run(test, params, env):
         res = virsh.migrate_postcopy(vm_name)
         logging.debug("Command output: %s", res)
 
-        def check_domstate_postcopy():
-            vm_stat = virsh.domstate(vm_name, extra="--reason")
-            logging.debug("Command output: %s", vm_stat)
-            check_status = re.findall(r"paused \(post-copy\)", vm_stat.stdout)
-            if len(check_status) > 0:
-                return True
-        if not utils_misc.wait_for(check_domstate_postcopy, 10):
+        if not utils_misc.wait_for(
+           lambda: migration_test.check_vm_state(vm_name, "paused",
+                                                 "post-copy"), 10):
             test.fail("vm status is expected to 'paused (post-copy)'")
 
     def check_domjobinfo_output(option="", is_mig_compelete=False):
@@ -525,6 +521,25 @@ def run(test, params, env):
                 test.fail("Incorrect VM stat on source machine: {}"
                           .format(vm_stat.stdout))
 
+    def kill_qemu_target():
+        """
+        Kill qemu process on target host during Finish Phase of migration
+
+        :raise: test.fail if domstate is not "post-copy failed" after
+                qemu killed
+        """
+        if not vm.is_qemu():
+            test.cancel("This case is qemu guest only.")
+        set_migratepostcopy()
+        emulator = new_xml.get_devices('emulator')[0]
+        logging.debug("emulator is %s", emulator.path)
+        cmd = 'pkill -9 {}'.format(os.path.basename(emulator.path))
+        runner_on_target.run(cmd)
+        if not utils_misc.wait_for(
+           lambda: migration_test.check_vm_state(vm_name, "paused",
+                                                 "post-copy failed"), 60):
+            test.fail("vm status is expected to 'paused (post-copy failed)'")
+
     def do_actions_during_migrate(params):
         """
         The entry point to execute action list during migration
@@ -547,6 +562,8 @@ def run(test, params, env):
                 check_domjobinfo_output()
             elif action == 'checkdomstats':
                 run_domstats(vm_name)
+            elif action == 'killqemutarget':
+                kill_qemu_target()
             time.sleep(3)
 
     def attach_channel_xml():
@@ -1075,6 +1092,18 @@ def run(test, params, env):
 
             if remote_session:
                 remote_session.close()
+
+            # Delete files on target
+            # Killing qemu process on target may lead a problem like
+            # qemu process becomes a zombie process whose ppid is 1.
+            # As a workaround, have to remove the files under
+            # /var/run/libvirt/qemu to make libvirt work.
+            if vm.is_qemu():
+                dest_pid_files = os.path.join("/var/run/libvirt/qemu",
+                                              vm_name + '*')
+                cmd = "rm -f %s" % dest_pid_files
+                logging.debug("Delete remote pid files '%s'", dest_pid_files)
+                remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
 
             if extra.count("--tls") and not disable_verify_peer:
                 logging.debug("Recover the qemu configuration")
