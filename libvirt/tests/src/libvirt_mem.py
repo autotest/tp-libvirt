@@ -323,6 +323,7 @@ def run(test, params, env):
             cpu_xml.xml = "<cpu><numa/></cpu>"
             cpu_mode = params.get("cpu_mode")
             model_fallback = params.get("model_fallback")
+            cpu_xml.add_feature('vmx', 'disable')
             if cpu_mode:
                 cpu_xml.mode = cpu_mode
             if model_fallback:
