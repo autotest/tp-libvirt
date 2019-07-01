@@ -51,7 +51,7 @@ def run(test, params, env):
     device_name = params.get("device_name", "")
     device_type = params.get("device_type", "")
     device_mode = params.get("device_mode", "")
-    port = params.get("port", "")
+    port_num = params.get("port_num", "")
     pkgs_host = params.get("pkgs_host", "")
     pkgs_guest = params.get("pkgs_guest", "")
     usb_hub = "yes" == params.get("usb_hub", "no")
@@ -276,7 +276,7 @@ def run(test, params, env):
                     source_xml = device_xml.Source()
                     source_xml.mode = device_mode
                     source_xml.host = "localhost"
-                    port = str(int(port)+i)
+                    port = str(int(port_num)+i)
                     source_xml.service = port
                     source_xml.tls = "no"
                     device_xml.source = source_xml
