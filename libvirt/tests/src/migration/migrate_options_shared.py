@@ -18,6 +18,7 @@ from virttest import utils_misc
 from virttest import defaults
 from virttest import data_dir
 from virttest import virsh
+from virttest import libvirt_version
 from virttest import remote
 from virttest import utils_package
 from virttest import xml_utils
@@ -27,7 +28,6 @@ from virttest.utils_test import libvirt
 from virttest.utils_conn import TLSConnection
 from virttest.compat_52lts import results_stdout_52lts, results_stderr_52lts
 from virttest.libvirt_xml.devices.controller import Controller
-from provider import libvirt_version
 
 
 def check_parameters(test, params):
@@ -323,9 +323,8 @@ def run(test, params, env):
                 if expected_value["all_items"][0] == item_key:
                     del expected_value["all_items"][0]
                 else:
-                    test.fail("The item {} should be {}"
-                              .format(item_key,
-                                      expected_value["all_items"][0]))
+                    test.fail("The item '%s' should be '%s'" %
+                              (item_key, expected_value["all_items"][0]))
 
             if item_key in expected_value:
                 item_value = ':'.join(item.strip().split(':')[1:]).strip()
@@ -384,10 +383,19 @@ def run(test, params, env):
         if libvirt_version.version_compare(4, 10, 0):
             expected_list_during_mig.insert(13, "Postcopy requests")
 
-        expected_list_after_mig = (expected_list_during_mig[:-2:]
-                                   + ['Total downtime', 'Downtime w/o network']
-                                   + expected_list_during_mig[-1:])
-        expected_list_after_mig.insert(3, 'Time elapsed w/o network')
+        expected_list_after_mig_src = (expected_list_during_mig[:-2:]
+                                       + ['Total downtime', 'Downtime w/o network']
+                                       + expected_list_during_mig[-1:])
+        expected_list_after_mig_src.insert(3, 'Time elapsed w/o network')
+        expected_list_after_mig_dest = copy.deepcopy(expected_list_after_mig_src)
+
+        # Check version in remote
+        if not expected_list_after_mig_dest.count("Postcopy requests"):
+            remote_session = remote.remote_login("ssh", server_ip, "22", server_user,
+                                                 server_pwd, "#")
+            if libvirt_version.version_compare(4, 10, 0, session=remote_session):
+                expected_list_after_mig_dest.insert(14, "Postcopy requests")
+            remote_session.close()
 
         expect_dict = {"src_notdone": {"Job type": "Unbounded",
                                        "Operation": "Outgoing migration",
@@ -397,10 +405,10 @@ def run(test, params, env):
                                                  "le only on the source host"},
                        "src_done": {"Job type": "Completed",
                                     "Operation": "Outgoing migration",
-                                    "all_items": expected_list_after_mig},
+                                    "all_items": expected_list_after_mig_src},
                        "dest_done": {"Job type": "Completed",
                                      "Operation": "Incoming migration",
-                                     "all_items": expected_list_after_mig}}
+                                     "all_items": expected_list_after_mig_dest}}
         pc_opt = False
         if postcopy_options:
             pc_opt = True
@@ -714,6 +722,9 @@ def run(test, params, env):
     # libvirtd config
     libvirtd_conf_dict = None
 
+    # remote shell session
+    remote_session = None
+
     remote_virsh_session = None
     vm = None
     vm_session = None
@@ -845,7 +856,6 @@ def run(test, params, env):
             control_migrate_speed(int(low_speed))
             if postcopy_options and libvirt_version.version_compare(5, 0, 1):
                 control_migrate_speed(int(low_speed), opts=postcopy_options)
-
         # Execute migration process
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
@@ -989,6 +999,9 @@ def run(test, params, env):
 
             if remote_virsh_session:
                 remote_virsh_session.close_session()
+
+            if remote_session:
+                remote_session.close()
 
             if extra.count("--tls") and not disable_verify_peer:
                 logging.debug("Recover the qemu configuration")
