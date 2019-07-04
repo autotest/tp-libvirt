@@ -194,7 +194,6 @@ def run(test, params, env):
             os.remove(log_file)
         cmd = "rm -f %s" % log_file
         logging.debug("Delete remote libvirt log file '%s'", log_file)
-        cmd_parms = {'server_ip': server_ip, 'server_user': server_user, 'server_pwd': server_pwd}
         remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
 
     def cleanup_dest(vm):
@@ -421,8 +420,6 @@ def run(test, params, env):
         vm_ref = '{}{}'.format(vm_name, option)
         src_jobinfo = virsh.domjobinfo(vm_ref, **virsh_args)
         cmd = "virsh domjobinfo {} {}".format(vm_name, option)
-        cmd_parms = {'server_ip': server_ip, 'server_user': server_user,
-                     'server_pwd': server_pwd}
         dest_jobinfo = remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
 
         if not is_mig_compelete:
@@ -453,6 +450,79 @@ def run(test, params, env):
                       "found" % (expected_value, actual_value))
         params.update({'compare_to_value': actual_value})
 
+    def run_time(init_time=2):
+        """
+        Compare the duration of func to an expected one
+
+        :param init_time: Expected run time
+        :raise: test.fail if func takes more than init_time(second)
+        """
+        def check_time(func):
+            def wrapper(*args, **kwargs):
+                start = time.time()
+                result = func(*args, **kwargs)
+                duration = time.time() - start
+                if duration > init_time:
+                    test.fail("It takes too long to check {}. The duration is "
+                              "{}s which should be less than {}s"
+                              .format(func.__doc__, duration, init_time))
+                return result
+            return wrapper
+        return check_time
+
+    def run_domstats(vm_name):
+        """
+        Run domstats and domstate during migration in source and destination
+
+        :param vm_name: VM name
+        :raise: test.fail if domstats does not return in 2s
+                or domstate is incorrect
+        """
+        @run_time()
+        def check_source_stats(vm_name):
+            """domstats in source"""
+            vm_stats = virsh.domstats(vm_name)
+            logging.debug("domstats in source: {}".format(vm_stats))
+
+        @run_time()
+        def check_dest_stats(vm_name):
+            """domstats in target"""
+            cmd = "virsh domstats {}".format(vm_name)
+            dest_stats = remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
+            logging.debug("domstats in destination: {}".format(dest_stats))
+
+        expected_remote_state = "paused"
+        expected_source_state = ["paused", "running"]
+        if postcopy_options:
+            set_migratepostcopy()
+            expected_remote_state = "running"
+            expected_source_state = ["paused"]
+
+        check_source_stats(vm_name)
+        vm_stat = virsh.domstate(vm_name, ignore_status=False)
+        if ((not len(vm_stat.stdout.split())) or
+           vm_stat.stdout.split()[0] not in expected_source_state):
+            test.fail("Incorrect VM stat on source machine: {}"
+                      .format(vm_stat.stdout))
+
+        check_dest_stats(vm_name)
+        cmd = "virsh domstate {}".format(vm_name)
+        remote_vm_state = remote.run_remote_cmd(cmd, cmd_parms,
+                                                runner_on_target,
+                                                ignore_status=False)
+        if ((not len(remote_vm_state.stdout.split())) or
+           remote_vm_state.stdout.split()[0] != expected_remote_state):
+            test.fail("Incorrect VM stat on destination machine: {}"
+                      .format(remote_vm_state.stdout))
+        else:
+            logging.debug("vm stat on destination: {}".format(remote_vm_state))
+        if postcopy_options:
+            vm_stat = virsh.domstate(vm_name, ignore_status=False)
+            if ((not len(vm_stat.stdout.split())) or
+               vm_stat.stdout.split()[0] != "paused"):
+                test.fail("Incorrect VM stat on source machine: {}"
+                          .format(vm_stat.stdout))
+
     def do_actions_during_migrate(params):
         """
         The entry point to execute action list during migration
@@ -473,6 +543,8 @@ def run(test, params, env):
                 check_converge(params)
             elif action == 'domjobinfo_output_all':
                 check_domjobinfo_output()
+            elif action == 'checkdomstats':
+                run_domstats(vm_name)
             time.sleep(3)
 
     def attach_channel_xml():
@@ -686,7 +758,8 @@ def run(test, params, env):
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
                           'ssh_remote_auth': True}
-
+    cmd_parms = {'server_ip': server_ip, 'server_user': server_user,
+                 'server_pwd': server_pwd}
     hpt_resize = params.get("hpt_resize", None)
     htm_state = params.get("htm_state", None)
 
@@ -854,7 +927,7 @@ def run(test, params, env):
 
         if low_speed:
             control_migrate_speed(int(low_speed))
-            if postcopy_options and libvirt_version.version_compare(5, 0, 1):
+            if postcopy_options and libvirt_version.version_compare(5, 0, 0):
                 control_migrate_speed(int(low_speed), opts=postcopy_options)
         # Execute migration process
         if not asynch_migration:
@@ -904,7 +977,6 @@ def run(test, params, env):
                 test.fail("Can not find source for %s channel on remote host" % channel_type_name)
 
             # Prepare to wait for message on remote host from the channel
-            cmd_parms = {'server_ip': server_ip, 'server_user': server_user, 'server_pwd': server_pwd}
             cmd_result = remote.run_remote_cmd(cmd_run_in_remote_host % host_source,
                                                cmd_parms,
                                                runner_on_target)
@@ -939,7 +1011,6 @@ def run(test, params, env):
                 test.fail(results_stderr_52lts(cmdRes).strip())
         if grep_str_remote_log:
             cmd = "grep -E '%s' %s" % (grep_str_remote_log, log_file)
-            cmd_parms = {'server_ip': server_ip, 'server_user': server_user, 'server_pwd': server_pwd}
             remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
 
         if xml_check_after_mig:
