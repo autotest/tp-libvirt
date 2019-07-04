@@ -13,6 +13,7 @@ from virttest import utils_package
 from virttest import virt_vm
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.console import Console
+from virttest.libvirt_xml.devices.graphics import Graphics
 
 from provider import libvirt_version
 
@@ -161,12 +162,44 @@ def run(test, params, env):
             test.fail("Get %s status failed." % service_name)
         return ret.stdout_text.split()[2]
 
+    def reload_and_check_virtlogd():
+        """
+        Reload and check virtlogd status
+        """
+        virtlogd_pid = check_service_status("virtlogd", service_start=True)
+        logging.info("virtlogd PID: %s", virtlogd_pid)
+        ret = process.run("systemctl reload virtlogd", shell=True)
+        if ret.exit_status:
+            test.fail("virtlogd reload failed.")
+        reload_virtlogd_pid = check_service_status("virtlogd", service_start=True)
+        logging.info("After reload, virtlogd PID: %s", reload_virtlogd_pid)
+        if virtlogd_pid != reload_virtlogd_pid:
+            test.fail("After reload, virtlogd PID changed.")
+
+    def configure_spice(vm_name):
+        """
+        Configure spice
+
+        params vm_name: guest name
+        """
+        vm_spice_xml = VMXML.new_from_inactive_dumpxml(vm_name)
+        vm_spice_xml.remove_all_device_by_type('graphics')
+
+        graphic = Graphics(type_name='spice')
+        graphic.autoport = "yes"
+        graphic.port = "-1"
+        graphic.tlsPort = "-1"
+        vm_spice_xml.add_device(graphic)
+        vm_spice_xml.sync()
+
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     expected_result = params.get("expected_result", "virtlogd_disabled")
     stdio_handler = params.get("stdio_handler", "not_set")
     start_vm = "yes" == params.get("start_vm", "yes")
     reload_virtlogd = "yes" == params.get("reload_virtlogd", "no")
     restart_libvirtd = "yes" == params.get("restart_libvirtd", "no")
+    with_spice = "yes" == params.get("with_spice", "no")
+
     vm = env.get_vm(vm_name)
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
@@ -194,15 +227,7 @@ def run(test, params, env):
 
         if not start_vm:
             if reload_virtlogd:
-                virtlogd_pid = check_service_status("virtlogd", service_start=True)
-                logging.info("virtlogd PID: %s", virtlogd_pid)
-                ret = process.run("systemctl reload virtlogd", shell=True)
-                if ret.exit_status:
-                    test.fail("virtlogd reload failed.")
-                reload_virtlogd_pid = check_service_status("virtlogd", service_start=True)
-                logging.info("After reload, virtlogd PID: %s", reload_virtlogd_pid)
-                if virtlogd_pid != reload_virtlogd_pid:
-                    test.fail("After reload, virtlogd PID changed.")
+                reload_and_check_virtlogd()
         else:
             # Stop all VMs if VMs are already started.
             for tmp_vm in env.get_all_vms():
@@ -218,6 +243,10 @@ def run(test, params, env):
             # Check if virtlogd socket is running.
             cmd = ("systemctl status virtlogd.socket|grep 'Active: active'")
             configure(cmd, errorMsg="virtlogd.socket is not running")
+
+            # Configure spice
+            if with_spice:
+                configure_spice(vm_name)
 
             # Configure serial console.
             configure_serial_console(vm_name)
@@ -259,6 +288,9 @@ def run(test, params, env):
                 if pipe_node != new_pipe_node and new_pipe_node != new_virtlogd_pid:
                     test.fail("After libvirtd restart, pipe node changed.")
 
+            if with_spice:
+                reload_and_check_virtlogd()
+
             # Check if qemu-kvm use pipe node provided by virtlogd.
             cmd = ("lsof  -w |grep pipe|grep qemu-kvm|grep %s" % pipe_node)
             errorMessage = ("Can not find matched pipe node: %s "
@@ -271,6 +303,11 @@ def run(test, params, env):
 
             # Check VM shutdown log is written into log file correctly.
             check_info_in_vm_log_file(vm_name, matchedMsg="shutting down")
+
+            # Check qemu log works well
+            if with_spice:
+                check_info_in_vm_log_file(vm_name,
+                                          matchedMsg="qemu-kvm: terminating on signal 15 from pid")
 
             # Check pipe is closed gracefully after VM shutdown.
             check_pipe_closed(pipe_node)
