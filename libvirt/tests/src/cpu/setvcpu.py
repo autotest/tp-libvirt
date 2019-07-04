@@ -1,5 +1,4 @@
 import logging
-import ast
 import collections
 
 from virttest import virsh
@@ -29,9 +28,9 @@ def run(test, params, env):
     vcpu_placement = params.get("vcpu_placement", "static")
     maxvcpu = int(params.get("maxvcpu", "8"))
     vcpu_current = params.get("vcpu_current", "1")
-    vcpus_enabled = ast.literal_eval(params.get("vcpus_enabled", "{0}"))
-    vcpus_hotplug = ast.literal_eval(params.get("vcpus_hotpluggable", "{0}"))
-    setvcpu_option = ast.literal_eval(params.get("setvcpu_option", "{}"))
+    vcpus_enabled = eval(params.get("vcpus_enabled", "{0}"))
+    vcpus_hotplug = eval(params.get("vcpus_hotpluggable", "{0}"))
+    setvcpu_option = eval(params.get("setvcpu_option", "{}"))
     setvcpu_action = params.get("setvcpu_action", "")
     start_timeout = int(params.get("start_timeout", "60"))
     check = params.get("check", "")
