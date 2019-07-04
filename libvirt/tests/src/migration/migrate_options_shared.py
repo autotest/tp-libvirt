@@ -319,6 +319,10 @@ def run(test, params, env):
         for item in jobinfo.splitlines():
             item_key = item.strip().split(':')[0]
             if "all_items" in expected_value and len(item_key) > 0:
+                # "Time elapsed w/o network" and "Downtime w/o network"
+                # have a chance to be missing, it is normal
+                if item_key in ['Downtime w/o network', 'Time elapsed w/o network']:
+                    continue
                 if expected_value["all_items"][0] == item_key:
                     del expected_value["all_items"][0]
                 else:
@@ -382,10 +386,8 @@ def run(test, params, env):
         if libvirt_version.version_compare(4, 10, 0):
             expected_list_during_mig.insert(13, "Postcopy requests")
 
-        expected_list_after_mig_src = (expected_list_during_mig[:-2:]
-                                       + ['Total downtime', 'Downtime w/o network']
-                                       + expected_list_during_mig[-1:])
-        expected_list_after_mig_src.insert(3, 'Time elapsed w/o network')
+        expected_list_after_mig_src = copy.deepcopy(expected_list_during_mig)
+        expected_list_after_mig_src[-2] = 'Total downtime'
         expected_list_after_mig_dest = copy.deepcopy(expected_list_after_mig_src)
 
         # Check version in remote
