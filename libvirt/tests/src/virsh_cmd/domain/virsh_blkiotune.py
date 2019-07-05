@@ -6,7 +6,7 @@ from avocado.utils import process
 
 from virttest import libvirt_xml, utils_libvirtd, virsh
 from virttest.staging import utils_cgroup
-from virttest.utils_misc import get_dev_major_minor
+from virttest.utils_disk import get_dev_major_minor
 from virttest.compat_52lts import results_stdout_52lts
 
 

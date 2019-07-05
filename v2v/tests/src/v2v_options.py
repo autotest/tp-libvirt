@@ -15,6 +15,7 @@ from avocado.utils import process
 from virttest import data_dir
 from virttest import ssh_key
 from virttest import utils_misc
+from virttest import utils_disk
 from virttest import utils_v2v
 from virttest import virsh
 from virttest import remote
@@ -171,7 +172,7 @@ def run(test, params, env):
         """
         if not img_path or not os.path.isfile(img_path):
             test.error("Image path: '%s' is invalid" % img_path)
-        img_info = utils_misc.get_image_info(img_path)
+        img_info = utils_disk.get_image_info(img_path)
         logging.debug("Image info: %s", img_info)
         if check_point == "allocation":
             if expected_value == "sparse":

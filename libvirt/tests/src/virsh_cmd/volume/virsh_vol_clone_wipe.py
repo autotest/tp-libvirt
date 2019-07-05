@@ -14,7 +14,7 @@ from virttest.utils_test import libvirt as utlv
 from virttest import libvirt_storage
 from virttest import data_dir
 from virttest import virsh
-from virttest import utils_misc
+from virttest import utils_disk
 from virttest import libvirt_xml
 
 from provider import libvirt_version
@@ -251,7 +251,7 @@ def run(test, params, env):
                                           key, virsh_vol_info[key])
                         vol_path = virsh.vol_path(new_vol_name,
                                                   pool_name).stdout.strip()
-                        qemu_vol_info = utils_misc.get_image_info(vol_path)
+                        qemu_vol_info = utils_disk.get_image_info(vol_path)
                         for key in qemu_vol_info:
                             logging.debug("Wiped volume info(qemu): %s = %s",
                                           key, qemu_vol_info[key])
@@ -287,7 +287,7 @@ def run(test, params, env):
                                       key, virsh_vol_info[key])
                     vol_path = virsh.vol_path(vol_name,
                                               pool_name).stdout.strip()
-                    qemu_vol_info = utils_misc.get_image_info(vol_path)
+                    qemu_vol_info = utils_disk.get_image_info(vol_path)
                     for key in qemu_vol_info:
                         logging.debug("Wiped volume info(qemu): %s = %s",
                                       key, qemu_vol_info[key])

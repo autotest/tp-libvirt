@@ -19,6 +19,7 @@ from virttest import remote
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import utils_disk
 from virttest import utils_netperf
 from virttest import utils_package
 from virttest import utils_selinux
@@ -371,7 +372,7 @@ def prepare_gluster_disk(params):
     host_ip = libvirt.setup_or_cleanup_gluster(True, vol_name,
                                                brick_path, pool_name)
     logging.debug("host ip: %s ", host_ip)
-    image_info = utils_misc.get_image_info(image_source)
+    image_info = utils_disk.get_image_info(image_source)
     if image_info["format"] == disk_format:
         disk_cmd = ("cp -f %s /mnt/%s" % (image_source, disk_img))
     else:
@@ -1445,7 +1446,7 @@ def run(test, params, env):
         if disk_name or disk_type or disk_cache:
             update_disk_driver(vm_name, disk_name, disk_type, disk_cache)
 
-        image_info_dict = utils_misc.get_image_info(disk_source)
+        image_info_dict = utils_disk.get_image_info(disk_source)
         logging.debug("disk image info: %s", image_info_dict)
         target_image_source = test_dict.get("target_image_source", disk_source)
         cmd = test_dict.get("create_another_target_image_cmd")
@@ -1735,7 +1736,7 @@ def run(test, params, env):
         local_image_source = test_dict.get("local_image_source")
         tgt_size = 0
         if local_image_source and check_image_size:
-            image_info_dict = utils_misc.get_image_info(local_image_source)
+            image_info_dict = utils_disk.get_image_info(local_image_source)
             logging.debug("Local disk image info: %s", image_info_dict)
 
             dsize = image_info_dict["dsize"]

@@ -13,6 +13,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.utils_test import libvirt as utlv
 from virttest import utils_misc
+from virttest import utils_disk
 from virttest import data_dir
 from virttest import ceph
 
@@ -426,7 +427,7 @@ def prepare_gluster_disk(blk_source, test, **kwargs):
     host_ip = utlv.setup_or_cleanup_gluster(True, vol_name, brick_path)
     logging.debug("host ip: %s ", host_ip)
     # Copy the domain disk image to gluster disk path
-    image_info = utils_misc.get_image_info(blk_source)
+    image_info = utils_disk.get_image_info(blk_source)
     dest_image = "/mnt/%s" % disk_img
     if image_info["format"] == disk_format:
         disk_cmd = ("cp -f %s %s" % (blk_source, dest_image))

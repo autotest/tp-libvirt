@@ -7,6 +7,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_misc
+from virttest import utils_disk
 
 from provider import libvirt_version
 
@@ -130,7 +131,7 @@ def run(test, params, env):
         else:
             test.error("Unknown scale value")
 
-        image_info = utils_misc.get_image_info(image_path)
+        image_info = utils_disk.get_image_info(image_path)
         actual_size = int(image_info['vsize'])
 
         logging.info("The expected block size is %s bytes, "

@@ -9,6 +9,7 @@ from avocado.core import exceptions
 
 from virttest import libvirt_storage
 from virttest import utils_misc
+from virttest import utils_disk
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest.utils_test import libvirt
@@ -55,7 +56,7 @@ def get_expect_info(new_capacity, vol_path, test, resize_option=None):
         new_size = utils_misc.normalize_data_size(new_capacity, "B", factor)
 
         # Get image info
-        img_info = utils_misc.get_image_info(vol_path)
+        img_info = utils_disk.get_image_info(vol_path)
 
         # Init expect_info
         expect_info['Capacity'] = img_info['vsize']
@@ -197,7 +198,7 @@ def check_vol_info(pool_vol, vol_name, test, expect_info=None):
         try:
             # Get image info
             vol_path = pool_vol.list_volumes()[vol_name]
-            img_info = utils_misc.get_image_info(vol_path)
+            img_info = utils_disk.get_image_info(vol_path)
             if expect_info['Capacity'] != img_info['vsize']:
                 logging.debug("Capacity(Virtual size) is %s bytes",
                               img_info['vsize'])

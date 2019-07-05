@@ -8,6 +8,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_misc
+from virttest import utils_disk
 from virttest import utils_npiv
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import disk
@@ -263,7 +264,7 @@ def run(test, params, env):
                 path_to_blk = os.path.join(_BYPATH_DIR, lun_dev)
             path_to_blks.append(path_to_blk)
             img_src = vm.get_first_disk_devices()['source']
-            img_info = utils_misc.get_image_info(img_src)
+            img_info = utils_disk.get_image_info(img_src)
             src_fmt = img_info["format"]
             dest_fmt = "qcow2"
             convert_img_to_dev(test, src_fmt, dest_fmt, img_src, path_to_blk)

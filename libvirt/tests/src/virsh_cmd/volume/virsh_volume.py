@@ -5,6 +5,7 @@ import logging
 from avocado.utils import process
 
 from virttest import utils_misc
+from virttest import utils_disk
 from virttest import data_dir
 from virttest import virsh
 from virttest import libvirt_storage
@@ -243,7 +244,7 @@ def run(test, params, env):
                           expected['name'])
 
         # Check format from against qemu-img info
-        img_info = utils_misc.get_image_info(expected['path'])
+        img_info = utils_disk.get_image_info(expected['path'])
         if expected['format']:
             if expected['format'] != img_info['format']:
                 logging.error("Volume format mismatch for volume: %s\n"

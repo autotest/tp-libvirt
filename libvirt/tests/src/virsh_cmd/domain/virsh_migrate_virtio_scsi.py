@@ -8,7 +8,7 @@ from avocado.core import exceptions
 
 from virttest import utils_test
 from virttest import virsh
-from virttest import utils_misc
+from virttest import utils_disk
 from virttest import libvirt_vm
 from virttest import virt_vm
 from virttest import remote
@@ -146,7 +146,7 @@ def run(test, params, env):
 
     sys_image = vm.get_first_disk_devices()
     sys_image_source = sys_image["source"]
-    sys_image_info = utils_misc.get_image_info(sys_image_source)
+    sys_image_info = utils_disk.get_image_info(sys_image_source)
     logging.debug("System image information:\n%s", sys_image_info)
     sys_image_fmt = sys_image_info["format"]
     created_img_path = os.path.join(os.path.dirname(sys_image_source),

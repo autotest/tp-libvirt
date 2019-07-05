@@ -6,6 +6,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_misc
+from virttest import utils_disk
 from virttest import virt_vm, remote
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
@@ -38,7 +39,7 @@ def run(test, params, env):
         host_ip = libvirt.setup_or_cleanup_gluster(True, vol_name,
                                                    brick_path, pool_name)
         logging.debug("host ip: %s ", host_ip)
-        image_info = utils_misc.get_image_info(image_source)
+        image_info = utils_disk.get_image_info(image_source)
         image_dest = "/mnt/%s" % disk_img
 
         if image_info["format"] == disk_format:

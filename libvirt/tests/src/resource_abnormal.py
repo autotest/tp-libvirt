@@ -17,6 +17,7 @@ from virttest import utils_selinux
 from virttest import qemu_storage
 from virttest import libvirt_vm
 from virttest import utils_misc
+from virttest import utils_disk
 from virttest import virsh
 from virttest import remote
 from virttest import data_dir
@@ -175,7 +176,7 @@ class Virt_clone(object):
             xml_file = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm_name)
             disk_node = xml_file.get_disk_all()['vda']
             source_file = disk_node.find('source').get('file')
-            self.image_size = utils_misc.get_image_info(source_file)['dsize']
+            self.image_size = utils_disk.get_image_info(source_file)['dsize']
             # Set the size to be image_size
             iscsi_size = "%sM" % (self.image_size / 1024 / 1024)
             params['image_size'] = iscsi_size
@@ -341,7 +342,7 @@ class Snapshot_create(object):
         xml_file = vm_xml.VMXML.new_from_inactive_dumpxml(self.vm_name)
         disk_node = xml_file.get_disk_all()['vda']
         source_file = disk_node.find('source').get('file')
-        image_type = utils_misc.get_image_info(source_file)['format']
+        image_type = utils_disk.get_image_info(source_file)['format']
         if image_type != "qcow2":
             self.test.cancel("Disk image format is not qcow2, "
                              "ignore snapshot test!")
