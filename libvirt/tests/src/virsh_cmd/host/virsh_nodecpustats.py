@@ -1,8 +1,9 @@
 import re
 
+from avocado.utils import cpu as cpuutil
+
 from virttest import virsh
 from virttest import utils_libvirtd
-from virttest import utils_misc
 
 
 def run(test, params, env):
@@ -170,7 +171,7 @@ def run(test, params, env):
         utils_libvirtd.libvirtd_stop()
 
     # Get the host cpu list
-    host_cpus_list = utils_misc.get_cpu_processors()
+    host_cpus_list = cpuutil.cpu_online_list()
 
     # Run test case for 5 iterations default can be changed in subtests.cfg
     # file

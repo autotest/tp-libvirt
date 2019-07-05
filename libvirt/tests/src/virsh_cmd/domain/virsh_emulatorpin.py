@@ -6,7 +6,7 @@ from avocado.utils import cpu
 
 from virttest.libvirt_xml import vm_xml
 from virttest import utils_libvirtd, virsh
-from virttest.utils_test.libvirt import cpus_parser
+from virttest.cpu import cpus_parser
 from virttest.staging import utils_cgroup
 from virttest.virt_vm import VMStartError
 

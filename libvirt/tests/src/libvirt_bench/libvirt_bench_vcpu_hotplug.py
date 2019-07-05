@@ -7,8 +7,8 @@ from avocado.core import exceptions
 from virttest import libvirt_xml
 from virttest import libvirt_vm
 from virttest import utils_test
-from virttest.utils_test import libvirt
 from virttest import utils_misc
+from virttest import cpu
 
 
 def run(test, params, env):
@@ -62,9 +62,9 @@ def run(test, params, env):
         session.cmd("dmesg -c")
         for i in range(test_times):
             # 1. Add vcpu
-            add_result = libvirt.hotplug_domain_vcpu(vm,
-                                                     max_count,
-                                                     add_by_virsh)
+            add_result = cpu.hotplug_domain_vcpu(vm,
+                                                 max_count,
+                                                 add_by_virsh)
             add_status = add_result.exit_status
             # 1.1 check add status
             if add_status:
@@ -74,7 +74,7 @@ def run(test, params, env):
                                 % add_result.stderr.strip())
                 test.fail("Test failed for:\n %s"
                           % add_result.stderr.strip())
-            if not utils_misc.wait_for(lambda: utils_misc.check_if_vm_vcpu_match(max_count, vm),
+            if not utils_misc.wait_for(lambda: cpu.check_if_vm_vcpu_match(max_count, vm),
                                        hotplug_timeout,
                                        text="wait for vcpu online"):
                 test.fail("vcpu hotplug failed")
@@ -126,10 +126,10 @@ def run(test, params, env):
                 test.fail("Set cpu%d online failed!"
                           % (max_count - 1))
             # 2. Del vcpu
-            del_result = libvirt.hotplug_domain_vcpu(vm,
-                                                     min_count,
-                                                     del_by_virsh,
-                                                     hotplug=False)
+            del_result = cpu.hotplug_domain_vcpu(vm,
+                                                 min_count,
+                                                 del_by_virsh,
+                                                 hotplug=False)
             del_status = del_result.exit_status
             if del_status:
                 logging.info("del_result: %s" % del_result.stderr.strip())
@@ -153,7 +153,7 @@ def run(test, params, env):
                 # besides above, regard it failed
                 test.fail("Test fail for:\n %s"
                           % del_result.stderr.strip())
-            if not utils_misc.wait_for(lambda: utils_misc.check_if_vm_vcpu_match(min_count, vm),
+            if not utils_misc.wait_for(lambda: cpu.check_if_vm_vcpu_match(min_count, vm),
                                        hotplug_timeout,
                                        text="wait for vcpu offline"):
                 test.fail("vcpu hotunplug failed")

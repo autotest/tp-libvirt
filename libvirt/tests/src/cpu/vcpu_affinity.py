@@ -1,13 +1,13 @@
 import logging
 
-from avocado.utils import cpu
+from avocado.utils import cpu as cpuutil
 from avocado.utils import process
 
 from virttest import virsh
+from virttest import cpu
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 from virttest.utils_test import libvirt
-from virttest import utils_hotplug
 from virttest import utils_libvirtd
 
 
@@ -92,7 +92,7 @@ def run(test, params, env):
         affinity = vcpu_cpuset if not cputune_cpuset else cputune_cpuset
         affinity = {vcpu: affinity}
         virsh.vcpuinfo(vm_name, debug=True)
-        host_cpu_count = cpu.total_cpus_count()
+        host_cpu_count = cpuutil.total_cpus_count()
 
         vmxml_live = vm_xml.VMXML.new_from_dumpxml(vm_name)
         logging.debug(vmxml_live)
@@ -105,23 +105,23 @@ def run(test, params, env):
             except xcepts.LibvirtXMLError:
                 pass
         elif "config" in vcpupin_option:
-            vcpu_affinity = utils_hotplug.affinity_from_vcpupin(vm, vcpu, vcpupin_option)
-            affinity = libvirt.cpus_string_to_affinity_list(
+            vcpu_affinity = cpu.affinity_from_vcpupin(vm, vcpu, vcpupin_option)
+            affinity = cpu.cpus_string_to_affinity_list(
                 str(affinity[vcpu]), host_cpu_count)
             logging.debug("vcpu_affinity {}".format(vcpu_affinity))
             logging.debug("affinity {}".format(affinity))
             if vcpu_affinity[int(vcpu)] != affinity:
                 test.fail("vcpu affinity check fail")
         # check the expected vcpu affinity with the one got from running vm
-        elif not utils_hotplug.check_affinity(vm, affinity):
+        elif not cpu.check_affinity(vm, affinity):
             test.fail("vcpu affinity check fail")
 
     try:
-        hostcpu_num = int(cpu.total_cpus_count())
+        hostcpu_num = int(cpuutil.total_cpus_count())
 
         # online all host cpus
         for x in range(1, hostcpu_num):
-            if cpu.online(x):
+            if cpuutil.online(x):
                 test.fail("fail to online cpu{}".format(x))
 
         # use vcpu cpuset or/and cputune cpuset to define xml
@@ -160,7 +160,7 @@ def run(test, params, env):
         # test vcpu cpuset in offline/online host cpu scenario
         if check.endswith("offline_hostcpu"):
             for x in offline_hostcpus.split(','):
-                if cpu.offline(x):
+                if cpuutil.offline(x):
                     test.fail("fail to offline cpu{}".format(x))
                 logging.debug("offline host cpu {}".format(x))
 
@@ -175,7 +175,7 @@ def run(test, params, env):
             # test vcpu cpuset in offline/online host cpu scenario
             if check.endswith("offline_hostcpu") and not status_error:
                 # online host cpu
-                if cpu.online(cputune_cpuset):
+                if cpuutil.online(cputune_cpuset):
                     test.fail("fail to online cpu{}".format(cputune_cpuset))
 
             # run virsh vcpupin to config vcpu affinity
@@ -208,6 +208,6 @@ def run(test, params, env):
 
         # recovery the host cpu env
         for x in range(1, hostcpu_num):
-            cpu.online(x)
+            cpuutil.online(x)
         cmd = "echo '0-{}' > {}".format(hostcpu_num-1, machine_cpuset_path)
         process.run(cmd, shell=True)

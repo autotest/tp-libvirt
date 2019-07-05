@@ -3,6 +3,7 @@ import logging
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import utils_misc
+from virttest import cpu
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import capability_xml
 from virttest.libvirt_xml.devices.iommu import Iommu
@@ -35,7 +36,7 @@ def run(test, params, env):
         :param cpu_num: the num of online vcpus need to match
         """
         if not utils_misc.wait_for(
-                lambda: utils_misc.check_if_vm_vcpu_match(cpu_num, vm),
+                lambda: cpu.check_if_vm_vcpu_match(cpu_num, vm),
                 timeout=120, step=5, text="wait for vcpu online"):
             test.fail('Not all vcpus are online as expected.')
 
