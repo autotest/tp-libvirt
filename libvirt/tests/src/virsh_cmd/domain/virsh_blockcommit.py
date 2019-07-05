@@ -10,6 +10,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
+from virttest import utils_package
 from virttest import libvirt_storage
 from virttest import ceph
 from virttest.libvirt_xml import vm_xml
@@ -532,6 +533,17 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
         # Recover xml of vm.
         vmxml_backup.sync("--snapshots-metadata")
+        # Clean ceph image if used in test
+        if 'mon_host' in locals():
+            if utils_package.package_install(["ceph-common"]):
+                disk_source_name = params.get("disk_source_name")
+                cmd = ("rbd -m {0} info {1} && rbd -m {0} rm "
+                       "{1}".format(mon_host, disk_source_name))
+                cmd_result = process.run(cmd, ignore_status=True, shell=True)
+                logging.debug("result of rbd removal: %s", cmd_result)
+            else:
+                logging.debug('Failed to install ceph-common to clean ceph.')
+
         if cmd_session:
             cmd_session.close()
         for disk in snapshot_external_disks:
