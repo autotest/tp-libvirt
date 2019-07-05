@@ -9,6 +9,7 @@ from avocado.utils import process
 from virttest import utils_v2v
 from virttest import utils_sasl
 from virttest import virsh
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.compat_52lts import results_stdout_52lts
 
@@ -30,11 +31,13 @@ class VMChecker(object):
         self.errors = []
         self.params = params
         self.vm_name = params.get('main_vm')
+        self.original_vm_name = params.get('original_vm_name')
         self.hypervisor = params.get("hypervisor")
         self.target = params.get('target')
         self.os_type = params.get('os_type')
         self.os_version = params.get('os_version', 'OS_VERSION_V2V_EXAMPLE')
         self.original_vmxml = params.get('original_vmxml')
+        self.vmx_nfs_src = params.get('vmx_nfs_src')
         self.virsh_session = None
         self.virsh_session_id = None
         self.setup_session()
@@ -45,6 +48,8 @@ class VMChecker(object):
         self.vmxml = virsh.dumpxml(
             self.vm_name,
             session_id=self.virsh_session_id).stdout.strip()
+        # Save NFS mount records like {0:(src, dst, fstype)}
+        self.mount_records = {}
 
     def cleanup(self):
         self.close_virsh_session()
@@ -54,6 +59,10 @@ class VMChecker(object):
             self.checker.cleanup()
         except Exception:
             pass
+
+        if len(self.mount_records) != 0:
+            for src, dst, fstype in self.mount_records.values():
+                utils_misc.umount(src, dst, fstype)
 
     def close_virsh_session(self):
         if not self.virsh_session:
@@ -87,6 +96,7 @@ class VMChecker(object):
 
     def run(self):
         self.check_metadata_libosinfo()
+        self.check_genid()
         if self.os_type == 'linux':
             self.check_linux_vm()
         elif self.os_type == 'windows':
@@ -153,7 +163,6 @@ class VMChecker(object):
             logging.info(
                 'Skip Checking metadata libosinfo parameters: %s' %
                 reason)
-            return
 
         # Checking if the feature is supported
         if not self.compare_version(FEATURE_SUPPORT['libosinfo']):
@@ -241,7 +250,6 @@ class VMChecker(object):
         Only for RHEL VMs(RHEL4 or later)
         """
         self.checker.create_session()
-        self.errors = []
         # 1. Check OS vender and distribution
         logging.info("Checking VM os info")
         os_info = self.checker.get_vm_os_info()
@@ -362,7 +370,6 @@ class VMChecker(object):
                 self.checker.create_session()
             else:
                 break
-        self.errors = []
         # 1. Check viostor file
         logging.info("Checking windows viostor info")
         output = self.checker.get_viostor_info()
@@ -443,3 +450,74 @@ class VMChecker(object):
                 status = False
         if not status:
             self.log_err('Graphic parameter check failed')
+
+    def check_genid(self):
+        """
+        Check genid value in vm xml match with given param.
+        """
+        def _compose_genid(vm_genid, vm_genidX):
+            for index, val in enumerate(
+                    map(lambda x: hex(int(x) & ((1 << 64) - 1)), [vm_genid, vm_genidX])):
+                if index == 0:
+                    gen_id = '-'.join([val[n:] if n == -8 else val[n:n + 4]
+                                       for n in range(-8, -17, -4)])
+                elif index == 1:
+                    temp_str = ''.join([val[i:i + 2]
+                                        for i in range(0, len(val), 2)][:0:-1])
+                    gen_idX = temp_str[:4] + '-' + temp_str[4:]
+            return gen_id + '-' + gen_idX
+
+        has_genid = self.params.get('has_genid')
+        if not has_genid:
+            return
+
+        # Checking if the feature is supported
+        if not self.compare_version(FEATURE_SUPPORT['genid']):
+            reason = "Unsupported if v2v < %s" % FEATURE_SUPPORT['genid']
+            logging.info('Skip Checking genid: %s' % reason)
+            return
+
+        supported_output = ['libvirt', 'local', 'qemu']
+        # Skip checking if any of them is not in supported list
+        if self.params.get('output_mode') not in supported_output:
+            reason = 'output_mode is not in %s' % supported_output
+            logging.info('Skip Checking genid: %s' % reason)
+            return
+
+        logging.info('Checking genid info in xml')
+        logging.debug('vmxml is:\n%s' % self.vmxml)
+        if has_genid == 'yes':
+            mount_point = utils_v2v.v2v_mount(self.vmx_nfs_src, 'vmx_nfs_src')
+            # For clean up
+            self.mount_records[len(self.mount_records)] = (
+                self.vmx_nfs_src, mount_point, None)
+
+            cmd = "cat {}/{name}/{name}.vmx".format(
+                mount_point, name=self.original_vm_name)
+            cmd_result = process.run(cmd, timeout=20, ignore_status=True)
+            cmd_result.stdout = results_stdout_52lts(cmd_result)
+            genid_pattern = r'vm.genid = "(-?\d+)"'
+            genidX_pattern = r'vm.genidX = "(-?\d+)"'
+
+            genid_list = [
+                re.search(
+                    i, cmd_result.stdout).group(1) if re.search(
+                    i, cmd_result.stdout) else None for i in [
+                    genid_pattern, genidX_pattern]]
+            if not all(genid_list):
+                logging.info(
+                    'vm.genid or vm.genidX is missing:%s' %
+                    genid_list)
+                # genid will not be in vmxml
+                if re.search(r'genid', self.vmxml):
+                    self.log_err('Unexpected genid in xml:\n%s' % self.vmxml)
+                return
+
+            genid_str = _compose_genid(*genid_list)
+            logging.debug('genid string is %s' % genid_str)
+
+            if not re.search(genid_str, self.vmxml):
+                self.log_err('Not find genid or genid is incorrect')
+        elif has_genid == 'no':
+            if re.search(r'genid', self.vmxml):
+                self.log_err('Unexpected genid in xml:\n%s' % self.vmxml)
