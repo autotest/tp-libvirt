@@ -147,9 +147,13 @@ def check_output(test, output_msg, params):
                           with some conditions satisfied
     """
     err_msg = params.get("err_msg", None)
-    if err_msg and err_msg in output_msg:
-        logging.debug("Expected error '%s' was found", err_msg)
-        return
+    status_error = params.get("status_error", "no")
+    if status_error == "yes" and err_msg:
+        if err_msg in output_msg:
+            logging.debug("Expected error '%s' was found", err_msg)
+            return
+        else:
+            test.fail("The expected error '%s' was not found in output '%s'" % (err_msg, output_msg))
 
     ERR_MSGDICT = {"Bug 1249587": "error: Operation not supported: " +
                    "pre-creation of storage targets for incremental " +
