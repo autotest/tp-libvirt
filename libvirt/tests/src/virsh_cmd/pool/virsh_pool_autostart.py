@@ -2,6 +2,8 @@ import os
 import logging
 
 from avocado.utils import process
+from avocado.core import exceptions
+
 from virttest import utils_libvirtd
 from virttest import libvirt_storage
 from virttest import virsh
@@ -232,7 +234,7 @@ def run(test, params, env):
                 utlv.setup_or_cleanup_iscsi(False)
             if os.path.exists(p_xml):
                 os.remove(p_xml)
-        except test.fail as details:
+        except exceptions.TestFail as details:
             libvirtd = utils_libvirtd.Libvirtd()
             libvirtd.restart()
             logging.error(str(details))

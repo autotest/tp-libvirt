@@ -3,6 +3,7 @@ import re
 import logging
 
 from avocado.utils import process
+from avocado.core import exceptions
 
 from virttest import qemu_storage
 from virttest import utils_selinux
@@ -252,7 +253,7 @@ def run(test, params, env):
             try:
                 pvt.cleanup_pool(pool_name, pool_type, pool_target,
                                  emulated_image)
-            except test.fail as detail:
+            except exceptions.TestFail as detail:
                 logging.error(str(detail))
         utils_selinux.set_status(backup_sestatus)
         libvirtd.restart()
