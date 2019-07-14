@@ -163,6 +163,7 @@ class VMChecker(object):
             logging.info(
                 'Skip Checking metadata libosinfo parameters: %s' %
                 reason)
+            return
 
         # Checking if the feature is supported
         if not self.compare_version(FEATURE_SUPPORT['libosinfo']):
