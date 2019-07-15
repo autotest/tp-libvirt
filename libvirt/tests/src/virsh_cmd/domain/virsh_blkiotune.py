@@ -9,6 +9,8 @@ from virttest.staging import utils_cgroup
 from virttest.utils_misc import get_dev_major_minor
 from virttest.compat_52lts import results_stdout_52lts
 
+from provider import libvirt_version
+
 
 def check_blkiotune(test, params):
     """
@@ -210,7 +212,13 @@ def set_blkio_parameter(test, params, cgstop):
                 logging.info("Control groups stopped, thus expected success")
     elif status_error == "no":
         if status:
-            test.fail(result.stderr)
+            if (libvirt_version.version_compare(4, 5, 0)
+                    and "blkio device weight is valid only for cfq scheduler" in result.stderr):
+                logging.debug("cfq sheduler not used in current rhel8 kernel. "
+                              "So the failed is expected. "
+                              "Detailed info can check bz1658890.")
+            else:
+                test.fail(result.stderr)
         else:
             if check_blkiotune(test, params):
                 logging.info(result.stdout)
