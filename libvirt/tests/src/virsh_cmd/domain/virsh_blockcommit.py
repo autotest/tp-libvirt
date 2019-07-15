@@ -59,7 +59,7 @@ def run(test, params, env):
     4) Check result.
     """
 
-    def make_disk_snapshot(postfix_n, snapshot_take):
+    def make_disk_snapshot(postfix_n, snapshot_take, is_check_snapshot_tree=False):
         """
         Make external snapshots for disks only.
 
@@ -90,7 +90,8 @@ def run(test, params, env):
                 snapshot_external_disks.append(disk_external)
                 options += " %s,snapshot=external,file=%s" % (disk,
                                                               disk_external)
-
+            if is_check_snapshot_tree:
+                options = options.replace("--no-metadata", "")
             cmd_result = virsh.snapshot_create_as(vm_name, options,
                                                   ignore_status=True,
                                                   debug=True)
@@ -108,6 +109,32 @@ def run(test, params, env):
             if status:
                 test.fail("Touch file in vm failed. %s" % output)
             snapshot_flag_files.append(file_path)
+
+        def check_snapshot_tree():
+            """
+            Check whether predefined snapshot names are equals to
+            snapshot names by virsh snapshot-list --tree
+            """
+            predefined_snapshot_name_list = []
+            for count in range(1, snapshot_take):
+                predefined_snapshot_name_list.append("%s_%s" % (postfix_n, count))
+            snapshot_list_cmd = "virsh snapshot-list %s --tree" % vm_name
+            result_output = process.run(snapshot_list_cmd,
+                                        ignore_status=True, shell=True).stdout_text
+            virsh_snapshot_name_list = []
+            for line in result_output.rsplit("\n"):
+                strip_line = line.strip()
+                if strip_line and "|" not in strip_line:
+                    virsh_snapshot_name_list.append(strip_line)
+            # Compare two lists in their order and values, all need to be same.
+            compare_list = [out_p for out_p, out_v in zip(predefined_snapshot_name_list, virsh_snapshot_name_list)
+                            if out_p not in out_v]
+            if compare_list:
+                test.fail("snapshot tree not correctly returned.")
+
+        # If check_snapshot_tree is True, check snapshot tree output.
+        if is_check_snapshot_tree:
+            check_snapshot_tree()
 
     def get_first_disk_source():
         """
@@ -189,6 +216,7 @@ def run(test, params, env):
     with_active_commit = "yes" == params.get("with_active_commit", "no")
     multiple_chain = "yes" == params.get("multiple_chain", "no")
     virsh_dargs = {'debug': True}
+    check_snapshot_tree = "yes" == params.get("check_snapshot_tree", "no")
 
     # Check whether qemu-img need add -U suboption since locking feature was added afterwards qemu-2.10
     qemu_img_locking_feature_support = libvirt_storage.check_qemu_image_lock_support()
@@ -263,7 +291,7 @@ def run(test, params, env):
         session = vm.wait_for_login()
         # do snapshot
         postfix_n = 'snap'
-        make_disk_snapshot(postfix_n, snapshot_take)
+        make_disk_snapshot(postfix_n, snapshot_take, check_snapshot_tree)
 
         basename = os.path.basename(blk_source)
         diskname = basename.split(".")[0]
