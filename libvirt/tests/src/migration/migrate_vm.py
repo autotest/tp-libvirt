@@ -316,7 +316,7 @@ def add_disk_xml(test, device_type, source_file,
     :prams disk_type: disk type for attaching
     :raise: test.cancel if device type is not supported
     """
-    if device_type != 'cdrom' or device_type != 'floppy':
+    if device_type != 'cdrom' and device_type != 'floppy':
         test.cancel("Only support 'cdrom' and 'floppy'"
                     " device type: %s" % device_type)
 
