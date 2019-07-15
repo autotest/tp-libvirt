@@ -200,6 +200,12 @@ def run(test, params, env):
             if dev.type == "usb" or dev.type == "pci":
                 vmxml.del_device(dev)
 
+        # clean device address when the address type of device is pci
+        for element in vmxml.xmltreefile.findall("/devices/*/address"):
+            if element.get('type') == "pci":
+                vmxml.xmltreefile.remove(element)
+        vmxml.xmltreefile.write()
+
         hubs = vmxml.get_devices(device_type="hub")
         for hub in hubs:
             if hub.type_name == "usb":
