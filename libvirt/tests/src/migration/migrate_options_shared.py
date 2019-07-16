@@ -714,6 +714,9 @@ def run(test, params, env):
         :param result: the output of migration
         :raise: test.fail if test is failed
         """
+        if not result:
+            test.error("No migration result is returned.")
+
         logging.info("Migration out: %s", results_stdout_52lts(result).strip())
         logging.info("Migration error: %s", results_stderr_52lts(result).strip())
 
