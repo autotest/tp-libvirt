@@ -5,6 +5,7 @@ import logging
 from avocado.utils import process
 
 from virttest import remote
+from virttest import utils_iptables
 from virttest.utils_sasl import SASL
 from virttest.utils_conn import SSHConnection
 from virttest.utils_conn import TCPConnection
@@ -335,6 +336,16 @@ def run(test, params, env):
                                                    server_pwd, service,
                                                    port, listen_addr)
 
+        # open the tls/tcp listening port on server
+        if transport in ["tls", "tcp"]:
+            firewalld_port = port[1:]
+            server_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                   server_user, server_pwd,
+                                                   r"[\#\$]\s*$")
+            firewall_cmd = utils_iptables.Firewall_cmd(server_session)
+            firewall_cmd.add_port(firewalld_port, 'tcp', permanent=True)
+            server_session.close()
+
         # remove client certifications if exist, only for TLS negative testing
         if rm_client_key_cmd:
             process.system(rm_client_key_cmd, ignore_status=True, shell=True)
@@ -397,6 +408,14 @@ def run(test, params, env):
             vm = env.get_vm(vm_name)
             if vm and vm.is_alive():
                 vm.destroy(gracefully=False)
+
+        if transport in ["tcp", "tls"]:
+            server_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                   server_user, server_pwd,
+                                                   r"[\#\$]\s*$")
+            firewall_cmd = utils_iptables.Firewall_cmd(server_session)
+            firewall_cmd.remove_port(firewalld_port, 'tcp', permanent=True)
+            server_session.close()
 
         if rmdir_cmd:
             process.system(rmdir_cmd, ignore_status=True, shell=True)
