@@ -2186,7 +2186,10 @@ def run(test, params, env):
 
                 if check_complete_job == "yes":
                     stdout, stderr = p.communicate()
-                    logging.info("stdout:[%s], stderr:[%s]", stdout, stderr)
+                    logging.info("status:[%d], stdout:[%s], stderr:[%s]",
+                                 p.returncode, stdout, stderr)
+                    if p.returncode:
+                        test.fail("Failed to run migration: {}".format(stderr))
                     opts = "--completed"
                     args = vm_name + " " + opts
                     check_virsh_command_and_option(test, "domjobinfo", opts)
@@ -2249,8 +2252,8 @@ def run(test, params, env):
             if wait_for_mgr_cmpl == "yes":
                 stdout, stderr = p.communicate()
                 logging.info("stdout:<%s> , stderr:<%s>", stdout, stderr)
-                if stderr:
-                    test.fail("Can't finish VM migration")
+                if p.returncode:
+                    test.fail("Can't finish VM migration: {}".format(stderr))
 
             if p.poll():
                 try:
