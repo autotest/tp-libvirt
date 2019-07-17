@@ -19,8 +19,23 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml.secret_xml import SecretXML
+from virttest.staging import lv_utils
 
 from provider import libvirt_version
+
+
+def clean_up_lvm(device_source, vg_name, lv_name):
+    """
+    Clean up lvm.
+
+    :param device_source: source file
+    :param vg_name: volume group name
+    :param lv_name: logical volume name
+    """
+    libvirt.delete_local_disk("lvm", vgname=vg_name, lvname=lv_name)
+    lv_utils.vg_remove(vg_name)
+    process.system("pvremove %s" % device_source, ignore_status=True, shell=True)
+    process.system("rm -rf /dev/%s" % vg_name, ignore_status=True, shell=True)
 
 
 def run(test, params, env):
@@ -58,6 +73,8 @@ def run(test, params, env):
     secret_ephemeral = params.get("secret_ephemeral", "no")
     secret_private = params.get("secret_private", "yes")
     status_error = "yes" == params.get("status_error", "no")
+    vg_name = params.get("virt_disk_vg_name", "vg_test_0")
+    lv_name = params.get("virt_disk_lv_name", "lv_test_0")
     # Indicate the PPC platform
     on_ppc = False
     if platform.platform().count('ppc64'):
@@ -116,12 +133,20 @@ def run(test, params, env):
             chap_passwd = ""
 
         # Setup iscsi target
-        iscsi_target, lun_num = libvirt.setup_or_cleanup_iscsi(is_setup=True,
-                                                               is_login=False,
-                                                               image_size='1G',
-                                                               chap_user=chap_user,
-                                                               chap_passwd=chap_passwd,
-                                                               portal_ip=disk_src_host)
+        if disk_type == "block":
+            iscsi_target = libvirt.setup_or_cleanup_iscsi(is_setup=True,
+                                                          is_login=True,
+                                                          image_size="1G",
+                                                          chap_user=chap_user,
+                                                          chap_passwd=chap_passwd,
+                                                          portal_ip=disk_src_host)
+        else:
+            iscsi_target, lun_num = libvirt.setup_or_cleanup_iscsi(is_setup=True,
+                                                                   is_login=False,
+                                                                   image_size='1G',
+                                                                   chap_user=chap_user,
+                                                                   chap_passwd=chap_passwd,
+                                                                   portal_ip=disk_src_host)
         # Create iscsi pool
         if disk_type == "volume":
             # Create an iscsi pool xml to create it
@@ -163,6 +188,16 @@ def run(test, params, env):
             process.run('qemu-img create -f qcow2 %s %s' % (vol_path, '100M'),
                         shell=True)
 
+        # Create block device
+        if disk_type == "block":
+            logging.debug("iscsi dev name: %s", iscsi_target)
+            lv_utils.vg_create(vg_name, iscsi_target)
+            device_source = libvirt.create_local_disk("lvm",
+                                                      size="10M",
+                                                      vgname=vg_name,
+                                                      lvname=lv_name)
+            logging.debug("New created volume: %s", lv_name)
+
         # Create iscsi network disk XML
         disk_params = {'device_type': disk_device,
                        'type_name': disk_type,
@@ -180,6 +215,9 @@ def run(test, params, env):
                                'source_volume': vol_name,
                                'driver_type': 'qcow2',
                                'source_mode': disk_src_mode}
+        elif disk_type == "block":
+            disk_params_src = {'source_file': device_source,
+                               'driver_type': 'raw'}
         else:
             test.cancel("Unsupport disk type in this test")
         disk_params.update(disk_params_src)
@@ -307,6 +345,8 @@ def run(test, params, env):
         try:
             if disk_type == "volume":
                 virsh.pool_destroy(disk_src_pool)
+            if disk_type == "block":
+                clean_up_lvm(iscsi_target, vg_name, lv_name)
             if chap_auth:
                 virsh.secret_undefine(secret_uuid)
         except Exception:
