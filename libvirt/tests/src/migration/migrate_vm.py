@@ -2661,10 +2661,12 @@ def run(test, params, env):
             process.run("iptables -F", ignore_status=True, shell=True)
 
         # Disable ports 24007 and 49152:49216
-        if gluster_disk and host_ip == client_ip:
-            logging.debug("Disable 24007 and 49152:49216 in Firewall")
-            migrate_setup.migrate_pre_setup(src_uri, params, cleanup=True, ports="24007")
-            migrate_setup.migrate_pre_setup(src_uri, params, cleanup=True)
+        if gluster_disk and 'host_ip' in locals():
+            if host_ip == client_ip:
+                logging.debug("Disable 24007 and 49152:49216 in Firewall")
+                migrate_setup.migrate_pre_setup(src_uri, params, cleanup=True,
+                                                ports="24007")
+                migrate_setup.migrate_pre_setup(src_uri, params, cleanup=True)
 
         # Restore libvirtd conf and restart libvirtd
         if libvirtd_conf:
