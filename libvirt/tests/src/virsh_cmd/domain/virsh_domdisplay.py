@@ -54,7 +54,7 @@ def run(test, params, env):
 
     def clean_ssl_env():
         """
-        Do prepare for ssl spice connection
+        Clean ssl spice connection firstly
         """
         # modify qemu.conf
         with open(qemu_conf, "r") as f_obj:
@@ -71,7 +71,7 @@ def run(test, params, env):
 
     def prepare_ssl_env():
         """
-        Clean ssl spice connection firstly
+        Do prepare for ssl spice connection
         """
         # modify qemu.conf
         clean_ssl_env()
@@ -85,6 +85,8 @@ def run(test, params, env):
                                    "/C=IL/L=Raanana/O=Red Hat/CN=my CA",
                                    "/C=IL/L=Raanana/O=Red Hat/CN=my server",
                                    passwd)
+        os.chmod('/etc/pki/libvirt-spice/server-key.pem', 0o644)
+        os.chmod('/etc/pki/libvirt-spice/ca-key.pem', 0o644)
 
     try:
         graphic_count = len(vmxml_backup.get_graphics_devices())
