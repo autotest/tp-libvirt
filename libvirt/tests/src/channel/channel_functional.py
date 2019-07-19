@@ -311,7 +311,7 @@ def run(test, params, env):
         for channel_device in channel_devices:
             if channel_device.address['port'] == port_id:
                 found_dev = True
-            break
+                break
         if not found_dev:
             logging.debug("Failed to find channel with port %s", port_id)
         return found_dev
@@ -377,6 +377,6 @@ def run(test, params, env):
             if not found_dev:
                 test.fail("Failed to autogen port id during attach device")
     finally:
-        if os.path.exists(tmp_dir):
+        if auto_gen_port and os.path.exists(tmp_dir):
             shutil.rmtree(tmp_dir)
         vm_xml_backup.sync()
