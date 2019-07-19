@@ -26,46 +26,6 @@ def set_cpu_memory(vm_name, cpu, memory):
     vmxml.sync()
 
 
-def post_migration_check(vms, uptime, test, params, uri=None):
-    """
-    Validating migration by performing checks in this method
-    * uptime of the migrated vm > uptime of vm before migration
-    * ping vm from target host
-    * check vm state after migration
-
-    :param vms: VM objects of migrating vms
-    :param uptime: uptime dict of vms before migration
-    :param uri: target virsh uri
-    :return: updated dict of uptime
-    """
-    migrate_setup = utils_test.libvirt.MigrationTest()
-    vm_state = params.get("virsh_migrated_state", "running")
-    ping_count = int(params.get("ping_count", 10))
-    for vm in vms:
-        if uri:
-            vm_uri = vm.connect_uri
-            vm.connect_uri = uri
-        vm_uptime = vm.uptime(connect_uri=uri)
-        logging.info("uptime of migrated VM %s: %s", vm.name,
-                     vm_uptime)
-        if vm_uptime < uptime[vm.name]:
-            test.fail("vm went for a reboot during migration")
-        if not migrate_setup.check_vm_state(vm.name, vm_state, uri=uri):
-            test.fail("Migrated VMs failed to be in %s state at "
-                      "destination" % vm_state)
-        logging.info("Guest state is '%s' at destination is as expected",
-                     vm_state)
-        migrate_setup.ping_vm(vm, test, params, uri=uri,
-                              ping_count=ping_count)
-        # update vm uptime to check when migrating back
-        uptime[vm.name] = vm_uptime
-
-        # revert the connect_uri to avoid cleanup errors
-        if uri:
-            vm.connect_uri = vm_uri
-    return uptime
-
-
 def do_stress_migration(vms, srcuri, desturi, migration_type, test, params,
                         thread_timeout=60):
     """
@@ -92,7 +52,7 @@ def do_stress_migration(vms, srcuri, desturi, migration_type, test, params,
     for vm in vms:
         uptime[vm.name] = vm.uptime()
         logging.info("uptime of VM %s: %s", vm.name, uptime[vm.name])
-        migrate_setup.ping_vm(vm, test, params, ping_count=ping_count)
+        migrate_setup.ping_vm(vm, params, ping_count=ping_count)
     logging.debug("Starting migration...")
     migrate_options = ("%s --timeout %s"
                        % (options, params.get("virsh_migrate_timeout", 60)))
@@ -106,23 +66,20 @@ def do_stress_migration(vms, srcuri, desturi, migration_type, test, params,
         except Exception, info:
             test.fail(info)
 
-        uptime = post_migration_check(vms, uptime, test, params, uri=desturi)
+        uptime = migrate_setup.post_migration_check(vms, params, uptime,
+                                                    uri=desturi)
         if migrate_back and "cross" not in migration_type:
             migrate_setup.migrate_pre_setup(srcuri, params)
             logging.debug("Migrating back to source from %s to %s for %s time",
                           desturi, srcuri, each_time + 1)
-            for vm in vms:
-                vm.connect_uri = desturi
             try:
                 migrate_setup.do_migration(vms, desturi, srcuri, migration_type,
                                            options=migrate_options,
-                                           thread_timeout=thread_timeout)
+                                           thread_timeout=thread_timeout,
+                                           virsh_uri=desturi)
             except Exception, info:
                 test.fail(info)
-            finally:
-                for vm in vms:
-                    vm.connect_uri = srcuri
-            uptime = post_migration_check(vms, uptime, test, params)
+            uptime = migrate_setup.post_migration_check(vms, params, uptime)
             migrate_setup.migrate_pre_setup(srcuri, params, cleanup=True)
 
 
@@ -234,7 +191,6 @@ def run(test, params, env):
                             params, thread_timeout)
     finally:
         logging.debug("Cleanup vms...")
-        params["connect_uri"] = src_uri
         for vm in vms:
             utils_test.libvirt.MigrationTest().cleanup_dest_vm(vm, None,
                                                                dest_uri)
