@@ -377,6 +377,6 @@ def run(test, params, env):
             if not found_dev:
                 test.fail("Failed to autogen port id during attach device")
     finally:
-        if os.path.exists(tmp_dir):
+        if auto_gen_port and os.path.exists(tmp_dir):
             shutil.rmtree(tmp_dir)
         vm_xml_backup.sync()
