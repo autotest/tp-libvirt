@@ -52,8 +52,15 @@ def run(test, params, env):
         out_dict = dict([x.split(':') for x in out_list])
         ret_cmp = set(out_dict.keys()) == set(info_list)
         if not ret_cmp:
-            test.fail("Not all output jobinfo items are as expected: Expect:%s, but get %s"
-                      % (set(info_list), set(out_dict.keys())))
+            if set(info_list) - set(out_dict.keys()):
+                test.fail("Missing expected items in domjobinfo output: %s"
+                          % (set(info_list) - set(out_dict.keys())))
+            else:
+                new_cmp = set(out_dict.keys()) - set(info_list)
+                known_item = {'Memory bandwidth'}
+                # For running domjobinfo, 'Memory bandwidth' appears sometimes.
+                if new_cmp != known_item or job_type == "Completed":
+                    test.fail("New items appear: %s, pls modify script!", new_cmp)
         else:
             if out_dict["Job type"].strip() != job_type:
                 test.fail("Expect %s Job type but got %s" %

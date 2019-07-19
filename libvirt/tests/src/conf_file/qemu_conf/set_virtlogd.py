@@ -13,6 +13,8 @@ from virttest import utils_package
 from virttest import virt_vm
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.console import Console
+from virttest.libvirt_xml.devices.graphics import Graphics
+from virttest.libvirt_xml.devices.serial import Serial
 
 from provider import libvirt_version
 
@@ -40,20 +42,24 @@ def run(test, params, env):
     12) Check if VM restart log can be appended to the end of previous log file;
     """
 
-    def clean_up_vm_log_file(vm_name):
-        """Clean up VM log file."""
+    def clean_up_vm_log_file(vm_name, guest_log_file):
+        """
+        Clean up VM log file.
+
+        :params vm_name: guest name
+        :params guest_log_file: the path of VM log file
+        """
         # Delete VM log file if exists.
-        global QEMU_LOG_PATH
-        guest_log_file = os.path.join(QEMU_LOG_PATH, "%s.log" % vm_name)
         if os.path.exists(guest_log_file):
             os.remove(guest_log_file)
 
     def configure(cmd, guest_log_file=None, errorMsg=None):
         """
         Configure qemu log.
-        :param cmd. execute command string.
-        :param guest_log_file. the path of VM log file.
-        :param errorMsg. error message if failed
+
+        :param cmd: execute command string.
+        :param guest_log_file: the path of VM log file.
+        :param errorMsg: error message if failed
         :return: pipe node.
         """
         # If guest_log_file is not None,check if VM log file exists or not.
@@ -72,25 +78,39 @@ def run(test, params, env):
             else:
                 return output
 
-    def configure_serial_console(vm_name):
-        """Configure serial console"""
-        # Check the primary serial and set it to pty.
-        VMXML.set_primary_serial(vm_name, 'pty', '0', None)
-        # Configure VM pty console.
-        vm_pty_xml = VMXML.new_from_inactive_dumpxml(vm_name)
-        vm_pty_xml.remove_all_device_by_type('console')
+    def configure_serial_console(vm_name, dev_type, guest_log_file=None):
+        """
+        Configure serial console.
 
-        console = Console()
+        :params vm_name: guest name
+        :params dev_type: device type
+        :params guest_log_file: the path of VM log file
+        """
+        guest_xml = VMXML.new_from_inactive_dumpxml(vm_name)
+        guest_xml.remove_all_device_by_type('serial')
+        guest_xml.remove_all_device_by_type('console')
+
+        serial = Serial(dev_type)
+        serial.target_port = '0'
+
+        console = Console(dev_type)
         console.target_port = '0'
         console.target_type = 'serial'
-        vm_pty_xml.add_device(console)
-        vm_pty_xml.sync()
 
-    def check_vm_log_file_permission_and_owner(vm_name):
-        """Check VM log file permission and owner."""
+        if dev_type == "file" and guest_log_file is not None:
+            serial.sources = console.sources = [{'path': guest_log_file, 'append': 'off'}]
+        guest_xml.add_device(serial)
+        guest_xml.add_device(console)
+        guest_xml.sync()
+
+    def check_vm_log_file_permission_and_owner(vm_name, guest_log_file):
+        """
+        Check VM log file permission and owner.
+
+        :params vm_name: guest name
+        :params guest_log_file: the path of VM log file
+        """
         # Check VM log file permission.
-        global QEMU_LOG_PATH
-        guest_log_file = os.path.join(QEMU_LOG_PATH, "%s.log" % vm_name)
         logging.info("guest log file: %s", guest_log_file)
         if not os.path.exists(guest_log_file):
             test.error("Expected VM log file: %s not exists" % guest_log_file)
@@ -104,13 +124,16 @@ def run(test, params, env):
             test.fail("VM log file: %s expect to get owner:root, got %s ."
                       % (guest_log_file, owner))
 
-    def check_info_in_vm_log_file(vm_name, cmd=None, matchedMsg=None):
+    def check_info_in_vm_log_file(vm_name, guest_log_file, cmd=None, matchedMsg=None):
         """
         Check if log information is written into log file correctly.
+
+        :params vm_name: guest name
+        :params guest_log_file: the path of VM log file
+        :params cmd: execute command string
+        :params matchedMsg: match message
         """
         # Check VM log file is opened by virtlogd.
-        global QEMU_LOG_PATH
-        guest_log_file = os.path.join(QEMU_LOG_PATH, "%s.log" % vm_name)
         if not os.path.exists(guest_log_file):
             test.fail("Expected VM log file: %s not exists" % guest_log_file)
 
@@ -161,16 +184,52 @@ def run(test, params, env):
             test.fail("Get %s status failed." % service_name)
         return ret.stdout_text.split()[2]
 
+    def reload_and_check_virtlogd():
+        """
+        Reload and check virtlogd status
+        """
+        virtlogd_pid = check_service_status("virtlogd", service_start=True)
+        logging.info("virtlogd PID: %s", virtlogd_pid)
+        ret = process.run("systemctl reload virtlogd", shell=True)
+        if ret.exit_status:
+            test.fail("virtlogd reload failed.")
+        reload_virtlogd_pid = check_service_status("virtlogd", service_start=True)
+        logging.info("After reload, virtlogd PID: %s", reload_virtlogd_pid)
+        if virtlogd_pid != reload_virtlogd_pid:
+            test.fail("After reload, virtlogd PID changed.")
+
+    def configure_spice(vm_name):
+        """
+        Configure spice
+
+        :params vm_name: guest name
+        """
+        vm_spice_xml = VMXML.new_from_inactive_dumpxml(vm_name)
+        vm_spice_xml.remove_all_device_by_type('graphics')
+
+        graphic = Graphics(type_name='spice')
+        graphic.autoport = "yes"
+        graphic.port = "-1"
+        graphic.tlsPort = "-1"
+        vm_spice_xml.add_device(graphic)
+        vm_spice_xml.sync()
+
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     expected_result = params.get("expected_result", "virtlogd_disabled")
     stdio_handler = params.get("stdio_handler", "not_set")
     start_vm = "yes" == params.get("start_vm", "yes")
     reload_virtlogd = "yes" == params.get("reload_virtlogd", "no")
     restart_libvirtd = "yes" == params.get("restart_libvirtd", "no")
+    with_spice = "yes" == params.get("with_spice", "no")
+    with_console_log = "yes" == params.get("with_console_log", "no")
+
     vm = env.get_vm(vm_name)
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
-    guest_log_file = os.path.join(QEMU_LOG_PATH, "%s.log" % vm_name)
+    if with_console_log:
+        guest_log_file = os.path.join(QEMU_LOG_PATH, "%s-console.log" % vm_name)
+    else:
+        guest_log_file = os.path.join(QEMU_LOG_PATH, "%s.log" % vm_name)
 
     config = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
@@ -194,15 +253,7 @@ def run(test, params, env):
 
         if not start_vm:
             if reload_virtlogd:
-                virtlogd_pid = check_service_status("virtlogd", service_start=True)
-                logging.info("virtlogd PID: %s", virtlogd_pid)
-                ret = process.run("systemctl reload virtlogd", shell=True)
-                if ret.exit_status:
-                    test.fail("virtlogd reload failed.")
-                reload_virtlogd_pid = check_service_status("virtlogd", service_start=True)
-                logging.info("After reload, virtlogd PID: %s", reload_virtlogd_pid)
-                if virtlogd_pid != reload_virtlogd_pid:
-                    test.fail("After reload, virtlogd PID changed.")
+                reload_and_check_virtlogd()
         else:
             # Stop all VMs if VMs are already started.
             for tmp_vm in env.get_all_vms():
@@ -213,14 +264,21 @@ def run(test, params, env):
             time.sleep(3)
 
             # Remove VM previous log file.
-            clean_up_vm_log_file(vm_name)
+            clean_up_vm_log_file(vm_name, guest_log_file)
 
             # Check if virtlogd socket is running.
             cmd = ("systemctl status virtlogd.socket|grep 'Active: active'")
             configure(cmd, errorMsg="virtlogd.socket is not running")
 
+            # Configure spice
+            if with_spice:
+                configure_spice(vm_name)
+
             # Configure serial console.
-            configure_serial_console(vm_name)
+            if with_console_log:
+                configure_serial_console(vm_name, 'file', guest_log_file)
+            else:
+                configure_serial_console(vm_name, 'pty')
 
             logging.info("final vm:")
             logging.info(VMXML.new_from_inactive_dumpxml(vm_name))
@@ -231,8 +289,12 @@ def run(test, params, env):
             except virt_vm.VMStartError as detail:
                 test.fail("VM failed to start."
                           "Error: %s" % str(detail))
+            # Wait for write log to console log file
+            if with_console_log:
+                vm.wait_for_login()
+
             # Check VM log file has right permission and owner.
-            check_vm_log_file_permission_and_owner(vm_name)
+            check_vm_log_file_permission_and_owner(vm_name, guest_log_file)
             utils_package.package_install(['lsof'])
             # Check VM log file is opened by virtlogd.
             cmd = ("lsof -w %s|grep 'virtlogd'" % guest_log_file)
@@ -240,7 +302,8 @@ def run(test, params, env):
             configure(cmd, guest_log_file, errorMessage)
 
             # Check VM started log is written into log file correctly.
-            check_info_in_vm_log_file(vm_name, matchedMsg="char device redirected to /dev/pts")
+            if not with_console_log:
+                check_info_in_vm_log_file(vm_name, guest_log_file, matchedMsg="char device redirected to /dev/pts")
 
             # Get pipe node opened by virtlogd for VM log file.
             pipe_node_field = "$9"
@@ -259,6 +322,9 @@ def run(test, params, env):
                 if pipe_node != new_pipe_node and new_pipe_node != new_virtlogd_pid:
                     test.fail("After libvirtd restart, pipe node changed.")
 
+            if with_spice or with_console_log:
+                reload_and_check_virtlogd()
+
             # Check if qemu-kvm use pipe node provided by virtlogd.
             cmd = ("lsof  -w |grep pipe|grep qemu-kvm|grep %s" % pipe_node)
             errorMessage = ("Can not find matched pipe node: %s "
@@ -269,8 +335,17 @@ def run(test, params, env):
             if not vm.shutdown():
                 vm.destroy(gracefully=True)
 
+            # Check qemu log works well
+            if with_spice:
+                check_info_in_vm_log_file(vm_name, guest_log_file,
+                                          matchedMsg="qemu-kvm: terminating on signal 15 from pid")
+
             # Check VM shutdown log is written into log file correctly.
-            check_info_in_vm_log_file(vm_name, matchedMsg="shutting down")
+            if with_console_log:
+                check_info_in_vm_log_file(vm_name, guest_log_file,
+                                          matchedMsg="Reached target Shutdown")
+            else:
+                check_info_in_vm_log_file(vm_name, guest_log_file, matchedMsg="shutting down")
 
             # Check pipe is closed gracefully after VM shutdown.
             check_pipe_closed(pipe_node)
@@ -282,8 +357,9 @@ def run(test, params, env):
                 test.fail("VM failed to start."
                           "Error: %s" % str(detail))
             # Check the new VM start log is appended to the end of the VM log file.
-            check_info_in_vm_log_file(vm_name, cmd="tail -n 5",
-                                      matchedMsg="char device redirected to /dev/pts")
+            if not with_console_log:
+                check_info_in_vm_log_file(vm_name, guest_log_file, cmd="tail -n 5",
+                                          matchedMsg="char device redirected to /dev/pts")
 
     finally:
         config.restore()

@@ -8,6 +8,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
+from virttest import utils_disk
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import lv_utils
 from virttest.utils_test import libvirt
@@ -191,6 +192,12 @@ def run(test, params, env):
             result = virsh.attach_disk(domain, source, target, "--live",
                                        ignore_status=False, debug=True)
         else:
+            session = vm.wait_for_login()
+            try:
+                session.cmd("umount %s" % mount_dir)
+                session.close()
+            except:
+                test.error("fail to unmount the disk before unpluging the disk")
             result = virsh.detach_disk(domain, target, "--live",
                                        ignore_status=False, debug=True)
         # It need more time for attachment to take effect
@@ -217,9 +224,9 @@ def run(test, params, env):
         if hotplug_unplug:
             session = vm.wait_for_login()
             new_device = libvirt.create_local_disk("file", path=disk_path, size="1")
-            parts_list_before_attach = libvirt.get_parts_list(session)
+            parts_list_before_attach = utils_disk.get_parts_list(session)
             hotplug_domain_disk(vm_name, disk_target, new_device)
-            parts_list_after_attach = libvirt.get_parts_list(session)
+            parts_list_after_attach = utils_disk.get_parts_list(session)
             new_part = list(set(parts_list_after_attach).difference(set(parts_list_before_attach)))[0]
             logging.debug("The new partition is %s", new_part)
             libvirt.mkfs("/dev/%s" % new_part, fs_type, session=session)
@@ -251,7 +258,7 @@ def run(test, params, env):
             check_output(cmd_output, mount_dir, test, expected=False)
         elif hotplug_unplug:
             blk_target = re.findall(r'[a-z]+', new_part)[0]
-            disk_pat = "%s\s+%s\s+%s\s+%s\s+" % (mount_dir, new_part, fs_type, blk_target)
+            disk_pat = "%s\s+%s\s+%s\s+%s" % (mount_dir, new_part, fs_type, blk_target)
             check_output(cmd_output, disk_pat, test, expected=True)
             # Unplug domain disk
             hotplug_domain_disk(vm_name, target=new_part, hotplug=False)

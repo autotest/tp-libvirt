@@ -1,12 +1,16 @@
 import os
 import logging
 import aexpect
+import shutil
+import stat
 
 from virttest import virsh
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.channel import Channel
+from virttest.utils_test import libvirt as utlv
+from virttest import data_dir
 
 
 def run(test, params, env):
@@ -19,6 +23,61 @@ def run(test, params, env):
     3) Test the function of started channel device
     4) Shutdown the VM and clean up environment
     """
+
+    def prepare_channel_xml(to_file, char_type, port_id=0):
+        """
+        Prepare pty or spicevmc channel devices file to do hotplug.
+
+        :param to_file: the file generated
+        :param char_type: the type of the channel
+        :param port_id: the port id, if '0' specified, means auto gen
+        """
+        params = {'channel_type_name': char_type,
+                  'target_type': 'virtio',
+                  'target_state': 'disconnected',
+                  'address_type': 'virtio-serial',
+                  'address_controller': '0',
+                  'address_bus': '0'}
+
+        if char_type == "pty":
+            channel_path = ("/dev/pts/%s" % port_id)
+            params_tmp = {'source_path': channel_path,
+                          'target_name': 'org.linux-kvm.port.%s' % port_id}
+            params.update(params_tmp)
+            if not port_id:
+                params['address_port'] = '%s' % port_id
+        elif char_type == "spicevmc":
+            params['target_name'] = 'com.redhat.spice.0'
+        channel_xml = utlv.create_channel_xml(params, alias=True, address=True)
+        shutil.copyfile(channel_xml.xml, to_file)
+
+    def _setup_pty_channel_xml(port_id=0):
+        """
+        Prepare pty channel devices of VM XML.
+
+        :param port_id: the port id for the channel
+        """
+        channel_path = ("/dev/pts/%s" % port_id)
+        target_name = ('org.linux-kvm.port.%s' % port_id)
+
+        source_dict = {'path': channel_path}
+        target_dict = {'type': 'virtio',
+                       'name': target_name,
+                       'state': 'disconnected'}
+        address_dict = {'type': 'virtio-serial',
+                        'controller': '0',
+                        'bus': '0'}
+
+        if not port_id:
+            address_dict['port'] = '%s' % port_id
+
+        channel_tmp = Channel(type_name=channel_type)
+        channel_tmp.source = source_dict
+        channel_tmp.target = target_dict
+        channel_tmp.address = address_dict
+
+        logging.debug("Channel XML is:%s", channel_tmp)
+        vm_xml.add_device(channel_tmp)
 
     def _setup_channel_xml():
         """
@@ -59,12 +118,13 @@ def run(test, params, env):
         """
         fail_patts = []
 
-        if target_type not in ['virtio', 'guestfwd', 'spicevmc']:
+        if not auto_gen_port and \
+           target_type not in ['virtio', 'guestfwd', 'spicevmc']:
             fail_patts.append(
                 r"target type must be specified for channel device")
             fail_patts.append(
                 r"unknown target type '.*' specified for character device")
-        if target_type == 'guestfwd':
+        if not auto_gen_port and target_type == 'guestfwd':
             if target_address is None:
                 fail_patts.append(
                     r"guestfwd channel does not define a target address")
@@ -233,6 +293,29 @@ def run(test, params, env):
             finally:
                 session.close()
 
+    def _verify_attach_channel_device(char_type, port_id):
+        """
+        Test unix socket communication between host and guest through
+        channel
+        :param char_type: the type of the channel
+        :param port_id: the port id of the channel
+        """
+        result = virsh.attach_device(vm_name, xml_file)
+        if result.stderr:
+            test.fail('Failed to attach %s to %s. Result:\n %s'
+                      % ('pty', vm_name, result))
+        current_xml = VMXML.new_from_dumpxml(vm_name)
+        channel_devices = current_xml.get_devices('channel')
+
+        found_dev = False
+        for channel_device in channel_devices:
+            if channel_device.address['port'] == port_id:
+                found_dev = True
+            break
+        if not found_dev:
+            logging.debug("Failed to find channel with port %s", port_id)
+        return found_dev
+
     channel_type = params.get('channel_type', None)
     source_mode = params.get('channel_source_mode', None)
     source_path = params.get('channel_source_path', None)
@@ -242,6 +325,7 @@ def run(test, params, env):
     target_state = params.get('channel_target_state', None)
     target_address = params.get('channel_target_address', None)
     target_port = params.get('channel_target_port', None)
+    auto_gen_port = params.get('auto_gen_port', 'no') == 'yes'
 
     channel = Channel(type_name=channel_type)
 
@@ -252,14 +336,27 @@ def run(test, params, env):
     vm_xml_backup = vm_xml.copy()
     try:
         vm_xml.remove_all_device_by_type('channel')
-        _setup_channel_xml()
+        if auto_gen_port:
+            _setup_pty_channel_xml(2)
+            _setup_pty_channel_xml(8)
+
+            tmp_dir = os.path.join(data_dir.get_tmp_dir(), "hotplug_serial")
+            if not os.path.exists(tmp_dir):
+                os.mkdir(tmp_dir)
+            os.chmod(tmp_dir, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+
+            xml_file = os.path.join(tmp_dir, "xml_%s" % 'pty')
+            prepare_channel_xml(xml_file, 'pty')
+        else:
+            _setup_channel_xml()
         logging.debug("Test VM XML is %s" % vm_xml)
 
         if not _define_and_check():
             logging.debug("Can't define the VM, exiting.")
             return
 
-        _check_xml(test)
+        if not auto_gen_port:
+            _check_xml(test)
 
         if not _start_and_check():
             logging.debug("Can't start the VM, exiting.")
@@ -267,5 +364,19 @@ def run(test, params, env):
 
         if target_type == 'virtio':
             _check_virtio_guest_channel(test)
+
+        if auto_gen_port:
+            found_dev = _verify_attach_channel_device('pty', '1')
+            if not found_dev:
+                test.fail("Failed to attach a device with a fixed port id")
+
+            xml_file = os.path.join(tmp_dir, "xml_%s" % 'spicevmc')
+            prepare_channel_xml(xml_file, 'spicevmc')
+
+            found_dev = _verify_attach_channel_device('spicevmc', '3')
+            if not found_dev:
+                test.fail("Failed to autogen port id during attach device")
     finally:
+        if os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir)
         vm_xml_backup.sync()

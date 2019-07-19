@@ -12,7 +12,7 @@ from virttest.utils_test import libvirt
 
 
 def set_options(iface_type=None, iface_source=None,
-                iface_mac=None, suffix="",
+                iface_mac=None, iface_model=None, suffix="",
                 operation_type="attach"):
     """
     Set attach-detach-interface options.
@@ -24,6 +24,8 @@ def set_options(iface_type=None, iface_source=None,
         options += " --source '%s'" % iface_source
     if iface_mac is not None:
         options += " --mac '%s'" % iface_mac
+    if iface_model and operation_type == "attach":
+        options += " --model '%s'" % iface_model
     if suffix:
         options += " %s" % suffix
     return options
@@ -166,7 +168,7 @@ def run(test, params, env):
         except ValueError:
             raise exceptions.TestSkipError("Command 'brctl' is missing."
                                            " You must install it.")
-
+    iface_model = params.get("iface_model", "virtio")
     iface_source = params.get("at_detach_iface_source", "default")
     iface_mac = params.get("at_detach_iface_mac", "created")
     virsh_dargs = {'ignore_status': True, 'uri': uri, 'debug': True}
@@ -256,7 +258,7 @@ def run(test, params, env):
         # Set attach-interface options and
         # start attach-interface test
         options = set_options(iface_type, iface_source,
-                              iface_mac, at_options_suffix,
+                              iface_mac, iface_model, at_options_suffix,
                               "attach")
         ret = virsh.attach_interface(vm_name, options,
                                      **virsh_dargs)
@@ -274,7 +276,7 @@ def run(test, params, env):
                          at_options_suffix, pre_vm_state)
 
         # Set detach-interface options
-        options = set_options(iface_type, None, iface_mac,
+        options = set_options(iface_type, None, iface_mac, None,
                               dt_options_suffix, "detach")
 
         # Sleep for a while

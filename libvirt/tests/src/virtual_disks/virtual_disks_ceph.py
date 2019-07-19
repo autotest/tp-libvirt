@@ -11,6 +11,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import utils_disk
 from virttest import utils_misc
 from virttest import utils_package
 from virttest import virt_vm, remote
@@ -346,7 +347,7 @@ def run(test, params, env):
         """
         try:
             session = vm_obj.wait_for_login()
-            new_parts = libvirt.get_parts_list(session)
+            new_parts = utils_disk.get_parts_list(session)
             added_parts = list(set(new_parts).difference(set(old_parts)))
             logging.info("Added parts:%s", added_parts)
             if len(added_parts) != 1:
@@ -527,7 +528,7 @@ def run(test, params, env):
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
-    old_parts = libvirt.get_parts_list(session)
+    old_parts = utils_disk.get_parts_list(session)
     session.close()
     vm.destroy(gracefully=False)
     if additional_guest:
@@ -867,7 +868,7 @@ def run(test, params, env):
         # Check disk in vm after detachment.
         if attach_device or attach_disk:
             session = vm.wait_for_login()
-            new_parts = libvirt.get_parts_list(session)
+            new_parts = utils_disk.get_parts_list(session)
             if len(new_parts) != len(old_parts):
                 test.fail("Disk still exists in vm"
                           " after detachment")

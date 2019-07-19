@@ -41,17 +41,19 @@ def run(test, params, env):
     rhel = distro.detect().name == 'rhel'
     nfs_service_package = params.get("nfs_service_package", "nfs-kernel-server")
     nfs_service = None
+    selinux_bool = None
     session = None
     selinux_bak = ""
 
     vm = env.get_vm(vm_name)
     if error_type == "unspecified error":
+        selinux_local = params.get("setup_selinux_local", "yes") == "yes"
         if not ubuntu and not rhel:
             nfs_service_package = "nfs"
         elif rhel:
             nfs_service_package = "nfs-server"
         if not rhel and not utils_package.package_install(nfs_service_package):
-            test.cancel("NFS package not available in guest to test")
+            test.cancel("NFS package not available in host to test")
         # backup /etc/exports
         shutil.copyfile(export_file, "%s.bak" % export_file)
     # backup xml
@@ -88,6 +90,12 @@ def run(test, params, env):
                         verbose=True)
             img_path = os.path.join(nfs_dir, img_name)
             nfs_service = Factory.create_service(nfs_service_package)
+            if not ubuntu and selinux_local:
+                params['set_sebool_local'] = "yes"
+                params['local_boolean_varible'] = "virt_use_nfs"
+                params['local_boolean_value'] = "on"
+                selinux_bool = utils_misc.SELinuxBoolean(params)
+                selinux_bool.setup()
 
         elif error_type == "no space":
             # Steps to generate no space block error:
@@ -209,6 +217,8 @@ def run(test, params, env):
                                                mount_dir=nfs_dir,
                                                export_dir=img_dir,
                                                restore_selinux=selinux_bak)
+            if selinux_bool:
+                selinux_bool.cleanup(keep_authorized_keys=True)
         elif error_type == "no space":
             vm.destroy()
             if _pool_vol:

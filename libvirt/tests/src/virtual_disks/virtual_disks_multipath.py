@@ -8,6 +8,7 @@ import shutil
 from virttest import remote
 from virttest import virt_vm
 from virttest import virsh
+from virttest import utils_disk
 from virttest import utils_npiv as mpath
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
@@ -73,7 +74,7 @@ def run(test, params, env):
             session = vm.wait_for_login()
             if platform.platform().count('ppc64'):
                 time.sleep(10)
-            new_parts = libvirt.get_parts_list(session)
+            new_parts = utils_disk.get_parts_list(session)
             added_parts = list(set(new_parts).difference(set(old_parts)))
             logging.info("Added parts:%s", added_parts)
             if len(added_parts) != 1:
@@ -98,7 +99,7 @@ def run(test, params, env):
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
-    old_parts = libvirt.get_parts_list(session)
+    old_parts = utils_disk.get_parts_list(session)
     session.close()
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
@@ -112,6 +113,8 @@ def run(test, params, env):
         cur_mpath_devs = mpath.find_mpath_devs()
         new_mpath_devs = list(set(cur_mpath_devs).difference(
             set(old_mpath_devs)))
+        if not new_mpath_devs:
+            test.fail("No newly added multipath devices found.")
         logging.debug("newly added mpath devs are: %s", new_mpath_devs)
         # Prepare disk xml
         disk_params = {}

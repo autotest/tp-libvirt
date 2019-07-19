@@ -2,15 +2,15 @@ import re
 import logging
 import aexpect
 
-from virttest.utils_test import libvirt
 from avocado.utils import process
+from avocado.utils import wait
 
 from virttest import libvirt_vm
 from virttest import virt_vm
 from virttest import virsh
 from virttest import remote
 from virttest import utils_libvirtd
-from virttest import utils_misc
+from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 
 
@@ -112,8 +112,8 @@ def run(test, params, env):
                     domstate_status = cmdoutput.exit_status
                     output = "running" in cmdoutput.stdout
                     return not domstate_status and output
-                if not utils_misc.wait_for(_wait_for_vm_running,
-                                           timeout=wait_time, step=1):
+                if not wait.wait_for(_wait_for_vm_running,
+                                     timeout=wait_time, step=1):
                     test.fail("Cmd error: %s Error status: %s" %
                               (cmdoutput.stderr, cmdoutput.stdout))
             elif pre_domian_status != 'shutoff':

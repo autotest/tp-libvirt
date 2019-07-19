@@ -3,6 +3,7 @@ import re
 import logging
 
 from avocado.utils import process
+from avocado.core import exceptions
 
 from virttest import utils_misc
 from virttest import data_dir
@@ -486,7 +487,7 @@ def run(test, params, env):
         try:
             libv_pvt.cleanup_pool(pool_name, pool_type, pool_target,
                                   emulated_image, source_name=source_name)
-        except test.fail as detail:
+        except exceptions.TestFail as detail:
             logging.error(str(detail))
         if multipathd_status:
             multipathd.start()

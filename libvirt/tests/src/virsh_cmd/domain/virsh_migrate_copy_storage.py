@@ -129,7 +129,6 @@ def copied_migration(test, vms, params):
                                                  password)
             except exceptions.TestFail as detail:
                 check_ip_failures.append(str(detail))
-            cp_mig.cleanup_dest_vm(vm, None, dest_uri)
     else:
         for vm in vms:
             cp_mig.cleanup_dest_vm(vm, None, dest_uri)
@@ -137,6 +136,8 @@ def copied_migration(test, vms, params):
         test.fail("Migrate vms with storage copied failed.")
     if len(check_ip_failures):
         test.fail("Check IP failed:%s" % check_ip_failures)
+
+    return cp_mig
 
 
 def run(test, params, env):
@@ -242,9 +243,15 @@ def run(test, params, env):
                                      os.path.basename(disk))
 
         fail_flag = False
+        cp_mig = None
         try:
             logging.debug("Start migration...")
-            copied_migration(test, vms, params)
+            cp_mig = copied_migration(test, vms, params)
+            # Check the new disk can be working well with I/O after migration
+            utils_test.check_remote_vm_disks(vm, {'server_ip': remote_host,
+                                                  'server_user': remote_user,
+                                                  'server_pwd': remote_passwd})
+
             if migrate_again:
                 fail_flag = True
                 test.fail("Migration succeed, but not expected!")
@@ -270,9 +277,11 @@ def run(test, params, env):
                 raise
 
             # Migrate it again to confirm failed reason
-            copied_migration(test, vms, params)
+            cp_mig = copied_migration(test, vms, params)
     finally:
         # Recover created vm
+        if cp_mig:
+            cp_mig.cleanup_dest_vm(vm, None, params.get("migrate_dest_uri"))
         if vm.is_alive():
             vm.destroy()
         if disks_count and vm.name == new_vm_name:

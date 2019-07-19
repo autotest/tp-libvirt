@@ -1,8 +1,11 @@
 import logging
 import os
 import threading
-import queue
 import re
+try:
+    import queue as Queue
+except ImportError:
+    import Queue
 
 from avocado.core import exceptions
 
@@ -12,7 +15,7 @@ from virttest import libvirt_storage
 from virttest.utils_test import libvirt as utlv
 
 
-q = queue.Queue()
+q = Queue.Queue()
 
 
 def prepare_vol_xml(vol_name, vol_size, vol_format):

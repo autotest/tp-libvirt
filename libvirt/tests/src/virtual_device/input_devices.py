@@ -22,7 +22,9 @@ def run(test, params, env):
         Check whether the added devices are shown in the guest xml
         """
         pattern = "<input bus=\"%s\" type=\"%s\">" % (bus_type, input_type)
+        logging.debug('Searching for %s in vm xml', pattern)
         xml_after_adding_device = VMXML.new_from_dumpxml(vm_name)
+        logging.debug('xml_after_adding_device:\n%s', xml_after_adding_device)
         if pattern not in str(xml_after_adding_device):
             test.fail("Can not find the %s input device xml "
                       "in the guest xml file." % input_type)
@@ -48,6 +50,7 @@ def run(test, params, env):
                       "in qemu cmd line." % input_type)
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
+    machine_type = params.get('machine_type', '')
     vm = env.get_vm(vm_name)
 
     status_error = params.get("status_error", "no") == "yes"
@@ -68,8 +71,10 @@ def run(test, params, env):
         vm.destroy()
 
     try:
-        # ps2 keyboard and ps2 mouse are default, no need to re-add the xml
-        if not (bus_type == "ps2" and input_type in ["keyboard", "mouse"]):
+        # ps2 keyboard and ps2 mouse are default, no need to re-add the xml,
+        # unless it's machine_type is pseries
+        if not (bus_type == "ps2" and input_type in ["keyboard", "mouse"]
+                and machine_type != 'pseries'):
             vm_xml.remove_all_device_by_type('input')
             input_dev = Input(type_name=input_type)
             input_dev.input_bus = bus_type
@@ -94,7 +99,7 @@ def run(test, params, env):
         if res.exit_status:
             if not status_error:
                 test.fail("Failed to start vm after adding the %s input "
-                          "device xml. Details: %s " % (input_type, error))
+                          "device xml. Details: %s " % (input_type, res.stderr))
             logging.debug("This is the expected failure in negative cases.")
             return
         if status_error:

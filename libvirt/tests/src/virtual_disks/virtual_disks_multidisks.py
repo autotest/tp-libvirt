@@ -933,7 +933,7 @@ def run(test, params, env):
 
     virt_disk_with_boot_nfs_pool = "yes" == params.get("virt_disk_with_boot_nfs_pool", "no")
     iso_url = ("https://dl.fedoraproject.org/pub/fedora/linux/releases",
-               "/27/Everything/x86_64/os/images/boot.iso")
+               "/30/Everything/x86_64/os/images/boot.iso")
     default_iso_url = ''.join(iso_url)
     boot_iso_url = params.get("boot_iso_url")
     if virt_disk_with_boot_nfs_pool and 'EXAMPLE_BOOT_ISO_URL' in boot_iso_url:
@@ -1516,6 +1516,10 @@ def run(test, params, env):
     except virt_vm.VMStartError as details:
         if not status_error:
             test.fail('VM failed to start:\n%s' % details)
+        # If usb error message not contain 'unexpected address type for usb disk', fail this case.
+        usb_error_message = params.get('usb_error_message')
+        if usb_error_message and not str(details).count(usb_error_message):
+            test.fail('VM error message should contain:\n%s' % usb_error_message)
     except xcepts.LibvirtXMLError as xml_error:
         if not define_error:
             test.fail("Failed to define VM:\n%s" % xml_error)

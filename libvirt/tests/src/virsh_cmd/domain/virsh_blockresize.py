@@ -57,7 +57,8 @@ def run(test, params, env):
 
     # Hotplug the image as disk device
     result = virsh.attach_disk(vm_name, source=image_path, target="vdd",
-                               extra=" --subdriver %s" % image_format)
+                               extra=" --subdriver %s" % image_format,
+                               **virsh_dargs)
     if result.exit_status:
         test.error("Failed to attach disk %s to VM: %s."
                    % (image_path, result.stderr.strip()))
@@ -127,6 +128,12 @@ def run(test, params, env):
         elif resize_value[-1] == "g":
             value = int(resize_value[:-1])
             expected_size = value * 1024 * 1024 * 1024
+            cmd = "qemu-img info %s" % image_path
+            ret = process.run(cmd, allow_output_check='combined', shell=True)
+            status, output = (ret.exit_status, ret.stdout_text.strip())
+            value_return_by_qemu_img = re.search(r'virtual size:\s+(\d+(\.\d+)?)+G', output).group(1)
+            if value != int(float(value_return_by_qemu_img)):
+                test.fail("initial image size in config is not equals to value returned by qemu-img info")
         else:
             test.error("Unknown scale value")
 
@@ -148,7 +155,4 @@ def run(test, params, env):
                           "different from actual size from "
                           "'qemu-img info'")
     finally:
-        virsh.detach_disk(vm_name, target="vdd")
-
-        if os.path.exists(image_path):
-            os.remove(image_path)
+        virsh.detach_disk(vm_name, target="vdd", **virsh_dargs)

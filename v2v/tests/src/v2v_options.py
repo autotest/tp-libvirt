@@ -72,6 +72,7 @@ def run(test, params, env):
     params['vmcheck_flag'] = False
     checkpoint = params.get('checkpoint', '')
     error_flag = 'strict'
+    estimate_file = ''
 
     def create_pool(user_pool=False, pool_name=pool_name, pool_target=pool_target):
         """

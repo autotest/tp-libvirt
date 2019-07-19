@@ -9,6 +9,7 @@ from virttest import remote
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest import utils_npiv
+from virttest import utils_disk
 from virttest import utils_misc
 
 
@@ -36,9 +37,13 @@ def run(test, params, env):
         :return: True if check successfully.
        """
         try:
-            session = vm.wait_for_login()
-            new_parts = libvirt.get_parts_list(session)
-            added_parts = list(set(new_parts).difference(set(old_parts)))
+            def get_attached_disk():
+                session = vm.wait_for_login()
+                new_parts = utils_disk.get_parts_list(session)
+                session.close()
+                added_parts = list(set(new_parts).difference(set(old_parts)))
+                return added_parts
+            added_parts = utils_misc.wait_for(get_attached_disk, _TIMEOUT)
             logging.info("Added parts:%s", added_parts)
             if len(added_parts) != 1:
                 logging.error("The number of new partitions is invalid in VM")
@@ -91,7 +96,7 @@ def run(test, params, env):
         if vm.is_dead():
             vm.start()
         session = vm.wait_for_login()
-        old_parts = libvirt.get_parts_list(session)
+        old_parts = utils_disk.get_parts_list(session)
         # find first online hba
         online_hbas = []
         online_hbas = utils_npiv.find_hbas("hba")
@@ -152,7 +157,7 @@ def run(test, params, env):
         result = virsh.detach_device(vm_name, new_hostdev_xml.xml)
         libvirt.check_exit_status(result, status_error)
         # login vm and check disk actually removed
-        parts_after_detach = libvirt.get_parts_list(session)
+        parts_after_detach = utils_disk.get_parts_list(session)
         old_parts.sort()
         parts_after_detach.sort()
         if parts_after_detach == old_parts:

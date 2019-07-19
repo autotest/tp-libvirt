@@ -6,6 +6,7 @@ import re
 import threading
 import platform
 import tempfile
+import copy
 
 from avocado.utils import process
 from avocado.utils import memory
@@ -13,9 +14,11 @@ from avocado.core import exceptions
 
 from virttest import libvirt_vm
 from virttest import utils_test
+from virttest import utils_misc
 from virttest import defaults
 from virttest import data_dir
 from virttest import virsh
+from virttest import libvirt_version
 from virttest import remote
 from virttest import utils_package
 from virttest import xml_utils
@@ -48,24 +51,6 @@ def check_parameters(test, params):
     for arg in args_list:
         if arg and arg.count("EXAMPLE"):
             test.cancel("Please assign a value for %s!" % arg)
-
-
-def setup_libvirtd_conf_dict(params):
-    """
-    Read and set the required parameters to dict
-
-    :param params: the parameters to be used
-    :return: a dict that includes required parameters
-    """
-    conf_dict = {}
-    conf_dict['keepalive_interval'] = params.get("keepalive_interval", '5')
-    conf_dict['log_level'] = params.get("log_level", '3')
-    conf_dict['log_outputs'] = '"%s:file:%s"' % (params.get("log_level", '3'),
-                                                 params.get("libvirt_log",
-                                                 "/var/log/libvirt/libvirtd.log"))
-    logging.debug("Assemble libvirtd configuration dict as below:%s\n",
-                  conf_dict)
-    return conf_dict
 
 
 def run(test, params, env):
@@ -209,7 +194,6 @@ def run(test, params, env):
             os.remove(log_file)
         cmd = "rm -f %s" % log_file
         logging.debug("Delete remote libvirt log file '%s'", log_file)
-        cmd_parms = {'server_ip': server_ip, 'server_user': server_user, 'server_pwd': server_pwd}
         remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
 
     def cleanup_dest(vm):
@@ -247,7 +231,7 @@ def run(test, params, env):
         except Exception as detail:
             logging.debug(detail)
 
-    def control_migrate_speed(to_speed=1):
+    def control_migrate_speed(to_speed=1, opts=""):
         """
         Control migration duration
 
@@ -255,11 +239,11 @@ def run(test, params, env):
         :return int: the new migration speed after setting
         """
         virsh_args.update({"ignore_status": False})
-        old_speed = virsh.migrate_getspeed(vm_name, **virsh_args)
+        old_speed = virsh.migrate_getspeed(vm_name, extra=opts, **virsh_args)
         logging.debug("Current migration speed is %s MiB/s\n", old_speed.stdout.strip())
         logging.debug("Set migration speed to %d MiB/s\n", to_speed)
-        cmd_result = virsh.migrate_setspeed(vm_name, to_speed, "", **virsh_args)
-        actual_speed = virsh.migrate_getspeed(vm_name, **virsh_args)
+        cmd_result = virsh.migrate_setspeed(vm_name, to_speed, extra=opts, **virsh_args)
+        actual_speed = virsh.migrate_getspeed(vm_name, extra=opts, **virsh_args)
         logging.debug("New migration speed is %s MiB/s\n", actual_speed.stdout.strip())
         return int(actual_speed.stdout.strip())
 
@@ -321,6 +305,129 @@ def run(test, params, env):
             search_jobinfo(jobinfo)
             remote_virsh_session.close_session()
 
+    def search_jobinfo_output(jobinfo, items_to_check, postcopy_req=False):
+        """
+        Check the results of domjobinfo
+
+        :param jobinfo: cmdResult object
+        :param items_to_check: expected value
+        :param postcopy_req: True for postcopy migration and False for precopy
+        :return: False if not found
+        """
+        expected_value = copy.deepcopy(items_to_check)
+        logging.debug("The items_to_check is %s", expected_value)
+        for item in jobinfo.splitlines():
+            item_key = item.strip().split(':')[0]
+            if "all_items" in expected_value and len(item_key) > 0:
+                # "Time elapsed w/o network" and "Downtime w/o network"
+                # have a chance to be missing, it is normal
+                if item_key in ['Downtime w/o network', 'Time elapsed w/o network']:
+                    continue
+                if expected_value["all_items"][0] == item_key:
+                    del expected_value["all_items"][0]
+                else:
+                    test.fail("The item '%s' should be '%s'" %
+                              (item_key, expected_value["all_items"][0]))
+
+            if item_key in expected_value:
+                item_value = ':'.join(item.strip().split(':')[1:]).strip()
+                if item_value != expected_value.get(item_key):
+                    test.fail("The value of {} is {} which is not "
+                              "expected".format(item_key,
+                                                item_value))
+                else:
+                    del expected_value[item_key]
+            if postcopy_req and item_key == "Postcopy requests":
+                if int(item.strip().split(':')[1]) <= 0:
+                    test.fail("The value of Postcopy requests is incorrect")
+
+        # Check if all the items in expect_dict checked or not
+        if "all_items" in expected_value:
+            if len(expected_value["all_items"]) > 0:
+                test.fail("Missing item: {} from all_items"
+                          .format(expected_value["all_items"]))
+            else:
+                del expected_value["all_items"]
+        if len(expected_value) != 0:
+            test.fail("Missing item: {}".format(expected_value))
+
+    def set_migratepostcopy():
+        """
+        Switch to postcopy during migration
+        """
+        res = virsh.migrate_postcopy(vm_name)
+        logging.debug("Command output: %s", res)
+
+        if not utils_misc.wait_for(
+           lambda: migration_test.check_vm_state(vm_name, "paused",
+                                                 "post-copy"), 10):
+            test.fail("vm status is expected to 'paused (post-copy)'")
+
+    def check_domjobinfo_output(option="", is_mig_compelete=False):
+        """
+        Check all items in domjobinfo of the guest on both remote and local
+
+        :param option: options for domjobinfo
+        :param is_mig_compelete: False for domjobinfo checking during migration,
+                            True for domjobinfo checking after migration
+        :raise: test.fail if the value of given item is unexpected
+        """
+        expected_list_during_mig = ["Job type", "Operation", "Time elapsed",
+                                    "Data processed", "Data remaining",
+                                    "Data total", "Memory processed",
+                                    "Memory remaining", "Memory total",
+                                    "Memory bandwidth", "Dirty rate", "Page size",
+                                    "Iteration", "Constant pages", "Normal pages",
+                                    "Normal data", "Expected downtime", "Setup time"]
+        if libvirt_version.version_compare(4, 10, 0):
+            expected_list_during_mig.insert(13, "Postcopy requests")
+
+        expected_list_after_mig_src = copy.deepcopy(expected_list_during_mig)
+        expected_list_after_mig_src[-2] = 'Total downtime'
+        expected_list_after_mig_dest = copy.deepcopy(expected_list_after_mig_src)
+
+        # Check version in remote
+        if not expected_list_after_mig_dest.count("Postcopy requests"):
+            remote_session = remote.remote_login("ssh", server_ip, "22", server_user,
+                                                 server_pwd, "#")
+            if libvirt_version.version_compare(4, 10, 0, session=remote_session):
+                expected_list_after_mig_dest.insert(14, "Postcopy requests")
+            remote_session.close()
+
+        expect_dict = {"src_notdone": {"Job type": "Unbounded",
+                                       "Operation": "Outgoing migration",
+                                       "all_items": expected_list_during_mig},
+                       "dest_notdone": {"error": "Operation not supported: mig"
+                                                 "ration statistics are availab"
+                                                 "le only on the source host"},
+                       "src_done": {"Job type": "Completed",
+                                    "Operation": "Outgoing migration",
+                                    "all_items": expected_list_after_mig_src},
+                       "dest_done": {"Job type": "Completed",
+                                     "Operation": "Incoming migration",
+                                     "all_items": expected_list_after_mig_dest}}
+        pc_opt = False
+        if postcopy_options:
+            pc_opt = True
+            if is_mig_compelete:
+                expect_dict["dest_done"].clear()
+                expect_dict["dest_done"]["Job type"] = "None"
+            else:
+                set_migratepostcopy()
+
+        vm_ref = '{}{}'.format(vm_name, option)
+        src_jobinfo = virsh.domjobinfo(vm_ref, **virsh_args)
+        cmd = "virsh domjobinfo {} {}".format(vm_name, option)
+        dest_jobinfo = remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
+
+        if not is_mig_compelete:
+            search_jobinfo_output(src_jobinfo.stdout, expect_dict["src_notdone"],
+                                  postcopy_req=pc_opt)
+            search_jobinfo_output(dest_jobinfo.stderr, expect_dict["dest_notdone"])
+        else:
+            search_jobinfo_output(src_jobinfo.stdout, expect_dict["src_done"])
+            search_jobinfo_output(dest_jobinfo.stdout, expect_dict["dest_done"])
+
     def check_maxdowntime(params):
         """
         Set/get migration maxdowntime
@@ -341,6 +448,98 @@ def run(test, params, env):
                       "found" % (expected_value, actual_value))
         params.update({'compare_to_value': actual_value})
 
+    def run_time(init_time=2):
+        """
+        Compare the duration of func to an expected one
+
+        :param init_time: Expected run time
+        :raise: test.fail if func takes more than init_time(second)
+        """
+        def check_time(func):
+            def wrapper(*args, **kwargs):
+                start = time.time()
+                result = func(*args, **kwargs)
+                duration = time.time() - start
+                if duration > init_time:
+                    test.fail("It takes too long to check {}. The duration is "
+                              "{}s which should be less than {}s"
+                              .format(func.__doc__, duration, init_time))
+                return result
+            return wrapper
+        return check_time
+
+    def run_domstats(vm_name):
+        """
+        Run domstats and domstate during migration in source and destination
+
+        :param vm_name: VM name
+        :raise: test.fail if domstats does not return in 2s
+                or domstate is incorrect
+        """
+        @run_time()
+        def check_source_stats(vm_name):
+            """domstats in source"""
+            vm_stats = virsh.domstats(vm_name)
+            logging.debug("domstats in source: {}".format(vm_stats))
+
+        @run_time()
+        def check_dest_stats(vm_name):
+            """domstats in target"""
+            cmd = "virsh domstats {}".format(vm_name)
+            dest_stats = remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
+            logging.debug("domstats in destination: {}".format(dest_stats))
+
+        expected_remote_state = "paused"
+        expected_source_state = ["paused", "running"]
+        if postcopy_options:
+            set_migratepostcopy()
+            expected_remote_state = "running"
+            expected_source_state = ["paused"]
+
+        check_source_stats(vm_name)
+        vm_stat = virsh.domstate(vm_name, ignore_status=False)
+        if ((not len(vm_stat.stdout.split())) or
+           vm_stat.stdout.split()[0] not in expected_source_state):
+            test.fail("Incorrect VM stat on source machine: {}"
+                      .format(vm_stat.stdout))
+
+        check_dest_stats(vm_name)
+        cmd = "virsh domstate {}".format(vm_name)
+        remote_vm_state = remote.run_remote_cmd(cmd, cmd_parms,
+                                                runner_on_target,
+                                                ignore_status=False)
+        if ((not len(remote_vm_state.stdout.split())) or
+           remote_vm_state.stdout.split()[0] != expected_remote_state):
+            test.fail("Incorrect VM stat on destination machine: {}"
+                      .format(remote_vm_state.stdout))
+        else:
+            logging.debug("vm stat on destination: {}".format(remote_vm_state))
+        if postcopy_options:
+            vm_stat = virsh.domstate(vm_name, ignore_status=False)
+            if ((not len(vm_stat.stdout.split())) or
+               vm_stat.stdout.split()[0] != "paused"):
+                test.fail("Incorrect VM stat on source machine: {}"
+                          .format(vm_stat.stdout))
+
+    def kill_qemu_target():
+        """
+        Kill qemu process on target host during Finish Phase of migration
+
+        :raise: test.fail if domstate is not "post-copy failed" after
+                qemu killed
+        """
+        if not vm.is_qemu():
+            test.cancel("This case is qemu guest only.")
+        set_migratepostcopy()
+        emulator = new_xml.get_devices('emulator')[0]
+        logging.debug("emulator is %s", emulator.path)
+        cmd = 'pkill -9 {}'.format(os.path.basename(emulator.path))
+        runner_on_target.run(cmd)
+        if not utils_misc.wait_for(
+           lambda: migration_test.check_vm_state(vm_name, "paused",
+                                                 "post-copy failed"), 60):
+            test.fail("vm status is expected to 'paused (post-copy failed)'")
+
     def do_actions_during_migrate(params):
         """
         The entry point to execute action list during migration
@@ -357,6 +556,14 @@ def run(test, params, env):
                 check_domjobinfo(params)
             elif action == 'setmaxdowntime':
                 check_maxdowntime(params)
+            elif action == 'converge':
+                check_converge(params)
+            elif action == 'domjobinfo_output_all':
+                check_domjobinfo_output()
+            elif action == 'checkdomstats':
+                run_domstats(vm_name)
+            elif action == 'killqemutarget':
+                kill_qemu_target()
             time.sleep(3)
 
     def attach_channel_xml():
@@ -394,9 +601,71 @@ def run(test, params, env):
             remote_virsh_session.close_session()
             test.fail("After timeout '%s' seconds, "
                       "the vm state on target host should "
-                      "be 'running', but '%s' found",
-                      timeout, vm_state)
+                      "be 'running', but '%s' found" % (timeout, vm_state))
         remote_virsh_session.close_session()
+
+    def check_converge(params):
+        """
+        Handle option '--auto-converge --auto-converge-initial
+        --auto-converge-increment '.
+        'Auto converge throttle' in domjobinfo should start with
+        the initial value and increase with correct increment
+        and max value is 99.
+
+        :param params: The parameters used
+        :raise: exceptions.TestFail when unexpected or no throttle
+                       is found
+        """
+        initial = int(params.get("initial", 20))
+        increment = int(params.get("increment", 10))
+        max_converge = int(params.get("max_converge", 99))
+        allow_throttle_list = [initial + count * increment
+                               for count in range(0, (100 - initial) // increment + 1)
+                               if (initial + count * increment) < 100]
+        allow_throttle_list.append(max_converge)
+        logging.debug("The allowed 'Auto converge throttle' value "
+                      "is %s", allow_throttle_list)
+
+        throttle = 0
+        jobtype = "None"
+
+        while throttle < 100:
+            cmd_result = virsh.domjobinfo(vm_name, debug=True,
+                                          ignore_status=True)
+            if cmd_result.exit_status:
+                logging.debug(cmd_result.stderr)
+                # Check if migration is completed
+                if "domain is not running" in cmd_result.stderr:
+                    args = vm_name + " --completed"
+                    cmd_result = virsh.domjobinfo(args, debug=True,
+                                                  ignore_status=True)
+                    if cmd_result.exit_status:
+                        test.error("Failed to get domjobinfo and domjobinfo "
+                                   "--completed: %s" % cmd_result.stderr)
+                else:
+                    test.error("Failed to get domjobinfo: %s" % cmd_result.stderr)
+            jobinfo = cmd_result.stdout
+            for line in jobinfo.splitlines():
+                key = line.split(':')[0]
+                if key.count("Job type"):
+                    jobtype = line.split(':')[-1].strip()
+                elif key.count("Auto converge throttle"):
+                    throttle = int(line.split(':')[-1].strip())
+                    logging.debug("Auto converge throttle:%s", str(throttle))
+            if throttle and throttle not in allow_throttle_list:
+                test.fail("Invalid auto converge throttle "
+                          "value '%s'" % throttle)
+            if throttle == 99:
+                logging.debug("'Auto converge throttle' reaches maximum "
+                              "allowed value 99")
+                break
+            if jobtype == "None" or jobtype == "Completed":
+                logging.debug("Jobtype:%s", jobtype)
+                if not throttle:
+                    test.fail("'Auto converge throttle' is "
+                              "not found in the domjobinfo")
+                break
+            time.sleep(5)
 
     def get_usable_compress_cache(pagesize):
         """
@@ -417,6 +686,26 @@ def run(test, params, env):
         logging.debug("%d is smallest one that is bigger than '%s' and "
                       "is power of 2", item, pagesize)
         return item
+
+    def update_config_file(config_type, new_conf, remote_host=True,
+                           params=None):
+        """
+        Update the specified configuration file with dict
+
+        :param config_type: Like libvirtd, qemu
+        :param new_conf: The str including new configuration
+        :param remote_host: True to also update in remote host
+        :param params: The dict including parameters to connect remote host
+        :return: utils_config.LibvirtConfigCommon object
+        """
+        logging.debug("Update configuration file")
+        cleanup_libvirtd_log(log_file)
+        config_dict = eval(new_conf)
+        updated_conf = libvirt.customize_libvirt_config(config_dict,
+                                                        config_type=config_type,
+                                                        remote_host=remote_host,
+                                                        extra_params=params)
+        return updated_conf
 
     def check_migration_res(result):
         """
@@ -476,7 +765,7 @@ def run(test, params, env):
     dest_uri = params.get("virsh_migrate_desturi")
     log_file = params.get("libvirt_log", "/var/log/libvirt/libvirtd.log")
     check_complete_job = "yes" == params.get("check_complete_job", "no")
-    config_libvirtd = "yes" == params.get("config_libvirtd", "no")
+    check_domjobinfo_results = "yes" == params.get("check_domjobinfo_results")
     contrl_index = params.get("new_contrl_index", None)
     asynch_migration = "yes" == params.get("asynch_migrate", "no")
     grep_str_remote_log = params.get("grep_str_remote_log", "")
@@ -488,7 +777,8 @@ def run(test, params, env):
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
                           'ssh_remote_auth': True}
-
+    cmd_parms = {'server_ip': server_ip, 'server_user': server_user,
+                 'server_pwd': server_pwd}
     hpt_resize = params.get("hpt_resize", None)
     htm_state = params.get("htm_state", None)
 
@@ -523,6 +813,9 @@ def run(test, params, env):
     qemu_conf_dict = None
     # libvirtd config
     libvirtd_conf_dict = None
+
+    # remote shell session
+    remote_session = None
 
     remote_virsh_session = None
     vm = None
@@ -565,23 +858,21 @@ def run(test, params, env):
                 objs_list.append(tls_obj)
                 tls_obj.auto_recover = True
                 tls_obj.conn_setup()
-            if not disable_verify_peer:
-                qemu_conf_dict = {"migrate_tls_x509_verify": "1"}
-                # Setup qemu configure
-                logging.debug("Configure the qemu")
-                cleanup_libvirtd_log(log_file)
-                qemu_conf = libvirt.customize_libvirt_config(qemu_conf_dict,
-                                                             config_type="qemu",
-                                                             remote_host=True,
-                                                             extra_params=params)
+
+        # Setup qemu.conf
+        qemu_conf_dict = params.get("qemu_conf_dict")
+        if qemu_conf_dict:
+            qemu_conf = update_config_file('qemu',
+                                           qemu_conf_dict,
+                                           params=params)
+
         # Setup libvirtd
-        if config_libvirtd:
-            logging.debug("Configure the libvirtd")
-            cleanup_libvirtd_log(log_file)
-            libvirtd_conf_dict = setup_libvirtd_conf_dict(params)
-            libvirtd_conf = libvirt.customize_libvirt_config(libvirtd_conf_dict,
-                                                             remote_host=True,
-                                                             extra_params=params)
+        libvirtd_conf_dict = params.get("libvirtd_conf_dict")
+        if libvirtd_conf_dict:
+            libvirtd_conf = update_config_file('libvirtd',
+                                               libvirtd_conf_dict,
+                                               params=params)
+
         # Prepare required guest xml before starting guest
         if contrl_index:
             new_xml.remove_all_device_by_type('controller')
@@ -627,9 +918,6 @@ def run(test, params, env):
         if hpt_resize and hpt_resize != 'disabled':
             trigger_hpt_resize(vm_session)
 
-        if low_speed:
-            control_migrate_speed(int(low_speed))
-
         if stress_in_vm:
             pkg_name = 'stress'
             logging.debug("Check if stress tool is installed")
@@ -656,6 +944,10 @@ def run(test, params, env):
         if postcopy_options:
             extra = "%s %s" % (extra, postcopy_options)
 
+        if low_speed:
+            control_migrate_speed(int(low_speed))
+            if postcopy_options and libvirt_version.version_compare(5, 0, 0):
+                control_migrate_speed(int(low_speed), opts=postcopy_options)
         # Execute migration process
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
@@ -704,7 +996,6 @@ def run(test, params, env):
                 test.fail("Can not find source for %s channel on remote host" % channel_type_name)
 
             # Prepare to wait for message on remote host from the channel
-            cmd_parms = {'server_ip': server_ip, 'server_user': server_user, 'server_pwd': server_pwd}
             cmd_result = remote.run_remote_cmd(cmd_run_in_remote_host % host_source,
                                                cmd_parms,
                                                runner_on_target)
@@ -729,6 +1020,8 @@ def run(test, params, env):
             if extra.count("comp-xbzrle-cache"):
                 params.update({'compare_to_value': cache // 1024})
             check_domjobinfo(params, option=opts)
+            if check_domjobinfo_results:
+                check_domjobinfo_output(option=opts, is_mig_compelete=True)
 
         if grep_str_local_log:
             cmd = "grep -E '%s' %s" % (grep_str_local_log, log_file)
@@ -737,7 +1030,6 @@ def run(test, params, env):
                 test.fail(results_stderr_52lts(cmdRes).strip())
         if grep_str_remote_log:
             cmd = "grep -E '%s' %s" % (grep_str_remote_log, log_file)
-            cmd_parms = {'server_ip': server_ip, 'server_user': server_user, 'server_pwd': server_pwd}
             remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
 
         if xml_check_after_mig:
@@ -798,6 +1090,21 @@ def run(test, params, env):
             if remote_virsh_session:
                 remote_virsh_session.close_session()
 
+            if remote_session:
+                remote_session.close()
+
+            # Delete files on target
+            # Killing qemu process on target may lead a problem like
+            # qemu process becomes a zombie process whose ppid is 1.
+            # As a workaround, have to remove the files under
+            # /var/run/libvirt/qemu to make libvirt work.
+            if vm.is_qemu():
+                dest_pid_files = os.path.join("/var/run/libvirt/qemu",
+                                              vm_name + '*')
+                cmd = "rm -f %s" % dest_pid_files
+                logging.debug("Delete remote pid files '%s'", dest_pid_files)
+                remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
+
             if extra.count("--tls") and not disable_verify_peer:
                 logging.debug("Recover the qemu configuration")
                 libvirt.customize_libvirt_config(None,
@@ -807,13 +1114,14 @@ def run(test, params, env):
                                                  is_recover=True,
                                                  config_object=qemu_conf)
 
-            if config_libvirtd:
-                logging.debug("Recover the libvirtd configuration")
-                libvirt.customize_libvirt_config(None,
-                                                 remote_host=True,
-                                                 extra_params=params,
-                                                 is_recover=True,
-                                                 config_object=libvirtd_conf)
+            for update_conf in [libvirtd_conf, qemu_conf]:
+                if update_conf:
+                    logging.debug("Recover the configurations")
+                    libvirt.customize_libvirt_config(None,
+                                                     remote_host=True,
+                                                     extra_params=params,
+                                                     is_recover=True,
+                                                     config_object=update_conf)
 
             logging.info("Remove local NFS image")
             source_file = params.get("source_file")

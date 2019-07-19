@@ -89,6 +89,7 @@ def login_to_check(vm, checked_mac):
         session = vm.wait_for_login()
     except Exception as detail:  # Do not care Exception's type
         return (1, "Can not login to vm:%s" % detail)
+    time.sleep(5)
     status, output = session.cmd_status_output("ip -4 -o link list")
     if status != 0:
         return (1, "Login to check failed.")
@@ -255,8 +256,8 @@ def run(test, params, env):
             vm.destroy()
             vm.start()
             # Generate attached xml
-            xml_file_tmp = libvirt.modify_vm_iface(vm_name, "get_xml", iface_format)
             new_iface = Interface(type_name=iface_type)
+            xml_file_tmp = libvirt.modify_vm_iface(vm_name, "get_xml", iface_format)
             new_iface.xml = xml_file_tmp
             new_iface.del_address()
             xml_file = new_iface.xml
@@ -283,7 +284,8 @@ def run(test, params, env):
 
         # Set attach-interface options and Start attach-interface test
         if correct_attach:
-            options = set_options("network", "default", iface_mac, "", "attach")
+            options = set_options("network", "default", iface_mac, "",
+                                  "attach", None, iface_model)
             if readonly:
                 virsh_dargs.update({'readonly': True, 'debug': True})
             attach_result = virsh.attach_interface(vm_name, options,

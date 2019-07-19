@@ -474,9 +474,7 @@ def run(test, params, env):
         :params timeout: timeout for migrate-postcopy to get triggered
 
         """
-        stress_thread = threading.Thread(target=thread_func_stress,
-                                         args=())
-        stress_thread.start()
+
         ensure_migration_start()
         process.system_output("virsh %s %s" % (cmd, vm_name))
         logging.debug("Checking the VM state on target host after "
@@ -1087,6 +1085,18 @@ def run(test, params, env):
             cmd = params.get("virsh_postcopy_cmd")
             obj_migration = libvirt.MigrationTest()
             migrate_options = "%s %s" % (options, extra)
+
+            stress_thread = threading.Thread(target=thread_func_stress,
+                                             args=())
+            stress_thread.start()
+            # Set migrate_speed
+            speed = params.get("migrate_speed")
+            if speed:
+                virsh_args.update({"ignore_status": False})
+                virsh.migrate_setspeed(vm_name, speed, **virsh_args)
+                if libvirt_version.version_compare(5, 0, 0):
+                    virsh.migrate_setspeed(vm_name, speed,
+                                           extra=postcopy_options, **virsh_args)
 
             logging.info("Starting migration in thread")
             try:
