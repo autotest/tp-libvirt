@@ -7,6 +7,7 @@ import threading
 import platform
 import tempfile
 import copy
+import datetime
 
 from avocado.utils import process
 from avocado.utils import memory
@@ -260,6 +261,55 @@ def run(test, params, env):
         if actual_value != expected_value:
             test.fail("Migration speed is expected to be '%d MiB/s', but '%d MiB/s' "
                       "found" % (expected_value, actual_value))
+
+    def check_output(output, expected_value_list):
+        """
+        Check if the output match expected value or not
+
+        :param output: actual output
+        :param expected_value_list: expected value
+        :raise: test.fail if unable to find item(s)
+        """
+        logging.debug("Actual output is %s", output)
+        for item in expected_value_list:
+            if not re.findall(item, output):
+                test.fail("Unalbe to find {}".format(item))
+
+    def check_interval_not_fixed(search_str, log_file, interval=0.05,
+                                 session=None):
+        """
+        Check the interval of the log output with specific string and expect not
+        match the value of param 'interval'.
+
+        :param search_str: String to be searched
+        :param log_file: the given file
+        :param interval: interval in second
+        :param session: ShellSession object of remote host
+        :raise: test.fail when the real interval is equal to given value
+
+        """
+        cmd = "grep '%s' %s | cut -d '+' -f1" % (search_str, log_file)
+        cmdStd, cmdStdout = utils_misc.cmd_status_output(cmd, shell=True,
+                                                         session=session)
+
+        if cmdStd:
+            test.fail("Unalbe to get {} from {}.".format(search_str, log_file))
+        date_list = []
+        for line in cmdStdout.splitlines():
+            if line:
+                # pick up the time of output who has specific string
+                # from log_file
+                date_list.append(datetime.datetime.strptime(line,
+                                                            "%Y-%m-%d %H:%M:%S.%f"))
+        if len(date_list) > 1:
+            for x in range(len(date_list)-1):
+                date_list[x] = (date_list[x+1]-date_list[x]).total_seconds()
+            if len(set(date_list[:-1])) == 1 and interval in date_list[:-1]:
+                test.fail("{} seconds is unexpected time period.Time duration"
+                          "(seconds) is {}".format(interval, date_list[:-1]))
+        else:
+            test.fail("Need at least 2 items in {}. Unable to get time period."
+                      "cmdRes is {}.".format(log_file, cmdStdout))
 
     def check_domjobinfo(params, option=""):
         """
@@ -562,6 +612,8 @@ def run(test, params, env):
                 check_domjobinfo_output()
             elif action == 'checkdomstats':
                 run_domstats(vm_name)
+            elif action == 'setmigratepostcopy':
+                set_migratepostcopy()
             elif action == 'killqemutarget':
                 kill_qemu_target()
             time.sleep(3)
@@ -766,6 +818,8 @@ def run(test, params, env):
     log_file = params.get("libvirt_log", "/var/log/libvirt/libvirtd.log")
     check_complete_job = "yes" == params.get("check_complete_job", "no")
     check_domjobinfo_results = "yes" == params.get("check_domjobinfo_results")
+    check_log_interval = params.get("check_log_interval")
+    check_event_output = params.get("check_event_output")
     contrl_index = params.get("new_contrl_index", None)
     asynch_migration = "yes" == params.get("asynch_migrate", "no")
     grep_str_remote_log = params.get("grep_str_remote_log", "")
@@ -914,6 +968,19 @@ def run(test, params, env):
         vm_session = vm.wait_for_login()
         check_vm_network_accessed()
 
+        if check_event_output:
+            cmd = "event --loop --all"
+            logging.debug("Running virsh command: %s", cmd)
+            # Run 'virsh event' on source
+            virsh_session = virsh.VirshSession(virsh_exec=virsh.VIRSH_EXEC,
+                                               auto_close=True)
+            virsh_session.sendline(cmd)
+            # Run 'virsh event' on target
+            remote_session = remote.remote_login("ssh", server_ip, "22",
+                                                 server_user, server_pwd,
+                                                 r'[$#%]')
+            remote_session.sendline("virsh " + cmd)
+
         # Preparation for the running guest before migration
         if hpt_resize and hpt_resize != 'disabled':
             trigger_hpt_resize(vm_session)
@@ -1031,6 +1098,29 @@ def run(test, params, env):
         if grep_str_remote_log:
             cmd = "grep -E '%s' %s" % (grep_str_remote_log, log_file)
             remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
+
+        if check_event_output:
+            if check_log_interval:
+                # check the interval of the output in libvirt.log
+                # make sure they are not fixed output
+                check_interval_not_fixed(grep_str_local_log, log_file)
+                server_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                       server_user, server_pwd,
+                                                       r"[\#\$]\s*$")
+                check_interval_not_fixed(grep_str_remote_log, log_file,
+                                         session=server_session)
+                server_session.close()
+
+            # Check events
+            expectedEventSrc = params.get('expectedEventSrc')
+            if expectedEventSrc:
+                source_output = virsh_session.get_stripped_output()
+                check_output(source_output, eval(expectedEventSrc))
+
+            expectedEventTarget = params.get('expectedEventTarget')
+            if expectedEventTarget:
+                target_output = remote_session.get_stripped_output()
+                check_output(target_output, eval(expectedEventTarget))
 
         if xml_check_after_mig:
             if not remote_virsh_session:
