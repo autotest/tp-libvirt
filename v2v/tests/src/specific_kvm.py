@@ -15,6 +15,7 @@ from virttest import utils_sasl
 from virttest import libvirt_vm
 from virttest import data_dir
 from virttest import utils_selinux
+from virttest import remote
 from virttest import ssh_key
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
@@ -40,7 +41,6 @@ def run(test, params, env):
     output_format = params.get('output_format')
     source_user = params.get("username", "root")
     storage = params.get('output_storage')
-    storage_name = params.get('storage_name')
     bridge = params.get('bridge')
     network = params.get('network')
     ntp_server = params.get('ntp_server')
@@ -63,6 +63,26 @@ def run(test, params, env):
                    'spice_cirrus', 'vnc_qxl', 'vnc_cirrus', 'blank_2nd_disk',
                    'listen_none', 'listen_socket', 'only_net', 'only_br']
     error_list = []
+
+    # For construct rhv-upload option in v2v cmd
+    output_method = params.get("output_method")
+    rhv_upload_opts = params.get("rhv_upload_opts")
+    storage_name = params.get('storage_name')
+    # for get ca.crt file from ovirt engine
+    rhv_passwd = params.get("rhv_upload_passwd")
+    rhv_passwd_file = params.get("rhv_upload_passwd_file")
+    ovirt_engine_passwd = params.get("ovirt_engine_password")
+    ovirt_hostname = params.get("ovirt_engine_url").split(
+        '/')[2] if params.get("ovirt_engine_url") else None
+    ovirt_ca_file_path = params.get("ovirt_ca_file_path")
+    local_ca_file_path = params.get("local_ca_file_path")
+
+    # For VDDK
+    input_transport = params.get("input_transport")
+    vddk_libdir = params.get('vddk_libdir')
+    # nfs mount source
+    vddk_libdir_src = params.get('vddk_libdir_src')
+    vddk_thumbprint = params.get('vddk_thumbprint')
 
     # Prepare step for different hypervisor
     if hypervisor == "esx":
@@ -596,7 +616,17 @@ def run(test, params, env):
             'storage': storage,
             'hostname': source_ip,
             'v2v_opts': v2v_opts,
-            'new_name': vm_name + utils_misc.generate_random_string(3)}
+            'new_name': vm_name + utils_misc.generate_random_string(3),
+            'output_method': output_method,
+            'storage_name': storage_name,
+            'rhv_upload_opts': rhv_upload_opts,
+            'input_transport': input_transport,
+            'vcenter_host': source_ip,
+            'vcenter_password': source_pwd,
+            'vddk_thumbprint': vddk_thumbprint,
+            'vddk_libdir': vddk_libdir,
+            'vddk_libdir_src': vddk_libdir_src,
+            }
         if vpx_dc:
             v2v_params.update({"vpx_dc": vpx_dc})
         if esx_ip:
@@ -619,6 +649,15 @@ def run(test, params, env):
             v2v_sasl.server_user = params.get('remote_user')
             v2v_sasl.server_pwd = params.get('remote_pwd')
             v2v_sasl.setup(remote=True)
+            if output_method == 'rhv_upload':
+                # Create password file for '-o rhv_upload' to connect to ovirt
+                with open(rhv_passwd_file, 'w') as f:
+                    f.write(rhv_passwd)
+                # Copy ca file from ovirt to local
+                remote.scp_from_remote(ovirt_hostname, 22, 'root',
+                                       ovirt_engine_passwd,
+                                       ovirt_ca_file_path,
+                                       local_ca_file_path)
         if output_mode == 'local':
             v2v_params['storage'] = data_dir.get_tmp_dir()
         if output_mode == 'libvirt':
