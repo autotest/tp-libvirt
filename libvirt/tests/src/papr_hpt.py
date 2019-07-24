@@ -22,7 +22,7 @@ def run(test, params, env):
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
     status_error = 'yes' == params.get('status_error', 'no')
-    error_msg = params.get('error_msg', '')
+    error_msg = eval(params.get('error_msg', '[]'))
 
     hpt_attrs = eval(params.get('hpt_attrs', '{}'))
     hpt_order_path = params.get('hpt_order_path', '')
@@ -100,7 +100,7 @@ def run(test, params, env):
             result = process.CmdResult(stderr=cmd_result[1],
                                        exit_status=cmd_result[0])
             libvirt.check_exit_status(result, True)
-            libvirt.check_result(result, [error_msg])
+            libvirt.check_result(result, error_msg)
         return hpt_order
 
     def check_hp_in_vm(session, page_size):
@@ -228,10 +228,10 @@ def run(test, params, env):
 
         # Test on non-ppc64le hosts
         else:
-            set_hpt(vmxml, attrs=hpt_attrs, sync=False)
+            set_hpt(vmxml, sync=False, **hpt_attrs)
             result = virsh.define(vmxml.xml)
             libvirt.check_exit_status(result, status_error)
-            libvirt.check_result(result, [error_msg])
+            libvirt.check_result(result, error_msg)
 
     finally:
         bk_xml.sync()
