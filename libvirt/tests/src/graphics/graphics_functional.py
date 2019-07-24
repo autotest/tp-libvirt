@@ -1150,6 +1150,9 @@ username=root
         rv_start.start()
         rv_start.join(3)
 
+        # wait for remote-viewer to connect guest
+        time.sleep(120)
+
         # stop remote-viewer command
         utils_misc.kill_process_by_pattern("remote-viewer")
 
