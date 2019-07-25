@@ -45,6 +45,18 @@ def run(test, params, env):
     checkpoint = params.get('checkpoint', '')
     bk_list = ['vnc_autoport', 'vnc_encrypt', 'vnc_encrypt_warning']
     error_list = []
+    # For construct rhv-upload option in v2v cmd
+    output_method = params.get("output_method")
+    rhv_upload_opts = params.get("rhv_upload_opts")
+    storage_name = params.get('storage_name')
+    # for get ca.crt file from ovirt engine
+    rhv_passwd = params.get("rhv_upload_passwd")
+    rhv_passwd_file = params.get("rhv_upload_passwd_file")
+    ovirt_engine_passwd = params.get("ovirt_engine_password")
+    ovirt_hostname = params.get("ovirt_engine_url").split(
+        '/')[2] if params.get("ovirt_engine_url") else None
+    ovirt_ca_file_path = params.get("ovirt_ca_file_path")
+    local_ca_file_path = params.get("local_ca_file_path")
 
     def log_fail(msg):
         """
@@ -216,7 +228,10 @@ def run(test, params, env):
             'storage':  params.get('output_storage', 'default'),
             'network':  params.get('network'),
             'bridge':   params.get('bridge'),
-            'target':   params.get('target')
+            'target':   params.get('target'),
+            'output_method': output_method,
+            'storage_name': storage_name,
+            'rhv_upload_opts': rhv_upload_opts
         }
 
         bk_xml = None
@@ -233,6 +248,11 @@ def run(test, params, env):
 
         # Build rhev related options
         if output_mode == 'rhev':
+            # create different sasl_user name for different job
+            params.update({'sasl_user': params.get("sasl_user") +
+                           utils_misc.generate_random_string(3)})
+            logging.info('sals user name is %s' % params.get("sasl_user"))
+
             # Create SASL user on the ovirt host
             user_pwd = "[['%s', '%s']]" % (params.get("sasl_user"),
                                            params.get("sasl_pwd"))
@@ -241,6 +261,15 @@ def run(test, params, env):
             v2v_sasl.server_user = params.get('remote_user')
             v2v_sasl.server_pwd = params.get('remote_pwd')
             v2v_sasl.setup(remote=True)
+            if output_method == 'rhv_upload':
+                # Create password file for '-o rhv_upload' to connect to ovirt
+                with open(rhv_passwd_file, 'w') as f:
+                    f.write(rhv_passwd)
+                # Copy ca file from ovirt to local
+                remote.scp_from_remote(ovirt_hostname, 22, 'root',
+                                       ovirt_engine_passwd,
+                                       ovirt_ca_file_path,
+                                       local_ca_file_path)
 
         # Create libvirt dir pool
         if output_mode == 'libvirt':
@@ -417,6 +446,8 @@ def run(test, params, env):
             params['main_vm'] = new_vm_name
         check_result(v2v_result, status_error)
     finally:
+        # Cleanup constant files
+        utils_v2v.cleanup_constant_files(params)
         process.run('ssh-agent -k')
         if checkpoint == 'vdsm':
             logging.info('Stop vdsmd')
