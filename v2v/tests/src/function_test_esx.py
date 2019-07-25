@@ -10,6 +10,7 @@ from virttest import utils_package
 from virttest import utils_sasl
 from virttest import utils_v2v
 from virttest import virsh
+from virttest import remote
 from virttest.utils_test import libvirt
 
 from provider.v2v_vmcheck_helper import VMChecker
@@ -48,6 +49,18 @@ def run(test, params, env):
     vddk_thumbprint = params.get('vddk_thumbprint')
     src_uri_type = params.get('src_uri_type')
     esxi_password = params.get('esxi_password')
+    # For construct rhv-upload option in v2v cmd
+    output_method = params.get("output_method")
+    rhv_upload_opts = params.get("rhv_upload_opts")
+    storage_name = params.get('storage_name')
+    # for get ca.crt file from ovirt engine
+    rhv_passwd = params.get("rhv_upload_passwd")
+    rhv_passwd_file = params.get("rhv_upload_passwd_file")
+    ovirt_engine_passwd = params.get("ovirt_engine_password")
+    ovirt_hostname = params.get("ovirt_engine_url").split(
+        '/')[2] if params.get("ovirt_engine_url") else None
+    ovirt_ca_file_path = params.get("ovirt_ca_file_path")
+    local_ca_file_path = params.get("local_ca_file_path")
 
     def log_fail(msg):
         """
@@ -211,7 +224,10 @@ def run(test, params, env):
             'vddk_libdir_src': vddk_libdir_src,
             'src_uri_type': src_uri_type,
             'esxi_password': esxi_password,
-            'esxi_host': esxi_host
+            'esxi_host': esxi_host,
+            'output_method': output_method,
+            'storage_name': storage_name,
+            'rhv_upload_opts': rhv_upload_opts
         }
 
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
@@ -235,6 +251,11 @@ def run(test, params, env):
 
         # Create SASL user on the ovirt host
         if output_mode == 'rhev':
+            # create different sasl_user name for different job
+            params.update({'sasl_user': params.get("sasl_user") +
+                           utils_misc.generate_random_string(3)})
+            logging.info('sals user name is %s' % params.get("sasl_user"))
+
             user_pwd = "[['%s', '%s']]" % (params.get("sasl_user"),
                                            params.get("sasl_pwd"))
             v2v_sasl = utils_sasl.SASL(sasl_user_pwd=user_pwd)
@@ -242,6 +263,15 @@ def run(test, params, env):
             v2v_sasl.server_user = params.get('remote_user')
             v2v_sasl.server_pwd = params.get('remote_pwd')
             v2v_sasl.setup(remote=True)
+            if output_method == 'rhv_upload':
+                # Create password file for '-o rhv_upload' to connect to ovirt
+                with open(rhv_passwd_file, 'w') as f:
+                    f.write(rhv_passwd)
+                # Copy ca file from ovirt to local
+                remote.scp_from_remote(ovirt_hostname, 22, 'root',
+                                       ovirt_engine_passwd,
+                                       ovirt_ca_file_path,
+                                       local_ca_file_path)
 
         # Create libvirt dir pool
         if output_mode == 'libvirt':
