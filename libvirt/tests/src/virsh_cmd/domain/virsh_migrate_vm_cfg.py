@@ -361,14 +361,14 @@ def run(test, params, env):
                     logging.error("Src vm should not exist after offline migration"
                                   " with --undefinesource")
                     logging.debug("Src vm state is %s" % vm.state())
-            elif not obj_migration.check_vm_state(vm.name, src_vm_status, uri=vm.connect_uri):
+            elif not libvirt.check_vm_state(vm.name, src_vm_status, uri=vm.connect_uri):
                 result_check_pass = False
                 logging.error("Src vm should be %s after offline migration" % src_vm_status)
                 logging.debug("Src vm state is %s" % vm.state())
 
         if live_migration:
             if not undefinesource and src_vm_cfg == "persistent":
-                if not obj_migration.check_vm_state(vm.name, "shut off", uri=vm.connect_uri):
+                if not libvirt.check_vm_state(vm.name, "shut off", uri=vm.connect_uri):
                     result_check_pass = False
                     logging.error("Src vm should be shutoff after live migration")
                     logging.debug("Src vm state is %s" % vm.state())
@@ -400,7 +400,7 @@ def run(test, params, env):
         # Check dst vm status after migration: running, shutoff, etc
         logging.debug("Check vm status on target after migration")
         if live_migration:
-            if not obj_migration.check_vm_state(vm.name, src_vm_status, uri=vm.connect_uri):
+            if not libvirt.check_vm_state(vm.name, src_vm_status, uri=vm.connect_uri):
                 result_check_pass = False
                 logging.error("Dst vm should be %s after live migration", src_vm_status)
         elif vm.is_alive():
@@ -503,7 +503,7 @@ def run(test, params, env):
                 time.sleep(10)
             # Destroy vm and check vm state should be shutoff. BZ#1076354
             vm.destroy()
-            if not obj_migration.check_vm_state(vm.name, "shut off", uri=vm.connect_uri):
+            if not libvirt.check_vm_state(vm.name, "shut off", uri=vm.connect_uri):
                 result_check_pass = False
                 logging.error("Dst vm with name %s should exist and be shutoff", vm.name)
         elif vm.is_persistent():

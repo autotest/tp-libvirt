@@ -413,8 +413,8 @@ def run(test, params, env):
         logging.debug("Command output: %s", res)
 
         if not utils_misc.wait_for(
-           lambda: migration_test.check_vm_state(vm_name, "paused",
-                                                 "post-copy"), 10):
+           lambda: libvirt.check_vm_state(vm_name, "paused",
+                                          "post-copy"), 10):
             test.fail("vm status is expected to 'paused (post-copy)'")
 
     def check_domjobinfo_output(option="", is_mig_compelete=False):
@@ -591,8 +591,8 @@ def run(test, params, env):
         cmd = 'pkill -9 {}'.format(os.path.basename(emulator.path))
         runner_on_target.run(cmd)
         if not utils_misc.wait_for(
-           lambda: migration_test.check_vm_state(vm_name, "paused",
-                                                 "post-copy failed"), 60):
+           lambda: libvirt.check_vm_state(vm_name, "paused",
+                                          "post-copy failed"), 60):
             test.fail("vm status is expected to 'paused (post-copy failed)'")
 
     def drop_network_connection(block_time):
