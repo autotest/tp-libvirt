@@ -194,7 +194,7 @@ def set_blkio_parameter(test, params, cgstop):
     device_weights = params.get("blkio_device_weights")
     options = params.get("options")
 
-    result = virsh.blkiotune(vm_name, weight, device_weights, options)
+    result = virsh.blkiotune(vm_name, weight, device_weights, options=options)
     status = result.exit_status
 
     # Check status_error
