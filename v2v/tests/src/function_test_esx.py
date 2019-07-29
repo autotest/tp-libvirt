@@ -180,7 +180,7 @@ def run(test, params, env):
             logging.info('Checking common checkpoints for v2v')
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
-            if checkpoint not in ['GPO_AV', 'ovmf']:
+            if checkpoint != 'GPO_AV':
                 ret = vmchecker.run()
                 if len(ret) == 0:
                     logging.info("All common checkpoints passed")
@@ -277,8 +277,6 @@ def run(test, params, env):
         if output_mode == 'libvirt':
             pvt.pre_pool(pool_name, pool_type, pool_target, '')
 
-        if checkpoint == 'ovmf':
-            utils_package.package_install('OVMF')
         if checkpoint == 'root_ask':
             v2v_params['v2v_opts'] += ' --root ask'
             v2v_params['custom_inputs'] = params.get('choice', '2')
