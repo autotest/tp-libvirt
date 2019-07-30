@@ -141,9 +141,6 @@ def run(test, params, env):
                                               src_vol_name, src_pool_name))
             threads.append(create_t)
 
-        for t in threads:
-            t.start()
-
         # Run virsh.vol_xxx when volume is creating
         vol_status = params.get("vol_status")
         operate_vol = ""
@@ -186,20 +183,20 @@ def run(test, params, env):
             operation_t = threading.Thread(target=worker,
                                            args=(virsh.vol_download, True,
                                                  operate_vol, updown_load_f, src_pool_name))
-        threads.append(operation_t)
 
         is_started = False
-        while True:
-            if threading.active_count != 0 and pv.volume_exists(operate_vol):
+        for t in threads:
+            t.start()
+        while threading.active_count() > 1:
+            if pv.volume_exists(operate_vol):
                 operation_t.start()
                 is_started = True
                 break
-
         if not is_started:
             test.cancel("The creation of volume completed already")
-
         for t in threads:
             t.join()
+        operation_t.join()
 
         # Print current volumes for debugging
         logging.debug("Current volumes:%s", pv.list_volumes())
