@@ -1004,7 +1004,7 @@ def run(test, params, env):
             remote_vm_obj = utils_test.RemoteVMManager(cmd_parms)
             vm_ip = vm.get_address()
             vm_pwd = params.get("password")
-            remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd)
+            remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd, timeout=60)
             cmd_result = remote_vm_obj.run_command(vm_ip, cmd_run_in_remote_guest_1)
             remote_vm_obj.run_command(vm_ip, cmd_run_in_remote_guest % results_stdout_52lts(cmd_result).strip())
             logging.debug("Sending message is done")
