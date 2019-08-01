@@ -1,8 +1,8 @@
 from virttest import remote
-from virttest import libvirt_vm
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import utils_libvirtd
+from virttest import ssh_key
 
 
 def run(test, params, env):
@@ -33,14 +33,6 @@ def run(test, params, env):
     pre_operation = params.get("vs_pre_operation", "")
     status_error = params.get("status_error", "no")
 
-    # get the params for remote test
-    remote_ip = params.get("remote_ip", "ENTER.YOUR.REMOTE.IP")
-    remote_pwd = params.get("remote_pwd", "ENTER.YOUR.REMOTE.PASSWORD")
-    local_ip = params.get("local_ip", "ENTER.YOUR.LOCAL.IP")
-    if pre_operation == "remote" and (remote_ip.count("ENTER.YOUR.") or
-                                      local_ip.count("ENTER.YOUR.")):
-        test.cancel("Remote test parameters not configured")
-
     try:
         # prepare before start vm
         if libvirtd_state == "on":
@@ -59,16 +51,19 @@ def run(test, params, env):
         # do the start operation
         try:
             if pre_operation == "remote":
-                # get remote session
-                session = remote.wait_for_login("ssh", remote_ip, "22", "root",
-                                                remote_pwd, "#")
-                # get uri of local
-                uri = libvirt_vm.complete_uri(local_ip)
+                # get the params for remote test
+                remote_ip = params.get("remote_ip", "ENTER.YOUR.REMOTE.IP")
+                remote_user = params.get("remote_user", "root")
+                remote_pwd = params.get("remote_pwd", "ENTER.YOUR.REMOTE.PASSWORD")
+                if pre_operation == "remote" and remote_ip.count("ENTER.YOUR."):
+                    test.cancel("Remote test parameters not configured")
 
-                cmd = "virsh -c %s start %s" % (uri, vm_ref)
-                status, output = session.cmd_status_output(cmd)
-                if status:
-                    test.error(vm_ref, output)
+                ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
+                remote_uri = "qemu+ssh://%s/system" % remote_ip
+                cmd_result = virsh.start(vm_ref, ignore_status=True, debug=True,
+                                         uri=remote_uri)
+                if cmd_result.exit_status:
+                    test.fail("Start vm failed.\n Detail: %s" % cmd_result)
             elif opt.count("console"):
                 # With --console, start command will print the
                 # dmesg of guest in starting and turn into the
@@ -141,7 +136,7 @@ def run(test, params, env):
                               "but it is restored from a"
                               " managedsave.")
             else:
-                if status_error == "no" and not vm.is_alive():
+                if status_error == "no" and not vm.is_alive() and pre_operation != "remote":
                     test.fail("VM was started but it is not alive.")
 
         except remote.LoginError as detail:
@@ -153,6 +148,8 @@ def run(test, params, env):
 
         elif pre_operation == "rename":
             libvirt_xml.VMXML.vm_rename(vm, backup_name)
+        elif pre_operation == "remote":
+            virsh.destroy(vm_ref, ignore_status=False, debug=True, uri=remote_uri)
 
         if vm and vm.is_paused():
             vm.resume()
