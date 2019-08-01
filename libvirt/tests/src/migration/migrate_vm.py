@@ -1855,7 +1855,8 @@ def run(test, params, env):
         # and nbd-server, but need create a specific pool.
         no_create_pool = test_dict.get("no_create_pool", "no")
         try:
-            if (utils_misc.is_qemu_capability_supported("drive-mirror") and
+            if ((utils_misc.is_qemu_capability_supported("drive-mirror") or
+                 libvirt_version.version_compare(5, 3, 0)) and
                     utils_misc.is_qemu_capability_supported("nbd-server")):
                 support_precreation = True
         except exceptions.TestError as e:
