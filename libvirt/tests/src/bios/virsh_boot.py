@@ -313,6 +313,8 @@ def apply_boot_options(vmxml, params):
         logging.debug("Enable bios serial console in OS XML")
         dict_os_attrs.update({"bios_useserial": "yes"})
         dict_os_attrs.update({"bios_reboot_timeout": "0"})
+        dict_os_attrs.update({"bootmenu_enable": "yes"})
+        dict_os_attrs.update({"bootmenu_timeout": "3000"})
 
     # Set attributes of nvram of VMOSXML
     if with_nvram:
