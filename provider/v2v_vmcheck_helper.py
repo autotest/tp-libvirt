@@ -511,7 +511,7 @@ class VMChecker(object):
                     genid_list)
                 # genid will not be in vmxml
                 if re.search(r'genid', self.vmxml):
-                    self.log_err('Unexpected genid in xml:\n%s' % self.vmxml)
+                    self.log_err('Unexpected genid in xml')
                 return
 
             genid_str = _compose_genid(*genid_list)
@@ -521,4 +521,4 @@ class VMChecker(object):
                 self.log_err('Not find genid or genid is incorrect')
         elif has_genid == 'no':
             if re.search(r'genid', self.vmxml):
-                self.log_err('Unexpected genid in xml:\n%s' % self.vmxml)
+                self.log_err('Unexpected genid in xml')
