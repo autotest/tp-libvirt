@@ -421,12 +421,13 @@ def run(test, params, env):
         dest_jobinfo = remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
 
         if not is_mig_compelete:
-            search_jobinfo_output(src_jobinfo.stdout, expect_dict["src_notdone"],
-                                  postcopy_req=pc_opt)
+            search_jobinfo_output(src_jobinfo.stdout, expect_dict["src_notdone"])
             search_jobinfo_output(dest_jobinfo.stderr, expect_dict["dest_notdone"])
         else:
-            search_jobinfo_output(src_jobinfo.stdout, expect_dict["src_done"])
-            search_jobinfo_output(dest_jobinfo.stdout, expect_dict["dest_done"])
+            search_jobinfo_output(src_jobinfo.stdout, expect_dict["src_done"],
+                                  postcopy_req=pc_opt)
+            search_jobinfo_output(dest_jobinfo.stdout, expect_dict["dest_done"],
+                                  postcopy_req=pc_opt)
 
     def check_maxdowntime(params):
         """
