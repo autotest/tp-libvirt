@@ -159,6 +159,21 @@ def run(test, params, env):
         if 'resume=/dev/vd' not in content:
             log_fail('Content of /proc/cmdline is not correct')
 
+    def check_rhev_file_exist(vmcheck):
+        """
+        Check if rhev files exist
+        """
+        file_path = {
+            'rhev-apt.exe': r'C:\rhev-apt.exe',
+            'rhsrvany.exe': r'"C:\Program Files\Guestfs\Firstboot\rhsrvany.exe"'
+        }
+        for key in file_path:
+            status = vmcheck.session.cmd_status('dir %s' % file_path[key])
+            if status == 0:
+                logging.info('%s exists' % key)
+            else:
+                log_fail('%s does not exist after convert to rhv' % key)
+
     def check_result(result, status_error):
         """
         Check virt-v2v command result
@@ -196,6 +211,8 @@ def run(test, params, env):
                 check_device_map(vmchecker.checker)
             if checkpoint == 'resume_swap':
                 check_resume_swap(vmchecker.checker)
+            if checkpoint == 'rhev_file':
+                check_rhev_file_exist(vmchecker.checker)
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
         log_check = utils_v2v.check_log(params, output)
