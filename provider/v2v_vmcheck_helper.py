@@ -403,9 +403,9 @@ class VMChecker(object):
         check_drivers = expect_drivers[:]
         for check_times in range(5):
             logging.info('Check drivers for the %dth time', check_times + 1)
-            win_dirves = self.checker.get_driver_info()
+            win_dirvers = self.checker.get_driver_info()
             for driver in expect_drivers:
-                if driver in win_dirves:
+                if driver in win_dirvers:
                     logging.info("Driver %s found", driver)
                     check_drivers.remove(driver)
                 else:
