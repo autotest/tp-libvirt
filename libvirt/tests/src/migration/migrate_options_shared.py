@@ -19,8 +19,10 @@ from virttest import defaults
 from virttest import data_dir
 from virttest import virsh
 from virttest import libvirt_version
+from virttest import libvirt_remote
 from virttest import remote
 from virttest import utils_package
+from virttest import utils_iptables
 from virttest import xml_utils
 
 from virttest.libvirt_xml import vm_xml
@@ -540,6 +542,29 @@ def run(test, params, env):
                                                  "post-copy failed"), 60):
             test.fail("vm status is expected to 'paused (post-copy failed)'")
 
+    def drop_network_connetion(block_time):
+        """
+        Drop network connection from target host for a while and then recover it
+
+        :param block_time: The duration(in seconds) of network broken period
+        :raise: test.error if direct rule is not added or removed correctly
+        """
+        logging.debug("Start to drop network")
+
+        firewall_cmd.add_direct_rule(firewall_rule)
+        direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
+        cmdRes = re.findall(firewall_rule, direct_rules)
+        if len(cmdRes) == 0:
+            test.error("Rule '%s' is not added" % firewall_rule)
+
+        logging.debug("Sleep %d seconds" % int(block_time))
+        time.sleep(int(block_time))
+        firewall_cmd.remove_direct_rule(firewall_rule)
+        direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
+        cmdRes = re.findall(firewall_rule, direct_rules)
+        if len(cmdRes):
+            test.error("Rule '%s' is not removed correctly" % firewall_rule)
+
     def do_actions_during_migrate(params):
         """
         The entry point to execute action list during migration
@@ -564,6 +589,8 @@ def run(test, params, env):
                 run_domstats(vm_name)
             elif action == 'killqemutarget':
                 kill_qemu_target()
+            elif action == 'drop_network_connetion':
+                drop_network_connetion(block_time)
             time.sleep(3)
 
     def attach_channel_xml():
@@ -769,7 +796,9 @@ def run(test, params, env):
     contrl_index = params.get("new_contrl_index", None)
     asynch_migration = "yes" == params.get("asynch_migrate", "no")
     grep_str_remote_log = params.get("grep_str_remote_log", "")
+    grep_str_not_in_remote_log = params.get("grep_str_not_in_remote_log", "")
     grep_str_local_log = params.get("grep_str_local_log", "")
+    grep_str_local_log_1 = params.get("grep_str_local_log_1", "")
     disable_verify_peer = "yes" == params.get("disable_verify_peer", "no")
     status_error = "yes" == params.get("status_error", "no")
     stress_in_vm = "yes" == params.get("stress_in_vm", "no")
@@ -781,6 +810,8 @@ def run(test, params, env):
                  'server_pwd': server_pwd}
     hpt_resize = params.get("hpt_resize", None)
     htm_state = params.get("htm_state", None)
+    block_time = params.get("block_time", 30)
+    firewall_rule = "ipv4 filter INPUT 0 --source {} -j DROP".format(server_ip)
 
     # For pty channel test
     add_channel = "yes" == params.get("add_channel", "no")
@@ -849,6 +880,7 @@ def run(test, params, env):
                                                username=server_user,
                                                password=server_pwd)
 
+        firewall_cmd = utils_iptables.Firewall_cmd()
         # Change the configuration files if needed before starting guest
         # For qemu.conf
         if extra.count("--tls"):
@@ -861,17 +893,31 @@ def run(test, params, env):
 
         # Setup qemu.conf
         qemu_conf_dict = params.get("qemu_conf_dict")
+        qemu_conf_dest_dict = params.get("qemu_conf_dest_dict")
+        update_remote = not bool(qemu_conf_dest_dict)
         if qemu_conf_dict:
             qemu_conf = update_config_file('qemu',
                                            qemu_conf_dict,
+                                           remote_host=update_remote,
                                            params=params)
-
+            # Setup qemu.conf on target only
+            if qemu_conf_dest_dict:
+                qemuDestConf = libvirt_remote.update_remote_file(params,
+                                                                 qemu_conf_dest_dict,
+                                                                 '/etc/libvirt/qemu.conf')
         # Setup libvirtd
         libvirtd_conf_dict = params.get("libvirtd_conf_dict")
+        libvirtd_conf_dest_dict = params.get("libvirtd_conf_dest_dict")
+        update_remote = not bool(libvirtd_conf_dest_dict)
         if libvirtd_conf_dict:
             libvirtd_conf = update_config_file('libvirtd',
                                                libvirtd_conf_dict,
+                                               remote_host=update_remote,
                                                params=params)
+            # Setup libvirtd on dest
+            if libvirtd_conf_dest_dict:
+                libvirtDestConf = libvirt_remote.update_remote_file(params,
+                                                                    libvirtd_conf_dest_dict)
 
         # Prepare required guest xml before starting guest
         if contrl_index:
@@ -1023,14 +1069,15 @@ def run(test, params, env):
             if check_domjobinfo_results:
                 check_domjobinfo_output(option=opts, is_mig_compelete=True)
 
-        if grep_str_local_log:
-            cmd = "grep -E '%s' %s" % (grep_str_local_log, log_file)
-            cmdRes = process.run(cmd, shell=True, ignore_status=True)
-            if cmdRes.exit_status:
-                test.fail(results_stderr_52lts(cmdRes).strip())
+        for grep_str in [grep_str_local_log, grep_str_local_log_1]:
+            if grep_str:
+                libvirt.check_logfile(grep_str, log_file)
         if grep_str_remote_log:
-            cmd = "grep -E '%s' %s" % (grep_str_remote_log, log_file)
-            remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
+            libvirt.check_logfile(grep_str_remote_log, log_file, True, cmd_parms,
+                                  runner_on_target)
+        if grep_str_not_in_remote_log:
+            libvirt.check_logfile(grep_str_not_in_remote_log, log_file, False,
+                                  cmd_parms, runner_on_target)
 
         if xml_check_after_mig:
             if not remote_virsh_session:
@@ -1078,6 +1125,12 @@ def run(test, params, env):
     finally:
         logging.debug("Recover test environment")
         try:
+            # Remove direct rule if needed
+            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
+            cmdRes = re.findall(firewall_rule, direct_rules)
+            if len(cmdRes):
+                firewall_cmd.remove_direct_rule(firewall_rule)
+
             # Clean VM on destination
             vm.connect_uri = dest_uri
             cleanup_dest(vm)
