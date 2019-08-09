@@ -202,7 +202,7 @@ def run(test, params, env):
         if disk_src_protocol == 'iscsi':
             utlv.setup_or_cleanup_iscsi(is_setup=False)
         elif disk_src_protocol == 'gluster':
-            utlv.setup_or_cleanup_gluster(False, vol_name, brick_path)
+            utlv.setup_or_cleanup_gluster(False, brick_path=brick_path, **params)
             libvirtd.restart()
         elif disk_src_protocol == 'netfs':
             utlv.setup_or_cleanup_nfs(is_setup=False,

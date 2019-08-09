@@ -596,7 +596,7 @@ def run(test, params, env):
             test.fail("Still can find snapshot metadata")
 
         if disk_src_protocol == 'gluster':
-            libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
+            libvirt.setup_or_cleanup_gluster(False, brick_path=brick_path, **params)
             libvirtd.restart()
 
         if disk_src_protocol == 'iscsi':

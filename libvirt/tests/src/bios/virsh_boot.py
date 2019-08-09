@@ -241,8 +241,9 @@ def setup_test_env(params, test):
             not utils_package.package_install('seabios-bin'):
         test.error("seabios package install failed")
 
-    if source_protocol == "gluster" and \
-            not utils_package.package_install('glusterfs-server'):
+    if (source_protocol == "gluster"
+            and not params.get("gluster_server_ip")
+            and not utils_package.package_install('glusterfs-server')):
         test.error("glusterfs-server install failed")
 
     if source_protocol == "rbd":
@@ -424,7 +425,7 @@ def prepare_gluster_disk(blk_source, test, **kwargs):
     brick_path = kwargs.get("brick_path")
     disk_img = kwargs.get("disk_img")
     disk_format = kwargs.get("disk_format")
-    host_ip = utlv.setup_or_cleanup_gluster(True, vol_name, brick_path)
+    host_ip = utlv.setup_or_cleanup_gluster(True, **kwargs)
     logging.debug("host ip: %s ", host_ip)
     # Copy the domain disk image to gluster disk path
     image_info = utils_misc.get_image_info(blk_source)
@@ -515,11 +516,7 @@ def set_domain_disk(vmxml, blk_source, params, test):
 
     elif source_protocol == 'gluster':
         if disk_type == 'network':
-            kwargs = {'vol_name': vol_name,
-                      'brick_path': brick_path,
-                      'disk_img': disk_img,
-                      'disk_format': disk_format}
-            host_ip = prepare_gluster_disk(blk_source, test, **kwargs)
+            host_ip = prepare_gluster_disk(blk_source, test, brick_path=brick_path, **params)
             if host_ip is None:
                 test.error("Failed to create glusterfs disk")
             else:
@@ -701,7 +698,7 @@ def run(test, params, env):
         vmxml_backup.sync(options="--nvram")
         if cleanup_gluster:
             process.run("umount /mnt", ignore_status=True, shell=True)
-            utlv.setup_or_cleanup_gluster(False, vol_name, brick_path)
+            utlv.setup_or_cleanup_gluster(False, brick_path=brick_path, **params)
         if cleanup_iscsi:
             utlv.setup_or_cleanup_iscsi(False)
         if cleanup_iso_file:

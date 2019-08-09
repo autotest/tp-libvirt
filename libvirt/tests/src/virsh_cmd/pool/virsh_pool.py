@@ -66,7 +66,7 @@ def run(test, params, env):
     poolxml = os.path.join(data_dir.get_tmp_dir(), "pool.xml.tmp")
     if os.path.dirname(pool_target) is "":
         pool_target = os.path.join(data_dir.get_tmp_dir(), pool_target)
-    vol_name = params.get("vol_name", "temp_vol_1")
+    vol_name = params.get("volume_name", "temp_vol_1")
     # Use pool name as VG name
     status_error = "yes" == params.get("status_error", "no")
     vol_path = os.path.join(pool_target, vol_name)
@@ -172,17 +172,18 @@ def run(test, params, env):
 
     # Run Testcase
     pvt = utlv.PoolVolumeTest(test, params)
-    emulated_image = "emulated-image"
     kwargs = {'image_size': '1G', 'pre_disk_vol': ['100M'],
               'source_name': source_name, 'source_path': source_path,
               'source_format': source_format, 'persistent': True,
-              'ip_protocal': ip_protocal}
+              'ip_protocal': ip_protocal, 'emulated_image': "emulated-image",
+              'pool_target': pool_target}
+    params.update(kwargs)
+
     try:
         _pool = libvirt_storage.StoragePool()
         # Step (1)
         # Pool define
-        pvt.pre_pool(pool_name, pool_type, pool_target, emulated_image,
-                     **kwargs)
+        pvt.pre_pool(**params)
 
         # Step (2)
         # Pool list
@@ -394,8 +395,7 @@ def run(test, params, env):
     finally:
         # Clean up
         try:
-            pvt.cleanup_pool(pool_name, pool_type, pool_target,
-                             emulated_image, **kwargs)
+            pvt.cleanup_pool(**params)
             utlv.setup_or_cleanup_iscsi(False)
         except exceptions.TestFail as detail:
             logging.error(str(detail))
