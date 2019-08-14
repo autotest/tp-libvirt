@@ -83,6 +83,8 @@ def run(test, params, env):
         # Get current net_stat_dict
         current_state = virsh_instance.net_state_dict()
         logging.debug("Current network(s) state: %s", current_state)
+        if 'default' not in current_state:
+            test.fail('Network "default" cannot be found')
         is_default_active = current_state['default']['active']
 
         # Check status_error
