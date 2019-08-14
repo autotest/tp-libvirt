@@ -541,7 +541,8 @@ def run(test, params, env):
         if need_mkswap:
             vm.cleanup_swap()
         if with_stress:
-            bt.join(ignore_status=True)
+            if bt:
+                bt.join(ignore_status=True)
         vm.destroy()
         backup_xml.sync()
 
