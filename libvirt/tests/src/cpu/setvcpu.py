@@ -152,6 +152,13 @@ def run(test, params, env):
         vcpus_xml = vm_xml.VMVCPUSXML()
         vcpus_xml.vcpu = vcpu_list
         vmxml.vcpus = vcpus_xml
+
+        # Remove cpu topology to avoid that it doesn't match vcpu count
+        if vmxml.get_cpu_topology():
+            new_cpu = vmxml.cpu
+            del new_cpu.topology
+            vmxml.cpu = new_cpu
+
         vmxml.sync()
         logging.debug(vmxml)
 
