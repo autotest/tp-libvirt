@@ -9,13 +9,15 @@ from avocado.utils import process
 from virttest import remote
 from virttest import virsh
 from virttest import utils_package
-from virttest.libvirt_xml import vm_xml
-from virttest.libvirt_xml.devices.disk import Disk
-from virttest.utils_test import libvirt as utlv
 from virttest import utils_misc
 from virttest import data_dir
 from virttest import ceph
+from virttest import gluster
+
+from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices.controller import Controller
+from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.devices.disk import Disk
 
 from provider import libvirt_version
 
@@ -425,7 +427,7 @@ def prepare_gluster_disk(blk_source, test, **kwargs):
     brick_path = kwargs.get("brick_path")
     disk_img = kwargs.get("disk_img")
     disk_format = kwargs.get("disk_format")
-    host_ip = utlv.setup_or_cleanup_gluster(True, **kwargs)
+    host_ip = gluster.setup_or_cleanup_gluster(True, **kwargs)
     logging.debug("host ip: %s ", host_ip)
     # Copy the domain disk image to gluster disk path
     image_info = utils_misc.get_image_info(blk_source)
@@ -698,7 +700,7 @@ def run(test, params, env):
         vmxml_backup.sync(options="--nvram")
         if cleanup_gluster:
             process.run("umount /mnt", ignore_status=True, shell=True)
-            utlv.setup_or_cleanup_gluster(False, brick_path=brick_path, **params)
+            gluster.setup_or_cleanup_gluster(False, brick_path=brick_path, **params)
         if cleanup_iscsi:
             utlv.setup_or_cleanup_iscsi(False)
         if cleanup_iso_file:
