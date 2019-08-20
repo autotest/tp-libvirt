@@ -717,7 +717,7 @@ def run(test, params, env):
         elif serial_type in ['pipe']:
             return 'server'
 
-    serial_type = params.get('serial_type', 'pty')
+    serial_type = params.get('serial_dev_type', 'pty')
     sources_str = params.get('serial_sources', '')
     username = params.get('username')
     password = params.get('password')
