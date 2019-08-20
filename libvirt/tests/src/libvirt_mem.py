@@ -15,7 +15,7 @@ from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import utils_config
 from virttest import utils_numeric
-from virttest import utils_hotplug
+from virttest import utils_mem
 from virttest import virt_vm
 from virttest import data_dir
 from virttest.utils_test import libvirt
@@ -443,9 +443,9 @@ def run(test, params, env):
         # To attach the memory device.
         if add_mem_device and not hot_plug:
             at_times = int(params.get("attach_times", 1))
-            dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size, mem_addr,
-                                                   tg_sizeunit, pg_unit, tg_node,
-                                                   node_mask, mem_model)
+            dev_xml = utils_mem.create_mem_xml(tg_size, pg_size, mem_addr,
+                                               tg_sizeunit, pg_unit, tg_node,
+                                               node_mask, mem_model)
             randvar = 0
             if rand_reboot:
                 rand_value = random.randint(15, 25)
@@ -509,10 +509,10 @@ def run(test, params, env):
             process.run('ps -ef|grep qemu', shell=True, verbose=True)
             session = vm.wait_for_login()
             original_mem = vm.get_totalmem_sys()
-            dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
-                                                   mem_addr, tg_sizeunit,
-                                                   pg_unit, tg_node,
-                                                   node_mask, mem_model)
+            dev_xml = utils_mem.create_mem_xml(tg_size, pg_size,
+                                               mem_addr, tg_sizeunit,
+                                               pg_unit, tg_node,
+                                               node_mask, mem_model)
             add_device(dev_xml, True)
             mem_after = vm.get_totalmem_sys()
             params['delta'] = mem_after - original_mem
@@ -575,10 +575,10 @@ def run(test, params, env):
         unplug_failed_with_known_error = False
         if detach_device:
             if not dev_xml:
-                dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
-                                                       mem_addr, tg_sizeunit,
-                                                       pg_unit, tg_node,
-                                                       node_mask, mem_model)
+                dev_xml = utils_mem.create_mem_xml(tg_size, pg_size,
+                                                   mem_addr, tg_sizeunit,
+                                                   pg_unit, tg_node,
+                                                   node_mask, mem_model)
             for x in xrange(at_times):
                 ret = virsh.detach_device(vm_name, dev_xml.xml,
                                           flagstr=attach_option)
