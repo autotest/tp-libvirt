@@ -378,6 +378,7 @@ def run(test, params, env):
     align_to_value = int(params.get("align_to_value", "65536"))
     hot_reboot = "yes" == params.get("hot_reboot", "no")
     rand_reboot = "yes" == params.get("rand_reboot", "no")
+
     guest_known_unplug_errors = []
     guest_known_unplug_errors.append(params.get("guest_known_unplug_errors"))
     host_known_unplug_errors = []
@@ -390,6 +391,7 @@ def run(test, params, env):
     tg_node = params.get("tg_node", 0)
     pg_size = params.get("page_size")
     pg_unit = params.get("page_unit", "KiB")
+    diff_tg_size = eval(params.get("diff_tg_size", None))
     node_mask = params.get("node_mask", "0")
     mem_addr = ast.literal_eval(params.get("memory_addr", "{}"))
     huge_pages = [ast.literal_eval(x)
@@ -443,19 +445,26 @@ def run(test, params, env):
         # To attach the memory device.
         if add_mem_device and not hot_plug:
             at_times = int(params.get("attach_times", 1))
-            dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size, mem_addr,
-                                                   tg_sizeunit, pg_unit, tg_node,
-                                                   node_mask, mem_model)
+            if diff_tg_size is None:
+                dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
+                                                       mem_addr, tg_sizeunit,
+                                                       pg_unit, tg_node,
+                                                       node_mask, mem_model)
             randvar = 0
             if rand_reboot:
                 rand_value = random.randint(15, 25)
                 logging.debug("reboots at %s", rand_value)
-            for x in xrange(at_times):
+            for dimmno in xrange(at_times):
                 # If any error excepted, command error status should be
                 # checked in the last time
+                if diff_tg_size is not None:
+                    dev_xml = utils_hotplug.create_mem_xml(diff_tg_size[dimmno], pg_size,
+                                                           mem_addr, tg_sizeunit,
+                                                           pg_unit, tg_node,
+                                                           node_mask, mem_model)
                 randvar = randvar + 1
-                logging.debug("attaching device count = %s", x)
-                if x == at_times - 1:
+                logging.debug("attaching device count = %s", dimmno)
+                if dimmno == at_times - 1:
                     add_device(dev_xml, attach_device, attach_error)
                 else:
                     add_device(dev_xml, attach_device)
