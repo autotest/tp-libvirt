@@ -92,16 +92,15 @@ def run(test, params, env):
     postcopy_timeout = int(params.get("postcopy_migration_timeout", "180"))
 
     # Params for migrate hosts:
-    migrate_source_host = params.get("migrate_source_host")
-    migrate_dest_host = params.get("migrate_dest_host")
+    server_cn = params.get("server_cn")
+    client_cn = params.get("client_cn")
+    migrate_source_host = client_cn if client_cn else params.get("migrate_source_host")
+    migrate_dest_host = server_cn if server_cn else params.get("migrate_dest_host")
 
     # Params for migrate uri
     transport = params.get("transport", "tls")
     transport_port = params.get("transport_port")
     uri_port = ":%s" % transport_port if transport_port else ''
-    uri_port = ''
-    if transport_port:
-        uri_port = ":%s" % transport_port
     hypervisor_driver = params.get("hypervisor_driver", "qemu")
     hypervisor_mode = params.get("hypervisor_mode", 'system')
     if "virsh_migrate_desturi" not in list(params.keys()):
@@ -128,9 +127,16 @@ def run(test, params, env):
     exception = False
     result_check_pass = True
 
+    # Objects(SSH, TLS and TCP, etc) to be cleaned up in finally
+    objs_list = []
+
+    # VM objects for migration test
+    vms = []
+
     try:
-        # It's used to clean up SSH, TLS and TCP objs later
-        objs_list = []
+        # Get a MigrationTest() Object
+        logging.debug("Get a MigrationTest()  object")
+        obj_migration = libvirt.MigrationTest()
 
         # Setup libvirtd remote connection TLS connection env
         if transport == "tls":
@@ -140,16 +146,19 @@ def run(test, params, env):
             # Add tls_obj to objs_list
             objs_list.append(tls_obj)
 
+        # Enable libvirtd remote connection transport port
+        if transport == 'tls':
+            transport_port = '16514'
+        elif transport == 'tcp':
+            transport_port = '16509'
+        obj_migration.migrate_pre_setup(dest_uri, params, ports=transport_port)
+
         # Back up vm name for recovery in finally
         vm_name_backup = params.get("migrate_main_vm")
 
         # Get a vm object for migration
         logging.debug("Get a vm object for migration")
         vm = env.get_vm(vm_name_backup)
-
-        # Get a MigrationTest() Object
-        logging.debug("Get a MigrationTest()  object")
-        obj_migration = libvirt.MigrationTest()
 
         # Back up vm xml for recovery in finally
         logging.debug("Backup vm xml before migration")
@@ -169,7 +178,7 @@ def run(test, params, env):
                 libvirt.update_vm_disk_driver_cache(vm.name, driver_cache="none")
             else:
                 # TODO:Other storage types
-                logging.error("Other storage type is not supported for now")
+                test.cancel("Other storage type is not supported for now")
                 pass
 
         # Prepare graphic password in vm xml
@@ -280,7 +289,7 @@ def run(test, params, env):
         # Check vm network connectivity by ping before migration
         logging.debug("Check vm network before migration")
         if src_vm_status == "running":
-            obj_migration.ping_vm(vm, test, params)
+            obj_migration.ping_vm(vm, params)
 
         # Get VM uptime before migration
         if src_vm_status == "running":
@@ -298,7 +307,6 @@ def run(test, params, env):
         # Do uni-direction migration.
         # NOTE: vm.connect_uri will be set to dest_uri once migration is complete successfully
         logging.debug("Start to do migration test.")
-        vms = []
         vms.append(vm)
         if postcopy:
             # Monitor the qemu monitor event of "postcopy-active" for postcopy migration
@@ -353,19 +361,19 @@ def run(test, params, env):
                     logging.error("Src vm should not exist after offline migration"
                                   " with --undefinesource")
                     logging.debug("Src vm state is %s" % vm.state())
-            elif not obj_migration.check_vm_state(vm.name, src_vm_status, vm.connect_uri):
+            elif not obj_migration.check_vm_state(vm.name, src_vm_status, uri=vm.connect_uri):
                 result_check_pass = False
                 logging.error("Src vm should be %s after offline migration" % src_vm_status)
                 logging.debug("Src vm state is %s" % vm.state())
 
         if live_migration:
             if not undefinesource and src_vm_cfg == "persistent":
-                if not obj_migration.check_vm_state(vm.name, "shut off", vm.connect_uri):
+                if not obj_migration.check_vm_state(vm.name, "shut off", uri=vm.connect_uri):
                     result_check_pass = False
                     logging.error("Src vm should be shutoff after live migration")
                     logging.debug("Src vm state is %s" % vm.state())
             elif vm.exists():
-                resulst_check_pass = False
+                result_check_pass = False
                 logging.error("Src vm should not exist after live migration")
                 logging.debug("Src vm state is %s" % vm.state())
 
@@ -392,9 +400,11 @@ def run(test, params, env):
         # Check dst vm status after migration: running, shutoff, etc
         logging.debug("Check vm status on target after migration")
         if live_migration:
-            if not obj_migration.check_vm_state(vm.name, src_vm_status, vm.connect_uri):
+            if not obj_migration.check_vm_state(vm.name, src_vm_status, uri=vm.connect_uri):
+                result_check_pass = False
                 logging.error("Dst vm should be %s after live migration", src_vm_status)
         elif vm.is_alive():
+            result_check_pass = False
             logging.error("Dst vm should not be alive after offline migration")
 
         # Print vm active xml after migration
@@ -477,7 +487,7 @@ def run(test, params, env):
 
             # Check dst VM network connectivity after migration
             logging.debug("Check VM network connectivity after migrating")
-            obj_migration.ping_vm(vm, test, params, dest_uri)
+            obj_migration.ping_vm(vm, params, uri=dest_uri)
 
             # Restore vm.connect_uri as it is set to src_uri in ping_vm()
             logging.debug("Restore vm.connect_uri as it is set to src_uri in ping_vm()")
@@ -504,7 +514,7 @@ def run(test, params, env):
     finally:
         logging.debug("Start to clean up env")
         # Clean up vm on dest and src host
-        if vm:
+        for vm in vms:
             cleanup_vm(vm, vm_name=dname, uri=dest_uri)
             cleanup_vm(vm, vm_name=vm_name_backup, uri=src_uri)
 
@@ -513,12 +523,15 @@ def run(test, params, env):
         if vm_xml_backup:
             vm_xml_backup.define()
 
-        # Clean up test env
+        # Clean up SSH, TCP, TLS test env
         if objs_list and len(objs_list) > 0:
             logging.debug("Clean up test env: SSH, TCP, TLS, etc")
             for obj in objs_list:
                 obj.auto_recover = True
                 del obj
+
+        # Disable libvirtd remote connection transport port
+        obj_migration.migrate_pre_setup(dest_uri, params, cleanup=True, ports=transport_port)
 
         # Check test result.
         if not result_check_pass:
