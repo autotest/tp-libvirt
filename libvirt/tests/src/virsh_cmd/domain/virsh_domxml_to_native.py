@@ -6,6 +6,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest.compat_52lts import decode_to_text as to_text
 
 
@@ -98,7 +99,7 @@ def run(test, params, env):
 
         return retlist
 
-    def compare(conv_arg):
+    def compare(conv_arg, params):
         """
         Compare converted information with vm's information.
 
@@ -113,20 +114,13 @@ def run(test, params, env):
         # element when spliting by '\x20', so strip it on the end.
         cmdline = re.sub(r'\^@', ' ', cmdline_tmp).strip(' ')
 
-        # Fedora 19 replaces the /usr/bin/qemu-kvm with the string
-        # "/usr/bin/qemu-system-x86_64 -machine accel=kvm", so let's
-        # do the same if we find "/usr/bin/qemu-kvm" in the incoming
-        # argument list and we find "qemu-system-x86_64 -machine accel=kvm"
-        # in the running guest's cmdline
-        # ubuntu use /usr/bin/kvm as qemu binary
-        qemu_bin = ["/usr/bin/qemu-kvm", "/usr/bin/kvm"]
+        qemu_bin = utils_misc.get_qemu_binary(params)
         arch_bin = ["/usr/bin/qemu-system-x86_64 -machine accel=kvm",
                     "/usr/bin/qemu-system-ppc64 -machine accel=kvm",
                     "qemu-system-ppc64 -enable-kvm"]
         qemu_kvm_bin = ""
-        for each_bin in qemu_bin:
-            if conv_arg.find(each_bin) != -1:
-                qemu_kvm_bin = each_bin
+        if conv_arg.find(qemu_bin) != -1:
+            qemu_kvm_bin = qemu_bin
         if qemu_kvm_bin:
             for arch in arch_bin:
                 if cmdline.find(arch) != -1:
@@ -135,12 +129,11 @@ def run(test, params, env):
             logging.warning("qemu-kvm binary is not identified: '%s'",
                             qemu_kvm_bin)
 
-        # Now prepend the various environment variables that will be in
-        # the conv_arg, but not in the actual command
-        tmp = re.search('LC_ALL.[^\s]\s', conv_arg).group(0) +\
-            re.search('PATH.[^\s]+\s', conv_arg).group(0) +\
-            re.search('QEMU_AUDIO_DRV.[^\s]+\s', conv_arg).group(0)
-        qemu_arg = tmp + cmdline
+        if not qemu_kvm_bin:
+            qemu_kvm_bin = qemu_bin
+        # remove environment variables into consideration
+        qemu_arg = qemu_kvm_bin + cmdline.split(qemu_kvm_bin)[-1]
+        conv_arg = qemu_kvm_bin + conv_arg.split(qemu_kvm_bin)[-1]
 
         conv_arg_lines = buildcmd(conv_arg)
         qemu_arg_lines = buildcmd(qemu_arg)
@@ -202,8 +195,9 @@ def run(test, params, env):
         utils_libvirtd.libvirtd_stop()
 
     # run test case
-    ret = virsh.domxml_to_native(dtn_format, file_xml, extra_param, readonly=readonly,
-                                 ignore_status=True, debug=True)
+    ret = virsh.domxml_to_native(dtn_format, file_xml, extra_param,
+                                 readonly=readonly, ignore_status=True,
+                                 debug=True)
     status = ret.exit_status
     conv_arg = ret.stdout.strip()
 
@@ -222,5 +216,5 @@ def run(test, params, env):
     elif status_error == "no":
         if status != 0:
             test.fail("Run failed with right command")
-        if compare(conv_arg) is not True:
+        if compare(conv_arg, params) is not True:
             test.fail("Test failed!")
