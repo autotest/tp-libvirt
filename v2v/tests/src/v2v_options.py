@@ -22,6 +22,7 @@ from virttest import libvirt_storage
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.compat_52lts import decode_to_text as to_text
+from virttest.compat_52lts import results_stdout_52lts
 
 from provider.v2v_vmcheck_helper import VMChecker
 
@@ -702,6 +703,13 @@ def run(test, params, env):
             pwd_f.write(vpx_passwd)
             pwd_f.close()
             output_option += " -ip %s" % vpx_passwd_file
+            # rhel8 slow stream doesn't support option 'ip' temporarily
+            # so use option 'password-file' instead.
+            tmp_cmd = 'virt-v2v --help'
+            tmp_result = process.run(tmp_cmd, verbose=True, ignore_status=True)
+            tmp_result.stdout = results_stdout_52lts(tmp_result)
+            if not re.search(r'-ip <filename>', tmp_result.stdout):
+                output_option = output_option.replace('-ip', '--password-file', 1)
 
         # if don't specify any output option for virt-v2v, 'default' pool
         # will be used.
