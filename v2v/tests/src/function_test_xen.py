@@ -76,23 +76,6 @@ def run(test, params, env):
             graphic.set(key, param[key])
         vmxml.sync(virsh_instance=virsh_instance)
 
-    def check_rhev_file_exist(vmcheck):
-        """
-        Check if rhev files exist
-        """
-        file_path = {
-            'rhev-apt.exe': r'C:\rhev-apt.exe',
-            'rhsrvany.exe': r'"C:\program files\redhat\rhev\apt\rhsrvany.exe"'
-        }
-        fail = False
-        for key in file_path:
-            status = vmcheck.session.cmd_status('dir %s' % file_path[key])
-            if not status:
-                logging.error('%s exists' % key)
-                fail = True
-        if fail:
-            log_fail('RHEV file exists after convert to kvm')
-
     def check_grub_file(vmcheck, check):
         """
         Check grub file content
@@ -182,8 +165,6 @@ def run(test, params, env):
             if len(ret) == 0:
                 logging.info("All common checkpoints passed")
             # Check specific checkpoints
-            if checkpoint == 'rhev_file':
-                check_rhev_file_exist(vmchecker.checker)
             if checkpoint == 'console_xvc0':
                 check_grub_file(vmchecker.checker, 'console_xvc0')
             if checkpoint in ('vnc_autoport', 'vnc_encrypt'):
