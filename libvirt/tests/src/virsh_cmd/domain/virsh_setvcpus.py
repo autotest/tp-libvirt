@@ -5,7 +5,8 @@ import logging
 from virttest import ssh_key
 from virttest import data_dir
 from virttest import virsh
-from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import vm_xml, xcepts
+from virttest.libvirt_xml.vm_xml import VMCPUXML
 from virttest import utils_hotplug
 
 
@@ -53,6 +54,7 @@ def run(test, params, env):
     remote_uri = params.get("remote_uri")
     tmpxml = os.path.join(data_dir.get_tmp_dir(), 'tmp.xml')
     topology_correction = "yes" == params.get("topology_correction", "yes")
+    with_topology = "yes" == params.get("with_topology", "yes")
     result = True
 
     # Early death 1.1
@@ -124,6 +126,22 @@ def run(test, params, env):
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             del vmxml.cpu
             vmxml.sync()
+
+        # If topology not existed, create new one.
+        if not topology and with_topology and status_error:
+            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            try:
+                vmcpu_xml = vmxml['cpu']
+            except xcepts.LibvirtXMLNotFoundError:
+                logging.debug("Can not find any cpu tag, now create one.")
+                vmcpu_xml = VMCPUXML()
+            cores = vmxml['vcpu']
+            vmcpu_xml['topology'] = {'sockets': 1,
+                                     'cores': cores,
+                                     'threads': 1}
+            vmxml['cpu'] = vmcpu_xml
+            vmxml.sync()
+
         vmxml.set_vm_vcpus(vm_name, max_vcpu, current_vcpu,
                            topology_correction=topology_correction)
 
