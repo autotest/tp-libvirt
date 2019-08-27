@@ -78,7 +78,7 @@ def run(test, params, env):
     cputune_cpuset = params.get("cputune_cpuset", "")
     vcpu_placement = params.get("vcpu_placement", "static")
     err_msg = params.get("err_msg", "")
-    start_timeout = int(params.get("start_timeout", "60"))
+    start_timeout = int(params.get("start_timeout", "180"))
     offline_hostcpus = params.get("offline_hostcpus", "")
     machine_cpuset_path = params.get("machine_cpuset_path", "")
 
