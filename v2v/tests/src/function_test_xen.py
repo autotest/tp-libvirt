@@ -37,6 +37,8 @@ def run(test, params, env):
     output_mode = params.get('output_mode')
     v2v_timeout = int(params.get('v2v_timeout', 1200))
     status_error = 'yes' == params.get('status_error', 'no')
+    skip_check = 'yes' == params.get('skip_check', 'no')
+    skip_reason = params.get('skip_reason')
     pool_name = params.get('pool_name', 'v2v_test')
     pool_type = params.get('pool_type', 'dir')
     pool_target = params.get('pool_target_path', 'v2v_pool')
@@ -147,7 +149,9 @@ def run(test, params, env):
         """
         libvirt.check_exit_status(result, status_error)
         output = result.stdout + result.stderr
-        if not status_error and checkpoint != 'vdsm':
+        if skip_check:
+            logging.info('Skip checking vm after conversion: %s' % skip_reason)
+        elif not status_error and checkpoint != 'vdsm':
             if output_mode == 'rhev':
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                     timeout=v2v_timeout):
