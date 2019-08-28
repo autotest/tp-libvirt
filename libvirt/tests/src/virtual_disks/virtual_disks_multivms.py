@@ -287,12 +287,9 @@ def run(test, params, env):
                     # Check shared file selinux label with type and MCS as
                     # svirt_image_t:s0
                     if disk_path:
-                        se_label = utils_selinux.get_context_of_file(disk_path)
-                        logging.debug("Context of shared img '%s' is '%s'" %
-                                      (disk_path, se_label))
-                        if "svirt_image_t:s0" not in se_label:
-                            test.fail("Context of shared img is not"
-                                      " expected.")
+                        if not utils_selinux.check_context_of_file(disk_path, "svirt_image_t:s0"):
+                            test.fail("Context of shared iso is not expected.")
+
                     if i == 1:
                         try:
                             test_str = "teststring"
@@ -322,12 +319,8 @@ def run(test, params, env):
                     # Check shared file selinux label with type and MCS as
                     # virt_content_t:s0
                     if disk_path:
-                        se_label = utils_selinux.get_context_of_file(disk_path)
-                        logging.debug("Context of shared iso '%s' is '%s'" %
-                                      (disk_path, se_label))
-                        if "virt_content_t:s0" not in se_label:
-                            test.fail("Context of shared iso is not"
-                                      " expected.")
+                        if not utils_selinux.check_context_of_file(disk_path, "virt_content_t:s0"):
+                            test.fail("Context of shared iso is not expected.")
                     if i == 1:
                         try:
                             test_str = "teststring"
