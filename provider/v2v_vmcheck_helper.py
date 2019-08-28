@@ -145,6 +145,10 @@ class VMChecker(object):
         # Video model will change to QXL for Windows2008r2 and windows7
         if self.os_version in ['win7', 'win2008r2']:
             video_model = 'qxl'
+            # video mode of windows guest will be cirrus if there is no virtio-win
+            # driver installed on host
+            if process.run('rpm -q virtio-win', ignore_status=True).exit_status != 0:
+                video_model = 'cirrus'
         return video_model
 
     def check_metadata_libosinfo(self):
@@ -266,7 +270,7 @@ class VMChecker(object):
             err_msg = "Fail to get OS distribution: %s" % e
             self.log_err(err_msg)
         if dist_major < 4:
-            logging.warn("Skip unspported distribution check")
+            logging.warning("Skip unsupported distribution check")
             return
         else:
             logging.info("PASS")
