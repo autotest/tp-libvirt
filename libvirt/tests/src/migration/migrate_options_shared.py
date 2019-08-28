@@ -10,6 +10,7 @@ import copy
 
 from avocado.utils import process
 from avocado.utils import memory
+from avocado.utils import distro
 from avocado.core import exceptions
 
 from virttest import libvirt_vm
@@ -25,6 +26,7 @@ from virttest import utils_package
 from virttest import utils_iptables
 from virttest import xml_utils
 
+from virttest.utils_iptables import Iptables
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_conn import TLSConnection
@@ -552,19 +554,26 @@ def run(test, params, env):
         """
         logging.debug("Start to drop network")
 
-        firewall_cmd.add_direct_rule(firewall_rule)
-        direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
-        cmdRes = re.findall(firewall_rule, direct_rules)
-        if len(cmdRes) == 0:
-            test.error("Rule '%s' is not added" % firewall_rule)
+        if use_firewall_cmd:
+            firewall_cmd.add_direct_rule(firewall_rule)
+            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
+            cmdRes = re.findall(firewall_rule, direct_rules)
+            if len(cmdRes) == 0:
+                test.error("Rule '%s' is not added" % firewall_rule)
+        else:
+            Iptables.setup_or_cleanup_iptables_rules(firewall_rule)
 
         logging.debug("Sleep %d seconds" % int(block_time))
         time.sleep(int(block_time))
-        firewall_cmd.remove_direct_rule(firewall_rule)
-        direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
-        cmdRes = re.findall(firewall_rule, direct_rules)
-        if len(cmdRes):
-            test.error("Rule '%s' is not removed correctly" % firewall_rule)
+
+        if use_firewall_cmd:
+            firewall_cmd.remove_direct_rule(firewall_rule)
+            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
+            cmdRes = re.findall(firewall_rule, direct_rules)
+            if len(cmdRes):
+                test.error("Rule '%s' is not removed correctly" % firewall_rule)
+        else:
+            Iptables.setup_or_cleanup_iptables_rules(firewall_rule, cleanup=True)
 
     def do_actions_during_migrate(params):
         """
@@ -815,7 +824,13 @@ def run(test, params, env):
     hpt_resize = params.get("hpt_resize", None)
     htm_state = params.get("htm_state", None)
     block_time = params.get("block_time", 30)
-    firewall_rule = "ipv4 filter INPUT 0 --source {} -j DROP".format(server_ip)
+    # For keepalive test
+    use_firewall_cmd = True
+    if distro.detect().name == 'rhel' and int(distro.detect().version) < 8:
+        use_firewall_cmd = False
+        firewall_rule = ["INPUT -s {}/32 -j DROP".format(server_ip)]
+    else:
+        firewall_rule = "ipv4 filter INPUT 0 --source {} -j DROP".format(server_ip)
 
     # For pty channel test
     add_channel = "yes" == params.get("add_channel", "no")
@@ -884,7 +899,8 @@ def run(test, params, env):
                                                username=server_user,
                                                password=server_pwd)
 
-        firewall_cmd = utils_iptables.Firewall_cmd()
+        if use_firewall_cmd:
+            firewall_cmd = utils_iptables.Firewall_cmd()
         # Change the configuration files if needed before starting guest
         # For qemu.conf
         if extra.count("--tls"):
@@ -1129,11 +1145,16 @@ def run(test, params, env):
     finally:
         logging.debug("Recover test environment")
         try:
-            # Remove direct rule if needed
-            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
-            cmdRes = re.findall(firewall_rule, direct_rules)
-            if len(cmdRes):
-                firewall_cmd.remove_direct_rule(firewall_rule)
+            # Remove firewall rule if needed
+            if 'firewall_rule' in locals():
+                if use_firewall_cmd:
+                    direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
+                    cmdRes = re.findall(firewall_rule, direct_rules)
+                    if len(cmdRes):
+                        firewall_cmd.remove_direct_rule(firewall_rule)
+                else:
+                    Iptables.setup_or_cleanup_iptables_rules(firewall_rule,
+                                                             cleanup=True)
 
             # Clean VM on destination
             vm.connect_uri = dest_uri
