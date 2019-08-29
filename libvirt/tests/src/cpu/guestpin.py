@@ -63,10 +63,7 @@ def run(test, params, env):
                 result = cpu.check_vcpu_value(vm, exp_vcpu,
                                               option="--live")
             elif condn == "host_smt":
-                if cpuutil.get_cpu_vendor_name() == 'power9':
-                    result = process.run("ppc64_cpu --smt=4", shell=True)
-                else:
-                    test.cancel("Host SMT changes not allowed during guest live")
+                result = process.run("ppc64_cpu --smt=4", shell=True)
             else:
                 logging.debug("No operation for the domain")
 
