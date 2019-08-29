@@ -120,7 +120,7 @@ def run(test, params, env):
         hostcpu_num = int(cpu.total_cpus_count())
 
         # online all host cpus
-        for x in range(hostcpu_num):
+        for x in range(1, hostcpu_num):
             if cpu.online(x):
                 test.fail("fail to online cpu{}".format(x))
 
@@ -207,7 +207,7 @@ def run(test, params, env):
         vmxml_backup.sync()
 
         # recovery the host cpu env
-        for x in range(hostcpu_num):
+        for x in range(1, hostcpu_num):
             cpu.online(x)
         cmd = "echo '0-{}' > {}".format(hostcpu_num-1, machine_cpuset_path)
         process.run(cmd, shell=True)
