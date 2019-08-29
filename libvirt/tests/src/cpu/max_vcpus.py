@@ -7,6 +7,8 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import capability_xml
 from virttest.libvirt_xml.devices.iommu import Iommu
 
+from provider import libvirt_version
+
 
 def run(test, params, env):
     """
@@ -149,15 +151,18 @@ def run(test, params, env):
             if 'hotplug' not in check:
                 vmxml.current_vcpu = int(guest_vcpu)
 
-            vmxml.sync()
-            logging.debug(virsh.dumpxml(vm_name))
-
             if status_error:
                 if start_fail:
-                    result_need_check = virsh.start(vm_name, debug=True)
+                    if libvirt_version.version_compare(5, 6, 0):
+                        result_need_check = virsh.define(vmxml.xml, debug=True)
+                    else:
+                        vmxml.sync()
+                        result_need_check = virsh.start(vm_name, debug=True)
 
             else:
                 # Login guest and check guest cpu number
+                vmxml.sync()
+                logging.debug(virsh.dumpxml(vm_name))
                 vm.start()
                 session = vm.wait_for_login(timeout=boot_timeout)
                 logging.debug(session.cmd('lscpu -e'))
