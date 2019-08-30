@@ -27,7 +27,7 @@ def run(test, params, env):
     domain_name = params.get("domain_name", "")
     invalid_cpulist = params.get("invalid_cpulist", "")
     status_error = params.get("status_error", "no")
-    error_msg = params.get("error_msg", "no")
+    error_msg = eval(params.get('error_msg', '[]'))
     vcpus_list = ""
     offline_vcpus = ""
 
