@@ -15,6 +15,8 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest import utils_hotplug
 
+vm_uptime_init = 0
+
 
 def run(test, params, env):
     """
@@ -49,6 +51,7 @@ def run(test, params, env):
         :params recover: flag to inform whether to set or reset
                          vm_operation
         """
+        global vm_uptime_init
         save_file = os.path.join(data_dir.get_tmp_dir(), vm_name + ".save")
         if not recover:
             if vm_operation == "save":
@@ -203,7 +206,7 @@ def run(test, params, env):
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
-    vm_uptime_init = 0
+    global vm_uptime_init
     vm_operation = params.get("vm_operation", "null")
     vcpu_max_num = int(params.get("vcpu_max_num"))
     vcpu_current_num = int(params.get("vcpu_current_num"))
