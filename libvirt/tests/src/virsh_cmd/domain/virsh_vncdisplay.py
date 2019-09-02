@@ -5,6 +5,7 @@ from virttest import virsh
 from virttest import remote
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
+from virttest import ssh_key
 
 
 def run(test, params, env):
@@ -34,6 +35,9 @@ def run(test, params, env):
         remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
         local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
         remote_pwd = params.get("remote_pwd", "")
+        local_pwd = params.get("local_pwd", "")
+        remote_user = params.get("remote_user", "root")
+        local_user = params.get("local_user", "root")
         status = 0
         output = ""
         try:
@@ -41,6 +45,10 @@ def run(test, params, env):
                 test.cancel("remote_ip and/or local_ip parameters "
                             "not changed from default values.")
             uri = libvirt_vm.complete_uri(local_ip)
+            # setup ssh auto login
+            ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
+            ssh_key.setup_remote_ssh_key(remote_ip, remote_user, remote_pwd,
+                                         local_ip, local_user, local_pwd)
             session = remote.remote_login("ssh", remote_ip, "22", "root",
                                           remote_pwd, "#")
             session.cmd_output('LANG=C')
