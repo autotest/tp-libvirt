@@ -32,6 +32,10 @@ class VMChecker(object):
         self.params = params
         self.vm_name = params.get('main_vm')
         self.original_vm_name = params.get('original_vm_name')
+        # The expected boottype of guest, default 0 is 'i440fx+bios'
+        # Other values are 1 for q35+bios, 2 for q35+uefi, 3 for
+        # q35+secure_uefi
+        self.boottype = int(params.get("boottype", 0))
         self.hypervisor = params.get("hypervisor")
         self.target = params.get('target')
         self.os_type = params.get('os_type')
@@ -219,10 +223,40 @@ class VMChecker(object):
         if not re.search(libosinfo_pattern, self.vmxml):
             self.log_err('Not find metadata libosinfo')
 
+    def get_expected_boottype(self, boottype):
+        """
+        Return chipset and boottype of the VM.
+        :param boottype: a value stands for boottype
+        """
+
+        # The value is [chipset, boottype, secure_boot]
+        boottype_mapping = {0: ['i440fx', 'bios', False],
+                            1: ['q35', 'bios', False],
+                            2: ['q35', 'uefi', False],
+                            3: ['q35', 'uefi', True]}
+
+        if boottype not in range(4):
+            raise exceptions.TestError('Invalid boottype value: %s' % str(boottype))
+
+        logging.debug("expected boot type is %s" % boottype_mapping[boottype])
+        return boottype_mapping[boottype]
+
+    def check_vm_boottype(self):
+        """
+        Check boottype of the guest
+        """
+        if self.boottype in [
+                2, 3] and not self.checker.is_uefi_guest() or self.boottype in [
+                0, 1] and self.checker.is_uefi_guest():
+            err_msg = "Incorrect boottype of VM"
+            self.log_err(err_msg)
+
     def check_vm_xml(self):
         """
-        Check graphic/video XML of the VM.
+        Checking XML info of the VM.
         """
+        logging.debug('vmxml is:\n%s' % self.vmxml)
+
         logging.info("Checking graphic type in VM XML")
         expect_graphic = self.get_expect_graphic_type()
         logging.info("Expect type: %s", expect_graphic)
@@ -245,13 +279,32 @@ class VMChecker(object):
         else:
             logging.info("PASS")
 
+        logging.info("Checking boot os info in VM XML")
+        chipset, bootinfo, secboot = self.get_expected_boottype(self.boottype)
+
+        chip_pattern = r"machine='pc-%s" % ('q35' if chipset == 'q35' else 'i440fx')
+        if bootinfo == 'uefi':
+            boot_pattern = r"secure='%s' type='pflash'" % (
+                'yes' if secboot else 'no')
+            # v2v doesn't support secure boot to ovirt
+            if self.target == "ovirt":
+                boot_pattern = boot_pattern.replace('yes', 'no')
+        else:
+            boot_pattern = None
+
+        pattern_list = [chip_pattern, boot_pattern]
+        if not all([re.search(pattern_i, self.vmxml)
+                    for pattern_i in pattern_list if pattern_i]):
+            err_msg = "Checking boot os info failed"
+            self.log_err(err_msg)
+
     def check_linux_vm(self):
         """
         Check linux VM after v2v convert.
         Only for RHEL VMs(RHEL4 or later)
         """
         self.checker.create_session()
-        # 1. Check OS vender and distribution
+        # Check OS vender and distribution
         logging.info("Checking VM os info")
         os_info = self.checker.get_vm_os_info()
         os_vendor = self.checker.get_vm_os_vendor()
@@ -271,7 +324,7 @@ class VMChecker(object):
         else:
             logging.info("PASS")
 
-        # 2. Check OS kernel
+        # Check OS kernel
         logging.info("Checking VM kernel")
         kernel_version = self.checker.get_vm_kernel()
         logging.info("Kernel: %s", kernel_version)
@@ -281,7 +334,7 @@ class VMChecker(object):
         else:
             logging.info("PASS")
 
-        # 3. Check virtio module
+        # Check virtio module
         logging.info("Checking virtio kernel modules")
         modules = self.checker.get_vm_modules()
         if not re.search("virtio", modules):
@@ -290,7 +343,10 @@ class VMChecker(object):
         else:
             logging.info("PASS")
 
-        # 4. Check virtio PCI devices
+        # Check boottype of the guest
+        self.check_vm_boottype()
+
+        # Check virtio PCI devices
         logging.info("Checking virtio PCI devices")
         pci_devs = self.checker.get_vm_pci_list()
         virtio_devs = ["Virtio network device", "Virtio block device"]
@@ -303,12 +359,13 @@ class VMChecker(object):
         else:
             logging.info("PASS")
 
-        # 5. Check virtio disk partition
-        logging.info("Checking virtio disk partition in device map")
-        if self.checker.is_uefi_guest():
-            logging.info("The guest is uefi mode,skip the checkpoint")
-        elif not self.checker.get_grub_device():
-            err_msg = "Not find vd? in disk partition"
+        # Check virtio disk partition
+        logging.info("Checking virtio disk partition")
+        if not self.checker.is_disk_virtio():
+            err_msg = "Not found virtio disk"
+            self.log_err(err_msg)
+        if not self.checker.is_uefi_guest() and not self.checker.get_grub_device():
+            err_msg = "Not find vd? in device.map"
             if self.hypervisor != 'kvm':
                 self.log_err(err_msg)
             else:
@@ -320,10 +377,8 @@ class VMChecker(object):
                 # the xml.
                 # V2V doesn't modify device.map file for this scenario.
                 logging.warning(err_msg)
-        else:
-            logging.info("PASS")
 
-        # 6. Check graphic/video
+        # Check graphic/video
         self.check_vm_xml()
         logging.info("Checking video device inside the VM")
         expect_video = self.get_expect_video_model()
@@ -371,7 +426,11 @@ class VMChecker(object):
                 self.checker.create_session()
             else:
                 break
-        # 1. Check viostor file
+
+        # Check boottype of the guest
+        self.check_vm_boottype()
+
+        # Check viostor file
         logging.info("Checking windows viostor info")
         output = self.checker.get_viostor_info()
         if not output:
@@ -380,11 +439,13 @@ class VMChecker(object):
         else:
             logging.info("PASS")
 
-        # 2. Check Red Hat VirtIO drivers and display adapter
+        # Check Red Hat VirtIO drivers and display adapter
         logging.info("Checking VirtIO drivers and display adapter")
         expect_drivers = ["Red Hat VirtIO SCSI",
                           "Red Hat VirtIO Ethernet Adapte"]
         # Windows display adapter is different for each release
+        # Default value
+        expect_adapter = 'Basic Display Driver'
         if self.os_version in ['win7', 'win2008r2']:
             expect_adapter = 'QXL'
         if self.os_version in ['win2003', 'win2008']:
@@ -422,11 +483,11 @@ class VMChecker(object):
             for driver in expect_drivers:
                 self.log_err("Not find driver: %s" % driver)
 
-        # 3. Check graphic and video type in VM XML
+        # Check graphic and video type in VM XML
         if self.compare_version(V2V_7_3_VERSION):
             self.check_vm_xml()
 
-        # 4. Renew network
+        # Renew network
         logging.info("Renew network for windows guest")
         if not self.checker.get_network_restart():
             err_msg = "Renew network failed"
