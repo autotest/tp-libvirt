@@ -409,7 +409,7 @@ def run(test, params, env):
             if vm and vm.is_alive():
                 vm.destroy(gracefully=False)
 
-        if transport in ["tcp", "tls"]:
+        if transport in ["tcp", "tls"] and 'firewalld_port' in locals():
             server_session = remote.wait_for_login('ssh', server_ip, '22',
                                                    server_user, server_pwd,
                                                    r"[\#\$]\s*$")
