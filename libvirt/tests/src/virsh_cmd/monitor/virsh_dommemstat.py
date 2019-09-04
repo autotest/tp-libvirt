@@ -1,9 +1,6 @@
-from avocado.utils import process
-
-from virttest import libvirt_vm
 from virttest import virsh
-from virttest import remote
 from virttest import utils_libvirtd
+from virttest import ssh_key
 
 
 def run(test, params, env):
@@ -46,27 +43,24 @@ def run(test, params, env):
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()
 
-    if vm_ref != "remote":
-        status = virsh.dommemstat(vm_ref, extra, ignore_status=True,
-                                  debug=True).exit_status
-    else:
-        remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
-        remote_pwd = params.get("remote_pwd", None)
-        local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
-        if remote_ip.count("EXAMPLE.COM") or local_ip.count("EXAMPLE.COM"):
-            test.cancel("local/remote ip parameters not set.")
-        status = 0
-        try:
-            remote_uri = libvirt_vm.complete_uri(local_ip)
-            session = remote.remote_login("ssh", remote_ip, "22", "root",
-                                          remote_pwd, "#")
-            session.cmd_output('LANG=C')
-            command = "virsh -c %s dommemstat %s %s" % (remote_uri, vm_name,
-                                                        extra)
-            status = session.cmd_status(command, internal_timeout=5)
-            session.close()
-        except process.CmdError:
-            status = 1
+    try:
+        if vm_ref != "remote":
+            status = virsh.dommemstat(vm_ref, extra, ignore_status=True,
+                                      debug=True).exit_status
+        else:
+            remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
+            remote_pwd = params.get("remote_pwd", None)
+            remote_user = params.get("remote_user", "root")
+            if remote_ip.count("EXAMPLE.COM"):
+                test.cancel("remote ip parameters not set.")
+            ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
+            remote_uri = "qemu+ssh://%s/system" % remote_ip
+            virsh.start(vm_name, ignore_status=False, debug=True, uri=remote_uri)
+            status = virsh.dommemstat(vm_name, ignore_status=True,
+                                      debug=True, uri=remote_uri).exit_status
+    finally:
+        if vm_ref == "remote":
+            virsh.destroy(vm_name, ignore_status=False, debug=True, uri=remote_uri)
 
     # recover libvirtd service start
     if libvirtd == "off":
