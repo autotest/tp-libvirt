@@ -285,6 +285,23 @@ def run(test, params, env):
                     objs_list.append(ssh_obj)
                 # setup test environment
                 ssh_obj.conn_setup()
+            else:
+                # To access to server with password,
+                # cleanup authorized_keys on remote
+                ssh_pubkey_file = "/root/.ssh/id_rsa.pub"
+                if (os.path.exists("/root/.ssh/id_rsa") and
+                   os.path.exists(ssh_pubkey_file)):
+                    remote_file_obj = remote.RemoteFile(address=server_ip,
+                                                        client='scp',
+                                                        username=server_user,
+                                                        password=server_pwd,
+                                                        port='22',
+                                                        remote_path="/root/.ssh/authorized_keys")
+                    with open(ssh_pubkey_file, 'r') as fd:
+                        line = fd.read().split()[-1].rstrip('\n')
+                    line = ".*" + line
+                    remote_file_obj.remove([line])
+                    objs_list.append(remote_file_obj)
 
         # setup TLS
         if transport == "tls" or tls_setup == "yes":
