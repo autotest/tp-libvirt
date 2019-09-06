@@ -6,6 +6,8 @@ from avocado.utils import process
 
 from virttest import remote
 from virttest import utils_iptables
+from virttest import utils_libvirtd
+
 from virttest.utils_sasl import SASL
 from virttest.utils_conn import SSHConnection
 from virttest.utils_conn import TCPConnection
@@ -196,6 +198,18 @@ def run(test, params, env):
 
     # Make sure all of parameters are assigned a valid value
     check_parameters(test_dict, test)
+    # Make sure libvirtd on remote is running
+    server_session = remote.wait_for_login('ssh', server_ip, '22',
+                                           server_user, server_pwd,
+                                           r"[\#\$]\s*$")
+
+    remote_libvirtd = utils_libvirtd.Libvirtd(server_session)
+    if not remote_libvirtd.is_running():
+        logging.debug("start libvirt on remote")
+        res = remote_libvirtd.start()
+        if not res:
+            test.error("Failed to start libvirtd on remote")
+    server_session.close()
 
     # only simply connect libvirt daemon then return
     if no_any_config == "yes":
