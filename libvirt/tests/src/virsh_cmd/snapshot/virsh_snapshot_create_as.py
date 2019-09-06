@@ -375,6 +375,14 @@ def run(test, params, env):
                         "https://bugzilla.redhat.com/buglist.cgi?"
                         "bug_id=1017289,1032370")
 
+    if libvirt_version.version_compare(5, 5, 0):
+        # libvirt-5.5.0-2 commit 68e1a05f starts to allow --no-metadata and
+        # --print-xml to be used together.
+        if "--no-metadata" in options and "--print-xml" in options:
+            logging.info("--no-metadata and --print-xml can be used together "
+                         "in this libvirt version. Not expecting a failure.")
+            status_error = "no"
+
     opt_names = locals()
     if memspec_opts is not None:
         mem_options = compose_disk_options(test, params, memspec_opts)
