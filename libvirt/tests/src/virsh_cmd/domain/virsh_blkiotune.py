@@ -128,22 +128,31 @@ def get_blkio_params_from_cgroup(test, params):
         blkio_path = os.path.join(utils_cgroup.get_cgroup_mountpoint("blkio"),
                                   qemu_path)
 
-    blkio_weight_file = os.path.join(blkio_path, "blkio.weight")
-    blkio_device_weights_file = os.path.join(blkio_path, "blkio.weight_device")
+    bfq_scheduler = False
+    with open("/sys/block/sda/queue/scheduler", 'r') as iosche:
+        if 'bfq' in iosche.readline():
+            bfq_scheduler = True
+    if bfq_scheduler:
+        blkio_weight_file = os.path.join(blkio_path, "blkio.bfq.weight")
+        blkio_device_weights_file = None
+    else:
+        blkio_weight_file = os.path.join(blkio_path, "blkio.weight")
+        blkio_device_weights_file = os.path.join(blkio_path, "blkio.weight_device")
 
     blkio_params_from_cgroup = {}
 
     for f in blkio_weight_file, blkio_device_weights_file:
-        try:
-            with open(f, 'rU') as f_blkio_params:
-                val = f_blkio_params.readline().split()
-                if len(val) > 1:
-                    blkio_params_from_cgroup[f.split('.')[-1]] = \
-                        val[0] + "," + val[1]
-                elif len(val) == 1:
-                    blkio_params_from_cgroup[f.split('.')[-1]] = val[0]
-        except IOError:
-            test.fail("Failed to get blkio params from %s" % f)
+        if f:
+            try:
+                with open(f, 'rU') as f_blkio_params:
+                    val = f_blkio_params.readline().split()
+                    if len(val) > 1:
+                        blkio_params_from_cgroup[f.split('.')[-1]] = \
+                            val[0] + "," + val[1]
+                    elif len(val) == 1:
+                        blkio_params_from_cgroup[f.split('.')[-1]] = val[0]
+            except IOError:
+                test.fail("Failed to get blkio params from %s" % f)
 
     logging.debug(blkio_params_from_cgroup)
     return blkio_params_from_cgroup
