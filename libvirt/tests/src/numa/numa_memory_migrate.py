@@ -9,6 +9,7 @@ from virttest import virt_vm
 from virttest import libvirt_xml
 from virttest import virsh
 from virttest import utils_misc
+from virttest import cpu
 from virttest import utils_test
 from virttest import utils_config
 from virttest import utils_libvirtd
@@ -95,7 +96,7 @@ def run(test, params, env):
             test.fail("Libvirtd hang after restarted")
 
         if numa_memory.get('nodeset'):
-            used_node = utils_test.libvirt.cpus_parser(numa_memory['nodeset'])
+            used_node = cpu.cpus_parser(numa_memory['nodeset'])
             logging.debug("set node list is %s", used_node)
             for i in used_node:
                 if i not in node_list:
@@ -121,7 +122,7 @@ def run(test, params, env):
                                           " log")
             logging.debug("numad log list is %s", numad_log)
             numad_ret = numad_log[1].split("numad: ")[-1]
-            used_node = utils_test.libvirt.cpus_parser(numad_ret)
+            used_node = cpu.cpus_parser(numad_ret)
             logging.debug("numad nodes are %s", used_node)
 
         left_node = [i for i in node_list if i not in used_node]

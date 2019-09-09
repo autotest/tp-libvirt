@@ -11,6 +11,7 @@ from subprocess import Popen
 
 from avocado.core import exceptions
 from avocado.utils import process
+from avocado.utils import cpu as cpuutil
 
 from virttest import ssh_key
 from virttest import data_dir
@@ -19,6 +20,7 @@ from virttest import remote
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import cpu
 from virttest import utils_netperf
 from virttest import utils_package
 from virttest import utils_selinux
@@ -492,7 +494,7 @@ def get_same_processor(test, server_ip, server_user, server_pwd, verbose):
     :param verbose: the flag to control whether or not to log messages
     :raise: test.fail if test fails
     """
-    local_processors = utils_misc.get_cpu_processors(verbose=verbose)
+    local_processors = cpuutil.cpu_online_list()
     cmd = "grep processor /proc/cpuinfo"
     status, output = run_remote_cmd(cmd, server_ip, server_user, server_pwd)
     if status:
@@ -1527,7 +1529,7 @@ def run(test, params, env):
         logging.debug("The final test dict:\n<%s>", test_dict)
 
         if diff_cpu_vendor:
-            local_vendor = utils_misc.get_cpu_vendor()
+            local_vendor = cpu.get_cpu_vendor()
             logging.info("Local CPU vendor: %s", local_vendor)
             local_cpu_xml = get_cpu_xml_from_virsh_caps(test)
             logging.debug("Local CPU XML: \n%s", local_cpu_xml)

@@ -7,7 +7,7 @@ from virttest import data_dir
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.vm_xml import VMCPUXML
-from virttest import utils_hotplug
+from virttest import cpu
 
 
 def run(test, params, env):
@@ -149,7 +149,7 @@ def run(test, params, env):
         logging.debug("Pre-test xml is %s", vmxml.xmltreefile)
 
         # Get the number of cpus, current value if set, and machine type
-        cpu_xml_data = utils_hotplug.get_cpu_xmldata(vm, options)
+        cpu_xml_data = cpu.get_cpu_xmldata(vm, options)
         logging.debug("Before run setvcpus: cpu_count=%d, cpu_current=%d,"
                       " mtype=%s", cpu_xml_data['vcpu'],
                       cpu_xml_data['current_vcpu'], cpu_xml_data['mtype'])
@@ -195,13 +195,13 @@ def run(test, params, env):
                                     ignore_status=True, debug=True)
             if not status_error:
                 set_expected(vm, options)
-                result = utils_hotplug.check_vcpu_value(vm, exp_vcpu,
-                                                        option=options)
+                result = cpu.check_vcpu_value(vm, exp_vcpu,
+                                              option=options)
         setvcpu_exit_status = status.exit_status
         setvcpu_exit_stderr = status.stderr.strip()
 
     finally:
-        cpu_xml_data = utils_hotplug.get_cpu_xmldata(vm, options)
+        cpu_xml_data = cpu.get_cpu_xmldata(vm, options)
         logging.debug("After run setvcpus: cpu_count=%d, cpu_current=%d,"
                       " mtype=%s", cpu_xml_data['vcpu'],
                       cpu_xml_data['current_vcpu'], cpu_xml_data['mtype'])

@@ -2,7 +2,7 @@ import re
 import logging
 
 from virttest import virsh
-from virttest import utils_misc
+from virttest import cpu
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import capability_xml
 from virttest.libvirt_xml import domcapability_xml
@@ -67,7 +67,7 @@ def run(test, params, env):
             for key, value in item.items():
                 if value == 'require':
                     features.append(key)
-        return list(set(features) | set(utils_misc.get_model_features(modelname)))
+        return list(set(features) | set(cpu.get_model_features(modelname)))
 
     def check_cpu(xml, cpu_match):
         """

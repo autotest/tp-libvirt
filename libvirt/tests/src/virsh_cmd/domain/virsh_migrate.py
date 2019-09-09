@@ -20,6 +20,7 @@ from virttest import utils_package
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
 from virttest import utils_misc
+from virttest import cpu
 from virttest.qemu_storage import QemuImg
 from virttest.utils_test import libvirt
 from virttest import test_setup
@@ -393,9 +394,9 @@ def run(test, params, env):
 
             logging.debug("Checking CPU number gets reflected from inside "
                           "guest")
-            if not utils_misc.wait_for(lambda: utils_misc.check_if_vm_vcpu_match(cpu_count,
-                                                                                 vm,
-                                                                                 connect_uri=uri),
+            if not utils_misc.wait_for(lambda: cpu.check_if_vm_vcpu_match(cpu_count,
+                                                                          vm,
+                                                                          connect_uri=uri),
                                        300, text="wait for vcpu online"):
                 test.fail("CPU %s failed" % operation)
 
@@ -636,7 +637,7 @@ def run(test, params, env):
     hotunplug_after_migrate = "yes" == params.get("virsh_hotunplug_cpu_after",
                                                   "no")
     compat_guest_migrate = (params.get("host_arch", "all_arch") in
-                            utils_misc.get_cpu_info()['Model name'])
+                            cpu.get_cpu_info()['Model name'])
     compat_mode = "yes" == params.get("compat_mode", "no")
 
     # Configurations for cpu compat guest to boot
@@ -651,7 +652,7 @@ def run(test, params, env):
                                       model=cpu_model)
             vm.start()
             session = vm.wait_for_login()
-            actual_cpu_model = utils_misc.get_cpu_info(session)['Model name']
+            actual_cpu_model = cpu.get_cpu_info(session)['Model name']
             if cpu_model not in actual_cpu_model.lower():
                 test.error("Failed to configure cpu model,\nexpected: %s but "
                            "actual cpu model: %s" % (cpu_model,

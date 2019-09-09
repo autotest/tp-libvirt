@@ -10,6 +10,7 @@ from virttest import virt_vm
 from virttest import libvirt_xml
 from virttest import virsh
 from virttest import utils_misc
+from virttest import cpu
 from virttest import utils_test
 from virttest import utils_config
 from virttest import utils_libvirtd
@@ -176,7 +177,7 @@ def run(test, params, env):
         cpu_list = [int(i) for i in tmp_list]
 
         if numa_memory.get('nodeset'):
-            used_node = utils_test.libvirt.cpus_parser(numa_memory['nodeset'])
+            used_node = cpu.cpus_parser(numa_memory['nodeset'])
             logging.debug("set node list is %s", used_node)
             if not status_error:
                 if not set(used_node).issubset(node_list):
@@ -184,7 +185,7 @@ def run(test, params, env):
                                                    numa_memory['nodeset'])
 
         if vcpu_cpuset:
-            pre_cpuset = utils_test.libvirt.cpus_parser(vcpu_cpuset)
+            pre_cpuset = cpu.cpus_parser(vcpu_cpuset)
             logging.debug("Parsed cpuset list is %s", pre_cpuset)
             if not set(pre_cpuset).issubset(cpu_list):
                 raise exceptions.TestSkipError("cpuset %s out of range" %
@@ -280,7 +281,7 @@ def run(test, params, env):
                 logging.warning('numa cmd opt:\n%s\n' % numad_cmd_opt)
                 test.fail("numad command not expected in log")
             numad_ret = numad_log[1].split("numad: ")[-1]
-            numad_node = utils_test.libvirt.cpus_parser(numad_ret)
+            numad_node = cpu.cpus_parser(numad_ret)
             left_node = [node_list.index(i) for i in node_list if i not in numad_node]
             numad_node_seq = [node_list.index(i) for i in numad_node]
             logging.debug("numad nodes are %s", numad_node)

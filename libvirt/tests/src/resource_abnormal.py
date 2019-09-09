@@ -17,6 +17,7 @@ from virttest import utils_selinux
 from virttest import qemu_storage
 from virttest import libvirt_vm
 from virttest import utils_misc
+from virttest import cpu
 from virttest import virsh
 from virttest import remote
 from virttest import data_dir
@@ -164,7 +165,7 @@ class Virt_clone(object):
             self.new_image_file = os.path.join(test.virtdir,
                                                self.new_image_file)
         self.time_out = int(params.get("time_out", "600"))
-        self.cpu_status = utils_misc.get_cpu_status(self.cpu_num)
+        self.cpu_status = cpu._get_cpu_status(self.cpu_num)
         self.twice_execute = "yes" == params.get("twice_execute", "no")
         self.kill_first = "yes" == params.get("kill_first", "no")
         if params.get("abnormal_type") in ["disk_lack", ""]:
@@ -215,8 +216,8 @@ class Virt_clone(object):
         self.cgroup.initialize(modules)
         self.cgroup_index = self.cgroup.mk_cgroup(cgroup=self.cgroup_name)
         # Before use the cpu, set it to be enable
-        if self.cpu_status < 1:
-            utils_misc.set_cpu_status(self.cpu_num, True)
+        if not self.cpu_status:
+            cpu.online(self.cpu_num)
         self.cgroup.set_property("cpuset.cpus", self.cpu_num,
                                  self.cgroup_index, check=False)
         self.cgroup.set_property("cpuset.mems", 0, self.cgroup_index,
@@ -284,8 +285,10 @@ class Virt_clone(object):
         Recover test environment
         """
         abnormal_type = params.get("abnormal_type")
-        cpu_enable = True if self.cpu_status else False
-        utils_misc.set_cpu_status(self.cpu_num, cpu_enable)
+        if self.cpu_status:
+            cpu.offline(self.cpu_num)
+        else:
+            cpu.online(self.cpu_num)
         if virsh.domain_exists(self.vm_new_name):
             virsh.remove_domain(self.vm_new_name)
         if os.path.exists(self.new_image_file):
@@ -345,7 +348,7 @@ class Snapshot_create(object):
         if image_type != "qcow2":
             self.test.cancel("Disk image format is not qcow2, "
                              "ignore snapshot test!")
-        self.cpu_status = utils_misc.get_cpu_status(self.cpu_num)
+        self.cpu_status = cpu._get_cpu_status(self.cpu_num)
         self.current_snp_list = []
         self.snp_list = virsh.snapshot_list(self.vm_name)
         env = params.get("env")
@@ -363,8 +366,10 @@ class Snapshot_create(object):
         self.cgroup.initialize(modules)
         self.cgroup_index = self.cgroup.mk_cgroup(cgroup=self.cgroup_name)
         # Before use the cpu, set it to be enable
-        if self.cpu_status < 1:
-            utils_misc.set_cpu_status(self.cpu_num, True)
+        if self.cpu_status:
+            cpu.offline(self.cpu_num)
+        else:
+            cpu.online(self.cpu_num)
         self.cgroup.set_property("cpuset.cpus", self.cpu_num,
                                  self.cgroup_index, check=False)
         self.cgroup.set_property("cpuset.mems", 0, self.cgroup_index,
@@ -408,8 +413,10 @@ class Snapshot_create(object):
         """
         Recover test environment
         """
-        cpu_enable = True if self.cpu_status else False
-        utils_misc.set_cpu_status(self.cpu_num, cpu_enable)
+        if self.cpu_status:
+            cpu.offline(self.cpu_num)
+        else:
+            cpu.online(self.cpu_num)
         tmp_c_file = params.get("tmp_c_file", "/tmp/test.c")
         tmp_exe_file = params.get("tmp_exe_file", "/tmp/test")
         if os.path.exists(tmp_c_file):
@@ -450,7 +457,7 @@ class Virsh_dump(object):
         self.time_out = int(params.get("time_out", "600"))
         self.twice_execute = "yes" == params.get("twice_execute", "no")
         self.kill_first = "yes" == params.get("kill_first", "no")
-        self.cpu_status = utils_misc.get_cpu_status(self.cpu_num)
+        self.cpu_status = cpu._get_cpu_status(self.cpu_num)
         self.dump_file = os.path.join(test.virtdir,
                                       params.get("dump_file", "dump.info"))
         self.dump_file1 = self.dump_file + "1"
@@ -469,8 +476,8 @@ class Virsh_dump(object):
         self.cgroup.initialize(modules)
         self.cgroup_index = self.cgroup.mk_cgroup(cgroup=self.cgroup_name)
         # Before use the cpu, set it to be enable
-        if self.cpu_status < 1:
-            utils_misc.set_cpu_status(self.cpu_num, True)
+        if not self.cpu_status:
+            cpu.online(self.cpu_num)
         self.cgroup.set_property("cpuset.cpus", self.cpu_num,
                                  self.cgroup_index, check=False)
         self.cgroup.set_property("cpuset.mems", 0, self.cgroup_index,
@@ -518,8 +525,10 @@ class Virsh_dump(object):
         """
         Recover test environment
         """
-        cpu_enable = True if self.cpu_status else False
-        utils_misc.set_cpu_status(self.cpu_num, cpu_enable)
+        if self.cpu_status:
+            cpu.offline(self.cpu_num)
+        else:
+            cpu.online(self.cpu_num)
         virsh.destroy(self.vm_name)
         if 'cpu_pid' in params:
             pid = int(params.get('cpu_pid'))
@@ -888,7 +897,7 @@ def cpu_lack(test, params):
     Disable assigned cpu.
     """
     cpu_num = int(params.get("cpu_num", "0"))
-    if not utils_misc.set_cpu_status(cpu_num, False):
+    if cpu.offline(cpu_num):
         test.error("Set cpu '%s' failed!" % cpu_num)
 
 

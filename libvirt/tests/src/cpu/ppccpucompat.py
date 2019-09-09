@@ -8,7 +8,7 @@ from virttest import data_dir
 from virttest import virt_vm
 from virttest import virsh
 from virttest import libvirt_xml
-from virttest import utils_misc
+from virttest import cpu
 from virttest import utils_package
 from virttest import utils_test
 
@@ -108,7 +108,7 @@ def run(test, params, env):
         if max_vcpu:
             virsh.setvcpus(vm_name, int(max_vcpu), "--live",
                            ignore_status=False, debug=True)
-            if not utils_misc.check_if_vm_vcpu_match(int(max_vcpu), vm):
+            if not cpu.check_if_vm_vcpu_match(int(max_vcpu), vm):
                 test.fail("Vcpu hotplug failed")
         if not status_error:
             for feature in guest_features:

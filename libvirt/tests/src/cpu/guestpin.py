@@ -4,15 +4,15 @@ import random
 import time
 
 from avocado.utils import process
-from avocado.utils import cpu
+from avocado.utils import cpu as cpuutil
 
+from virttest import cpu
 from virttest import virsh
 from virttest import virt_vm
 from virttest import data_dir
 from virttest import utils_test
 from virttest import libvirt_xml
 from virttest.utils_test import libvirt
-from virttest import utils_hotplug
 from virttest.staging import utils_cgroup
 
 
@@ -59,10 +59,10 @@ def run(test, params, env):
                 exp_vcpu = {'max_config': max_vcpu, 'max_live': max_vcpu,
                             'cur_config': current_vcpu, 'cur_live': max_vcpu,
                             'guest_live': max_vcpu}
-                result = utils_hotplug.check_vcpu_value(vm, exp_vcpu,
-                                                        option="--live")
+                result = cpu.check_vcpu_value(vm, exp_vcpu,
+                                              option="--live")
             elif condn == "host_smt":
-                if cpu.get_cpu_arch() == 'power9':
+                if cpuutil.get_cpu_vendor_name() == 'power9':
                     result = process.run("ppc64_cpu --smt=4", shell=True)
                 else:
                     test.cancel("Host SMT changes not allowed during guest live")
@@ -104,8 +104,8 @@ def run(test, params, env):
                 exp_vcpu = {'max_config': max_vcpu, 'max_live': current_vcpu,
                             'cur_config': current_vcpu, 'cur_live': current_vcpu,
                             'guest_live': current_vcpu}
-                result = utils_hotplug.check_vcpu_value(vm, exp_vcpu,
-                                                        option="--live")
+                result = cpu.check_vcpu_value(vm, exp_vcpu,
+                                              option="--live")
             elif condn == "host_smt":
                 result = process.run("ppc64_cpu --smt=2", shell=True)
                 # Change back the host smt
@@ -159,7 +159,7 @@ def run(test, params, env):
     # Destroy the vm
     vm.destroy()
     try:
-        cpus_list = cpu.cpu_online_list()
+        cpus_list = cpuutil.cpu_online_list()
         if len(cpus_list) < 2:
             test.cancel("Need minimum two online host cpus")
         # Set vcpu and topology
@@ -184,7 +184,7 @@ def run(test, params, env):
                       (cpucount, current_vcpu))
 
         if config_pin:
-            cpustats = utils_hotplug.get_cpustats(vm)
+            cpustats = cpu.get_cpustats(vm)
             if not cpustats:
                 test.fail("cpu stats command failed to run")
 
@@ -220,7 +220,7 @@ def run(test, params, env):
                 hostcpu = cpus_list[-1]
                 result = virsh.emulatorpin(vm_name, hostcpu, debug=True)
                 libvirt.check_exit_status(result)
-                cpustats = utils_hotplug.get_cpustats(vm, hostcpu)
+                cpustats = cpu.get_cpustats(vm, hostcpu)
                 logging.debug("hostcpu:%s vcputime: %s emulatortime: "
                               "%s cputime: %s", hostcpu, cpustats[hostcpu][0],
                               cpustats[hostcpu][1], cpustats[hostcpu][2])
@@ -232,7 +232,7 @@ def run(test, params, env):
                 result = virsh.vcpupin(vm_name, vcpu, hostcpu,
                                        ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
-                cpustats = utils_hotplug.get_cpustats(vm, hostcpu)
+                cpustats = cpu.get_cpustats(vm, hostcpu)
                 logging.debug("hostcpu:%s vcputime: %s emulatortime: "
                               "%s cputime: %s", hostcpu, cpustats[hostcpu][0],
                               cpustats[hostcpu][1], cpustats[hostcpu][2])

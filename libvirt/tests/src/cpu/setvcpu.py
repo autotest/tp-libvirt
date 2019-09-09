@@ -2,7 +2,7 @@ import logging
 import collections
 
 from virttest import virsh
-from virttest import utils_misc
+from virttest import cpu
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
@@ -71,7 +71,7 @@ def run(test, params, env):
 
         # login vm and check the number of online vcpu
         if check == "hotplug":
-            if not utils_misc.check_if_vm_vcpu_match(cpu_count + cpus_online_pre, vm):
+            if not cpu.check_if_vm_vcpu_match(cpu_count + cpus_online_pre, vm):
                 test.fail("vcpu status check fail")
 
     def get_vcpu_order(vmxml):
@@ -171,7 +171,7 @@ def run(test, params, env):
             for cpus, option in setvcpu_option.items():
                 result_to_check = virsh.setvcpu(vm_name, cpus, option, debug=True)
                 if not status_error:
-                    cpulist = libvirt.cpus_parser(cpus)
+                    cpulist = cpu.cpus_parser(cpus)
                     check_vcpu_status(cpulist, option)
 
         # start vm
@@ -197,7 +197,7 @@ def run(test, params, env):
                 cpus_online_pre = vm.get_cpu_count()
                 result_to_check = virsh.setvcpu(vm_name, cpus, option, debug=True)
                 if not status_error:
-                    cpulist = libvirt.cpus_parser(cpus)
+                    cpulist = cpu.cpus_parser(cpus)
                     check_vcpu_status(cpulist, option, cpus_online_pre)
                     # check vcpu order only when live status of vcpu is changed
                     if 'config' not in option:
