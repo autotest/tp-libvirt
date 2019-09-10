@@ -23,11 +23,11 @@ def run(test, params, env):
 
     def xmlfile_with_extra_attibute(xml):
         """
-        Prepare an invalid xml with video device
+        Prepare an invalid xml using the disk element
         """
-        # For example, <model type='qxl' ram='65536' vram='65536' foot='3'/>
-        video_device_xml = xml.xmltreefile.find('/devices/video/model')
-        video_device_xml.set("foot", "3")
+        # For example, <disk type='file' type='disk' foot='3'/>
+        some_device_xml = xml.xmltreefile.find('/devices/disk')
+        some_device_xml.set("foot", "3")
         logging.debug("The new xml is %s", xml)
         xml_file = xml.xmltreefile.name
         return xml_file
