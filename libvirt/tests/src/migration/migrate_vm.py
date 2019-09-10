@@ -839,7 +839,7 @@ def cleanup(objs_list):
     # recovery test environment
     for obj in objs_list:
         obj.auto_recover = True
-        del obj
+        obj.__del__()
 
 
 def check_vm_disk_after_migration(test, vm, params):
