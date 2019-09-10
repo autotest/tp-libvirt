@@ -7,7 +7,6 @@ from avocado.utils import cpu as cpuutils
 
 from virttest import virsh
 from virttest import cpu
-from virttest import utils_test
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -99,7 +98,7 @@ def run(test, params, env):
         if pid is None:
             return
         # Get the actual cpu affinity value in the proc entry
-        output = utils_test.libvirt.cpu_allowed_list_by_task(pid, vcpu_pid)
+        output = cpu.cpu_allowed_list_by_task(pid, vcpu_pid)
         actual_output_proc = cpu.cpus_string_to_affinity_list(
             output,
             int(total_cpu))
