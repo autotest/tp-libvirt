@@ -66,7 +66,10 @@ def config_feature_memory_backing(test, vmxml, **kwargs):
         # On RHEL7 & Fedora, the flag is 'mem-merge=off'
         qemu_flags.append(['mem-merge=off', 'redhat-disable-KSM'])
     if locked:
-        qemu_flags.append("mlock=on")
+        if not libvirt_version.version_compare(5, 3, 0):
+            qemu_flags.append("mlock=on")
+        else:
+            qemu_flags.append("mem-lock=on")
         memtune_xml = vm_xml.VMMemTuneXML()
         memtune_xml.hard_limit = vmxml.max_mem * 4
         vmxml.memtune = memtune_xml
