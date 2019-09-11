@@ -210,7 +210,8 @@ def run(test, params, env):
         if status != 0 or status_cmplt != 0:
             test.fail("Run failed with right command")
 
-    if status_error == "no":
+    # if libvirtd wasn't running the jobinfo is exepected to be empty
+    if status_error == "no" and not libvirtd == "off":
         # The 'managedsave' Operation will be shown as 'Save' in domjobinfo
         if actions == "managedsave":
             actions = "save"
