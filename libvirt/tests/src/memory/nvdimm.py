@@ -1,6 +1,7 @@
 import os
 import logging
 import time
+import platform
 
 from avocado.utils import process
 
@@ -141,14 +142,15 @@ def run(test, params, env):
         check_file_in_vm(vm_session, '/dev/pmem0')
 
         if check == 'back_file':
-            # Create an ext4 file system on /dev/pmem0
-            cmd_list = [
-                "mkfs.ext4 /dev/pmem0",
-                "mount -o dax /dev/pmem0 /mnt",
-                "echo '%s' >/mnt/foo" % test_str,
-                "umount /mnt"
-            ]
-            map(vm_session.cmd, cmd_list)
+            # Create a file system on /dev/pmem0
+            if platform.platform().count('el8'):
+                vm_session.cmd('mkfs.xfs -f /dev/pmem0 -m reflink=0')
+            else:
+                vm_session.cmd('mkfs.xfs -f /dev/pmem0')
+
+            vm_session.cmd('mount -o dax /dev/pmem0 /mnt')
+            vm_session.cmd('echo \"%s\" >/mnt/foo' % test_str)
+            vm_session.cmd('umount /mnt')
             vm_session.close()
 
             # Shutdown the guest, then start it, remount /dev/pmem0,
@@ -159,13 +161,13 @@ def run(test, params, env):
 
             vm_session.cmd('mount -o dax /dev/pmem0 /mnt')
             if test_str not in vm_session.cmd('cat /mnt/foo'):
-                test.fail('"%s" should be in /mnt/foo')
+                test.fail('\"%s\" should be in /mnt/foo' % test_str)
 
             # From the host, check the file has changed:
             host_output = process.run('hexdump -C /tmp/nvdimm',
                                       shell=True, verbose=True).stdout_text
             if test_str not in host_output:
-                test.fail('"%s" should be in output')
+                test.fail('\"%s\" should be in output' % test_str)
 
             # Shutdown the guest, and edit the xml,
             # include: access='private'
@@ -207,7 +209,11 @@ def run(test, params, env):
 
         if check == 'label_back_file':
             # Create an xfs file system on /dev/pmem0
-            vm_session.cmd('mkfs.xfs -f -b size=4096 /dev/pmem0')
+            if platform.platform().count('el8'):
+                vm_session.cmd('mkfs.xfs -f -b size=4096 /dev/pmem0 -m reflink=0')
+            else:
+                vm_session.cmd('mkfs.xfs -f -b size=4096 /dev/pmem0')
+
             # Mount the file system with DAX enabled for page cache bypass
             output = vm_session.cmd_output('mount -o dax /dev/pmem0 /mnt/')
             logging.info(output)
