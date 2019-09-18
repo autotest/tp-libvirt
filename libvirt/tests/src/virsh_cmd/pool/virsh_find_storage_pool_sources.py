@@ -26,6 +26,7 @@ def run(test, params, env):
 
     source_type = params.get("source_type", "")
     source_host = params.get("source_host", "127.0.0.1")
+    source_initiator = params.get("source_initiator", "")
     srcSpec = params.get("source_Spec", "")
     vg_name = params.get("vg_name", "virttest_vg_0")
     ro_flag = "yes" == params.get("readonly_mode", "no")
@@ -41,6 +42,11 @@ def run(test, params, env):
             raise exceptions.TestSkipError("API acl test not supported in "
                                            "current libvirt version.")
 
+    if not libvirt_version.version_compare(4, 7, 0):
+        if source_type == "iscsi-direct":
+            test.cancel("iscsi-drect pool is not supported in current"
+                        "libvirt version")
+
     if not source_type:
         raise exceptions.TestFail("Command requires <type> value")
 
@@ -55,7 +61,7 @@ def run(test, params, env):
             res = utils_test.libvirt.setup_or_cleanup_nfs(True)
             selinux_bak = res["selinux_status_bak"]
             cleanup_nfs = True
-        if source_type in ["iscsi", "logical"]:
+        if source_type in ["iscsi", "logical", "iscsi-direct"]:
             # Set up iscsi
             iscsi_device = utils_test.libvirt.setup_or_cleanup_iscsi(True)
             # If we got nothing, force failure
@@ -76,7 +82,10 @@ def run(test, params, env):
         if srcSpec == "INVALID.XML":
             src_xml = "<invalid><host name='#@!'/><?source>"
         elif srcSpec == "VALID.XML":
-            src_xml = "<source><host name='%s'/></source>" % source_host
+            if source_type == "iscsi-direct":
+                src_xml = "<source><host name='%s'/><initiator><iqn name='%s'/></initiator></source>" % (source_host, source_initiator)
+            else:
+                src_xml = "<source><host name='%s'/></source>" % source_host
         srcSpec = xml_utils.TempXMLFile().name
         with open(srcSpec, "w+") as srcSpec_file:
             srcSpec_file.write(src_xml)
