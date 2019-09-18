@@ -528,7 +528,7 @@ def run(test, params, env):
             logging.debug("Clean up test env: SSH, TCP, TLS, etc")
             for obj in objs_list:
                 obj.auto_recover = True
-                del obj
+                obj.__del__()
 
         # Disable libvirtd remote connection transport port
         obj_migration.migrate_pre_setup(dest_uri, params, cleanup=True, ports=transport_port)
