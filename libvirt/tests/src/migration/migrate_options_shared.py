@@ -1077,6 +1077,18 @@ def run(test, params, env):
         if postcopy_options:
             extra = "%s %s" % (extra, postcopy_options)
 
+        if remove_cache or (cache and cache not in ["none", "directsync"]):
+            if not status_error:
+                if not (libvirt_version.version_compare(5, 6, 0) and
+                   utils_misc.compare_qemu_version(4, 0, 0, False)):
+                    extra = "%s %s" % (extra, "--unsafe")
+            else:
+                if (libvirt_version.version_compare(5, 6, 0) and
+                   utils_misc.compare_qemu_version(4, 0, 0, False)):
+                    test.cancel("All the cache modes are safe on "
+                                "current libvirtd & qemu version,"
+                                "skip negative tests.")
+
         if low_speed:
             control_migrate_speed(int(low_speed))
             if postcopy_options and libvirt_version.version_compare(5, 0, 0):
