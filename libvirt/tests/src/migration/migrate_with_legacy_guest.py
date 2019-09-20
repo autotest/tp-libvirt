@@ -10,6 +10,7 @@ from virttest import defaults
 from virttest import virsh
 from virttest import remote
 from virttest import utils_conn
+from virttest import migration
 from virttest import libvirt_version
 
 from virttest.libvirt_xml import vm_xml
@@ -181,7 +182,7 @@ def run(test, params, env):
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     orig_config_xml = new_xml.copy()
 
-    migration_test = libvirt.MigrationTest()
+    migration_test = migration.MigrationTest()
     try:
         # Create a remote runner for later use
         runner_on_target = remote.RemoteRunner(host=server_ip,

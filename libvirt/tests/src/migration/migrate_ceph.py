@@ -15,6 +15,7 @@ from virttest import utils_package
 from virttest import utils_conn
 from virttest import virsh
 from virttest import virt_vm
+from virttest import migration
 
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import secret_xml
@@ -495,7 +496,7 @@ def run(test, params, env):
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     # Setup migration context
-    migrate_setup = libvirt.MigrationTest()
+    migrate_setup = migration.MigrationTest()
     migrate_setup.migrate_pre_setup(test_dict["desuri"], params)
 
     # Install ceph-common on remote host machine.
