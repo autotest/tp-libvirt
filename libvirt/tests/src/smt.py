@@ -116,8 +116,8 @@ def run(test, params, env):
     output = to_text(process.system_output(smt_threads_per_core_cmd, shell=True))
     try:
         host_threads = int(re.findall('Threads per core:\s+(\d+)', output)[0])
-    except Exception, e:
-        test.cancel("Unable to get the host threads\n %s" % e)
+    except Exception as err:
+        test.cancel("Unable to get the host threads\n %s" % err)
 
     logging.info("Guest: cores:%d, threads:%d, sockets:%d", vm_cores,
                  vm_threads, vm_sockets)
@@ -133,7 +133,7 @@ def run(test, params, env):
             vm.start()
             if status_error:
                 test.fail("VM Started with invalid thread %s" % vm_threads)
-        except virt_vm.VMStartError, detail:
+        except virt_vm.VMStartError as detail:
             if not status_error:
                 test.fail("VM failed to start %s" % detail)
 
@@ -143,8 +143,8 @@ def run(test, params, env):
                 session = vm.wait_for_login()
                 utils_package.package_install(["powerpc-utils"], session, 360)
                 session.close()
-            except Exception, e:
-                test.cancel("Unable to install powerpc-utils package in guest\n %s" % e)
+            except Exception as err:
+                test.cancel("Unable to install powerpc-utils package in guest\n %s" % err)
             # Changing the smt number
             if smt_number:
                 smt_chk_cmd_mod = "%s=%s" % (smt_chk_cmd, smt_number)
