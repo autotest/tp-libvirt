@@ -162,12 +162,6 @@ def run(test, params, env):
 
     # Interface specific attributes.
     iface_type = params.get("at_detach_iface_type", "network")
-    if iface_type == "bridge":
-        try:
-            utils_misc.find_command("brctl")
-        except ValueError:
-            raise exceptions.TestSkipError("Command 'brctl' is missing."
-                                           " You must install it.")
     iface_model = params.get("iface_model", "virtio")
     iface_source = params.get("at_detach_iface_source", "default")
     iface_mac = params.get("at_detach_iface_mac", "created")
@@ -195,12 +189,12 @@ def run(test, params, env):
         except AttributeError:
             pass  # If no virbr0, just pass is ok
         logging.debug("Useful bridges:%s", bridge_list)
-        # just choosing one bridge on host.
         if len(bridge_list):
             iface_source = bridge_list[0]
         else:
-            raise exceptions.TestSkipError("No useful bridge on host "
-                                           "other than 'virbr0'.")
+            process.run('ip link add name br0 type bridge', ignore_status=False)
+            iface_source = 'br0'
+            logging.debug("Added bridge br0")
 
     # Turn VM into certain state.
     if pre_vm_state == "running":

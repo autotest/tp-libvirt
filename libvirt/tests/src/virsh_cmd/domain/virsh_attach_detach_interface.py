@@ -3,7 +3,6 @@ import re
 import os
 import time
 
-from avocado.utils import path as utils_path
 from avocado.utils import process
 
 from virttest import libvirt_vm
@@ -172,13 +171,6 @@ def run(test, params, env):
 
     # Interface specific attributes.
     iface_type = params.get("at_detach_iface_type", "network")
-    if iface_type == "bridge":
-        try:
-            utils_path.find_command("brctl")
-        except utils_path.CmdNotFoundError:
-            test.cancel("Command 'brctl' is missing. You must "
-                        "install it.")
-
     iface_source = params.get("at_detach_iface_source", "default")
     iface_mode = params.get("at_detach_iface_mode", "vepa")
     iface_mac = params.get("at_detach_iface_mac", "created")
@@ -203,7 +195,8 @@ def run(test, params, env):
     if iface_type == "direct":
         iface_source = utils_net.get_net_if(state="UP")[0]
     # Get a bridge name for test if iface_type is bridge.
-    # If there is no bridge other than virbr0, raise TestCancel
+    # If there is no bridge other than virbr0, try to create one
+    # or fail test
     if iface_type == "bridge":
         host_bridge = utils_net.Bridge()
         bridge_list = host_bridge.list_br()
@@ -212,12 +205,12 @@ def run(test, params, env):
         except AttributeError:
             pass  # If no virbr0, just pass is ok
         logging.debug("Useful bridges:%s", bridge_list)
-        # just choosing one bridge on host.
         if len(bridge_list):
             iface_source = bridge_list[0]
         else:
-            test.cancel("No useful bridge on host "
-                        "other than 'virbr0'.")
+            process.run('ip link add name br0 type bridge', ignore_status=False)
+            iface_source = 'br0'
+            logging.debug("Added bridge br0")
 
     # Test both detach and attach, So collect info
     # both of them for result check.
