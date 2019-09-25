@@ -1,5 +1,6 @@
 import re
 import os
+import logging
 
 from virttest import virsh
 from virttest import data_dir
@@ -87,7 +88,11 @@ def run(test, params, env):
     try:
         if status_error:
             if not status:
-                test.fail("Run successfully with wrong command!")
+                if libvirtd == "off" and libvirt_version.version_compare(5, 6, 0):
+                    logging.info("From libvirt version 5.6.0 libvirtd is restarted "
+                                 "and command should succeed")
+                else:
+                    test.fail("Run successfully with wrong command!")
         else:
             if status:
                 test.fail("Run failed with right command")

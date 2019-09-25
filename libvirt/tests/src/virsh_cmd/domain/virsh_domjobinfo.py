@@ -205,7 +205,11 @@ def run(test, params, env):
     # Check status_error
     if status_error == "yes":
         if status == 0:
-            test.fail("Run successfully with wrong command!")
+            if libvirtd == "off" and libvirt_version.version_compare(5, 6, 0):
+                logging.info("From libvirt 5.6.0 libvirtd is restarted "
+                             "and command should succeed")
+            else:
+                test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if status != 0 or status_cmplt != 0:
             test.fail("Run failed with right command")
