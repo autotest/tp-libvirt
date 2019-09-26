@@ -1,5 +1,6 @@
 import logging
 import netaddr
+import time
 from virttest import utils_test
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.nodedev_xml import NodedevXML
@@ -26,6 +27,12 @@ def run(test, params, env):
         4. Start guest and get the result of 'fdisk -l' on guest.
         5. Compare the result of 'fdisk -l' before and after
             attaching storage pci device to guest.
+    c). GPU:
+        1. Get params.
+        2. Get the pci device details for specific_gpu.
+        3. Attach the GPU's to single guest
+        4. Start guest and check the GPU's.
+        5. Execute stress test on the GPU's along with GPU-burn.
     """
 
     # get the params from params
@@ -34,49 +41,48 @@ def run(test, params, env):
     sriov = ('yes' == params.get("libvirt_pci_SRIOV", 'no'))
     device_type = params.get("libvirt_pci_device_type", "NIC")
     vm_vfs = int(params.get("number_vfs", 2))
-    pci_dev = None
     pci_address = None
+    pci_dev = ''
     bus_info = []
-    if device_type == "NIC":
-        pf_filter = params.get("pf_filter", "0000:01:00.0")
-        vf_filter = params.get("vf_filter", "Virtual Function")
-    else:
-        pci_dev = params.get("libvirt_pci_storage_dev_label")
+    if ((device_type == "NIC") or (device_type == "GPU")):
+        pf_filter = params.get("pf_filter")
+    elif device_type == "STORAGE":
+        pci_dev = params.get("libvirt_pci_storage_dev_label", "ENTER.YOUR.PCI.LABEL")
 
     net_ip = params.get("libvirt_pci_net_ip", "ENTER.YOUR.IP")
     server_ip = params.get("libvirt_pci_server_ip",
                            "ENTER.YOUR.SERVER.IP")
     netmask = params.get("libvirt_pci_net_mask", "ENTER.YOUR.Mask")
+    stress_type = params.get("stress_type", "stress-ng")
+    stress_args = params.get("stress_args", "--cpu 8 --io 4 "
+                                            "--vm 2 --vm-bytes 128M "
+                                            "--timeout 20s")
 
     # Check the parameters from configuration file.
+    if (pf_filter.count("ENTER") or pci_dev.count("ENTER")):
+        test.cancel("Please enter your Adapter details for test.")
     if (device_type == "NIC"):
-        if (pf_filter.count("ENTER")):
-            test.cancel("Please enter your NIC Adapter details for test.")
         if (net_ip.count("ENTER") or server_ip.count("ENTER") or netmask.count("ENTER")):
             test.cancel("Please enter the ips and netmask for NIC "
                         "test in config file")
-    elif (pci_dev.count("ENTER")):
-        test.cancel("Please enter your Storage Adapter details for test.")
     fdisk_list_before = None
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
-    if device_type == "NIC":
-        if not vm.is_alive():
-            vm.start()
-        session = vm.wait_for_login()
-        nic_list_before = vm.get_pci_devices()
-        obj = PciAssignable(pf_filter_re=pf_filter,
-                            vf_filter_re=vf_filter)
-        # get all functions id's
-        pci_ids = obj.get_same_group_devs(pf_filter)
-        pci_devs = []
-        for val in pci_ids:
-            temp = val.replace(":", "_")
-            pci_devs.extend(["pci_"+temp])
+    obj = PciAssignable(pf_filter_re=pf_filter)
+    if not vm.is_alive():
+        vm.start()
+    session = vm.wait_for_login()
+    pci_list_before = vm.get_pci_devices()
+    # get all functions id's
+    pci_ids = obj.get_same_group_devs(pf_filter)
+    pci_devs = []
+    for val in pci_ids:
+        temp = val.replace(":", "_")
+        pci_devs.extend(["pci_"+temp])
+    if ((device_type == "NIC") or (device_type == "GPU")):
         if sriov:
             # The SR-IOV setup of the VF's should be done by test_setup
             # PciAssignable class.
-
             for pf in pci_ids:
                 obj.set_vf(pf, vm_vfs)
                 cont = obj.get_controller_type()
@@ -114,19 +120,20 @@ def run(test, params, env):
         pci_xml = NodedevXML.new_from_dumpxml(pci_dev)
         pci_address = pci_xml.cap.get_address_dict()
         vmxml.add_hostdev(pci_address)
+
     try:
         vmxml.sync()
         vm.start()
         session = vm.wait_for_login()
         # The Network configuration is generic irrespective of PF or SRIOV VF
+        pci_list_after = vm.get_pci_devices()
+        if sorted(pci_list_after) == sorted(pci_list_before):
+            test.fail("Passthrough Adapter not found in guest.")
+        else:
+            logging.debug("Adapter passthroughed to guest successfully")
         if device_type == "NIC":
-            nic_list_after = vm.get_pci_devices()
             net_ip = netaddr.IPAddress(net_ip)
-            if sorted(nic_list_after) == sorted(nic_list_before):
-                test.fail("Passthrough Adapter not found in guest.")
-            else:
-                logging.debug("Adapter passthroughed to guest successfully")
-            nic_list = list(set(nic_list_after).difference(set(nic_list_before)))
+            nic_list = list(set(pci_list_after).difference(set(pci_list_before)))
             for val in range(len(nic_list)):
                 bus_info.append(str(nic_list[val]).split(' ', 1)[0])
                 nic_list[val] = str(nic_list[val]).split(' ', 1)[0][:-2]
@@ -162,6 +169,32 @@ def run(test, params, env):
             fdisk_list_after = output.splitlines()
             if fdisk_list_after == fdisk_list_before:
                 test.fail("Didn't find the disk attached to guest.")
+
+        elif device_type == "GPU":
+            if session.cmd_status('lspci| grep NVIDIA'):
+                test.cancel("There are no NVIDIA based graphics card in the guest to run the test")
+
+            # Wait time for GPU's to be initialized.
+            time.sleep(60)
+
+            try:
+                vm_stress = utils_test.VMStress(vm, stress_type, params)
+                logging.info("Executing Stress test in the guest")
+                vm_stress.load_stress_tool()
+            except utils_test.StressError as info:
+                test.error(info)
+
+            cmd = [
+                'git clone https://github.com/wilicc/gpu-burn /tmp/gpuburn',
+                'cd /tmp/gpuburn/ && make',
+                'cd /tmp/gpu-burn/ && ./gpu_burn 30'
+            ]
+
+            for i in range(len(cmd)):
+                logging.info("Executing GPU-Burn in the guest")
+                status = session.cmd(cmd[i])
+                logging.debug(status)
+
     finally:
         backup_xml.sync()
         # For SR-IOV , VF's should be cleaned up in the post-processing.
