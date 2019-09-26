@@ -115,11 +115,10 @@ TIMEOUT 3"""
         # if it's not in host interface list, try to set
         # source device to first active interface of host
         if (iface.type_name == "direct" and
-            'dev' in source and
+                'dev' in source and
                 source['dev'] not in net_ifs):
-            logging.warn("Source device %s is not a interface"
-                         " of host, reset to %s",
-                         source['dev'], net_ifs[0])
+            logging.warning("Source device %s is not a interface of host, reset to %s",
+                            source['dev'], net_ifs[0])
             source['dev'] = net_ifs[0]
         del iface.source
         iface.source = source
@@ -200,8 +199,7 @@ TIMEOUT 3"""
         cmd = "tc class show dev %s" % ifname
         class_output = to_text(process.system_output(cmd))
         logging.debug("Bandwidth class output: %s", class_output)
-        class_pattern = (r"class htb %s.*rate (\d+)(K?M?)bit ceil"
-                         " (\d+)(K?M?)bit burst (\d+)(K?M?)b.*" % rule_id)
+        class_pattern = (r"class htb %s.*rate (\d+)(K?M?)bit ceil (\d+)(K?M?)bit burst (\d+)(K?M?)b.*" % rule_id)
         se = re.search(class_pattern, class_output, re.M)
         if not se:
             test.fail("Can't find outbound setting for htb %s" % rule_id)
@@ -249,7 +247,7 @@ TIMEOUT 3"""
             return not filter_output.strip()
         if not filter_output.count("filter protocol all pref"):
             test.fail("Can't find 'protocol all' settings in filter rules")
-        filter_pattern = ".*police.*rate (\d+)(K?M?)bit burst (\d+)(K?M?)b.*"
+        filter_pattern = r".*police.*rate (\d+)(K?M?)bit burst (\d+)(K?M?)b.*"
         se = re.search(r"%s" % filter_pattern, filter_output, re.M)
         if not se:
             test.fail("Can't find any filter policy")
@@ -479,6 +477,7 @@ TIMEOUT 3"""
         def get_ip_func():
             return utils_net.get_guest_ip_addr(session, iface_mac,
                                                ip_version=ip_ver)
+
         utils_misc.wait_for(get_ip_func, 5)
         if not get_ip_func():
             utils_net.restart_guest_network(session, iface_mac,
@@ -633,12 +632,11 @@ TIMEOUT 3"""
             # if it's not in host interface list, try to set
             # forward device to first active interface of host
             if ('mode' in forward and forward['mode'] in
-                ['passthrough', 'private', 'bridge', 'macvtap'] and
-                'dev' in forward and
+                    ['passthrough', 'private', 'bridge', 'macvtap'] and
+                    'dev' in forward and
                     forward['dev'] not in net_ifs):
-                logging.warn("Forward device %s is not a interface"
-                             " of host, reset to %s",
-                             forward['dev'], net_ifs[0])
+                logging.warning("Forward device %s is not a interface of host, reset to %s",
+                                forward['dev'], net_ifs[0])
                 forward['dev'] = net_ifs[0]
                 params["net_forward"] = str(forward)
             forward_iface = params.get("forward_iface")
@@ -649,9 +647,8 @@ TIMEOUT 3"""
                 # interface list, try to set forward interface to
                 # first active interface of host.
                 if interface[0] not in net_ifs:
-                    logging.warn("Forward interface %s is not a "
-                                 " interface of host, reset to %s",
-                                 interface[0], net_ifs[0])
+                    logging.warning("Forward interface %s is not a interface of host, reset to %s",
+                                    interface[0], net_ifs[0])
                     interface[0] = net_ifs[0]
                     params["forward_iface"] = " ".join(interface)
 
@@ -762,7 +759,7 @@ TIMEOUT 3"""
                     if 'delay' in bridge and bridge['delay'] != '0':
                         # network xml forward delay value in seconds, while on
                         # host, check by ip command, the value is in second*100
-                        br_delay = int(bridge['delay'])*100
+                        br_delay = int(bridge['delay']) * 100
                         logging.debug("Expect forward_delay is %s ms" % br_delay)
                         cmd = ("ip -d link sh %s | grep 'bridge forward_delay'"
                                % bridge['name'])
@@ -800,7 +797,7 @@ TIMEOUT 3"""
                 run_dnsmasq_default_test("dhcp-lease-max", "493", name=net_name)
             else:
                 range_num = int(params.get("dhcp_range", "252"))
-                run_dnsmasq_default_test("dhcp-lease-max", str(range_num+1), name=net_name)
+                run_dnsmasq_default_test("dhcp-lease-max", str(range_num + 1), name=net_name)
             run_dnsmasq_default_test("dhcp-hostsfile",
                                      "/var/lib/libvirt/dnsmasq/%s.hostsfile" % net_name,
                                      name=net_name)
