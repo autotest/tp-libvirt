@@ -1,3 +1,4 @@
+import os
 import re
 import logging
 import time
@@ -150,8 +151,10 @@ class VMChecker(object):
         if self.os_version in ['win7', 'win2008r2']:
             video_model = 'qxl'
             # video mode of windows guest will be cirrus if there is no virtio-win
-            # driver installed on host
-            if process.run('rpm -q virtio-win', ignore_status=True).exit_status != 0:
+            # driver installed and environment 'VIRTIO_WIN' is not set on host
+            if process.run(
+                'rpm -q virtio-win',
+                    ignore_status=True).exit_status != 0 and not os.getenv('VIRTIO_WIN'):
                 video_model = 'cirrus'
         return video_model
 
