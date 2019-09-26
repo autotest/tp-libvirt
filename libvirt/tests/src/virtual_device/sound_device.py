@@ -110,7 +110,7 @@ def run(test, params, env):
             sound_dev.codec_type = codec_type
         vm_xml.add_device(sound_dev)
         vm_xml.sync()
-        virsh.start(vm_name)
+        virsh.start(vm_name, ignore_status=False)
         check_dumpxml()
         check_qemu_cmd_line()
     finally:
