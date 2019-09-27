@@ -25,6 +25,7 @@ def run(test, params, env):
     iface_model = params.get("iface_model")
     iface_mtu = params.get("iface_mtu")
     iface_rom = params.get("iface_rom")
+    iface_filter = params.get("iface_filter")
 
     new_iface_driver = params.get("new_iface_driver")
     new_iface_driver_host = params.get("new_iface_driver_host")
@@ -45,6 +46,7 @@ def run(test, params, env):
     cold_update = "yes" == params.get("cold_update", "no")
     del_addr = "yes" == params.get("del_address")
     del_rom = "yes" == params.get("del_rom")
+    del_filter = "yes" == params.get("del_filter")
 
     # Backup the vm xml for recover at last
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -64,7 +66,7 @@ def run(test, params, env):
         names = locals()
         # Collect need update items in 2 dicts for both start vm before and after
         update_list_bef = [
-            "driver", "model", "mtu", "rom"
+            "driver", "model", "mtu", "rom", "filter"
             ]
         for update_item_bef in update_list_bef:
             if names['iface_'+update_item_bef]:
@@ -80,7 +82,7 @@ def run(test, params, env):
         logging.info("iface_dict_bef is %s, iface_dict_aft is %s",
                      iface_dict_bef, iface_dict_aft)
 
-        del_list = ["del_addr", "del_rom"]
+        del_list = ["del_addr", "del_rom", "del_filter"]
         for del_item in del_list:
             if names[del_item]:
                 iface_dict_aft.update({del_item: "True"})
@@ -174,6 +176,11 @@ def run(test, params, env):
                 else:
                     test.fail("Get filter %s is not equal to set %s"
                               % (iface_filter_value, new_iface_filter))
+            if del_filter:
+                iface_filter_value = iface_aft.find('filterref')
+                if iface_filter_value:
+                    logging.debug("After delete, the filter still exists: %s",
+                                  iface_filter_value)
             if new_iface_alias:
                 iface_alias_value = iface_aft.find('alias').get('name')
                 if iface_alias_value == eval(new_iface_alias)['name']:
