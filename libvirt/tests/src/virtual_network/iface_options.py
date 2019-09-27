@@ -114,7 +114,8 @@ def run(test, params, env):
                                         driver_guest=driver_guest)
         if iface.address:
             del iface.address
-
+        if set_ip:
+            iface.ips = [ast.literal_eval(x) for x in set_ips]
         logging.debug("New interface xml file: %s", iface)
         if unprivileged_user:
             # Create disk image for unprivileged user
@@ -149,6 +150,8 @@ def run(test, params, env):
             vmxml.xmltreefile.write()
             try:
                 vmxml.sync()
+                if define_error:
+                    test.fail("Define VM succeed, but it should fail")
             except xcepts.LibvirtXMLError as e:
                 if not define_error:
                     test.fail("Define VM fail: %s" % e)
@@ -310,24 +313,23 @@ def run(test, params, env):
             vm_ips.append(get_guest_ip(session, iface_mac))
         logging.debug("IP address on guest: %s", vm_ips)
         if len(vm_ips) != len(set(vm_ips)):
-            test.fail("Duplicated IP address on guest. "
-                      "Check bug: https://bugzilla.redhat."
-                      "com/show_bug.cgi?id=1147238")
-
+            logging.debug("Duplicated IP address on guest. Check bug: "
+                          "https://bugzilla.redhat.com/show_bug.cgi?id=1147238")
         for vm_ip in vm_ips:
-            if vm_ip is None or not vm_ip.startswith("10.0.2."):
+            if not vm_ip or vm_ip != expect_ip:
+                logging.debug("vm_ip is %s, expect_ip is %s", vm_ip, expect_ip)
                 test.fail("Found wrong IP address"
                           " on guest")
         # Check gateway address
-        gateway = utils_net.get_net_gateway(session.cmd_output)
-        if gateway != "10.0.2.2":
-            test.fail("The gateway on guest is not"
-                      " right")
+        gateway = str(utils_net.get_guest_default_gateway(session))
+        if expect_gw not in gateway:
+            test.fail("The gateway on guest is %s, while expect is %s" %
+                      (gateway, expect_gw))
         # Check dns server address
-        ns_list = utils_net.get_net_nameserver(session.cmd_output)
-        if "10.0.2.3" not in ns_list:
-            test.fail("The dns server can't be found"
-                      " on guest")
+        ns_list = utils_net.get_guest_nameserver(session)
+        if expect_ns not in ns_list:
+            test.fail("The dns found is %s, which expect is %s" %
+                      (ns_list, expect_ns))
 
     def check_mcast_network(session):
         """
@@ -423,6 +425,11 @@ def run(test, params, env):
     test_guest_ip = "yes" == params.get("test_guest_ip", "no")
     test_backend = "yes" == params.get("test_backend", "no")
     check_guest_trans = "yes" == params.get("check_guest_trans", "no")
+    set_ip = "yes" == params.get("set_user_ip", "no")
+    set_ips = params.get("set_ips", "").split()
+    expect_ip = params.get("expect_ip")
+    expect_gw = params.get("expect_gw")
+    expect_ns = params.get("expect_ns")
 
     if iface_driver_host or iface_driver_guest or test_backend:
         if not libvirt_version.version_compare(1, 2, 8):
