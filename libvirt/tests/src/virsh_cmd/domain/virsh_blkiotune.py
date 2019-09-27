@@ -9,6 +9,7 @@ from virttest.staging import utils_cgroup
 from virttest.utils_misc import get_dev_major_minor
 from virttest.compat_52lts import results_stdout_52lts
 
+from provider import libvirt_version
 
 def check_blkiotune(test, params):
     """
@@ -202,7 +203,6 @@ def set_blkio_parameter(test, params, cgstop):
     weight = params.get("blkio_weight")
     device_weights = params.get("blkio_device_weights")
     options = params.get("options")
-
     result = virsh.blkiotune(vm_name, weight, device_weights, options=options)
     status = result.exit_status
 
@@ -218,7 +218,12 @@ def set_blkio_parameter(test, params, cgstop):
             else:
                 logging.info("Control groups stopped, thus expected success")
     elif status_error == "no":
-        if status:
+        is_cfq = params.get('iosche_for_test') == 'cfq'
+        is_at_least_libvirt_5_5_0 = libvirt_version.version_compare(5, 5, 0)
+        if status and not is_cfq and device_weights and is_at_least_libvirt_5_5_0:
+            logging.info("Set/get device weight is only supported for cfq."
+                         " It's an expected %s", result.stderr)
+        elif status:
             test.fail(result.stderr)
         else:
             if check_blkiotune(test, params):
@@ -260,17 +265,21 @@ def run(test, params, env):
     cmd = "cat /sys/block/sda/queue/scheduler"
     iosche = results_stdout_52lts(process.run(cmd, shell=True))
     logging.debug("iosche value is:%s", iosche)
-    oldmode = re.findall("\[(.*?)\]", iosche)[0]
+    oldmode = re.findall("\\[(.*?)\\]", iosche)[0]
+    iosche_for_test = ""
     with open('/sys/block/sda/queue/scheduler', 'w') as scf:
         if 'cfq' in iosche:
-            scf.write('cfq')
+            iosche_for_test = 'cfq'
         elif 'bfq' in iosche:
-            scf.write('bfq')
+            iosche_for_test = 'bfq'
         else:
             test.fail('Unknown scheduler in "/sys/block/sda/queue/scheduler"')
 
+        scf.write(iosche_for_test)
+
     test_dict = dict(params)
     test_dict['vm'] = vm
+    test_dict['iosche_for_test'] = iosche_for_test
 
     # positive and negative testing
 
