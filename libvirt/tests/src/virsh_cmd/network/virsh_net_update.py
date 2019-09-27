@@ -4,7 +4,6 @@ import re
 import tempfile
 import time
 
-from avocado.utils import process
 
 from virttest import data_dir
 from virttest import virsh
@@ -89,6 +88,7 @@ def run(test, params, env):
     without_dns_host = params.get("without_dns_host", "no")
     without_dns_txt = params.get("without_dns_txt", "no")
     without_dns_srv = params.get("without_dns_srv", "no")
+    without_dns_forwarder = params.get("without_dns_forwarder", "no")
 
     # setting for update/check/without section
     update_sec = params.get("update_sec")
@@ -235,7 +235,10 @@ def run(test, params, env):
   <forward mode='nat'/>
   <bridge name='%s' stp='on' delay='0' />
   <mac address='52:54:00:03:78:6c'/>
+  <domain name="example.com" localOnly="no"/>
+  <mtu size="9000"/>
   <dns enable='%s'>
+     <forwarder domain='example.com' addr="8.8.4.4"/>
       <txt name='%s' value='%s'/>
       <srv service='%s' protocol='%s' domain='%s' target='%s' port='%s' priority='%s' weight='%s'/>
       %s
@@ -322,6 +325,8 @@ def run(test, params, env):
                     del test_xml.ip
                 del test_xml.routes
                 del test_xml.dns
+                del test_xml.mtu
+                del test_xml.domain_name
 
             section_index = 0
             if ip_version == "ipv6":
@@ -409,9 +414,10 @@ def run(test, params, env):
                 elif net_section == "dns-host":
                     if without_sec == "hostname":
                         newxml = re.sub("<hostname>.*</hostname>\n", "", newxml)
-                    flag_list.append("ip=.*?"+dns_hostip)
-                    flag_list.append(dns_hostname)
-                    flag_list.append(dns_hostname2)
+                    if status_error == 'no':
+                        flag_list.append("ip=.*?"+dns_hostip)
+                        flag_list.append(dns_hostname)
+                        flag_list.append(dns_hostname2)
                 # for negative test may have net_section do not match issues
                 elif status_error == "no":
                     test.fail("Unknown network section")
@@ -432,6 +438,8 @@ def run(test, params, env):
                 test_xml.del_element(element='/dns/txt')
             if without_dns_srv == "yes":
                 test_xml.del_element(element='/dns/srv')
+            if without_dns_forwarder == "yes":
+                test_xml.del_element(element='/dns/forwarder')
             # Only do net define/start in first loop
 
             if (net_section == "ip-dhcp-range" and use_in_guest == "yes" and
@@ -536,9 +544,7 @@ def run(test, params, env):
 
             if cmd_result.exit_status:
                 err = cmd_result.stderr.strip()
-                if re.search("not supported", err):
-                    test.cancel("Skip the test: %s" % err)
-                elif status_error == "yes":
+                if status_error == "yes":
                     # index-mismatch error info and judgement
                     index_err1 = "the address family of a host entry IP must match the" + \
                                  " address family of the dhcp element's parent"
@@ -600,12 +606,15 @@ def run(test, params, env):
                     err_dic["invalid-state"] = "network is not running"
                     err_dic["transient"] = "cannot change persistent config of a transient network"
                     err_dic["dns-disable"] = "Extra data in disabled network"
+                    err_dic["modify"] = "cannot be modified, only added or deleted"
+                    err_dic["not-support"] = "can't update.*section of network"
+                    err_dic["unrecognized"] = "unrecognized section name"
                     err_dic["interface-duplicate"] = "there is an existing interface entry " + \
                                                      "in network.* that matches"
 
                     if (error_type in list(err_dic.keys()) and
                             re.search(err_dic[error_type], err) or mismatch_expect):
-                        logging.info("Get expect error: %s", err)
+                        logging.debug("Get expect error: %s", err)
                     else:
                         test.fail("Do not get expect err msg: %s, %s"
                                   % (error_type, err_dic))
@@ -657,7 +666,7 @@ def run(test, params, env):
                     test.fail("The actual net xml is not expected,"
                               "element still exists")
             elif ("duplicate" not in error_type and error_type != "range-mismatch" and
-                    error_type != "host-mismatch"):
+                    error_type != "host-mismatch" and error_type != "not-support"):
                 # check xml should exists
                 for flag_string in flag_list:
                     logging.info("checking %s should in xml in positive test,"
