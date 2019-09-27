@@ -222,7 +222,11 @@ def set_blkio_parameter(test, params, cgstop):
             else:
                 logging.info("Control groups stopped, thus expected success")
     elif status_error == "no":
-        if status:
+        is_cfq = params.get('iosche_for_test') == 'cfq'
+        if status and not is_cfq and device_weights:
+            logging.info("Set/get device weight is only supported for cfq."
+                         " It's an expected %s", result.stderr)
+        elif status:
             test.fail(result.stderr)
         else:
             if check_blkiotune(test, params):
@@ -243,6 +247,39 @@ def update_schedulerfd(params):
     global schedulerfd
     if arch == "s390x":
         schedulerfd = "/sys/block/dasda/queue/scheduler"
+
+
+def prepare_scheduler(params, test, vm):
+    """
+    1. Save old scheduler for test tear down
+    2. Set scheduler for test or cancel test if not supported
+    3. Return test parameter dictionary
+    :param params: test parameters
+    :param test: test instance
+    :param vm: test vm instance
+    :return: dictionary of test parameters enriched with scheduler dynamic parameters
+    """
+    update_schedulerfd(params)
+
+    test_dict = dict(params)
+    test_dict['vm'] = vm
+
+    cmd = "cat " + schedulerfd
+    iosche = results_stdout_52lts(process.run(cmd, shell=True))
+    logging.debug("iosche value is:%s", iosche)
+    test_dict['oldmode'] = re.findall(r"\[(.*?)\]", iosche)[0]
+
+    iosche_for_test = ""
+    with open(schedulerfd, 'w') as scf:
+        if 'cfq' in iosche:
+            iosche_for_test = 'cfq'
+        elif 'bfq' in iosche:
+            iosche_for_test = 'bfq'
+        else:
+            test.fail('Unknown scheduler in %s' % schedulerfd)
+        scf.write(iosche_for_test)
+    test_dict['iosche_for_test'] = iosche_for_test
+    return test_dict
 
 
 def run(test, params, env):
@@ -272,24 +309,9 @@ def run(test, params, env):
     if start_vm == "no" and vm and vm.is_alive():
         vm.destroy()
 
-    update_schedulerfd(params)
-    cmd = "cat " + schedulerfd
-    iosche = results_stdout_52lts(process.run(cmd, shell=True))
-    logging.debug("iosche value is:%s", iosche)
-    oldmode = re.findall("\\[(.*?)\\]", iosche)[0]
-    with open(schedulerfd, 'w') as scf:
-        if 'cfq' in iosche:
-            scf.write('cfq')
-        elif 'bfq' in iosche:
-            scf.write('bfq')
-        else:
-            test.fail('Unknown scheduler in %s' % schedulerfd)
-
-    test_dict = dict(params)
-    test_dict['vm'] = vm
+    test_dict = prepare_scheduler(params, test, vm)
 
     # positive and negative testing
-
     cgstop = False
     try:
         if start_vm == "yes" and not vm.is_alive():
@@ -335,7 +357,7 @@ def run(test, params, env):
         original_vm_xml.sync()
 
         with open(schedulerfd, 'w') as scf:
-            scf.write(oldmode)
+            scf.write(test_dict['oldmode'])
 
         # If we stopped cg, then recover and refresh libvirtd to recognize
         if cgstop:
