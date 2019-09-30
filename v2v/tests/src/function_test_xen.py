@@ -356,10 +356,10 @@ def run(test, params, env):
             if not os.path.exists(dest_dir):
                 shutil.copytree(src_dir, dest_dir)
             virtio_win_env = params.get('virtio_win_env', 'VIRTIO_WIN')
-            process.run('rpm -e virtio-win')
-            if process.run('rpm -q virtio-win', ignore_status=True).exit_status == 0:
-                test.error('not removed')
             if checkpoint.endswith('unset'):
+                process.run('rpm -e virtio-win')
+                if process.run('rpm -q virtio-win', ignore_status=True).exit_status == 0:
+                    test.error('not removed')
                 logging.info('Unset env %s' % virtio_win_env)
                 os.unsetenv(virtio_win_env)
             if checkpoint.endswith('custom'):
