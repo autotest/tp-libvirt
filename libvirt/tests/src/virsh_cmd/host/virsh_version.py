@@ -1,6 +1,10 @@
+import logging
+
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_libvirtd
+
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -32,8 +36,12 @@ def run(test, params, env):
     # Check status_error
     if status_error:
         if not result.exit_status:
-            test.fail("Command 'virsh version %s' succeeded "
-                      "(incorrect command)" % option)
+            if libvirtd == "off" and libvirt_version.version_compare(5, 6, 0):
+                logging.info("From libvirt version 5.6.0 libvirtd is restarted "
+                             "and command should succeed.")
+            else:
+                test.fail("Command 'virsh version %s' succeeded "
+                          "(incorrect command)" % option)
     else:
         if result.exit_status:
             test.fail("Command 'virsh version %s' failed "

@@ -21,6 +21,8 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
 
+from provider import libvirt_version
+
 find_dump_file = False
 
 
@@ -254,7 +256,11 @@ def run(test, params, env):
         # check status_error
         if status_error:
             if not status:
-                test.fail("Run successfully with wrong command!")
+                if libvirtd_state == "off" and libvirt_version.version_compare(5, 6, 0):
+                    logging.info("From libvirt version 5.6.0 libvirtd is restarted "
+                                 "and command should succeed.")
+                else:
+                    test.fail("Run successfully with wrong command!")
         else:
             if status or not output:
                 test.fail("Run failed with right command")

@@ -8,6 +8,8 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest.compat_52lts import decode_to_text as to_text
 
+from provider import libvirt_version
+
 
 def run(test, params, env):
     """
@@ -218,7 +220,11 @@ def run(test, params, env):
     # check status_error
     if status_error == "yes":
         if status == 0:
-            test.fail("Run successfully with wrong command!")
+            if libvirtd == "off" and libvirt_version.version_compare(5, 6, 0):
+                logging.info("From libvirt version 5.6.0 libvirtd is restarted "
+                             "and command should succeed")
+            else:
+                test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if status != 0:
             test.fail("Run failed with right command")

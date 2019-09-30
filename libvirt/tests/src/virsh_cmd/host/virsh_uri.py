@@ -8,6 +8,8 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import ssh_key
 
+from provider import libvirt_version
+
 
 def run(test, params, env):
     """
@@ -74,8 +76,12 @@ def run(test, params, env):
     status_error = params.get("status_error")
     if status_error == "yes":
         if status == 0:
-            raise exceptions.TestFail("Command: %s  succeeded "
-                                      "(incorrect command)" % cmd)
+            if libvirtd == "off" and libvirt_version.version_compare(5, 6, 0):
+                logging.info("From libvirt version 5.6.0 libvirtd is restarted "
+                             "and command should succeed.")
+            else:
+                raise exceptions.TestFail("Command: %s  succeeded "
+                                          "(incorrect command)" % cmd)
         else:
             logging.info("command: %s is a expected error", cmd)
     elif status_error == "no":

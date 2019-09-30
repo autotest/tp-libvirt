@@ -1,3 +1,5 @@
+import logging
+
 from avocado.utils import process
 
 from virttest import virsh
@@ -5,6 +7,8 @@ from virttest import ssh_key
 from virttest import utils_package
 from virttest import utils_libvirtd
 from virttest import remote
+
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -71,8 +75,12 @@ def run(test, params, env):
     status_error = params.get("status_error")
     if status_error == "yes":
         if status == 0:
-            test.fail("Command 'virsh hostname %s' succeeded "
-                      "(incorrect command)" % option)
+            if libvirtd == "off" and libvirt_version.version_compare(5, 6, 0):
+                logging.info("From libvirt version 5.6.0 libvirtd is restarted "
+                             "and command should succeed.")
+            else:
+                test.fail("Command 'virsh hostname %s' succeeded "
+                          "(incorrect command)" % option)
     elif status_error == "no":
         if hostname != hostname_test:
             test.fail(
