@@ -64,6 +64,7 @@ def run(test, params, env):
 
         :param page_size: unit is kB, it can be 4,2048,1048576,etc
         """
+        log_kernel_hugepagesize(page_size)
         if page_size == 4:
             perm = ""
         else:
@@ -74,6 +75,10 @@ def run(test, params, env):
         if tlbfs_status:
             utils_misc.umount("hugetlbfs", "/dev/hugepages", "hugetlbfs")
         utils_misc.mount("hugetlbfs", "/dev/hugepages", "hugetlbfs", perm)
+
+    def log_kernel_hugepagesize(page_size):
+        cmd = 'cat /proc/meminfo |grep Hugepagesize'
+        process.run(cmd, shell=True, verbose=True, ignore_status=True)
 
     def setup_hugepages(page_size=2048, shp_num=2000):
         """
@@ -109,7 +114,7 @@ def run(test, params, env):
                     % (max_mem_slots, max_mem_rt))
         if tg_size:
             size = int(tg_size) * 1024
-            cmd_str = 'memdimm.\|memory-backend-ram,id=ram-node.'
+            cmd_str = 'memdimm.\\|memory-backend-ram,id=ram-node.'
             cmd += (" | grep 'memory-backend-ram,id=%s' | grep 'size=%s"
                     % (cmd_str, size))
             if pg_size:
