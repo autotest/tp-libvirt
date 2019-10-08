@@ -62,9 +62,12 @@ def run(test, params, env):
         :param vmxml: xml of vm to be manipulated
         :param attrs: attrs to set to cpu xml
         """
-        cpu = vm_xml.VMCPUXML()
+        if vmxml.xmltreefile.find('cpu'):
+            cpu = vmxml.cpu
+        else:
+            cpu = vm_xml.VMCPUXML()
         if 'numa_cell' in attrs:
-            cpu.xml = "<cpu><numa/></cpu>"
+            cpu.xmltreefile.create_by_xpath('/numa')
             cpu.numa_cell = attrs['numa_cell']
         for key in attrs:
             setattr(cpu, key, attrs[key])
