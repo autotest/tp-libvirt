@@ -10,6 +10,7 @@ from virttest.utils_test import libvirt
 from virttest.staging import service
 from virttest.libvirt_xml import vm_xml
 from virttest import utils_package
+from virttest.libvirt_xml.devices.interface import Interface
 
 NETWORK_SCRIPT = "/etc/sysconfig/network-scripts/ifcfg-"
 
@@ -43,10 +44,11 @@ def run(test, params, env):
             test.cancel("The bridge %s already exist" % br_name)
 
         # Create bridge
-        # This cmd run a long time, so set timeout=240
-        result = virsh.iface_bridge(iface_name, br_name, "--no-stp", debug=True, timeout=240)
-        if result.exit_status:
-            test.fail("Failed to create bridge:\n%s" % result.stderr)
+        utils_package.package_install('tmux')
+        cmd = 'tmux -c "ip link add name {0} type bridge; ip link set {1} up;' \
+              ' ip link set {1} master {0}; ip link set {0} up;' \
+              ' pkill dhclient; sleep 6; dhclient {0}; ifconfig {1} 0"'.format(br_name, iface_name)
+        process.run(cmd, shell=True, verbose=True)
 
     def define_nwfilter(filter_name):
         """
@@ -82,7 +84,9 @@ def run(test, params, env):
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         iface_xml = vmxml.get_devices('interface')[0]
         vmxml.del_device(iface_xml)
+        iface_xml = Interface(type_name='bridge')
         iface_xml.source = {'bridge': br_name}
+        iface_xml.model = 'virtio'
         iface_xml.filterref = iface_xml.new_filterref(name=nwfilter)
         logging.debug("new interface xml is: %s" % iface_xml)
         vmxml.add_device(iface_xml)
@@ -105,8 +109,21 @@ def run(test, params, env):
         if status:
             test.fail("Fail to ping %s from %s" % (dest_ip, src_ip))
 
+    def check_net_functions(guest_ip, ping_count, ping_timeout, guest_session, host_ip, remote_url, endpoint_ip):
+        # make sure host network works well
+        # host ping remote url
+        ping(host_ip, remote_url, ping_count, ping_timeout)
+        # host ping guest
+        ping(host_ip, guest_ip, ping_count, ping_timeout)
+        # guest ping host
+        ping(guest_ip, host_ip, ping_count, ping_timeout, session=guest_session)
+        # guest ping remote url
+        ping(guest_ip, remote_url, ping_count, ping_timeout, session=guest_session)
+        # guest ping endpoint
+        ping(guest_ip, endpoint_ip, ping_count, ping_timeout, session=guest_session)
+
     # Get test params
-    bridge_name = params.get("bridge_name", "br0")
+    bridge_name = params.get("bridge_name", "test_br0")
     filter_name = params.get("filter_name", "vdsm-no-mac-spoofing")
     ping_count = params.get("ping_count", "5")
     ping_timeout = float(params.get("ping_timeout", "10"))
@@ -126,7 +143,8 @@ def run(test, params, env):
     vm2 = env.get_vm(vm2_name)
 
     # Back up the interface script
-    process.run("cp %s %s" % (iface_script, iface_script_bk), shell=True)
+    process.run("cp %s %s" % (iface_script, iface_script_bk),
+                shell=True, verbose=True)
     # Back up vm xml
     vm1_xml_bak = vm_xml.VMXML.new_from_dumpxml(vm1_name)
     vm2_xml_bak = vm_xml.VMXML.new_from_dumpxml(vm2_name)
@@ -134,20 +152,8 @@ def run(test, params, env):
     # Stop NetworkManager service
     NM_service = service.Factory.create_service("NetworkManager")
     NM_status = NM_service.status()
-    if NM_status is True:
-        NM_service.stop()
-
-    # Start network service
-    NW_service = service.Factory.create_service("network")
-    NW_status = NW_service.status()
-    if NW_status is None:
-        logging.debug("network service not found")
-        if not utils_package.package_install('network-scripts') or \
-                not utils_package.package_install('initscripts'):
-            test.cancel("Failed to install network service")
-    if NW_status is not True:
-        logging.debug("network service is not running")
-        NW_service.start()
+    if not NM_status:
+        NM_service.start()
 
     try:
         create_bridge(bridge_name, iface_name)
@@ -166,14 +172,15 @@ def run(test, params, env):
         except Exception as errs:
             test.fail("vm1 can't get IP with the new create bridge: %s" % errs)
 
-        # Check guest and host can ping each other
+        # Check guest's network function
         host_ip = utils_net.get_ip_address_by_interface(bridge_name)
-        remote_ip = params.get("remote_ip", "www.baidu.com")
-        ping(host_ip, vm1_ip, ping_count, ping_timeout)
-        ping(host_ip, remote_ip, ping_count, ping_timeout)
+        remote_url = params.get("remote_ip", "www.google.com")
+        # make sure the guest has got ip address
         session1 = vm1.wait_for_login()
-        ping(vm1_ip, host_ip, ping_count, ping_timeout, session=session1)
-        ping(vm1_ip, remote_ip, ping_count, ping_timeout, session=session1)
+        session1.cmd("pkill -9 dhclient", ignore_all_errors=True)
+        session1.cmd("dhclient %s " % iface_name, ignore_all_errors=True)
+        output = session1.cmd_output("ifconfig || ip a")
+        logging.debug("guest1 ip info %s" % output)
 
         # Start vm2 connect to the same bridge
         modify_iface_xml(bridge_name, filter_name, vm2_name)
@@ -188,8 +195,16 @@ def run(test, params, env):
         except Exception as errs:
             test.fail("vm2 can't get IP with the new create bridge: %s" % errs)
         session2 = vm2.wait_for_login()
-        ping(vm2_ip, vm1_ip, ping_count, ping_timeout, session=session2)
-        ping(vm1_ip, vm2_ip, ping_count, ping_timeout, session=session1)
+        # make sure guest has got ip address
+        session2.cmd("pkill -9 dhclient", ignore_all_errors=True)
+        session2.cmd("dhclient %s " % iface_name, ignore_all_errors=True)
+        output2 = session2.cmd_output("ifconfig || ip a")
+        logging.debug("guest ip info %s" % output2)
+        # check 2 guests' network functions
+        check_net_functions(vm1_ip, ping_count, ping_timeout, session1,
+                            host_ip, remote_url, vm2_ip)
+        check_net_functions(vm2_ip, ping_count, ping_timeout, session2,
+                            host_ip, remote_url, vm1_ip)
     finally:
         logging.debug("Start to restore")
         vm1_xml_bak.sync()
@@ -198,11 +213,15 @@ def run(test, params, env):
         if libvirt.check_iface(bridge_name, "exists", "--all"):
             virsh.iface_unbridge(bridge_name, timeout=60, debug=True)
         if os.path.exists(iface_script_bk):
-            process.run("mv %s %s" % (iface_script_bk, iface_script), shell=True)
+            process.run("mv %s %s" % (iface_script_bk, iface_script),
+                        shell=True, verbose=True)
         if os.path.exists(bridge_script):
-            process.run("rm -rf %s" % bridge_script, shell=True)
+            process.run("rm -rf %s" % bridge_script, shell=True, verbose=True)
+        cmd = 'tmux -c "ip link set {1} nomaster;  ip link delete {0};' \
+              'pkill dhclient; sleep 6; dhclient {1}"'.format(bridge_name, iface_name)
+        process.run(cmd, shell=True, verbose=True)
         # reload network configuration
-        NW_service.restart()
+        NM_service.restart()
         # recover NetworkManager
         if NM_status is True:
             NM_service.start()
