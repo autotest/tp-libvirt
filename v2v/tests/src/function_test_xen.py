@@ -280,13 +280,14 @@ def run(test, params, env):
             blklist = virsh.domblklist(vm_name, uri=uri).stdout.split('\n')
             logging.debug('domblklist %s:\n%s', vm_name, blklist)
             for line in blklist:
-                if line.startswith(('hda', 'vda', 'sda')):
+                if line.startswith(('hda', 'vda', 'sda', 'xvda')):
                     params['remote_disk_image'] = line.split()[-1]
                     break
             # Local path of disk image
             params['img_path'] = data_dir.get_tmp_dir() + '/%s.img' % vm_name
             if checkpoint == 'xvda_disk':
                 v2v_params['input_mode'] = 'disk'
+                v2v_params['hypervisor'] = 'kvm'
                 v2v_params.update({'input_file': params['img_path']})
             # Copy remote image to local with scp
             remote.scp_from_remote(xen_host, 22, xen_host_user,
