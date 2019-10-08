@@ -1680,10 +1680,6 @@ def run(test, params, env):
                 dev_id = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
                                                     "alias", "name")
             if device_bus[0] == "ide":
-                check_cmd = "/usr/libexec/qemu-kvm -device ? 2>&1 |grep -E 'ide-cd|ide-hd'"
-                if process.system(check_cmd, ignore_status=False, shell=True):
-                    test.cancel("ide-cd/ide-hd not supported by this qemu-kvm")
-
                 if devices[0] == "cdrom":
                     device_option = "ide-cd"
                 else:
