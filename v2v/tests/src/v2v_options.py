@@ -402,11 +402,23 @@ def run(test, params, env):
         Check disk size and total size in file of estimate created by v2v
         """
         import json
-        with open(estimate_file) as fp:
-            content = json.load(fp)
-        logging.debug('json file content:\n%s' % content)
 
-        if sum(content['disks']) != content['total']:
+        content = None
+        buf = ''
+        with open(estimate_file) as fp:
+            all_content = fp.read()
+            fp.seek(0)
+            for line in fp:
+                buf += line
+                if '}' not in line:
+                    continue
+                if 'disks' in buf and 'total' in buf:
+                    content = json.loads(buf)
+                    break
+                buf = ''
+
+        logging.debug('json file content:\n%s' % all_content)
+        if not content or sum(content['disks']) != content['total']:
             test.fail("The disks' size doesn't same as total value")
 
     def check_result(cmd, result, status_error):
