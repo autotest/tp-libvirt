@@ -97,6 +97,7 @@ def run(test, params, env):
         # Test i440fx VM starts with 240(positive)/241(negative) vcpus and hot-plugs vcpus to 240
         if check.startswith('i440fx_test'):
             current_vcpu = params.get('current_vcpu')
+            target_vcpu = params.get('target_vcpu')
             if 'hotplug' not in check:
                 vmxml.vcpu = int(guest_vcpu)
                 vmxml.sync()
@@ -111,14 +112,15 @@ def run(test, params, env):
             else:
                 vmxml.vcpu = int(guest_vcpu)
                 vmxml.current_vcpu = int(current_vcpu)
+                target_vcpu = int(target_vcpu)
                 vmxml.sync()
                 vm.start()
                 logging.info(libvirt_xml.VMXML.new_from_dumpxml(vm_name))
                 vm.wait_for_login(timeout=boot_timeout).close()
                 check_onlinevcpus(vm, int(current_vcpu))
-                res = virsh.setvcpus(vm_name, guest_vcpu, debug=True)
+                res = virsh.setvcpus(vm_name, target_vcpu, debug=True)
                 libvirt.check_exit_status(res)
-                check_onlinevcpus(vm, int(guest_vcpu))
+                check_onlinevcpus(vm, int(target_vcpu))
 
         # Configure a guest vcpu > 255 without iommu device for q35 VM
         if check == 'no_iommu':
