@@ -132,6 +132,8 @@ def run(test, params, env):
                   'main_vm': vm_name, 'input_mode': input_mode,
                   'network': network, 'bridge': bridge,
                   'storage': storage, 'hostname': source_ip,
+                  # For virsh connection
+                  'password': source_pwd,
                   'new_name': vm_name + utils_misc.generate_random_string(3),
                   'output_method': output_method, 'storage_name': storage_name,
                   'input_transport': input_transport, 'vcenter_host': vpx_ip,

@@ -210,6 +210,7 @@ def run(test, params, env):
             'hostname': xen_host, 'hypervisor': 'xen', 'main_vm': vm_name,
             'v2v_opts': '-v -x', 'input_mode': 'libvirt',
             'new_name': new_vm_name,
+            'password': xen_host_passwd,
             'storage':  params.get('output_storage', 'default'),
             'network':  params.get('network'),
             'bridge':   params.get('bridge'),

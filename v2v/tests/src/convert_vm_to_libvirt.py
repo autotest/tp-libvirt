@@ -42,6 +42,7 @@ def run(test, params, env):
     # nfs mount source
     vddk_libdir_src = params.get('vddk_libdir_src')
     vddk_thumbprint = params.get('vddk_thumbprint')
+    source_pwd = None
 
     # Prepare step for different hypervisor
     if hypervisor == "esx":
@@ -102,6 +103,7 @@ def run(test, params, env):
                   'main_vm': vm_name, 'input_mode': input_mode,
                   'network': network, 'bridge': bridge,
                   'storage': pool_name, 'hostname': source_ip,
+                  'password': source_pwd,
                   'input_transport': input_transport, 'vcenter_host': vpx_ip,
                   'vcenter_password': vpx_pwd,
                   'vddk_thumbprint': vddk_thumbprint,
