@@ -16,6 +16,7 @@ from avocado.utils import cpu as cpuutil
 from virttest import ssh_key
 from virttest import data_dir
 from virttest import nfs
+from virttest import gluster
 from virttest import remote
 from virttest import utils_config
 from virttest import utils_libvirtd
@@ -374,7 +375,7 @@ def prepare_gluster_disk(params):
                                 image_name + '.' + image_format)
 
     # Setup gluster.
-    host_ip = libvirt.setup_or_cleanup_gluster(True, **params)
+    host_ip = gluster.setup_or_cleanup_gluster(True, **params)
     logging.debug("host ip: %s ", host_ip)
     image_info = utils_misc.get_image_info(image_source)
     if image_info["format"] == disk_format:
@@ -2751,7 +2752,7 @@ def run(test, params, env):
 
         libvirtd = utils_libvirtd.Libvirtd()
         if disk_src_protocol == "gluster":
-            libvirt.setup_or_cleanup_gluster(False, **test_dict)
+            gluster.setup_or_cleanup_gluster(False, **test_dict)
             libvirtd.restart()
 
         if disk_src_protocol == "iscsi":

@@ -12,6 +12,7 @@ from virttest import utils_misc
 from virttest import xml_utils
 from virttest import utils_config
 from virttest import utils_libvirtd
+from virttest import gluster
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
@@ -604,7 +605,7 @@ def run(test, params, env):
             test.fail("Still can find snapshot metadata")
 
         if disk_src_protocol == 'gluster':
-            libvirt.setup_or_cleanup_gluster(False, brick_path=brick_path, **params)
+            gluster.setup_or_cleanup_gluster(False, brick_path=brick_path, **params)
             libvirtd.restart()
 
         if disk_src_protocol == 'iscsi':

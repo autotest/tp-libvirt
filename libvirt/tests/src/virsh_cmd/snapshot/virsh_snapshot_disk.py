@@ -12,6 +12,7 @@ from virttest import data_dir
 from virttest import libvirt_xml
 from virttest import libvirt_storage
 from virttest import utils_libvirtd
+from virttest import gluster
 from virttest.utils_test import libvirt as utlv
 
 from provider import libvirt_version
@@ -436,12 +437,12 @@ def run(test, params, env):
 
         libvirtd = utils_libvirtd.Libvirtd()
         if disk_source_protocol == 'gluster':
-            utlv.setup_or_cleanup_gluster(False, brick_path=brick_path, **params)
+            gluster.setup_or_cleanup_gluster(False, brick_path=brick_path, **params)
             if multi_gluster_disks:
                 brick_path = os.path.join(tmp_dir, "gluster-pool2")
                 mul_kwargs = params.copy()
                 mul_kwargs.update({"vol_name": "gluster-vol2"})
-                utlv.setup_or_cleanup_gluster(False, brick_path=brick_path, **mul_kwargs)
+                gluster.setup_or_cleanup_gluster(False, brick_path=brick_path, **mul_kwargs)
             libvirtd.restart()
 
         if snapshot_xml_path:

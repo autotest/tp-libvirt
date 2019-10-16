@@ -9,6 +9,8 @@ from virttest import utils_misc
 from virttest import data_dir
 from virttest import virsh
 from virttest import libvirt_storage
+from virttest import utils_net
+
 from virttest.libvirt_xml import vol_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.staging import service
@@ -465,7 +467,7 @@ def run(test, params, env):
                 if gluster_server_ip:
                     ip_addr = gluster_server_ip
                 else:
-                    ip_addr = utlv.get_host_ipv4_addr()
+                    ip_addr = utils_net.get_host_ip_address()
                 expected_vol['path'] = "gluster://%s/%s/%s" % (ip_addr,
                                                                source_name,
                                                                volume_name)

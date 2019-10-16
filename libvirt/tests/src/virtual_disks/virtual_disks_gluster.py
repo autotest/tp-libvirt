@@ -5,6 +5,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
+from virttest import gluster
 from virttest import utils_misc
 from virttest import virt_vm, remote
 from virttest.utils_test import libvirt
@@ -35,7 +36,7 @@ def run(test, params, env):
         image_source = vm.get_first_disk_devices()['source']
 
         # Setup gluster
-        host_ip = libvirt.setup_or_cleanup_gluster(True, brick_path=brick_path,  **params)
+        host_ip = gluster.setup_or_cleanup_gluster(True, brick_path=brick_path,  **params)
         logging.debug("host ip: %s ", host_ip)
         image_info = utils_misc.get_image_info(image_source)
         image_dest = "/mnt/%s" % disk_img
@@ -260,4 +261,4 @@ def run(test, params, env):
                         ignore_status=True, shell=True)
 
         if gluster_disk:
-            libvirt.setup_or_cleanup_gluster(False, brick_path=brick_path, **params)
+            gluster.setup_or_cleanup_gluster(False, brick_path=brick_path, **params)
