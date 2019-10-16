@@ -394,7 +394,6 @@ def run(test, params, env):
         # restart libvirt service on the remote host
         if tls_sanity_cert == "no" and ca_cn_new:
             test_dict['ca_cn'] = ca_cn_new
-            test_dict['ca_cakey_path'] = tmp_dir
             test_dict['scp_new_cacert'] = 'no'
             tls_obj_new = TLSConnection(test_dict)
             test_dict['tls_obj_new'] = tls_obj_new
