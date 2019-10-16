@@ -64,6 +64,8 @@ def run(test, params, env):
         iface.driver = iface.new_driver(driver_attr=driver_dict,
                                         driver_host=driver_host,
                                         driver_guest=driver_guest)
+        if test_target:
+            iface.target = {"dev": target_dev}
         logging.debug("Create new interface xml: %s", iface)
         return iface
 
@@ -112,6 +114,9 @@ def run(test, params, env):
         iface.driver = iface.new_driver(driver_attr=driver_dict,
                                         driver_host=driver_host,
                                         driver_guest=driver_guest)
+        if test_target:
+            logging.debug("iface.target is %s" % target_dev)
+            iface.target = {"dev": target_dev}
         if iface.address:
             del iface.address
         if set_ip:
@@ -220,6 +225,22 @@ def run(test, params, env):
                     mode = "passthru"
                 if not re.search("macvtap\s+mode %s" % mode, output):
                     test.fail("Failed to verify macvtap mode")
+        # Check if the "target dev" is set successfully
+        # 1. Target dev name with prefix as "vnet" will always be override;
+        # 2. Target dev name with prefix as "macvtap" or "macvlan" with direct
+        # type interface will be override;
+        # 3. Other scenarios, the target dev should be set successfully.
+        if test_target:
+            if target_dev != iface.target["dev"]:
+                if target_dev.startswith("vnet") or \
+                        (iface_type == "direct" and
+                         (target_dev.startswith("macvtap") or
+                          target_dev.startswith("macvlan"))):
+                    logging.debug("target dev %s is override" % target_dev)
+                else:
+                    test.fail("Failed to set target dev to %s", target_dev)
+            else:
+                logging.debug("target dev set successfully to %s", iface.target["dev"])
 
     def run_cmdline_test(iface_mac):
         """
@@ -430,6 +451,8 @@ def run(test, params, env):
     expect_ip = params.get("expect_ip")
     expect_gw = params.get("expect_gw")
     expect_ns = params.get("expect_ns")
+    test_target = "yes" == params.get("test_target", "no")
+    target_dev = params.get("target_dev", None)
 
     if iface_driver_host or iface_driver_guest or test_backend:
         if not libvirt_version.version_compare(1, 2, 8):
@@ -489,6 +512,10 @@ def run(test, params, env):
                 modify_iface_xml(update=False)
                 if define_error:
                     return
+
+            if test_target:
+                logging.debug("Setting target device name to %s", target_dev)
+                modify_iface_xml(update=False)
 
             if rm_vhost_driver:
                 # remove vhost driver on host and
@@ -614,6 +641,9 @@ def run(test, params, env):
                             logging.info("Find TX settint TX:%s by ethtool", driver_dict['tx_queue_size'])
                         else:
                             test.fail("Cannot find matching tx setting")
+            if test_target:
+                logging.debug("Check if the target dev is set")
+                run_xml_test(iface_mac)
 
             session.close()
             # Restart libvirtd and guest, then test again
