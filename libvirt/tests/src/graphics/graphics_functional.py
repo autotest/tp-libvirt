@@ -355,11 +355,10 @@ def get_expected_listen_ips(params, networks, expected_result):
         """
         for i in range(100):
             ip_addr = random_ip('ipv6')
-            if str(ip_addr).startswith('fe80'):
+            if str(ip_addr).startswith('fe80:0000'):
                 continue
             else:
                 return ip_addr
-                break
 
     spice_listen_type = params.get("spice_listen_type", "not_set")
     if spice_listen_type == 'none':
