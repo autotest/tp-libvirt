@@ -930,7 +930,7 @@ def run(test, params, env):
     test_exception = None
     is_TestError = False
     is_TestFail = False
-    is_TestSkip = False
+    is_TestCancel = False
 
     # Objects to be cleaned up in the end
     objs_list = []
@@ -1110,8 +1110,8 @@ def run(test, params, env):
                 mig_result = migration_test.ret
             except exceptions.TestFail as fail_detail:
                 test.fail(fail_detail)
-            except exceptions.TestSkipError as skip_detail:
-                test.cancel(skip_detail)
+            except exceptions.TestCancel as cancel_detail:
+                test.cancel(cancel_detail)
             except exceptions.TestError as error_detail:
                 test.error(error_detail)
             except Exception as details:
@@ -1236,8 +1236,8 @@ def run(test, params, env):
     except exceptions.TestFail as details:
         is_TestFail = True
         test_exception = details
-    except exceptions.TestSkipError as details:
-        is_TestSkip = True
+    except exceptions.TestCancel as details:
+        is_TestCancel = True
         test_exception = details
     except exceptions.TestError as details:
         is_TestError = True
@@ -1310,11 +1310,11 @@ def run(test, params, env):
             if objs_list:
                 for obj in objs_list:
                     logging.debug("Clean up local objs")
-                    del obj
+                    obj.__del__()
 
         except Exception as exception_detail:
             if (not test_exception and not is_TestError and
-               not is_TestFail and not is_TestSkip):
+               not is_TestFail and not is_TestCancel):
                 raise exception_detail
             else:
                 # if any of above exceptions has been raised, only print
@@ -1323,7 +1323,7 @@ def run(test, params, env):
     # Check result
     if is_TestFail:
         test.fail(test_exception)
-    if is_TestSkip:
+    if is_TestCancel:
         test.cancel(test_exception)
     if is_TestError:
         test.error(test_exception)
