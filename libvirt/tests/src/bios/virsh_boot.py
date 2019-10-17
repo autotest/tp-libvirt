@@ -279,10 +279,11 @@ def setup_test_env(params, test):
             cleanup_image_file = True
 
 
-def apply_boot_options(vmxml, params):
+def apply_boot_options(vmxml, params, test):
     """
     Apply Uefi/Seabios Boot options in VMXML
 
+    :param test: Avocado test object
     :param vmxml: The instance of VMXML class
     :param params: Avocado params object
     """
@@ -294,11 +295,13 @@ def apply_boot_options(vmxml, params):
     boot_dev = params.get("boot_dev", "hd")
     loader_type = params.get("loader_type", "")
     boot_type = params.get("boot_type", "seabios")
+    os_firmware = params.get("os_firmware", "")
+    with_secure = (params.get("with_secure", "no") == "yes")
     with_nvram = (params.get("with_nvram", "no") == "yes")
     with_loader = (params.get("with_loader", "yes") == "yes")
     with_readonly = (params.get("with_readonly", "yes") == "yes")
     with_loader_type = (params.get("with_loader_type", "yes") == "yes")
-    with_template = (params.get("with_template", "yes") == "yes")
+    with_nvram_template = (params.get("with_nvram_template", "yes") == "yes")
     vm_name = params.get("main_vm", "")
 
     dict_os_attrs = {}
@@ -310,6 +313,24 @@ def apply_boot_options(vmxml, params):
             dict_os_attrs.update({"loader_readonly": readonly})
         if with_loader_type:
             dict_os_attrs.update({"loader_type": loader_type})
+    else:
+        if not libvirt_version.version_compare(5, 3, 0):
+            test.cancel("Firmware attribute is not supported in"
+                        "current libvirt version")
+        else:
+            logging.debug("Set os firmware:")
+            dict_os_attrs.update({"os_firmware": os_firmware})
+            # Need to prepare a zero-length file named "40-edk2-ovmf-sb.json" to hide it
+            # when test SB disabled guest (BZ 1564270)
+            file_path = "/etc/qemu/firmware/"
+            hidden_file = os.path.join(file_path, "40-edk2-ovmf-sb.json")
+            if not os.path.exists(file_path):
+                os.makedirs(file_path)
+            cmd = 'touch %s' % hidden_file
+            process.run(cmd, shell=True, ignore_status=True)
+            # Include secure='yes' in loader and support no smm element in guest xml
+            if with_secure:
+                dict_os_attrs.update({"secure": "yes"})
 
     # To use BIOS Serial Console, need set userserial=yes in VMOSXML
     if boot_type == "seabios" and boot_dev == "cdrom":
@@ -324,7 +345,7 @@ def apply_boot_options(vmxml, params):
         logging.debug("Set os nvram")
         nvram = nvram.replace("<VM_NAME>", vm_name)
         dict_os_attrs.update({"nvram": nvram})
-        if with_template:
+        if with_nvram_template:
             dict_os_attrs.update({"nvram_template": template})
 
     vmxml.set_os_attrs(**dict_os_attrs)
@@ -625,11 +646,13 @@ def run(test, params, env):
 
     # Prepare a blank params to confirm if delete the configure at the end of the test
     ceph_cfg = ''
+    file_path = "/etc/qemu/firmware/"
+    hidden_file = os.path.join(file_path, "40-edk2-ovmf-sb.json")
     try:
         # Create config file if it doesn't exist
         ceph_cfg = ceph.create_config_file(params.get("mon_host"))
         setup_test_env(params, test)
-        apply_boot_options(vmxml, params)
+        apply_boot_options(vmxml, params, test)
         blk_source = vm.get_first_disk_devices()['source']
         set_domain_disk(vmxml, blk_source, params, test)
         vmxml.remove_all_boots()
@@ -696,6 +719,8 @@ def run(test, params, env):
         if ceph_cfg:
             os.remove(ceph_cfg)
         logging.debug("Start to cleanup")
+        if os.path.exists(hidden_file):
+            os.remove(hidden_file)
         if vm.is_alive:
             vm.destroy()
         logging.debug("Restore the VM XML")
