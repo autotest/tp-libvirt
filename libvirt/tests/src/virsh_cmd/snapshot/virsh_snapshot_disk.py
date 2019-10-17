@@ -123,12 +123,7 @@ def run(test, params, env):
         if snapshot_with_pool:
             # Create dst pool for create attach vol img
             pvt = utlv.PoolVolumeTest(test, params)
-            kwargs = params.copy()
-            update_items = {"image_size": "1G", "emulated_image": emulated_image,
-                            "source_name": vol_name, "pre_disk_vol": ["20M"],
-                            "export_options": export_options}
-            kwargs.update(update_items)
-            kwargs.pop("vol_name")
+            kwargs = get_pre_pool_kwargs(emulated_image, export_options, params, vol_name)
             pvt.pre_pool(**kwargs)
 
             if pool_type in ["iscsi", "disk"]:
@@ -304,7 +299,7 @@ def run(test, params, env):
                     test.fail("Failed to create snapshot. Error:%s."
                               % snapshot_result.stderr.strip())
             snapshot_name = re.search(
-                "\d+", snapshot_result.stdout.strip()).group(0)
+                "\\d+", snapshot_result.stdout.strip()).group(0)
 
             if snapshot_current:
                 snap_xml = libvirt_xml.SnapshotXML()
@@ -368,7 +363,7 @@ def run(test, params, env):
                 # to external snapshot not supported yet" since d410e6f. Thus,
                 # let's check for that and handle as a SKIP for now. Check bug:
                 # https://bugzilla.redhat.com/show_bug.cgi?id=1071264
-                if re.search("revert to external \w* ?snapshot not supported yet",
+                if re.search("revert to external \\w* ?snapshot not supported yet",
                              revert_result.stderr):
                     test.cancel(revert_result.stderr.strip())
                 else:
@@ -454,3 +449,19 @@ def run(test, params, env):
             except exceptions.TestFail as detail:
                 libvirtd.restart()
                 logging.error(str(detail))
+
+
+def get_pre_pool_kwargs(emulated_image, export_options, params, vol_name):
+    kwargs = params.copy()
+    # avoid remote connection on remote ip
+    if params.get("remote_gluster", "no") == "no":
+        host_ip = ""
+    else:
+        host_ip = params.get("gluster_server_ip")
+    update_items = {"image_size": "1G", "emulated_image": emulated_image,
+                    "source_name": vol_name, "pre_disk_vol": ["20M"],
+                    "export_options": export_options,
+                    "gluster_server_ip": host_ip}
+    kwargs.update(update_items)
+    kwargs.pop("vol_name")
+    return kwargs
