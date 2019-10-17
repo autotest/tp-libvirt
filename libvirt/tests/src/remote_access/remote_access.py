@@ -210,7 +210,9 @@ def run(test, params, env):
         logging.debug("start libvirt on remote")
         res = remote_libvirtd.start()
         if not res:
-            test.error("Failed to start libvirtd on remote")
+            status, output = server_session.cmd_status_output("journalctl -xe")
+            test.error("Failed to start libvirtd on remote. [status]: %s "
+                       "[output]: %s." % (status, output))
     server_session.close()
 
     # only simply connect libvirt daemon then return
