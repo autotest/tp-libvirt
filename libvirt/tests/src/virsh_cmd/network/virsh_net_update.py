@@ -833,7 +833,7 @@ def run(test, params, env):
                         else:
                             test.fail("getting ip %s is not same with setting %s"
                                       % (iface_ip, new_dhcp_host_ip))
-                        hostname = session.cmd_output("hostname").strip('\n')
+                        hostname = session.cmd_output("hostname -s").strip('\n')
                         if hostname == new_dhcp_host_name.split('.')[0]:
                             logging.info("getting hostname same with setting: %s", hostname)
                         else:
