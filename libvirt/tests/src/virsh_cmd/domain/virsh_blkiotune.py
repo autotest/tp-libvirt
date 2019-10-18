@@ -9,6 +9,10 @@ from virttest.staging import utils_cgroup
 from virttest.utils_misc import get_dev_major_minor
 from virttest.compat_52lts import results_stdout_52lts
 
+# By default path to first I/O scheduler is this. The value is
+# platform dependent and is updated through update_schedulerfd(arch).
+schedulerfd = "/sys/block/sda/queue/scheduler"
+
 
 def check_blkiotune(test, params):
     """
@@ -17,7 +21,7 @@ def check_blkiotune(test, params):
     blkio.weight and blkio.weight_device value from cgroup.
 
     :param test: the test handle
-    :params: the parameter dictionary
+    :param params: the parameter dictionary
     """
     vm_name = params.get("main_vm")
     vm = params.get("vm")
@@ -129,7 +133,7 @@ def get_blkio_params_from_cgroup(test, params):
                                   qemu_path)
 
     bfq_scheduler = False
-    with open("/sys/block/sda/queue/scheduler", 'r') as iosche:
+    with open(schedulerfd, 'r') as iosche:
         if 'bfq' in iosche.readline():
             bfq_scheduler = True
     if bfq_scheduler:
@@ -230,6 +234,17 @@ def set_blkio_parameter(test, params, cgstop):
                           " value from cgroup blkio controller")
 
 
+def update_schedulerfd(params):
+    """
+    Updates the path to I/O scheduler
+    :param params: the test parameters
+    """
+    arch = params.get("vm_arch_name", "x86_64")
+    global schedulerfd
+    if arch == "s390x":
+        schedulerfd = "/sys/block/dasda/queue/scheduler"
+
+
 def run(test, params, env):
     """
     Test blkio tuning
@@ -257,17 +272,18 @@ def run(test, params, env):
     if start_vm == "no" and vm and vm.is_alive():
         vm.destroy()
 
-    cmd = "cat /sys/block/sda/queue/scheduler"
+    update_schedulerfd(params)
+    cmd = "cat " + schedulerfd
     iosche = results_stdout_52lts(process.run(cmd, shell=True))
     logging.debug("iosche value is:%s", iosche)
-    oldmode = re.findall("\[(.*?)\]", iosche)[0]
-    with open('/sys/block/sda/queue/scheduler', 'w') as scf:
+    oldmode = re.findall("\\[(.*?)\\]", iosche)[0]
+    with open(schedulerfd, 'w') as scf:
         if 'cfq' in iosche:
             scf.write('cfq')
         elif 'bfq' in iosche:
             scf.write('bfq')
         else:
-            test.fail('Unknown scheduler in "/sys/block/sda/queue/scheduler"')
+            test.fail('Unknown scheduler in %s' % schedulerfd)
 
     test_dict = dict(params)
     test_dict['vm'] = vm
@@ -318,7 +334,7 @@ def run(test, params, env):
         # Restore guest
         original_vm_xml.sync()
 
-        with open('/sys/block/sda/queue/scheduler', 'w') as scf:
+        with open(schedulerfd, 'w') as scf:
             scf.write(oldmode)
 
         # If we stopped cg, then recover and refresh libvirtd to recognize
