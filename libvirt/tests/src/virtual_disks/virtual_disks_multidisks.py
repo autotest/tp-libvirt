@@ -1204,8 +1204,8 @@ def run(test, params, env):
                 if test_boot_console:
                     osxml.loader = "/usr/share/seabios/bios.bin"
                     osxml.bios_useserial = "yes"
-                    osxml.bios_reboot_timeout = "-1"
-
+                    if utils_misc.compare_qemu_version(4, 0, 0, False):
+                        osxml.bios_reboot_timeout = "-1"
                 del vmxml.os
                 vmxml.os = osxml
             driver_dict = {"name": disk.driver["name"],
@@ -1257,7 +1257,8 @@ def run(test, params, env):
                 if test_boot_console:
                     osxml.loader = params.get("disk_boot_seabios", "")
                     osxml.bios_useserial = "yes"
-                    osxml.bios_reboot_timeout = "-1"
+                    if utils_misc.compare_qemu_version(4, 0, 0, False):
+                        osxml.bios_reboot_timeout = "-1"
                 del vmxml.os
                 vmxml.os = osxml
             vmxml.sync()
