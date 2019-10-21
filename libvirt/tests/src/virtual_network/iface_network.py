@@ -588,6 +588,7 @@ TIMEOUT 3"""
     password = params.get("password")
     forward = ast.literal_eval(params.get("net_forward", "{}"))
     boot_failure = "yes" == params.get("boot_failure", "no")
+    test_netmask = "yes" == params.get("test_netmask", "no")
     ipt_rules = []
     ipt6_rules = []
 
@@ -786,6 +787,8 @@ TIMEOUT 3"""
             if guest_name and guest_ipv4:
                 run_dnsmasq_host_test(iface_mac, guest_ipv4, guest_name)
 
+            if test_netmask and libvirt_version.version_compare(5, 1, 0):
+                run_dnsmasq_default_test("dhcp-range", "192.168.122.2,192.168.122.254,255.255.252.0")
             # check the left part in dnsmasq conf
             run_dnsmasq_default_test("strict-order", name=net_name)
             run_dnsmasq_default_test("pid-file",
@@ -903,7 +906,6 @@ TIMEOUT 3"""
                 # Check dnsmasq settings if take affect in guest
                 if guest_ipv4:
                     check_name_ip(session)
-
                 # Run bandwidth test for interface
                 if test_qos_bandwidth:
                     run_bandwidth_test(check_iface=True)
