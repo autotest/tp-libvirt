@@ -27,6 +27,8 @@ from virttest.staging.utils_memory import read_from_numastat
 
 from provider import libvirt_version
 
+PAGE_SIZE_PLACEHOLDER = 'USE.HOST.SIZE'
+
 
 def run(test, params, env):
     """
@@ -45,6 +47,24 @@ def run(test, params, env):
     # it may change after attach/detach
     new_max_mem = None
     new_cur_mem = None
+    arch = platform.machine()
+
+    def cancel_run_early(arch, libvirt_version):
+        """
+        Cancel test run early if not supported for some reason
+        :param arch: architecture, e.g. x86_64
+        :param libvirt_version: object holding libvirt_version of environment
+        """
+        if not libvirt_version.version_compare(1, 2, 14):
+            test.cancel("Memory hotplug not supported in current libvirt version.")
+        if 'align_256m' in params.get('name', ''):
+            if arch.lower() != 'ppc64le':
+                test.cancel('This case is for ppc64le only.')
+        if arch == 's390x':
+            if max_mem_rt or add_mem_device:
+                test.cancel("Hotplug/usage of memory device not supported on s390x.")
+            if numa_cells or numa_memnode:
+                test.cancel("No NUMA support on s390x.")
 
     def consume_vm_mem(size=1000, timeout=360):
         """
@@ -59,7 +79,7 @@ def run(test, params, env):
         session.cmd(sh_cmd, timeout=timeout)
         session.close()
 
-    def mount_hugepages(page_size):
+    def toggle_hugepage_mount(page_size):
         """
         To mount hugepages
 
@@ -83,7 +103,9 @@ def run(test, params, env):
         :param page_size: unit is kB, it can be 4,2048,1048576,etc
         :param shp_num: number of hugepage, string type
         """
-        mount_hugepages(page_size)
+        if arch == 's390x':
+            utils_memory.activate_kvm_hugepage_support()
+        toggle_hugepage_mount(page_size)
         utils_memory.set_num_huge_pages(shp_num)
         config.hugetlbfs_mount = ["/dev/hugepages"]
         utils_libvirtd.libvirtd_restart()
@@ -93,11 +115,13 @@ def run(test, params, env):
         To recover hugepages
         :param page_size: unit is kB, it can be 4,2048,1048576,etc
         """
-        mount_hugepages(page_size)
+        toggle_hugepage_mount(page_size)
         config.restore()
         utils_libvirtd.libvirtd_restart()
+        if arch == 's390x':
+            utils_memory.deactivate_kvm_hugepage_support()
 
-    def check_qemu_cmd(max_mem_rt, tg_size):
+    def check_qemu_cmd(max_mem_rt, tg_size, huge_pages):
         """
         Check qemu command line options.
         :param max_mem_rt: size of max memory
@@ -105,6 +129,7 @@ def run(test, params, env):
         :return: None
         """
         cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
+        process.run(cmd, shell=True, verbose=True, ignore_status=True)
         if discard:
             cmd += " | grep 'discard-data=yes'"
         elif max_mem_rt:
@@ -129,6 +154,8 @@ def run(test, params, env):
                 cmd += "'"
             if cold_plug_discard:
                 cmd += " | grep 'discard-data=yes'"
+        if huge_pages:
+            cmd += (" |grep -- 'mem-path./dev/hugepages'")
 
         # Run the command
         result = process.run(cmd, shell=True, verbose=True, ignore_status=True)
@@ -180,10 +207,11 @@ def run(test, params, env):
         else:
             dom_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         try:
-            xml_max_mem_rt = int(dom_xml.max_mem_rt)
+            if max_mem_rt:
+                xml_max_mem_rt = int(dom_xml.max_mem_rt)
+                assert int(max_mem_rt) == xml_max_mem_rt
             xml_max_mem = int(dom_xml.max_mem)
             xml_cur_mem = int(dom_xml.current_mem)
-            assert int(max_mem_rt) == xml_max_mem_rt
 
             # Check attached/detached memory
             logging.info("at_mem=%s,dt_mem=%s", at_mem, dt_mem)
@@ -363,6 +391,18 @@ def run(test, params, env):
         logging.debug("vm xml: %s", vmxml)
         vmxml.sync()
 
+    def get_page_size():
+        size = params.get("page_size")
+        if size == "" or size == PAGE_SIZE_PLACEHOLDER:
+            size = str(utils_memory.get_huge_page_size())
+        logging.debug("page_size is %s" % size)
+        return size
+
+    def get_huge_pages(page_sz):
+        hp = params.get("huge_pages", "")\
+            .replace(PAGE_SIZE_PLACEHOLDER, page_sz)
+        return [ast.literal_eval(x) for x in hp.split()]
+
     pre_vm_state = params.get("pre_vm_state", "running")
     attach_device = "yes" == params.get("attach_device", "no")
     detach_device = "yes" == params.get("detach_device", "no")
@@ -393,10 +433,8 @@ def run(test, params, env):
     align_to_value = int(params.get("align_to_value", "65536"))
     hot_reboot = "yes" == params.get("hot_reboot", "no")
     rand_reboot = "yes" == params.get("rand_reboot", "no")
-    guest_known_unplug_errors = []
-    guest_known_unplug_errors.append(params.get("guest_known_unplug_errors"))
-    host_known_unplug_errors = []
-    host_known_unplug_errors.append(params.get("host_known_unplug_errors"))
+    guest_known_unplug_errors = [params.get("guest_known_unplug_errors")]
+    host_known_unplug_errors = [params.get("host_known_unplug_errors")]
     discard = "yes" == params.get("discard", "no")
     cold_plug_discard = "yes" == params.get("cold_plug_discard", "no")
     if cold_plug_discard or discard:
@@ -409,16 +447,18 @@ def run(test, params, env):
     tg_size = params.get("tg_size")
     tg_sizeunit = params.get("tg_sizeunit", 'KiB')
     tg_node = params.get("tg_node", 0)
-    pg_size = params.get("page_size")
     pg_unit = params.get("page_unit", "KiB")
     node_mask = params.get("node_mask", "0")
     mem_addr = ast.literal_eval(params.get("memory_addr", "{}"))
-    huge_pages = [ast.literal_eval(x)
-                  for x in params.get("huge_pages", "").split()]
     numa_memnode = [ast.literal_eval(x)
                     for x in params.get("numa_memnode", "").split()]
     at_times = int(params.get("attach_times", 1))
     online = params.get("mem_online", "no")
+
+    cancel_run_early(arch, libvirt_version)
+
+    pg_size = get_page_size()
+    huge_pages = get_huge_pages(pg_size)
 
     config = utils_config.LibvirtQemuConfig()
     setup_hugepages_flag = params.get("setup_hugepages")
@@ -427,14 +467,6 @@ def run(test, params, env):
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-
-    if not libvirt_version.version_compare(1, 2, 14):
-        test.cancel("Memory hotplug not supported in current libvirt version.")
-
-    if 'align_256m' in params.get('name', ''):
-        arch = platform.machine()
-        if arch.lower() != 'ppc64le':
-            test.cancel('This case is for ppc64le only.')
 
     if align_mem_values:
         # Rounding the following values to 'align'
@@ -462,7 +494,7 @@ def run(test, params, env):
         elif discard:
             vm.start()
             session = vm.wait_for_login()
-            check_qemu_cmd()
+            check_qemu_cmd(max_mem_rt, tg_size, huge_pages)
         dev_xml = None
 
         # To attach the memory device.
@@ -551,13 +583,13 @@ def run(test, params, env):
 
         if mem_align:
             dom_mem = check_mem_align()
-            check_qemu_cmd(dom_mem['maxMemory'], dom_mem['attached_mem'])
+            check_qemu_cmd(dom_mem['maxMemory'], dom_mem['attached_mem'], huge_pages)
             if hot_plug and params['delta'] != dom_mem['attached_mem']:
                 test.fail('Memory after attach not equal to original mem + attached mem')
 
         # Check qemu command line
         if test_qemu_cmd:
-            check_qemu_cmd(max_mem_rt, tg_size)
+            check_qemu_cmd(max_mem_rt, tg_size, huge_pages)
 
         # Check guest meminfo after attachment
         if (attach_device and not attach_option.count("config") and
