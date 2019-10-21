@@ -283,7 +283,7 @@ def run(test, params, env):
                     if with_net:
                         test_net = create_network_xml(macv_name, 'macvtap', base_if)
                         virsh.net_create(test_net, debug=True)
-                        iface = create_iface('network', source_net=macv_name, mtu=mtu_size)
+                        iface = create_iface('network', source_net=macv_name, mtu=mtu_size, model_net=model)
                         if hotplug:
                             result = virsh.attach_device(vm_name, iface.xml, debug=True)
                         else:
@@ -291,14 +291,14 @@ def run(test, params, env):
                             vmxml.sync()
                             result = virsh.start(vm_name)
                     else:
-                        iface = create_iface('direct', base_if=base_if, mtu=mtu_size)
+                        iface = create_iface('direct', base_if=base_if, mtu=mtu_size, model_net=model)
                         if hotplug:
                             result = virsh.attach_device(vm_name, iface.xml, debug=True)
                         else:
                             vmxml.add_device(iface)
                             result = virsh.define(vmxml.xml, debug=True)
             if check == 'invalid_val':
-                iface = create_iface('network', source_net='default', mtu=mtu_size)
+                iface = create_iface('network', source_net='default', mtu=mtu_size, model_net=model)
                 result = virsh.attach_device(vm_name, iface.xml, debug=True)
 
             # Check result
