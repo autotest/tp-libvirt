@@ -591,6 +591,7 @@ TIMEOUT 3"""
     test_netmask = "yes" == params.get("test_netmask", "no")
     ipt_rules = []
     ipt6_rules = []
+    define_macvtap = "yes" == params.get("define_macvtap", "no")
 
     # Destroy VM first
     if vm.is_alive() and not update_device:
@@ -641,6 +642,11 @@ TIMEOUT 3"""
                                 forward['dev'], net_ifs[0])
                 forward['dev'] = net_ifs[0]
                 params["net_forward"] = str(forward)
+            if define_macvtap:
+                for i in [0, 2, 4]:
+                    cmd = "ip l add li %s macvtap%s type macvtap" % (forward['dev'], i)
+                    process.run(cmd, shell=True, verbose=True)
+                process.run("ip l", shell=True, verbose=True)
             forward_iface = params.get("forward_iface")
             if forward_iface:
                 interface = [x for x in forward_iface.split()]
@@ -849,6 +855,15 @@ TIMEOUT 3"""
                 vm.start()
             if start_error:
                 test.fail("VM started unexpectedly")
+            if define_macvtap:
+                cmd = "ls /sys/devices/virtual/net"
+                output = process.run(cmd, shell=True, verbose=True).stdout_text
+                macvtap_list = re.findall(r'macvtap0|macvtap1|macvtap2|macvtap3'
+                                          r'|macvtap4|macvtap5|macvtap6|macvtap7',
+                                          output)
+                logging.debug("The macvtap_list is %s" % macvtap_list)
+                if set(macvtap_list) != set(['macvtap' + str(x) for x in range(8)]):
+                    test.fail("Existing macvtap device %s is not expected! should be macvtap(0-7)" % macvtap_list)
             if pxe_boot:
                 # Just check network boot messages here
                 try:
@@ -1019,3 +1034,6 @@ TIMEOUT 3"""
 
         if test_ipv6_address and original_accept_ra != '2':
             process.system(sysctl_cmd + "=%s" % original_accept_ra)
+        if define_macvtap:
+            cmd = "ip l del macvtap0; ip l del macvtap2; ip l del macvtap4"
+            process.run(cmd, shell=True, verbose=True)
