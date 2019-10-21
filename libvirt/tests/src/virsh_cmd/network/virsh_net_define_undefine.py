@@ -102,6 +102,7 @@ def run(test, params, env):
     nat_port_start = params.get("nat_port_start")
     nat_port_end = params.get("nat_port_end")
     test_port = "yes" == params.get("test_port", "no")
+    loop = int(params.get("loop", 1))
 
     virsh_dargs = {'uri': uri, 'debug': False, 'ignore_status': True}
     virsh_instance = virsh.VirshPersistent(**virsh_dargs)
@@ -205,112 +206,118 @@ def run(test, params, env):
                            dhcp_ranges_end=dhcp_ranges_v6_end_2)
         testnet_xml.debug_xml()
         # Run test case
-        define_result = virsh.net_define(define_options, define_extra,
-                                         **virsh_dargs)
-        logging.debug(define_result)
-        define_status = define_result.exit_status
+        while loop:
+            try:
+                define_result = virsh.net_define(define_options, define_extra,
+                                                 **virsh_dargs)
+                logging.debug(define_result)
+                define_status = define_result.exit_status
 
-        # Check network states
-        if check_states and not define_status:
-            net_state = virsh_instance.net_state_dict()
-            if (net_state[net_name]['active'] or
-                    net_state[net_name]['autostart'] or
-                    not net_state[net_name]['persistent']):
-                fail_flag = 1
-                result_info.append("Found wrong network states for "
-                                   "defined netowrk: %s" % str(net_state))
-
-        if define_status == 1 and status_error and expect_msg:
-            libvirt.check_result(define_result, expect_msg.split(';'))
-
-        # If defining network succeed, then trying to start it.
-        if define_status == 0:
-            start_result = virsh.net_start(net_name, extra="", **virsh_dargs)
-            logging.debug(start_result)
-            start_status = start_result.exit_status
-
-        if trans_ref == "trans":
-            if define_status:
-                fail_flag = 1
-                result_info.append("Define network with right command failed.")
-            else:
-                if start_status:
-                    fail_flag = 1
-                    result_info.append("Network is defined as expected, "
-                                       "but failed to start it.")
-
-        # Check network states for normal test
-        if check_states and not status_error:
-            net_state = virsh_instance.net_state_dict()
-            if (not net_state[net_name]['active'] or
-                    net_state[net_name]['autostart'] or
-                    not net_state[net_name]['persistent']):
-                fail_flag = 1
-                result_info.append("Found wrong network states for "
-                                   "started netowrk: %s" % str(net_state))
-            # Try to set autostart
-            virsh.net_autostart(net_name, **virsh_dargs)
-            net_state = virsh_instance.net_state_dict()
-            if not net_state[net_name]['autostart']:
-                fail_flag = 1
-                result_info.append("Failed to set autostart for network %s"
-                                   % net_name)
-            # Restart libvirtd and check state
-            # Close down persistent virsh session before libvirtd restart
-            if hasattr(virsh_instance, 'close_session'):
-                virsh_instance.close_session()
-            libvirtd = utils_libvirtd.Libvirtd()
-            libvirtd.restart()
-            # Need to redefine virsh_instance after libvirtd restart
-            virsh_instance = virsh.VirshPersistent(**virsh_dargs)
-            net_state = virsh_instance.net_state_dict()
-            if (not net_state[net_name]['active'] or
-                    not net_state[net_name]['autostart']):
-                fail_flag = 1
-                result_info.append("Found wrong network state after restarting"
-                                   " libvirtd: %s" % str(net_state))
-            logging.debug("undefine network:")
-            # prepare the network status
-            if not net_persistent:
-                virsh.net_undefine(net_name, ignore_status=False)
-            if not net_active:
-                virsh.net_destroy(net_name, ignore_status=False)
-            undefine_status = virsh.net_undefine(undefine_options, undefine_extra,
-                                                 **virsh_dargs).exit_status
-
-            net_state = virsh_instance.net_state_dict()
-            if net_persistent:
-                if undefine_status:
-                    fail_flag = 1
-                    result_info.append("undefine should succeed but failed")
-                if net_active:
-                    if (not net_state[net_name]['active'] or
+                # Check network states after define
+                if check_states and not define_status:
+                    net_state = virsh_instance.net_state_dict()
+                    if (net_state[net_name]['active'] or
                             net_state[net_name]['autostart'] or
-                            net_state[net_name]['persistent']):
+                            not net_state[net_name]['persistent']):
                         fail_flag = 1
                         result_info.append("Found wrong network states for "
-                                           "undefined netowrk: %s" % str(net_state))
-                else:
-                    if net_name in net_state:
-                        fail_flag = 1
-                        result_info.append("Transient network should not exists "
-                                           "after undefine : %s" % str(net_state))
-            else:
-                if not undefine_status:
-                    fail_flag = 1
-                    result_info.append("undefine transient network should fail "
-                                       "but succeed: %s" % str(net_state))
-        # Stop network for undefine test anyway
-        destroy_result = virsh.net_destroy(net_name, extra="", **virsh_dargs)
-        logging.debug(destroy_result)
+                                           "defined netowrk: %s" % str(net_state))
 
-        # Undefine network
-        if not check_states:
-            undefine_result = virsh.net_undefine(undefine_options, undefine_extra,
-                                                 **virsh_dargs)
-            if trans_ref != "define":
-                logging.debug(undefine_result)
-            undefine_status = undefine_result.exit_status
+                if define_status == 1 and status_error and expect_msg:
+                    libvirt.check_result(define_result, expect_msg.split(';'))
+
+                # If defining network succeed, then trying to start it.
+                if define_status == 0:
+                    start_result = virsh.net_start(net_name, extra="", **virsh_dargs)
+                    logging.debug(start_result)
+                    start_status = start_result.exit_status
+
+                if trans_ref == "trans":
+                    if define_status:
+                        fail_flag = 1
+                        result_info.append("Define network with right command failed.")
+                    else:
+                        if start_status:
+                            fail_flag = 1
+                            result_info.append("Found wrong network states for "
+                                               "defined netowrk: %s" % str(net_state))
+
+                # Check network states after start
+                if check_states and not status_error:
+                    net_state = virsh_instance.net_state_dict()
+                    if (not net_state[net_name]['active'] or
+                            net_state[net_name]['autostart'] or
+                            not net_state[net_name]['persistent']):
+                        fail_flag = 1
+                        result_info.append("Found wrong network states for "
+                                           "started netowrk: %s" % str(net_state))
+                    # Try to set autostart
+                    virsh.net_autostart(net_name, **virsh_dargs)
+                    net_state = virsh_instance.net_state_dict()
+                    if not net_state[net_name]['autostart']:
+                        fail_flag = 1
+                        result_info.append("Failed to set autostart for network %s"
+                                           % net_name)
+                    # Restart libvirtd and check state
+                    # Close down persistent virsh session before libvirtd restart
+                    if hasattr(virsh_instance, 'close_session'):
+                        virsh_instance.close_session()
+                    libvirtd = utils_libvirtd.Libvirtd()
+                    libvirtd.restart()
+                    # Need to redefine virsh_instance after libvirtd restart
+                    virsh_instance = virsh.VirshPersistent(**virsh_dargs)
+                    net_state = virsh_instance.net_state_dict()
+                    if (not net_state[net_name]['active'] or
+                            not net_state[net_name]['autostart']):
+                        fail_flag = 1
+                        result_info.append("Found wrong network state after restarting"
+                                           " libvirtd: %s" % str(net_state))
+                    logging.debug("undefine network:")
+                    # prepare the network status
+                    if not net_persistent:
+                        virsh.net_undefine(net_name, ignore_status=False)
+                    if not net_active:
+                        virsh.net_destroy(net_name, ignore_status=False)
+                    undefine_status = virsh.net_undefine(undefine_options, undefine_extra,
+                                                         **virsh_dargs).exit_status
+
+                    net_state = virsh_instance.net_state_dict()
+                    if net_persistent:
+                        if undefine_status:
+                            fail_flag = 1
+                            result_info.append("undefine should succeed but failed")
+                        if net_active:
+                            if (not net_state[net_name]['active'] or
+                                    net_state[net_name]['autostart'] or
+                                    net_state[net_name]['persistent']):
+                                fail_flag = 1
+                                result_info.append("Found wrong network states for "
+                                                   "undefined netowrk: %s" % str(net_state))
+                        else:
+                            if net_name in net_state:
+                                fail_flag = 1
+                                result_info.append("Transient network should not exists "
+                                                   "after undefine : %s" % str(net_state))
+                    else:
+                        if not undefine_status:
+                            fail_flag = 1
+                            result_info.append("undefine transient network should fail "
+                                               "but succeed: %s" % str(net_state))
+                # Stop network for undefine test anyway
+                destroy_result = virsh.net_destroy(net_name, extra="", **virsh_dargs)
+                logging.debug(destroy_result)
+
+                # Undefine network
+                if not check_states:
+                    undefine_result = virsh.net_undefine(undefine_options, undefine_extra,
+                                                         **virsh_dargs)
+                    if trans_ref != "define":
+                        logging.debug(undefine_result)
+                    undefine_status = undefine_result.exit_status
+            except Exception:
+                logging.debug("The define and undefine operation in loop %s failed. ", loop)
+            finally:
+                loop = loop - 1
 
     finally:
         # Recover environment
