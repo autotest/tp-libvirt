@@ -342,7 +342,7 @@ def run(test, params, env):
                 test.fail("Found wrong IP address"
                           " on guest")
         # Check gateway address
-        gateway = str(utils_net.get_guest_default_gateway(session))
+        gateway = str(utils_net.get_default_gateway(False, session))
         if expect_gw not in gateway:
             test.fail("The gateway on guest is %s, while expect is %s" %
                       (gateway, expect_gw))
