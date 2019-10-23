@@ -341,7 +341,7 @@ def run(test, params, env):
 
         # Clean up backend storage
         if backend_storage_type == "iscsi":
-            gluster.setup_or_cleanup_iscsi(is_setup=False)
+            libvirt.setup_or_cleanup_iscsi(is_setup=False)
         elif backend_storage_type == "gluster":
             gluster.setup_or_cleanup_gluster(is_setup=False,
                                              vol_name=gluster_vol_name,
