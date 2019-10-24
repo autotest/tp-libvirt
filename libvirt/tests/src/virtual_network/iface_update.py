@@ -47,6 +47,7 @@ def run(test, params, env):
     del_addr = "yes" == params.get("del_address")
     del_rom = "yes" == params.get("del_rom")
     del_filter = "yes" == params.get("del_filter")
+    check_libvirtd = "yes" == params.get("check_libvirtd")
 
     # Backup the vm xml for recover at last
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -119,8 +120,15 @@ def run(test, params, env):
 
         # Do update for iface_driver
         new_iface_xml = libvirt.modify_vm_iface(vm_name, "get_xml", iface_dict_aft)
+        bef_pid = process.getoutput("pidof -s libvirtd")
         ret = virsh.update_device(vm_name, new_iface_xml, ignore_status=True, debug=True)
         libvirt.check_exit_status(ret, expect_error)
+        if check_libvirtd:
+            aft_pid = process.getoutput("pidof -s libvirtd")
+            if aft_pid != bef_pid:
+                test.fail("libvirtd crash after update-device!")
+            else:
+                logging.info("libvirtd do not crash after update-device!")
         if expect_error:
             real_err_msg = ret.stderr.strip()
             if not re.search(expect_err_msg, real_err_msg, re.IGNORECASE):
@@ -178,9 +186,8 @@ def run(test, params, env):
                               % (iface_filter_value, new_iface_filter))
             if del_filter:
                 iface_filter_value = iface_aft.find('filterref')
-                if iface_filter_value:
-                    logging.debug("After delete, the filter still exists: %s",
-                                  iface_filter_value)
+                if iface_filter_value is not None:
+                    test.fail("After delete, the filter still exists: %s" % iface_filter_value)
             if new_iface_alias:
                 iface_alias_value = iface_aft.find('alias').get('name')
                 if iface_alias_value == eval(new_iface_alias)['name']:
