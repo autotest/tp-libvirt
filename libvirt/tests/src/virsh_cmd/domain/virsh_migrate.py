@@ -636,8 +636,7 @@ def run(test, params, env):
                                                 "no")
     hotunplug_after_migrate = "yes" == params.get("virsh_hotunplug_cpu_after",
                                                   "no")
-    compat_guest_migrate = (params.get("host_arch", "all_arch") in
-                            cpu.get_cpu_info()['Model name'])
+    compat_guest_migrate = get_compat_guest_migrate(params)
     compat_mode = "yes" == params.get("compat_mode", "no")
 
     # Configurations for cpu compat guest to boot
@@ -1362,3 +1361,12 @@ def run(test, params, env):
         logging.info("Remove the NFS image...")
         source_file = params.get("source_file")
         libvirt.delete_local_disk("file", path=source_file)
+
+
+def get_compat_guest_migrate(params):
+    # lscpu doesn't have 'Model name' on s390x
+    if platform.machine() == 's390x':
+        return False
+    compat_guest_migrate = (params.get("host_arch", "all_arch") in
+                            cpu.get_cpu_info()['Model name'])
+    return compat_guest_migrate
