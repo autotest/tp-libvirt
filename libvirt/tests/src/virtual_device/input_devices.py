@@ -1,6 +1,7 @@
 import logging
 import re
 import glob
+import platform
 
 from virttest.libvirt_xml.devices.input import Input
 from virttest.libvirt_xml.vm_xml import VMXML
@@ -51,20 +52,13 @@ def run(test, params, env):
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     machine_type = params.get('machine_type', '')
-    vm = env.get_vm(vm_name)
-
     status_error = params.get("status_error", "no") == "yes"
     bus_type = params.get("bus_type")
     input_type = params.get("input_type")
-    if input_type == "tablet":
-        if not libvirt_version.version_compare(1, 2, 2):
-            test.cancel("tablet input type is not supported "
-                        "on the current version.")
-    if input_type == "passthrough" or bus_type == "virtio":
-        if not libvirt_version.version_compare(1, 3, 0):
-            test.cancel("passthrough input type or virtio bus type "
-                        "is not supported on current version.")
 
+    check_preconditions(bus_type, input_type, test)
+
+    vm = env.get_vm(vm_name)
     vm_xml = VMXML.new_from_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
     if vm.is_alive():
@@ -113,3 +107,16 @@ def run(test, params, env):
         if vm.is_alive():
             virsh.destroy(vm_name)
         vm_xml_backup.sync()
+
+
+def check_preconditions(bus_type, input_type, test):
+    if input_type == "tablet":
+        if not libvirt_version.version_compare(1, 2, 2):
+            test.cancel("tablet input type is not supported "
+                        "on the current version.")
+    if input_type == "passthrough" or bus_type == "virtio":
+        if not libvirt_version.version_compare(1, 3, 0):
+            test.cancel("passthrough input type or virtio bus type "
+                        "is not supported on current version.")
+    if bus_type in ["ps2", "usb"] and platform.machine() == 's390x':
+        test.cancel("bus types ps2, usb not supported on s390x")
