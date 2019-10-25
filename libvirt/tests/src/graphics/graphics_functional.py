@@ -10,6 +10,8 @@ import logging
 import threading
 import time
 import datetime
+import locale
+import base64
 try:
     import queue as Queue
 except ImportError:
@@ -21,12 +23,15 @@ from avocado.utils import process
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest import data_dir
 from virttest import virt_vm
+from virttest import virsh
 from virttest import utils_net
 from virttest import utils_misc
 from virttest import utils_config
 from virttest import utils_libvirtd
+from virttest.utils_test import libvirt
 from virttest.utils_test.libvirt import LibvirtNetwork
 from virttest.libvirt_xml.devices.graphics import Graphics
+from virttest.libvirt_xml.secret_xml import SecretXML
 
 from provider import libvirt_version
 
@@ -117,6 +122,8 @@ class EnvState(object):
         port_max = params.get("remote_display_port_max", 'not_set')
         auto_unix_socket = params.get("vnc_auto_unix_socket", 'not_set')
         tls_x509_verify = params.get("vnc_tls_x509_verify", 'not_set')
+        vnc_tls_x509_secret_uuid = params.get("vnc_tls_x509_secret_uuid", 'not_set')
+        vnc_secret_uuid = params.get("vnc_secret_uuid", "not_set")
 
         if spice_x509_dir == 'not_set':
             self.spice_x509_dir_real = '/etc/pki/libvirt-spice'
@@ -191,6 +198,19 @@ class EnvState(object):
             del self.qemu_config.vnc_tls_x509_verify
         else:
             self.qemu_config.vnc_tls_x509_verify = tls_x509_verify
+
+        if vnc_tls_x509_secret_uuid == "not_set":
+            del self.qemu_config.vnc_tls_x509_verify
+        else:
+            self.qemu_config.vnc_tls = "1"
+            if vnc_secret_uuid == "invalid":
+                self.qemu_config.vnc_tls_x509_secret_uuid = "00000-11111"
+            else:
+                cmd = "uuidgen"
+                status, uuid = process.getstatusoutput(cmd)
+                if status:
+                    logging.error("Failed to generate valid uuid")
+                self.qemu_config.vnc_tls_x509_secret_uuid = uuid
 
         if vnc_listen == 'not_set':
             del self.qemu_config.vnc_listen
@@ -325,6 +345,7 @@ def qemu_vnc_options(libvirt_vm):
                         vnc_dict['passwd'] = xml_passwd
                 if opt == 'tls':
                     vnc_dict[opt] = 'yes'
+
     if libvirt_version.version_compare(5, 0, 0):
         if re.search(r'(tls-creds-x509.*?\s+)', res.stdout_text):
             vnc_out = re.search(r'(tls-creds-x509.*?\s+)', res.stdout_text).group(0)
@@ -565,6 +586,7 @@ def get_fail_pattern(params, expected_result):
     spice_xml = params.get("spice_xml", "no") == 'yes'
     vnc_xml = params.get("vnc_xml", "no") == 'yes'
     is_negative = params.get("negative_test", "no") == 'yes'
+    vnc_secret_uuid = params.get("vnc_secret_uuid", "not_set")
 
     fail_patts = []
     if spice_xml:
@@ -664,6 +686,10 @@ def get_fail_pattern(params, expected_result):
             elif int(expected_vnc_port) > 65535:
                 vnc_fail_patts.append('Failed to start VNC server')
                 vnc_fail_patts.append(r'vnc port must be in range \[5900,65535\]')
+        if vnc_secret_uuid == "invalid":
+            vnc_fail_patts.append(r'malformed TLS secret uuid')
+        elif vnc_secret_uuid == "non_exist":
+            vnc_fail_patts.append(r'no secret with matching uuid')
         fail_patts += vnc_fail_patts
 
         if any([ip not in utils_net.get_all_ips() for ip in expected_vnc_ips]):
@@ -743,8 +769,11 @@ def get_expected_vnc_options(params, networks, expected_result):
     tls_x509_verify = params.get("vnc_tls_x509_verify", 'not_set')
     listen_type = params.get("vnc_listen_type", "not_set")
     graphic_passwd = params.get("graphic_passwd")
+    vnc_secret_uuid = params.get("vnc_secret_uuid", "not_set")
 
     expected_port = expected_result['vnc_port']
+
+    expected_opts = {}
 
     if listen_type == 'network':
         net_type = params.get("vnc_network_type", "vnet")
@@ -779,16 +808,18 @@ def get_expected_vnc_options(params, networks, expected_result):
         expected_opts['tls'] = 'yes'
         if tls_x509_verify == '1':
             expected_opts['x509verify'] = x509_dir
+        if libvirt_version.version_compare(5, 0, 0):
+            expected_opts['dir'] = x509_dir
+            expected_opts['id'] = "vnc-tls-creds0"
+            expected_opts['tls-creds'] = "vnc-tls-creds0"
         else:
-            if libvirt_version.version_compare(5, 0, 0):
-                expected_opts['dir'] = x509_dir
-                expected_opts['id'] = "vnc-tls-creds0"
-                expected_opts['tls-creds'] = "vnc-tls-creds0"
-            else:
-                expected_opts['x509'] = x509_dir
+            expected_opts['x509'] = x509_dir
+
     if graphic_passwd:
         expected_opts['passwd'] = graphic_passwd
-
+    if vnc_secret_uuid == "valid":
+        expected_opts['vnc-secret'] = "vnc-tls-creds0-secret0"
+        expected_opts['tls'] = 'yes'
     expected_result['vnc_options'] = expected_opts
 
 
@@ -1178,6 +1209,38 @@ username=root
             os.remove(virt_viewer_file)
 
 
+def create_secret(secret_uuid, secret_password):
+    """
+       Create secret:
+
+       :param secret_uuid: uuid of secret
+       :param secret_password: password for secret
+    """
+    sec_xml = SecretXML("no", "yes")
+    sec_xml.uuid = secret_uuid
+    sec_xml.description = "tls secret"
+    sec_xml.usage = 'tls'
+    sec_xml.usage_name = "TLS_exampl"
+    sec_xml.xmltreefile.write()
+
+    ret = virsh.secret_define(sec_xml.xml)
+    libvirt.check_exit_status(ret)
+    # Get secret uuid
+    try:
+        encryption_uuid = re.findall(r".+\S+(\ +\S+)\ +.+\S+",
+                                     ret.stdout.strip())[0].lstrip()
+    except IndexError as e:
+        logging.error("Fail to get newly created secret uuid")
+    logging.debug("Secret uuid %s", encryption_uuid)
+
+    # Set secret value.
+    encoding = locale.getpreferredencoding()
+    secret_string = base64.b64encode(secret_password.encode(encoding)).decode(encoding)
+    ret = virsh.secret_set_value(encryption_uuid, secret_string, debug=True)
+    libvirt.check_exit_status(ret)
+    return encryption_uuid
+
+
 def run(test, params, env):
     """
     Test of libvirt SPICE related features.
@@ -1228,6 +1291,8 @@ def run(test, params, env):
     graphic_passwd = params.get("graphic_passwd")
     remote_viewer_check = params.get("remote_viewer_check", "no") == 'yes'
     valid_time = params.get("valid_time")
+    vnc_secret_uuid = params.get("vnc_secret_uuid", "not_set")
+    secret_password = params.get("secret_password", "redhat")
 
     sockets = block_ports(params)
     networks = setup_networks(params, test)
@@ -1241,6 +1306,10 @@ def run(test, params, env):
 
     config = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
+
+    secret_uuid = ""
+    if vnc_secret_uuid == "valid":
+        secret_uuid = create_secret(config.vnc_tls_x509_secret_uuid, secret_password)
 
     if graphic_passwd:
         spice_passwd_place = params.get("spice_passwd_place", "not_set")
@@ -1320,8 +1389,9 @@ def run(test, params, env):
         if networks:
             for network in list(networks.values()):
                 network.cleanup()
+        if vnc_secret_uuid == 'valid' and secret_uuid != "":
+            virsh.secret_undefine(config.vnc_tls_x509_secret_uuid, debug=True)
         vm_xml_backup.sync()
         os.system('rm -f /dev/shm/spice*')
         env_state.restore()
-        config.restore()
         libvirtd.restart()
