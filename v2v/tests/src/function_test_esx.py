@@ -232,6 +232,7 @@ def run(test, params, env):
             'network': params.get('network'),
             'bridge': params.get('bridge'),
             'target': params.get('target'),
+            'password': vpx_passwd if src_uri_type != 'esx' else esxi_password,
             'input_transport': input_transport,
             'vcenter_host': vpx_hostname,
             'vcenter_password': vpx_passwd,

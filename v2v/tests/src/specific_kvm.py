@@ -615,6 +615,7 @@ def run(test, params, env):
             'bridge': bridge,
             'storage': storage,
             'hostname': source_ip,
+            'password': source_pwd,
             'v2v_opts': v2v_opts,
             'new_name': vm_name + utils_misc.generate_random_string(3),
             'output_method': output_method,

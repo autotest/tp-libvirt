@@ -48,6 +48,7 @@ def run(test, params, env):
     datastore = params.get('datastore')
     esxi_host = params.get('esx_hostname')
     esxi_password = params.get('esxi_password')
+    hypervisor = params.get("hypervisor")
     input_transport = params.get("input_transport")
     vmx_nfs_src = params.get("vmx_nfs_src")
     # for construct rhv-upload option in v2v cmd
@@ -62,6 +63,10 @@ def run(test, params, env):
         '/')[2] if params.get("ovirt_engine_url") else None
     ovirt_ca_file_path = params.get("ovirt_ca_file_path")
     local_ca_file_path = params.get("local_ca_file_path")
+    vpx_dc = params.get("vpx_dc")
+    vpx_hostname = params.get("vpx_hostname")
+    vpx_password = params.get("vpx_password")
+    src_uri_type = params.get('src_uri_type')
     error_list = []
 
     # create different sasl_user name for different job
@@ -164,7 +169,11 @@ def run(test, params, env):
         }
         if input_mode == 'vmx':
             v2v_params.update(
-                {'new_name': vm_name + utils_misc.generate_random_string(3)})
+                {'new_name': vm_name + utils_misc.generate_random_string(3),
+                 'hypervisor': hypervisor,
+                 'vpx_dc': vpx_dc,
+                 'password': vpx_password if src_uri_type != 'esx' else esxi_password,
+                 'hostname': vpx_hostname})
         if output_format:
             v2v_params.update({'output_format': output_format})
         # Create libvirt dir pool
