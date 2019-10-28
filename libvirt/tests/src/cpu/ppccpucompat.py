@@ -2,7 +2,7 @@ import os
 import time
 import logging
 
-from avocado.utils import cpu
+from avocado.utils import cpu as cpu_util
 
 from virttest import data_dir
 from virttest import virt_vm
@@ -82,7 +82,7 @@ def run(test, params, env):
         guest_features = guest_features.split(',')
         if guest_version:
             guest_features.append(guest_version)
-    if host_version not in cpu.get_cpu_arch():
+    if host_version not in cpu_util.get_cpu_arch():
         test.cancel("Unsupported Host cpu version")
 
     vmxml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
