@@ -5,6 +5,7 @@ import logging
 from avocado.utils import process
 
 from virttest import virsh
+from virttest import libvirt_version
 from virttest import utils_libvirtd
 from virttest.compat_52lts import decode_to_text as to_text
 
@@ -110,11 +111,22 @@ def run(test, params, env):
         :return: cmdline prepended by expected environment variable values
         """
         expected_env_vars = [
-                'LC_ALL', 'PATH', 'QEMU_AUDIO_DRV', 'HOME',
-                'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_CONFIG_HOME',
-                ]
+            'LC_ALL',
+            'PATH',
+            'QEMU_AUDIO_DRV',
+            ]
+        if libvirt_version.version_compare(5, 2, 0):
+            expected_env_vars += [
+                'HOME',
+                'XDG_DATA_HOME',
+                'XDG_CACHE_HOME',
+                'XDG_CONFIG_HOME',
+            ]
+
         valmatcher = '.[^\\s]+\\s'
+
         def matchf(x): return re.search(x + valmatcher, conv_arg).group(0)
+
         return "".join(map(matchf, expected_env_vars)) + cmdline
 
     def compare(conv_arg):
