@@ -3,9 +3,9 @@ import re
 import copy
 import ast
 import logging
-import platform
 
 from avocado.utils import process
+from avocado.utils import distro
 from avocado.utils.software_manager import SoftwareManager
 
 from virttest import virsh
@@ -48,7 +48,7 @@ def run(test, params, env):
     disable_vcpu = params.get("set_disable_vcpu", "")
     # Install cgroup utils
     cgutils = "libcgroup-tools"
-    if "ubuntu" in platform.dist()[0].lower():
+    if distro.detect().name == 'Ubuntu':
         cgutils = "cgroup-tools"
     sm = SoftwareManager()
     if not sm.check_installed(cgutils) and not sm.install(cgutils):
