@@ -174,6 +174,18 @@ def run(test, params, env):
             else:
                 log_fail('%s does not exist after convert to rhv' % key)
 
+    def check_file_architecture(vmcheck):
+        """
+        Check the 3rd party module info
+        :param vmcheck: VMCheck object for vm checking
+        """
+        content = vmcheck.session.cmd('uname -r').strip()
+        status = vmcheck.session.cmd_status('rpm -qf /lib/modules/%s/fileaccess/fileaccess_mod.ko ' % content)
+        if status == 0:
+            log_fail('3rd party module info is not correct')
+        else:
+            logging.info('file /lib/modules/%s/fileaccess/fileaccess_mod.ko is not owned by any package' % content)
+
     def check_result(result, status_error):
         """
         Check virt-v2v command result
@@ -213,6 +225,8 @@ def run(test, params, env):
                 check_resume_swap(vmchecker.checker)
             if checkpoint == 'rhev_file':
                 check_rhev_file_exist(vmchecker.checker)
+            if checkpoint == 'file_architecture':
+                check_file_architecture(vmchecker.checker)
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
         log_check = utils_v2v.check_log(params, output)
