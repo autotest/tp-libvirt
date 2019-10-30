@@ -14,6 +14,7 @@ from virttest.libvirt_xml import pool_xml
 from provider import libvirt_version
 from virttest import element_tree as ET
 from virttest import data_dir
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -82,6 +83,8 @@ def run(test, params, env):
         if pool_type == "iscsi-direct":
             test.cancel("iSCSI-direct pool is not supported in current"
                         "libvirt version.")
+    if source_protocol_ver == "yes" and not libvirt_version.version_compare(4, 5, 0):
+        test.cancel("source-protocol-ver is not supported on current version.")
 
     def check_pool_list(pool_name, option="--all", expect_error=False):
         """
