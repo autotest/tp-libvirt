@@ -1,5 +1,6 @@
 import os
 import logging
+import shutil
 import time
 
 from avocado.utils import process
@@ -174,6 +175,12 @@ def run(test, params, env):
                  'vpx_dc': vpx_dc,
                  'password': vpx_password if src_uri_type != 'esx' else esxi_password,
                  'hostname': vpx_hostname})
+        # copy ova from nfs storage before v2v conversion
+        if input_mode == 'ova':
+            src_dir = params.get('ova_dir')
+            dest_dir = params.get('ova_copy_dir')
+            logging.info('Copy ova from %s to %s', src_dir, dest_dir)
+            shutil.copytree(src_dir, dest_dir)
         if output_format:
             v2v_params.update({'output_format': output_format})
         # Create libvirt dir pool
@@ -213,6 +220,8 @@ def run(test, params, env):
     finally:
         # Cleanup constant files
         utils_v2v.cleanup_constant_files(params)
+        if os.path.exists(dest_dir):
+            shutil.rmtree(dest_dir)
         if params.get('vmchecker'):
             params['vmchecker'].cleanup()
         if output_mode == 'rhev' and v2v_sasl:
