@@ -150,6 +150,7 @@ def run(test, params, env):
     source_path = "yes" == params.get("at_dt_disk_device_source_path", "yes")
     create_img = "yes" == params.get("at_dt_disk_create_image", "yes")
     test_twice = "yes" == params.get("at_dt_disk_test_twice", "no")
+    test_systemlink_twice = "yes" == params.get("at_dt_disk_twice_with_systemlink", "no")
     test_type = "yes" == params.get("at_dt_disk_check_type", "no")
     test_audit = "yes" == params.get("at_dt_disk_check_audit", "no")
     test_block_dev = "yes" == params.get("at_dt_disk_iscsi_device", "no")
@@ -158,11 +159,15 @@ def run(test, params, env):
     detach_disk_with_print_xml = "yes" == params.get("detach_disk_with_print_xml", "no")
     vg_name = params.get("at_dt_disk_vg", "vg_test_0")
     lv_name = params.get("at_dt_disk_lv", "lv_test_0")
+    # Get additional lvm item names.
+    additional_lv_names = params.get("at_dt_disk_additional_lvs").split()
     serial = params.get("at_dt_disk_serial", "")
     address = params.get("at_dt_disk_address", "")
     address2 = params.get("at_dt_disk_address2", "")
     cache_options = params.get("cache_options", "")
     time_sleep = params.get("time_sleep", 3)
+    # Define one empty list to locate those lvm.
+    total_lvm_names = []
     if check_shareable(at_with_shareable, test_twice):
         at_options += " --mode shareable"
     if serial:
@@ -200,12 +205,21 @@ def run(test, params, env):
             # We should skip this case
             test.cancel("Can not get iscsi device name in host")
         if test_logcial_dev:
+            if lv_utils.vg_check(vg_name):
+                lv_utils.vg_remove(vg_name)
             lv_utils.vg_create(vg_name, device_source)
             device_source = libvirt.create_local_disk("lvm",
                                                       size="10M",
                                                       vgname=vg_name,
                                                       lvname=lv_name)
             logging.debug("New created volume: %s", lv_name)
+            total_lvm_names.append(device_source)
+            if test_systemlink_twice:
+                for lvm__item_name in additional_lv_names:
+                    additional_device_source = libvirt.create_local_disk(
+                        "lvm", size="10M", vgname=vg_name, lvname=lvm__item_name)
+                    logging.debug("New created volume: %s", additional_device_source)
+                    total_lvm_names.append(additional_device_source)
     else:
         if source_path and create_img:
             device_source = libvirt.create_local_disk(
@@ -326,6 +340,30 @@ def run(test, params, env):
         elif test_cmd == "detach-disk":
             status = virsh.detach_disk(vm_ref, device_target2, dt_options,
                                        debug=True).exit_status
+    if test_systemlink_twice:
+        # Detach lvm previously attached.
+        result = virsh.detach_disk(vm_ref, device_target, dt_options,
+                                   debug=True)
+        libvirt.check_exit_status(result)
+        # Remove systemlink for lv01,lv02,and lv03
+        for lvm_item in total_lvm_names:
+            remove_systemlink_cmd = ('lvchange -a n %s' % lvm_item)
+            if process.run(remove_systemlink_cmd, shell=True).exit_status:
+                logging.error("Remove systemlink failed")
+        # Add new systemlink for lv01,lv02,and lv03 by shifting one position
+        for index in range(0, len(total_lvm_names)):
+            add_systemlink_cmd = ('lvchange -a y %s' % total_lvm_names[(index+1) % len(total_lvm_names)])
+            if process.run(add_systemlink_cmd, shell=True).exit_status:
+                logging.error("Add systemlink failed")
+        # Attach lvm lv01 again.
+        result = virsh.attach_disk(vm_ref, device_source,
+                                   device_target, at_options,
+                                   debug=True)
+        libvirt.check_exit_status(result)
+        # Detach lvm 01 again.
+        result = virsh.detach_disk(vm_ref, device_target, dt_options,
+                                   debug=True)
+        libvirt.check_exit_status(result)
 
     # Resume guest after command. On newer libvirt this is fixed as it has
     # been a bug. The change in xml file is done after the guest is resumed.
@@ -466,6 +504,9 @@ def run(test, params, env):
         if test_block_dev:
             if test_logcial_dev:
                 libvirt.delete_local_disk("lvm", vgname=vg_name, lvname=lv_name)
+                if test_systemlink_twice:
+                    for lv_item_name in additional_lv_names:
+                        libvirt.delete_local_disk("lvm", vgname=vg_name, lvname=lv_item_name)
                 lv_utils.vg_remove(vg_name)
                 process.run("pvremove %s" % device_source, shell=True, ignore_status=True)
             libvirt.setup_or_cleanup_iscsi(False)
@@ -478,6 +519,8 @@ def run(test, params, env):
             test.fail("virsh %s exit with unexpected value."
                       % test_cmd)
     else:
+        if test_systemlink_twice:
+            return
         if status:
             test.fail("virsh %s failed." % test_cmd)
         if test_cmd == "attach-disk":
