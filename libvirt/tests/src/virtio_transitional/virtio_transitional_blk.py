@@ -244,7 +244,7 @@ def run(test, params, env):
     try:
         if (params["os_variant"] == 'rhel6' or
                 'rhel6' in params.get("shortname")):
-            iface_params = {'type': 'bridge', 'model': 'virtio-transitional'}
+            iface_params = {'model': 'virtio-transitional'}
             libvirt.modify_vm_iface(vm_name, "update_iface", iface_params)
         libvirt.set_vm_disk(vm, params)
         if pci_bridge_index:
