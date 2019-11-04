@@ -9,6 +9,7 @@ from avocado.utils import process
 
 from virttest import utils_config
 from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
 from virttest import data_dir
@@ -91,7 +92,16 @@ def run(test, params, env):
             pass
         session.close()
 
-        iohelper_pid = process.run('pgrep -f %s' % dump_path).stdout_text.strip()
+        def _get_iohelper_pid():
+            try:
+                return process.run('pgrep -f %s' % dump_path).stdout_text.strip()
+            except Exception:
+                return
+
+        if not utils_misc.wait_for(_get_iohelper_pid, 30, text='Waiting to get pid'):
+            test.error('Cannot get pid by running "pgrep -f %s"' % dump_path)
+
+        iohelper_pid = _get_iohelper_pid()
         logging.error('%s', iohelper_pid)
 
         # Get file open flags containing bypass cache information.
