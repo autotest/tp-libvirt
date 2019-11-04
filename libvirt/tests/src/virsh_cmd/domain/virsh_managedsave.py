@@ -419,7 +419,7 @@ def run(test, params, env):
             logging.info('Installing lsof package:')
             software_mgr.install('lsof')
         bash_cmd = ("let i=1; while((i++<400)); do if [ -e %s ]; then (cat /proc"
-                    "/$(lsof -w %s|awk '/libvirt_i/{print $2}')/fdinfo/*%s* |"
+                    "/$(lsof -w %s|awk '/libvirt_i/{print $2}')/fdinfo/%s |"
                     "grep 'flags:.*') && break; else sleep 0.05; fi; done;")
         # Flags to check bypass cache take effect
         flags = os.O_DIRECT
@@ -481,6 +481,9 @@ def run(test, params, env):
                 elif test_undefine:
                     vm_undefine_check(vm_name)
                 elif autostart_bypass_cache:
+                    # rhbz#1755303
+                    if libvirt_version.version_compare(5, 6, 0):
+                        os.remove("/run/libvirt/qemu/autostarted")
                     libvirtd.stop()
                     virsh_cmd = ("(service libvirtd start)")
                     check_flags_parallel(virsh_cmd, bash_cmd %
