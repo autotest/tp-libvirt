@@ -141,7 +141,10 @@ def run(test, params, env):
                 test.fail("Creation of volume %s failed." % vol_name)
             volumes = new_pool.list_volumes()
             volume = volumes[vol_name]
-            virsh.attach_disk(vm_name, volume, disk_target, "--config")
+            ret = virsh.attach_disk(vm_name, volume, disk_target, "--config",
+                                    debug=True)
+            if ret.exit_status != 0:
+                test.error("Attach disk failed: %s" % ret.stderr)
 
         # Turn libvirtd into certain state.
         if libvirtd_state == "off":
