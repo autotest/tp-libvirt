@@ -1,9 +1,12 @@
 import re
+import logging
 
 from avocado.utils import cpu as cpuutil
 
 from virttest import virsh
 from virttest import utils_libvirtd
+
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -185,10 +188,14 @@ def run(test, params, env):
 
             if status == 0:
                 if libvirtd == "off":
-                    utils_libvirtd.libvirtd_start()
-                    test.fail("Command 'virsh nodecpustats' "
-                              "succeeded with libvirtd service "
-                              "stopped, incorrect")
+                    if libvirt_version.version_compare(5, 6, 0):
+                        logging.debug("From libvirt version 5.6.0 libvirtd is restarted"
+                                      " and command should succeed")
+                    else:
+                        utils_libvirtd.libvirtd_start()
+                        test.fail("Command 'virsh nodecpustats' "
+                                  "succeeded with libvirtd service "
+                                  "stopped, incorrect")
                 else:
                     test.fail("Command 'virsh nodecpustats %s' "
                               "succeeded (incorrect command)" % option)
