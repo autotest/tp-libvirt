@@ -611,8 +611,8 @@ def get_fail_pattern(params, expected_result):
 
         if expected_spice_port == expected_spice_tls_port:
             if expected_spice_port != 'not_set':
-                if 0 <= int(expected_spice_port) < 1024:
-                    fail_patts.append(r'binding socket to \S* failed')
+                if is_negative and (0 < int(expected_spice_port) <= 65535):
+                    fail_patts.append(r'Failed to reserve port')
                 elif is_negative and (int(expected_spice_port) > 65535 or
                                       int(expected_spice_port) < -1):
                     fail_patts.append(r'port is out of range')
