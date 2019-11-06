@@ -25,10 +25,9 @@ def check_plug_to(vm_name, device_tag, bus_type='pcie-to-pci-bridge'):
 
 def get_free_pci_slot(vm_name):
     """
-    Get a free slot for given bus
+    Get a free slot for given vm
 
-    :param bus_index: the index of the bus to be searched, e.g. 0x08
-    :param vmxml: vm_xml.VMXML object
+    :param: vm_name: The name of the vm to be performed
     :return: The first free slot of the bus
     """
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -48,6 +47,12 @@ def get_free_pci_slot(vm_name):
 
 
 def get_pci_bridge_index(vm_name):
+    """
+    Get the index of usable pci bridge, add one if there is not
+
+    :param vm_name: The name of the vm to be performed
+    :return: The index of the pci bridge
+    """
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     pci_controllers = vmxml.get_controllers('pci')
     for controller in pci_controllers:
@@ -66,7 +71,7 @@ def get_free_root_port(vm_name):
     """
     Get a free root port for rng device
 
-    :param vm_name
+    :param vm_name: The name of the vm to be performed
     :return: The bus index of free root port
     """
     root_ports = set()
