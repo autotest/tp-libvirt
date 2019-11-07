@@ -105,6 +105,7 @@ def format_param(iface_dict):
 
     :param iface_dict: interface properties
     """
+    logging.info("iface_dict is %s", iface_dict)
     format_param = iface_dict.copy()
     if iface_dict['source'] is not None:
         format_param['source'] = iface_dict['source']
@@ -121,6 +122,7 @@ def format_param(iface_dict):
                                         'peak': iface_dict['outbound'].split(',')[1],
                                         'burst': iface_dict['outbound'].split(',')[2]})
     format_param.pop("mode")
+    logging.info("formatted iface_dict is %s", format_param)
     return format_param
 
 
@@ -222,24 +224,8 @@ def run(test, params, env):
     if iface_mac == "created" or correct_attach:
         iface_mac = utils_net.generate_mac_address_simple()
 
-    # Record all iface parameters in iface_dict
-    iface_dict = {}
-    update_list = [
-        "driver", "driver_host", "driver_guest", "model", "rom",
-        "inbound", "outbound", "link", "target", "mac", "source",
-        "boot", "backend", "type", "mode"
-        ]
     names = locals()
-    for update_item in update_list:
-        if names["iface_"+update_item]:
-            iface_dict.update({update_item: names["iface_"+update_item]})
-        else:
-            iface_dict.update({update_item: None})
-    logging.info("iface_dict is %s", iface_dict)
-
-    # Format the params
-    iface_format = format_param(iface_dict)
-    logging.info("iface_format is %s", iface_format)
+    iface_format = get_formatted_iface_dict(names, params.get("vm_arch_name"))
 
     try:
         # Generate xml file if using attach-device command
@@ -419,3 +405,29 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy()
         backup_xml.sync()
+
+
+def get_formatted_iface_dict(names, vm_arch_name):
+    """
+    Create the dictionary of interface configuration parameters
+    :param names: Dictionary of variables holding values for the
+    configuration parameters, names are expected to be
+    { iface_<xml_name>:value }
+    :param vm_arch_name: Architecture name, e.g. x86_64
+    :return: Dictionary holding configuration for iface xml
+    """
+    iface_dict = {}
+
+    update_list = [
+        "driver", "driver_host", "driver_guest", "model",
+        "inbound", "outbound", "link", "target", "mac", "source",
+        "boot", "backend", "type", "mode"
+    ]
+    # For s390-virtio interface addresses are of type ccw
+    # rom tuning is only allowed for type pci
+    if not vm_arch_name == "s390x":
+        update_list.append("rom")
+
+    for update_item in update_list:
+        iface_dict.update({update_item: names.get("iface_" + update_item)})
+    return format_param(iface_dict)
