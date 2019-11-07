@@ -87,12 +87,16 @@ def run(test, params, env):
         """
         cmdline = open('/proc/%s/cmdline' % vm.get_pid()).read().replace("\x00", " ")
         logging.debug("the cmdline is: %s" % cmdline)
+        # s390x only supports virtio
+        s390x_pattern = r"-device\svirtio-gpu-ccw"
 
         if is_primary or is_primary is None:
             if model_type == "vga":
                 pattern = r"-device\sVGA"
             else:
                 pattern = r"-device\s%s-vga" % model_type
+            if guest_arch == 's390x':
+                pattern = s390x_pattern
             if not re.search(pattern, cmdline):
                 test.fail("Can not find the primary %s video device "
                           "in qemu cmd line." % model_type)
@@ -101,6 +105,8 @@ def run(test, params, env):
                 pattern = r"-device\sqxl,"
             elif model_type == "virtio":
                 pattern = r"-device\svirtio-gpu-pci"
+            if guest_arch == 's390x':
+                pattern = s390x_pattern
             if not re.search(pattern, cmdline):
                 test.fail("Can not find the secondary %s video device "
                           "in qemu cmd line." % model_type)
@@ -112,10 +118,15 @@ def run(test, params, env):
         """
         cmdline = open('/proc/%s/cmdline' % vm.get_pid()).read().replace("\x00", " ")
         logging.debug("the cmdline is: %s" % cmdline)
+        # s390x only supports virtio
+        s390x_pattern = r"-device\svirtio-gpu-ccw\S+max_outputs=%s"
+
         if is_primary or is_primary is None:
             model_heads = kwargs.get("model_heads", default_primary_heads)
             if model_type == "qxl" or model_type == "virtio":
                 pattern = r"-device\s%s-vga\S+max_outputs=%s" % (model_type, model_heads)
+                if guest_arch == 's390x':
+                    pattern = s390x_pattern % model_heads
                 if not re.search(pattern, cmdline):
                     test.fail("The heads number of the primary %s video device "
                               "in not correct." % model_type)
@@ -125,6 +136,8 @@ def run(test, params, env):
                 pattern = r"-device\sqxl\S+max_outputs=%s" % model_heads
             elif model_type == "virtio":
                 pattern = r"-device\svirtio-gpu-pci\S+max_outputs=%s" % model_heads
+            if guest_arch == 's390x':
+                pattern = s390x_pattern % model_heads
             if not re.search(pattern, cmdline):
                 test.fail("The heads number of the secondary %s video device "
                           "in not correct." % model_type)
@@ -175,6 +188,7 @@ def run(test, params, env):
     default_mem_size = params.get("default_mem_size", None)
     zero_size_test = params.get("zero_size_test", None) == "yes"
     non_power_of_2_test = params.get("non_power_of_2_test", None) == "yes"
+    guest_arch = params.get("vm_arch_name")
 
     vm_xml = VMXML.new_from_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
