@@ -110,6 +110,9 @@ def run(test, params, env):
     # Get a tmp dir
     snap_cfg_path = "/var/lib/libvirt/qemu/snapshot/%s/" % vm_name
     try:
+        if vm.is_dead():
+            vm.start()
+        vm.wait_for_login().close()
         if replace_vm_disk:
             utlv.set_vm_disk(vm, params, tmp_dir)
             if multi_gluster_disks:
