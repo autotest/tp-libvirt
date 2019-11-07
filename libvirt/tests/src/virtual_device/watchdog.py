@@ -45,17 +45,32 @@ def run(test, params, env):
         cmd = "gsettings set org.gnome.settings-daemon.plugins.power button-power shutdown"
         session.cmd(cmd, ignore_all_errors=True)
         try:
-            if model == "ib700":
-                try:
-                    session.cmd("modprobe ib700wdt")
-                except aexpect.ShellCmdError:
-                    session.close()
-                    test.fail("Failed to load module ib700wdt")
-            session.cmd("dmesg | grep -i %s && lsmod | grep %s" % (model, model))
+            try_modprobe(model, session, test)
+            logging.info("dmesg watchdog messages: %s" % session.cmd("dmesg | grep -i %s" % model,
+                                                                     ignore_all_errors=True))
+            session.cmd("lsmod | grep %s" % model)
             session.cmd("echo 1 > /dev/watchdog")
         except aexpect.ShellCmdError as e:
             session.close()
             test.fail("Failed to trigger watchdog: %s" % e)
+
+    def try_modprobe(model, session, test):
+        """
+        Tries to load watchdog kernel module, fails test on error
+        :param model: watchdog model, e.g. diag288
+        :param session: guest session to run command
+        :param test: test object
+        :return: None
+        """
+        handled_types = {"ib700": "ib700wdt", "diag288": "diag288_wdt"}
+        if model not in handled_types.keys():
+            return
+        module = handled_types.get(model)
+        try:
+            session.cmd("modprobe %s" % module)
+        except aexpect.ShellCmdError:
+            session.close()
+            test.fail("Failed to load module %s" % module)
 
     def watchdog_attached(vm_name):
         """
@@ -135,7 +150,7 @@ def run(test, params, env):
             else:
                 logging.debug("Guest is not in shutoff state since watchdog action is none.")
         elif action == "inject-nmi":
-            if not utils_misc.wait_for(_inject_nmi, 180, 10):
+            if model != "diag288" and not utils_misc.wait_for(_inject_nmi, 180, 10):
                 test.fail("Guest not receive inject-nmi after watchdog triggered\n")
             elif not utils_misc.wait_for(_inject_nmi_event, 180, 10):
                 test.fail("No inject-nmi watchdog event caught")
