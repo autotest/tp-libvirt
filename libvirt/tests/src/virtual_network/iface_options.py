@@ -141,6 +141,9 @@ def run(test, params, env):
             channels = vmxml.get_devices(device_type="channel")
             for channel in channels:
                 vmxml.del_device(channel)
+            logging.info("Unprivileged users can't use 'dac' security driver,"
+                         " removing from domain xml if present...")
+            vmxml.del_seclabel([('model', 'dac')])
 
             vmxml.xmltreefile.write()
             logging.debug("New VM xml: %s", vmxml)
@@ -225,7 +228,7 @@ def run(test, params, env):
                 mode = iface.source["mode"]
                 if mode == "passthrough":
                     mode = "passthru"
-                if not re.search("macvtap\s+mode %s" % mode, output):
+                if not re.search(r"macvtap\s+mode %s" % mode, output):
                     test.fail("Failed to verify macvtap mode")
         # Check if the "target dev" is set successfully
         # 1. Target dev name with prefix as "vnet" will always be override;
@@ -658,12 +661,12 @@ def run(test, params, env):
                     driver_dict['tx_queue_size'] = expect_tx_size
                 for outp_p in outp.split("Current hardware"):
                     if 'rx_queue_size' in driver_dict:
-                        if re.search("RX:\s*%s" % driver_dict['rx_queue_size'], outp_p):
+                        if re.search(r"RX:\s*%s" % driver_dict['rx_queue_size'], outp_p):
                             logging.info("Find RX setting RX:%s by ethtool", driver_dict['rx_queue_size'])
                         else:
                             test.fail("Cannot find matching rx setting")
                     if 'tx_queue_size' in driver_dict:
-                        if re.search("TX:\s*%s" % driver_dict['tx_queue_size'], outp_p):
+                        if re.search(r"TX:\s*%s" % driver_dict['tx_queue_size'], outp_p):
                             logging.info("Find TX settint TX:%s by ethtool", driver_dict['tx_queue_size'])
                         else:
                             test.fail("Cannot find matching tx setting")
@@ -704,8 +707,8 @@ def run(test, params, env):
             # Restore vhost_net driver
             process.system("modprobe vhost_net", shell=True)
         if unprivileged_user:
-            virsh.remove_domain(vm_name, "--remove-all-storage",
-                                **virsh_dargs)
+            virsh.remove_domain(vm_name, **virsh_dargs)
+            process.run('rm -f %s' % dst_disk, shell=True)
         if additional_vm:
             virsh.remove_domain(additional_vm.name,
                                 "--remove-all-storage")
