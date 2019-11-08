@@ -595,7 +595,7 @@ def run(test, params, env):
                                                  "post-copy failed"), 60):
             test.fail("vm status is expected to 'paused (post-copy failed)'")
 
-    def drop_network_connetion(block_time):
+    def drop_network_connection(block_time):
         """
         Drop network connection from target host for a while and then recover it
 
@@ -670,10 +670,10 @@ def run(test, params, env):
                 set_migratepostcopy()
             elif action == 'killqemutarget':
                 kill_qemu_target()
-            elif action == 'drop_network_connetion':
-                drop_network_connetion(block_time)
             elif action == 'checkestablished':
                 check_established(expConnNum)
+            elif action == 'drop_network_connection':
+                drop_network_connection(block_time)
             time.sleep(3)
 
     def attach_channel_xml():
@@ -901,13 +901,8 @@ def run(test, params, env):
     block_time = params.get("block_time", 30)
     parallel_cn_nums = params.get("parallel_cn_nums")
 
-    # For keepalive test
-    use_firewall_cmd = True
-    if distro.detect().name == 'rhel' and int(distro.detect().version) < 8:
-        use_firewall_cmd = False
-        firewall_rule = ["INPUT -s {}/32 -j DROP".format(server_ip)]
-    else:
-        firewall_rule = "ipv4 filter INPUT 0 --source {} -j DROP".format(server_ip)
+    break_network_connection = "yes" == params.get("break_network_connection",
+                                                   "no")
 
     # For pty channel test
     add_channel = "yes" == params.get("add_channel", "no")
@@ -980,9 +975,17 @@ def run(test, params, env):
         runner_on_target = remote.RemoteRunner(host=server_ip,
                                                username=server_user,
                                                password=server_pwd)
+        if break_network_connection:
+            if distro.detect().name == 'rhel' and int(distro.detect().version) < 8:
+                use_firewall_cmd = False
+                firewall_rule = ["INPUT -s {}/32 -j DROP".format(server_ip)]
+            else:
+                use_firewall_cmd = True
+                firewall_cmd = utils_iptables.Firewall_cmd()
+                firewall_rule = ("ipv4 filter INPUT 0 --source {} -j DROP"
+                                 .format(server_ip))
+            logging.debug("firewall rule is '%s'", firewall_rule)
 
-        if use_firewall_cmd:
-            firewall_cmd = utils_iptables.Firewall_cmd()
         # Change the configuration files if needed before starting guest
         # For qemu.conf
         if extra.count("--tls"):
@@ -1286,9 +1289,11 @@ def run(test, params, env):
         logging.debug("Recover test environment")
         try:
             # Remove firewall rule if needed
-            if 'firewall_rule' in locals():
+            if break_network_connection and 'firewall_rule' in locals():
                 if use_firewall_cmd:
-                    direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
+                    logging.debug("cleanup firewall rule via firewall-cmd.")
+                    direct_rules = firewall_cmd.get(key="all-rules",
+                                                    is_direct=True)
                     cmdRes = re.findall(firewall_rule, direct_rules)
                     if len(cmdRes):
                         firewall_cmd.remove_direct_rule(firewall_rule)
