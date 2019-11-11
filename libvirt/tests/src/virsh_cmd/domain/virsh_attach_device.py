@@ -381,6 +381,7 @@ class SerialFile(AttachDeviceBase):
 
     Consumes Cartesian object parameters:
         count - number of devices to make
+        model - target model of device
     """
 
     identifier = None
@@ -415,6 +416,11 @@ class SerialFile(AttachDeviceBase):
         serial_device.add_source(path=filepath)
         # Assume default domain serial device on port 0 and index starts at 0
         serial_device.add_target(port=str(index + 1))
+        if hasattr(self, 'models'):
+            this_model = self.models.split(" ")[index]
+            if 'sclp' in this_model:
+                serial_device.update_target(index=0, port=str(index+1), type='sclp-serial')
+            serial_device.target_model = this_model
         if hasattr(self, 'alias') and libvirt_version.version_compare(3, 9, 0):
             serial_device.alias = {'name': self.alias + str(index)}
         return serial_device
@@ -813,6 +819,41 @@ def analyze_results(test_params, test, operational_results=None,
         test.fail(fail_msg)
 
 
+def remove_chardevs(vm_name, vmxml):
+    """
+    Removes chardevs from domain xml to avoid errors due to
+    restrictions on the number of chardevs with same target type,
+    e.g. on s390x
+    :param vm_name: domain name
+    :param vmxml: domain xml
+    :return: None
+    """
+    virsh.destroy(vm_name, debug=True)
+    chardev_types = ['serial', 'console']
+    for chardev_type in chardev_types:
+        vmxml.del_device(chardev_type, by_tag=True)
+    vmxml.sync()
+    virsh.start(vm_name, debug=True)
+
+
+def remove_non_disks(vm_name, vmxml):
+    """
+    Remove non-disk disks before test to avoid influence.
+    None-disk disks such as cdrom with bus 'SATA' will be recognized
+    as 'cdrom', not 'sda' as expected, therefore the attached SATA
+    disk will not be recognized as 'sdb' as expected.
+    :param vm_name: domain name
+    :param vmxml: domain xml
+    :return: None
+    """
+    disks = vmxml.devices.by_device_tag('disk')
+    for disk in disks:
+        if disk.device != 'disk':
+            virsh.detach_disk(vm_name, disk.target['dev'],
+                              extra='--current',
+                              debug=True)
+
+
 def run(test, params, env):
     """
     Test virsh {at|de}tach-device command.
@@ -824,18 +865,8 @@ def run(test, params, env):
     5) Restore domain
     6) Handle results
     """
-    # Remove non-disk disks before test to avoid influence.
-    # None-disk disks such as cdrom with bus 'SATA' will be recognized
-    # as 'cdrom', not 'sda' as expected, therefore the attached SATA
-    # disk will not be recognized as 'sdb' as expected.
     vm_name = params.get('main_vm')
     backup_vm_xml = vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
-    disks = vmxml.devices.by_device_tag('disk')
-    for disk in disks:
-        if disk.device != 'disk':
-            virsh.detach_disk(vm_name, disk.target['dev'],
-                              extra='--current',
-                              debug=True)
 
     dev_obj = params.get("vadu_dev_objs")
     # Skip chardev hotplug on rhel6 host as it is not supported
@@ -843,6 +874,11 @@ def run(test, params, env):
         if not libvirt_version.version_compare(1, 1, 0):
             test.cancel("You libvirt version not supported"
                         " attach/detach Serial devices")
+
+    remove_non_disks(vm_name, vmxml)
+
+    if params.get("remove_all_chardev", "no") == "yes":
+        remove_chardevs(vm_name, vmxml)
 
     logging.info("Preparing initial VM state")
     # Prepare test environment and its parameters
@@ -887,6 +923,7 @@ def run(test, params, env):
         # Signal devices reboot is finished
         for test_device in test_devices:
             test_device.booted = True
+        logging.debug("Current VMXML %s", test_params.main_vm.get_xml())
         test_params.main_vm.wait_for_login().close()
         postboot_action(test_params, test_devices, pstboot_results)
         analyze_results(test_params, test,
@@ -904,5 +941,8 @@ def run(test, params, env):
             test_params.main_vm.destroy(gracefully=True)
         # Device cleanup can raise multiple exceptions, do it last:
         logging.info("Cleaning up test devices")
-        test_params.cleanup(test_devices)
+        try:
+            test_params.cleanup(test_devices)
+        except RuntimeError as e:
+            logging.debug("Error cleaning up devices: %s", e)
         backup_vm_xml.sync()
