@@ -7,6 +7,7 @@ from avocado.utils import process
 from virttest import utils_test
 from virttest import virsh
 from virttest import utils_misc
+from virttest.libvirt_xml import vm_xml
 
 
 def run(test, params, env):
@@ -19,6 +20,18 @@ def run(test, params, env):
     2. --autodestroy with left combination
     3. --paused itself
     """
+
+    def xmlfile_with_extra_attibute(xml):
+        """
+        Prepare an invalid xml using the disk element
+        """
+        # For example, <disk type='file' type='disk' foot='3'/>
+        some_device_xml = xml.xmltreefile.find('/devices/disk')
+        some_device_xml.set("foot", "3")
+        logging.debug("The new xml is %s", xml)
+        xml_file = xml.xmltreefile.name
+        return xml_file
+
     vm_name = params.get("main_vm")
     options = params.get("create_options", "")
     status_error = ("yes" == params.get("status_error", "no"))
@@ -34,6 +47,9 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy()
         xmlfile = vm.backup_xml()
+        if not options or "--validate" in options:
+            xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            xmlfile = xmlfile_with_extra_attibute(xml_backup)
         vm.undefine()
     else:
         xmlfile = params.get("create_domain_xmlfile")
@@ -86,7 +102,8 @@ def run(test, params, env):
 
         try:
             if status_error:
-                output = virsh.create(xmlfile, options, readonly=readonly)
+                output = virsh.create(xmlfile, options, readonly=readonly,
+                                      debug=True, ignore_status=True)
                 if output.exit_status:
                     logging.info("Fail to create guest as expect:%s",
                                  output.stderr)
@@ -131,7 +148,8 @@ def run(test, params, env):
                 create_autodestroy_check(vm)
             else:
                 # have --paused option or none options
-                output = virsh.create(xmlfile, options)
+                output = virsh.create(xmlfile, options,
+                                      debug=True, ignore_status=True)
                 if output.exit_status:
                     test.fail("Fail to create domain:%s" %
                               output.stderr)

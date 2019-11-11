@@ -2,7 +2,7 @@ import logging
 
 from virttest.libvirt_xml import vm_xml
 from virttest import utils_test
-from virttest import utils_misc
+from virttest import cpu
 
 
 def run(test, params, env):
@@ -30,7 +30,7 @@ def run(test, params, env):
     vm_list = env.get_all_vms()
     # To ensure host that doesn't support Radix MMU gets skipped
     if cpu_check:
-        cpu_model = utils_misc.get_cpu_info()['Model name'].upper()
+        cpu_model = cpu.get_cpu_info()['Model name'].upper()
         if cpu_check not in cpu_model:
             logging.info("This test will work for %s", cpu_check)
             test.skip("Test is not applicable for %s" % cpu_model)

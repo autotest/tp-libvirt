@@ -6,10 +6,10 @@ from avocado.utils import process
 
 from virttest import data_dir
 from virttest import utils_misc
-from virttest import utils_package
 from virttest import utils_sasl
 from virttest import utils_v2v
 from virttest import virsh
+from virttest import remote
 from virttest.utils_test import libvirt
 
 from provider.v2v_vmcheck_helper import VMChecker
@@ -48,6 +48,18 @@ def run(test, params, env):
     vddk_thumbprint = params.get('vddk_thumbprint')
     src_uri_type = params.get('src_uri_type')
     esxi_password = params.get('esxi_password')
+    # For construct rhv-upload option in v2v cmd
+    output_method = params.get("output_method")
+    rhv_upload_opts = params.get("rhv_upload_opts")
+    storage_name = params.get('storage_name')
+    # for get ca.crt file from ovirt engine
+    rhv_passwd = params.get("rhv_upload_passwd")
+    rhv_passwd_file = params.get("rhv_upload_passwd_file")
+    ovirt_engine_passwd = params.get("ovirt_engine_password")
+    ovirt_hostname = params.get("ovirt_engine_url").split(
+        '/')[2] if params.get("ovirt_engine_url") else None
+    ovirt_ca_file_path = params.get("ovirt_ca_file_path")
+    local_ca_file_path = params.get("local_ca_file_path")
 
     def log_fail(msg):
         """
@@ -147,6 +159,33 @@ def run(test, params, env):
         if 'resume=/dev/vd' not in content:
             log_fail('Content of /proc/cmdline is not correct')
 
+    def check_rhev_file_exist(vmcheck):
+        """
+        Check if rhev files exist
+        """
+        file_path = {
+            'rhev-apt.exe': r'C:\rhev-apt.exe',
+            'rhsrvany.exe': r'"C:\Program Files\Guestfs\Firstboot\rhsrvany.exe"'
+        }
+        for key in file_path:
+            status = vmcheck.session.cmd_status('dir %s' % file_path[key])
+            if status == 0:
+                logging.info('%s exists' % key)
+            else:
+                log_fail('%s does not exist after convert to rhv' % key)
+
+    def check_file_architecture(vmcheck):
+        """
+        Check the 3rd party module info
+        :param vmcheck: VMCheck object for vm checking
+        """
+        content = vmcheck.session.cmd('uname -r').strip()
+        status = vmcheck.session.cmd_status('rpm -qf /lib/modules/%s/fileaccess/fileaccess_mod.ko ' % content)
+        if status == 0:
+            log_fail('3rd party module info is not correct')
+        else:
+            logging.info('file /lib/modules/%s/fileaccess/fileaccess_mod.ko is not owned by any package' % content)
+
     def check_result(result, status_error):
         """
         Check virt-v2v command result
@@ -167,7 +206,7 @@ def run(test, params, env):
             logging.info('Checking common checkpoints for v2v')
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
-            if checkpoint not in ['GPO_AV', 'ovmf']:
+            if checkpoint != 'GPO_AV':
                 ret = vmchecker.run()
                 if len(ret) == 0:
                     logging.info("All common checkpoints passed")
@@ -184,6 +223,10 @@ def run(test, params, env):
                 check_device_map(vmchecker.checker)
             if checkpoint == 'resume_swap':
                 check_resume_swap(vmchecker.checker)
+            if checkpoint == 'rhev_file':
+                check_rhev_file_exist(vmchecker.checker)
+            if checkpoint == 'file_architecture':
+                check_file_architecture(vmchecker.checker)
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
         log_check = utils_v2v.check_log(params, output)
@@ -203,6 +246,7 @@ def run(test, params, env):
             'network': params.get('network'),
             'bridge': params.get('bridge'),
             'target': params.get('target'),
+            'password': vpx_passwd if src_uri_type != 'esx' else esxi_password,
             'input_transport': input_transport,
             'vcenter_host': vpx_hostname,
             'vcenter_password': vpx_passwd,
@@ -211,7 +255,10 @@ def run(test, params, env):
             'vddk_libdir_src': vddk_libdir_src,
             'src_uri_type': src_uri_type,
             'esxi_password': esxi_password,
-            'esxi_host': esxi_host
+            'esxi_host': esxi_host,
+            'output_method': output_method,
+            'storage_name': storage_name,
+            'rhv_upload_opts': rhv_upload_opts
         }
 
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
@@ -235,6 +282,11 @@ def run(test, params, env):
 
         # Create SASL user on the ovirt host
         if output_mode == 'rhev':
+            # create different sasl_user name for different job
+            params.update({'sasl_user': params.get("sasl_user") +
+                           utils_misc.generate_random_string(3)})
+            logging.info('sals user name is %s' % params.get("sasl_user"))
+
             user_pwd = "[['%s', '%s']]" % (params.get("sasl_user"),
                                            params.get("sasl_pwd"))
             v2v_sasl = utils_sasl.SASL(sasl_user_pwd=user_pwd)
@@ -242,13 +294,20 @@ def run(test, params, env):
             v2v_sasl.server_user = params.get('remote_user')
             v2v_sasl.server_pwd = params.get('remote_pwd')
             v2v_sasl.setup(remote=True)
+            if output_method == 'rhv_upload':
+                # Create password file for '-o rhv_upload' to connect to ovirt
+                with open(rhv_passwd_file, 'w') as f:
+                    f.write(rhv_passwd)
+                # Copy ca file from ovirt to local
+                remote.scp_from_remote(ovirt_hostname, 22, 'root',
+                                       ovirt_engine_passwd,
+                                       ovirt_ca_file_path,
+                                       local_ca_file_path)
 
         # Create libvirt dir pool
         if output_mode == 'libvirt':
             pvt.pre_pool(pool_name, pool_type, pool_target, '')
 
-        if checkpoint == 'ovmf':
-            utils_package.package_install('OVMF')
         if checkpoint == 'root_ask':
             v2v_params['v2v_opts'] += ' --root ask'
             v2v_params['custom_inputs'] = params.get('choice', '2')

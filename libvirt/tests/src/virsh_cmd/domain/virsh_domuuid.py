@@ -5,6 +5,8 @@ from virttest import libvirt_xml
 from virttest import utils_libvirtd
 from virttest.utils_test.libvirt import check_domuuid_compliant_with_rfc4122
 
+from provider import libvirt_version
+
 
 def run(test, params, env):
     """
@@ -57,7 +59,11 @@ def run(test, params, env):
     # Check status_error
     if status_error == "yes":
         if status == 0:
-            test.fail("Run successfully with wrong command!")
+            if libvirtd == "off" and libvirt_version.version_compare(5, 6, 0):
+                logging.info("From libvirt version 5.6.0 libvirtd is restarted "
+                             "and command should succeed")
+            else:
+                test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if not check_domuuid_compliant_with_rfc4122(output):
             test.fail("UUID is not compliant with RFC4122 format")

@@ -6,6 +6,8 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import ssh_key
 
+from provider import libvirt_version
+
 
 def run(test, params, env):
     """
@@ -98,10 +100,14 @@ def run(test, params, env):
     # check status_error
     if status_error == "yes":
         if not status:
-            logging.debug(result)
-            test.fail("Run successfully with wrong command!")
+            if libvirtd == "off" and libvirt_version.version_compare(5, 6, 0):
+                logging.debug("From libvirt version 5.6.0 libvirtd is restarted "
+                              "and command should succeed")
+            else:
+                logging.debug(result)
+                test.fail("Run successfully with wrong command!")
         # Check the error message in negative case.
-        if not err:
+        if not err and not libvirt_version.version_compare(5, 6, 0):
             logging.debug(result)
             logging.debug("Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=889276 "
                           "is helpful for tracing this bug.")

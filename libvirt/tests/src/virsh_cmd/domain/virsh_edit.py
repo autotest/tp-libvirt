@@ -1,8 +1,12 @@
 import logging
+import os
+
+from avocado.utils import path
 
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import utils_package
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
@@ -32,6 +36,19 @@ def run(test, params, env):
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     libvirtd = utils_libvirtd.Libvirtd()
+    # check whether vim editor is set as $EDITOR in environment
+    try:
+        vim = path.find_command("vim")
+    except path.path.CmdNotFoundError:
+        if not utils_package.package_install("vim"):
+            test.cancel("virsh edit need vim editor for using regex to edit "
+                        "vmxml")
+        vim = path.find_command("vim")
+    try:
+        if vim not in os.environ["EDITOR"]:
+            os.environ["EDITOR"] = vim
+    except KeyError:
+        os.environ["EDITOR"] = vim
 
     def edit_vcpu(source):
         """

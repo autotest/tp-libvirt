@@ -1,6 +1,8 @@
 import logging
+
+
 from virttest import virsh
-from virttest import utils_misc
+from virttest import cpu as cpuutil
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 
@@ -25,7 +27,7 @@ def run(test, params, env):
     domain_name = params.get("domain_name", "")
     invalid_cpulist = params.get("invalid_cpulist", "")
     status_error = params.get("status_error", "no")
-    error_msg = params.get("error_msg", "no")
+    error_msg = eval(params.get('error_msg', '[]'))
     vcpus_list = ""
     offline_vcpus = ""
 
@@ -93,7 +95,7 @@ def run(test, params, env):
 
             # Check the cpu in guest
             session = vm.wait_for_login()
-            vm_cpu_info = utils_misc.get_cpu_info(session)
+            vm_cpu_info = cpuutil.get_cpu_info(session)
             session.close()
 
             if combine == "yes":

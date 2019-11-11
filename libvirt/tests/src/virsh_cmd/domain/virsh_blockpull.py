@@ -11,6 +11,8 @@ from virttest import utils_libvirtd
 from virttest import utils_package
 from virttest import libvirt_storage
 from virttest import ceph
+from virttest import gluster
+
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import snapshot_xml
@@ -495,7 +497,8 @@ def run(test, params, env):
             libvirt.setup_or_cleanup_iscsi(is_setup=False,
                                            restart_tgtd=restart_tgtd)
         elif disk_src_protocol == 'gluster':
-            libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path)
+            logging.info("clean gluster env")
+            gluster.setup_or_cleanup_gluster(False, brick_path=brick_path, **params)
             libvirtd.restart()
         elif disk_src_protocol == 'netfs':
             restore_selinux = params.get('selinux_status_bak')

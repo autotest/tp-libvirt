@@ -11,14 +11,17 @@ from subprocess import Popen
 
 from avocado.core import exceptions
 from avocado.utils import process
+from avocado.utils import cpu as cpuutil
 
 from virttest import ssh_key
 from virttest import data_dir
 from virttest import nfs
+from virttest import gluster
 from virttest import remote
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import cpu
 from virttest import utils_netperf
 from virttest import utils_package
 from virttest import utils_selinux
@@ -316,7 +319,7 @@ def add_disk_xml(test, device_type, source_file,
     :prams disk_type: disk type for attaching
     :raise: test.cancel if device type is not supported
     """
-    if device_type != 'cdrom' or device_type != 'floppy':
+    if device_type != 'cdrom' and device_type != 'floppy':
         test.cancel("Only support 'cdrom' and 'floppy'"
                     " device type: %s" % device_type)
 
@@ -372,8 +375,7 @@ def prepare_gluster_disk(params):
                                 image_name + '.' + image_format)
 
     # Setup gluster.
-    host_ip = libvirt.setup_or_cleanup_gluster(True, vol_name,
-                                               brick_path, pool_name)
+    host_ip = gluster.setup_or_cleanup_gluster(True, **params)
     logging.debug("host ip: %s ", host_ip)
     image_info = utils_misc.get_image_info(image_source)
     if image_info["format"] == disk_format:
@@ -493,7 +495,7 @@ def get_same_processor(test, server_ip, server_user, server_pwd, verbose):
     :param verbose: the flag to control whether or not to log messages
     :raise: test.fail if test fails
     """
-    local_processors = utils_misc.get_cpu_processors(verbose=verbose)
+    local_processors = cpuutil.cpu_online_list()
     cmd = "grep processor /proc/cpuinfo"
     status, output = run_remote_cmd(cmd, server_ip, server_user, server_pwd)
     if status:
@@ -838,7 +840,7 @@ def cleanup(objs_list):
     # recovery test environment
     for obj in objs_list:
         obj.auto_recover = True
-        del obj
+        obj.__del__()
 
 
 def check_vm_disk_after_migration(test, vm, params):
@@ -1061,7 +1063,6 @@ def run(test, params, env):
     vm_name = test_dict.get("main_vm")
     vm = env.get_vm(vm_name)
     start_vm = test_dict.get("start_vm", "no")
-    status_error = test_dict.get("status_error", "no")
     transport = test_dict.get("transport")
     plus = test_dict.get("conn_plus", "+")
     config_ipv6 = test_dict.get("config_ipv6", "no")
@@ -1141,6 +1142,15 @@ def run(test, params, env):
     block_time = test_dict.get("block_time")
     restart_vm = "yes" == test_dict.get("restart_vm", "no")
     diff_cpu_vendor = "yes" == test_dict.get("diff_cpu_vendor", "no")
+
+    # Get err_msg and status_error parameters
+    err_msg = test_dict.get("err_msg", None)
+    if err_msg == "error: internal error: unable to execute QEMU command 'nbd-server-add': Block node is read-only":
+        if utils_misc.compare_qemu_version(2, 10, 0, is_rhev=True):
+            test_dict["status_error"] = "yes"
+        else:
+            test_dict["status_error"] = "no"
+    status_error = test_dict.get("status_error", "no")
 
     # Get iothread parameters.
     driver_iothread = test_dict.get("driver_iothread")
@@ -1520,7 +1530,7 @@ def run(test, params, env):
         logging.debug("The final test dict:\n<%s>", test_dict)
 
         if diff_cpu_vendor:
-            local_vendor = utils_misc.get_cpu_vendor()
+            local_vendor = cpu.get_cpu_vendor()
             logging.info("Local CPU vendor: %s", local_vendor)
             local_cpu_xml = get_cpu_xml_from_virsh_caps(test)
             logging.debug("Local CPU XML: \n%s", local_cpu_xml)
@@ -1855,7 +1865,8 @@ def run(test, params, env):
         # and nbd-server, but need create a specific pool.
         no_create_pool = test_dict.get("no_create_pool", "no")
         try:
-            if (utils_misc.is_qemu_capability_supported("drive-mirror") and
+            if ((utils_misc.is_qemu_capability_supported("drive-mirror") or
+                 libvirt_version.version_compare(5, 3, 0)) and
                     utils_misc.is_qemu_capability_supported("nbd-server")):
                 support_precreation = True
         except exceptions.TestError as e:
@@ -1900,11 +1911,15 @@ def run(test, params, env):
         # nfs setup.
         # Case 1: --copy-storage-all without --migrate-disks will copy all images to
         #         remote host.
-        # Check points:
+        # Check points for qemu-kvm >=2.10.0:
+        # 1. Migration fails with error "Block node is read-only"
+        #
+        # Check points for qemu-kvm <2.10.0:
         # 1. Migration operation succeeds and guest on remote is running
         # 2. All Disks in guest on remote host can be r/w
         # 3. Libvirtd.log on remote host should include "nbd-server-add" message for
         #    all disks
+        #
         # Case 2: --copy-storage-all with --migrate-disks <all non-shared-images> will
         #         copy images specified in --migrate-disks to remote host.
         # Check points:
@@ -2186,7 +2201,10 @@ def run(test, params, env):
 
                 if check_complete_job == "yes":
                     stdout, stderr = p.communicate()
-                    logging.info("stdout:[%s], stderr:[%s]", stdout, stderr)
+                    logging.info("status:[%d], stdout:[%s], stderr:[%s]",
+                                 p.returncode, stdout, stderr)
+                    if p.returncode:
+                        test.fail("Failed to run migration: {}".format(stderr))
                     opts = "--completed"
                     args = vm_name + " " + opts
                     check_virsh_command_and_option(test, "domjobinfo", opts)
@@ -2249,8 +2267,8 @@ def run(test, params, env):
             if wait_for_mgr_cmpl == "yes":
                 stdout, stderr = p.communicate()
                 logging.info("stdout:<%s> , stderr:<%s>", stdout, stderr)
-                if stderr:
-                    test.fail("Can't finish VM migration")
+                if p.returncode:
+                    test.fail("Can't finish VM migration: {}".format(stderr))
 
             if p.poll():
                 try:
@@ -2661,10 +2679,12 @@ def run(test, params, env):
             process.run("iptables -F", ignore_status=True, shell=True)
 
         # Disable ports 24007 and 49152:49216
-        if gluster_disk and host_ip == client_ip:
-            logging.debug("Disable 24007 and 49152:49216 in Firewall")
-            migrate_setup.migrate_pre_setup(src_uri, params, cleanup=True, ports="24007")
-            migrate_setup.migrate_pre_setup(src_uri, params, cleanup=True)
+        if gluster_disk and 'host_ip' in locals():
+            if host_ip == client_ip:
+                logging.debug("Disable 24007 and 49152:49216 in Firewall")
+                migrate_setup.migrate_pre_setup(src_uri, params, cleanup=True,
+                                                ports="24007")
+                migrate_setup.migrate_pre_setup(src_uri, params, cleanup=True)
 
         # Restore libvirtd conf and restart libvirtd
         if libvirtd_conf:
@@ -2732,7 +2752,7 @@ def run(test, params, env):
 
         libvirtd = utils_libvirtd.Libvirtd()
         if disk_src_protocol == "gluster":
-            libvirt.setup_or_cleanup_gluster(False, vol_name, brick_path, pool_name)
+            gluster.setup_or_cleanup_gluster(False, **test_dict)
             libvirtd.restart()
 
         if disk_src_protocol == "iscsi":

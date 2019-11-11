@@ -3,7 +3,6 @@ import re
 import os
 import time
 
-from avocado.utils import path as utils_path
 from avocado.utils import process
 
 from virttest import libvirt_vm
@@ -89,6 +88,7 @@ def login_to_check(vm, checked_mac):
         session = vm.wait_for_login()
     except Exception as detail:  # Do not care Exception's type
         return (1, "Can not login to vm:%s" % detail)
+    time.sleep(5)
     status, output = session.cmd_status_output("ip -4 -o link list")
     if status != 0:
         return (1, "Login to check failed.")
@@ -105,6 +105,7 @@ def format_param(iface_dict):
 
     :param iface_dict: interface properties
     """
+    logging.info("iface_dict is %s", iface_dict)
     format_param = iface_dict.copy()
     if iface_dict['source'] is not None:
         format_param['source'] = iface_dict['source']
@@ -121,6 +122,7 @@ def format_param(iface_dict):
                                         'peak': iface_dict['outbound'].split(',')[1],
                                         'burst': iface_dict['outbound'].split(',')[2]})
     format_param.pop("mode")
+    logging.info("formatted iface_dict is %s", format_param)
     return format_param
 
 
@@ -171,13 +173,6 @@ def run(test, params, env):
 
     # Interface specific attributes.
     iface_type = params.get("at_detach_iface_type", "network")
-    if iface_type == "bridge":
-        try:
-            utils_path.find_command("brctl")
-        except utils_path.CmdNotFoundError:
-            test.cancel("Command 'brctl' is missing. You must "
-                        "install it.")
-
     iface_source = params.get("at_detach_iface_source", "default")
     iface_mode = params.get("at_detach_iface_mode", "vepa")
     iface_mac = params.get("at_detach_iface_mac", "created")
@@ -202,7 +197,8 @@ def run(test, params, env):
     if iface_type == "direct":
         iface_source = utils_net.get_net_if(state="UP")[0]
     # Get a bridge name for test if iface_type is bridge.
-    # If there is no bridge other than virbr0, raise TestCancel
+    # If there is no bridge other than virbr0, try to create one
+    # or fail test
     if iface_type == "bridge":
         host_bridge = utils_net.Bridge()
         bridge_list = host_bridge.list_br()
@@ -211,12 +207,12 @@ def run(test, params, env):
         except AttributeError:
             pass  # If no virbr0, just pass is ok
         logging.debug("Useful bridges:%s", bridge_list)
-        # just choosing one bridge on host.
         if len(bridge_list):
             iface_source = bridge_list[0]
         else:
-            test.cancel("No useful bridge on host "
-                        "other than 'virbr0'.")
+            process.run('ip link add name br0 type bridge', ignore_status=False)
+            iface_source = 'br0'
+            logging.debug("Added bridge br0")
 
     # Test both detach and attach, So collect info
     # both of them for result check.
@@ -228,24 +224,8 @@ def run(test, params, env):
     if iface_mac == "created" or correct_attach:
         iface_mac = utils_net.generate_mac_address_simple()
 
-    # Record all iface parameters in iface_dict
-    iface_dict = {}
-    update_list = [
-        "driver", "driver_host", "driver_guest", "model", "rom",
-        "inbound", "outbound", "link", "target", "mac", "source",
-        "boot", "backend", "type", "mode"
-        ]
     names = locals()
-    for update_item in update_list:
-        if names["iface_"+update_item]:
-            iface_dict.update({update_item: names["iface_"+update_item]})
-        else:
-            iface_dict.update({update_item: None})
-    logging.info("iface_dict is %s", iface_dict)
-
-    # Format the params
-    iface_format = format_param(iface_dict)
-    logging.info("iface_format is %s", iface_format)
+    iface_format = get_formatted_iface_dict(names, params.get("vm_arch_name"))
 
     try:
         # Generate xml file if using attach-device command
@@ -283,7 +263,8 @@ def run(test, params, env):
 
         # Set attach-interface options and Start attach-interface test
         if correct_attach:
-            options = set_options("network", "default", iface_mac, "", "attach")
+            options = set_options("network", "default", iface_mac, "",
+                                  "attach", None, iface_model)
             if readonly:
                 virsh_dargs.update({'readonly': True, 'debug': True})
             attach_result = virsh.attach_interface(vm_name, options,
@@ -424,3 +405,29 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy()
         backup_xml.sync()
+
+
+def get_formatted_iface_dict(names, vm_arch_name):
+    """
+    Create the dictionary of interface configuration parameters
+    :param names: Dictionary of variables holding values for the
+    configuration parameters, names are expected to be
+    { iface_<xml_name>:value }
+    :param vm_arch_name: Architecture name, e.g. x86_64
+    :return: Dictionary holding configuration for iface xml
+    """
+    iface_dict = {}
+
+    update_list = [
+        "driver", "driver_host", "driver_guest", "model",
+        "inbound", "outbound", "link", "target", "mac", "source",
+        "boot", "backend", "type", "mode"
+    ]
+    # For s390-virtio interface addresses are of type ccw
+    # rom tuning is only allowed for type pci
+    if not vm_arch_name == "s390x":
+        update_list.append("rom")
+
+    for update_item in update_list:
+        iface_dict.update({update_item: names.get("iface_" + update_item)})
+    return format_param(iface_dict)

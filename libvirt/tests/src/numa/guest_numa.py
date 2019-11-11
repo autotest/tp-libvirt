@@ -7,11 +7,11 @@ from avocado.utils import process
 from virttest import virt_vm
 from virttest import libvirt_xml
 from virttest import utils_misc
+from virttest import cpu
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import test_setup
 from virttest import utils_params
-from virttest.utils_test import libvirt as utlv
 
 from provider import libvirt_version
 
@@ -189,17 +189,17 @@ def run(test, params, env):
         logging.debug("host node list is %s", node_list)
         used_node = []
         if numa_memory.get('nodeset'):
-            used_node += utlv.cpus_parser(numa_memory['nodeset'])
+            used_node += cpu.cpus_parser(numa_memory['nodeset'])
         if numa_memnode:
             for i in numa_memnode:
-                used_node += utlv.cpus_parser(i['nodeset'])
+                used_node += cpu.cpus_parser(i['nodeset'])
         if page_list:
             host_page_tuple = ("hugepage_size", "page_num", "page_nodenum")
             h_list = handle_param(host_page_tuple, params)
             h_nodenum = [h_list[p_size]['nodenum']
                          for p_size in range(len(h_list))]
             for i in h_nodenum:
-                used_node += utlv.cpus_parser(i)
+                used_node += cpu.cpus_parser(i)
         if used_node and not status_error:
             logging.debug("set node list is %s", used_node)
             used_node = list(set(used_node))
@@ -326,7 +326,7 @@ def run(test, params, env):
                 for map_info in hugepage_info:
                     for (mem_mode, mem_num, cell_num, host_node_num,
                          vm_page_num) in re.findall(node_pattern, map_info):
-                        usage_dict[mem_mode] = utlv.cpus_parser(mem_num)
+                        usage_dict[mem_mode] = cpu.cpus_parser(mem_num)
                         usage_dict[host_node_num] = vm_page_num
                         map_dict[cell_num] = usage_dict.copy()
                 logging.debug("huagepage info in vm numa maps is %s",
@@ -335,7 +335,7 @@ def run(test, params, env):
                 usage_dict = {}
                 if numa_memnode:
                     for i in numa_memnode:
-                        node = utlv.cpus_parser(i['nodeset'])
+                        node = cpu.cpus_parser(i['nodeset'])
                         mode = mode_dict[i['mode']]
                         usage_dict[mode] = node
                         memnode_dict[i['cellid']] = usage_dict.copy()
@@ -363,7 +363,7 @@ def run(test, params, env):
                 test.fail("%s not found in vm qemu cmdline" % cmd['cmdline'])
 
         # vm inside check
-        vm_cpu_info = utils_misc.get_cpu_info(session)
+        vm_cpu_info = cpu.get_cpu_info(session)
         logging.debug("lscpu output dict in vm is %s", vm_cpu_info)
         session.close()
         node_num = int(vm_cpu_info["NUMA node(s)"])
@@ -371,8 +371,8 @@ def run(test, params, env):
             test.fail("node number %s in vm is not expected" % node_num)
         for i in range(len(numa_cell)):
             cpu_str = vm_cpu_info["NUMA node%s CPU(s)" % i]
-            vm_cpu_list = utlv.cpus_parser(cpu_str)
-            cpu_list = utlv.cpus_parser(numa_cell[i]["cpus"])
+            vm_cpu_list = cpu.cpus_parser(cpu_str)
+            cpu_list = cpu.cpus_parser(numa_cell[i]["cpus"])
             if vm_cpu_list != cpu_list:
                 test.fail("vm node %s cpu list %s not expected"
                           % (i, vm_cpu_list))

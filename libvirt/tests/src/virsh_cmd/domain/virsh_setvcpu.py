@@ -3,7 +3,7 @@ import logging
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
-from virttest import utils_hotplug
+from virttest import cpu
 
 
 def run(test, params, env):
@@ -208,7 +208,7 @@ def run(test, params, env):
                     status = virsh.setvcpu(
                         dom_option, vcpu_list_option, options,
                         ignore_status=True, debug=True)
-                    unsupport_str = utils_hotplug.vcpuhotunplug_unsupport_str()
+                    unsupport_str = cpu.vcpuhotunplug_unsupport_str()
                     if unsupport_str and (unsupport_str in status.stderr):
                         test.cancel("Vcpu hotunplug is not supported in this host:"
                                     "\n%s" % status.stderr)
@@ -248,8 +248,8 @@ def run(test, params, env):
 
             # Lets validate the result in positive cases
             if status_error != "yes":
-                result = utils_hotplug.check_vcpu_value(vm, exp_vcpu,
-                                                        option=options)
+                result = cpu.check_vcpu_value(vm, exp_vcpu,
+                                              option=options)
     finally:
         if pre_vm_state == "paused":
             virsh.resume(vm_name, ignore_status=True)

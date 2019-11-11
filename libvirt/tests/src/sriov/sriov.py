@@ -631,7 +631,7 @@ def run(test, params, env):
         if not vm.is_dead():
             vm.destroy()
     driver_dir = "/sys/bus/pci/drivers/%s" % driver
-    pci_dirs = glob.glob("%s/0000*" % driver_dir)
+    pci_dirs = glob.glob("%s/000*" % driver_dir)
     pci_device_dir = "/sys/bus/pci/devices"
     pci_address = ""
     net_name = "test-net"

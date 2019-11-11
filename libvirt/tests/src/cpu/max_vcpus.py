@@ -3,9 +3,12 @@ import logging
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import utils_misc
+from virttest import cpu
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import capability_xml
 from virttest.libvirt_xml.devices.iommu import Iommu
+
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -33,7 +36,7 @@ def run(test, params, env):
         :param cpu_num: the num of online vcpus need to match
         """
         if not utils_misc.wait_for(
-                lambda: utils_misc.check_if_vm_vcpu_match(cpu_num, vm),
+                lambda: cpu.check_if_vm_vcpu_match(cpu_num, vm),
                 timeout=120, step=5, text="wait for vcpu online"):
             test.fail('Not all vcpus are online as expected.')
 
@@ -94,6 +97,7 @@ def run(test, params, env):
         # Test i440fx VM starts with 240(positive)/241(negative) vcpus and hot-plugs vcpus to 240
         if check.startswith('i440fx_test'):
             current_vcpu = params.get('current_vcpu')
+            target_vcpu = params.get('target_vcpu')
             if 'hotplug' not in check:
                 vmxml.vcpu = int(guest_vcpu)
                 vmxml.sync()
@@ -108,14 +112,15 @@ def run(test, params, env):
             else:
                 vmxml.vcpu = int(guest_vcpu)
                 vmxml.current_vcpu = int(current_vcpu)
+                target_vcpu = int(target_vcpu)
                 vmxml.sync()
                 vm.start()
                 logging.info(libvirt_xml.VMXML.new_from_dumpxml(vm_name))
                 vm.wait_for_login(timeout=boot_timeout).close()
                 check_onlinevcpus(vm, int(current_vcpu))
-                res = virsh.setvcpus(vm_name, guest_vcpu, debug=True)
+                res = virsh.setvcpus(vm_name, target_vcpu, debug=True)
                 libvirt.check_exit_status(res)
-                check_onlinevcpus(vm, int(guest_vcpu))
+                check_onlinevcpus(vm, int(target_vcpu))
 
         # Configure a guest vcpu > 255 without iommu device for q35 VM
         if check == 'no_iommu':
@@ -149,15 +154,18 @@ def run(test, params, env):
             if 'hotplug' not in check:
                 vmxml.current_vcpu = int(guest_vcpu)
 
-            vmxml.sync()
-            logging.debug(virsh.dumpxml(vm_name))
-
             if status_error:
                 if start_fail:
-                    result_need_check = virsh.start(vm_name, debug=True)
+                    if libvirt_version.version_compare(5, 6, 0):
+                        result_need_check = virsh.define(vmxml.xml, debug=True)
+                    else:
+                        vmxml.sync()
+                        result_need_check = virsh.start(vm_name, debug=True)
 
             else:
                 # Login guest and check guest cpu number
+                vmxml.sync()
+                logging.debug(virsh.dumpxml(vm_name))
                 vm.start()
                 session = vm.wait_for_login(timeout=boot_timeout)
                 logging.debug(session.cmd('lscpu -e'))

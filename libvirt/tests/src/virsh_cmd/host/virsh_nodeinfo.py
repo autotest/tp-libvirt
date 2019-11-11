@@ -8,6 +8,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import cpu
 from virttest.libvirt_xml import capability_xml
 from virttest.staging import utils_memory
 
@@ -122,7 +123,7 @@ def run(test, params, env):
         spec_numa = False
         if not re.match(cores_per_socket_nodeinfo, cores_per_socket_os):
             # for spec NUMA arch, the output of nodeinfo is in a spec format
-            cpus_os = utils_misc.get_cpu_info().get("CPU(s)")
+            cpus_os = cpu.get_cpu_info().get("CPU(s)")
             numa_cells_nodeinfo = _check_nodeinfo(
                 nodeinfo_output, 'NUMA cell(s)', 3)
             if (re.match(cores_per_socket_nodeinfo, cpus_os) and
@@ -186,9 +187,9 @@ def run(test, params, env):
     status_error = params.get("status_error")
     if status_error == "yes":
         if status == 0:
-            if libvirtd == "off":
-                test.fail("Command 'virsh nodeinfo' succeeded "
-                          "with libvirtd service stopped, incorrect")
+            if libvirtd == "off" and libvirt_version.version_compare(5, 6, 0):
+                logging.info("From libvirt version 5.6.0 libvirtd is restarted "
+                             "and command should succeed")
             else:
                 test.fail("Command 'virsh nodeinfo %s' succeeded"
                           "(incorrect command)" % option)

@@ -7,7 +7,6 @@ from avocado.utils import process
 
 from virttest import libvirt_vm
 from virttest import virsh
-from virttest import utils_libvirtd
 from virttest.libvirt_xml import capability_xml
 
 
@@ -103,13 +102,6 @@ def run(test, params, env):
 
     connect_uri = libvirt_vm.normalize_connect_uri(params.get("connect_uri",
                                                               "default"))
-
-    # Prepare libvirtd service
-    if "libvirtd" in params:
-        libvirtd = params.get("libvirtd")
-        if libvirtd == "off":
-            utils_libvirtd.libvirtd_stop()
-
     # Run test case
     option = params.get("virsh_cap_options")
     try:
@@ -120,21 +112,11 @@ def run(test, params, env):
         status = 1  # bad
         output = ''
 
-    # Recover libvirtd service start
-    if libvirtd == "off":
-        utils_libvirtd.libvirtd_start()
-
     # Check status_error
     status_error = params.get("status_error")
     if status_error == "yes":
         if status == 0:
-            if libvirtd == "off":
-                test.fail("Command 'virsh capabilities' succeeded "
-                          "with libvirtd service stopped, "
-                          "incorrect")
-            else:
-                test.fail("Command 'virsh capabilities %s' "
-                          "succeeded (incorrect command)" % option)
+            test.fail("Command virsh capabilities %s succeeded (incorrect command)" % option)
     elif status_error == "no":
         compare_capabilities_xml(output)
         if status != 0:

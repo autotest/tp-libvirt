@@ -6,7 +6,7 @@ from virttest import libvirt_xml
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import utils_misc
-from virttest.utils_test.libvirt import cpus_parser
+from virttest.cpu import cpus_parser
 from virttest.libvirt_xml.xcepts import LibvirtXMLAccessorError
 from virttest.staging import utils_cgroup
 

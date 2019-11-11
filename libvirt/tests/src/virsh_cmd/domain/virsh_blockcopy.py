@@ -343,17 +343,21 @@ def run(test, params, env):
         blockcopy hang with state change lock.
         This is a specific bug verify, so ignore status_error here.
         """
-        bug_url_ = "https://bugzilla.redhat.com/show_bug.cgi?id=1197592"
+        failure_msg = ""
         err_msg = "internal error: unable to execute QEMU command"
         err_msg += " 'block-job-complete'"
         if err_msg in cmd_result.stderr:
-            raise exceptions.TestFail("Hit on bug: %s" % bug_url_)
-
+            failure_msg += "Virsh cmd error happened: %s\n" % err_msg
         err_pattern = "Timed out during operation: cannot acquire"
         err_pattern += " state change lock"
         ret = chk_libvirtd_log(libvirtd_log_path, err_pattern, "error")
         if ret:
-            raise exceptions.TestFail("Hit on bug: %s" % bug_url_)
+            failure_msg += "Libvirtd log error happened: %s\n" % err_pattern
+        if failure_msg:
+            if not libvirt_version.version_compare(1, 3, 2):
+                bug_url_ = "https://bugzilla.redhat.com/show_bug.cgi?id=1197592"
+                failure_msg += "Hit on bug: %s " % bug_url_
+            test.fail(failure_msg)
 
     def _make_snapshot():
         """

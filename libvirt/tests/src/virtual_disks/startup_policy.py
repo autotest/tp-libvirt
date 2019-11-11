@@ -456,11 +456,11 @@ def run(test, params, env):
             if not check_in_vm(old_parts):
                 test.fail("Check disk partitions in VM failed")
 
-            # Step 2 Move the volume to other place, refresh the pool, then reboot the guest.
+            # Step 2 Destroy VM, move the volume to other place, refresh the pool, then start the guest.
+            vm.destroy()
             rename_file(vol_path, vol_path_new)
             cmd_result = virsh.pool_refresh(pool_name)
             libvirt.check_exit_status(cmd_result)
-            vm.destroy()
             result = virsh.start(vm_name, **virsh_dargs)
             libvirt.check_exit_status(result, expect_error=start_error)
 

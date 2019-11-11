@@ -1,5 +1,6 @@
 import os
 import re
+import logging
 
 from virttest import virsh
 from virttest import data_dir
@@ -83,8 +84,12 @@ def run(test, params, env):
     try:
         if status_error:
             if not status:
-                test.fail("virsh run succeeded with an "
-                          "incorrect command")
+                if libvirtd == "off" and libvirt_version.version_compare(5, 6, 0):
+                    logging.info("From libvirt version 5.6.0 libvirtd is restarted "
+                                 "and command should succeed")
+                else:
+                    test.fail("virsh run succeeded with an "
+                              "incorrect command")
             if readonly:
                 if not re.search(expect_msg, err_msg):
                     test.fail("Fail to get expect err msg: %s" % expect_msg)

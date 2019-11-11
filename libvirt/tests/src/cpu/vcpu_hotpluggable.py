@@ -3,13 +3,15 @@ import re
 import copy
 import ast
 import logging
-import platform
 
 from avocado.utils import process
+from avocado.utils import distro
 from avocado.utils.software_manager import SoftwareManager
 
 from virttest import virsh
-from virttest import utils_config, utils_libvirtd, utils_misc
+from virttest import utils_config
+from virttest import utils_libvirtd
+from virttest import cpu
 from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -46,7 +48,7 @@ def run(test, params, env):
     disable_vcpu = params.get("set_disable_vcpu", "")
     # Install cgroup utils
     cgutils = "libcgroup-tools"
-    if "ubuntu" in platform.dist()[0].lower():
+    if distro.detect().name == 'Ubuntu':
         cgutils = "cgroup-tools"
     sm = SoftwareManager()
     if not sm.check_installed(cgutils) and not sm.install(cgutils):
@@ -194,7 +196,7 @@ def run(test, params, env):
                 test.fail("vcpuinfo is not correct.")
 
             # Check cpu in guest
-            if not utils_misc.check_if_vm_vcpu_match(vcpus_crt, vm):
+            if not cpu.check_if_vm_vcpu_match(vcpus_crt, vm):
                 test.fail("cpu number in VM is not correct, it should be %s cpus" % vcpus_crt)
 
             # Check VM xml change for cold-plug/cold-unplug

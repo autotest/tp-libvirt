@@ -7,9 +7,11 @@ import threading
 import platform
 import tempfile
 import copy
+import datetime
 
 from avocado.utils import process
 from avocado.utils import memory
+from avocado.utils import distro
 from avocado.core import exceptions
 
 from virttest import libvirt_vm
@@ -19,10 +21,13 @@ from virttest import defaults
 from virttest import data_dir
 from virttest import virsh
 from virttest import libvirt_version
+from virttest import libvirt_remote
 from virttest import remote
 from virttest import utils_package
+from virttest import utils_iptables
 from virttest import xml_utils
 
+from virttest.utils_iptables import Iptables
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_conn import TLSConnection
@@ -261,6 +266,55 @@ def run(test, params, env):
             test.fail("Migration speed is expected to be '%d MiB/s', but '%d MiB/s' "
                       "found" % (expected_value, actual_value))
 
+    def check_output(output, expected_value_list):
+        """
+        Check if the output match expected value or not
+
+        :param output: actual output
+        :param expected_value_list: expected value
+        :raise: test.fail if unable to find item(s)
+        """
+        logging.debug("Actual output is %s", output)
+        for item in expected_value_list:
+            if not re.findall(item, output):
+                test.fail("Unalbe to find {}".format(item))
+
+    def check_interval_not_fixed(search_str, log_file, interval=0.05,
+                                 session=None):
+        """
+        Check the interval of the log output with specific string and expect not
+        match the value of param 'interval'.
+
+        :param search_str: String to be searched
+        :param log_file: the given file
+        :param interval: interval in second
+        :param session: ShellSession object of remote host
+        :raise: test.fail when the real interval is equal to given value
+
+        """
+        cmd = "grep '%s' %s | cut -d '+' -f1" % (search_str, log_file)
+        cmdStd, cmdStdout = utils_misc.cmd_status_output(cmd, shell=True,
+                                                         session=session)
+
+        if cmdStd:
+            test.fail("Unalbe to get {} from {}.".format(search_str, log_file))
+        date_list = []
+        for line in cmdStdout.splitlines():
+            if line:
+                # pick up the time of output who has specific string
+                # from log_file
+                date_list.append(datetime.datetime.strptime(line,
+                                                            "%Y-%m-%d %H:%M:%S.%f"))
+        if len(date_list) > 1:
+            for x in range(len(date_list)-1):
+                date_list[x] = (date_list[x+1]-date_list[x]).total_seconds()
+            if len(set(date_list[:-1])) == 1 and interval in date_list[:-1]:
+                test.fail("{} seconds is unexpected time period.Time duration"
+                          "(seconds) is {}".format(interval, date_list[:-1]))
+        else:
+            test.fail("Need at least 2 items in {}. Unable to get time period."
+                      "cmdRes is {}.".format(log_file, cmdStdout))
+
     def check_domjobinfo(params, option=""):
         """
         Check given item in domjobinfo of the guest is as expected
@@ -421,12 +475,13 @@ def run(test, params, env):
         dest_jobinfo = remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
 
         if not is_mig_compelete:
-            search_jobinfo_output(src_jobinfo.stdout, expect_dict["src_notdone"],
-                                  postcopy_req=pc_opt)
+            search_jobinfo_output(src_jobinfo.stdout, expect_dict["src_notdone"])
             search_jobinfo_output(dest_jobinfo.stderr, expect_dict["dest_notdone"])
         else:
-            search_jobinfo_output(src_jobinfo.stdout, expect_dict["src_done"])
-            search_jobinfo_output(dest_jobinfo.stdout, expect_dict["dest_done"])
+            search_jobinfo_output(src_jobinfo.stdout, expect_dict["src_done"],
+                                  postcopy_req=pc_opt)
+            search_jobinfo_output(dest_jobinfo.stdout, expect_dict["dest_done"],
+                                  postcopy_req=pc_opt)
 
     def check_maxdowntime(params):
         """
@@ -540,6 +595,36 @@ def run(test, params, env):
                                                  "post-copy failed"), 60):
             test.fail("vm status is expected to 'paused (post-copy failed)'")
 
+    def drop_network_connetion(block_time):
+        """
+        Drop network connection from target host for a while and then recover it
+
+        :param block_time: The duration(in seconds) of network broken period
+        :raise: test.error if direct rule is not added or removed correctly
+        """
+        logging.debug("Start to drop network")
+
+        if use_firewall_cmd:
+            firewall_cmd.add_direct_rule(firewall_rule)
+            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
+            cmdRes = re.findall(firewall_rule, direct_rules)
+            if len(cmdRes) == 0:
+                test.error("Rule '%s' is not added" % firewall_rule)
+        else:
+            Iptables.setup_or_cleanup_iptables_rules(firewall_rule)
+
+        logging.debug("Sleep %d seconds" % int(block_time))
+        time.sleep(int(block_time))
+
+        if use_firewall_cmd:
+            firewall_cmd.remove_direct_rule(firewall_rule)
+            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
+            cmdRes = re.findall(firewall_rule, direct_rules)
+            if len(cmdRes):
+                test.error("Rule '%s' is not removed correctly" % firewall_rule)
+        else:
+            Iptables.setup_or_cleanup_iptables_rules(firewall_rule, cleanup=True)
+
     def do_actions_during_migrate(params):
         """
         The entry point to execute action list during migration
@@ -562,8 +647,12 @@ def run(test, params, env):
                 check_domjobinfo_output()
             elif action == 'checkdomstats':
                 run_domstats(vm_name)
+            elif action == 'setmigratepostcopy':
+                set_migratepostcopy()
             elif action == 'killqemutarget':
                 kill_qemu_target()
+            elif action == 'drop_network_connetion':
+                drop_network_connetion(block_time)
             time.sleep(3)
 
     def attach_channel_xml():
@@ -714,6 +803,9 @@ def run(test, params, env):
         :param result: the output of migration
         :raise: test.fail if test is failed
         """
+        if not result:
+            test.error("No migration result is returned.")
+
         logging.info("Migration out: %s", results_stdout_52lts(result).strip())
         logging.info("Migration error: %s", results_stderr_52lts(result).strip())
 
@@ -766,10 +858,14 @@ def run(test, params, env):
     log_file = params.get("libvirt_log", "/var/log/libvirt/libvirtd.log")
     check_complete_job = "yes" == params.get("check_complete_job", "no")
     check_domjobinfo_results = "yes" == params.get("check_domjobinfo_results")
+    check_log_interval = params.get("check_log_interval")
+    check_event_output = params.get("check_event_output")
     contrl_index = params.get("new_contrl_index", None)
     asynch_migration = "yes" == params.get("asynch_migrate", "no")
     grep_str_remote_log = params.get("grep_str_remote_log", "")
+    grep_str_not_in_remote_log = params.get("grep_str_not_in_remote_log", "")
     grep_str_local_log = params.get("grep_str_local_log", "")
+    grep_str_local_log_1 = params.get("grep_str_local_log_1", "")
     disable_verify_peer = "yes" == params.get("disable_verify_peer", "no")
     status_error = "yes" == params.get("status_error", "no")
     stress_in_vm = "yes" == params.get("stress_in_vm", "no")
@@ -781,6 +877,14 @@ def run(test, params, env):
                  'server_pwd': server_pwd}
     hpt_resize = params.get("hpt_resize", None)
     htm_state = params.get("htm_state", None)
+    block_time = params.get("block_time", 30)
+    # For keepalive test
+    use_firewall_cmd = True
+    if distro.detect().name == 'rhel' and int(distro.detect().version) < 8:
+        use_firewall_cmd = False
+        firewall_rule = ["INPUT -s {}/32 -j DROP".format(server_ip)]
+    else:
+        firewall_rule = "ipv4 filter INPUT 0 --source {} -j DROP".format(server_ip)
 
     # For pty channel test
     add_channel = "yes" == params.get("add_channel", "no")
@@ -826,7 +930,7 @@ def run(test, params, env):
     test_exception = None
     is_TestError = False
     is_TestFail = False
-    is_TestSkip = False
+    is_TestCancel = False
 
     # Objects to be cleaned up in the end
     objs_list = []
@@ -849,6 +953,8 @@ def run(test, params, env):
                                                username=server_user,
                                                password=server_pwd)
 
+        if use_firewall_cmd:
+            firewall_cmd = utils_iptables.Firewall_cmd()
         # Change the configuration files if needed before starting guest
         # For qemu.conf
         if extra.count("--tls"):
@@ -861,17 +967,31 @@ def run(test, params, env):
 
         # Setup qemu.conf
         qemu_conf_dict = params.get("qemu_conf_dict")
+        qemu_conf_dest_dict = params.get("qemu_conf_dest_dict")
+        update_remote = not bool(qemu_conf_dest_dict)
         if qemu_conf_dict:
             qemu_conf = update_config_file('qemu',
                                            qemu_conf_dict,
+                                           remote_host=update_remote,
                                            params=params)
-
+            # Setup qemu.conf on target only
+            if qemu_conf_dest_dict:
+                qemuDestConf = libvirt_remote.update_remote_file(params,
+                                                                 qemu_conf_dest_dict,
+                                                                 '/etc/libvirt/qemu.conf')
         # Setup libvirtd
         libvirtd_conf_dict = params.get("libvirtd_conf_dict")
+        libvirtd_conf_dest_dict = params.get("libvirtd_conf_dest_dict")
+        update_remote = not bool(libvirtd_conf_dest_dict)
         if libvirtd_conf_dict:
             libvirtd_conf = update_config_file('libvirtd',
                                                libvirtd_conf_dict,
+                                               remote_host=update_remote,
                                                params=params)
+            # Setup libvirtd on dest
+            if libvirtd_conf_dest_dict:
+                libvirtDestConf = libvirt_remote.update_remote_file(params,
+                                                                    libvirtd_conf_dest_dict)
 
         # Prepare required guest xml before starting guest
         if contrl_index:
@@ -914,6 +1034,19 @@ def run(test, params, env):
         vm_session = vm.wait_for_login()
         check_vm_network_accessed()
 
+        if check_event_output:
+            cmd = "event --loop --all"
+            logging.debug("Running virsh command: %s", cmd)
+            # Run 'virsh event' on source
+            virsh_session = virsh.VirshSession(virsh_exec=virsh.VIRSH_EXEC,
+                                               auto_close=True)
+            virsh_session.sendline(cmd)
+            # Run 'virsh event' on target
+            remote_session = remote.remote_login("ssh", server_ip, "22",
+                                                 server_user, server_pwd,
+                                                 r'[$#%]')
+            remote_session.sendline("virsh " + cmd)
+
         # Preparation for the running guest before migration
         if hpt_resize and hpt_resize != 'disabled':
             trigger_hpt_resize(vm_session)
@@ -944,6 +1077,18 @@ def run(test, params, env):
         if postcopy_options:
             extra = "%s %s" % (extra, postcopy_options)
 
+        if remove_cache or (cache and cache not in ["none", "directsync"]):
+            if not status_error:
+                if not (libvirt_version.version_compare(5, 6, 0) and
+                   utils_misc.compare_qemu_version(4, 0, 0, False)):
+                    extra = "%s %s" % (extra, "--unsafe")
+            else:
+                if (libvirt_version.version_compare(5, 6, 0) and
+                   utils_misc.compare_qemu_version(4, 0, 0, False)):
+                    test.cancel("All the cache modes are safe on "
+                                "current libvirtd & qemu version,"
+                                "skip negative tests.")
+
         if low_speed:
             control_migrate_speed(int(low_speed))
             if postcopy_options and libvirt_version.version_compare(5, 0, 0):
@@ -965,8 +1110,8 @@ def run(test, params, env):
                 mig_result = migration_test.ret
             except exceptions.TestFail as fail_detail:
                 test.fail(fail_detail)
-            except exceptions.TestSkipError as skip_detail:
-                test.cancel(skip_detail)
+            except exceptions.TestCancel as cancel_detail:
+                test.cancel(cancel_detail)
             except exceptions.TestError as error_detail:
                 test.error(error_detail)
             except Exception as details:
@@ -1004,7 +1149,7 @@ def run(test, params, env):
             remote_vm_obj = utils_test.RemoteVMManager(cmd_parms)
             vm_ip = vm.get_address()
             vm_pwd = params.get("password")
-            remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd)
+            remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd, timeout=60)
             cmd_result = remote_vm_obj.run_command(vm_ip, cmd_run_in_remote_guest_1)
             remote_vm_obj.run_command(vm_ip, cmd_run_in_remote_guest % results_stdout_52lts(cmd_result).strip())
             logging.debug("Sending message is done")
@@ -1023,14 +1168,38 @@ def run(test, params, env):
             if check_domjobinfo_results:
                 check_domjobinfo_output(option=opts, is_mig_compelete=True)
 
-        if grep_str_local_log:
-            cmd = "grep -E '%s' %s" % (grep_str_local_log, log_file)
-            cmdRes = process.run(cmd, shell=True, ignore_status=True)
-            if cmdRes.exit_status:
-                test.fail(results_stderr_52lts(cmdRes).strip())
+        for grep_str in [grep_str_local_log, grep_str_local_log_1]:
+            if grep_str:
+                libvirt.check_logfile(grep_str, log_file)
         if grep_str_remote_log:
-            cmd = "grep -E '%s' %s" % (grep_str_remote_log, log_file)
-            remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
+            libvirt.check_logfile(grep_str_remote_log, log_file, True, cmd_parms,
+                                  runner_on_target)
+        if grep_str_not_in_remote_log:
+            libvirt.check_logfile(grep_str_not_in_remote_log, log_file, False,
+                                  cmd_parms, runner_on_target)
+
+        if check_event_output:
+            if check_log_interval:
+                # check the interval of the output in libvirt.log
+                # make sure they are not fixed output
+                check_interval_not_fixed(grep_str_local_log, log_file)
+                server_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                       server_user, server_pwd,
+                                                       r"[\#\$]\s*$")
+                check_interval_not_fixed(grep_str_remote_log, log_file,
+                                         session=server_session)
+                server_session.close()
+
+            # Check events
+            expectedEventSrc = params.get('expectedEventSrc')
+            if expectedEventSrc:
+                source_output = virsh_session.get_stripped_output()
+                check_output(source_output, eval(expectedEventSrc))
+
+            expectedEventTarget = params.get('expectedEventTarget')
+            if expectedEventTarget:
+                target_output = remote_session.get_stripped_output()
+                check_output(target_output, eval(expectedEventTarget))
 
         if xml_check_after_mig:
             if not remote_virsh_session:
@@ -1067,8 +1236,8 @@ def run(test, params, env):
     except exceptions.TestFail as details:
         is_TestFail = True
         test_exception = details
-    except exceptions.TestSkipError as details:
-        is_TestSkip = True
+    except exceptions.TestCancel as details:
+        is_TestCancel = True
         test_exception = details
     except exceptions.TestError as details:
         is_TestError = True
@@ -1078,6 +1247,17 @@ def run(test, params, env):
     finally:
         logging.debug("Recover test environment")
         try:
+            # Remove firewall rule if needed
+            if 'firewall_rule' in locals():
+                if use_firewall_cmd:
+                    direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
+                    cmdRes = re.findall(firewall_rule, direct_rules)
+                    if len(cmdRes):
+                        firewall_cmd.remove_direct_rule(firewall_rule)
+                else:
+                    Iptables.setup_or_cleanup_iptables_rules(firewall_rule,
+                                                             cleanup=True)
+
             # Clean VM on destination
             vm.connect_uri = dest_uri
             cleanup_dest(vm)
@@ -1130,11 +1310,11 @@ def run(test, params, env):
             if objs_list:
                 for obj in objs_list:
                     logging.debug("Clean up local objs")
-                    del obj
+                    obj.__del__()
 
         except Exception as exception_detail:
             if (not test_exception and not is_TestError and
-               not is_TestFail and not is_TestSkip):
+               not is_TestFail and not is_TestCancel):
                 raise exception_detail
             else:
                 # if any of above exceptions has been raised, only print
@@ -1143,7 +1323,7 @@ def run(test, params, env):
     # Check result
     if is_TestFail:
         test.fail(test_exception)
-    if is_TestSkip:
+    if is_TestCancel:
         test.cancel(test_exception)
     if is_TestError:
         test.error(test_exception)

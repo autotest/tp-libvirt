@@ -197,6 +197,7 @@ def run(test, params, env):
     # Test.
     domid = vm.get_id()
     domuuid = vm.get_uuid()
+    wait_stable = 10
 
     # Confirm how to reference a VM.
     if vm_ref == "name":
@@ -235,7 +236,7 @@ def run(test, params, env):
             vm.wait_for_login().close()
 
         #Sleep a while for vm is stable
-        time.sleep(3)
+        time.sleep(wait_stable)
         if not ret.exit_status:
             check_result(device_source, device, device_target,
                          at_options)
@@ -255,7 +256,7 @@ def run(test, params, env):
             vm.wait_for_login().close()
 
         #Sleep a while for vm is stable
-        time.sleep(3)
+        time.sleep(wait_stable)
         if not ret.exit_status:
             check_result(device_source, device, device_target,
                          dt_options, False)

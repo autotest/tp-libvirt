@@ -9,13 +9,15 @@ from avocado.utils import process
 from virttest import remote
 from virttest import virsh
 from virttest import utils_package
-from virttest.libvirt_xml import vm_xml
-from virttest.libvirt_xml.devices.disk import Disk
-from virttest.utils_test import libvirt as utlv
 from virttest import utils_misc
 from virttest import data_dir
 from virttest import ceph
+from virttest import gluster
+
+from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices.controller import Controller
+from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.devices.disk import Disk
 
 from provider import libvirt_version
 
@@ -241,8 +243,9 @@ def setup_test_env(params, test):
             not utils_package.package_install('seabios-bin'):
         test.error("seabios package install failed")
 
-    if source_protocol == "gluster" and \
-            not utils_package.package_install('glusterfs-server'):
+    if (source_protocol == "gluster"
+            and not params.get("gluster_server_ip")
+            and not utils_package.package_install('glusterfs-server')):
         test.error("glusterfs-server install failed")
 
     if source_protocol == "rbd":
@@ -276,10 +279,11 @@ def setup_test_env(params, test):
             cleanup_image_file = True
 
 
-def apply_boot_options(vmxml, params):
+def apply_boot_options(vmxml, params, test):
     """
     Apply Uefi/Seabios Boot options in VMXML
 
+    :param test: Avocado test object
     :param vmxml: The instance of VMXML class
     :param params: Avocado params object
     """
@@ -291,11 +295,13 @@ def apply_boot_options(vmxml, params):
     boot_dev = params.get("boot_dev", "hd")
     loader_type = params.get("loader_type", "")
     boot_type = params.get("boot_type", "seabios")
+    os_firmware = params.get("os_firmware", "")
+    with_secure = (params.get("with_secure", "no") == "yes")
     with_nvram = (params.get("with_nvram", "no") == "yes")
     with_loader = (params.get("with_loader", "yes") == "yes")
     with_readonly = (params.get("with_readonly", "yes") == "yes")
     with_loader_type = (params.get("with_loader_type", "yes") == "yes")
-    with_template = (params.get("with_template", "yes") == "yes")
+    with_nvram_template = (params.get("with_nvram_template", "yes") == "yes")
     vm_name = params.get("main_vm", "")
 
     dict_os_attrs = {}
@@ -307,19 +313,39 @@ def apply_boot_options(vmxml, params):
             dict_os_attrs.update({"loader_readonly": readonly})
         if with_loader_type:
             dict_os_attrs.update({"loader_type": loader_type})
+    else:
+        if not libvirt_version.version_compare(5, 3, 0):
+            test.cancel("Firmware attribute is not supported in"
+                        "current libvirt version")
+        else:
+            logging.debug("Set os firmware:")
+            dict_os_attrs.update({"os_firmware": os_firmware})
+            # Need to prepare a zero-length file named "40-edk2-ovmf-sb.json" to hide it
+            # when test SB disabled guest (BZ 1564270)
+            file_path = "/etc/qemu/firmware/"
+            hidden_file = os.path.join(file_path, "40-edk2-ovmf-sb.json")
+            if not os.path.exists(file_path):
+                os.makedirs(file_path)
+            cmd = 'touch %s' % hidden_file
+            process.run(cmd, shell=True, ignore_status=True)
+            # Include secure='yes' in loader and support no smm element in guest xml
+            if with_secure:
+                dict_os_attrs.update({"secure": "yes"})
 
     # To use BIOS Serial Console, need set userserial=yes in VMOSXML
     if boot_type == "seabios" and boot_dev == "cdrom":
         logging.debug("Enable bios serial console in OS XML")
         dict_os_attrs.update({"bios_useserial": "yes"})
         dict_os_attrs.update({"bios_reboot_timeout": "0"})
+        dict_os_attrs.update({"bootmenu_enable": "yes"})
+        dict_os_attrs.update({"bootmenu_timeout": "3000"})
 
     # Set attributes of nvram of VMOSXML
     if with_nvram:
         logging.debug("Set os nvram")
         nvram = nvram.replace("<VM_NAME>", vm_name)
         dict_os_attrs.update({"nvram": nvram})
-        if with_template:
+        if with_nvram_template:
             dict_os_attrs.update({"nvram_template": template})
 
     vmxml.set_os_attrs(**dict_os_attrs)
@@ -424,7 +450,7 @@ def prepare_gluster_disk(blk_source, test, **kwargs):
     brick_path = kwargs.get("brick_path")
     disk_img = kwargs.get("disk_img")
     disk_format = kwargs.get("disk_format")
-    host_ip = utlv.setup_or_cleanup_gluster(True, vol_name, brick_path)
+    host_ip = gluster.setup_or_cleanup_gluster(True, **kwargs)
     logging.debug("host ip: %s ", host_ip)
     # Copy the domain disk image to gluster disk path
     image_info = utils_misc.get_image_info(blk_source)
@@ -515,11 +541,7 @@ def set_domain_disk(vmxml, blk_source, params, test):
 
     elif source_protocol == 'gluster':
         if disk_type == 'network':
-            kwargs = {'vol_name': vol_name,
-                      'brick_path': brick_path,
-                      'disk_img': disk_img,
-                      'disk_format': disk_format}
-            host_ip = prepare_gluster_disk(blk_source, test, **kwargs)
+            host_ip = prepare_gluster_disk(blk_source, test, brick_path=brick_path, **params)
             if host_ip is None:
                 test.error("Failed to create glusterfs disk")
             else:
@@ -624,11 +646,13 @@ def run(test, params, env):
 
     # Prepare a blank params to confirm if delete the configure at the end of the test
     ceph_cfg = ''
+    file_path = "/etc/qemu/firmware/"
+    hidden_file = os.path.join(file_path, "40-edk2-ovmf-sb.json")
     try:
         # Create config file if it doesn't exist
         ceph_cfg = ceph.create_config_file(params.get("mon_host"))
         setup_test_env(params, test)
-        apply_boot_options(vmxml, params)
+        apply_boot_options(vmxml, params, test)
         blk_source = vm.get_first_disk_devices()['source']
         set_domain_disk(vmxml, blk_source, params, test)
         vmxml.remove_all_boots()
@@ -695,13 +719,15 @@ def run(test, params, env):
         if ceph_cfg:
             os.remove(ceph_cfg)
         logging.debug("Start to cleanup")
+        if os.path.exists(hidden_file):
+            os.remove(hidden_file)
         if vm.is_alive:
             vm.destroy()
         logging.debug("Restore the VM XML")
         vmxml_backup.sync(options="--nvram")
         if cleanup_gluster:
             process.run("umount /mnt", ignore_status=True, shell=True)
-            utlv.setup_or_cleanup_gluster(False, vol_name, brick_path)
+            gluster.setup_or_cleanup_gluster(False, brick_path=brick_path, **params)
         if cleanup_iscsi:
             utlv.setup_or_cleanup_iscsi(False)
         if cleanup_iso_file:

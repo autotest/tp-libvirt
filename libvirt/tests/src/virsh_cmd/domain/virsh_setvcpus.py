@@ -5,8 +5,9 @@ import logging
 from virttest import ssh_key
 from virttest import data_dir
 from virttest import virsh
-from virttest.libvirt_xml import vm_xml
-from virttest import utils_hotplug
+from virttest.libvirt_xml import vm_xml, xcepts
+from virttest.libvirt_xml.vm_xml import VMCPUXML
+from virttest import cpu
 
 
 def run(test, params, env):
@@ -53,6 +54,7 @@ def run(test, params, env):
     remote_uri = params.get("remote_uri")
     tmpxml = os.path.join(data_dir.get_tmp_dir(), 'tmp.xml')
     topology_correction = "yes" == params.get("topology_correction", "yes")
+    with_topology = "yes" == params.get("with_topology", "yes")
     result = True
 
     # Early death 1.1
@@ -124,6 +126,22 @@ def run(test, params, env):
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             del vmxml.cpu
             vmxml.sync()
+
+        # If topology not existed, create new one.
+        if not topology and with_topology and status_error:
+            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            try:
+                vmcpu_xml = vmxml['cpu']
+            except xcepts.LibvirtXMLNotFoundError:
+                logging.debug("Can not find any cpu tag, now create one.")
+                vmcpu_xml = VMCPUXML()
+            cores = vmxml['vcpu']
+            vmcpu_xml['topology'] = {'sockets': 1,
+                                     'cores': cores,
+                                     'threads': 1}
+            vmxml['cpu'] = vmcpu_xml
+            vmxml.sync()
+
         vmxml.set_vm_vcpus(vm_name, max_vcpu, current_vcpu,
                            topology_correction=topology_correction)
 
@@ -131,7 +149,7 @@ def run(test, params, env):
         logging.debug("Pre-test xml is %s", vmxml.xmltreefile)
 
         # Get the number of cpus, current value if set, and machine type
-        cpu_xml_data = utils_hotplug.get_cpu_xmldata(vm, options)
+        cpu_xml_data = cpu.get_cpu_xmldata(vm, options)
         logging.debug("Before run setvcpus: cpu_count=%d, cpu_current=%d,"
                       " mtype=%s", cpu_xml_data['vcpu'],
                       cpu_xml_data['current_vcpu'], cpu_xml_data['mtype'])
@@ -177,13 +195,13 @@ def run(test, params, env):
                                     ignore_status=True, debug=True)
             if not status_error:
                 set_expected(vm, options)
-                result = utils_hotplug.check_vcpu_value(vm, exp_vcpu,
-                                                        option=options)
+                result = cpu.check_vcpu_value(vm, exp_vcpu,
+                                              option=options)
         setvcpu_exit_status = status.exit_status
         setvcpu_exit_stderr = status.stderr.strip()
 
     finally:
-        cpu_xml_data = utils_hotplug.get_cpu_xmldata(vm, options)
+        cpu_xml_data = cpu.get_cpu_xmldata(vm, options)
         logging.debug("After run setvcpus: cpu_count=%d, cpu_current=%d,"
                       " mtype=%s", cpu_xml_data['vcpu'],
                       cpu_xml_data['current_vcpu'], cpu_xml_data['mtype'])

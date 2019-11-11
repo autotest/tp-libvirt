@@ -5,8 +5,11 @@ import logging
 from avocado.utils import process
 
 from virttest import virsh
+from virttest import libvirt_version
 from virttest import utils_libvirtd
 from virttest.compat_52lts import decode_to_text as to_text
+
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -98,6 +101,34 @@ def run(test, params, env):
 
         return retlist
 
+    def prepend_expected_env_vars(conv_arg, cmdline):
+        """
+        Prepend the various environment variables that will be in
+        the conv_arg, but not in the actual command
+
+        :param conv_arg : Converted information
+        :param cmdline: Command line qemu has been called with
+        :return: cmdline prepended by expected environment variable values
+        """
+        expected_env_vars = [
+            'LC_ALL',
+            'PATH',
+            'QEMU_AUDIO_DRV',
+            ]
+        if libvirt_version.version_compare(5, 2, 0):
+            expected_env_vars += [
+                'HOME',
+                'XDG_DATA_HOME',
+                'XDG_CACHE_HOME',
+                'XDG_CONFIG_HOME',
+            ]
+
+        valmatcher = '.[^\\s]+\\s'
+
+        def matchf(x): return re.search(x + valmatcher, conv_arg).group(0)
+
+        return "".join(map(matchf, expected_env_vars)) + cmdline
+
     def compare(conv_arg):
         """
         Compare converted information with vm's information.
@@ -135,12 +166,7 @@ def run(test, params, env):
             logging.warning("qemu-kvm binary is not identified: '%s'",
                             qemu_kvm_bin)
 
-        # Now prepend the various environment variables that will be in
-        # the conv_arg, but not in the actual command
-        tmp = re.search('LC_ALL.[^\s]\s', conv_arg).group(0) +\
-            re.search('PATH.[^\s]+\s', conv_arg).group(0) +\
-            re.search('QEMU_AUDIO_DRV.[^\s]+\s', conv_arg).group(0)
-        qemu_arg = tmp + cmdline
+        qemu_arg = prepend_expected_env_vars(conv_arg, cmdline)
 
         conv_arg_lines = buildcmd(conv_arg)
         qemu_arg_lines = buildcmd(qemu_arg)
@@ -218,7 +244,11 @@ def run(test, params, env):
     # check status_error
     if status_error == "yes":
         if status == 0:
-            test.fail("Run successfully with wrong command!")
+            if libvirtd == "off" and libvirt_version.version_compare(5, 6, 0):
+                logging.info("From libvirt version 5.6.0 libvirtd is restarted "
+                             "and command should succeed")
+            else:
+                test.fail("Run successfully with wrong command!")
     elif status_error == "no":
         if status != 0:
             test.fail("Run failed with right command")

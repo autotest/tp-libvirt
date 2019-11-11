@@ -22,6 +22,7 @@ from virttest import libvirt_storage
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.compat_52lts import decode_to_text as to_text
+from virttest.compat_52lts import results_stdout_52lts
 
 from provider.v2v_vmcheck_helper import VMChecker
 
@@ -39,6 +40,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "EXAMPLE")
     new_vm_name = params.get("new_vm_name")
     input_mode = params.get("input_mode")
+    input_file = params.get("input_file")
     v2v_options = params.get("v2v_options", "")
     hypervisor = params.get("hypervisor", "kvm")
     remote_host = params.get("remote_host", "EXAMPLE")
@@ -80,7 +82,7 @@ def run(test, params, env):
         """
         if output_uri == "qemu:///session" or user_pool:
             target_path = os.path.join("/home", v2v_user, pool_target)
-            cmd = su_cmd + "'mkdir %s'" % target_path
+            cmd = su_cmd + "'mkdir -p %s'" % target_path
             process.system(cmd, verbose=True)
             cmd = su_cmd + "'virsh pool-create-as %s dir" % pool_name
             cmd += " --target %s'" % target_path
@@ -400,11 +402,23 @@ def run(test, params, env):
         Check disk size and total size in file of estimate created by v2v
         """
         import json
-        with open(estimate_file) as fp:
-            content = json.load(fp)
-        logging.debug('json file content:\n%s' % content)
 
-        if sum(content['disks']) != content['total']:
+        content = None
+        buf = ''
+        with open(estimate_file) as fp:
+            all_content = fp.read()
+            fp.seek(0)
+            for line in fp:
+                buf += line
+                if '}' not in line:
+                    continue
+                if 'disks' in buf and 'total' in buf:
+                    content = json.loads(buf)
+                    break
+                buf = ''
+
+        logging.debug('json file content:\n%s' % all_content)
+        if not content or sum(content['disks']) != content['total']:
             test.fail("The disks' size doesn't same as total value")
 
     def check_result(cmd, result, status_error):
@@ -451,7 +465,7 @@ def run(test, params, env):
                         pass
                 if not utils_misc.wait_for(check_alloc, timeout=600, step=10.0):
                     test.fail('Allocation check failed.')
-            if '-of' in cmd and '--no-copy' not in cmd and '--print-source' not in cmd and checkpoint != 'quiet':
+            if '-of' in cmd and '--no-copy' not in cmd and '--print-source' not in cmd and checkpoint != 'quiet' and not no_root:
                 expected_format = re.findall(r"-of\s(\w+)", cmd)[0]
                 img_path = get_img_path(output)
                 check_image(img_path, "format", expected_format)
@@ -584,11 +598,12 @@ def run(test, params, env):
         elif input_mode == "libvirt":
             uri_obj = utils_v2v.Uri(hypervisor)
             ic_uri = uri_obj.get_uri(remote_host, vpx_dc, esx_ip)
+            input_option = "-i %s -ic %s %s" % (input_mode, ic_uri, vm_name)
             if checkpoint == 'with_ic':
                 ic_uri = 'qemu:///session'
-            input_option = "-i %s -ic %s %s" % (input_mode, ic_uri, vm_name)
+                input_option = "-i ova %s -ic %s -of qcow2" % (input_file, ic_uri)
             if checkpoint == 'without_ic':
-                input_option = '-i %s %s' % (input_mode, vm_name)
+                input_option = "-i ova %s -of raw" % input_file
             # Build network&bridge option to avoid network error
             v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
                                              params.get("output_network"))
@@ -617,6 +632,8 @@ def run(test, params, env):
             output_option = "-o %s -os %s" % (output_mode, output_storage)
             if checkpoint == 'rhv':
                 output_option = output_option.replace('rhev', 'rhv')
+            if checkpoint in ['with_ic', 'without_ic']:
+                output_option = output_option.replace('v2v_dir', 'src_pool')
         output_format = params.get("output_format")
         if output_format and output_format != input_format:
             output_option += " -of %s" % output_format
@@ -702,6 +719,13 @@ def run(test, params, env):
             pwd_f.write(vpx_passwd)
             pwd_f.close()
             output_option += " -ip %s" % vpx_passwd_file
+            # rhel8 slow stream doesn't support option 'ip' temporarily
+            # so use option 'password-file' instead.
+            tmp_cmd = 'virt-v2v --help'
+            tmp_result = process.run(tmp_cmd, verbose=True, ignore_status=True)
+            tmp_result.stdout = results_stdout_52lts(tmp_result)
+            if not re.search(r'-ip <filename>', tmp_result.stdout):
+                output_option = output_option.replace('-ip', '--password-file', 1)
 
         # if don't specify any output option for virt-v2v, 'default' pool
         # will be used.
@@ -722,17 +746,8 @@ def run(test, params, env):
             v2v_options += ' -on %s' % new_vm_name
             create_pool(user_pool=True, pool_name='src_pool',
                         pool_target='v2v_src_pool')
-            create_pool(user_pool=True)
-            logging.debug(virsh.pool_list(uri='qemu:///session'))
-            sh_install_vm = params.get('sh_install_vm')
-            if not sh_install_vm:
-                test.error('Source vm installing script missing')
-            with open(sh_install_vm) as fh:
-                cmd_install_vm = fh.read().strip()
-            process.run('su - %s -c "%s"' % (v2v_user, cmd_install_vm),
-                        timeout=10, shell=True)
-            params['cmd_clean_vm'] = "%s 'virsh undefine %s'" % (
-                su_cmd, vm_name)
+            cmd = su_cmd + "'virsh -c %s pool-info %s'" % ('qemu:///session', 'src_pool')
+            process.system(cmd, verbose=True)
 
         if checkpoint == 'vmx':
             mount_point = params.get('mount_point')
@@ -832,7 +847,6 @@ def run(test, params, env):
                 if no_root:
                     cleanup_pool(user_pool=True, pool_name='src_pool',
                                  pool_target='v2v_src_pool')
-                    cleanup_pool(user_pool=True)
             else:
                 virsh.remove_domain(vm_name)
             cleanup_pool()
@@ -842,8 +856,6 @@ def run(test, params, env):
         if vmcheck_flag:
             vmcheck = utils_v2v.VMCheck(test, params, env)
             vmcheck.cleanup()
-        if checkpoint in ['with_ic', 'without_ic']:
-            process.run(params['cmd_clean_vm'])
         if new_v2v_user:
             process.system("userdel -f %s" % v2v_user)
         if backup_xml:

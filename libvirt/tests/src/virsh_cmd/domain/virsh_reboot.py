@@ -9,6 +9,7 @@ from virttest import libvirt_vm
 from virttest import virt_vm
 from virttest import virsh
 from virttest import remote
+from virttest import utils_conn
 from virttest import utils_libvirtd
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
@@ -37,6 +38,7 @@ def run(test, params, env):
     remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
     local_ip = params.get("local_ip", "LOCAL.EXAMPLE.COM")
     remote_pwd = params.get("remote_pwd", "password")
+    local_pwd = params.get("local_pwd", "password")
     agent = ("yes" == params.get("reboot_agent", "no"))
     mode = params.get("reboot_mode", "")
     pre_domian_status = params.get("reboot_pre_domian_status", "running")
@@ -74,6 +76,18 @@ def run(test, params, env):
                 test.cancel("remote_ip and/or local_ip parameters"
                             " not changed from default values")
             complete_uri = libvirt_vm.complete_uri(local_ip)
+
+            # Setup ssh connection
+            ssh_connection = utils_conn.SSHConnection(server_ip=local_ip,
+                                                      server_pwd=local_pwd,
+                                                      client_ip=remote_ip,
+                                                      client_pwd=remote_pwd)
+            try:
+                ssh_connection.conn_check()
+            except utils_conn.ConnectionError:
+                ssh_connection.conn_setup()
+                ssh_connection.conn_check()
+
             try:
                 session = remote.remote_login("ssh", remote_ip, "22", "root",
                                               remote_pwd, "#")
@@ -143,3 +157,6 @@ def run(test, params, env):
                 test.fail("Run failed with right command")
     finally:
         xml_backup.sync()
+
+        if 'ssh_connection' in locals():
+            ssh_connection.auto_recover = True

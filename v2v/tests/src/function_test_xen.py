@@ -37,6 +37,8 @@ def run(test, params, env):
     output_mode = params.get('output_mode')
     v2v_timeout = int(params.get('v2v_timeout', 1200))
     status_error = 'yes' == params.get('status_error', 'no')
+    skip_check = 'yes' == params.get('skip_check', 'no')
+    skip_reason = params.get('skip_reason')
     pool_name = params.get('pool_name', 'v2v_test')
     pool_type = params.get('pool_type', 'dir')
     pool_target = params.get('pool_target_path', 'v2v_pool')
@@ -45,6 +47,18 @@ def run(test, params, env):
     checkpoint = params.get('checkpoint', '')
     bk_list = ['vnc_autoport', 'vnc_encrypt', 'vnc_encrypt_warning']
     error_list = []
+    # For construct rhv-upload option in v2v cmd
+    output_method = params.get("output_method")
+    rhv_upload_opts = params.get("rhv_upload_opts")
+    storage_name = params.get('storage_name')
+    # for get ca.crt file from ovirt engine
+    rhv_passwd = params.get("rhv_upload_passwd")
+    rhv_passwd_file = params.get("rhv_upload_passwd_file")
+    ovirt_engine_passwd = params.get("ovirt_engine_password")
+    ovirt_hostname = params.get("ovirt_engine_url").split(
+        '/')[2] if params.get("ovirt_engine_url") else None
+    ovirt_ca_file_path = params.get("ovirt_ca_file_path")
+    local_ca_file_path = params.get("local_ca_file_path")
 
     def log_fail(msg):
         """
@@ -63,23 +77,6 @@ def run(test, params, env):
             logging.debug('Set %s=\'%s\'' % (key, param[key]))
             graphic.set(key, param[key])
         vmxml.sync(virsh_instance=virsh_instance)
-
-    def check_rhev_file_exist(vmcheck):
-        """
-        Check if rhev files exist
-        """
-        file_path = {
-            'rhev-apt.exe': r'C:\rhev-apt.exe',
-            'rhsrvany.exe': r'"C:\program files\redhat\rhev\apt\rhsrvany.exe"'
-        }
-        fail = False
-        for key in file_path:
-            status = vmcheck.session.cmd_status('dir %s' % file_path[key])
-            if not status:
-                logging.error('%s exists' % key)
-                fail = True
-        if fail:
-            log_fail('RHEV file exists after convert to kvm')
 
     def check_grub_file(vmcheck, check):
         """
@@ -152,7 +149,9 @@ def run(test, params, env):
         """
         libvirt.check_exit_status(result, status_error)
         output = result.stdout + result.stderr
-        if not status_error and checkpoint != 'vdsm':
+        if skip_check:
+            logging.info('Skip checking vm after conversion: %s' % skip_reason)
+        elif not status_error and checkpoint != 'vdsm':
             if output_mode == 'rhev':
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                     timeout=v2v_timeout):
@@ -170,8 +169,6 @@ def run(test, params, env):
             if len(ret) == 0:
                 logging.info("All common checkpoints passed")
             # Check specific checkpoints
-            if checkpoint == 'rhev_file':
-                check_rhev_file_exist(vmchecker.checker)
             if checkpoint == 'console_xvc0':
                 check_grub_file(vmchecker.checker, 'console_xvc0')
             if checkpoint in ('vnc_autoport', 'vnc_encrypt'):
@@ -213,10 +210,14 @@ def run(test, params, env):
             'hostname': xen_host, 'hypervisor': 'xen', 'main_vm': vm_name,
             'v2v_opts': '-v -x', 'input_mode': 'libvirt',
             'new_name': new_vm_name,
+            'password': xen_host_passwd,
             'storage':  params.get('output_storage', 'default'),
             'network':  params.get('network'),
             'bridge':   params.get('bridge'),
-            'target':   params.get('target')
+            'target':   params.get('target'),
+            'output_method': output_method,
+            'storage_name': storage_name,
+            'rhv_upload_opts': rhv_upload_opts
         }
 
         bk_xml = None
@@ -233,6 +234,11 @@ def run(test, params, env):
 
         # Build rhev related options
         if output_mode == 'rhev':
+            # create different sasl_user name for different job
+            params.update({'sasl_user': params.get("sasl_user") +
+                           utils_misc.generate_random_string(3)})
+            logging.info('sals user name is %s' % params.get("sasl_user"))
+
             # Create SASL user on the ovirt host
             user_pwd = "[['%s', '%s']]" % (params.get("sasl_user"),
                                            params.get("sasl_pwd"))
@@ -241,6 +247,15 @@ def run(test, params, env):
             v2v_sasl.server_user = params.get('remote_user')
             v2v_sasl.server_pwd = params.get('remote_pwd')
             v2v_sasl.setup(remote=True)
+            if output_method == 'rhv_upload':
+                # Create password file for '-o rhv_upload' to connect to ovirt
+                with open(rhv_passwd_file, 'w') as f:
+                    f.write(rhv_passwd)
+                # Copy ca file from ovirt to local
+                remote.scp_from_remote(ovirt_hostname, 22, 'root',
+                                       ovirt_engine_passwd,
+                                       ovirt_ca_file_path,
+                                       local_ca_file_path)
 
         # Create libvirt dir pool
         if output_mode == 'libvirt':
@@ -266,13 +281,14 @@ def run(test, params, env):
             blklist = virsh.domblklist(vm_name, uri=uri).stdout.split('\n')
             logging.debug('domblklist %s:\n%s', vm_name, blklist)
             for line in blklist:
-                if line.startswith(('hda', 'vda', 'sda')):
+                if line.startswith(('hda', 'vda', 'sda', 'xvda')):
                     params['remote_disk_image'] = line.split()[-1]
                     break
             # Local path of disk image
             params['img_path'] = data_dir.get_tmp_dir() + '/%s.img' % vm_name
             if checkpoint == 'xvda_disk':
                 v2v_params['input_mode'] = 'disk'
+                v2v_params['hypervisor'] = 'kvm'
                 v2v_params.update({'input_file': params['img_path']})
             # Copy remote image to local with scp
             remote.scp_from_remote(xen_host, 22, xen_host_user,
@@ -417,6 +433,8 @@ def run(test, params, env):
             params['main_vm'] = new_vm_name
         check_result(v2v_result, status_error)
     finally:
+        # Cleanup constant files
+        utils_v2v.cleanup_constant_files(params)
         process.run('ssh-agent -k')
         if checkpoint == 'vdsm':
             logging.info('Stop vdsmd')

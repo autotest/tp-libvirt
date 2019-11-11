@@ -349,6 +349,17 @@ def get_expected_listen_ips(params, networks, expected_result):
         ips = [ip for ip in utils_net.get_all_ips() if ip.version == version]
         return random.choice(ips)
 
+    def get_global_ipv6():
+        """
+        Ensure to get the global ipv6 address.
+        """
+        for i in range(100):
+            ip_addr = random_ip('ipv6')
+            if str(ip_addr).startswith('fe80:0000'):
+                continue
+            else:
+                return ip_addr
+
     spice_listen_type = params.get("spice_listen_type", "not_set")
     if spice_listen_type == 'none':
         expected_spice_ips = []
@@ -367,7 +378,7 @@ def get_expected_listen_ips(params, networks, expected_result):
         elif spice_listen == 'valid_ipv4':
             expected_spice_ips = [random_ip('ipv4')]
         elif spice_listen == 'valid_ipv6':
-            expected_spice_ips = [random_ip('ipv6')]
+            expected_spice_ips = [get_global_ipv6()]
         else:
             listen_ip = utils_net.IPAddress(spice_listen)
             if listen_ip == utils_net.IPAddress('0.0.0.0'):
@@ -401,7 +412,7 @@ def get_expected_listen_ips(params, networks, expected_result):
         elif vnc_listen == 'valid_ipv4':
             expected_vnc_ips = [random_ip('ipv4')]
         elif vnc_listen == 'valid_ipv6':
-            expected_vnc_ips = [random_ip('ipv6')]
+            expected_vnc_ips = [get_global_ipv6()]
         else:
             listen_ip = utils_net.IPAddress(vnc_listen)
             if listen_ip == utils_net.IPAddress('0.0.0.0'):
@@ -600,8 +611,8 @@ def get_fail_pattern(params, expected_result):
 
         if expected_spice_port == expected_spice_tls_port:
             if expected_spice_port != 'not_set':
-                if 0 <= int(expected_spice_port) < 1024:
-                    fail_patts.append(r'binding socket to \S* failed')
+                if is_negative and (0 < int(expected_spice_port) <= 65535):
+                    fail_patts.append(r'Failed to reserve port')
                 elif is_negative and (int(expected_spice_port) > 65535 or
                                       int(expected_spice_port) < -1):
                     fail_patts.append(r'port is out of range')

@@ -60,13 +60,14 @@ def run(test, params, env):
     source_path = params.get("pool_source_path", "/")
     new_pool_name = params.get("new_pool_name", "")
     build_option = params.get("build_option", "")
+    iscsi_initiator = params.get("iscsi_initiator", "")
     same_source_test = "yes" == params.get("same_source_test", "no")
     customize_initiator_iqn = "yes" == params.get("customize_initiator_iqn", "no")
     # The file for dumped pool xml
     poolxml = os.path.join(data_dir.get_tmp_dir(), "pool.xml.tmp")
     if os.path.dirname(pool_target) is "":
         pool_target = os.path.join(data_dir.get_tmp_dir(), pool_target)
-    vol_name = params.get("vol_name", "temp_vol_1")
+    vol_name = params.get("volume_name", "temp_vol_1")
     # Use pool name as VG name
     status_error = "yes" == params.get("status_error", "no")
     vol_path = os.path.join(pool_target, vol_name)
@@ -76,6 +77,10 @@ def run(test, params, env):
         if pool_type == "gluster":
             test.cancel("Gluster pool is not supported in current"
                         " libvirt version.")
+    if not libvirt_version.version_compare(4, 7, 0):
+        if pool_type == "iscsi-direct":
+            test.cancel("iSCSI-direct pool is not supported in current"
+                        "libvirt version.")
 
     def check_pool_list(pool_name, option="--all", expect_error=False):
         """
@@ -172,17 +177,18 @@ def run(test, params, env):
 
     # Run Testcase
     pvt = utlv.PoolVolumeTest(test, params)
-    emulated_image = "emulated-image"
     kwargs = {'image_size': '1G', 'pre_disk_vol': ['100M'],
               'source_name': source_name, 'source_path': source_path,
               'source_format': source_format, 'persistent': True,
-              'ip_protocal': ip_protocal}
+              'ip_protocal': ip_protocal, 'emulated_image': "emulated-image",
+              'pool_target': pool_target, 'iscsi_initiator': iscsi_initiator}
+    params.update(kwargs)
+
     try:
         _pool = libvirt_storage.StoragePool()
         # Step (1)
         # Pool define
-        pvt.pre_pool(pool_name, pool_type, pool_target, emulated_image,
-                     **kwargs)
+        pvt.pre_pool(**params)
 
         # Step (2)
         # Pool list
@@ -394,8 +400,7 @@ def run(test, params, env):
     finally:
         # Clean up
         try:
-            pvt.cleanup_pool(pool_name, pool_type, pool_target,
-                             emulated_image, **kwargs)
+            pvt.cleanup_pool(**params)
             utlv.setup_or_cleanup_iscsi(False)
         except exceptions.TestFail as detail:
             logging.error(str(detail))

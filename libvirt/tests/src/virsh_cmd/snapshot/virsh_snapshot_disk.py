@@ -12,6 +12,7 @@ from virttest import data_dir
 from virttest import libvirt_xml
 from virttest import libvirt_storage
 from virttest import utils_libvirtd
+from virttest import gluster
 from virttest.utils_test import libvirt as utlv
 
 from provider import libvirt_version
@@ -109,6 +110,9 @@ def run(test, params, env):
     # Get a tmp dir
     snap_cfg_path = "/var/lib/libvirt/qemu/snapshot/%s/" % vm_name
     try:
+        if vm.is_dead():
+            vm.start()
+        vm.wait_for_login().close()
         if replace_vm_disk:
             utlv.set_vm_disk(vm, params, tmp_dir)
             if multi_gluster_disks:
@@ -122,11 +126,13 @@ def run(test, params, env):
         if snapshot_with_pool:
             # Create dst pool for create attach vol img
             pvt = utlv.PoolVolumeTest(test, params)
-            pvt.pre_pool(pool_name, pool_type, pool_target,
-                         emulated_image, image_size="1G",
-                         pre_disk_vol=["20M"],
-                         source_name=vol_name,
-                         export_options=export_options)
+            kwargs = params.copy()
+            update_items = {"image_size": "1G", "emulated_image": emulated_image,
+                            "source_name": vol_name, "pre_disk_vol": ["20M"],
+                            "export_options": export_options}
+            kwargs.update(update_items)
+            kwargs.pop("vol_name")
+            pvt.pre_pool(**kwargs)
 
             if pool_type in ["iscsi", "disk"]:
                 # iscsi and disk pool did not support create volume in libvirt,
@@ -434,10 +440,12 @@ def run(test, params, env):
 
         libvirtd = utils_libvirtd.Libvirtd()
         if disk_source_protocol == 'gluster':
-            utlv.setup_or_cleanup_gluster(False, vol_name, brick_path)
+            gluster.setup_or_cleanup_gluster(False, brick_path=brick_path, **params)
             if multi_gluster_disks:
                 brick_path = os.path.join(tmp_dir, "gluster-pool2")
-                utlv.setup_or_cleanup_gluster(False, "gluster-vol2", brick_path)
+                mul_kwargs = params.copy()
+                mul_kwargs.update({"vol_name": "gluster-vol2"})
+                gluster.setup_or_cleanup_gluster(False, brick_path=brick_path, **mul_kwargs)
             libvirtd.restart()
 
         if snapshot_xml_path:
@@ -445,8 +453,7 @@ def run(test, params, env):
                 os.unlink(snapshot_xml_path)
         if pvt:
             try:
-                pvt.cleanup_pool(pool_name, pool_type, pool_target,
-                                 emulated_image, source_name=vol_name)
+                pvt.cleanup_pool(**kwargs)
             except exceptions.TestFail as detail:
                 libvirtd.restart()
                 logging.error(str(detail))

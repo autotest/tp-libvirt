@@ -1,20 +1,13 @@
 import re
 import logging
-
+import os
+from virttest import data_dir
 from avocado.utils import process
 from virttest import virsh
 from provider import libvirt_version
 from virttest import utils_test
 from virttest.libvirt_xml import vm_xml
-
-
-# if the net is transisent, dump the xml then define it to make it persistent
-def make_net_persistent(net_name):
-    logging.debug(virsh.net_dumpxml(net_name).stdout)
-    with open("/tmp/default.xml", "w") as f:
-        f.write(virsh.net_dumpxml(net_name).stdout)
-    virsh.net_define("/tmp/default.xml", ignore_status=False)
-    return None
+from virttest import utils_libvirtd
 
 
 def check_libvirtd_restart(pid, cmd):
@@ -48,6 +41,7 @@ def run(test, params, env):
     net_cfg_file = params.get("net_cfg_file", "/usr/share/libvirt/networks/default.xml")
     check_libvirtd = "yes" == params.get("check_libvirtd")
     vm_defined = "yes" == params.get("vm_defined")
+    check_vm = "yes" == params.get("check_vm")
 
     # libvirt acl polkit related params
     if not libvirt_version.version_compare(1, 1, 1):
@@ -69,10 +63,13 @@ def run(test, params, env):
             virsh.net_start(network_name, ignore_status=False)
         else:
             virsh.create(net_cfg_file, ignore_status=False)
+    # Backup the current network xml
+    net_xml_bk = os.path.join(data_dir.get_tmp_dir(), "%s.xml" % network_name)
+    virsh.net_dumpxml(network_name, to_file=net_xml_bk)
     if net_persistent:
         if not virsh.net_state_dict()[network_name]['persistent']:
             logging.debug("make the network persistent...")
-            make_net_persistent(network_name)
+            virsh.net_define(net_xml_bk)
     else:
         if virsh.net_state_dict()[network_name]['persistent']:
             virsh.net_undefine(network_name, ignore_status=False)
@@ -91,7 +88,7 @@ def run(test, params, env):
     elif net_ref == "name":
         net_ref = network_name
 
-    if check_libvirtd:
+    if check_libvirtd or check_vm:
         vm_name = params.get("main_vm")
         if virsh.is_alive(vm_name):
             virsh.destroy(vm_name)
@@ -140,16 +137,26 @@ def run(test, params, env):
                 else:
                     logging.debug("libvirtd do not crash after destroy network!")
                     status = 0
-                # destroy vm, check libvirtd pid no change
-                ret = virsh.destroy(vm_name)
-                utils_test.libvirt.check_exit_status(ret, expect_error=False)
-                result = check_libvirtd_restart(libvirtd_pid, cmd)
-                if result:
-                    test.fail("libvirtd crash after destroy vm!")
-                    status = 1
-                else:
-                    logging.debug("libvirtd do not crash after destroy vm!")
-                    status = 0
+                if check_libvirtd:
+                    # destroy vm, check libvirtd pid no change
+                    ret = virsh.destroy(vm_name)
+                    utils_test.libvirt.check_exit_status(ret, expect_error=False)
+                    result = check_libvirtd_restart(libvirtd_pid, cmd)
+                    if result:
+                        test.fail("libvirtd crash after destroy vm!")
+                        status = 1
+                    else:
+                        logging.debug("libvirtd do not crash after destroy vm!")
+                        status = 0
+                elif check_vm:
+                    # restart libvirtd and check vm is running
+                    libvirtd = utils_libvirtd.Libvirtd()
+                    libvirtd.restart()
+                    if not virsh.is_alive(vm_name):
+                        test.fail("vm shutdown when transient network destroyed then libvirtd restart")
+                    else:
+                        status = 0
+
         finally:
             if not vm_defined:
                 vmxml_backup.define()
@@ -160,7 +167,7 @@ def run(test, params, env):
         status = virsh.net_destroy(net_ref, extra, uri=uri, readonly=readonly,
                                    debug=True, unprivileged_user=unprivileged_user,
                                    ignore_status=True).exit_status
-        # Confirm the network has been destroied.
+        # Confirm the network has been destroyed.
         if net_persistent:
             if virsh.net_state_dict()[network_name]['active']:
                 status = 1
@@ -173,15 +180,21 @@ def run(test, params, env):
     # Recover network status to system default status
     try:
         if network_name not in virsh.net_state_dict():
-            virsh.net_define(net_cfg_file, ignore_status=False)
+            virsh.net_define(net_xml_bk, ignore_status=False)
         if not virsh.net_state_dict()[network_name]['active']:
             virsh.net_start(network_name, ignore_status=False)
         if not virsh.net_state_dict()[network_name]['persistent']:
-            make_net_persistent(network_name)
+            virsh.net_define(net_xml_bk, ignore_status=False)
         if not virsh.net_state_dict()[network_name]['autostart']:
             virsh.net_autostart(network_name, ignore_status=False)
     except process.CmdError:
         test.error("Recover network status failed!")
+
+    # Clean up the backup network xml file
+    if os.path.isfile(net_xml_bk):
+        data_dir.clean_tmp_files()
+        logging.debug("Cleaning up the network backup xml")
+
     # Check status_error
     if status_error == "yes":
         if status == 0:

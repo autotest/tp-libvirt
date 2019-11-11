@@ -5,6 +5,9 @@ import logging
 from avocado.utils import process
 
 from virttest import remote
+from virttest import utils_iptables
+from virttest import utils_libvirtd
+
 from virttest.utils_sasl import SASL
 from virttest.utils_conn import SSHConnection
 from virttest.utils_conn import TCPConnection
@@ -37,9 +40,10 @@ def remote_access(params, test):
     log_level = params.get("log_level", "LIBVIRT_DEBUG=3")
 
     status_error = params.get("status_error", "no")
-    ret = connect_libvirtd(uri, read_only, virsh_cmd, auth_user,
-                           auth_pwd, vm_name, status_error, extra_env,
-                           log_level, su_user, virsh_patterns, patterns_extra_dict)
+    ret, output = connect_libvirtd(uri, read_only, virsh_cmd, auth_user,
+                                   auth_pwd, vm_name, status_error, extra_env,
+                                   log_level, su_user, virsh_patterns,
+                                   patterns_extra_dict)
 
     if status_error == "no":
         if ret:
@@ -51,12 +55,13 @@ def remote_access(params, test):
                 fp.close()
             logging.info("Succeed to connect libvirt daemon.")
         else:
-            test.fail("Failed to connect libvirt daemon!!")
+            test.fail("Failed to connect libvirt daemon!!output: {}"
+                      .format(output))
     else:
         if not ret:
             logging.info("It's an expected error!!")
         else:
-            test.fail("Unexpected return result")
+            test.fail("Unexpected return result: {}".format(output))
 
 
 def check_parameters(params, test):
@@ -116,7 +121,7 @@ def cleanup(objs_list):
     objs_list.reverse()
     for obj in objs_list:
         obj.auto_recover = True
-        del obj
+        obj.__del__()
 
 
 def run(test, params, env):
@@ -195,6 +200,20 @@ def run(test, params, env):
 
     # Make sure all of parameters are assigned a valid value
     check_parameters(test_dict, test)
+    # Make sure libvirtd on remote is running
+    server_session = remote.wait_for_login('ssh', server_ip, '22',
+                                           server_user, server_pwd,
+                                           r"[\#\$]\s*$")
+
+    remote_libvirtd = utils_libvirtd.Libvirtd(server_session)
+    if not remote_libvirtd.is_running():
+        logging.debug("start libvirt on remote")
+        res = remote_libvirtd.start()
+        if not res:
+            status, output = server_session.cmd_status_output("journalctl -xe")
+            test.error("Failed to start libvirtd on remote. [status]: %s "
+                       "[output]: %s." % (status, output))
+    server_session.close()
 
     # only simply connect libvirt daemon then return
     if no_any_config == "yes":
@@ -284,6 +303,23 @@ def run(test, params, env):
                     objs_list.append(ssh_obj)
                 # setup test environment
                 ssh_obj.conn_setup()
+            else:
+                # To access to server with password,
+                # cleanup authorized_keys on remote
+                ssh_pubkey_file = "/root/.ssh/id_rsa.pub"
+                if (os.path.exists("/root/.ssh/id_rsa") and
+                   os.path.exists(ssh_pubkey_file)):
+                    remote_file_obj = remote.RemoteFile(address=server_ip,
+                                                        client='scp',
+                                                        username=server_user,
+                                                        password=server_pwd,
+                                                        port='22',
+                                                        remote_path="/root/.ssh/authorized_keys")
+                    with open(ssh_pubkey_file, 'r') as fd:
+                        line = fd.read().split()[-1].rstrip('\n')
+                    line = ".*" + line
+                    remote_file_obj.remove([line])
+                    objs_list.append(remote_file_obj)
 
         # setup TLS
         if transport == "tls" or tls_setup == "yes":
@@ -335,6 +371,16 @@ def run(test, params, env):
                                                    server_pwd, service,
                                                    port, listen_addr)
 
+        # open the tls/tcp listening port on server
+        if transport in ["tls", "tcp"]:
+            firewalld_port = port[1:]
+            server_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                   server_user, server_pwd,
+                                                   r"[\#\$]\s*$")
+            firewall_cmd = utils_iptables.Firewall_cmd(server_session)
+            firewall_cmd.add_port(firewalld_port, 'tcp', permanent=True)
+            server_session.close()
+
         # remove client certifications if exist, only for TLS negative testing
         if rm_client_key_cmd:
             process.system(rm_client_key_cmd, ignore_status=True, shell=True)
@@ -350,7 +396,6 @@ def run(test, params, env):
         # restart libvirt service on the remote host
         if tls_sanity_cert == "no" and ca_cn_new:
             test_dict['ca_cn'] = ca_cn_new
-            test_dict['ca_cakey_path'] = tmp_dir
             test_dict['scp_new_cacert'] = 'no'
             tls_obj_new = TLSConnection(test_dict)
             test_dict['tls_obj_new'] = tls_obj_new
@@ -397,6 +442,14 @@ def run(test, params, env):
             vm = env.get_vm(vm_name)
             if vm and vm.is_alive():
                 vm.destroy(gracefully=False)
+
+        if transport in ["tcp", "tls"] and 'firewalld_port' in locals():
+            server_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                   server_user, server_pwd,
+                                                   r"[\#\$]\s*$")
+            firewall_cmd = utils_iptables.Firewall_cmd(server_session)
+            firewall_cmd.remove_port(firewalld_port, 'tcp', permanent=True)
+            server_session.close()
 
         if rmdir_cmd:
             process.system(rmdir_cmd, ignore_status=True, shell=True)

@@ -1,6 +1,8 @@
 import logging
+import os
 
 from avocado.utils import path as utils_path
+from avocado.utils import process
 
 from virttest.utils_test import libvirt
 from virttest import libvirt_vm
@@ -8,6 +10,7 @@ from virttest import virsh
 from virttest import libvirt_xml
 from virttest import utils_libguestfs
 from virttest import utils_package
+from virttest import utils_libvirtd
 
 
 def run(test, params, env):
@@ -46,6 +49,9 @@ def run(test, params, env):
     dom_param = ' '.join([domain_option, vm_ref])
     new_name_param = ' '.join([new_name_option, new_name])
 
+    if vm.is_alive():
+        vm.destroy()
+
     # Backup for recovery.
     vmxml_backup = libvirt_xml.vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     logging.debug("vm xml is %s", vmxml_backup)
@@ -68,7 +74,7 @@ def run(test, params, env):
     new_vm = libvirt_vm.VM(new_name, vm.params, vm.root_dir, vm.address_cache)
 
     # Prepare vm state
-    if pre_vm_state != "shutoff":
+    if pre_vm_state not in ["shutoff", "autostart"]:
         vm.start()
         if pre_vm_state == "paused":
             vm.pause()
@@ -80,6 +86,12 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
 
     try:
+        if pre_vm_state == "autostart":
+            virsh.autostart(dom_param, "", debug=True)
+            virsh.dom_list("--all --autostart", debug=True)
+            logging.debug("files under '/etc/libvirt/qemu/autostart/' are %s",
+                          os.listdir('/etc/libvirt/qemu/autostart/'))
+
         result = virsh.domrename(dom_param, new_name_param, ignore_status=True, debug=True)
 
         # Raise unexpected pass or fail
@@ -92,15 +104,25 @@ def run(test, params, env):
 
         # Checkpoints after domrename succeed
         else:
-            list_ret = virsh.dom_list("--name --all", debug=True).stdout
+            list_ret = virsh.dom_list("--name --all", debug=True).stdout.strip().splitlines()
             domname_ret = virsh.domname(domuuid, debug=True).stdout.strip()
             if new_name not in list_ret or vm_name in list_ret:
                 test.fail("New name does not affect in virsh list")
             if domname_ret != new_name:
                 test.fail("New domain name does not affect in virsh domname uuid")
 
-            # Try to start vm with the new name
-            new_vm.start()
+            if pre_vm_state != "autostart":
+                # Try to start vm with the new name
+                new_vm.start()
+            else:
+                utils_libvirtd.libvirtd_restart()
+                list_autostart = virsh.dom_list("--autostart", debug=True).stdout
+                logging.debug("files under '/etc/libvirt/qemu/autostart/' are %s",
+                              os.listdir('/etc/libvirt/qemu/autostart/'))
+                process.run("file /etc/libvirt/qemu/autostart/%s.xml" % vm_name, verbose=True)
+                if new_name not in list_autostart:
+                    test.fail("Domain isn't autostarted after restart libvirtd,"
+                              "or becomes a never 'autostart' one.")
 
     finally:
         # Remove additional vms

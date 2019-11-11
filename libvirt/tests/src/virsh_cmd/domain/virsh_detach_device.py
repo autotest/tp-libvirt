@@ -141,6 +141,7 @@ def run(test, params, env):
     os_type = params.get("os_type", "linux")
     device = params.get("dt_device_device", "disk")
     readonly = "yes" == params.get("detach_readonly", "no")
+    tmp_dir = data_dir.get_tmp_dir()
     test_cmd = "detach-device"
     if not virsh.has_command_help_match(test_cmd, dt_options) and\
        not status_error:
@@ -165,7 +166,7 @@ def run(test, params, env):
 
     # Back up xml file.
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    device_source = os.path.join(data_dir.get_tmp_dir(), device_source_name)
+    device_source = os.path.join(tmp_dir, device_source_name)
 
     # Create virtual device file.
     if test_block_dev:
@@ -185,7 +186,7 @@ def run(test, params, env):
             virsh.detach_disk(vm_name, device_target, "--config",
                               ignore_status=True)
 
-        device_xml = create_device_xml(params, test.virtdir, device_source)
+        device_xml = create_device_xml(params, tmp_dir, device_source)
         if not no_attach:
             s_attach = virsh.attach_device(vm_name, device_xml,
                                            flagstr="--config").exit_status
@@ -288,6 +289,8 @@ def run(test, params, env):
             libvirt.setup_or_cleanup_iscsi(False)
         elif os.path.exists(device_source):
             os.remove(device_source)
+        elif os.path.exists(tmp_dir):
+            os.remove(tmp_dir)
 
     # Check results.
     if status_error:

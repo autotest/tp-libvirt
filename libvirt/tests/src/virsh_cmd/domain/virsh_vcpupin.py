@@ -6,7 +6,7 @@ from avocado.utils import process
 from avocado.utils import cpu as cpuutils
 
 from virttest import virsh
-from virttest import utils_test
+from virttest import cpu
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -53,7 +53,7 @@ def run(test, params, env):
             if ':' in item:
                 split_key = ':'
             vcpus_affinity[item.split(split_key)[0].strip()] = item.split(split_key)[-1].strip()
-        return utils_test.libvirt.cpus_string_to_affinity_list(
+        return cpu.cpus_string_to_affinity_list(
             vcpus_affinity[str(vcpu)], int(total_cpu))
 
     def check_vcpupin(vm_name, vcpu, cpu_list, pid, vcpu_pid):
@@ -70,7 +70,7 @@ def run(test, params, env):
 
         total_cpu = process.run("ls -d /sys/devices/system/cpu/cpu[0-9]* |wc -l", shell=True).stdout_text.strip()
         logging.debug("Debug: cpulist %s", cpu_list)
-        expected_output = utils_test.libvirt.cpus_string_to_affinity_list(
+        expected_output = cpu.cpus_string_to_affinity_list(
             cpu_list,
             int(total_cpu))
         logging.debug("Expected affinity: %s", expected_output)
@@ -98,8 +98,8 @@ def run(test, params, env):
         if pid is None:
             return
         # Get the actual cpu affinity value in the proc entry
-        output = utils_test.libvirt.cpu_allowed_list_by_task(pid, vcpu_pid)
-        actual_output_proc = utils_test.libvirt.cpus_string_to_affinity_list(
+        output = cpu.cpu_allowed_list_by_task(pid, vcpu_pid)
+        actual_output_proc = cpu.cpus_string_to_affinity_list(
             output,
             int(total_cpu))
         logging.debug("Actual affinity in guest proc: %s", actual_output_proc)
@@ -271,14 +271,14 @@ def run(test, params, env):
                         if cpu_itrs == 0:
                             cpu_itrs = 2
                 for _ in range(cpu_itrs):
-                    cpu = random.choice(cpus_list)
-                    left_cpus = "0-%s,^%s" % (online_cpu_max, cpu)
+                    cpuid = random.choice(cpus_list)
+                    left_cpus = "0-%s,^%s" % (online_cpu_max, cpuid)
                     if offline_pin:
-                        offline_pin_and_check(vm, vcpu, str(cpu))
+                        offline_pin_and_check(vm, vcpu, str(cpuid))
                         if multi_dom:
                             offline_pin_and_check(vm2, vcpu, left_cpus)
                     else:
-                        run_and_check_vcpupin(vm, vm_ref, vcpu, str(cpu),
+                        run_and_check_vcpupin(vm, vm_ref, vcpu, str(cpuid),
                                               options)
                         if multi_dom:
                             run_and_check_vcpupin(vm2, "name", vcpu, left_cpus,

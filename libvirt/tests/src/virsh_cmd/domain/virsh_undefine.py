@@ -141,7 +141,10 @@ def run(test, params, env):
                 test.fail("Creation of volume %s failed." % vol_name)
             volumes = new_pool.list_volumes()
             volume = volumes[vol_name]
-            virsh.attach_disk(vm_name, volume, disk_target, "--config")
+            ret = virsh.attach_disk(vm_name, volume, disk_target, "--config",
+                                    debug=True)
+            if ret.exit_status != 0:
+                test.error("Attach disk failed: %s" % ret.stderr)
 
         # Turn libvirtd into certain state.
         if libvirtd_state == "off":
@@ -260,7 +263,11 @@ def run(test, params, env):
     # Check results.
     if status_error:
         if not status:
-            test.fail("virsh undefine return unexpected result.")
+            if libvirtd_state == "off" and libvirt_version.version_compare(5, 6, 0):
+                logging.info("From libvirt version 5.6.0 libvirtd is restarted "
+                             "and command should succeed")
+            else:
+                test.fail("virsh undefine return unexpected result.")
         if params.get('setup_libvirt_polkit') == 'yes':
             if status3 == 0:
                 test.fail("virsh define with false acl permission" +
