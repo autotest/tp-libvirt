@@ -220,7 +220,7 @@ def run(test, params, env):
     finally:
         # Cleanup constant files
         utils_v2v.cleanup_constant_files(params)
-        if os.path.exists(dest_dir):
+        if input_mode == 'ova' and os.path.exists(dest_dir):
             shutil.rmtree(dest_dir)
         if params.get('vmchecker'):
             params['vmchecker'].cleanup()
