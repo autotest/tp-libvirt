@@ -320,6 +320,12 @@ def run(test, params, env):
         elif "aarch" in machine:
             serial.target_model = 'pl011'
             serial.target_type = 'system-serial'
+        elif "s390x" in machine and 'sclp' not in serial_type:
+            if target_model:
+                serial.target_model = target_model
+            else:
+                serial.target_model = 'sclpconsole'
+            serial.target_type = 'sclp-serial'
         else:
             serial.target_model = target_type
             serial.target_type = target_type
@@ -581,11 +587,11 @@ def run(test, params, env):
                     path = source['path']
             if serial_type == 'file':
                 # Use re to make this fdset number flexible
-                exp_ser_opts.append('path=/dev/fdset/\d+')
+                exp_ser_opts.append(r'path=/dev/fdset/\d+')
                 exp_ser_opts.append('append=on')
             elif serial_type == 'unix':
                 # Use re to make this fd number flexible
-                exp_ser_opts.append('fd=\d+')
+                exp_ser_opts.append(r'fd=\d+')
             else:
                 exp_ser_opts.append('path=%s' % path)
         elif serial_type in ['tcp', 'tls']:
@@ -628,16 +634,23 @@ def run(test, params, env):
 
         exp_ser_opt = ','.join(exp_ser_opts)
 
-        if "ppc" in platform.machine():
+        arch = platform.machine()
+        if "ppc" in arch:
             exp_ser_devs = ['spapr-vty', 'chardev=charserial0',
                             'reg=0x30000000']
             if libvirt_version.version_compare(3, 9, 0):
                 exp_ser_devs.insert(2, 'id=serial0')
+        elif "s390x" in arch:
+            dev_type = 'sclpconsole'
+            if target_model:
+                dev_type = target_model
+            exp_ser_devs = [dev_type, 'chardev=charserial0',
+                            'id=serial0']
         else:
             logging.debug('target_type: %s', target_type)
             if target_type == 'pci-serial':
                 exp_ser_devs = ['pci-serial', 'chardev=charserial0',
-                                'id=serial0', 'bus=pci.\d+', 'addr=0x\d+']
+                                'id=serial0', r'bus=pci.\d+', r'addr=0x\d+']
             else:
                 exp_ser_devs = ['isa-serial', 'chardev=charserial0',
                                 'id=serial0']
@@ -723,6 +736,7 @@ def run(test, params, env):
     password = params.get('password')
     console_target_type = params.get('console_target_type', 'serial')
     target_type = params.get('target_type', 'isa-serial')
+    target_model = params.get('target_model', '')
     console_target_port = params.get('console_target_port', '0')
     second_serial_console = params.get('second_serial_console', 'no') == 'yes'
     custom_pki_path = params.get('custom_pki_path', '/etc/pki/libvirt-chardev')
