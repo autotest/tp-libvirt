@@ -527,6 +527,8 @@ class VMChecker(object):
         def _compose_genid(vm_genid, vm_genidX):
             for index, val in enumerate(
                     map(lambda x: hex(int(x) & ((1 << 64) - 1)), [vm_genid, vm_genidX])):
+                # Remove 'L' suffix for python2
+                val = val.rstrip('L')
                 if index == 0:
                     gen_id = '-'.join([val[n:] if n == -8 else val[n:n + 4]
                                        for n in range(-8, -17, -4)])
