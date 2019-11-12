@@ -625,6 +625,25 @@ def run(test, params, env):
         else:
             Iptables.setup_or_cleanup_iptables_rules(firewall_rule, cleanup=True)
 
+    def check_established(exp_num, port="49152"):
+        """
+        Parses netstat output for established connection on remote
+
+        :param exp_num: expected number of the ESTABLISHED connections
+        :param port: port to be checked
+        :raise: test.fail if the connection number is not equal to $exp_num
+        """
+        if postcopy_options:
+            set_migratepostcopy()
+
+        cmd = "netstat -tunap|grep %s |grep ESTABLISHED | wc -l" % port
+        result = remote.run_remote_cmd(cmd, cmd_parms, runner_on_target,
+                                       ignore_status=False)
+
+        if exp_num != int(result.stdout.strip()):
+            test.fail("The number of established connections is unexpected: %s"
+                      % result.stdout.strip())
+
     def do_actions_during_migrate(params):
         """
         The entry point to execute action list during migration
@@ -653,6 +672,8 @@ def run(test, params, env):
                 kill_qemu_target()
             elif action == 'drop_network_connetion':
                 drop_network_connetion(block_time)
+            elif action == 'checkestablished':
+                check_established(expConnNum)
             time.sleep(3)
 
     def attach_channel_xml():
@@ -878,6 +899,8 @@ def run(test, params, env):
     hpt_resize = params.get("hpt_resize", None)
     htm_state = params.get("htm_state", None)
     block_time = params.get("block_time", 30)
+    parallel_cn_nums = params.get("parallel_cn_nums")
+
     # For keepalive test
     use_firewall_cmd = True
     if distro.detect().name == 'rhel' and int(distro.detect().version) < 8:
@@ -936,6 +959,7 @@ def run(test, params, env):
     objs_list = []
     tls_obj = None
 
+    expConnNum = 0
     # Local variables
     vm_name = params.get("migrate_main_vm")
     vm = env.get_vm(vm_name)
@@ -948,6 +972,10 @@ def run(test, params, env):
         test.error("Backing up xmlfile failed.")
 
     try:
+        if parallel_cn_nums or extra.count("parallel"):
+            if not libvirt_version.version_compare(5, 2, 0):
+                test.cancel("This libvirt version doesn't support "
+                            "multifd feature.")
         # Create a remote runner for later use
         runner_on_target = remote.RemoteRunner(host=server_ip,
                                                username=server_user,
@@ -1071,6 +1099,16 @@ def run(test, params, env):
         if extra.count("comp-xbzrle-cache"):
             cache = get_usable_compress_cache(memory.get_page_size())
             extra = "%s %s" % (extra, cache)
+
+        if parallel_cn_nums or extra.count("parallel"):
+            if parallel_cn_nums is not None:
+                extra = "%s %s" % (extra, str(parallel_cn_nums))
+                # The expected number of ESTABLISHED connections is equal to
+                # the specified parallel connection number + 1.
+                # The default parallel connection number is 2.
+                expConnNum = int(parallel_cn_nums) + 1
+            else:
+                expConnNum = 3
 
         # For --postcopy enable
         postcopy_options = params.get("postcopy_options")
