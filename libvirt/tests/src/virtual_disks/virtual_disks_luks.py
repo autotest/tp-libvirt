@@ -14,8 +14,10 @@ from virttest import utils_package
 from virttest import ceph
 from virttest import gluster
 from virttest import utils_disk
+from virttest import libvirt_storage
 from virttest.utils_test import libvirt
-from virttest.libvirt_xml import vm_xml
+
+from virttest.libvirt_xml import vm_xml, vol_xml, xcepts
 from virttest.libvirt_xml.devices.disk import Disk
 
 from provider import libvirt_version
@@ -107,6 +109,53 @@ def run(test, params, env):
             logging.error(str(e))
             return False
 
+    def create_vol(p_name, target_encrypt_params, vol_params):
+        """
+        Create volume.
+
+        :param p_name: Pool name.
+        :param target_encrypt_params: encrypt parameters in dict.
+        :param vol_params: Volume parameters dict.
+        """
+        # Clean up dirty volumes if pool has.
+        pv = libvirt_storage.PoolVolume(p_name)
+        vol_name_list = pv.list_volumes()
+        for vol_name in vol_name_list:
+            pv.delete_volume(vol_name)
+
+        volxml = vol_xml.VolXML()
+        v_xml = volxml.new_vol(**vol_params)
+        v_xml.encryption = volxml.new_encryption(**target_encrypt_params)
+        v_xml.xmltreefile.write()
+
+        ret = virsh.vol_create(p_name, v_xml.xml, **virsh_dargs)
+        libvirt.check_exit_status(ret)
+
+    def get_secret_list():
+        """
+        Get secret list.
+
+        :return secret list
+        """
+        logging.info("Get secret list ...")
+        secret_list_result = virsh.secret_list()
+        secret_list = secret_list_result.stdout.strip().splitlines()
+        # First two lines contain table header followed by entries
+        # for each secret, such as:
+        #
+        # UUID                                  Usage
+        # --------------------------------------------------------------------------------
+        # b4e8f6d3-100c-4e71-9f91-069f89742273  ceph client.libvirt secret
+        secret_list = secret_list[2:]
+        result = []
+        # If secret list is empty.
+        if secret_list:
+            for line in secret_list:
+                # Split on whitespace, assume 1 column
+                linesplit = line.split(None, 1)
+                result.append(linesplit[0])
+        return result
+
     # Disk specific attributes.
     device = params.get("virt_disk_device", "disk")
     device_target = params.get("virt_disk_device_target", "vdd")
@@ -134,6 +183,7 @@ def run(test, params, env):
     auth_sec_usage_target = params.get("auth_sec_usage_target", "libvirtiscsi")
 
     status_error = "yes" == params.get("status_error")
+    define_error = "yes" == params.get("define_error")
     check_partitions = "yes" == params.get("virt_disk_check_partitions", "yes")
     hotplug_disk = "yes" == params.get("hotplug_disk", "no")
     encryption_in_source = "yes" == params.get("encryption_in_source", "no")
@@ -143,6 +193,7 @@ def run(test, params, env):
     disk_auth_dict = {}
     disk_encryption_dict = {}
     pvt = None
+    duplicated_encryption = "yes" == params.get("duplicated_encryption", "no")
 
     if ((encryption_in_source or auth_in_source) and
             not libvirt_version.version_compare(3, 9, 0)):
@@ -160,6 +211,17 @@ def run(test, params, env):
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     try:
+        # Clean up dirty secrets in test environments if there are.
+        dirty_secret_list = get_secret_list()
+        if dirty_secret_list:
+            for dirty_secret_uuid in dirty_secret_list:
+                virsh.secret_undefine(dirty_secret_uuid)
+        # Create secret
+        luks_sec_uuid = libvirt.create_secret(params)
+        logging.debug("A secret created with uuid = '%s'", luks_sec_uuid)
+        ret = virsh.secret_set_value(luks_sec_uuid, luks_secret_passwd,
+                                     encode=True, debug=True)
+        libvirt.check_exit_status(ret)
         # Setup backend storage
         if backend_storage_type == "iscsi":
             iscsi_host = params.get("iscsi_host")
@@ -278,15 +340,58 @@ def run(test, params, env):
             device_source = nfs_mount_dir + image_name
             disk_src_dict = {'attrs': {'file': device_source,
                                        'type_name': 'file'}}
+        # Create dir based pool,and then create one volume on it.
+        elif backend_storage_type == "dir":
+            pool_name = params.get("pool_name", "dir_pool")
+            pool_target = params.get("pool_target")
+            pool_type = params.get("pool_type")
+            emulated_image = params.get("emulated_image")
+            image_name = params.get("dir_image_name", "luks_1.img")
+            # Create and start dir_based pool.
+            pvt = libvirt.PoolVolumeTest(test, params)
+            if not os.path.exists(pool_target):
+                os.mkdir(pool_target)
+            pvt.pre_pool(pool_name, pool_type, pool_target, emulated_image)
+            sp = libvirt_storage.StoragePool()
+            if not sp.is_pool_active(pool_name):
+                sp.set_pool_autostart(pool_name)
+                sp.start_pool(pool_name)
+            # Create one volume on the pool.
+            volume_name = params.get("vol_name")
+            volume_alloc = params.get("vol_alloc")
+            volume_cap_unit = params.get("vol_cap_unit")
+            volume_cap = params.get("vol_cap")
+            volume_target_path = params.get("sec_volume")
+            volume_target_format = params.get("target_format")
+            volume_target_encypt = params.get("target_encypt", "")
+            volume_target_label = params.get("target_label")
+            vol_params = {"name": volume_name, "capacity": int(volume_cap),
+                          "allocation": int(volume_alloc), "format":
+                          volume_target_format, "path": volume_target_path,
+                          "label": volume_target_label,
+                          "capacity_unit": volume_cap_unit}
+            vol_encryption_params = {}
+            vol_encryption_params.update({"format": "luks"})
+            vol_encryption_params.update({"secret": {"type": "passphrase", "uuid": luks_sec_uuid}})
+            try:
+                # If Libvirt version is lower than 2.5.0
+                # Creating luks encryption volume is not supported,so skip it.
+                create_vol(pool_name, vol_encryption_params, vol_params)
+            except AssertionError as info:
+                err_msgs = ("create: invalid option")
+                if str(info).count(err_msgs):
+                    test.cancel("Creating luks encryption volume "
+                                "is not supported on this libvirt version")
+                else:
+                    test.error("Failed to create volume."
+                               "Error: %s" % str(info))
+            disk_src_dict = {'attrs': {'file': volume_target_path}}
+            device_source = volume_target_path
         else:
             test.cancel("Only iscsi/gluster/rbd/nfs can be tested for now.")
         logging.debug("device source is: %s", device_source)
-        luks_sec_uuid = libvirt.create_secret(params)
-        logging.debug("A secret created with uuid = '%s'", luks_sec_uuid)
-        ret = virsh.secret_set_value(luks_sec_uuid, luks_secret_passwd,
-                                     encode=True, debug=True)
-        encrypt_dev(device_source, params)
-        libvirt.check_exit_status(ret)
+        if backend_storage_type != "dir":
+            encrypt_dev(device_source, params)
         # Add disk xml.
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         disk_xml = Disk(type_name=device_type)
@@ -309,15 +414,20 @@ def run(test, params, env):
             disk_source.encryption = disk_encryption
         else:
             disk_xml.encryption = disk_encryption
+        if duplicated_encryption:
+            disk_xml.encryption = disk_encryption
         disk_xml.source = disk_source
         logging.debug("new disk xml is: %s", disk_xml)
         # Sync VM xml
         if not hotplug_disk:
             vmxml.add_device(disk_xml)
-        vmxml.sync()
         try:
+            vmxml.sync()
             vm.start()
             vm.wait_for_login()
+        except xcepts.LibvirtXMLError as xml_error:
+            if not define_error:
+                test.fail("Failed to define VM:\n%s" % str(xml_error))
         except virt_vm.VMStartError as details:
             # When use wrong password in disk xml for cold plug cases,
             # VM cannot be started
