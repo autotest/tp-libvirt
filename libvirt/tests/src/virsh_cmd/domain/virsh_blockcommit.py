@@ -20,6 +20,40 @@ from virttest.utils_test import libvirt
 from provider import libvirt_version
 
 
+def get_images_with_xattr(vm):
+    """
+    Get the image path(s) which still having xattr left of a vm
+
+    :param vm: The vm to be checked
+    :return: The image path list which having xattr left
+    """
+    disks = vm.get_disk_devices()
+    dirty_images = []
+    check_cmd = "getfattr -m trusted.libvirt.security -d %s"
+    for disk in disks:
+        disk_path = disks[disk]['source']
+        getfattr_result = process.run(check_cmd % disk_path, shell=True)
+        if "selinux" in getfattr_result.stdout_text:
+            dirty_images.append(disk_path)
+            logging.debug("Image '%s' having xattr left: %s",
+                          disk_path, getfattr_result.stdout)
+    return dirty_images
+
+
+def clean_images_with_xattr(dirty_images):
+    """
+    Clean the images' xattr
+
+    :param dirty_images: The image list to be cleaned
+    """
+    clean_cmd = ("for i in $(getfattr -m trusted.libvirt.security -d %s |"
+                 "grep 'trusted.libvirt'| cut -f 1 -d '=');"
+                 "do setfattr -x $i %s;done")
+    for image in dirty_images:
+        cmd = clean_cmd % (image, image)
+        process.run(cmd, shell=True)
+
+
 def check_chain_xml(disk_xml, chain_lst):
     """
     param disk_xml: disk xmltreefile
@@ -593,3 +627,8 @@ def run(test, params, env):
             restore_selinux = params.get('selinux_status_bak')
             libvirt.setup_or_cleanup_nfs(is_setup=False,
                                          restore_selinux=restore_selinux)
+        # Recover images xattr if having some
+        dirty_images = get_images_with_xattr(vm)
+        if dirty_images:
+            clean_images_with_xattr(dirty_images)
+            test.fail("VM's image(s) having xattr left")
