@@ -223,7 +223,7 @@ def check_snapslist(test, vm_name, options, option_dict, output,
                                  "diskspec", num)
                 else:
                     test.fail("Get wrong disk%d name %s"
-                              % num, dname)
+                              % (num, dname))
 
                 if option_disk.find('snapshot=') >= 0:
                     dsnap = disks[num].get('snapshot')
@@ -234,7 +234,7 @@ def check_snapslist(test, vm_name, options, option_dict, output,
                     else:
                         test.fail("Get wrong disk%d "
                                   "snapshot type %s" %
-                                  num, dsnap)
+                                  (num, dsnap))
 
             if option_disk.find('driver=') >= 0:
                 dtype = disks[num].find('driver').get('type')
@@ -243,7 +243,7 @@ def check_snapslist(test, vm_name, options, option_dict, output,
                                  "set in diskspec", num)
                 else:
                     test.fail("Get wrong disk%d driver "
-                              "type %s" % num, dtype)
+                              "type %s" % (num, dtype))
 
             if option_disk.find('file=') >= 0:
                 sfile = disks[num].find('source').get('file')
@@ -254,7 +254,7 @@ def check_snapslist(test, vm_name, options, option_dict, output,
                         os.unlink(sfile)
                 else:
                     test.fail("Get wrong disk%d source "
-                              "file %s" % num, sfile)
+                              "file %s" % (num, sfile))
 
     # For memspec check if the xml is same as setting
     # Also check if the mem file exists
