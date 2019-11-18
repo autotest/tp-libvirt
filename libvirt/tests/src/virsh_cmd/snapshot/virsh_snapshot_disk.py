@@ -189,8 +189,8 @@ def run(test, params, env):
             result = virsh.attach_disk(vm_name, source=img_path, target="vdf",
                                        extra=extra, debug=True)
             if result.exit_status:
-                test.cancel("Failed to attach disk %s to VM."
-                            "Detail: %s." % (img_path, result.stderr))
+                test.error("Failed to attach disk %s to VM."
+                           "Detail: %s." % (img_path, result.stderr))
 
         # Create snapshot.
         if snapshot_from_xml:
