@@ -111,7 +111,7 @@ def run(test, params, env):
         logging.debug(xml)
         if check == 'sound' and '<sound model' in xml:
             log_fail('Sound card should be removed')
-        if check == 'pcspk' and "<sound model='pcspk'" not in xml:
+        if check == 'pcspk' and output_mode == 'libvirt' and "<sound model='pcspk'" not in xml:
             log_fail('Sound card should be "pcspk"')
 
     def check_rhsrvany_md5(vmcheck):
