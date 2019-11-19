@@ -227,8 +227,8 @@ def set_blkio_parameter(test, params, cgstop):
         if status:
             if (libvirt_version.version_compare(4, 5, 0)
                     and "blkio device weight is valid only for cfq scheduler" in result.stderr):
-                logging.debug("cfq sheduler not used in current rhel8 kernel. "
-                              "So the failed is expected. "
+                logging.debug("cfq scheduler not used in current rhel8 kernel. "
+                              "So the failure is expected. "
                               "Detailed info can check bz1658890.")
             else:
                 test.fail(result.stderr)
