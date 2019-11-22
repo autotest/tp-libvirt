@@ -291,6 +291,10 @@ def qemu_spice_options(libvirt_vm):
     xml_passwd = get_graphic_passwd(libvirt_vm)
     if xml_passwd is not None:
         spice_dict['passwd'] = xml_passwd
+    if "disable-copy-paste" not in spice_opt:
+        spice_dict['disable-copy-paste'] = 'no'
+    else:
+        spice_dict['disable-copy-paste'] = 'yes'
     for key in spice_dict:
         logging.debug("%s: %s", key, spice_dict[key])
     return spice_dict, plaintext_channels, tls_channels
@@ -709,6 +713,7 @@ def get_expected_spice_options(params, networks, expected_result):
     playback_compression = params.get("playback_compression", "not_set")
     listen_type = params.get("spice_listen_type", "not_set")
     graphic_passwd = params.get("graphic_passwd")
+    copypaste = params.get("copypaste", "not_set")
 
     expected_port = expected_result['spice_port']
     expected_tls_port = expected_result['spice_tls_port']
@@ -754,6 +759,10 @@ def get_expected_spice_options(params, networks, expected_result):
         expected_opts['playback-compression'] = playback_compression
     if graphic_passwd:
         expected_opts['passwd'] = graphic_passwd
+    if copypaste == 'no':
+        expected_opts['disable-copy-paste'] = 'yes'
+    elif copypaste == 'yes':
+        expected_opts['disable-copy-paste'] = 'no'
 
     expected_result['spice_options'] = expected_opts
 
@@ -959,6 +968,7 @@ def generate_spice_graphic_xml(params, expected_result):
     graphic_passwd = params.get("graphic_passwd")
     spice_passwd_place = params.get("spice_passwd_place", "not_set")
     valid_time = params.get("valid_time")
+    copypaste = params.get("copypaste", "not_set")
 
     graphic = Graphics(type_name='spice')
 
@@ -985,6 +995,9 @@ def generate_spice_graphic_xml(params, expected_result):
 
     if playback_compression != 'not_set':
         graphic.playback_compression = playback_compression
+
+    if copypaste != 'not_set':
+        graphic.copypaste = copypaste
 
     channels = []
     if channels_str:
