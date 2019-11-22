@@ -32,6 +32,7 @@ from virttest.utils_test import libvirt
 from virttest.utils_test.libvirt import LibvirtNetwork
 from virttest.libvirt_xml.devices.graphics import Graphics
 from virttest.libvirt_xml.secret_xml import SecretXML
+from virttest.libvirt_xml import vm_xml
 
 from provider import libvirt_version
 
@@ -291,10 +292,6 @@ def qemu_spice_options(libvirt_vm):
     xml_passwd = get_graphic_passwd(libvirt_vm)
     if xml_passwd is not None:
         spice_dict['passwd'] = xml_passwd
-    if "disable-copy-paste" not in spice_opt:
-        spice_dict['disable-copy-paste'] = 'no'
-    else:
-        spice_dict['disable-copy-paste'] = 'yes'
     for key in spice_dict:
         logging.debug("%s: %s", key, spice_dict[key])
     return spice_dict, plaintext_channels, tls_channels
@@ -714,6 +711,7 @@ def get_expected_spice_options(params, networks, expected_result):
     listen_type = params.get("spice_listen_type", "not_set")
     graphic_passwd = params.get("graphic_passwd")
     copypaste = params.get("copypaste", "not_set")
+    filetransfer = params.get("filetransfer", "not_set")
 
     expected_port = expected_result['spice_port']
     expected_tls_port = expected_result['spice_tls_port']
@@ -763,6 +761,8 @@ def get_expected_spice_options(params, networks, expected_result):
         expected_opts['disable-copy-paste'] = 'yes'
     elif copypaste == 'yes':
         expected_opts['disable-copy-paste'] = 'no'
+    if filetransfer == 'yes':
+        expected_opts['disable-agent-file-xfer'] = 'no'
 
     expected_result['spice_options'] = expected_opts
 
@@ -969,6 +969,7 @@ def generate_spice_graphic_xml(params, expected_result):
     spice_passwd_place = params.get("spice_passwd_place", "not_set")
     valid_time = params.get("valid_time")
     copypaste = params.get("copypaste", "not_set")
+    filetransfer = params.get("filetransfer", "not_set")
 
     graphic = Graphics(type_name='spice')
 
@@ -997,7 +998,10 @@ def generate_spice_graphic_xml(params, expected_result):
         graphic.playback_compression = playback_compression
 
     if copypaste != 'not_set':
-        graphic.copypaste = copypaste
+        graphic.clipboard_copypaste = copypaste
+
+    if filetransfer != 'not_set':
+        graphic.filetransfer_enable = filetransfer
 
     channels = []
     if channels_str:
@@ -1254,6 +1258,20 @@ def create_secret(secret_uuid, secret_password):
     return encryption_uuid
 
 
+def check_xml(vm_name, filetransfer, test):
+    """
+    Check guest xml
+
+    :param vm_name: name of the VM domain
+    :param filetransfer: the attribute of filetransfer element
+    :param test: test object
+    """
+    vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    graphic = vmxml.xmltreefile.find('devices').find('graphics')
+    if graphic.find('filetransfer').get('enable') != filetransfer:
+        test.fail('The attribute of filetransfer error.')
+
+
 def run(test, params, env):
     """
     Test of libvirt SPICE related features.
@@ -1306,6 +1324,7 @@ def run(test, params, env):
     valid_time = params.get("valid_time")
     vnc_secret_uuid = params.get("vnc_secret_uuid", "not_set")
     secret_password = params.get("secret_password", "redhat")
+    filetransfer = params.get("filetransfer", "not_set")
 
     sockets = block_ports(params)
     networks = setup_networks(params, test)
@@ -1369,6 +1388,9 @@ def run(test, params, env):
             spice_opts, plaintext_channels, tls_channels = qemu_spice_options(vm)
             check_spice_result(spice_opts, plaintext_channels, tls_channels,
                                expected_result, all_ips, test)
+            # Check the attribute of filetransfer in guest xml
+            if filetransfer != 'not_set':
+                check_xml(vm_name, filetransfer, test)
             # Use remote-viewer to connect guest
             if remote_viewer_check:
                 rv_log_str = params.get("rv_log_str")
