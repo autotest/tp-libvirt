@@ -712,6 +712,7 @@ def get_expected_spice_options(params, networks, expected_result):
     graphic_passwd = params.get("graphic_passwd")
     copypaste = params.get("copypaste", "not_set")
     filetransfer = params.get("filetransfer", "not_set")
+    streaming_mode = params.get("streaming_mode", "not_set")
 
     expected_port = expected_result['spice_port']
     expected_tls_port = expected_result['spice_tls_port']
@@ -763,6 +764,8 @@ def get_expected_spice_options(params, networks, expected_result):
         expected_opts['disable-copy-paste'] = 'no'
     if filetransfer == 'yes':
         expected_opts['disable-agent-file-xfer'] = 'no'
+    if streaming_mode != 'not_set':
+        expected_opts['streaming-video'] = streaming_mode
 
     expected_result['spice_options'] = expected_opts
 
@@ -970,6 +973,7 @@ def generate_spice_graphic_xml(params, expected_result):
     valid_time = params.get("valid_time")
     copypaste = params.get("copypaste", "not_set")
     filetransfer = params.get("filetransfer", "not_set")
+    streaming_mode = params.get("streaming_mode", "not_set")
 
     graphic = Graphics(type_name='spice')
 
@@ -1002,6 +1006,9 @@ def generate_spice_graphic_xml(params, expected_result):
 
     if filetransfer != 'not_set':
         graphic.filetransfer_enable = filetransfer
+
+    if streaming_mode != 'not_set':
+        graphic.streaming_mode = streaming_mode
 
     channels = []
     if channels_str:
