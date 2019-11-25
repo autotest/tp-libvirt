@@ -1,7 +1,7 @@
 import logging
+import re
 
 from avocado.utils import process
-
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -53,8 +53,11 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
 
     cpu_mode = params.get('cpu_mode')
+    cpu_vendor_id = params.get("vendor_id")
     expected_str_before_startup = params.get("expected_str_before_startup")
     expected_str_after_startup = params.get("expected_str_after_startup")
+    expected_qemuline = params.get("expected_qemuline")
+    cmd_in_guest = params.get("cmd_in_guest")
     test_operations = params.get("test_operations")
     status_error = "yes" == params.get("status_error", "no")
     err_msg = params.get("err_msg")
@@ -62,6 +65,13 @@ def run(test, params, env):
     bkxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     try:
+        if cpu_vendor_id:
+            output = virsh.capabilities(debug=True)
+            host_vendor = re.findall(r'<vendor>(\w+)<', output)[0]
+            if not re.search(host_vendor, cpu_vendor_id, re.IGNORECASE):
+                test.cancel("Not supported cpu vendor_id {} on this host."
+                            .format(cpu_vendor_id))
+
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
         # Create cpu xml for test
@@ -71,6 +81,8 @@ def run(test, params, env):
             cpu_xml = vm_xml.VMCPUXML()
         if cpu_mode:
             cpu_xml.mode = cpu_mode
+        if cpu_vendor_id:
+            cpu_xml.vendor_id = cpu_vendor_id
 
         # Update vm's cpu
         vmxml.cpu = cpu_xml
@@ -91,6 +103,16 @@ def run(test, params, env):
 
         if expected_str_after_startup:
             libvirt.check_dumpxml(vm, expected_str_after_startup)
+
+        if expected_qemuline:
+            libvirt.check_qemu_cmd_line(expected_qemuline)
+
+        if cmd_in_guest:
+            vm_session = vm.wait_for_login()
+            if vm_session.cmd_status(cmd_in_guest):
+                vm_session.close()
+                test.fail("Failed to run '%s' in vm." % cmd_in_guest)
+            vm_session.close()
 
     finally:
         logging.debug("Recover test environment")
