@@ -455,7 +455,8 @@ def get_expected_channels(params, expected_result):
     Predict SPICE channels from parameters.
     """
     default_mode = params.get("defaultMode", "not_set")
-    channels_str = params.get("channels", "")
+    secure_channels = params.get("secure_channels", "not_set")
+    insecure_channels = params.get("insecure_channels", "not_set")
     tls_channels = []
     plaintext_channels = []
     if default_mode == 'secure':
@@ -463,13 +464,12 @@ def get_expected_channels(params, expected_result):
     elif default_mode == 'insecure':
         plaintext_channels.append('default')
 
-    if channels_str:
-        for channel_str in channels_str.strip().split(','):
-            name, mode = channel_str.split(':')
-            if mode == 'secure':
-                tls_channels.append(name)
-            elif mode == 'insecure':
-                plaintext_channels.append(name)
+    if secure_channels != 'not_set':
+        for channel_name in secure_channels.strip().split(':'):
+            tls_channels.append(channel_name)
+    if insecure_channels != 'not_set':
+        for channel_name in insecure_channels.strip().split(':'):
+            plaintext_channels.append(channel_name)
 
     logging.debug("tls_channels: %s", tls_channels)
     logging.debug("plaintext_channels: %s", plaintext_channels)
@@ -960,7 +960,8 @@ def generate_spice_graphic_xml(params, expected_result):
     """
     autoport = params.get("spice_autoport", "yes")
     default_mode = params.get("defaultMode", "not_set")
-    channels_str = params.get("channels", "")
+    secure_channels = params.get("secure_channels", "not_set")
+    insecure_channels = params.get("insecure_channels", "not_set")
     port = params.get("spice_port", "not_set")
     tls_port = params.get("spice_tlsPort", "not_set")
     image_compression = params.get("image_compression", "not_set")
@@ -1011,10 +1012,12 @@ def generate_spice_graphic_xml(params, expected_result):
         graphic.streaming_mode = streaming_mode
 
     channels = []
-    if channels_str:
-        for channel_str in channels_str.strip().split(','):
-            name, mode = channel_str.split(':')
-            channels.append({'name': name, 'mode': mode})
+    if secure_channels != 'not_set':
+        for secure_name in secure_channels.strip().split(':'):
+            channels.append({'name': secure_name, 'mode': 'secure'})
+    if insecure_channels != 'not_set':
+        for insecure_name in insecure_channels.strip().split(':'):
+            channels.append({'name': insecure_name, 'mode': 'insecure'})
     graphic.channel = channels
 
     if listen_type == 'network':
@@ -1279,6 +1282,32 @@ def check_xml(vm_name, filetransfer, test):
         test.fail('The attribute of filetransfer error.')
 
 
+def check_domdisplay_result(graphic_type, vm_name, expected_result, test):
+    """
+    Check domdisplay result
+
+    :param graphic_type: graphic type
+    :param vm_name: name of the VM domain
+    :param expected_result: expected result
+    :param test: test object
+    """
+    domdisplay_out = virsh.domdisplay(vm_name, debug=True)
+    if domdisplay_out.exit_status:
+        test.fail("Fail to get domain display info. Error:"
+                  "%s." % domdisplay_out.stderr.strip())
+    expected_uri = "%s://" % graphic_type
+    if graphic_type == 'spice':
+        expected_uri += "%s:" % expected_result['spice_options']['addr']
+        expected_uri += "%s" % expected_result['spice_port']
+        if expected_result['spice_tls_port'] != 'not_set':
+            expected_uri += "?tls-port=%s" % expected_result['spice_tls_port']
+    if graphic_type == 'vnc':
+        expected_uri += "%s:" % expected_result['vnc_options']['addr']
+        expected_uri += "%s" % expected_result['vnc_port']
+    if domdisplay_out.stdout.strip() != expected_uri:
+        test.fail("Use domdisplay to check URI failed. Expected uri: %s" % expected_uri)
+
+
 def run(test, params, env):
     """
     Test of libvirt SPICE related features.
@@ -1332,6 +1361,8 @@ def run(test, params, env):
     vnc_secret_uuid = params.get("vnc_secret_uuid", "not_set")
     secret_password = params.get("secret_password", "redhat")
     filetransfer = params.get("filetransfer", "not_set")
+    default_mode = params.get("defaultMode", "not_set")
+    insecure_channels = params.get("insecure_channels", "not_set")
 
     sockets = block_ports(params)
     networks = setup_networks(params, test)
@@ -1398,6 +1429,11 @@ def run(test, params, env):
             # Check the attribute of filetransfer in guest xml
             if filetransfer != 'not_set':
                 check_xml(vm_name, filetransfer, test)
+            # When defaultMode=secure and all channels=insecure, use domdisplay to check uri
+            if default_mode == 'secure' and insecure_channels != 'not_set':
+                channel_name = insecure_channels.strip().split(':')
+                if len(channel_name) == 8:
+                    check_domdisplay_result('spice', vm_name, expected_result, test)
             # Use remote-viewer to connect guest
             if remote_viewer_check:
                 rv_log_str = params.get("rv_log_str")
