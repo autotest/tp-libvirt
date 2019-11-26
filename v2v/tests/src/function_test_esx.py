@@ -165,8 +165,7 @@ def run(test, params, env):
         """
         file_path = {
             'rhev-apt.exe': r'C:\rhev-apt.exe',
-            'rhsrvany.exe': r'"C:\Program Files\Guestfs\Firstboot\rhsrvany.exe"'
-        }
+            'rhsrvany.exe': r'"C:\Program Files\Guestfs\Firstboot\rhsrvany.exe"'}
         for key in file_path:
             status = vmcheck.session.cmd_status('dir %s' % file_path[key])
             if status == 0:
@@ -177,14 +176,88 @@ def run(test, params, env):
     def check_file_architecture(vmcheck):
         """
         Check the 3rd party module info
+
         :param vmcheck: VMCheck object for vm checking
         """
         content = vmcheck.session.cmd('uname -r').strip()
-        status = vmcheck.session.cmd_status('rpm -qf /lib/modules/%s/fileaccess/fileaccess_mod.ko ' % content)
+        status = vmcheck.session.cmd_status(
+            'rpm -qf /lib/modules/%s/fileaccess/fileaccess_mod.ko ' %
+            content)
         if status == 0:
             log_fail('3rd party module info is not correct')
         else:
-            logging.info('file /lib/modules/%s/fileaccess/fileaccess_mod.ko is not owned by any package' % content)
+            logging.info(
+                'file /lib/modules/%s/fileaccess/fileaccess_mod.ko is not owned by any package' %
+                content)
+
+    def check_ogac(vmcheck):
+        """
+        Check qemu-guest-agent service in VM
+
+        :param vmcheck: VMCheck object for vm checking
+        """
+        def get_pkgs(pkg_path):
+            """
+            Get all qemu-guest-agent pkgs
+            """
+            pkgs = []
+            for _, _, files in os.walk(pkg_path):
+                for file_name in files:
+                    pkgs.append(file_name)
+            return pkgs
+
+        def get_pkg_version_vm():
+            """
+            Get qemu-guest-agent version in VM
+            """
+            vender = vmcheck.get_vm_os_vendor()
+            if vender in ['Ubuntu', 'Debian']:
+                cmd = 'dpkg -l qemu-guest-agent'
+            else:
+                cmd = 'rpm -q qemu-guest-agent'
+            _, output = vmcheck.run_cmd(cmd)
+
+            pkg_ver_ptn = [r'qemu-guest-agent +[0-9]+:(.*?dfsg.*?) +',
+                           r'qemu-guest-agent-(.*?)\.x86_64']
+
+            for ptn in pkg_ver_ptn:
+                if re.search(ptn, output):
+                    return re.search(ptn, output).group(1)
+            return ''
+
+        mount_point = utils_v2v.v2v_mount(
+            os.getenv('VIRTIO_WIN'),
+            'rhv_tools_setup_iso',
+            fstype='iso9660')
+        params['tmp_mount_point'] = mount_point
+        qemu_guest_agent_dir = os.path.join(mount_point, 'linux')
+        all_pkgs = get_pkgs(qemu_guest_agent_dir)
+        logging.debug('All packages in qemu-guest-agent-iso: %s' % all_pkgs)
+        vm_pkg_ver = get_pkg_version_vm()
+        logging.debug('qemu-guest-agent verion in vm: %s' % vm_pkg_ver)
+
+        # If qemu-guest-agent version in VM is higher than the pkg in qemu-guest-agent-iso,
+        # v2v will not update the qemu-guest-agent version and report a warning.
+        #
+        # e.g.
+        # virt-v2v: warning: failed to install QEMU Guest Agent: command:         package
+        # qemu-guest-agent-10:2.12.0-3.el7.x86_64 (which is newer than
+        # qemu-guest-agent-10:2.12.0-2.el7.x86_64) is already installed
+        if not any([vm_pkg_ver in pkg for pkg in all_pkgs]):
+            logging.debug(
+                'Wrong qemu-guest-agent version, maybe it is higher than package version in ISO')
+            logging.info(
+                'Unexpected qemu-guest-agent version, set v2v log checking')
+            expect_msg_ptn = r'virt-v2v: warning: failed to install QEMU Guest Agent.*?is newer than.*? is already installed'
+            params.update({'msg_content': expect_msg_ptn, 'expect_msg': 'yes'})
+
+        # Check the service status of qemu-guest-agent in VM
+        status_ptn = r'Active: active \(running\)|qemu-ga \(pid +[0-9]+\) is running'
+        cmd = 'service qemu-ga status;systemctl status qemu-guest-agent'
+        _, output = vmcheck.run_cmd(cmd)
+
+        if not re.search(status_ptn, output):
+            log_fail('qemu-guest-agent service exception')
 
     def check_result(result, status_error):
         """
@@ -227,6 +300,8 @@ def run(test, params, env):
                 check_rhev_file_exist(vmchecker.checker)
             if checkpoint == 'file_architecture':
                 check_file_architecture(vmchecker.checker)
+            if checkpoint == 'ogac':
+                check_ogac(vmchecker.checker)
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
         log_check = utils_v2v.check_log(params, output)
@@ -335,6 +410,12 @@ def run(test, params, env):
             os.environ['http_proxy'] = http_proxy
             os.environ['https_proxy'] = https_proxy
 
+        if checkpoint == 'ogac':
+            rhv_iso_path = '/usr/share/rhv-guest-tools-iso/rhv-tools-setup.iso'
+            os.environ['VIRTIO_WIN'] = rhv_iso_path
+            if not os.path.isfile(os.getenv('VIRTIO_WIN')):
+                test.fail('%s does not exist' % os.getenv('VIRTIO_WIN'))
+
         if checkpoint == 'empty_cdrom':
             virsh_dargs = {'uri': remote_uri, 'remote_ip': remote_host,
                            'remote_user': 'root', 'remote_pwd': vpx_passwd,
@@ -348,6 +429,13 @@ def run(test, params, env):
         check_result(v2v_result, status_error)
 
     finally:
+        if checkpoint == 'ogac':
+            if os.path.exists(params['tmp_mount_point']):
+                utils_misc.umount(
+                    os.getenv('VIRTIO_WIN'),
+                    params['tmp_mount_point'],
+                    'iso9660')
+            os.environ.pop('VIRTIO_WIN')
         if params.get('vmchecker'):
             params['vmchecker'].cleanup()
         if output_mode == 'libvirt':
