@@ -14,6 +14,7 @@ from virttest.libvirt_xml import pool_xml
 from provider import libvirt_version
 from virttest import element_tree as ET
 from virttest import data_dir
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -72,6 +73,7 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     vol_path = os.path.join(pool_target, vol_name)
     ip_protocal = params.get('ip_protocal', 'ipv4')
+    source_protocol_ver = params.get('source_protocol_ver', "no")
 
     if not libvirt_version.version_compare(1, 0, 0):
         if pool_type == "gluster":
@@ -81,6 +83,8 @@ def run(test, params, env):
         if pool_type == "iscsi-direct":
             test.cancel("iSCSI-direct pool is not supported in current"
                         "libvirt version.")
+    if source_protocol_ver == "yes" and not libvirt_version.version_compare(4, 5, 0):
+        test.cancel("source-protocol-ver is not supported on current version.")
 
     def check_pool_list(pool_name, option="--all", expect_error=False):
         """
@@ -181,7 +185,7 @@ def run(test, params, env):
               'source_name': source_name, 'source_path': source_path,
               'source_format': source_format, 'persistent': True,
               'ip_protocal': ip_protocal, 'emulated_image': "emulated-image",
-              'pool_target': pool_target, 'iscsi_initiator': iscsi_initiator}
+              'pool_target': pool_target, 'iscsi_initiator': iscsi_initiator, 'source_protocol_ver': source_protocol_ver}
     params.update(kwargs)
 
     try:
