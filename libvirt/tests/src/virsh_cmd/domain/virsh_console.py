@@ -138,7 +138,7 @@ def check_disconnect_on_shutdown(command, status_error, login_user, login_passwd
                     logging.debug("Got Shell prompt -- logged in")
                     break
 
-            session.cmd_output(console_cmd)
+            session.cmd_output(console_cmd, timeout=120)
             # On newer OS like RHEL7, 'shutdown -h now' will not exit before
             # machine shutdown. But on RHEL6, 'shutdown -h now' will exit and
             # allow user to execute another command. This next command will not
