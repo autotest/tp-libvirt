@@ -4,6 +4,8 @@ import time
 from virttest import virsh
 from virttest import utils_package
 from virttest import utils_test
+from virttest.utils_test import libvirt
+from virttest.libvirt_xml import vm_xml
 
 from provider import libvirt_version
 
@@ -35,6 +37,8 @@ def run(test, params, env):
     uri = params.get("virsh_uri")
     simultaneous = params.get("sendkey_simultaneous", "yes") == "yes"
     unprivileged_user = params.get('unprivileged_user')
+    is_crash = ("yes" == params.get("is_crash", "no"))
+    crash_dir = "/var/crash"
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
             unprivileged_user = 'testacl'
@@ -57,6 +61,7 @@ def run(test, params, env):
 
     vm = env.get_vm(vm_name)
     vm.wait_for_login().close()
+    vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     # Boot the guest in text only mode so that send-key commands would succeed
     # in creating a file
@@ -77,6 +82,13 @@ def run(test, params, env):
                 vm.destroy()
                 vm.start()
                 session = vm.wait_for_login()
+        if is_crash:
+            session.cmd("rm -rf {0}; mkdir {0}".format(crash_dir))
+            libvirt.update_on_crash(vm_name, "destroy")
+            libvirt.add_panic_device(vm_name)
+            if not vm.is_alive():
+                vm.start()
+            session = vm.wait_for_login()
         LOG_FILE = "/var/log/messages"
         if "ubuntu" in vm.get_distro().lower():
             LOG_FILE = "/var/log/syslog"
@@ -188,11 +200,20 @@ def run(test, params, env):
                     else:
                         get_status = 0
                         session.close()
+                # crash
+                elif is_crash:
+                    dom_state = virsh.domstate(vm_name, "--reason").stdout.strip()
+                    logging.debug("domain state is %s" % dom_state)
+                    if "crashed" in dom_state:
+                        get_status = 0
+                    else:
+                        get_status = 1
 
                 if get_status == 0:
                     timeout = -1
                 else:
-                    session.cmd("echo \"virsh sendkey waiting\" >> %s" % LOG_FILE)
+                    if not is_crash:
+                        session.cmd("echo \"virsh sendkey waiting\" >> %s" % LOG_FILE)
                     time.sleep(1)
                     timeout = timeout - 1
 
@@ -210,3 +231,4 @@ def run(test, params, env):
             session = vm.wait_for_login()
             session.cmd("rm -rf %s" % create_file)
         session.close()
+        vmxml_backup.sync()
