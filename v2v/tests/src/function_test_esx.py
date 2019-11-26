@@ -2,9 +2,7 @@ import os
 import logging
 import re
 
-from avocado.utils import process
 
-from virttest import data_dir
 from virttest import utils_misc
 from virttest import utils_sasl
 from virttest import utils_v2v
@@ -389,19 +387,6 @@ def run(test, params, env):
         if checkpoint.startswith('root_') and checkpoint != 'root_ask':
             root_option = params.get('root_option')
             v2v_params['v2v_opts'] += ' --root %s' % root_option
-        if checkpoint == 'copy_to_local':
-            esx_password = params.get('esx_password')
-            esx_passwd_file = os.path.join(
-                data_dir.get_tmp_dir(), "esx_passwd")
-            logging.info('Prepare esx password file')
-            with open(esx_passwd_file, 'w') as pwd_f:
-                pwd_f.write(esx_password)
-            esx_uri = 'esx://root@%s/?no_verify=1' % esx_ip
-            copy_cmd = 'virt-v2v-copy-to-local -ic %s %s --password-file %s' %\
-                       (esx_uri, vm_name, esx_passwd_file)
-            process.run(copy_cmd)
-            v2v_params['input_mode'] = 'libvirtxml'
-            v2v_params['input_file'] = '%s.xml' % vm_name
         if checkpoint == 'with_proxy':
             http_proxy = params.get('esx_http_proxy')
             https_proxy = params.get('esx_https_proxy')
