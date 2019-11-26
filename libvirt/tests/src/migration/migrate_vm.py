@@ -10,6 +10,7 @@ from subprocess import PIPE
 from subprocess import Popen
 
 from avocado.core import exceptions
+from avocado.core import data_dir
 from avocado.utils import process
 from avocado.utils import cpu as cpuutil
 
@@ -230,7 +231,7 @@ def migrate_vm(test, params):
     su_user = params.get("su_user", "")
     auth_user = params.get("server_user")
     auth_pwd = params.get("server_pwd")
-    virsh_patterns = params.get("patterns_virsh_cmd", ".*100\s%.*")
+    virsh_patterns = params.get("patterns_virsh_cmd", r".*100\s%.*")
     status_error = params.get("status_error", "no")
     timeout = int(params.get("migration_timeout", 30))
     extra_opt = params.get("extra_opt", "")
@@ -443,7 +444,7 @@ def get_cpu_xml_from_virsh_caps(test, runner=None):
     :param runner: the runner object to execute commands
     :raise: test.fail if test fails
     """
-    cmd = "virsh capabilities | awk '/<cpu>/,/<\/cpu>/'"
+    cmd = "virsh capabilities | awk '/<cpu>/,/<\\/cpu>/'"
     out = ""
     if not runner:
         out = to_text(process.system_output(cmd, shell=True))
@@ -500,7 +501,7 @@ def get_same_processor(test, server_ip, server_user, server_pwd, verbose):
     status, output = run_remote_cmd(cmd, server_ip, server_user, server_pwd)
     if status:
         test.fail("Failed to run '%s' on the remote: %s" % (cmd, output))
-    remote_processors = re.findall('processor\s+: (\d+)', output)
+    remote_processors = re.findall(r'processor\s+: (\d+)', output)
     if verbose:
         logging.debug("Local processors: %s", local_processors)
         logging.debug("Remote processors: %s", remote_processors)
@@ -1055,6 +1056,68 @@ def read_domjobinfo(test, domjobinfo):
     return jobinfo_dict
 
 
+def get_virtual_size(disk_source):
+    """
+    Get the virtual size of image.
+    :param disk_source: path to the image
+    :return: virtual size, e.g. 10G
+    """
+    result = process.run("qemu-img info %s" % disk_source, ignore_status=False)
+    size_pattern = r"virtual size: (\d+\w)"
+    return re.findall(size_pattern, to_text(result.stdout))[0]
+
+
+def redefine_vm_with_iscsi_target(host_ip, disk_format,
+                                  iscsi_transport, target, vm_name):
+    """
+    Redefine vm to use iscsi target for vm image
+    :param host_ip: IP of the iscsi host
+    :param disk_format: image format, e.g. raw
+    :param iscsi_transport: transport protocol for host
+    :param target: iscsi target
+    :param vm_name: vm name
+    """
+    build_disk_xml(vm_name, disk_format, host_ip, "iscsi",
+                   target, transport=iscsi_transport)
+    vmxml_iscsi = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    curr_vm_xml = to_text(process.system_output('cat %s' % vmxml_iscsi.xml, shell=True))
+    logging.debug("The current VM XML contents: \n%s", curr_vm_xml)
+
+
+def update_host_ip(client_ip, ipv6_addr_src):
+    """
+    Use ipv6_addr_src as host_ip if given
+    :param client_ip: Migration client ip (the host initiating the migration)
+    :param ipv6_addr_src: The vm source source host ipv6 ip
+    :return: selected host ip
+    """
+    return ipv6_addr_src if ipv6_addr_src else client_ip
+
+
+def create_image_on_iscsi(test, vm, disk_source, disk_format, emulated_image):
+    """
+    Make vm image available to the iscsi target backstore
+    :param test: test instance for reporting
+    :param vm: vm for migration
+    :param disk_source: vm image source path
+    :param disk_format: image target format
+    :param emulated_image: fileio backstore file target
+    """
+    tmpdir = data_dir.get_tmp_dir()
+    emulated_path = os.path.join(tmpdir, emulated_image)
+    if vm.is_alive():
+        vm.destroy()
+    cmd = "qemu-img convert %s -O %s %s" % (disk_source, disk_format, emulated_path)
+
+    logging.debug("Running %s", cmd)
+    result = process.run(cmd, shell=True, ignore_status=True)
+    output = to_text(result.stdout)
+    logging.debug("Result: %s", output)
+    if result.exit_status:
+        test.error("Couldn't prepare vm image on iscsi, %s", output)
+    logging.debug("Stopped VM and make it available on iscsi block device %s", emulated_path)
+
+
 def run(test, params, env):
     """
     Test remote access with TCP, TLS connection
@@ -1317,6 +1380,9 @@ def run(test, params, env):
     logging.debug("The current VM XML contents: \n%s", curr_vm_xml)
     orig_image_name = os.path.basename(disk_source)
 
+    # define gluster_disk early in case needed in finally:
+    gluster_disk = "yes" == test_dict.get("gluster_disk")
+
     # Set the pool target using the path of first disk
     test_dict["pool_target"] = os.path.dirname(disk_source)
 
@@ -1347,22 +1413,17 @@ def run(test, params, env):
 
     try:
         if iscsi_setup:
+            fileio_name = "emulated-iscsi"
+            img_vsize = get_virtual_size(disk_source)
             target = libvirt.setup_or_cleanup_iscsi(is_setup=True, is_login=False,
-                                                    emulated_image="emulated-iscsi",
-                                                    portal_ip=portal_ip)
+                                                    emulated_image=fileio_name,
+                                                    portal_ip=portal_ip,
+                                                    image_size=img_vsize)
             logging.debug("Created iscsi target: %s", target)
-            host_ip = None
-            ipv6_addr_src = params.get("ipv6_addr_src")
-            if ipv6_addr_src:
-                host_ip = ipv6_addr_src
-            else:
-                host_ip = client_ip
-            build_disk_xml(vm_name, disk_format, host_ip, disk_src_protocol,
-                           target, transport=iscsi_transport)
-
-            vmxml_iscsi = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-            curr_vm_xml = to_text(process.system_output('cat %s' % vmxml_iscsi.xml, shell=True))
-            logging.debug("The current VM XML contents: \n%s", curr_vm_xml)
+            host_ip = update_host_ip(client_ip, params.get("ipv6_addr_src"))
+            redefine_vm_with_iscsi_target(host_ip, disk_format,
+                                          iscsi_transport, target, vm_name)
+            create_image_on_iscsi(test, vm, disk_source, disk_format, fileio_name)
 
         del_vm_video_dev = "yes" == test_dict.get("del_vm_video_dev", "no")
         if del_vm_video_dev:
@@ -1472,7 +1533,6 @@ def run(test, params, env):
             remote_image_list.append(target_disk_image)
 
         # Process domain disk device parameters
-        gluster_disk = "yes" == test_dict.get("gluster_disk")
         vol_name = test_dict.get("vol_name")
         default_pool = test_dict.get("default_pool", "")
 
@@ -1559,7 +1619,7 @@ def run(test, params, env):
                 fp.close()
                 cpu_xml_cxt = to_text(process.system_output("cat %s" % cpu_xml, shell=True))
                 logging.debug("The CPU XML contents: \n%s", cpu_xml_cxt)
-                cmd = "sed -i '/<vendor>.*<\/vendor>/d' %s" % cpu_xml
+                cmd = "sed -i '/<vendor>.*<\\/vendor>/d' %s" % cpu_xml
                 process.system(cmd, shell=True)
                 cpu_xml_cxt = to_text(process.system_output("cat %s" % cpu_xml, shell=True))
                 logging.debug("The current CPU XML contents: \n%s", cpu_xml_cxt)
@@ -1573,7 +1633,7 @@ def run(test, params, env):
                 vm_new_xml_cxt = to_text(process.system_output("cat %s" % vm_new_xml, shell=True))
                 logging.debug("The current VM XML contents: \n%s", vm_new_xml_cxt)
                 cpuxml = output
-                cmd = 'sed -i "/<\/features>/ a\%s" %s' % (cpuxml, vm_new_xml)
+                cmd = 'sed -i "/<\\/features>/ a\\%s" %s' % (cpuxml, vm_new_xml)
                 logging.debug("The command: %s", cmd)
                 process.system(cmd, shell=True)
                 vm_new_xml_cxt = to_text(process.system_output("cat %s" % vm_new_xml, shell=True))
