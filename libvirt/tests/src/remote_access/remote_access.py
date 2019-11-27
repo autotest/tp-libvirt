@@ -122,6 +122,7 @@ def cleanup(objs_list):
     for obj in objs_list:
         obj.auto_recover = True
         obj.__del__()
+        obj.auto_recover = False
 
 
 def run(test, params, env):
