@@ -789,7 +789,9 @@ def run(test, params, env):
     params["driver_cache"] = disk_cache
     unsafe_test = False
     if options.count("unsafe") and disk_cache not in ["none", "directsync"]:
-        unsafe_test = True
+        if not (libvirt_version.version_compare(5, 6, 0) and
+           utils_misc.compare_qemu_version(4, 0, 0, False)):
+            unsafe_test = True
 
     migrate_setup = None
     nfs_client = None
