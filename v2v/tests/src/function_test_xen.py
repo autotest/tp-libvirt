@@ -234,6 +234,8 @@ def run(test, params, env):
 
         # Build rhev related options
         if output_mode == 'rhev':
+            # To RHV doesn't support 'qcow2' right now
+            v2v_params['output_format'] = 'raw'
             # create different sasl_user name for different job
             params.update({'sasl_user': params.get("sasl_user") +
                            utils_misc.generate_random_string(3)})
@@ -281,7 +283,7 @@ def run(test, params, env):
             blklist = virsh.domblklist(vm_name, uri=uri).stdout.split('\n')
             logging.debug('domblklist %s:\n%s', vm_name, blklist)
             for line in blklist:
-                if line.startswith(('hda', 'vda', 'sda', 'xvda')):
+                if line.strip().startswith(('hda', 'vda', 'sda', 'xvda')):
                     params['remote_disk_image'] = line.split()[-1]
                     break
             # Local path of disk image
@@ -337,8 +339,6 @@ def run(test, params, env):
                                                 params['img_path'], xml_file)
                 process.run(cmd)
                 logging.debug(process.run('cat %s' % xml_file).stdout_text)
-            if checkpoint == 'format_convert':
-                v2v_params['output_format'] = 'qcow2'
         if checkpoint == 'ssh_banner':
             session = remote.remote_login("ssh", xen_host, "22", "root",
                                           xen_host_passwd, "#")
