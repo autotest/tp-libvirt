@@ -53,7 +53,7 @@ def run(test, params, env):
     pvt = utlv.PoolVolumeTest(test, params)
     v2v_opts = params.get('v2v_opts', '-v -x')
     v2v_timeout = int(params.get('v2v_timeout', 3600))
-    skip_check = 'yes' == params.get('skip_check', 'no')
+    skip_vm_check = params.get('skip_vm_check', 'no')
     status_error = 'yes' == params.get('status_error', 'no')
     checkpoint = params.get('checkpoint', '')
     debug_kernel = 'debug_kernel' == checkpoint
@@ -538,9 +538,7 @@ def run(test, params, env):
         """
         utlv.check_exit_status(result, status_error)
         output = result.stdout + result.stderr
-        if skip_check:
-            logging.info('Skip checking vm after conversion')
-        elif not status_error:
+        if not status_error:
             if output_mode == 'rhev':
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                     timeout=v2v_timeout):
@@ -553,7 +551,7 @@ def run(test, params, env):
             # Check guest following the checkpoint document after convertion
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
-            if params.get('skip_check') != 'yes':
+            if params.get('skip_vm_check') != 'yes':
                 ret = vmchecker.run()
                 if len(ret) == 0:
                     logging.info("All common checkpoints passed")
