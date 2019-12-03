@@ -37,7 +37,7 @@ def run(test, params, env):
     output_mode = params.get('output_mode')
     v2v_timeout = int(params.get('v2v_timeout', 1200))
     status_error = 'yes' == params.get('status_error', 'no')
-    skip_check = 'yes' == params.get('skip_check', 'no')
+    skip_vm_check = params.get('skip_vm_check', 'no')
     skip_reason = params.get('skip_reason')
     pool_name = params.get('pool_name', 'v2v_test')
     pool_type = params.get('pool_type', 'dir')
@@ -149,9 +149,7 @@ def run(test, params, env):
         """
         libvirt.check_exit_status(result, status_error)
         output = result.stdout + result.stderr
-        if skip_check:
-            logging.info('Skip checking vm after conversion: %s' % skip_reason)
-        elif not status_error and checkpoint != 'vdsm':
+        if not status_error and checkpoint != 'vdsm':
             if output_mode == 'rhev':
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                     timeout=v2v_timeout):
@@ -165,9 +163,12 @@ def run(test, params, env):
             logging.info('Checking common checkpoints for v2v')
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
-            ret = vmchecker.run()
-            if len(ret) == 0:
-                logging.info("All common checkpoints passed")
+            if params.get('skip_vm_check') != 'yes':
+                ret = vmchecker.run()
+                if len(ret) == 0:
+                    logging.info("All common checkpoints passed")
+            else:
+                logging.info('Skip checking vm after conversion: %s' % skip_reason)
             # Check specific checkpoints
             if checkpoint == 'console_xvc0':
                 check_grub_file(vmchecker.checker, 'console_xvc0')
