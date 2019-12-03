@@ -414,8 +414,8 @@ def run(test, params, env):
         check_result(v2v_result, status_error)
 
     finally:
-        if checkpoint == 'ogac':
-            if os.path.exists(params['tmp_mount_point']):
+        if checkpoint == 'ogac' and params.get('tmp_mount_point'):
+            if os.path.exists(params.get('tmp_mount_point')):
                 utils_misc.umount(
                     os.getenv('VIRTIO_WIN'),
                     params['tmp_mount_point'],

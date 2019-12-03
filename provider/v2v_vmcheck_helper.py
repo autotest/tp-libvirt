@@ -272,8 +272,6 @@ class VMChecker(object):
         if vmxml_graphic_type != expect_graphic:
             err_msg = "Not find %s type graphic in VM XML" % expect_graphic
             self.log_err(err_msg)
-        else:
-            logging.info("PASS")
 
         logging.info("Checking video model type in VM XML")
         expect_video = self.get_expect_video_model()
@@ -283,8 +281,6 @@ class VMChecker(object):
         if vmxml_video_type != expect_video:
             err_msg = "Not find %s type video in VM XML" % expect_video
             self.log_err(err_msg)
-        else:
-            logging.info("PASS")
 
         logging.info("Checking boot os info in VM XML")
         chipset, bootinfo, secboot = self.get_expected_boottype(self.boottype)
@@ -316,20 +312,9 @@ class VMChecker(object):
         os_info = self.checker.get_vm_os_info()
         os_vendor = self.checker.get_vm_os_vendor()
         logging.info("OS: %s", (os_info))
-        if os_vendor != 'Red Hat':
-            logging.warn("Skip non-RHEL VM check")
+        if os_vendor not in ['Red Hat', 'SUSE', 'Ubuntu', 'Debian']:
+            logging.warn("Skip %s VM check" % os_vendor)
             return
-        try:
-            os_version = re.search(r'(\d\.?\d?)', os_info).group(1).split('.')
-            dist_major = int(os_version[0])
-        except Exception as e:
-            err_msg = "Fail to get OS distribution: %s" % e
-            self.log_err(err_msg)
-        if dist_major < 4:
-            logging.warning("Skip unsupported distribution check")
-            return
-        else:
-            logging.info("PASS")
 
         # Check OS kernel
         logging.info("Checking VM kernel")
@@ -338,8 +323,6 @@ class VMChecker(object):
         if re.search('xen', kernel_version, re.IGNORECASE):
             err_msg = "xen kernel still exist after convert"
             self.log_err(err_msg)
-        else:
-            logging.info("PASS")
 
         # Check virtio module
         logging.info("Checking virtio kernel modules")
@@ -347,8 +330,6 @@ class VMChecker(object):
         if not re.search("virtio", modules):
             err_msg = "Not find virtio module"
             self.log_err(err_msg)
-        else:
-            logging.info("PASS")
 
         # Check boottype of the guest
         self.check_vm_boottype()
@@ -356,34 +337,35 @@ class VMChecker(object):
         # Check virtio PCI devices
         logging.info("Checking virtio PCI devices")
         pci_devs = self.checker.get_vm_pci_list()
-        virtio_devs = ["Virtio network device", "Virtio block device"]
-        if self.target != "ovirt":
-            virtio_devs.append("Virtio memory balloon")
+        virtio_devs = ["Virtio network device",
+                       "Virtio block device",
+                       "Virtio memory balloon",
+                       "Virtio RNG"]
         for dev in virtio_devs:
             if not re.search(dev, pci_devs, re.IGNORECASE):
                 err_msg = "Not find %s" % dev
                 self.log_err(err_msg)
-        else:
-            logging.info("PASS")
 
         # Check virtio disk partition
         logging.info("Checking virtio disk partition")
         if not self.checker.is_disk_virtio():
             err_msg = "Not found virtio disk"
             self.log_err(err_msg)
-        if not self.checker.is_uefi_guest() and not self.checker.get_grub_device():
-            err_msg = "Not find vd? in device.map"
-            if self.hypervisor != 'kvm':
-                self.log_err(err_msg)
-            else:
-                # Just warning the err if converting from KVM. It may
-                # happen that disk's bus type in xml is not the real bus
-                # type be used when preparing the image. Ex, if the image
-                # is installed with IDE, then you import the image with
-                # bus virtio, the device.map file will be inconsistent with
-                # the xml.
-                # V2V doesn't modify device.map file for this scenario.
-                logging.warning(err_msg)
+
+        if os_vendor in ['Red Hat', 'SUSE']:
+            if not self.checker.is_uefi_guest() and not self.checker.get_grub_device():
+                err_msg = "Not find vd? in device.map"
+                if self.hypervisor != 'kvm':
+                    self.log_err(err_msg)
+                else:
+                    # Just warning the err if converting from KVM. It may
+                    # happen that disk's bus type in xml is not the real bus
+                    # type be used when preparing the image. Ex, if the image
+                    # is installed with IDE, then you import the image with
+                    # bus virtio, the device.map file will be inconsistent with
+                    # the xml.
+                    # V2V doesn't modify device.map file for this scenario.
+                    logging.warning(err_msg)
 
         # Check graphic/video
         self.check_vm_xml()
@@ -392,22 +374,10 @@ class VMChecker(object):
         # Since RHEL7, it use 'kms' instead of 'cirrus'
         if 'rhel7' in self.os_version and expect_video == 'cirrus':
             expect_video = 'kms'
-        # As VM may not install X server, or X server not start completely,
-        # checking xorg log will fail
-        vm_xorg_log = self.checker.get_vm_xorg()
-        if vm_xorg_log:
-            if expect_video not in vm_xorg_log:
-                err_msg = "Not find %s in Xorg log" % expect_video
-                logging.info(err_msg)
-                # RHEL8 desn't include any qxl string in xorg log.
-                # If expect_video is in lspci output, we think it passed.
-                if re.search(expect_video, pci_devs, re.IGNORECASE) is None:
-                    err_msg += " And Not find %s device by lspci" % expect_video
-                    self.log_err(err_msg)
-                    return
-            logging.info("PASS")
-        else:
-            logging.warning("Xorg log file not exist, skip checkpoint")
+
+        if not re.search(expect_video, pci_devs, re.IGNORECASE):
+            err_msg += "Not find %s device by lspci" % expect_video
+            self.log_err(err_msg)
 
     def check_windows_vm(self):
         """
@@ -443,8 +413,6 @@ class VMChecker(object):
         if not output:
             err_msg = "Not find viostor info"
             self.log_err(err_msg)
-        else:
-            logging.info("PASS")
 
         # Check Red Hat VirtIO drivers and display adapter
         logging.info("Checking VirtIO drivers and display adapter")
@@ -499,8 +467,6 @@ class VMChecker(object):
         if not self.checker.get_network_restart():
             err_msg = "Renew network failed"
             self.log_err(err_msg)
-        else:
-            logging.info("PASS")
 
     def check_graphics(self, param):
         """
