@@ -66,7 +66,7 @@ def run(test, params, env):
     # Boot the guest in text only mode so that send-key commands would succeed
     # in creating a file
     try:
-        utils_test.update_boot_option(vm, args_added="3")
+        utils_test.update_boot_option(vm, args_added="3", guest_arch_name=params.get('vm_arch_name'))
     except Exception as info:
         test.error(info)
 
