@@ -674,7 +674,7 @@ def add_smartcard_device(vm_name, smartcard_type, smartcard_mode):
     vmxml.sync()
 
 
-def update_disk_driver(vm_name, disk_name, disk_type, disk_cache):
+def update_disk_driver(vm_name, disk_name, disk_type, disk_cache, disk_shareable):
     """
     Update disk driver
     """
@@ -689,6 +689,9 @@ def update_disk_driver(vm_name, disk_name, disk_type, disk_cache):
         disk_driver["type"] = disk_type
     if disk_cache:
         disk_driver["cache"] = disk_cache
+    if disk_shareable:
+        disks.share = disk_shareable
+
     disks.set_driver(disk_driver)
     # SYNC VM XML change
     vmxml.devices = devices
@@ -1510,6 +1513,17 @@ def run(test, params, env):
             libvirt.update_vm_disk_source(vm_name, target_image_path,
                                           target_image_name, source_type)
 
+        if update_disk_source and new_disk_source:
+            image_info_dict = utils_misc.get_image_info(disk_source)
+            if image_info_dict["format"] != disk_format:
+                cmd = ("qemu-img convert -f %s -O %s %s %s"
+                       % (image_info_dict["format"], disk_format, disk_source,
+                          new_disk_source))
+                process.run(cmd, ignore_status=False)
+            libvirt.update_vm_disk_source(
+               vm_name, os.path.dirname(new_disk_source),
+               os.path.basename(new_disk_source), source_type)
+
         vm_xml_cxt = to_text(process.system_output("virsh dumpxml %s" % vm_name, shell=True))
         logging.debug("The VM XML with new disk source: \n%s", vm_xml_cxt)
 
@@ -1517,8 +1531,10 @@ def run(test, params, env):
         disk_name = test_dict.get("disk_driver_name")
         disk_type = test_dict.get("disk_driver_type")
         disk_cache = test_dict.get("disk_driver_cache", "none")
-        if disk_name or disk_type or disk_cache:
-            update_disk_driver(vm_name, disk_name, disk_type, disk_cache)
+        disk_shareable = "yes" == test_dict.get("disk_shareable")
+        if disk_name or disk_type or disk_cache or disk_shareable:
+            update_disk_driver(vm_name, disk_name, disk_type, disk_cache,
+                               disk_shareable)
 
         image_info_dict = utils_misc.get_image_info(disk_source)
         logging.debug("disk image info: %s", image_info_dict)
