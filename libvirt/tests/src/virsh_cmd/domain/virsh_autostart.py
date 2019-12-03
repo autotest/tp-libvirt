@@ -2,6 +2,7 @@ import logging
 import os
 
 from virttest import virsh, utils_libvirtd
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -60,6 +61,9 @@ def run(test, params, env):
                                      debug=True, readonly=ro_flag)
         err = cmd_result.stderr.strip()
         status = cmd_result.exit_status
+        # rhbz#1755303
+        if libvirt_version.version_compare(5, 6, 0):
+            os.remove("/run/libvirt/qemu/autostarted")
         # Restart libvirtd and sleep 2
         utils_libvirtd.libvirtd_restart()
         if not status_error:

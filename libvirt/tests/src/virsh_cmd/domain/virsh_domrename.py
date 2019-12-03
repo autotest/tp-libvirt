@@ -11,6 +11,7 @@ from virttest import libvirt_xml
 from virttest import utils_libguestfs
 from virttest import utils_package
 from virttest import utils_libvirtd
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -115,6 +116,9 @@ def run(test, params, env):
                 # Try to start vm with the new name
                 new_vm.start()
             else:
+                # rhbz#1755303
+                if libvirt_version.version_compare(5, 6, 0):
+                    os.remove("/run/libvirt/qemu/autostarted")
                 utils_libvirtd.libvirtd_restart()
                 list_autostart = virsh.dom_list("--autostart", debug=True).stdout
                 logging.debug("files under '/etc/libvirt/qemu/autostart/' are %s",
