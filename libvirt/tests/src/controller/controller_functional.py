@@ -267,15 +267,17 @@ def run(test, params, env):
                               "with index %s." % (model, str(idx)))
             return qemu_list
 
-    def get_controller_addr(cntlr_type=None, model=None, index=None):
+    def get_controller_addr(cntlr_type=None, model=None, index=None, cntlr_bus=None):
         """
         Get the address of testing controller from VM XML as a string with
-        format "bus:slot.function".
+        format
+        a. "bus:slot.function" for pci address type
+        b. "cssid:ssid.devno" for ccw address type
 
         :param cntlr_type: controller type
         :param model: controller model
         :param index: controller index
-
+        :param cntlr_bus: controller bus type, e.g. pci, ccw
         :return: an address string of the specified controller
         """
         if model in ['pci-root', 'pcie-root']:
@@ -294,20 +296,26 @@ def run(test, params, env):
                     test.error("Can not find 'Address' "
                                "element for the controller")
 
-                bus = int(addr_elem.attrs.get('bus'), 0)
-                slot = int(addr_elem.attrs.get('slot'), 0)
-                func = int(addr_elem.attrs.get('function'), 0)
-                addr_str = '%02d:%02x.%1d' % (bus, slot, func)
+                if 'ccw' == cntlr_bus:
+                    p1 = int(addr_elem.attrs.get('cssid'), 0)
+                    p2 = int(addr_elem.attrs.get('ssid'), 0)
+                    p3 = int(addr_elem.attrs.get('devno'), 0)
+                else:
+                    p1 = int(addr_elem.attrs.get('bus'), 0)
+                    p2 = int(addr_elem.attrs.get('slot'), 0)
+                    p3 = int(addr_elem.attrs.get('function'), 0)
+                addr_str = '%02d:%02x.%1d' % (p1, p2, p3)
                 logging.debug("Controller address is %s", addr_str)
                 break
 
         return addr_str
 
-    def check_controller_addr():
+    def check_controller_addr(cntlr_bus=None):
         """
         Check test controller address against expectation.
+        :param cntlr_bus: controller bus type, e.g. pci, ccw
         """
-        addr_str = get_controller_addr(cntlr_type, model, index)
+        addr_str = get_controller_addr(cntlr_type, model, index, cntlr_bus)
 
         if model in ['pci-root', 'pcie-root']:
             if addr_str is None:
@@ -327,6 +335,8 @@ def run(test, params, env):
             exp_addr_patt = r'0[1-9]:[0-9]{2}.[0-9]'
         if addr_str:
             exp_addr_patt = addr_str
+        if 'ccw' == cntlr_bus:
+            exp_addr_patt = r'254:\d+\.\d+'
 
         if not re.match(exp_addr_patt, addr_str):
             test.fail('Expect get controller address "%s", '
@@ -403,41 +413,82 @@ def run(test, params, env):
             if pattern and not re.search(pattern, cmdline):
                 test.fail("Expect get usb model info in qemu cmdline, but failed!")
 
-    def check_guest(cntlr_type, cntlr_model, cntlr_index=None):
+    def check_guest(cntlr_type, cntlr_model, cntlr_index=None, cntlr_bus=""):
         """
         Check status within the guest against expectation.
+        :param cntlr_type: //controller@type, e.g. ide
+        :param cntlr_model: //controller@model, e.g. virtio-scsi
+        :param cntlr_index: //controller@index, e.g. '0'
+        :param cntlr_bus: //controller/address@type, e.g. pci
+        :raise avocado.core.exceptions.TestFail: Fails the test if checks fail
+        :raise avocado.core.exceptions.TestError: Fails if test couldn't be fully executed
+        :return: None
         """
-
         if model == 'pci-root' or model == 'pcie-root':
             return
 
         addr_str = get_controller_addr(cntlr_type=cntlr_type,
                                        model=cntlr_model,
-                                       index=cntlr_index)
+                                       index=cntlr_index,
+                                       cntlr_bus=cntlr_bus)
+
+        if 'ccw' == cntlr_bus:
+            check_ccw_bus_type(addr_str)
+        else:
+            check_pci_bus_type(addr_str, cntlr_index, cntlr_model, cntlr_type)
+
+    def check_ccw_bus_type(addr_str):
+        """
+        Uses lszdev to check for device info in guest.
+        :param addr_str: Device address from libvirt
+        :raise avocado.core.exceptions.TestFail: Fails the test if unexpected test values
+        :raise avocado.core.exceptions.TestError: Fails if can't query dev info in guest
+        :return: None
+        """
+        session = vm.wait_for_login(serial=True)
+        cmd = 'lszdev generic-ccw --columns ID'
+        status, output = session.cmd_status_output(cmd)
+        logging.debug("lszdev output is: %s", output)
+        if status:
+            test.error("Failed to get guest device info, check logs.")
+        devno = int(addr_str.split('.')[-1])
+        devno_str = hex(devno).replace('0x', '').zfill(4)
+        if devno_str not in output:
+            test.fail("Can't find device with number %s in guest. Searched for %s in %s"
+                      % (devno, devno_str, output))
+
+    def check_pci_bus_type(addr_str, cntlr_index, cntlr_model, cntlr_type):
+        """
+        Uses lspci to check for device info in guest.
+        :param addr_str: Device address from libvirt
+        :param cntlr_index: controller index
+        :param cntlr_model: controller model
+        :param cntlr_type: controller type
+        :raise avocado.core.exceptions.TestError: Fails if device info not found
+        :raise avocado.core.exceptions.TestFail: Fails if unexcepted test values
+        :return: None
+        """
         pci_name = 'PCI bridge:'
         verbose_option = ""
         if cntlr_type == 'virtio-serial':
             verbose_option = '-vvv'
-
         if (addr_str is None and model != 'pci-root' and model != 'pcie-root'):
             test.error("Can't find target controller in XML")
         if cntlr_index:
             logging.debug("%s, %s, %s", cntlr_type, cntlr_model, cntlr_index)
         if (addr_str is None and cntlr_model != 'pci-root' and cntlr_model != 'pcie-root'):
-            test.fail("Can't find target controller in XML")
-
+            test.error("Can't find target controller in XML")
         session = vm.wait_for_login(serial=True)
         status, output = session.cmd_status_output('lspci %s -s %s'
                                                    % (verbose_option, addr_str))
         logging.debug("lspci output is: %s", output)
-
         if (cntlr_type == 'virtio-serial' and
-           (vectors and int(vectors) == 0)):
+                (vectors and int(vectors) == 0)):
             if 'MSI' in output:
                 test.fail("Expect MSI disable with zero vectors, "
                           "but got %s" % output)
         if (cntlr_type == 'virtio-serial' and
-           (vectors is None or int(vectors) != 0)):
+                (vectors is None or int(vectors) != 0)):
             if 'MSI' not in output:
                 test.fail("Expect MSI enable with non-zero vectors, "
                           "but got %s" % output)
@@ -463,6 +514,7 @@ def run(test, params, env):
     remove_address = params.get("remove_address", "yes")
     setup_controller = params.get("setup_controller", "yes")
     index_second = params.get("controller_index_second", None)
+    cntlr_bus = params.get('controller_bus')
     cur_machine = os_machine
     check_qemu = "yes" == params.get("check_qemu", "no")
     check_within_guest = "yes" == params.get("check_within_guest", "no")
@@ -506,7 +558,7 @@ def run(test, params, env):
         vm_xml = VMXML.new_from_dumpxml(vm_name)
         logging.debug("Test VM XML after define is %s" % vm_xml)
 
-        check_controller_addr()
+        check_controller_addr(cntlr_bus)
         if run_vm:
             try:
                 if not start_and_check():
@@ -530,7 +582,7 @@ def run(test, params, env):
                         for contr_idx in range(1, int(check_max_index) + 1):
                             check_guest(cntlr_type, model, str(contr_idx))
                     else:
-                        check_guest(cntlr_type, model)
+                        check_guest(cntlr_type, model, cntlr_bus=cntlr_bus)
                         if model == 'pcie-root':
                             # Need check other auto added controller
                             check_guest(cntlr_type, 'dmi-to-pci-bridge', '1')
