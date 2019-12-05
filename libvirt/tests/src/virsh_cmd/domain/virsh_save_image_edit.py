@@ -5,6 +5,7 @@ import aexpect
 
 from virttest import data_dir
 from virttest import virsh
+from virttest.libvirt_xml import vm_xml
 
 
 def run(test, params, env):
@@ -26,6 +27,8 @@ def run(test, params, env):
             option = "--running"
         elif restore_state == "paused":
             option = "--paused"
+        elif restore_state == "":
+            option = ""
         else:
             test.fail("Unknown save-image-define option")
 
@@ -70,8 +73,10 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     vm.wait_for_login()
 
-    restore_state = params.get("restore_state", "running")
+    restore_state = params.get("restore_state", "")
     vm_save = params.get("vm_save", "vm.save")
+
+    vm_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     try:
         # Get a tmp_dir.
@@ -97,6 +102,8 @@ def run(test, params, env):
 
     finally:
         # cleanup
+        vm_backup.sync()
+
         if restore_state == "paused":
             virsh.resume(vm_name)
 
