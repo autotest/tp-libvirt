@@ -124,25 +124,16 @@ def run(test, params, env):
 
         arch = platform.machine()
 
-        if arch == 'x86_64':
+        if arch in ['x86_64', 'ppc64le', 's390x']:
             # Check if bypass cache flag set or unset accordingly.
-            if (flags & 0o40000) and bypass_cache != '1':
-                test.fail('auto_dump_bypass_cache is %s but flags '
-                          'is %o' % (bypass_cache, flags))
-            if not (flags & 0o40000) and bypass_cache == '1':
-                test.fail('auto_dump_bypass_cache is %s but flags '
-                          'is %o' % (bypass_cache, flags))
-        elif arch == 'ppc64le':
-            # Check if bypass cache flag set or unset accordingly.
-            if (flags & 0o400000) and bypass_cache != '1':
-                test.fail('auto_dump_bypass_cache is %s but flags '
-                          'is %o' % (bypass_cache, flags))
-            if not (flags & 0o400000) and bypass_cache == '1':
+            cond1 = (flags & 0o40000) and bypass_cache != '1'
+            cond2 = not (flags & 0o40000) and bypass_cache == '1'
+            if cond1 or cond2:
                 test.fail('auto_dump_bypass_cache is %s but flags '
                           'is %o' % (bypass_cache, flags))
         else:
             test.cancel("Unknown Arch. Do the necessary changes to"
-                        "support")
+                        " support")
 
     finally:
         backup_xml.sync()
