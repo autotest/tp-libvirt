@@ -2,6 +2,7 @@ import logging
 import re
 
 from virttest import virsh
+from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from provider import libvirt_version
 from virttest.utils_test import libvirt
@@ -196,6 +197,9 @@ def get_domiftune_parameter(params, test):
 
     if status_error == "yes":
         if status:
+            libvirtd = utils_libvirtd.Libvirtd()
+            if not libvirtd.is_running():
+                test.fail('Libvirtd crashed after getting domiftune!')
             logging.info("It's an expected error: %s", result.stderr)
         else:
             test.fail("%d not a expected command return value" %
@@ -256,6 +260,9 @@ def set_domiftune_parameter(params, test):
 
     if status_error == "yes":
         if status:
+            libvirtd = utils_libvirtd.Libvirtd()
+            if not libvirtd.is_running():
+                test.fail('Libvirtd crashed after setting domiftune!')
             logging.info("It's an expected error: %s", result.stderr)
         else:
             test.fail("%d not a expected command return value" %
@@ -351,5 +358,9 @@ def run(test, params, env):
         get_domiftune_parameter(test_dict, test)
     else:
         set_domiftune_parameter(test_dict, test)
-        ret = virsh.domiftune(vm_name, interface, 'current', '0', '0')
+
+    libvirtd = utils_libvirtd.Libvirtd()
+    libvirtd.restart()
+    if change_parameters != "no":
+        ret = virsh.domiftune(vm_name, interface, 'current', '0', '0', debug=True)
         libvirt.check_exit_status(ret)
