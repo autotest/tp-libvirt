@@ -2,6 +2,7 @@
 Test libvirt support features in qemu cmdline.
 BTW it not limited to hypervisors CPU/machine features.
 """
+import re
 import logging
 
 from virttest import virsh
@@ -9,6 +10,8 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
 from provider import libvirt_version
+
+from avocado.utils import process, astring
 
 
 def config_feature_pv_eoi(test, vmxml, **kwargs):
@@ -25,13 +28,26 @@ def config_feature_pv_eoi(test, vmxml, **kwargs):
                     " libvirt version")
     qemu_flags = []
     eoi_enable = kwargs.get('eoi_enable', 'on')
-    if eoi_enable == 'on':
-        qemu_flags.append('+kvm_pv_eoi')
-    elif eoi_enable == 'off':
-        qemu_flags.append('-kvm_pv_eoi')
-    else:
-        logging.error("Invaild value %s, eoi_enable must be 'on' or 'off'",
-                      eoi_enable)
+    get_hostos_version = astring.to_text(process.run("cat /etc/redhat-release", shell=True).stdout)
+    if re.search(r'(\d+(\.\d+)?)', get_hostos_version) is not None:
+        hostos_version = float(re.search(r'(\d+(\.\d+)?)', get_hostos_version).group(0))
+        if hostos_version < float(8.1):
+            if eoi_enable == 'on':
+                qemu_flags.append('+kvm_pv_eoi')
+            elif eoi_enable == 'off':
+                qemu_flags.append('-kvm_pv_eoi')
+            else:
+                logging.error("Invaild value %s, eoi_enable must be 'on' or 'off'", eoi_enable)
+        elif hostos_version > float(8.0):
+            if eoi_enable == 'on':
+                qemu_flags.append('kvm-pv-eoi=on')
+            elif eoi_enable == 'off':
+                qemu_flags.append('kvm-pv-eoi=off')
+            else:
+                logging.error("Invaild value %s, eoi_enable must be 'on' or 'off'", eoi_enable)
+        else:
+            test.fail("Can not decide the expected qemu cmd line because of no expected hostos version")
+
     try:
         vmxml_feature = vmxml.features
         if vmxml_feature.has_feature('apic'):
