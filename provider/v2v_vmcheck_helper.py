@@ -19,7 +19,8 @@ RETRY_TIMES = 10
 # Temporary workaround <Fix in future with a better solution>
 FEATURE_SUPPORT = {
     'genid': 'virt-v2v-1.40.1-1.el7',
-    'libosinfo': 'virt-v2v-1.40.2-2.el7'}
+    'libosinfo': 'virt-v2v-1.40.2-2.el7',
+    'virtio_rng': '2.6.26'}
 
 
 class VMChecker(object):
@@ -110,15 +111,19 @@ class VMChecker(object):
             logging.warn("Unspported os type: %s", self.os_type)
         return self.errors
 
-    def compare_version(self, compare_version):
+    def compare_version(self, compare_version, real_version=None, cmd=None):
         """
-        Compare virt-v2v version against given version.
+        Compare version against given version.
+
+        :param compare_version: The least version to compare
+        :param real_version: The real version to compare
+        :param cmd: the command to get the real version
         """
-        cmd = 'rpm -q virt-v2v|grep virt-v2v'
-        v2v_version = LooseVersion(process.run(
-            cmd, shell=True).stdout_text.strip())
-        compare_version = LooseVersion(compare_version)
-        if v2v_version >= compare_version:
+        if not real_version:
+            if not cmd:
+                cmd = 'rpm -q virt-v2v|grep virt-v2v'
+            real_version = process.run(cmd, shell=True).stdout_text.strip()
+        if LooseVersion(real_version) >= LooseVersion(compare_version):
             return True
         return False
 
@@ -243,7 +248,9 @@ class VMChecker(object):
                             3: ['q35', 'uefi', True]}
 
         if boottype not in range(4):
-            raise exceptions.TestError('Invalid boottype value: %s' % str(boottype))
+            raise exceptions.TestError(
+                'Invalid boottype value: %s' %
+                str(boottype))
 
         logging.debug("expected boot type is %s" % boottype_mapping[boottype])
         return boottype_mapping[boottype]
@@ -285,7 +292,8 @@ class VMChecker(object):
         logging.info("Checking boot os info in VM XML")
         chipset, bootinfo, secboot = self.get_expected_boottype(self.boottype)
 
-        chip_pattern = r"machine='pc-%s" % ('q35' if chipset == 'q35' else 'i440fx')
+        chip_pattern = r"machine='pc-%s" % ('q35' if chipset ==
+                                            'q35' else 'i440fx')
         if bootinfo == 'uefi':
             boot_pattern = r"secure='%s' type='pflash'" % (
                 'yes' if secboot else 'no')
@@ -339,8 +347,12 @@ class VMChecker(object):
         pci_devs = self.checker.get_vm_pci_list()
         virtio_devs = ["Virtio network device",
                        "Virtio block device",
-                       "Virtio memory balloon",
-                       "Virtio RNG"]
+                       "Virtio memory balloon"]
+        # Virtio RNG supports from kernel-2.6.26
+        # https://wiki.qemu.org/Features/VirtIORNG
+        if self.compare_version(FEATURE_SUPPORT['virtio_rng'], kernel_version):
+            virtio_devs.append("Virtio RNG")
+        logging.info("Virtio devices checking list: %s", virtio_devs)
         for dev in virtio_devs:
             if not re.search(dev, pci_devs, re.IGNORECASE):
                 err_msg = "Not find %s" % dev
