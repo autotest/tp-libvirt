@@ -12,6 +12,7 @@ def run(test, params, env):
     Test misc tests of virtual cpu features
 
     1) check dumpxml after snapshot-create/revert
+    2) check vendor_id
 
     :param test: test object
     :param params: Dictionary with the test parameters
@@ -53,23 +54,29 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
 
     cpu_mode = params.get('cpu_mode')
-    cpu_vendor_id = params.get("vendor_id")
     expected_str_before_startup = params.get("expected_str_before_startup")
     expected_str_after_startup = params.get("expected_str_after_startup")
-    expected_qemuline = params.get("expected_qemuline")
-    cmd_in_guest = params.get("cmd_in_guest")
+
     test_operations = params.get("test_operations")
+    check_vendor_id = "yes" == params.get("check_vendor_id", "no")
     status_error = "yes" == params.get("status_error", "no")
     err_msg = params.get("err_msg")
 
     bkxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     try:
-        if cpu_vendor_id:
+        if check_vendor_id:
             output = virsh.capabilities(debug=True)
             host_vendor = re.findall(r'<vendor>(\w+)<', output)[0]
-            if not re.search(host_vendor, cpu_vendor_id, re.IGNORECASE):
-                test.cancel("Not supported cpu vendor_id {} on this host."
+
+            cpu_vendor_id = 'GenuineIntel'
+            if host_vendor != "Intel":
+                cpu_vendor_id = 'AuthenticAMD'
+            logging.debug("Set cpu vendor_id to %s on this host.",
+                          cpu_vendor_id)
+
+            expected_qemuline = "vendor=" + cpu_vendor_id
+            cmd_in_guest = ("cat /proc/cpuinfo | grep vendor_id | grep {}"
                             .format(cpu_vendor_id))
 
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
