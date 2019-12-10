@@ -25,6 +25,7 @@ from virttest import libvirt_remote
 from virttest import remote
 from virttest import utils_package
 from virttest import utils_iptables
+from virttest import utils_conn
 from virttest import xml_utils
 
 from virttest.utils_iptables import Iptables
@@ -872,6 +873,8 @@ def run(test, params, env):
     server_ip = params.get("server_ip")
     server_user = params.get("server_user", "root")
     server_pwd = params.get("server_pwd")
+    client_ip = params.get("client_ip")
+    client_pwd = params.get("client_pwd")
     extra = params.get("virsh_migrate_extra")
     options = params.get("virsh_migrate_options")
     src_uri = params.get("virsh_migrate_connect_uri")
@@ -891,6 +894,8 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     stress_in_vm = "yes" == params.get("stress_in_vm", "no")
     low_speed = params.get("low_speed", None)
+    migr_vm_back = "yes" == params.get("migr_vm_back", "no")
+
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
                           'ssh_remote_auth': True}
@@ -898,6 +903,7 @@ def run(test, params, env):
                  'server_pwd': server_pwd}
     hpt_resize = params.get("hpt_resize", None)
     htm_state = params.get("htm_state", None)
+    vcpu_num = params.get("vcpu_num")
     block_time = params.get("block_time", 30)
     parallel_cn_nums = params.get("parallel_cn_nums")
 
@@ -971,6 +977,24 @@ def run(test, params, env):
             if not libvirt_version.version_compare(5, 2, 0):
                 test.cancel("This libvirt version doesn't support "
                             "multifd feature.")
+
+        if vcpu_num:
+            cmd = "grep -c processor /proc/cpuinfo"
+            remote_session = remote.remote_login("ssh", server_ip, "22",
+                                                 server_user, server_pwd,
+                                                 r'[$#%]')
+            for loc in ['source', 'target']:
+                session = None
+                if loc == 'target':
+                    session = remote_session
+                cmdStd, cmdStdout = utils_misc.cmd_status_output(cmd, shell=True,
+                                                                 session=session)
+                if cmdStd:
+                    test.fail("Failed to run %s." % cmd)
+                if (cmdStdout.split('\n')[0] and
+                   int(cmdStdout.split('\n')[0]) <= int(vcpu_num)):
+                    test.cancel("The %s host may not have enough cpus to start "
+                                "vm with %s cpu(s)." % (loc, vcpu_num))
         # Create a remote runner for later use
         runner_on_target = remote.RemoteRunner(host=server_ip,
                                                username=server_user,
@@ -1038,6 +1062,9 @@ def run(test, params, env):
 
         if htm_state:
             set_feature(new_xml, 'htm', htm_state)
+
+        if vcpu_num:
+            vm_xml.VMXML.set_vm_vcpus(vm_name, int(vcpu_num))
 
         if cache:
             params["driver_cache"] = cache
@@ -1253,8 +1280,15 @@ def run(test, params, env):
                 check_str = hpt_resize
             elif htm_state:
                 check_str = htm_state
+            elif vcpu_num:
+                check_str = vcpu_num
+
             if hpt_resize or htm_state:
                 xml_check_after_mig = "%s'%s'" % (xml_check_after_mig, check_str)
+            elif vcpu_num:
+                xml_check_after_mig = ("%s%s</vcpu>"
+                                       % (xml_check_after_mig, check_str))
+            if hpt_resize or htm_state or vcpu_num:
                 if not re.search(xml_check_after_mig, target_guest_dumpxml):
                     remote_virsh_session.close_session()
                     test.fail("Fail to search '%s' in target guest XML:\n%s"
@@ -1274,6 +1308,35 @@ def run(test, params, env):
                                                    r"[\#\$]\s*$")
             check_vm_network_accessed(server_session)
             server_session.close()
+        # Execute migration from remote
+        if migr_vm_back:
+            ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
+                                                      server_pwd=client_pwd,
+                                                      client_ip=server_ip,
+                                                      client_pwd=server_pwd)
+            try:
+                ssh_connection.conn_check()
+            except utils_conn.ConnectionError:
+                ssh_connection.conn_setup()
+                ssh_connection.conn_check()
+
+            migrate_setup = libvirt.MigrationTest()
+            # Pre migration setup for local machine
+            src_full_uri = libvirt_vm.complete_uri(
+                        params.get("migrate_source_host"))
+            migrate_setup.migrate_pre_setup(src_full_uri, params)
+            cmd = "virsh migrate %s %s %s" % (vm_name,
+                                              virsh_opt, src_full_uri)
+            logging.debug("Start migration: %s", cmd)
+            cmd_result = remote.run_remote_cmd(cmd, params, runner_on_target)
+            logging.info(cmd_result)
+            if cmd_result.exit_status:
+                destroy_cmd = "virsh destroy %s" % vm_name
+                remote.run_remote_cmd(destroy_cmd, params, runner_on_target,
+                                      ignore_status=False)
+                test.fail("Failed to run '%s' on remote: %s"
+                          % (cmd, cmd_result))
+
     except exceptions.TestFail as details:
         is_TestFail = True
         test_exception = details
@@ -1315,6 +1378,15 @@ def run(test, params, env):
 
             if remote_session:
                 remote_session.close()
+
+            # Clean up of pre migration setup for local machine
+            if migr_vm_back:
+                if 'ssh_connection' in locals():
+                    ssh_connection.auto_recover = True
+                migrate_setup = libvirt.MigrationTest()
+                if 'src_full_uri' in locals():
+                    migrate_setup.migrate_pre_setup(src_full_uri, params,
+                                                    cleanup=True)
 
             # Delete files on target
             # Killing qemu process on target may lead a problem like
