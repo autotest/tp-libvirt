@@ -112,7 +112,8 @@ def run(test, params, env):
             # Attach an interface when vm is running
             iface_list = []
             err_msgs = ("No more available PCI slots",
-                        "No more available PCI addresses")
+                        "No more available PCI addresses",
+                        "no slot/function available for virtio-net-pci, all in use or reserved")
             if not start_vm:
                 virsh.destroy(vm_name)
             for i in range(int(iface_num)):
