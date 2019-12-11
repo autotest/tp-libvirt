@@ -27,6 +27,12 @@ def run(test, params, env):
     5.Confirm the test result.
     """
 
+    def boot_time():
+        session = vm.wait_for_login()
+        boot_time = session.cmd_output("uptime --since")
+        session.close()
+        return boot_time
+
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 
@@ -105,6 +111,10 @@ def run(test, params, env):
                 logging.error("Exception: %s", str(e))
                 status = -1
         if vm_ref != "remote_name":
+            if not status_error:
+                # Not need to check the boot up time if it is a negative test
+                first_boot_time = boot_time()
+
             vm_ref = "%s" % vm_ref
             if extra:
                 vm_ref += " %s" % extra
@@ -120,13 +130,16 @@ def run(test, params, env):
             if not status_error:
                 cmdoutput = ''
 
-                def _wait_for_vm_running():
+                def _wait_for_reboot_up():
+                    second_boot_time = boot_time()
+                    is_rebooted = second_boot_time > first_boot_time
                     cmdoutput = virsh.domstate(vm_ref, '--reason',
                                                ignore_status=True, debug=True)
                     domstate_status = cmdoutput.exit_status
                     output = "running" in cmdoutput.stdout
-                    return not domstate_status and output
-                if not wait.wait_for(_wait_for_vm_running,
+                    return not domstate_status and output and is_rebooted
+
+                if not wait.wait_for(_wait_for_reboot_up,
                                      timeout=wait_time, step=1):
                     test.fail("Cmd error: %s Error status: %s" %
                               (cmdoutput.stderr, cmdoutput.stdout))
