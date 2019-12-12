@@ -27,6 +27,10 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     virsh_dargs = {'debug': True, 'ignore_status': True}
+    gluster_server_name = params.get("gluster_server_name")
+    # If gluster_server is specified from config file, just use this gluster server.
+    if 'EXAMPLE' not in gluster_server_name:
+        params.update({'gluster_server_ip': gluster_server_name})
 
     def prepare_gluster_disk(disk_img, disk_format):
         """
