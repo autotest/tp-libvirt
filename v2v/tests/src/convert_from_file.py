@@ -41,6 +41,7 @@ def run(test, params, env):
     v2v_timeout = int(params.get('v2v_timeout', 1200))
     status_error = 'yes' == params.get('status_error', 'no')
     skip_vm_check = params.get('skip_vm_check', 'no')
+    skip_virsh_pre_conn = params.get('skip_virsh_pre_conn', 'no')
     pool_name = params.get('pool_name', 'v2v_test')
     pool_type = params.get('pool_type', 'dir')
     pool_target = params.get('pool_target_path', 'v2v_pool')
@@ -172,7 +173,8 @@ def run(test, params, env):
                  'hypervisor': hypervisor,
                  'vpx_dc': vpx_dc,
                  'password': vpx_password if src_uri_type != 'esx' else esxi_password,
-                 'hostname': vpx_hostname})
+                 'hostname': vpx_hostname,
+                 'skip_virsh_pre_conn': skip_virsh_pre_conn})
         # copy ova from nfs storage before v2v conversion
         if input_mode == 'ova':
             src_dir = params.get('ova_dir')

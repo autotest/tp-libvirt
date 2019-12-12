@@ -115,9 +115,12 @@ class VMChecker(object):
         """
         Compare version against given version.
 
-        :param compare_version: The least version to compare
+        :param compare_version: The minumum version to be compared
         :param real_version: The real version to compare
         :param cmd: the command to get the real version
+
+        :return: If the real_version is greater equal than minumum version,
+                return True, others return False
         """
         if not real_version:
             if not cmd:
