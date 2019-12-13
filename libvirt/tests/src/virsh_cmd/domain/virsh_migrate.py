@@ -3,7 +3,6 @@ import os
 import re
 import time
 import platform
-import threading
 
 from six import itervalues, string_types
 from avocado.utils import process
@@ -16,7 +15,6 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import data_dir
 from virttest import libvirt_vm
-from virttest import utils_package
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
 from virttest import utils_misc
@@ -430,18 +428,6 @@ def run(test, params, env):
         logging.debug("Check vm state on target host after timeout")
         check_vm_state(vm, 'paused', dest_uri, False)
 
-    def thread_func_stress():
-        """
-        Run stress command within the VM with specified parameters.
-        """
-        stress_args = params.get("stress_args", "--cpu 8 --io 4 "
-                                                "--vm 2 --vm-bytes 128M "
-                                                "--timeout 20s")
-        try:
-            vm_session.cmd('stress %s' % stress_args)
-        except Exception as detail:
-            logging.debug(detail)
-
     def ensure_migration_start():
         """
         Test the VM state on destination to make sure the migration
@@ -808,6 +794,7 @@ def run(test, params, env):
     check_src_undefine = True
     check_unsafe_result = True
     migrate_setup = None
+    mem_xml = None
 
     try:
         # Change the disk of the vm to shared disk
@@ -1074,22 +1061,16 @@ def run(test, params, env):
             asynch_migration = True
             vms = []
             vms.append(vm)
-            # Load stress in VM
-            pkg_name = 'stress'
-            logging.debug("Check if stress tool is installed")
-            pkg_mgr = utils_package.package_manager(vm_session, pkg_name)
-            if not pkg_mgr.is_installed(pkg_name):
-                logging.debug("Stress tool will be installed")
-                if not pkg_mgr.install():
-                    test.error("Package '%s' installation fails" % pkg_name)
-
             cmd = params.get("virsh_postcopy_cmd")
             obj_migration = libvirt.MigrationTest()
             migrate_options = "%s %s" % (options, extra)
-
-            stress_thread = threading.Thread(target=thread_func_stress,
-                                             args=())
-            stress_thread.start()
+            # start stress inside VM
+            stress_tool = params.get("stress_tool", "stress")
+            try:
+                vm_stress = utils_test.VMStress(vm, stress_tool, params)
+                vm_stress.load_stress_tool()
+            except utils_test.StressError as info:
+                test.error(info)
             # Set migrate_speed
             speed = params.get("migrate_speed")
             if speed:
@@ -1344,7 +1325,7 @@ def run(test, params, env):
 
         # cleanup xml created during memory hotplug test
         if mem_hotplug:
-            if os.path.isfile(mem_xml):
+            if mem_xml and os.path.isfile(mem_xml):
                 data_dir.clean_tmp_files()
                 logging.debug("Cleanup mem hotplug xml")
 
