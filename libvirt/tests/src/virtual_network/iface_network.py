@@ -3,6 +3,7 @@ import os
 import sys
 import ast
 import logging
+import platform
 
 from avocado.utils import process
 from avocado.utils import stacktrace
@@ -36,6 +37,7 @@ def run(test, params, env):
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    host_arch = platform.machine()
 
     def prepare_pxe_boot():
         """
@@ -124,7 +126,7 @@ TIMEOUT 3"""
         del iface.source
         iface.source = source
         if iface_model:
-            iface.model = iface_model
+            iface.model = get_iface_model(iface_model, host_arch)
         if iface_rom:
             iface.rom = eval(iface_rom)
         if iface_boot:
@@ -137,6 +139,20 @@ TIMEOUT 3"""
             vmxml.sync()
         else:
             return iface
+
+    def get_iface_model(iface_model, host_arch):
+        """
+        Return iface_model. In case of s390x modify iface_model and log the change.
+        :param iface_model: iface_model from params
+        :param host_arch: host architecture, e.g. s390x
+        :return: //interface/model@type
+        """
+        if 's390x' == host_arch:
+            logging.debug("On s390x only valid model type are the virtio(-*)."
+                          " Using virtio and ignoring config value %s" % iface_model)
+            return "virtio"
+        else:
+            return iface_model
 
     def run_dnsmasq_default_test(key, value=None, exists=True, name="default"):
         """
