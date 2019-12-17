@@ -5,6 +5,7 @@ import logging
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
+from virttest.libvirt_xml import vm_xml
 
 from provider import libvirt_version
 
@@ -41,6 +42,18 @@ def run(test, params, env):
         if params.get('setup_libvirt_polkit') == 'yes':
             test.cancel("API acl test not supported in current"
                         " libvirt version.")
+
+    if "--xml" in extra_param:
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name, options="--migratable")
+        backup_xml = vmxml.copy()
+        extra_param = "--xml %s" % vmxml.xml
+        dict_os_attrs = {}
+        if "hd" in vmxml.os.boots:
+            dict_os_attrs.update({"boots": ["cdrom"]})
+            vmxml.set_os_attrs(**dict_os_attrs)
+        else:
+            test.cancel("Please add 'hd' in boots for --xml testing")
+        logging.info("vmxml os is %s after update" % vmxml.os.xmltreefile)
 
     # run test
     if vm_ref == "" or vm_ref == "xyz":
@@ -103,11 +116,19 @@ def run(test, params, env):
                     test.fail("Guest state should be"
                               " paused after restore"
                               " due to the option --paused")
-            if extra_param.count("running"):
+            if (extra_param.count("running") or
+                    extra_param.count("xml") or
+                    not extra_param):
                 if vm.is_dead() or vm.is_paused():
                     test.fail("Guest state should be"
-                              " running after restore"
-                              " due to the option --running")
+                              " running after restore")
+            if extra_param.count("xml"):
+                aft_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+                boots_list = aft_vmxml.os.boots
+                if "hd" in boots_list or "cdrom" not in boots_list:
+                    test.fail("Update xml with restore failed")
     finally:
         if vm.is_paused():
             virsh.resume(vm_name)
+        if "--xml" in extra_param:
+            backup_xml.sync()
