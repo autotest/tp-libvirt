@@ -3,6 +3,7 @@ import re
 import ast
 import time
 import logging
+import platform
 
 import aexpect
 
@@ -36,6 +37,7 @@ def run(test, params, env):
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    host_arch = platform.machine()
     virsh_dargs = {'debug': True, 'ignore_status': False}
 
     if not utils_package.package_install(["lsof"]):
@@ -242,9 +244,14 @@ def run(test, params, env):
             else:
                 logging.debug("target dev set successfully to %s", iface.target["dev"])
 
-    def run_cmdline_test(iface_mac):
+    def run_cmdline_test(iface_mac, host_arch):
         """
-        Test for qemu-kvm command line options
+        Test qemu command line
+        :param iface_mac: expected MAC
+        :param host_arch: host architecture, e.g. x86_64
+        :raise avocado.core.exceptions.TestError: if preconditions are not met
+        :raise avocado.core.exceptions.TestFail: if commandline doesn't match
+        :return: None
         """
         cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
         ret = process.run(cmd, shell=True)
@@ -255,9 +262,15 @@ def run(test, params, env):
                           " qemu-kvm command line")
 
         if iface_model == "virtio":
-            model_option = "device virtio-net-pci"
-        else:
+            if host_arch == 's390x':
+                model_option = "device virtio-net-ccw"
+            else:
+                model_option = "device virtio-net-pci"
+        elif iface_model == 'rtl8139':
             model_option = "device rtl8139"
+        else:
+            test.error("Don't know which device driver to expect on qemu cmdline"
+                       " for iface_model %s" % iface_model)
         iface_cmdline = re.findall(r"%s,(.+),mac=%s" %
                                    (model_option, iface_mac), ret.stdout_text)
         if not iface_cmdline:
@@ -284,8 +297,9 @@ def run(test, params, env):
                         driver_dict["tx"] = iface_driver_dict["txmode"]
                 elif driver_opt == "queues":
                     driver_dict["mq"] = "on"
-                    driver_dict["vectors"] = str(int(
-                        iface_driver_dict["queues"]) * 2 + 2)
+                    if "pci" in model_option:
+                        driver_dict["vectors"] = str(int(
+                            iface_driver_dict["queues"]) * 2 + 2)
                 else:
                     driver_dict[driver_opt] = iface_driver_dict[driver_opt]
         # Test <driver><host/><driver> xml options.
@@ -409,6 +423,18 @@ def run(test, params, env):
         # Kill the backgroup job
         bgjob.kill_func()
 
+    def get_iface_model(iface_model, host_arch):
+        """
+        Get iface_model. On s390x use default model 'virtio' if non-virtio given
+        :param iface_model: value as by test configuration or default
+        :param host_arch: host architecture, e.g. x86_64
+        :return: iface_model
+        """
+        if 's390x' == host_arch and 'virtio' not in iface_model:
+            return "virtio"
+        else:
+            return iface_model
+
     status_error = "yes" == params.get("status_error", "no")
     start_error = "yes" == params.get("start_error", "no")
     define_error = "yes" == params.get("define_error", "no")
@@ -418,7 +444,7 @@ def run(test, params, env):
     iface_type = params.get("iface_type", "network")
     iface_source = params.get("iface_source", "{}")
     iface_driver = params.get("iface_driver")
-    iface_model = params.get("iface_model", "virtio")
+    iface_model = get_iface_model(params.get("iface_model", "virtio"), host_arch)
     iface_target = params.get("iface_target")
     iface_backend = params.get("iface_backend", "{}")
     iface_driver_host = params.get("iface_driver_host")
@@ -591,7 +617,7 @@ def run(test, params, env):
 
             # Run tests for qemu-kvm command line options
             if test_option_cmd:
-                run_cmdline_test(iface_mac)
+                run_cmdline_test(iface_mac, host_arch)
             # Run tests for vm xml
             if test_option_xml:
                 run_xml_test(iface_mac)
