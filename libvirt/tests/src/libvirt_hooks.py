@@ -8,8 +8,8 @@ from avocado.utils import process
 from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_misc
-from virttest import utils_libvirtd
 from virttest import data_dir
+from virttest import utils_libvirtd
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.controller import Controller
@@ -25,7 +25,8 @@ def run(test, params, env):
     4.Confirm the test result.
     """
     vm_name = params.get("main_vm")
-    vm = env.get_vm(vm_name)
+    if (vm_name != "lxc_test_vm1"):
+        vm = env.get_vm(vm_name)
     virsh_dargs = {'debug': True, 'ignore_status': False}
     hook_file = params.get("hook_file", "/etc/libvirt/hooks/qemu")
     hook_log = params.get("hook_log", "/tmp/qemu.log")
@@ -38,6 +39,7 @@ def run(test, params, env):
         logging.info("hook script: %s", hook_op)
         hook_lines = hook_op.split(';')
         hook_dir = os.path.dirname(hook_file)
+        logging.info("hook script: %s", hook_op)
         if not os.path.exists(hook_dir):
             os.mkdir(hook_dir)
         with open(hook_file, 'w') as hf:
@@ -49,10 +51,10 @@ def run(test, params, env):
 
     def check_hooks(opt):
         """
-        Check hook operations in log file.
+        Check hook operations in log file
         """
         logging.debug("Trying to check the string '%s'"
-                      " in hook log", opt)
+                      " in logfile", opt)
         if not os.path.exists(hook_log):
             logging.debug("Log file doesn't exist")
             return False
@@ -94,8 +96,7 @@ def run(test, params, env):
             assert check_hooks(hook_str)
         except AssertionError:
             utils_misc.log_last_traceback()
-            test.fail("Failed to check "
-                      "start/stop hooks.")
+            test.fail("Failed to check start/stop hooks.")
 
     def save_restore_hook():
         """
@@ -119,8 +120,7 @@ def run(test, params, env):
         if domainxml_test:
             disk_src_save = vm.get_first_disk_devices()['source']
             if disk_src != disk_src_save:
-                test.fail("Failed to check hooks for"
-                          " save operation")
+                test.fail("Failed to check hooks for save operation")
         ret = virsh.restore(save_file, **virsh_dargs)
         libvirt.check_exit_status(ret)
         if os.path.exists(save_file):
@@ -128,8 +128,7 @@ def run(test, params, env):
         if domainxml_test:
             disk_src_restore = vm.get_first_disk_devices()['source']
             if disk_dist != disk_src_restore:
-                test.fail("Failed to check hooks for"
-                          " restore operation")
+                test.fail("Failed to check hooks for restore operation")
             vm.destroy()
             if os.path.exists(disk_dist):
                 os.remove(disk_dist)
@@ -137,8 +136,7 @@ def run(test, params, env):
         if basic_test:
             hook_str = hook_para + " restore begin -"
             if not check_hooks(hook_str):
-                test.fail("Failed to check "
-                          "restore hooks.")
+                test.fail("Failed to check restore hooks.")
 
     def managedsave_hook():
         """
@@ -180,15 +178,13 @@ def run(test, params, env):
         if basic_test:
             hook_str = hook_para + " restore begin -"
             if not check_hooks(hook_str):
-                test.fail("Failed to check "
-                          "managedsave hooks.")
+                test.fail("Failed to check managedsave hooks.")
 
     def libvirtd_hook():
         """
         Check the libvirtd hooks.
         """
-        prepare_hook_file(hook_script %
-                          (vm_name, hook_log))
+        prepare_hook_file(hook_script % (vm_name, hook_log))
         hook_para = "%s %s" % (hook_file, vm_name)
         libvirtd.restart()
         try:
@@ -196,8 +192,55 @@ def run(test, params, env):
             assert check_hooks(hook_str)
         except AssertionError:
             utils_misc.log_last_traceback()
-            test.fail("Failed to check"
-                      " libvirtd hooks")
+            test.fail("Failed to check libvirtd hooks")
+
+    def lxc_hook():
+        """
+        Check the lxc hooks.
+        """
+
+        if platform.platform().count('el8'):
+            test.cancel("lxc is not supported in rhel8")
+        test_xml = vm_xml.VMXML("lxc")
+
+        root_dir = data_dir.get_root_dir()
+        lxc_xml_related_path_file = params.get("lxc_xml_file")
+        lxc_xml_path_file = os.path.join(root_dir, lxc_xml_related_path_file)
+        with open(lxc_xml_path_file, 'r') as fd:
+            test_xml.xml = fd.read()
+
+        uri = "lxc:///"
+        vm_name = "lxc_test_vm1"
+        hook_para = "%s %s" % (hook_file, vm_name)
+        prepare_hook_file(hook_script % hook_log)
+        exit1 = params.get("exit1", "no")
+        output = virsh.create(test_xml.xml, options="--console", uri=uri)
+
+        if output.exit_status:
+            logging.debug("output.stderr1: %s", output.stderr.lower())
+            if (exit1 == "yes" and
+               "hook script execution failed" in output.stderr.lower()):
+                return True
+            else:
+                test.fail("Create %s domain failed:%s" %
+                          ("lxc", output.stderr))
+        logging.info("Domain %s created, will check with console", vm_name)
+
+        hook_str = hook_para + " prepare begin -"
+        if not check_hooks(hook_str):
+            test.fail("Failed to check lxc hook string: %s" % hook_str)
+        hook_str = hook_para + " start begin -"
+        if not check_hooks(hook_str):
+            test.fail("Failed to check lxc hook string: %s" % hook_str)
+
+        virsh.destroy(vm_name, options="", uri=uri)
+
+        hook_str = hook_para + " stopped end -"
+        if not check_hooks(hook_str):
+            test.fail("Failed to check lxc hook string: %s" % hook_str)
+        hook_str = hook_para + " release end -"
+        if not check_hooks(hook_str):
+            test.fail("Failed to check lxc hook string: %s" % hook_str)
 
     def daemon_hook():
         """
@@ -229,8 +272,7 @@ def run(test, params, env):
 
         except AssertionError:
             utils_misc.log_last_traceback()
-            test.fail("Failed to check"
-                      " daemon hooks")
+            test.fail("Failed to check daemon hooks")
 
     def attach_hook():
         """
@@ -243,14 +285,19 @@ def run(test, params, env):
                           (vm_test, hook_log))
         qemu_bin = params.get("qemu_bin", "/usr/libexec/qemu-kvm")
         if "ppc" in platform.machine():
-            qemu_bin = "%s -machine pseries" % qemu_bin
-        qemu_cmd = ("%s -drive file=%s,if=none,bus=0,unit=1"
-                    " -monitor unix:/tmp/demo,"
-                    "server,nowait -name %s" %
-                    (qemu_bin, disk_src, vm_test))
-        ret = process.run("%s &" % qemu_cmd, shell=True)
-        pid = process.run("ps -ef | grep '%s' | grep -v grep | awk"
-                          " '{print $2}'" % qemu_cmd, shell=True).stdout_text.strip()
+            qemu_cmd = ("%s -machine pseries"
+                        " -drive file=%s,if=none,bus=0,unit=1"
+                        " -monitor unix:/tmp/demo,"
+                        "server,nowait -name %s" %
+                        (qemu_bin, disk_src, vm_test))
+        else:
+            qemu_cmd = ("%s -drive file=%s,if=none,bus=0,unit=1"
+                        " -monitor unix:/tmp/demo,"
+                        "server,nowait -name %s" %
+                        (qemu_bin, disk_src, vm_test))
+        # After changed above command, qemu-attach failed
+        os.system('%s &' % qemu_cmd)
+        sta, pid = process.getstatusoutput("pgrep qemu-kvm")
         if not pid:
             test.fail("Cannot get pid of qemu command")
         ret = virsh.qemu_attach(pid, **virsh_dargs)
@@ -261,8 +308,7 @@ def run(test, params, env):
             virsh.destroy(vm_test)
         hook_str = hook_file + " " + vm_test + " attach begin -"
         if not check_hooks(hook_str):
-            test.fail("Failed to check"
-                      " attach hooks")
+            test.fail("Failed to check attach hooks")
 
     def edit_iface(net_name):
         """
@@ -381,8 +427,7 @@ def run(test, params, env):
             assert check_hooks(hook_str)
         except AssertionError:
             utils_misc.log_last_traceback()
-            test.fail("Failed to check"
-                      " network hooks")
+            test.fail("Failed to check network hooks")
 
     def run_scale_test():
         """
@@ -401,25 +446,31 @@ def run(test, params, env):
 
     start_error = "yes" == params.get("start_error", "no")
     test_start_stop = "yes" == params.get("test_start_stop", "no")
+    test_lxc = "yes" == params.get("test_lxc", "no")
     test_attach = "yes" == params.get("test_attach", "no")
     test_libvirtd = "yes" == params.get("test_libvirtd", "no")
     test_managedsave = "yes" == params.get("test_managedsave", "no")
     test_saverestore = "yes" == params.get("test_saverestore", "no")
     test_daemon = "yes" == params.get("test_daemon", "no")
     test_network = "yes" == params.get("test_network", "no")
-    basic_test = "yes" == params.get("basic_test", "yes")
-    scale_test = "yes" == params.get("scale_test", "yes")
+    if not test_lxc:
+        basic_test = "yes" == params.get("basic_test", "yes")
+        scale_test = "yes" == params.get("scale_test", "yes")
+    else:
+        basic_test = "no" == params.get("basic_test", "yes")
+        scale_test = "no" == params.get("scale_test", "yes")
     domainxml_test = "yes" == params.get("domainxml_test", "no")
 
     # The hook script is provided from config
     hook_script = params.get("hook_script")
 
     # Destroy VM first
-    if vm.is_alive():
+    if vm_name != "lxc_test_vm1" and vm.is_alive():
         vm.destroy(gracefully=False)
 
     # Back up xml file.
-    vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    if vm_name != "lxc_test_vm1":
+        vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     libvirtd = utils_libvirtd.Libvirtd()
 
     try:
@@ -438,7 +489,7 @@ def run(test, params, env):
             elif scale_test:
                 run_scale_test()
             # Start the domain
-            if vm.is_dead():
+            if vm_name != "lxc_test_vm1" and vm.is_dead():
                 vm.start()
                 vm.wait_for_login().close()
             if test_libvirtd:
@@ -447,6 +498,8 @@ def run(test, params, env):
                 save_restore_hook()
             elif test_managedsave:
                 managedsave_hook()
+            if test_lxc:
+                lxc_hook()
 
         except virt_vm.VMStartError as e:
             logging.info(str(e))
@@ -463,11 +516,12 @@ def run(test, params, env):
         logging.info("Restoring vm...")
         if test_managedsave:
             virsh.managedsave_remove(vm_name)
-        if vm.is_alive():
+        if vm_name != "lxc_test_vm1" and vm.is_alive():
             vm.destroy(gracefully=False)
         if os.path.exists(hook_file):
             os.remove(hook_file)
         if os.path.exists(hook_log):
             os.remove(hook_log)
         libvirtd.restart()
-        vmxml_backup.sync()
+        if vm_name != "lxc_test_vm1":
+            vmxml_backup.sync()
