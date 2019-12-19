@@ -99,13 +99,13 @@ def run(test, params, env):
             cmd += (" | grep 'chardev %s,.*host=%s,port=%s'"
                     % (chardev, src_host, src_port))
         if rng_model == "virtio":
-            cmd += (" | grep 'device virtio-rng-pci'")
+            cmd += (" | grep 'device %s'" % dparams.get("rng_device"))
         if rng_rate:
             rate = ast.literal_eval(rng_rate)
             cmd += (" | grep 'max-bytes=%s,period=%s'"
                     % (rate['bytes'], rate['period']))
         if process.run(cmd, ignore_status=True, shell=True).exit_status:
-            test.fail("Cann't see rng option"
+            test.fail("Can't see rng option"
                       " in command line")
 
     def check_host():
@@ -227,6 +227,18 @@ def run(test, params, env):
             if session.cmd_status(cmd, timeout=120):
                 test.fail("Failed to read the random device")
 
+    def get_rng_device(guest_arch, rng_model):
+        """
+        Return the expected rng device in qemu cmd
+        :param guest_arch: e.g. x86_64
+        :param rng_model: the value for //rng@model, e.g. "virtio"
+        :return: expected device type in qemu cmd
+        """
+        if "virtio" in rng_model:
+            return "virtio-rng-pci" if "s390x" not in guest_arch else "virtio-rng-ccw"
+        else:
+            test.fail("Unknown rng model %s" % rng_model)
+
     start_error = "yes" == params.get("start_error", "no")
 
     test_host = "yes" == params.get("test_host", "no")
@@ -242,6 +254,9 @@ def run(test, params, env):
     if device_num > 1 and not libvirt_version.version_compare(1, 2, 7):
         test.skip("Multiple virtio-rng devices not "
                   "supported on this libvirt version")
+
+    guest_arch = params.get("vm_arch_name", "x86_64")
+
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     logging.debug("vm xml is %s", vmxml_backup)
@@ -292,10 +307,12 @@ def run(test, params, env):
         dparams = {}
         if device_num > 1:
             for i in xrange(device_num):
-                dparams[i] = {"rng_model": params.get(
-                    "rng_model_%s" % i, "virtio")}
+                rng_model = params.get("rng_model_%s" % i, "virtio")
+                dparams[i] = {"rng_model": rng_model}
                 dparams[i].update({"backend_model": params.get(
                     "backend_model_%s" % i, "random")})
+                dparams[i].update({"rng_device": get_rng_device(
+                    guest_arch, rng_model)})
                 bk_type = params.get("backend_type_%s" % i)
                 if bk_type:
                     dparams[i].update({"backend_type": bk_type})
@@ -310,6 +327,8 @@ def run(test, params, env):
                     dparams[i].update({"backend_protocol": bk_pro})
                 modify_rng_xml(dparams[i], False)
         else:
+            params.update({"rng_device": get_rng_device(
+                guest_arch, params.get("rng_model", "virtio"))})
             modify_rng_xml(params, not test_snapshot)
 
         try:
