@@ -226,7 +226,7 @@ def run(test, params, env):
             # Get path of each snapshot file
             snaps = virsh.domblklist(vm_name, debug=True).stdout.splitlines()
             for line in snaps:
-                if line.startswith(('hd', 'sd', 'vd')):
+                if line.lstrip().startswith(('hd', 'sd', 'vd')):
                     file_to_del.append(line.split()[-1])
 
         qemu_img_cmd = 'qemu-img info --backing-chain %s' % snapshot_image_list[-1]
