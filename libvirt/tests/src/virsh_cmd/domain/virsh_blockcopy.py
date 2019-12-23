@@ -2,8 +2,11 @@ import logging
 import os
 import time
 import re
+import signal
 
 import aexpect
+
+from multiprocessing.pool import ThreadPool
 
 from avocado.utils import process
 from avocado.core import exceptions
@@ -18,6 +21,7 @@ from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import snapshot_xml
 from virttest.utils_test import libvirt as utl
+from virttest.compat_52lts import results_stdout_52lts
 
 from provider import libvirt_version
 
@@ -191,6 +195,30 @@ def chk_libvirtd_log(file_path, pattern, log_type):
     return False
 
 
+def kill_blockcopy_process():
+    """
+    Kill running blockcopy process
+    """
+    kill_cmd = "ps aux|grep -i 'blockcopy'|grep -v grep|grep -v transient_job|awk '{print $2}'"
+    pid_list = results_stdout_52lts(process.run(kill_cmd, shell=True)).strip().split('\n')
+    for pid in pid_list:
+        utils_misc.safe_kill(pid, signal.SIGKILL)
+
+
+def blockcopy_thread(vm_name, target, dest_path, options):
+    """
+    Create one separate thread to do blockcopy
+    :param vm_name: string, VM name
+    :param target: string, target disk
+    :param dest_path: string, the path of copied disk
+    :param options: string, some options applied
+
+    :return:
+    """
+    # Run the real testing command
+    virsh.blockcopy(vm_name, target, dest_path, options)
+
+
 def run(test, params, env):
     """
     Test command: virsh blockcopy.
@@ -253,6 +281,9 @@ def run(test, params, env):
                                        "current version")
     if relative_path == "yes" and not libvirt_version.version_compare(3, 0, 0):
         test.cancel("Forbid using relative path or file name only is added since libvirt-3.0.0")
+
+    if "--transient-job" in options and not libvirt_version.version_compare(4, 5, 0):
+        test.cancel("--transient-job option is supported until libvirt 4.5.0 version")
 
     # Check the source disk
     if vm_xml.VMXML.check_disk_exist(vm_name, target):
@@ -498,6 +529,13 @@ def run(test, params, env):
                                           cmd_result.stdout.strip() + cmd_result.stderr)
             elif not os.path.exists(dest_path):
                 raise exceptions.TestFail("Cannot find the created copy")
+
+        if "--transient-job" in options:
+            pool = ThreadPool(processes=1)
+            async_result = pool.apply_async(blockcopy_thread, (vm_name, target, dest_path, options))
+            kill_blockcopy_process()
+            utl.check_blockjob(vm_name, target)
+            return
 
         # Run the real testing command
         cmd_result = virsh.blockcopy(vm_name, target, dest_path,
