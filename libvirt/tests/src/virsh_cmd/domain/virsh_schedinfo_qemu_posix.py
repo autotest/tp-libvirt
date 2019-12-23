@@ -98,7 +98,7 @@ def run(test, params, env):
         return current_value
 
     # Prepare test options
-    vm_ref = params.get("schedinfo_vm_ref", "domname")
+    schedinfo_vm_ref = params.get("schedinfo_vm_ref", "domname")
     options_ref = params.get("schedinfo_options_ref", "")
     options_suffix = params.get("schedinfo_options_suffix", "")
     schedinfo_param = params.get("schedinfo_param", "vcpu")
@@ -152,20 +152,8 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     if vm.is_dead() and start_vm:
         vm.start()
-    domid = vm.get_id()
-    domuuid = vm.get_uuid()
 
-    if vm_ref == "domid":
-        vm_ref = domid
-    elif vm_ref == "domname":
-        vm_ref = vm_name
-    elif vm_ref == "domuuid":
-        vm_ref = domuuid
-    elif vm_ref == "hex_id":
-        if domid == '-':
-            vm_ref = domid
-        else:
-            vm_ref = hex(int(domid))
+    vm_ref = get_vm_ref(vm, vm_name, schedinfo_vm_ref)
 
     options_ref += " %s " % options_suffix
 
@@ -182,6 +170,7 @@ def run(test, params, env):
         # VM must be running to get cgroup parameters.
         if not vm.is_alive():
             vm.start()
+            vm_ref = get_vm_ref(vm, vm_name, vm_ref)
 
         if options_ref.count("config") and start_vm:
             # Get schedinfo with --current parameter
@@ -191,6 +180,7 @@ def run(test, params, env):
 
             vm.destroy()
             vm.start()
+            vm_ref = get_vm_ref(vm, vm_name, schedinfo_vm_ref)
 
         if set_ref:
             start_current_value = get_current_value()
@@ -247,3 +237,28 @@ def run(test, params, env):
             for j in range(0, len(set_ref.split(','))):
                 virsh.schedinfo(vm_ref, "--set %s=%s" % (set_ref.split(',')[j], bef_current_value[j]),
                                 ignore_status=True, debug=True)
+
+
+def get_vm_ref(vm, vm_name, schedinfo_vm_ref):
+    """
+    Set vm_ref (name, uuid or id). If vm is restarted id changes.
+    :param vm: Domain object instance
+    :param vm_name: Domain name
+    :param schedinfo_vm_ref: vm_ref selector from test configuration
+    :return: vm_ref for schedinfo command
+    """
+
+    domid = vm.get_id()
+    domuuid = vm.get_uuid()
+    if schedinfo_vm_ref == "domid":
+        vm_ref = domid
+    elif schedinfo_vm_ref == "domname":
+        vm_ref = vm_name
+    elif schedinfo_vm_ref == "domuuid":
+        vm_ref = domuuid
+    elif schedinfo_vm_ref == "hex_id":
+        if domid == '-':
+            vm_ref = domid
+        else:
+            vm_ref = hex(int(domid))
+    return vm_ref
