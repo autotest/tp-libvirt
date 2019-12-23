@@ -1,9 +1,11 @@
 import os
+import re
 
 from avocado.utils import process
-
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
+
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -16,34 +18,44 @@ def run(test, params, env):
     5.Confirm the test result.
     """
 
-    def attach_disk_test():
+    def attach_disk_test(test_disk_source, front_dev):
         """
         Attach-disk testcase.
         1.Attch a disk to guest.
         2.Perform domblkinfo operation.
         3.Detach the disk.
 
+        :param: test_disk_source disk source file path.
+        :param: front_dev front end device name.
         :return: Command status and output.
         """
         try:
-            with open(test_disk_source, 'wb') as source_file:
+            disk_source = test_disk_source
+            front_device = front_dev
+            with open(disk_source, 'wb') as source_file:
                 source_file.seek((512 * 1024 * 1024) - 1)
                 source_file.write(str(0).encode())
-            virsh.attach_disk(vm_name, test_disk_source, front_dev, debug=True)
+            virsh.attach_disk(vm_name, disk_source, front_device, debug=True)
             vm_ref = vm_name
-            result_source = virsh.domblkinfo(vm_ref, test_disk_source,
+            if "--all" in extra:
+                disk_source = ""
+                vm_ref = "%s %s" % (vm_name, extra)
+            result_source = virsh.domblkinfo(vm_ref, disk_source,
                                              ignore_status=True, debug=True)
             status_source = result_source.exit_status
             output_source = result_source.stdout.strip()
             if driver == "qemu":
-                result_target = virsh.domblkinfo(vm_ref, front_dev,
+                if "--all" in extra:
+                    front_device = ""
+                result_target = virsh.domblkinfo(vm_ref, front_device,
                                                  ignore_status=True, debug=True)
                 status_target = result_target.exit_status
                 output_target = result_target.stdout.strip()
             else:
                 status_target = 0
                 output_target = "Xen doesn't support domblkinfo target!"
-            virsh.detach_disk(vm_name, front_dev, debug=True)
+            front_device = front_dev
+            virsh.detach_disk(vm_name, front_device, debug=True)
             return status_target, output_target, status_source, output_source
         except (process.CmdError, IOError):
             return 1, "", 1, ""
@@ -57,11 +69,22 @@ def run(test, params, env):
                       " got different information!")
         if output_source != "":
             lines = output_source.splitlines()
-            capacity_cols = lines[0].split(":")
-            size = int(capacity_cols[1].strip())
-            if disk_size != size and disk_size_check:
-                test.fail("Command domblkinfo output is wrong! "
-                          "'%d' != '%d'" % (disk_size, size))
+            if "--human" in extra and not any(re.findall(r'GiB|MiB', lines[0], re.IGNORECASE)):
+                test.fail("Command domblkinfo human output is wrong")
+            if "--all" in extra:
+                blocklist = vm_xml.VMXML.get_disk_blk(vm_name)
+                if not all(re.findall(r''.join(block), output_source, re.IGNORECASE) for block in blocklist):
+                    test.fail("Command domblkinfo --all output is wrong")
+                return
+            if disk_size_check:
+                capacity_cols = lines[0].split(":")
+                if "--human" in extra:
+                    size = float(capacity_cols[1].strip().split(" ")[0])
+                else:
+                    size = int(capacity_cols[1].strip())
+                if disk_size != size:
+                    test.fail("Command domblkinfo output is wrong! "
+                              "'%d' != '%d'" % (disk_size, size))
         else:
             test.fail("Command domblkinfo has no output!")
 
@@ -104,11 +127,14 @@ def run(test, params, env):
     elif vm_ref == "uuid":
         vm_ref = domuuid
 
+    if any(re.findall(r'--all|--human', extra, re.IGNORECASE)) and not libvirt_version.version_compare(4, 5, 0):
+        test.cancel("--all and --human options are supported until libvirt 4.5.0 version")
+
     if vm_ref == "test_attach_disk":
         test_disk_source = test_attach_disk
         disk_size_check = True
         (status_target, output_target,
-         status_source, output_source) = attach_disk_test()
+         status_source, output_source) = attach_disk_test(test_disk_source, front_dev)
     else:
         result_source = virsh.domblkinfo(vm_ref, test_disk_source,
                                          ignore_status=True, debug=True)
