@@ -3,12 +3,21 @@ import logging
 import string
 import hashlib
 import locale
+import aexpect
 
 from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
 from virttest import libvirt_xml
+from virttest import utils_misc
+from virttest import remote
+from virttest import virt_vm
+
+from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.devices.disk import Disk
+
+from virttest.utils_test import libvirt
 from virttest.utils_test import libvirt as utlv
 
 from provider import libvirt_version
@@ -75,6 +84,58 @@ def create_luks_vol(pool_name, vol_name, sec_uuid, vol_arg):
                                   debug=True)
 
 
+def create_disk(disk_type, disk_path, disk_format, disk_device_type,
+                disk_device, disk_target, disk_bus):
+    """
+    Create another disk for a given path,customize some attributes.
+
+    :param disk_type: the type of disk.
+    :param disk_path: the path of disk.
+    :param disk_format: the format to disk image.
+    :param disk_device_type: the disk device type.
+    :param disk_device: the device of disk.
+    :param disk_target: the target of disk.
+    :param disk_bus: the target bus of disk.
+    :return: disk object if created successfully.
+    """
+    disk_source = libvirt.create_local_disk(disk_type, disk_path, '1', disk_format)
+    custom_disk = Disk(type_name=disk_device_type)
+    custom_disk.device = disk_device
+    source_dict = {'file': disk_source}
+    custom_disk.source = custom_disk.new_disk_source(
+        **{"attrs": source_dict})
+    target_dict = {"dev": disk_target, "bus": disk_bus}
+    custom_disk.target = target_dict
+    driver_dict = {"name": "qemu", 'type': disk_format}
+    custom_disk.driver = driver_dict
+    return custom_disk
+
+
+def write_disk(test, guest_vm, target_name, size=100):
+    """
+    Write data into disk in VM discard value.
+
+    :param test: test itself.
+    :param guest_vm: Guest VM.
+    :param target_name: Device target name.
+    :param size: Data size in 1M unit.
+    """
+    logging.info("Write data into disk in VM...")
+    try:
+        session = guest_vm.wait_for_login()
+        cmd = ("fdisk -l  /dev/{0} && mkfs.ext4 -F /dev/{0} && "
+               "mkdir -p test && mount /dev/{0} test && "
+               "dd if=/dev/urandom of=test/file bs=1M count={1} && sync"
+               .format(target_name, size))
+        status, output = session.cmd_status_output(cmd)
+        if status != 0:
+            session.close()
+            test.fail("Failed due to: %s" % output.strip())
+        session.close()
+    except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
+        logging.error(str(e))
+
+
 def run(test, params, env):
     """
     Do test for vol-download and vol-upload
@@ -106,6 +167,10 @@ def run(test, params, env):
     b_luks_encrypt = "luks" == params.get("encryption_method")
     encryption_password = params.get("encryption_password", "redhat")
     secret_uuids = []
+    vm_name = params.get("main_vm")
+    vm = env.get_vm(vm_name)
+    virsh_dargs = {'debug': True, 'ignore_status': True}
+    sparse_option_support = "yes" == params.get("sparse_option_support", "yes")
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
@@ -118,6 +183,11 @@ def run(test, params, env):
         if setup_libvirt_polkit:
             test.error("API acl test not supported in current"
                        " libvirt version.")
+    # Destroy VM.
+    if vm.is_alive():
+        vm.destroy(gracefully=False)
+    # Back up xml file.
+    vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     try:
         pvt = utlv.PoolVolumeTest(test, params)
         pvt.pre_pool(pool_name, pool_type, pool_target, "volumetest",
@@ -179,7 +249,7 @@ def run(test, params, env):
         logging.debug("%s options are %s", operation, options)
 
         if operation == "upload":
-            # write date to file
+            # write data to file
             write_file(file_path)
 
             # Set length for calculate the offset + length in the following
@@ -236,7 +306,7 @@ def run(test, params, env):
                               "match, in %s", operation)
 
         if operation == "download":
-            # Write date to volume
+            # Write data to volume
             write_file(vol_path)
 
             # Record the digest value before operation
@@ -259,18 +329,75 @@ def run(test, params, env):
                 logging.debug("new digest read from %s is %s", file_path,
                               aft_digest)
 
-        if result.exit_status != 0:
-            test.fail("Fail to %s volume: %s" %
-                      (operation, result.stderr))
+        if operation != "mix":
+            if result.exit_status != 0:
+                test.fail("Fail to %s volume: %s" %
+                          (operation, result.stderr))
+            # Compare the change part on volume and file
+            if ori_digest == aft_digest:
+                logging.info("file digests match, volume %s succeed", operation)
+            else:
+                test.fail("file digests do not match, volume %s failed"
+                          % operation)
 
-        # Compare the change part on volume and file
-        if ori_digest == aft_digest:
-            logging.info("file digests match, volume %s suceed", operation)
-        else:
-            test.fail("file digests do not match, volume %s failed"
-                      % operation)
+        if operation == "mix":
+            target = params.get("virt_disk_device_target", "vdb")
+            disk_file_path = os.path.join(pool_target, file_name)
 
+            # Create one disk xml and attach it to VM.
+            custom_disk_xml = create_disk('file', disk_file_path, 'raw', 'file',
+                                          'disk', target, 'virtio')
+            ret = virsh.attach_device(vm_name, custom_disk_xml.xml,
+                                      flagstr="--config", debug=True)
+            libvirt.check_exit_status(ret)
+            if vm.is_dead():
+                vm.start()
+
+            # Write 100M data into disk.
+            write_disk(test, vm, target)
+
+            # Refresh directory pool.
+            virsh.pool_refresh(pool_name, debug=True)
+            # Get original disk image size by qemu-img info.
+            original_img_info = utils_misc.get_image_info(disk_file_path)
+            original_disk_size = int(original_img_info['dsize'])
+
+            # Download volume to local with sparse option.
+            download_spare_file = "download-sparse.raw"
+            download_file_path = os.path.join(data_dir.get_tmp_dir(), download_spare_file)
+            options += " --sparse"
+            result = virsh.vol_download(file_name, download_file_path, options,
+                                        unprivileged_user=unpri_user,
+                                        uri=uri, debug=True)
+
+            #Check download image size.
+            one_g_in_bytes = 1073741824
+            download_img_info = utils_misc.get_image_info(download_file_path)
+            download_disk_size = int(download_img_info['dsize'])
+            if download_disk_size < original_disk_size or download_disk_size > one_g_in_bytes:
+                test.fail("download image size:%d is greater than original size:%d or larger than 1G"
+                          % (download_disk_size, original_disk_size))
+
+            # Create one upload sparse image file.
+            upload_sparse_file = "upload-sparse.raw"
+            upload_file_path = os.path.join(pool_target, upload_sparse_file)
+            libvirt.create_local_disk('file', upload_file_path, '1', 'raw')
+
+            # Refresh directory pool.
+            virsh.pool_refresh(pool_name, debug=True)
+            # Do volume upload, upload sparse file which download last time.
+            result = virsh.vol_upload(upload_sparse_file, download_file_path, options,
+                                      unprivileged_user=unpri_user,
+                                      uri=uri, debug=True)
+            upload_img_info = utils_misc.get_image_info(upload_file_path)
+            upload_disk_size = int(upload_img_info['dsize'])
+            if upload_disk_size != download_disk_size:
+                test.fail("upload image size with sparse option is wrong!")
     finally:
+        # Recover VM.
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
+        vmxml_backup.sync()
         pvt.cleanup_pool(pool_name, pool_type, pool_target, "volumetest")
         for secret_uuid in set(secret_uuids):
             virsh.secret_undefine(secret_uuid)
