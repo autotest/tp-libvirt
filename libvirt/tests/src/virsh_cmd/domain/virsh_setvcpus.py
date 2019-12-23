@@ -55,6 +55,14 @@ def run(test, params, env):
     tmpxml = os.path.join(data_dir.get_tmp_dir(), 'tmp.xml')
     topology_correction = "yes" == params.get("topology_correction", "yes")
     with_topology = "yes" == params.get("with_topology", "yes")
+    update_maxmum_config = "yes" == params.get("update_maxmum_config", "no")
+    no_acpi = "yes" == params.get("no_acpi", "no")
+    # virsh start vm after destroy it
+    restart_vm = "yes" == params.get("restart_vm", "no")
+    # reboot the vm
+    vm_reboot = "yes" == params.get("vm_reboot", "no")
+    hot_unplug = "yes" == params.get('hot_unplug', "no")
+    hotplugin_count = params.get("hotplugin_count")
     result = True
 
     # Early death 1.1
@@ -88,8 +96,11 @@ def run(test, params, env):
             else:
                 exp_vcpu['cur_config'] = count
         if ("live" in options) or ("current" in options and vm.is_alive()):
-            exp_vcpu['cur_live'] = count
-            exp_vcpu['guest_live'] = count
+            if "maximum" in options:
+                exp_vcpu['max_live'] = count
+            else:
+                exp_vcpu['cur_live'] = count
+                exp_vcpu['guest_live'] = count
         if options == '':
             # when none given it defaults to live
             exp_vcpu['cur_live'] = count
@@ -118,6 +129,16 @@ def run(test, params, env):
     # for the machine type.
     #
     try:
+        # remove acpi features if need
+        if no_acpi:
+            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            if vmxml.xmltreefile.find('features'):
+                vmxml_feature = vmxml.features
+                if vmxml_feature.has_feature('acpi'):
+                    vmxml_feature.remove_feature('acpi')
+                    vmxml.features = vmxml_feature
+                    vmxml.sync()
+
         # Set maximum vcpus, so we can run all kinds of normal tests without
         # encounter requested vcpus greater than max allowable vcpus error
         topology = vmxml.get_cpu_topology()
@@ -191,9 +212,29 @@ def run(test, params, env):
             status = virsh.setvcpus(dom_option, "1", "--config",
                                     ignore_status=True, debug=True, uri=remote_uri)
         else:
+            if update_maxmum_config:
+                virsh.setvcpus(vm_name, count_option, options + " --maximum",
+                               ignore_status=False, debug=True)
+                set_expected(vm, options + " --maximum")
+
+            if hot_unplug and hotplugin_count:
+                virsh.setvcpus(vm_name, hotplugin_count, "",
+                               ignore_status=False, debug=True)
+
+            if vm_reboot:
+                vm.reboot()
+
             status = virsh.setvcpus(dom_option, count_option, options,
                                     ignore_status=True, debug=True)
             if not status_error:
+                if restart_vm:
+                    if vm.is_alive():
+                        vm.destroy()
+                    vm.start()
+                    vm.wait_for_login().close()
+                    set_expected(vm, re.sub("--config", "", options))
+                    set_expected(vm, options + " live")
+
                 set_expected(vm, options)
                 result = cpu.check_vcpu_value(vm, exp_vcpu,
                                               option=options)
