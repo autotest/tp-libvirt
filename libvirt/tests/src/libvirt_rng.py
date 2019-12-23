@@ -3,6 +3,8 @@ import os
 import ast
 import shutil
 import logging
+import uuid
+import time
 
 from six.moves import xrange
 
@@ -41,6 +43,7 @@ def run(test, params, env):
         backend_source_list = dparams.get("backend_source",
                                           "").split()
         backend_protocol = dparams.get("backend_protocol")
+        rng_alias = dparams.get("rng_alias")
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         rng_xml = rng.Rng()
         rng_xml.rng_model = rng_model
@@ -59,6 +62,8 @@ def run(test, params, env):
         if backend_protocol:
             backend.backend_protocol = backend_protocol
         rng_xml.backend = backend
+        if detach_alias:
+            rng_xml.alias = dict(name=rng_alias)
 
         logging.debug("Rng xml: %s", rng_xml)
         if sync:
@@ -250,6 +255,8 @@ def run(test, params, env):
     snapshot_with_rng = "yes" == params.get("snapshot_with_rng", "no")
     snapshot_name = params.get("snapshot_name")
     device_num = int(params.get("device_num", 1))
+    detach_alias = "yes" == params.get("rng_detach_alias", "no")
+    detach_options = params.get("rng_detach_options")
 
     if device_num > 1 and not libvirt_version.version_compare(1, 2, 7):
         test.skip("Multiple virtio-rng devices not "
@@ -329,6 +336,11 @@ def run(test, params, env):
         else:
             params.update({"rng_device": get_rng_device(
                 guest_arch, params.get("rng_model", "virtio"))})
+
+            if detach_alias:
+                device_alias = "ua-" + str(uuid.uuid4())
+                params.update({"rng_alias": device_alias})
+
             modify_rng_xml(params, not test_snapshot)
 
         try:
@@ -357,6 +369,19 @@ def run(test, params, env):
 
             if test_snapshot:
                 check_snapshot(bgjob)
+
+            if detach_alias:
+                result = virsh.detach_device_alias(vm_name, device_alias,
+                                                   detach_options, debug=True)
+                if "--config" in detach_options:
+                    vm.destroy()
+                time.sleep(1)
+                output = virsh.dumpxml(vm_name)
+                if output.stdout.strip().count("<rng model="):
+                    test.fail("Found rng device in xml after detach")
+                else:
+                    logging.info("Cannot find rng device in xml after detach")
+
         except virt_vm.VMStartError as details:
             logging.info(str(details))
             if not start_error:

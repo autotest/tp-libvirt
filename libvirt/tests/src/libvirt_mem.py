@@ -1,6 +1,7 @@
 import os
 import re
 import ast
+import uuid
 import logging
 import platform
 import tempfile
@@ -185,6 +186,8 @@ def run(test, params, env):
             assert int(max_mem_rt) == xml_max_mem_rt
 
             # Check attached/detached memory
+            logging.info("at_mem=%s,dt_mem=%s", at_mem, dt_mem)
+            logging.info("detach_device is %s", detach_device)
             if at_mem:
                 if at_times:
                     assert int(max_mem) + (int(tg_size) *
@@ -363,6 +366,8 @@ def run(test, params, env):
     pre_vm_state = params.get("pre_vm_state", "running")
     attach_device = "yes" == params.get("attach_device", "no")
     detach_device = "yes" == params.get("detach_device", "no")
+    detach_alias = "yes" == params.get("detach_alias", "no")
+    detach_alias_options = params.get("detach_alias_options")
     attach_error = "yes" == params.get("attach_error", "no")
     start_error = "yes" == params.get("start_error", "no")
     detach_error = "yes" == params.get("detach_error", "no")
@@ -463,10 +468,12 @@ def run(test, params, env):
         # To attach the memory device.
         if (add_mem_device and not hot_plug) or cold_plug_discard:
             at_times = int(params.get("attach_times", 1))
+            device_alias = "ua-" + str(uuid.uuid4())
             dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size, mem_addr,
                                                    tg_sizeunit, pg_unit,
                                                    tg_node, node_mask,
-                                                   mem_model, mem_discard)
+                                                   mem_model, mem_discard,
+                                                   device_alias)
             randvar = 0
             if rand_reboot:
                 rand_value = random.randint(15, 25)
@@ -602,8 +609,12 @@ def run(test, params, env):
                                                        node_mask, mem_model,
                                                        mem_discard)
             for x in xrange(at_times):
-                ret = virsh.detach_device(vm_name, dev_xml.xml,
-                                          flagstr=attach_option)
+                if not detach_alias:
+                    ret = virsh.detach_device(vm_name, dev_xml.xml,
+                                              flagstr=attach_option, debug=True)
+                else:
+                    ret = virsh.detach_device_alias(vm_name, device_alias,
+                                                    detach_alias_options, debug=True)
                 if ret.stderr and host_known_unplug_errors:
                     for known_error in host_known_unplug_errors:
                         if (known_error[0] == known_error[-1]) and \
