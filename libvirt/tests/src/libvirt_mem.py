@@ -104,26 +104,31 @@ def run(test, params, env):
         :return: None
         """
         cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
-        if max_mem_rt:
+        if discard:
+            cmd += " | grep 'discard-data=yes'"
+        elif max_mem_rt:
             cmd += (" | grep 'slots=%s,maxmem=%sk'"
                     % (max_mem_slots, max_mem_rt))
-        if tg_size:
-            size = int(tg_size) * 1024
-            cmd_str = 'memdimm.\|memory-backend-ram,id=ram-node.'
-            cmd += (" | grep 'memory-backend-ram,id=%s' | grep 'size=%s"
-                    % (cmd_str, size))
-            if pg_size:
-                cmd += ",host-nodes=%s" % node_mask
-                if numa_memnode:
-                    for node in numa_memnode:
-                        if ('nodeset' in node and
-                                node['nodeset'] in node_mask):
-                            cmd += ",policy=%s" % node['mode']
-                cmd += ".*pc-dimm,node=%s" % tg_node
-            if mem_addr:
-                cmd += (".*slot=%s,addr=%s" %
-                        (mem_addr['slot'], int(mem_addr['base'], 16)))
-            cmd += "'"
+            if tg_size:
+                size = int(tg_size) * 1024
+                cmd_str = 'memdimm.\|memory-backend-file,id=ram-node.'
+                cmd += (" | grep 'memory-backend-file,id=%s' | grep 'size=%s"
+                        % (cmd_str, size))
+                if pg_size:
+                    cmd += ",host-nodes=%s" % node_mask
+                    if numa_memnode:
+                        for node in numa_memnode:
+                            if ('nodeset' in node and
+                                    node['nodeset'] in node_mask):
+                                cmd += ",policy=%s" % node['mode']
+                    cmd += ".*pc-dimm,node=%s" % tg_node
+                if mem_addr:
+                    cmd += (".*slot=%s" %
+                            (mem_addr['slot']))
+                cmd += "'"
+            if cold_plug_discard:
+                cmd += " | grep 'discard-data=yes'"
+
         # Run the command
         result = process.run(cmd, shell=True, verbose=True, ignore_status=True)
         if result.exit_status:
@@ -144,7 +149,8 @@ def run(test, params, env):
         session.cmd(cmd)
         # Wait a while for new memory to be detected.
         utils_misc.wait_for(
-            lambda: vm.get_totalmem_sys(online) != int(old_mem), 30, first=20.0)
+            lambda: vm.get_totalmem_sys(online) != int(old_mem), 30,
+            first=20.0)
         new_mem = vm.get_totalmem_sys(online)
         session.close()
         logging.debug("Memtotal on guest: %s", new_mem)
@@ -335,16 +341,20 @@ def run(test, params, env):
             del vmxml.current_mem
 
         # hugepages setting
-        if huge_pages:
+        if huge_pages or discard or cold_plug_discard:
             membacking = vm_xml.VMMemBackingXML()
-            hugepages = vm_xml.VMHugepagesXML()
-            pagexml_list = []
-            for i in range(len(huge_pages)):
-                pagexml = hugepages.PageXML()
-                pagexml.update(huge_pages[i])
-                pagexml_list.append(pagexml)
-            hugepages.pages = pagexml_list
-            membacking.hugepages = hugepages
+            membacking.discard = True
+            membacking.source = ''
+            membacking.source_type = 'file'
+            if huge_pages:
+                hugepages = vm_xml.VMHugepagesXML()
+                pagexml_list = []
+                for i in range(len(huge_pages)):
+                    pagexml = hugepages.PageXML()
+                    pagexml.update(huge_pages[i])
+                    pagexml_list.append(pagexml)
+                hugepages.pages = pagexml_list
+                membacking.hugepages = hugepages
             vmxml.mb = membacking
 
         logging.debug("vm xml: %s", vmxml)
@@ -382,6 +392,12 @@ def run(test, params, env):
     guest_known_unplug_errors.append(params.get("guest_known_unplug_errors"))
     host_known_unplug_errors = []
     host_known_unplug_errors.append(params.get("host_known_unplug_errors"))
+    discard = "yes" == params.get("discard", "no")
+    cold_plug_discard = "yes" == params.get("cold_plug_discard", "no")
+    if cold_plug_discard or discard:
+        mem_discard = 'yes'
+    else:
+        mem_discard = 'no'
 
     # params for attached device
     mem_model = params.get("mem_model", "dimm")
@@ -438,14 +454,19 @@ def run(test, params, env):
             old_mem_total = vm.get_totalmem_sys(online)
             logging.debug("Memtotal on guest: %s", old_mem_total)
             session.close()
+        elif discard:
+            vm.start()
+            session = vm.wait_for_login()
+            check_qemu_cmd()
         dev_xml = None
 
         # To attach the memory device.
-        if add_mem_device and not hot_plug:
+        if (add_mem_device and not hot_plug) or cold_plug_discard:
             at_times = int(params.get("attach_times", 1))
             dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size, mem_addr,
-                                                   tg_sizeunit, pg_unit, tg_node,
-                                                   node_mask, mem_model)
+                                                   tg_sizeunit, pg_unit,
+                                                   tg_node, node_mask,
+                                                   mem_model, mem_discard)
             randvar = 0
             if rand_reboot:
                 rand_value = random.randint(15, 25)
@@ -578,7 +599,8 @@ def run(test, params, env):
                 dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
                                                        mem_addr, tg_sizeunit,
                                                        pg_unit, tg_node,
-                                                       node_mask, mem_model)
+                                                       node_mask, mem_model,
+                                                       mem_discard)
             for x in xrange(at_times):
                 ret = virsh.detach_device(vm_name, dev_xml.xml,
                                           flagstr=attach_option)
@@ -612,8 +634,8 @@ def run(test, params, env):
                             flag = re.findall(
                                 r'memory memory\d+?: Offline failed', f.read())
                         if not flag:
-                            # The attached memory is used by vm, and it could not be unplugged
-                            # The result is expected
+                            # The attached memory is used by vm, and it could
+                            #  not be unplugged.The result is expected
                             os.remove(dmesg_file)
                             test.fail(detail)
                         unplug_failed_with_known_error = True
@@ -638,8 +660,8 @@ def run(test, params, env):
                     with open(dmesg_file, 'r') as f:
                         if known_error in f.read():
                             unplug_failed_with_known_error = True
-                            logging.debug("Known error occured, while hot unplug"
-                                          ": %s", known_error)
+                            logging.debug("Known error occured, while hot"
+                                          " unplug: %s", known_error)
             if test_dom_xml and not unplug_failed_with_known_error:
                 check_dom_xml(dt_mem=detach_device)
                 # Remove dmesg temp file
