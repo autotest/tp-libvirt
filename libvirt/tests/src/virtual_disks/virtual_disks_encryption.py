@@ -12,6 +12,7 @@ from virttest import remote
 from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_disk
+from virttest import libvirt_storage
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import vol_xml
@@ -69,6 +70,12 @@ def run(test, params, env):
         :param vol_params. Volume parameters dict.
         :return: True if create successfully.
         """
+        # Clean up dirty volumes if pool has.
+        pv = libvirt_storage.PoolVolume(p_name)
+        vol_name_list = pv.list_volumes()
+        for vol_name in vol_name_list:
+            pv.delete_volume(vol_name)
+
         volxml = vol_xml.VolXML()
         v_xml = volxml.new_vol(**vol_params)
         v_xml.encryption = volxml.new_encryption(**target_encrypt_params)
@@ -108,6 +115,30 @@ def run(test, params, env):
                                      **virsh_dargs)
         libvirt.check_exit_status(ret)
         return encryption_uuid
+
+    def get_secret_list():
+        """
+        Get secret list.
+
+        :return: secret list
+        """
+        logging.info("Get secret list ...")
+        secret_list = virsh.secret_list().stdout.strip().splitlines()
+        # First two lines contain table header followed by entries
+        # for each secret, such as:
+        #
+        # UUID                                  Usage
+        # --------------------------------------------------------------------------------
+        # b4e8f6d3-100c-4e71-9f91-069f89742273  ceph client.libvirt secret
+        secret_list = secret_list[2:]
+        result = []
+        # If secret list is not empty.
+        if secret_list:
+            for line in secret_list:
+                # Split on whitespace, assume 1 column
+                linesplit = line.split(None, 1)
+                result.append(linesplit[0])
+        return result
 
     def check_in_vm(vm, target, old_parts):
         """
@@ -208,6 +239,11 @@ def run(test, params, env):
     try:
         # Prepare the disk.
         sec_uuids = []
+        # Clean up dirty secrets in test environments if there are.
+        dirty_secret_list = get_secret_list()
+        if dirty_secret_list:
+            for dirty_secret_uuid in dirty_secret_list:
+                virsh.secret_undefine(dirty_secret_uuid)
         create_pool(pool_name, pool_type, pool_target)
         vol_params = {"name": volume_name, "capacity": int(volume_cap),
                       "allocation": int(volume_alloc), "format":
