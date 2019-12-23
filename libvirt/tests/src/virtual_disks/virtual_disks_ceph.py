@@ -518,11 +518,16 @@ def run(test, params, env):
     test_disk_internal_snapshot = "yes" == params.get("test_disk_internal_snapshot", "no")
     test_json_pseudo_protocol = "yes" == params.get("json_pseudo_protocol", "no")
     disk_snapshot_with_sanlock = "yes" == params.get("disk_internal_with_sanlock", "no")
+    auth_place_in_source = params.get("auth_place_in_source")
 
     # Prepare a blank params to confirm if delete the configure at the end of the test
     ceph_cfg = ""
     # Create config file if it doesn't exist
     ceph_cfg = ceph.create_config_file(mon_host)
+
+    # After libvirt 3.9.0, auth element can be put into source part.
+    if auth_place_in_source and not libvirt_version.version_compare(3, 9, 0):
+        test.cancel("place auth in source is not supported in current libvirt version")
 
     # Start vm and get all partions in vm.
     if vm.is_dead():
@@ -770,6 +775,9 @@ def run(test, params, env):
                     params.pop("secret_uuid")
                 if "secret_usage" in params:
                     params.pop("secret_usage")
+            # After 3.9.0,the auth element can be place in source part.
+            if auth_place_in_source:
+                params.update({"auth_in_source": auth_place_in_source})
             xml_file = libvirt.create_disk_xml(params)
             if additional_guest:
                 # Copy xml_file for additional guest VM.
