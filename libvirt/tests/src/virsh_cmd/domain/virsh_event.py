@@ -97,6 +97,19 @@ def run(test, params, env):
         virsh.attach_disk(vm_name, init_source, target_device,
                           extra_param, **virsh_dargs)
 
+    def wait_for_shutoff(vm):
+        """
+        Wait for the vm to reach state shutoff
+        :param vm: VM instance
+        """
+
+        def is_shutoff():
+            state = vm.state()
+            logging.debug("Current state: %s", state)
+            return "shut off" in state
+        utils_misc.wait_for(is_shutoff, timeout=90, first=1,
+                            step=1, text="Waiting for vm state to be shut off")
+
     def trigger_events(dom, events_list=[]):
         """
         Trigger various events in events_list
@@ -111,7 +124,7 @@ def run(test, params, env):
 
         try:
             for event in events_list:
-                if event in ['start', 'restore', 'create', 'define', 'undefine', 'crash']:
+                if event in ['start', 'restore', 'create', 'edit', 'define', 'undefine', 'crash']:
                     if dom.is_alive():
                         dom.destroy()
                         if event in ['create', 'define']:
@@ -204,6 +217,7 @@ def run(test, params, env):
                     if not utils_misc.compare_qemu_version(2, 9, 0):
                         expected_events_list.append("'lifecycle' for %s:"
                                                     " Shutdown Finished")
+                    wait_for_shutoff(dom)
                     expected_events_list.append("'lifecycle' for %s:"
                                                 " Stopped Shutdown")
                 elif event == "crash":
