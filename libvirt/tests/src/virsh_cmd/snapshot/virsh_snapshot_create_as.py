@@ -324,6 +324,8 @@ def run(test, params, env):
 
     vm_name = params.get("main_vm")
     status_error = params.get("status_error", "no")
+    machine_type = params.get("machine_type", "")
+    disk_device = params.get("disk_device", "")
     options = params.get("snap_createas_opts")
     multi_num = params.get("multi_num", "1")
     diskspec_num = params.get("diskspec_num", "1")
@@ -356,6 +358,11 @@ def run(test, params, env):
     if usr:
         if usr.count('EXAMPLE'):
             usr = 'testacl'
+
+    if disk_device == 'lun' and machine_type == 's390-ccw-virtio':
+        params['disk_target_bus'] = 'scsi'
+        logging.debug("Setting target bus scsi because machine type has virtio 1.0."
+                      " See https://bugzilla.redhat.com/show_bug.cgi?id=1365823")
 
     if disk_src_protocol == 'iscsi':
         if not libvirt_version.version_compare(1, 0, 4):
