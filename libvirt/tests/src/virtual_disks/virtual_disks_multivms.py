@@ -36,7 +36,6 @@ def run(test, params, env):
         # Add disk scsi controller
         scsi_controller = Controller("controller")
         scsi_controller.type = "scsi"
-        scsi_controller.index = "0"
         scsi_controller.model = "virtio-scsi"
         vmxml.add_device(scsi_controller)
 
