@@ -13,11 +13,9 @@ from avocado.core import exceptions
 from avocado.utils import process
 
 from virttest import data_dir
-from virttest import ssh_key
 from virttest import utils_misc
 from virttest import utils_v2v
 from virttest import virsh
-from virttest import remote
 from virttest import libvirt_storage
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
@@ -76,7 +74,10 @@ def run(test, params, env):
     error_flag = 'strict'
     estimate_file = ''
 
-    def create_pool(user_pool=False, pool_name=pool_name, pool_target=pool_target):
+    def create_pool(
+            user_pool=False,
+            pool_name=pool_name,
+            pool_target=pool_target):
         """
         Create libvirt pool as the output storage
         """
@@ -90,7 +91,10 @@ def run(test, params, env):
         else:
             pvt.pre_pool(pool_name, pool_type, pool_target, emulated_img)
 
-    def cleanup_pool(user_pool=False, pool_name=pool_name, pool_target=pool_target):
+    def cleanup_pool(
+            user_pool=False,
+            pool_name=pool_name,
+            pool_target=pool_target):
         """
         Clean up libvirt pool
         """
@@ -246,24 +250,6 @@ def run(test, params, env):
         else:
             test.fail('Fail to find snapshot_id')
 
-    def setup_esx_ssh_key(hostname, user, password, port=22):
-        """
-        Setup up remote login in esx server by using public key
-        """
-        logging.debug('Performing SSH key setup on %s:%d as %s.' %
-                      (hostname, port, user))
-        try:
-            session = remote.remote_login(client='ssh', host=hostname,
-                                          username=user, port=port,
-                                          password=password, prompt=r'[ $#%]')
-            public_key = ssh_key.get_public_key()
-            session.cmd("echo '%s' >> /etc/ssh/keys-root/authorized_keys; " %
-                        public_key)
-            logging.debug('SSH key setup complete.')
-            session.close()
-        except Exception as err:
-            logging.debug('SSH key setup has failed. %s', err)
-
     def check_source(output):
         """
         Check if --print-source option print the correct info
@@ -272,7 +258,7 @@ def run(test, params, env):
         source = output.split('\n')[2:]
         for i in range(len(source)):
             if source[i].startswith('\t'):
-                source[i-1] += source[i]
+                source[i - 1] += source[i]
                 source[i] = ''
         source_strip = [x.strip() for x in source if x.strip()]
         source_info = {}
@@ -339,7 +325,7 @@ def run(test, params, env):
         # For xen, disk output is like "disks: json: { ... } [ide]"
         # For kvm, disk output is like "/rhel8.0-2.qcow2 (qcow2) [virtio-blk]"
         if hypervisor == 'kvm':
-            disks_info_pattern = "%s \(%s\) \[%s" % (path, driver_type, bus)
+            disks_info_pattern = r"%s \(%s\) \[%s" % (path, driver_type, bus)
         elif hypervisor == 'esx':
             # replace '.vmdk' with '-flat.vmdk', this is done in v2v
             path_pattern1 = path.split()[1].replace('.vmdk', '-flat.vmdk')
@@ -348,7 +334,7 @@ def run(test, params, env):
             # For esx, '(raw)' is fixed? Let's see if others will be met.
             disks_info_pattern = '|'.join(
                 [
-                    "https://%s/folder/%s\?dcPath=data&dsName=esx.*} \(raw\) \[%s" %
+                    r"https://%s/folder/%s\?dcPath=data&dsName=esx.*} \(raw\) \[%s" %
                     (remote_host, i, bus) for i in [
                         path_pattern1, path_pattern2]])
         elif hypervisor == 'xen':
@@ -376,7 +362,8 @@ def run(test, params, env):
             feature_list = xml.features.get_feature_list()
             logging.info('CPU features:%s<->%s',
                          source_info['CPU features'], feature_list)
-            if sorted(source_info['CPU features'].split(',')) != sorted(feature_list):
+            if sorted(source_info['CPU features'].split(
+                    ',')) != sorted(feature_list):
                 fail.append('CPU features')
 
         if fail:
@@ -463,7 +450,8 @@ def run(test, params, env):
                         return True
                     except exceptions.TestFail:
                         pass
-                if not utils_misc.wait_for(check_alloc, timeout=600, step=10.0):
+                if not utils_misc.wait_for(
+                        check_alloc, timeout=600, step=10.0):
                     test.fail('Allocation check failed.')
             if '-of' in cmd and '--no-copy' not in cmd and '--print-source' not in cmd and checkpoint != 'quiet' and not no_root:
                 expected_format = re.findall(r"-of\s(\w+)", cmd)[0]
@@ -485,7 +473,7 @@ def run(test, params, env):
             if output_mode == "libvirt":
                 if "qemu:///session" not in v2v_options and not no_root:
                     virsh.start(vm_name, debug=True, ignore_status=False)
-            if checkpoint == ['vmx', 'vmx_ssh']:
+            if checkpoint in ['vmx', 'vmx_ssh']:
                 vmchecker = VMChecker(test, params, env)
                 params['vmchecker'] = vmchecker
                 params['vmcheck_flag'] = True
@@ -498,7 +486,10 @@ def run(test, params, env):
             if checkpoint == 'dependency':
                 if 'libguestfs-winsupport' not in output:
                     test.fail('libguestfs-winsupport not in dependency')
-                if all(pkg_pattern not in output for pkg_pattern in ['VMF', 'edk2-ovmf']):
+                if all(
+                    pkg_pattern not in output for pkg_pattern in [
+                        'VMF',
+                        'edk2-ovmf']):
                     test.fail('OVMF/AAVMF not in dependency')
                 if 'qemu-kvm-rhev' in output:
                     test.fail('qemu-kvm-rhev is in dependency')
@@ -508,7 +499,10 @@ def run(test, params, env):
                     test.fail('kernel-rt is in dependency')
                 win_img = params.get('win_image')
                 command = 'guestfish -a %s -i'
-                if process.run(command % win_img, ignore_status=True).exit_status == 0:
+                if process.run(
+                        command %
+                        win_img,
+                        ignore_status=True).exit_status == 0:
                     test.fail('Command "%s" success' % command % win_img)
             if checkpoint == 'no_dcpath':
                 if '--dcpath' in output:
@@ -601,7 +595,8 @@ def run(test, params, env):
             input_option = "-i %s -ic %s %s" % (input_mode, ic_uri, vm_name)
             if checkpoint == 'with_ic':
                 ic_uri = 'qemu:///session'
-                input_option = "-i ova %s -ic %s -of qcow2" % (input_file, ic_uri)
+                input_option = "-i ova %s -ic %s -of qcow2" % (
+                    input_file, ic_uri)
             if checkpoint == 'without_ic':
                 input_option = "-i ova %s -of raw" % input_file
             # Build network&bridge option to avoid network error
@@ -695,8 +690,8 @@ def run(test, params, env):
             user = params.get("xen_host_user", "root")
             source_pwd = passwd = params.get("xen_host_passwd", "redhat")
             logging.info("set up ssh-agent access ")
-            ssh_key.setup_ssh_key(remote_host, user=user,
-                                  port=22, password=passwd)
+            xen_pubkey, xen_session = utils_v2v.v2v_setup_ssh_key(
+                remote_host, user, passwd, auto_close=False)
             utils_misc.add_identities_into_ssh_agent()
             # Check if xen guest exists
             uri = utils_v2v.Uri(hypervisor).get_uri(remote_host)
@@ -725,7 +720,8 @@ def run(test, params, env):
             tmp_result = process.run(tmp_cmd, verbose=True, ignore_status=True)
             tmp_result.stdout = results_stdout_52lts(tmp_result)
             if not re.search(r'-ip <filename>', tmp_result.stdout):
-                output_option = output_option.replace('-ip', '--password-file', 1)
+                output_option = output_option.replace(
+                    '-ip', '--password-file', 1)
 
         # if don't specify any output option for virt-v2v, 'default' pool
         # will be used.
@@ -746,7 +742,8 @@ def run(test, params, env):
             v2v_options += ' -on %s' % new_vm_name
             create_pool(user_pool=True, pool_name='src_pool',
                         pool_target='v2v_src_pool')
-            cmd = su_cmd + "'virsh -c %s pool-info %s'" % ('qemu:///session', 'src_pool')
+            cmd = su_cmd + \
+                "'virsh -c %s pool-info %s'" % ('qemu:///session', 'src_pool')
             process.system(cmd, verbose=True)
 
         if checkpoint == 'vmx':
@@ -763,14 +760,11 @@ def run(test, params, env):
 
         if checkpoint == 'vmx_ssh':
             esx_user = params.get("esx_host_user", "root")
-            esx_pwd = params.get("esx_host_passwd", "123qweP")
+            esx_pwd = params.get("esx_host_passwd")
             vmx = params.get('vmx')
-            setup_esx_ssh_key(esx_ip, esx_user, esx_pwd)
-            try:
-                utils_misc.add_identities_into_ssh_agent()
-            except Exception:
-                process.run("ssh-agent -k")
-                raise exceptions.TestError("Fail to setup ssh-agent")
+            esx_pubkey, esx_session = utils_v2v.v2v_setup_ssh_key(
+                esx_ip, esx_user, esx_pwd, server_type='esx', auto_close=False)
+            utils_misc.add_identities_into_ssh_agent()
             input_option = '-i vmx -it ssh %s' % vmx
             v2v_options += " -b %s -n %s" % (params.get("output_bridge"),
                                              params.get("output_network"))
@@ -785,7 +779,8 @@ def run(test, params, env):
             process.run('chmod -R 777 /tmp/rhv/')
 
         if checkpoint == 'print_estimate_tofile':
-            estimate_file = utils_misc.generate_tmp_file_name('v2v_print_estimate')
+            estimate_file = utils_misc.generate_tmp_file_name(
+                'v2v_print_estimate')
             v2v_options += " --machine-readable=file:%s" % estimate_file
 
         # Running virt-v2v command
@@ -820,8 +815,6 @@ def run(test, params, env):
             params['main_vm'] = new_vm_name
         check_result(cmd, cmd_result, status_error)
     finally:
-        if hypervisor == "xen":
-            process.run("ssh-agent -k")
         if hypervisor == "esx":
             process.run("rm -rf %s" % vpx_passwd_file)
         for vdsm_dir in [vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir]:
@@ -863,7 +856,13 @@ def run(test, params, env):
         if checkpoint == 'vmx':
             utils_misc.umount(params['nfs_vmx'], params['mount_point'], 'nfs')
             os.rmdir(params['mount_point'])
+        if checkpoint == 'vmx_ssh':
+            utils_v2v.v2v_setup_ssh_key_cleanup(esx_session, esx_pubkey, 'esx')
+            process.run("ssh-agent -k")
         if checkpoint == 'simulate_nfs':
             process.run('rm -rf /tmp/rhv/')
         if os.path.exists(estimate_file):
             os.remove(estimate_file)
+        if hypervisor == "xen":
+            utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
+            process.run("ssh-agent -k")
