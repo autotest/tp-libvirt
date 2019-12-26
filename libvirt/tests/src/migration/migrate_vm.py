@@ -1418,10 +1418,11 @@ def run(test, params, env):
         if iscsi_setup:
             fileio_name = "emulated-iscsi"
             img_vsize = get_virtual_size(disk_source)
+
             target = libvirt.setup_or_cleanup_iscsi(is_setup=True, is_login=False,
                                                     emulated_image=fileio_name,
                                                     portal_ip=portal_ip,
-                                                    image_size=img_vsize)
+                                                    image_size=str(img_vsize) + 'G')
             logging.debug("Created iscsi target: %s", target)
             host_ip = update_host_ip(client_ip, params.get("ipv6_addr_src"))
             redefine_vm_with_iscsi_target(host_ip, disk_format,
