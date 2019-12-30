@@ -14,7 +14,7 @@ matrix:
 sudo: false
 
 install:
-    - pip install sphinx${SPHINX_VERSION:+==$SPHINX_VERSION}
+    - pip install Sphinx==1.3b1
     - pip install -r requirements-travis.txt
 
 script:
