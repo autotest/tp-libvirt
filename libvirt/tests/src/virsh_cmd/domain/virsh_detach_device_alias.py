@@ -1,4 +1,5 @@
 import uuid
+import time
 import logging
 
 from virttest import virsh
@@ -97,6 +98,7 @@ def run(test, params, env):
 
         # Detach xml with alias
         result = virsh.detach_device_alias(vm_name, device_alias, detach_options, debug=True)
+        time.sleep(10)
         libvirt.check_exit_status(result)
         domxml_dt = virsh.dumpxml(vm_name, dump_option, debug=True).stdout.strip()
         if detach_check_xml in domxml_dt:
