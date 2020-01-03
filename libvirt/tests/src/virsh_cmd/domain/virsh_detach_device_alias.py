@@ -43,6 +43,7 @@ def run(test, params, env):
 
         :return: usb verndor and product id
         """
+        install_cmd = process.run("yum install usbutils* -y", shell=True)
         result = process.run("lsusb|awk '{print $6\":\"$2\":\"$4}'", shell=True)
         if not result.exit_status:
             return result.stdout_text.rstrip(':')
