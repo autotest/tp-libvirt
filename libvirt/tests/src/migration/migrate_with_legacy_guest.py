@@ -128,12 +128,12 @@ def run(test, params, env):
     guest_src_url = params.get("guest_src_url")
     guest_src_path = params.get("guest_src_path",
                                 "/var/lib/libvirt/images/guest.img")
-    check_disk = params.get("check_disk") == "yes"
+    check_disk = "yes" == params.get("check_disk")
     disk_model = params.get("disk_model")
     disk_target = params.get("disk_target", "vda")
     controller_model = params.get("controller_model")
 
-    check_interface = params.get("check_interface") == "yes"
+    check_interface = "yes" == params.get("check_interface")
     iface_type = params.get("iface_type", "network")
     iface_model = params.get("iface_model", "virtio")
     iface_params = {'type': iface_type,
@@ -141,13 +141,19 @@ def run(test, params, env):
                     'del_addr': True,
                     'source': '{"network": "default"}'}
 
-    migr_vm_back = params.get("migrate_vm_back", "no") == "yes"
+    check_memballoon = "yes" == params.get("check_memballoon")
+    membal_model = params.get("membal_model")
+
+    check_rng = "yes" == params.get("check_rng")
+    rng_model = params.get("rng_model")
+
+    migr_vm_back = "yes" == params.get("migrate_vm_back", "no")
     status_error = "yes" == params.get("status_error", "no")
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
                           'ssh_remote_auth': True}
 
-    xml_check_after_mig = params.get("guest_xml_check_after_mig", None)
+    xml_check_after_mig = params.get("guest_xml_check_after_mig")
 
     err_msg = params.get("err_msg")
     vm_session = None
@@ -198,6 +204,16 @@ def run(test, params, env):
 
         if check_interface:
             libvirt.modify_vm_iface(vm_name, "update_iface", iface_params)
+
+        if check_memballoon:
+            membal_dict = {'membal_model': membal_model}
+            libvirt.update_memballoon_xml(new_xml, membal_dict)
+
+        if check_rng:
+            rng_dict = {'rng_model': rng_model}
+            rng_xml = libvirt.create_rng_xml(rng_dict)
+            libvirt.add_vm_device(new_xml, rng_xml)
+
         # Change the disk of the vm
         libvirt.set_vm_disk(vm, params)
 
@@ -240,6 +256,11 @@ def run(test, params, env):
                 check_str = disk_model if disk_model else controller_model
             if check_interface:
                 check_str = iface_model
+            if check_memballoon:
+                check_str = membal_model
+            if check_rng:
+                check_str = rng_model
+
             xml_check_after_mig = "%s'%s'" % (xml_check_after_mig, check_str)
             if not re.search(xml_check_after_mig, target_guest_dumpxml):
                 test.fail("Fail to search '%s' in target guest XML:\n%s"
