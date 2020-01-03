@@ -191,6 +191,7 @@ def run(test, params, env):
 
             vm.destroy()
             vm.start()
+            vm_ref = vm.get_id()
 
         if set_ref:
             start_current_value = get_current_value()
