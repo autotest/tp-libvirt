@@ -4,17 +4,20 @@ import ast
 import shutil
 import logging
 import uuid
-import time
+import aexpect
 
 from six.moves import xrange
 
 from avocado.utils import process
+
 from virttest import virt_vm, virsh
 from virttest import utils_package
 from virttest import utils_misc
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.devices import rng
+
 from provider import libvirt_version
 
 
@@ -31,9 +34,117 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 
-    def modify_rng_xml(dparams, sync=True):
+    def check_rng_xml(xml_set, exists=True):
+        """
+        Check rng xml in/not in domain xml
+        :param xml_set: rng xml object for setting
+        :param exists: Check xml exists or not in domain xml
+
+        :return: boolean
+        """
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        # Get all current xml rng devices
+        xml_devices = vmxml.devices
+        rng_devices = xml_devices.by_device_tag("rng")
+        logging.debug("rng_devices is %s", rng_devices)
+
+        # check if xml attr same with checking
+        try:
+            rng_index = xml_devices.index(rng_devices[0])
+            xml_get = xml_devices[rng_index]
+
+            if not exists:
+                # should be detach device check
+                return False
+        except IndexError:
+            if exists:
+                # should be attach device check
+                return False
+            else:
+                logging.info("Can not find rng xml as expected")
+                return True
+
+        def get_compare_values(xml_set, xml_get, rng_attr):
+            """
+            Get set and get value to compare
+
+            :param xml_set: seting xml object
+            :param xml_get: getting xml object
+            :param rng_attr: attribute of rng device
+            :return: set and get value in xml
+            """
+            try:
+                set_value = xml_set[rng_attr]
+            except xcepts.LibvirtXMLNotFoundError:
+                set_value = None
+            try:
+                get_value = xml_get[rng_attr]
+            except xcepts.LibvirtXMLNotFoundError:
+                get_value = None
+            logging.debug("get xml_set value(%s) is %s, get xml_get value is %s",
+                          rng_attr, set_value, get_value)
+            return (set_value, get_value)
+
+        match = True
+        for rng_attr in xml_set.__slots__:
+            set_value, get_value = get_compare_values(xml_set, xml_get, rng_attr)
+            logging.debug("rng_attr=%s, set_value=%s, get_value=%s", rng_attr, set_value, get_value)
+            if set_value and set_value != get_value:
+                if rng_attr == 'backend':
+                    for bak_attr in xml_set.backend.__slots__:
+                        set_backend, get_backend = get_compare_values(xml_set.backend, xml_get.backend, bak_attr)
+                        if set_backend and set_backend != get_backend:
+                            if bak_attr == 'source':
+                                set_source = xml_set.backend.source
+                                get_source = xml_get.backend.source
+                                find = False
+                                for i in range(len(set_source)):
+                                    for j in get_source:
+                                        if set(set_source[i].items()).issubset(j.items()):
+                                            find = True
+                                            break
+                                    if not find:
+                                        logging.debug("set source(%s) not in get source(%s)",
+                                                      set_source[i], get_source)
+                                        match = False
+                                        break
+                                    else:
+                                        continue
+                            else:
+                                logging.debug("set backend(%s)- %s not equal to get backend-%s",
+                                              rng_attr, set_backend, get_backend)
+                                match = False
+                                break
+                        else:
+                            continue
+                        if not match:
+                            break
+                else:
+                    logging.debug("set value(%s)-%s not equal to get value-%s",
+                                  rng_attr, set_value, get_value)
+                    match = False
+                    break
+            else:
+                continue
+            if not match:
+                break
+
+        if match:
+            logging.info("Find same rng xml as hotpluged")
+        else:
+            test.fail("Rng xml in VM not same with attached xml")
+
+        return True
+
+    def modify_rng_xml(dparams, sync=True, get_xml=False):
         """
         Modify interface xml options
+
+        :params dparams: parameters for organize xml
+        :params sync: whether sync to domain xml, if get_xml is True,
+                      then sync will not take effect
+        :params get_xml: whether get device xml
+        :return: if get_xml=True, return xml file
         """
         rng_model = dparams.get("rng_model", "virtio")
         rng_rate = dparams.get("rng_rate")
@@ -66,6 +177,8 @@ def run(test, params, env):
             rng_xml.alias = dict(name=rng_alias)
 
         logging.debug("Rng xml: %s", rng_xml)
+        if get_xml:
+            return rng_xml
         if sync:
             vmxml.add_device(rng_xml)
             vmxml.xmltreefile.write()
@@ -185,28 +298,76 @@ def run(test, params, env):
         if not ret.stdout.strip().count(snapshot_name2):
             test.fail("Failed to find snapshot disk")
 
-    def check_guest(session):
+    def check_guest_dump(session, exists=True):
+        """
+        Check guest with hexdump
+
+        :param session: ssh session to guest
+        :param exists: check rng device exists/not exists
+        """
+        check_cmd = "hexdump /dev/hwrng"
+        try:
+            status = session.cmd_status(check_cmd, 5)
+
+            if status != 0 and exists:
+                test.fail("Fail to check hexdump in guest")
+            elif not exists:
+                logging.info("hexdump cmd failed as expected")
+        except aexpect.exceptions.ShellTimeoutError:
+            if not exists:
+                test.fail("Still can find rng device in guest")
+            else:
+                logging.info("Hexdump do not fail with error")
+
+    def check_guest(session, expect_fail=False):
         """
         Check random device on guest
+
+        :param session: ssh session to guest
+        :param expect_fail: expect the dd cmd pass or fail
         """
         rng_files = (
             "/sys/devices/virtual/misc/hw_random/rng_available",
             "/sys/devices/virtual/misc/hw_random/rng_current")
         rng_avail = session.cmd_output("cat %s" % rng_files[0],
-                                       timeout=600).strip()
+                                       timeout=timeout).strip()
         rng_currt = session.cmd_output("cat %s" % rng_files[1],
-                                       timeout=600).strip()
+                                       timeout=timeout).strip()
         logging.debug("rng avail:%s, current:%s", rng_avail, rng_currt)
         if not rng_currt.count("virtio") or rng_currt not in rng_avail:
             test.fail("Failed to check rng file on guest")
 
         # Read the random device
+        rng_rate = params.get("rng_rate")
+        # For rng rate test this command and return in a short time
+        # but for other test it will hang
         cmd = ("dd if=/dev/hwrng of=rng.test count=100"
                " && rm -f rng.test")
-        ret, output = session.cmd_status_output(cmd, timeout=600)
-        if ret:
-            test.fail("Failed to read the random device")
-        rng_rate = params.get("rng_rate")
+        try:
+            ret, output = session.cmd_status_output(cmd, timeout=timeout)
+            if ret and expect_fail:
+                logging.info("dd cmd failed as expected")
+            elif ret:
+                test.fail("Failed to read the random device")
+        except aexpect.exceptions.ShellTimeoutError:
+            logging.info("dd cmd timeout")
+            # Close session as the current session still hang on last cmd
+            session.close()
+            session = vm.wait_for_login()
+
+            if expect_fail:
+                test.fail("Still can find rng device in guest")
+            else:
+                logging.info("dd cmd do not fail with error")
+                # Check if file have data
+                size = session.cmd_output("wc -c rng.test").split()[0]
+                if int(size) > 0:
+                    logging.info("/dev/hwrng is not empty, size %s", size)
+                else:
+                    test.fail("/dev/hwrng is empty")
+        finally:
+            session.cmd("rm -f rng.test")
+
         if rng_rate:
             rate_bytes, rate_period = list(ast.literal_eval(rng_rate).values())
             rate_conf = float(rate_bytes) / (float(rate_period)/1000)
@@ -245,9 +406,11 @@ def run(test, params, env):
             test.fail("Unknown rng model %s" % rng_model)
 
     start_error = "yes" == params.get("start_error", "no")
+    status_error = "yes" == params.get("status_error", "no")
 
     test_host = "yes" == params.get("test_host", "no")
     test_guest = "yes" == params.get("test_guest", "no")
+    test_guest_dump = "yes" == params.get("test_guest_dump", "no")
     test_qemu_cmd = "yes" == params.get("test_qemu_cmd", "no")
     test_snapshot = "yes" == params.get("test_snapshot", "no")
     snapshot_vm_running = "yes" == params.get("snapshot_vm_running",
@@ -256,7 +419,12 @@ def run(test, params, env):
     snapshot_name = params.get("snapshot_name")
     device_num = int(params.get("device_num", 1))
     detach_alias = "yes" == params.get("rng_detach_alias", "no")
-    detach_options = params.get("rng_detach_options")
+    detach_alias_options = params.get("rng_detach_alias_options")
+    attach_rng = "yes" == params.get("rng_attach_device", "no")
+    attach_options = params.get("rng_attach_options", "")
+    random_source = "yes" == params.get("rng_random_source", "yes")
+    timeout = int(params.get("timeout", 600))
+    wait_timeout = int(params.get("wait_timeout", 60))
 
     if device_num > 1 and not libvirt_version.version_compare(1, 2, 7):
         test.skip("Multiple virtio-rng devices not "
@@ -341,20 +509,31 @@ def run(test, params, env):
                 device_alias = "ua-" + str(uuid.uuid4())
                 params.update({"rng_alias": device_alias})
 
-            modify_rng_xml(params, not test_snapshot)
+            rng_xml = modify_rng_xml(params, not test_snapshot, attach_rng)
 
         try:
             # Add random server
-            if params.get("backend_type") == "tcp":
+            if random_source and params.get("backend_type") == "tcp":
                 cmd = "cat /dev/random | nc -4 -l localhost 1024"
                 bgjob = utils_misc.AsyncJob(cmd)
 
-            # Start the VM.
             vm.start()
-            if start_error:
-                test.fail("VM started unexpectedly")
+            if attach_rng:
+                ret = virsh.attach_device(vm_name, rng_xml.xml,
+                                          flagstr=attach_options,
+                                          debug=True, ignore_status=True)
+                libvirt.check_exit_status(ret, status_error)
+                if status_error:
+                    return
+                if not check_rng_xml(rng_xml, True):
+                    test.fail("Can not find rng device in xml")
 
-            if test_qemu_cmd:
+            else:
+                # Start the VM.
+                if start_error:
+                    test.fail("VM started unexpectedly")
+
+            if test_qemu_cmd and not attach_rng:
                 if device_num > 1:
                     for i in xrange(device_num):
                         check_qemu_cmd(dparams[i])
@@ -365,23 +544,44 @@ def run(test, params, env):
             session = vm.wait_for_login()
             if test_guest:
                 check_guest(session)
-            session.close()
-
+            if test_guest_dump:
+                check_guest_dump(session, True)
             if test_snapshot:
                 check_snapshot(bgjob)
 
             if detach_alias:
                 result = virsh.detach_device_alias(vm_name, device_alias,
-                                                   detach_options, debug=True)
-                if "--config" in detach_options:
+                                                   detach_alias_options, debug=True)
+                if "--config" in detach_alias_options:
                     vm.destroy()
-                time.sleep(1)
-                output = virsh.dumpxml(vm_name)
-                if output.stdout.strip().count("<rng model="):
-                    test.fail("Found rng device in xml after detach")
-                else:
-                    logging.info("Cannot find rng device in xml after detach")
 
+                def have_rng_xml():
+                    """
+                    check if xml have rng item
+                    """
+                    output = virsh.dumpxml(vm_name)
+                    return not output.stdout.strip().count("<rng model=")
+
+                if utils_misc.wait_for(have_rng_xml, wait_timeout):
+                    logging.info("Cannot find rng device in xml after detach")
+                else:
+                    test.fail("Found rng device in xml after detach")
+
+            # Detach after attach
+            if attach_rng:
+                ret = virsh.detach_device(vm_name, rng_xml.xml,
+                                          flagstr=attach_options,
+                                          debug=True, ignore_status=True)
+                libvirt.check_exit_status(ret, status_error)
+                if utils_misc.wait_for(lambda: check_rng_xml(rng_xml, False), wait_timeout):
+                    logging.info("Find same rng xml as hotpluged")
+                else:
+                    test.fail("Rng device still exists after detach!")
+
+                if test_guest_dump:
+                    check_guest_dump(session, False)
+
+            session.close()
         except virt_vm.VMStartError as details:
             logging.info(str(details))
             if not start_error:
