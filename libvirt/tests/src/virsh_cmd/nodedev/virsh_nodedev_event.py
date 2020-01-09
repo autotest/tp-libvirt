@@ -34,6 +34,7 @@ def run(test, params, env):
                         event_list.append("Deleted")
                         virsh.nodedev_reattach(device_address)
                         event_list.append("Created")
+                        time.sleep(2)
                         event_amount -= 2
                 if event_amount % 2 == 1:
                     event_amount -= 1
@@ -42,6 +43,7 @@ def run(test, params, env):
                         event_list.append("Deleted")
                         virsh.nodedev_reattach(device_address)
                         event_list.append("Created")
+                        time.sleep(2)
                         event_amount -= 2
                     virsh.nodedev_detach(device_address)
                     event_list.append("Deleted")
@@ -75,6 +77,9 @@ def run(test, params, env):
             output = output.strip().splitlines()[5:-2]
         output = [o.replace("virsh #", "").strip() for o in output]
         # Both order and content should match
+        if len(output) < len(expected_event_list):
+            test.fail("Event did not have enough output. Expected: {} Actual: {}"
+                      .format(expected_event_list, output))
         index = 0
         for event_str in expected_event_list:
             match_str = event_match_str % (device_name, event_str)
