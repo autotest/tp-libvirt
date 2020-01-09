@@ -213,7 +213,12 @@ class VMChecker(object):
 
         cmd = 'osinfo-query os --fields=short-id | tail -n +3'
         # Too much debug output if verbose is True
-        output = process.run(cmd, timeout=20, shell=True, ignore_status=True)
+        output = process.run(
+            cmd,
+            timeout=20,
+            shell=True,
+            ignore_status=True,
+            verbose=False)
         short_id_all = results_stdout_52lts(output).splitlines()
         if short_id not in [os_id.strip() for os_id in short_id_all]:
             raise exceptions.TestError('Invalid short_id: %s' % short_id)
@@ -237,6 +242,63 @@ class VMChecker(object):
 
         if not re.search(libosinfo_pattern, self.vmxml):
             self.log_err('Not find metadata libosinfo')
+
+    def check_video_model(self, video_type, dev_id):
+        """
+        Check expected video module on VM
+        :param video_type: the expected video type
+        :param dev_id: the ID of the video device
+        :return: log error will be recored if not found, else return nothing
+        """
+        # Check by 'lspci'
+        if self.checker.vm_general_search(
+            "lspci",
+            video_type,
+            re.IGNORECASE,
+                ignore_status=True):
+            return
+        elif len(dev_id) > 0 and any([self.checker.vm_general_search("lspci", id_i, debug=False, ignore_status=True) for id_i in dev_id]):
+            return
+
+        # Check by 'journalctl'
+        if self.checker.vm_journal_search(video_type, "--since -20m"):
+            return
+
+        # Check by xorg log
+        if self.checker.vm_xorg_search(video_type):
+            return
+
+        err_msg = "Not find %s device" % video_type
+        self.log_err(err_msg)
+
+    def get_device_id_by_name(self, devname):
+        """
+        Return device id by device name
+        :param devname: a device's name provided by RedHat
+        """
+        # All pci device which provided by Red Hat, Inc.
+        # https://devicehunt.com/view/type/pci/vendor/1AF4/
+        # https://devicehunt.com/view/type/pci/vendor/1B36
+        virtio_name_id_mapping = {
+            'Virtio network device': ['1000', '1041'],
+            'Virtio block device': ['1001', '1042'],
+            'Virtio memory balloon': ['1002', '1045'],
+            'Virtio console': ['1003', '1043'],
+            'Virtio SCSI': ['1004', '1048'],
+            'Virtio RNG': ['1005', '1044'],
+            'Virtio filesystem': ['1009', '1049'],
+            'Virtio GPU': ['1050'],
+            'Virtio input': ['1052'],
+            'Inter-VM shared memory': ['1110'],
+            # QXL paravirtual graphic card
+            'qxl': ['0100'],
+            # Cirrus Logic
+            'cirrus': ['1100']}
+
+        if devname not in virtio_name_id_mapping.keys():
+            logging.debug('Unknown RedHat virtio device: %s' % devname)
+            return []
+        return virtio_name_id_mapping[devname]
 
     def get_expected_boottype(self, boottype):
         """
@@ -358,8 +420,15 @@ class VMChecker(object):
         logging.info("Virtio devices checking list: %s", virtio_devs)
         for dev in virtio_devs:
             if not re.search(dev, pci_devs, re.IGNORECASE):
-                err_msg = "Not find %s" % dev
-                self.log_err(err_msg)
+                # Some devices may not be recognized by old guests.
+                # Then lspci will display as 'Unclassifed device' with
+                # device ID.
+                # e.g.
+                # Unclassified device [00ff]: Red Hat, Inc Device 1005
+                if not any([re.search(dev_id, pci_devs, re.IGNORECASE)
+                            for dev_id in self.get_device_id_by_name(dev)]):
+                    err_msg = "Not find %s" % dev
+                    self.log_err(err_msg)
 
         # Check virtio disk partition
         logging.info("Checking virtio disk partition")
@@ -389,10 +458,9 @@ class VMChecker(object):
         # Since RHEL7, it use 'kms' instead of 'cirrus'
         if 'rhel7' in self.os_version and expect_video == 'cirrus':
             expect_video = 'kms'
-
-        if not re.search(expect_video, pci_devs, re.IGNORECASE):
-            err_msg += "Not find %s device by lspci" % expect_video
-            self.log_err(err_msg)
+        self.check_video_model(
+            expect_video,
+            self.get_device_id_by_name(expect_video))
 
     def check_windows_vm(self):
         """
