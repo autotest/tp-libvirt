@@ -18,6 +18,13 @@ def run(test, params, env):
     :param test: Test object
     :param params: Dictionary with the test parameters
     :param env: Dictionary with test environment
+
+    Test steps:
+    1. Prepareguest domain and balloon xml use one of
+    virtio/virtio-non-transitional/virtio-transitional model
+    2. Start domain and check the device exist in guest
+    3. Save/Restore and check if guest works well
+    4. Set balloon memory and see if it works in guest
     """
 
     vm_name = params.get("main_vm", "avocado-vt-vm1")
@@ -26,6 +33,8 @@ def run(test, params, env):
     backup_xml = vmxml.copy()
     guest_src_url = params.get("guest_src_url")
     virtio_model = params['virtio_model']
+    os_variant = params.get("os_variant", "")
+    params["disk_model"] = virtio_model
 
     # Download and replace image when guest_src_url provided
     if guest_src_url:
@@ -37,12 +46,12 @@ def run(test, params, env):
 
     try:
         # Update disk and interface to correct model
-        if (params["os_variant"] == 'rhel6' or
+        if (os_variant == 'rhel6' or
                 'rhel6' in params.get("shortname")):
             iface_params = {'model': 'virtio-transitional'}
             libvirt.modify_vm_iface(vm_name, "update_iface", iface_params)
         libvirt.set_vm_disk(vm, params)
-        # vmxml will not be updated since set_vm_disk
+        # The local variable "vmxml" will not be updated since set_vm_disk
         # sync with another dumped xml inside the function
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         # Update memory balloon device to correct model
@@ -59,9 +68,9 @@ def run(test, params, env):
         # Check if memory balloon device exists on guest
         status = session.cmd_status_output('lspci |grep balloon')[0]
         if status != 0:
-            test.fail('Not detect memory balloon device on guest.')
+            test.fail("Didn't detect memory balloon device on guest.")
         # Save and restore guest
-        sn_path = os.path.join(data_dir.get_tmp_dir(), params['os_variant'])
+        sn_path = os.path.join(data_dir.get_tmp_dir(), os_variant)
         session.close()
         virsh.save(vm_name, sn_path)
         virsh.restore(sn_path)
