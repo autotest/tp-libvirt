@@ -131,7 +131,7 @@ def run(test, params, env):
     disks = vm.get_disk_devices()
     backup_labels_of_disks = {}
     qemu_disk_mod = False
-    if (not status_error) and (not dynamic_ownership):
+    if (not status_error):
         for disk in list(disks.values()):
             disk_path = disk['source']
             f = os.open(disk_path, 0)
@@ -303,7 +303,13 @@ def run(test, params, env):
             stat_re = os.fstat(f)
             img_label_after = "%s:%s" % (stat_re.st_uid, stat_re.st_gid)
             os.close(f)
-            if set_sec_label and sec_relabel == "yes":
+            if libvirt_version.version_compare(5, 6, 0):
+                if img_label_after != img_label:
+                    test.fail("Label of disk is img_label_after"
+                              ":%s" % img_label_after + ", it "
+                              "did not restore to %s in VM "
+                              "shuting down." % img_label)
+            elif set_sec_label and sec_relabel == "yes":
                 # As dynamic_ownership as 1 on non-share fs, current domain
                 # image will restore to 0:0 when sec_relabel enabled.
                 if dynamic_ownership:
