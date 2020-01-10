@@ -462,7 +462,7 @@ def run(test, params, env):
         elif discard:
             vm.start()
             session = vm.wait_for_login()
-            check_qemu_cmd()
+            check_qemu_cmd(max_mem_rt, tg_size)
         dev_xml = None
 
         # To attach the memory device.
