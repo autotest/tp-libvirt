@@ -160,7 +160,7 @@ def run(test, params, env):
     vg_name = params.get("at_dt_disk_vg", "vg_test_0")
     lv_name = params.get("at_dt_disk_lv", "lv_test_0")
     # Get additional lvm item names.
-    additional_lv_names = params.get("at_dt_disk_additional_lvs").split()
+    additional_lv_names = params.get("at_dt_disk_additional_lvs", "").split()
     serial = params.get("at_dt_disk_serial", "")
     address = params.get("at_dt_disk_address", "")
     address2 = params.get("at_dt_disk_address2", "")
