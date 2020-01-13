@@ -3,6 +3,20 @@ import logging
 from virttest.libvirt_xml import vm_xml
 from virttest import utils_test
 from virttest import cpu
+from virttest.utils_test.libvirt import check_status_output
+
+
+def check_cmdline(session, expected):
+    """
+    Checks if guest system was started with expected parameter.
+    Fails test otherwise.
+    :param expected: Expected substring in kernel cmdline
+    :param session: active guest session
+    """
+
+    cmd = 'cat /proc/cmdline'
+    status, output = session.cmd_status_output(cmd)
+    check_status_output(status, output, expected_match=expected)
 
 
 def run(test, params, env):
@@ -25,6 +39,7 @@ def run(test, params, env):
         kernel_param_remove = None
     cpu_check = params.get("hardware", "").upper()
     boot_log = params.get("boot_log", None)
+    check_cmdline_only = "yes" == params.get("check_cmdline_only", "no")
     status_error = params.get("status_error", "no") == "yes"
     vm_dict = {}
     vm_list = env.get_all_vms()
@@ -40,9 +55,13 @@ def run(test, params, env):
     try:
         for vm in vm_list:
             session = vm.wait_for_login()
-            utils_test.update_boot_option(vm, args_added=kernel_param,
-                                          args_removed=kernel_param_remove,
-                                          need_reboot=True)
+            if check_cmdline_only:
+                check_cmdline(session, params.get("expect_in_cmdline",
+                                                  "expect_in_cmdline not defined in test configuration"))
+            else:
+                utils_test.update_boot_option(vm, args_added=kernel_param,
+                                              args_removed=kernel_param_remove,
+                                              need_reboot=True)
             if boot_log:
                 session = vm.wait_for_login()
                 # To ensure guest that doesn't support Radix MMU gets skipped
