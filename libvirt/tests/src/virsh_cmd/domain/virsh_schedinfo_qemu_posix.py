@@ -244,7 +244,7 @@ def run(test, params, env):
                 if not re.search(expect_msg, result.stderr.strip()):
                     test.fail("Fail to get expect err msg: %s" % expect_msg)
     finally:
-        if set_ref:
+        if set_ref and bef_current_value:
             for j in range(0, len(set_ref.split(','))):
                 virsh.schedinfo(vm_ref, "--set %s=%s" % (set_ref.split(',')[j], bef_current_value[j]),
                                 ignore_status=True, debug=True)
