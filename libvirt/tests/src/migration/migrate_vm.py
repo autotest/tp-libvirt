@@ -2727,6 +2727,10 @@ def run(test, params, env):
 
     finally:
         logging.info("Recovery test environment")
+
+        logging.debug("Removing vm on remote if it exists.")
+        virsh.remove_domain(vm.name, uri=uri)
+
         # Clean up of pre migration setup for local machine
         if migr_vm_back:
             migrate_setup.migrate_pre_setup(src_uri, params,
