@@ -11,6 +11,7 @@ from virttest import utils_v2v
 from virttest import utils_sasl
 from virttest import virsh
 from virttest import utils_misc
+from virttest import xml_utils
 from virttest.libvirt_xml import vm_xml
 from virttest.compat_52lts import results_stdout_52lts
 
@@ -44,13 +45,13 @@ class VMChecker(object):
         self.os_version = params.get('os_version', 'OS_VERSION_V2V_EXAMPLE')
         self.original_vmxml = params.get('original_vmxml')
         self.vmx_nfs_src = params.get('vmx_nfs_src')
-        self.virsh_session = None
-        self.virsh_session_id = None
-        self.setup_session()
+        self.virsh_session = params.get('virsh_session')
+        self.virsh_session_id = self.virsh_session.get_id(
+            ) if self.virsh_session else params.get('virsh_session_id')
         self.checker = utils_v2v.VMCheck(test, params, env)
-        self.checker.virsh_session_id = self.virsh_session_id
-        self.virsh_instance = virsh.VirshPersistent(
-            session_id=self.virsh_session_id)
+        self.setup_session()
+        if not self.checker.virsh_session_id:
+            self.checker.virsh_session_id = self.virsh_session_id
         self.vmxml = virsh.dumpxml(
             self.vm_name,
             session_id=self.virsh_session_id).stdout.strip()
@@ -60,10 +61,9 @@ class VMChecker(object):
     def cleanup(self):
         self.close_virsh_session()
         try:
-            if self.checker.session:
-                self.checker.session.close()
             self.checker.cleanup()
-        except Exception:
+        except Exception as e:
+            logging.debug("Exception during cleanup:\n%s", e)
             pass
 
         if len(self.mount_records) != 0:
@@ -71,6 +71,7 @@ class VMChecker(object):
                 utils_misc.umount(src, dst, fstype)
 
     def close_virsh_session(self):
+        logging.debug('virsh session %s is closing', self.virsh_session)
         if not self.virsh_session:
             return
         if self.target == "ovirt":
@@ -79,6 +80,12 @@ class VMChecker(object):
             self.virsh_session.close_session()
 
     def setup_session(self):
+        if self.virsh_session and self.virsh_session_id:
+            logging.debug(
+                'virsh session %s has already been set',
+                self.virsh_session)
+            return
+
         for index in range(RETRY_TIMES):
             logging.info('Trying %d times', index + 1)
             try:
@@ -87,12 +94,14 @@ class VMChecker(object):
                         self.params)
                     self.virsh_session_id = self.virsh_session.get_id()
                 else:
-                    self.virsh_session = virsh.VirshPersistent()
+                    self.virsh_session = virsh.VirshPersistent(auto_close=True)
                     self.virsh_session_id = self.virsh_session.session_id
             except Exception as detail:
                 logging.error(detail)
             else:
                 break
+
+        logging.debug('new virsh session %s is created', self.virsh_session)
         if not self.virsh_session_id:
             raise exceptions.TestError('Fail to create SASL virsh session')
 
@@ -556,10 +565,18 @@ class VMChecker(object):
         Check if graphics attributes value in vm xml match with given param.
         """
         logging.info('Check graphics parameters')
-        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
-            self.vm_name, options='--security-info',
-            virsh_instance=self.virsh_instance)
-        graphic = vmxml.xmltreefile.find('devices').find('graphics')
+        if self.target == 'ovirt':
+            xml = virsh.dumpxml(
+                self.vm_name,
+                extra='--security-info',
+                session_id=self.virsh_session_id).stdout
+            vmxml = xml_utils.XMLTreeFile(xml)
+            graphic = vmxml.find('devices').find('graphics')
+        else:
+            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
+                self.vm_name, options='--security-info',
+                virsh_instance=self.virsh_session)
+            graphic = vmxml.xmltreefile.find('devices').find('graphics')
         status = True
         for key in param:
             logging.debug('%s = %s' % (key, graphic.get(key)))

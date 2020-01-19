@@ -229,6 +229,7 @@ def run(test, params, env):
             params['vmchecker'].cleanup()
         if output_mode == 'rhev' and v2v_sasl:
             v2v_sasl.cleanup()
+            v2v_sasl.close_session()
         if output_mode == 'libvirt':
             pvt.cleanup_pool(pool_name, pool_type, pool_target, '')
         if input_mode == 'vmx' and input_transport == 'ssh':

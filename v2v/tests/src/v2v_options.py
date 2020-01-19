@@ -20,7 +20,6 @@ from virttest import libvirt_storage
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.compat_52lts import decode_to_text as to_text
-from virttest.compat_52lts import results_stdout_52lts
 
 from provider.v2v_vmcheck_helper import VMChecker
 
@@ -282,8 +281,10 @@ def run(test, params, env):
                            'remote_ip': remote_host,
                            'remote_user': source_user,
                            'remote_pwd': source_pwd,
+                           'auto_close': True,
                            'debug': True}
             v2v_virsh = virsh.VirshPersistent(**virsh_dargs)
+            logging.debug('a new virsh session %s was created', v2v_virsh)
             close_virsh = True
 
         # Check single values
@@ -293,6 +294,7 @@ def run(test, params, env):
                 vm_name, virsh_instance=v2v_virsh)
         finally:
             if close_virsh:
+                logging.debug('virsh session %s is closing', v2v_virsh)
                 v2v_virsh.close_session()
 
         check_map = {}
@@ -570,6 +572,14 @@ def run(test, params, env):
     backup_xml = None
     vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
     try:
+        if hypervisor == "xen":
+            # See man virt-v2v-input-xen(1)
+            process.run(
+                'update-crypto-policies --set LEGACY',
+                verbose=True,
+                ignore_status=True,
+                shell=True)
+
         if checkpoint.startswith('empty_nic_source'):
             xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             iface = xml.get_devices('interface')[0]
@@ -716,10 +726,7 @@ def run(test, params, env):
             output_option += " -ip %s" % vpx_passwd_file
             # rhel8 slow stream doesn't support option 'ip' temporarily
             # so use option 'password-file' instead.
-            tmp_cmd = 'virt-v2v --help'
-            tmp_result = process.run(tmp_cmd, verbose=True, ignore_status=True)
-            tmp_result.stdout = results_stdout_52lts(tmp_result)
-            if not re.search(r'-ip <filename>', tmp_result.stdout):
+            if not utils_v2v.v2v_supported_option("-ip <filename>"):
                 output_option = output_option.replace(
                     '-ip', '--password-file', 1)
 
@@ -864,5 +871,12 @@ def run(test, params, env):
         if os.path.exists(estimate_file):
             os.remove(estimate_file)
         if hypervisor == "xen":
+            # Restore crypto-policies to DEFAULT, the setting is impossible to be
+            # other values by default in testing envrionment.
+            process.run(
+                'update-crypto-policies --set DEFAULT',
+                verbose=True,
+                ignore_status=True,
+                shell=True)
             utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
             process.run("ssh-agent -k")

@@ -286,6 +286,7 @@ def run(test, params, env):
                 virsh_session = utils_sasl.VirshSessionSASL(params)
                 virsh_session_id = virsh_session.get_id()
                 check_device_exist('cdrom', virsh_session_id)
+                virsh_session.close()
             if checkpoint.startswith('vmtools'):
                 check_vmtools(vmchecker.checker, checkpoint)
             if checkpoint == 'modprobe':
@@ -367,6 +368,7 @@ def run(test, params, env):
             v2v_sasl.server_user = params.get('remote_user')
             v2v_sasl.server_pwd = params.get('remote_pwd')
             v2v_sasl.setup(remote=True)
+            logging.debug('A SASL session %s was created', v2v_sasl)
             if output_method == 'rhv_upload':
                 # Create password file for '-o rhv_upload' to connect to ovirt
                 with open(rhv_passwd_file, 'w') as f:
@@ -404,9 +406,11 @@ def run(test, params, env):
         if checkpoint == 'empty_cdrom':
             virsh_dargs = {'uri': remote_uri, 'remote_ip': remote_host,
                            'remote_user': 'root', 'remote_pwd': vpx_passwd,
+                           'auto_close': True,
                            'debug': True}
             remote_virsh = virsh.VirshPersistent(**virsh_dargs)
             v2v_result = remote_virsh.dumpxml(vm_name)
+            remote_virsh.close_session()
         else:
             v2v_result = utils_v2v.v2v_cmd(v2v_params)
         if 'new_name' in v2v_params:
@@ -423,6 +427,10 @@ def run(test, params, env):
             os.environ.pop('VIRTIO_WIN')
         if params.get('vmchecker'):
             params['vmchecker'].cleanup()
+        if output_mode == 'rhev' and v2v_sasl:
+            v2v_sasl.cleanup()
+            logging.debug('SASL session %s is closing', v2v_sasl)
+            v2v_sasl.close_session()
         if output_mode == 'libvirt':
             pvt.cleanup_pool(pool_name, pool_type, pool_target, '')
         if checkpoint == 'with_proxy':

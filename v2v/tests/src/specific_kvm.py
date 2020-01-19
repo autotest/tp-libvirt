@@ -16,7 +16,6 @@ from virttest import libvirt_vm
 from virttest import data_dir
 from virttest import utils_selinux
 from virttest import remote
-from virttest import ssh_key
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
@@ -85,6 +84,14 @@ def run(test, params, env):
     vddk_thumbprint = params.get('vddk_thumbprint')
 
     # Prepare step for different hypervisor
+    if hypervisor == "xen":
+        # See man virt-v2v-input-xen(1)
+        process.run(
+            'update-crypto-policies --set LEGACY',
+            verbose=True,
+            ignore_status=True,
+            shell=True)
+
     if hypervisor == "esx":
         source_ip = params.get("vpx_hostname")
         source_pwd = params.get("vpx_password")
@@ -96,7 +103,8 @@ def run(test, params, env):
         source_ip = params.get("xen_hostname")
         source_pwd = params.get("xen_host_passwd")
         # Set up ssh access using ssh-agent and authorized_keys
-        ssh_key.setup_ssh_key(source_ip, source_user, source_pwd)
+        xen_pubkey, xen_session = utils_v2v.v2v_setup_ssh_key(
+            source_ip, source_user, source_pwd, auto_close=False)
         try:
             utils_misc.add_identities_into_ssh_agent()
         except Exception as e:
@@ -123,8 +131,10 @@ def run(test, params, env):
                        'remote_ip': source_ip,
                        'remote_user': source_user,
                        'remote_pwd': source_pwd,
+                       'auto_close': True,
                        'debug': True}
         v2v_virsh = virsh.VirshPersistent(**virsh_dargs)
+        logging.debug('a new virsh session %s was created', v2v_virsh)
         close_virsh = True
     if not v2v_virsh.domain_exists(vm_name):
         test.error("VM '%s' not exist" % vm_name)
@@ -175,7 +185,7 @@ def run(test, params, env):
             cmd = r"diskpart /s C:\list_disk.txt"
             output = vmcheck.session.cmd(cmd).strip()
             logging.debug("Disks in VM: %s", output)
-            disks = len(re.findall('Disk\s\d', output))
+            disks = len(re.findall(r'Disk\s\d', output))
         logging.debug("Find %s disks in VM after convert", disks)
         if disks == expected_disks:
             logging.info("Disk counts is expected")
@@ -187,7 +197,10 @@ def run(test, params, env):
         Check if vmlinuz matches initramfs on multi-kernel case
         """
         logging.debug('Checking if vmlinuz matches initramfs')
-        kernel_strs = re.findall('(\* kernel.*?\/boot\/config){1,}', v2v_output, re.DOTALL)
+        kernel_strs = re.findall(
+            r'(\* kernel.*?\/boot\/config){1,}',
+            v2v_output,
+            re.DOTALL)
         if len(kernel_strs) == 0:
             test.error("Not find kernel information")
 
@@ -195,9 +208,11 @@ def run(test, params, env):
         logging.debug('Boots and kernel info: %s' % set(kernel_strs))
         for str_i in set(kernel_strs):
             # Fine all versions
-            kernel_vers = re.findall('((?:\d+\.){1,}\d+-(?:\d+\.){1,}\w+)', str_i)
+            kernel_vers = re.findall(
+                r'((?:\d+\.){1,}\d+-(?:\d+\.){1,}\w+)', str_i)
             logging.debug('kernel related versions: %s' % kernel_vers)
-            # kernel_vers = [kernel, vmlinuz, initramfs] and they should be same
+            # kernel_vers = [kernel, vmlinuz, initramfs] and they should be
+            # same
             if len(kernel_vers) < 3 or len(set(kernel_vers)) != 1:
                 log_fail("kernel versions does not match: %s" % kernel_vers)
 
@@ -212,14 +227,16 @@ def run(test, params, env):
 
         # 'sort -V' can satisfy our testing, even though it's not strictly perfect.
         # The last one is always the latest kernel version
-        kernel_normal_list = vmcheck.run_cmd('rpm -q kernel | sort -V')[1].strip().splitlines()
+        kernel_normal_list = vmcheck.run_cmd(
+            'rpm -q kernel | sort -V')[1].strip().splitlines()
         status, kernel_debug = vmcheck.run_cmd('rpm -q kernel-debug')
         if status != 0:
             test.error('Not found kernel-debug package')
         all_kernel_list = kernel_normal_list + kernel_debug.strip().splitlines()
         logging.debug('All kernels: %s' % all_kernel_list)
         if len(all_kernel_list) < 3:
-            test.error('Needs at least 2 normal kernels and 1 debug kernel in VM')
+            test.error(
+                'Needs at least 2 normal kernels and 1 debug kernel in VM')
 
         # The latest non-debug kernel must be kernel_normal_list[-1]
         if current_kernel.strip() != kernel_normal_list[-1].lstrip('kernel-'):
@@ -265,7 +282,11 @@ def run(test, params, env):
                 continue
             target = disk.find('target')
             target.set('bus', dest)
-            target.set('dev', dev_table[dest] + 'd' + string.ascii_lowercase[index])
+            target.set(
+                'dev',
+                dev_table[dest] +
+                'd' +
+                string.ascii_lowercase[index])
             disk.remove(disk.find('address'))
             index += 1
         vmxml.sync()
@@ -462,11 +483,17 @@ def run(test, params, env):
         Return firewalld service status of vm
         """
         session = kwargs['session']
-        # Example: Active: active (running) since Fri 2019-03-15 01:03:39 CST; 3min 48s ago
-        firewalld_status = session.cmd('systemctl status firewalld.service|grep Active:',
-                                       ok_status=[0, 3]).strip()
+        # Example: Active: active (running) since Fri 2019-03-15 01:03:39 CST;
+        # 3min 48s ago
+        firewalld_status = session.cmd(
+            'systemctl status firewalld.service|grep Active:',
+            ok_status=[
+                0,
+                3]).strip()
         # Exclude the time string because time changes if vm restarts
-        firewalld_status = re.search('Active:\s\w*\s\(\w*\)', firewalld_status).group()
+        firewalld_status = re.search(
+            r'Active:\s\w*\s\(\w*\)',
+            firewalld_status).group()
         logging.info('Status of firewalld: %s', firewalld_status)
         params[checkpoint] = firewalld_status
 
@@ -474,11 +501,14 @@ def run(test, params, env):
         """
         Check if status of firewalld meets expectation
         """
-        firewalld_status = vmcheck.session.cmd('systemctl status '
-                                               'firewalld.service|grep Active:',
-                                               ok_status=[0, 3]).strip()
+        firewalld_status = vmcheck.session.cmd(
+            'systemctl status '
+            'firewalld.service|grep Active:', ok_status=[
+                0, 3]).strip()
         # Exclude the time string because time changes if vm restarts
-        firewalld_status = re.search('Active:\s\w*\s\(\w*\)', firewalld_status).group()
+        firewalld_status = re.search(
+            r'Active:\s\w*\s\(\w*\)',
+            firewalld_status).group()
         logging.info('Status of firewalld after v2v: %s', firewalld_status)
         if firewalld_status != expect_status:
             log_fail('Status of firewalld changed after conversion')
@@ -562,7 +592,8 @@ def run(test, params, env):
                 check_boot_kernel(vmchecker.checker)
                 check_vmlinuz_initramfs(output)
             if checkpoint == 'floppy':
-                # Convert to rhv will remove all removeable devices(floppy, cdrom)
+                # Convert to rhv will remove all removeable devices(floppy,
+                # cdrom)
                 if output_mode in ['local', 'libvirt']:
                     check_floppy_exist(vmchecker.checker)
             if checkpoint == 'multi_disks':
@@ -625,7 +656,7 @@ def run(test, params, env):
             'vddk_thumbprint': vddk_thumbprint,
             'vddk_libdir': vddk_libdir,
             'vddk_libdir_src': vddk_libdir_src,
-            }
+        }
         if vpx_dc:
             v2v_params.update({"vpx_dc": vpx_dc})
         if esx_ip:
@@ -648,6 +679,7 @@ def run(test, params, env):
             v2v_sasl.server_user = params.get('remote_user')
             v2v_sasl.server_pwd = params.get('remote_pwd')
             v2v_sasl.setup(remote=True)
+            logging.debug('A SASL session %s was created', v2v_sasl)
             if output_method == 'rhv_upload':
                 # Create password file for '-o rhv_upload' to connect to ovirt
                 with open(rhv_passwd_file, 'w') as f:
@@ -833,10 +865,25 @@ def run(test, params, env):
             vm_name = params['main_vm'] = v2v_params['new_name']
         check_result(v2v_result, status_error)
     finally:
-        if close_virsh:
+        if close_virsh and v2v_virsh:
+            logging.debug('virsh session %s is closing', v2v_virsh)
             v2v_virsh.close_session()
         if params.get('vmchecker'):
             params['vmchecker'].cleanup()
+        if hypervisor == "xen":
+            # Restore crypto-policies to DEFAULT, the setting is impossible to be
+            # other values by default in testing envrionment.
+            process.run(
+                'update-crypto-policies --set DEFAULT',
+                verbose=True,
+                ignore_status=True,
+                shell=True)
+            utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
+            process.run('ssh-agent -k')
+        if output_mode == 'rhev' and v2v_sasl:
+            v2v_sasl.cleanup()
+            logging.debug('SASL session %s is closing', v2v_sasl)
+            v2v_sasl.close_session()
         if output_mode == 'libvirt':
             pvt.cleanup_pool(pool_name, pool_type, pool_target, '')
         if backup_xml:
@@ -845,7 +892,8 @@ def run(test, params, env):
             utils_selinux.set_status(params['selinux_stat'])
         if 'bk_firewalld_status' in params:
             service_mgr = service.ServiceManager()
-            if service_mgr.status('firewalld') != params['bk_firewalld_status']:
+            if service_mgr.status(
+                    'firewalld') != params['bk_firewalld_status']:
                 if params['bk_firewalld_status']:
                     service_mgr.start('firewalld')
                 else:
