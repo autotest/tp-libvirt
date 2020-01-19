@@ -112,9 +112,15 @@ def run(test, params, env):
                     % (max_mem_slots, max_mem_rt))
             if tg_size:
                 size = int(tg_size) * 1024
-                cmd_str = 'memdimm.\|memory-backend-file,id=ram-node.'
-                cmd += (" | grep 'memory-backend-file,id=%s' | grep 'size=%s"
-                        % (cmd_str, size))
+                if huge_pages or discard or cold_plug_discard:
+                    cmd_str = 'memdimm.\|memory-backend-file,id=ram-node.'
+                    cmd += (" | grep 'memory-backend-file,id=%s' | grep 'size=%s"
+                            % (cmd_str, size))
+                else:
+                    cmd_str = 'mem.\|memory-backend-ram,id=ram-node.'
+                    cmd += (" | grep 'memory-backend-ram,id=%s' | grep 'size=%s"
+                            % (cmd_str, size))
+
                 if pg_size:
                     cmd += ",host-nodes=%s" % node_mask
                     if numa_memnode:
@@ -468,12 +474,6 @@ def run(test, params, env):
         # To attach the memory device.
         if (add_mem_device and not hot_plug) or cold_plug_discard:
             at_times = int(params.get("attach_times", 1))
-            device_alias = "ua-" + str(uuid.uuid4())
-            dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size, mem_addr,
-                                                   tg_sizeunit, pg_unit,
-                                                   tg_node, node_mask,
-                                                   mem_model, mem_discard,
-                                                   device_alias)
             randvar = 0
             if rand_reboot:
                 rand_value = random.randint(15, 25)
@@ -481,6 +481,13 @@ def run(test, params, env):
             for x in xrange(at_times):
                 # If any error excepted, command error status should be
                 # checked in the last time
+                device_alias = "ua-" + str(uuid.uuid4())
+                dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
+                                                       mem_addr, tg_sizeunit,
+                                                       pg_unit, tg_node,
+                                                       node_mask, mem_model,
+                                                       mem_discard,
+                                                       device_alias)
                 randvar = randvar + 1
                 logging.debug("attaching device count = %s", x)
                 if x == at_times - 1:
