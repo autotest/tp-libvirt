@@ -169,6 +169,7 @@ def run(test, params, env):
         """
         logging.info("------Checking host tpm device before passthrough------")
         # Try tcsd tool for suspected tpm1.2 chip on host
+        tpm_real_v = tpm_v
         if tpm_v != "2.0":
             if not service_mgr.start('tcsd'):
                 # service_mgr.start() return 'True' if succeed
@@ -176,7 +177,7 @@ def run(test, params, env):
                     test.fail("Host tcsd.serivce start failed")
                 else:
                     # Means tpm_v got nothing from dmesg, log failure here and
-                    # go to 'elif' to try tpm2.0 tools.
+                    # go to next 'if' to try tpm2.0 tools.
                     logging.info("Host tcsd.serivce start failed")
             else:
                 tpm_real_v = "1.2"
@@ -185,7 +186,7 @@ def run(test, params, env):
                 logging.debug("[host]# tpm_version\n %s", result.stdout)
                 time.sleep(2)
                 service_mgr.stop('tcsd')
-        elif tpm_v != "1.2":
+        if tpm_v != "1.2":
             # Try tpm2.0 tools
             if not utils_package.package_install("tpm2-tools"):
                 test.error("Failed to install tpm2-tools on host")
