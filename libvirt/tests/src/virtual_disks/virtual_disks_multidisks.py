@@ -69,7 +69,7 @@ def run(test, params, env):
 
     def check_disk_order(targets_name):
         """
-        Check VM disk's order on pci bus.
+        Check VM disk's order on pci/ccw bus.
 
         :param targets_name. Disks target list.
         :return: True if check successfully.
@@ -78,12 +78,13 @@ def run(test, params, env):
         xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         disk_list = xml.devices.by_device_tag("disk")
         slot_dict = {}
-        # Get the disks pci slot.
+        # Get the disks order attribute's value.
         for disk in disk_list:
             if 'virtio' == disk.target['bus']:
+                selector = 'devno' if disk.address.attrs['type'] == 'ccw' else 'slot'
                 slot_dict[disk.target['dev']] = int(
-                    disk.address.attrs['slot'], base=16)
-        # Disk's order on pci bus should keep the same with disk target name.
+                    disk.address.attrs[selector], base=16)
+        # Disk's order should be the same with disk target name.
         s_dev = sorted(list(slot_dict.keys()))
         s_slot = sorted(list(slot_dict.values()))
         for i in range(len(s_dev)):
