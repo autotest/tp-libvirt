@@ -7,7 +7,6 @@ from avocado.utils import process
 
 from virttest import utils_v2v
 from virttest import virsh
-from virttest import ssh_key
 from virttest import utils_misc
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml import vm_xml
@@ -45,6 +44,14 @@ def run(test, params, env):
     source_pwd = None
 
     # Prepare step for different hypervisor
+    if hypervisor == "xen":
+        # See man virt-v2v-input-xen(1)
+        process.run(
+            'update-crypto-policies --set LEGACY',
+            verbose=True,
+            ignore_status=True,
+            shell=True)
+
     if hypervisor == "esx":
         source_ip = vpx_ip
         source_pwd = vpx_pwd
@@ -55,14 +62,17 @@ def run(test, params, env):
         source_ip = xen_ip
         source_pwd = xen_pwd
         # Set up ssh access using ssh-agent and authorized_keys
-        ssh_key.setup_ssh_key(source_ip, source_user, source_pwd)
+        xen_pubkey, xen_session = utils_v2v.v2v_setup_ssh_key(
+            source_ip, source_user, source_pwd, auto_close=False)
         try:
             utils_misc.add_identities_into_ssh_agent()
-        except:
+        except Exception:
             process.run("ssh-agent -k")
             raise exceptions.TestError("Fail to setup ssh-agent")
     else:
-        raise exceptions.TestSkipError("Unspported hypervisor: %s" % hypervisor)
+        raise exceptions.TestSkipError(
+            "Unspported hypervisor: %s" %
+            hypervisor)
 
     # Create libvirt URI for the source node
     v2v_uri = utils_v2v.Uri(hypervisor)
@@ -72,6 +82,7 @@ def run(test, params, env):
     # Make sure the VM exist before convert
     virsh_dargs = {'uri': remote_uri, 'remote_ip': source_ip,
                    'remote_user': source_user, 'remote_pwd': source_pwd,
+                   'auto_close': True,
                    'debug': True}
     remote_virsh = virsh.VirshPersistent(**virsh_dargs)
     try:
@@ -133,7 +144,9 @@ def run(test, params, env):
         # need to modify to 'host-model'
         unsupport_list = ['win10', 'win2016', 'win2019']
         if params.get('os_version') in unsupport_list:
-            logging.info('Set cpu mode to "host-model" for %s.', unsupport_list)
+            logging.info(
+                'Set cpu mode to "host-model" for %s.',
+                unsupport_list)
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             cpu_xml = vm_xml.VMCPUXML()
             cpu_xml.mode = 'host-model'
@@ -148,12 +161,22 @@ def run(test, params, env):
         if len(ret) == 0:
             logging.info("All checkpoints passed")
         else:
-            raise exceptions.TestFail("%d checkpoints failed: %s" % (len(ret), ret))
+            raise exceptions.TestFail(
+                "%d checkpoints failed: %s" %
+                (len(ret), ret))
     finally:
         vmcheck = utils_v2v.VMCheck(test, params, env)
         vmcheck.cleanup()
         utils_v2v.cleanup_constant_files(params)
         if hypervisor == "xen":
+            # Restore crypto-policies to DEFAULT, the setting is impossible to be
+            # other values by default in testing envrionment.
+            process.run(
+                'update-crypto-policies --set DEFAULT',
+                verbose=True,
+                ignore_status=True,
+                shell=True)
+            utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
             process.run("ssh-agent -k")
         # Clean libvirt VM
         virsh.remove_domain(vm_name)

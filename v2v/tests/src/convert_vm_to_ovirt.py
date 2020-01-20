@@ -6,7 +6,6 @@ from avocado.utils import process
 
 from virttest import utils_v2v
 from virttest import virsh
-from virttest import ssh_key
 from virttest import utils_misc
 from virttest import utils_sasl
 from virttest import remote
@@ -63,6 +62,14 @@ def run(test, params, env):
     logging.info('sals user name is %s' % params.get("sasl_user"))
 
     # Prepare step for different hypervisor
+    if hypervisor == "xen":
+        # See man virt-v2v-input-xen(1)
+        process.run(
+            'update-crypto-policies --set LEGACY',
+            verbose=True,
+            ignore_status=True,
+            shell=True)
+
     if hypervisor == "esx":
         source_ip = vpx_ip
         source_pwd = vpx_pwd
@@ -73,10 +80,11 @@ def run(test, params, env):
         source_ip = xen_ip
         source_pwd = xen_pwd
         # Set up ssh access using ssh-agent and authorized_keys
-        ssh_key.setup_ssh_key(source_ip, source_user, source_pwd)
+        xen_pubkey, xen_session = utils_v2v.v2v_setup_ssh_key(
+            source_ip, source_user, source_pwd, auto_close=False)
         try:
             utils_misc.add_identities_into_ssh_agent()
-        except:
+        except Exception:
             process.run("ssh-agent -k")
             test.error("Fail to setup ssh-agent")
     elif hypervisor == "kvm":
@@ -108,6 +116,7 @@ def run(test, params, env):
     else:
         virsh_dargs = {'uri': remote_uri, 'remote_ip': source_ip,
                        'remote_user': source_user, 'remote_pwd': source_pwd,
+                       'auto_close': True,
                        'debug': True}
         v2v_virsh = virsh.VirshPersistent(**virsh_dargs)
         close_virsh = True
@@ -187,7 +196,15 @@ def run(test, params, env):
             'win2008',
             'win2016',
             'win2019']
-        win_version = ['6.2', '6.3', '10.0', '6.2', '6.3', '6.0', '10.0', '10.0']
+        win_version = [
+            '6.2',
+            '6.3',
+            '10.0',
+            '6.2',
+            '6.3',
+            '6.0',
+            '10.0',
+            '10.0']
         os_map = dict(list(zip(os_list, win_version)))
         vm_arch = params.get('vm_arch')
         os_ver = params.get('os_version')
@@ -219,7 +236,16 @@ def run(test, params, env):
         vmcheck.cleanup()
         if v2v_sasl:
             v2v_sasl.cleanup()
+            v2v_sasl.close_session()
         if hypervisor == "xen":
+            # Restore crypto-policies to DEFAULT, the setting is impossible to be
+            # other values by default in testing envrionment.
+            process.run(
+                'update-crypto-policies --set DEFAULT',
+                verbose=True,
+                ignore_status=True,
+                shell=True)
+            utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
             process.run("ssh-agent -k")
         # Cleanup constant files
         utils_v2v.cleanup_constant_files(params)

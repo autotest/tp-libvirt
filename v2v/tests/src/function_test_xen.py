@@ -10,7 +10,6 @@ from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import utils_package
 from virttest import utils_sasl
-from virttest import ssh_key
 from virttest import remote
 from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
@@ -71,7 +70,8 @@ def run(test, params, env):
         """
         Set graphics attributes of vm xml
         """
-        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name, virsh_instance=virsh_instance)
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
+            vm_name, virsh_instance=virsh_instance)
         graphic = vmxml.xmltreefile.find('devices').find('graphics')
         for key in param:
             logging.debug('Set %s=\'%s\'' % (key, param[key]))
@@ -107,7 +107,8 @@ def run(test, params, env):
         """
         Check sound status of vm from xml
         """
-        xml = virsh.dumpxml(vm_name, session_id=vmcheck.virsh_session_id).stdout
+        xml = virsh.dumpxml(
+            vm_name, session_id=vmcheck.virsh_session_id).stdout
         logging.debug(xml)
         if check == 'sound' and '<sound model' in xml:
             log_fail('Sound card should be removed')
@@ -125,8 +126,14 @@ def run(test, params, env):
             test.error('No MD5 or SHA1 value provided')
         cmd_sha1 = params.get('cmd_sha1')
         cmd_md5 = cmd_sha1 + ' MD5'
-        sha1 = vmcheck.session.cmd_output(cmd_sha1, safe=True).strip().split('\n')[1].replace(' ', '')
-        md5 = vmcheck.session.cmd_output(cmd_md5, safe=True).strip().split('\n')[1].replace(' ', '')
+        sha1 = vmcheck.session.cmd_output(
+            cmd_sha1,
+            safe=True).strip().split('\n')[1].replace(
+            ' ',
+            '')
+        md5 = vmcheck.session.cmd_output(
+            cmd_md5, safe=True).strip().split('\n')[1].replace(
+            ' ', '')
         logging.info('Actual MD5=%s, SHA1=%s', md5, sha1)
         if sha1 == val_sha1 and md5 == val_md5:
             logging.info('MD5 and SHA1 are correct')
@@ -168,7 +175,9 @@ def run(test, params, env):
                 if len(ret) == 0:
                     logging.info("All common checkpoints passed")
             else:
-                logging.info('Skip checking vm after conversion: %s' % skip_reason)
+                logging.info(
+                    'Skip checking vm after conversion: %s' %
+                    skip_reason)
             # Check specific checkpoints
             if checkpoint == 'console_xvc0':
                 check_grub_file(vmchecker.checker, 'console_xvc0')
@@ -204,7 +213,9 @@ def run(test, params, env):
             else:
                 logging.error('Virtio drivers not meet expectation')
         if len(error_list):
-            test.fail('%d checkpoints failed: %s' % (len(error_list), error_list))
+            test.fail(
+                '%d checkpoints failed: %s' %
+                (len(error_list), error_list))
 
     try:
         v2v_params = {
@@ -212,10 +223,10 @@ def run(test, params, env):
             'v2v_opts': '-v -x', 'input_mode': 'libvirt',
             'new_name': new_vm_name,
             'password': xen_host_passwd,
-            'storage':  params.get('output_storage', 'default'),
-            'network':  params.get('network'),
-            'bridge':   params.get('bridge'),
-            'target':   params.get('target'),
+            'storage': params.get('output_storage', 'default'),
+            'network': params.get('network'),
+            'bridge': params.get('bridge'),
+            'target': params.get('target'),
             'output_method': output_method,
             'storage_name': storage_name,
             'rhv_upload_opts': rhv_upload_opts
@@ -224,10 +235,17 @@ def run(test, params, env):
         bk_xml = None
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
 
+        # See man virt-v2v-input-xen(1)
+        process.run(
+            'update-crypto-policies --set LEGACY',
+            verbose=True,
+            ignore_status=True,
+            shell=True)
+
         # Setup ssh-agent access to xen hypervisor
         logging.info('set up ssh-agent access ')
-        ssh_key.setup_ssh_key(xen_host, user=xen_host_user,
-                              port=22, password=xen_host_passwd)
+        xen_pubkey, xen_session = utils_v2v.v2v_setup_ssh_key(
+            xen_host, xen_host_user, xen_host_passwd, auto_close=False)
         utils_misc.add_identities_into_ssh_agent()
 
         if params.get('output_format'):
@@ -250,6 +268,7 @@ def run(test, params, env):
             v2v_sasl.server_user = params.get('remote_user')
             v2v_sasl.server_pwd = params.get('remote_pwd')
             v2v_sasl.setup(remote=True)
+            logging.debug('A SASL session %s was created', v2v_sasl)
             if output_method == 'rhv_upload':
                 # Create password file for '-o rhv_upload' to connect to ovirt
                 with open(rhv_passwd_file, 'w') as f:
@@ -265,17 +284,20 @@ def run(test, params, env):
             pvt.pre_pool(pool_name, pool_type, pool_target, '')
 
         uri = utils_v2v.Uri('xen').get_uri(xen_host)
-
-        # Check if xen guest exists
-        if not virsh.domain_exists(vm_name, uri=uri):
-            logging.error('VM %s not exists', vm_name)
-
-        virsh_instance = virsh.VirshPersistent()
-        virsh_instance.set_uri(uri)
+        virsh_dargs = {'uri': uri,
+                       'remote_ip': xen_host,
+                       'remote_user': 'root',
+                       'remote_pwd': xen_host_passwd,
+                       'auto_close': True,
+                       'debug': True}
+        virsh_instance = utils_v2v.wait_for(virsh.VirshPersistent, **virsh_dargs)
+        logging.debug('A new virsh session %s was created', virsh_instance)
+        if not utils_v2v.wait_for(virsh_instance.domain_exists, name=vm_name):
+            test.error('VM %s not exists', vm_name)
 
         if checkpoint in bk_list:
             bk_xml = vm_xml.VMXML.new_from_inactive_dumpxml(
-                    vm_name, virsh_instance=virsh_instance)
+                vm_name, virsh_instance=virsh_instance)
         if checkpoint == 'guest_uuid':
             uuid = virsh.domuuid(vm_name, uri=uri).stdout.strip()
             v2v_params['main_vm'] = uuid
@@ -310,13 +332,18 @@ def run(test, params, env):
                 vm_xml.VMXML.set_graphics_attr(vm_name, params[checkpoint],
                                                virsh_instance=virsh_instance)
             elif checkpoint in ['vnc_encrypt', 'vnc_encrypt_warning']:
-                params[checkpoint] = {'passwd': params.get('vnc_passwd', 'redhat')}
+                params[checkpoint] = {
+                    'passwd': params.get(
+                        'vnc_passwd', 'redhat')}
                 vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
-                        vm_name, virsh_instance=virsh_instance)
+                    vm_name, virsh_instance=virsh_instance)
                 vm_xml.VMXML.add_security_info(
-                        vmxml, params[checkpoint]['passwd'],
-                        virsh_instance=virsh_instance)
-            logging.debug(virsh_instance.dumpxml(vm_name, extra='--security-info'))
+                    vmxml, params[checkpoint]['passwd'],
+                    virsh_instance=virsh_instance)
+            logging.debug(
+                virsh_instance.dumpxml(
+                    vm_name,
+                    extra='--security-info'))
         if checkpoint.startswith('libguestfs_backend'):
             value = checkpoint[19:]
             if value == 'empty':
@@ -347,7 +374,9 @@ def run(test, params, env):
                                  r'#Banner /path/banner file\n' \
                                  r'Banner /etc/ssh/ssh_banner"'
             logging.info('Create ssh_banner file')
-            session.cmd('echo -e %s > /etc/ssh/ssh_banner' % ssh_banner_content)
+            session.cmd(
+                'echo -e %s > /etc/ssh/ssh_banner' %
+                ssh_banner_content)
             logging.info('Content of ssh_banner file:')
             logging.info(session.cmd_output('cat /etc/ssh/ssh_banner'))
             logging.info('Restart sshd service on xen host')
@@ -360,7 +389,9 @@ def run(test, params, env):
                 shutil.copytree(src_dir, dest_dir)
             virtio_win_env = params.get('virtio_win_env', 'VIRTIO_WIN')
             process.run('rpm -e virtio-win')
-            if process.run('rpm -q virtio-win', ignore_status=True).exit_status == 0:
+            if process.run(
+                'rpm -q virtio-win',
+                    ignore_status=True).exit_status == 0:
                 test.error('not removed')
             if checkpoint.endswith('unset'):
                 logging.info('Unset env %s' % virtio_win_env)
@@ -377,13 +408,14 @@ def run(test, params, env):
                 os.environ[virtio_win_env] = iso_path
         if checkpoint == 'cdrom':
             xml = vm_xml.VMXML.new_from_inactive_dumpxml(
-                    vm_name, virsh_instance=virsh_instance)
+                vm_name, virsh_instance=virsh_instance)
             logging.debug(xml.xmltreefile)
             disks = xml.get_disk_all()
             logging.debug('Disks: %r', disks)
             for disk in list(disks.values()):
                 # Check if vm has cdrom attached
-                if disk.get('device') == 'cdrom' and disk.find('source') is None:
+                if disk.get('device') == 'cdrom' and disk.find(
+                        'source') is None:
                     test.error('No CDROM image attached')
         if checkpoint == 'vdsm':
             extra_pkg = params.get('extra_pkg')
@@ -410,6 +442,7 @@ def run(test, params, env):
             v2v_sasl.server_user = params.get('sasl_server_user', 'root')
             v2v_sasl.server_pwd = params.get('sasl_server_passwd')
             v2v_sasl.setup()
+            logging.debug('A SASL session %s was created', v2v_sasl)
 
             v2v_params['sasl_user'] = params.get("sasl_user")
             v2v_params['sasl_pwd'] = params.get("sasl_pwd")
@@ -422,10 +455,6 @@ def run(test, params, env):
                     params['disk_count'] += 1
             logging.info('Total disks: %d', params['disk_count'])
 
-        # Check if xen guest exists again
-        if not virsh.domain_exists(vm_name, uri=uri):
-            logging.error('VM %s not exists', vm_name)
-
         # Execute virt-v2v
         v2v_result = utils_v2v.v2v_cmd(v2v_params)
 
@@ -434,9 +463,27 @@ def run(test, params, env):
             params['main_vm'] = new_vm_name
         check_result(v2v_result, status_error)
     finally:
+        logging.info("Cleaning Environment")
         # Cleanup constant files
         utils_v2v.cleanup_constant_files(params)
-        process.run('ssh-agent -k')
+        # Restore crypto-policies to DEFAULT, the setting is impossible to be
+        # other values by default in testing envrionment.
+        process.run(
+            'update-crypto-policies --set DEFAULT',
+            verbose=True,
+            ignore_status=True,
+            shell=True)
+        if bk_xml:
+            bk_xml.sync(virsh_instance=virsh_instance)
+        if virsh_instance:
+            logging.debug('virsh session %s is closing', virsh_instance)
+            virsh_instance.close_session()
+        if params.get('vmchecker'):
+            params['vmchecker'].cleanup()
+        if output_mode == 'rhev' and v2v_sasl:
+            v2v_sasl.cleanup()
+            logging.debug('SASL session %s is closing', v2v_sasl)
+            v2v_sasl.close_session()
         if checkpoint == 'vdsm':
             logging.info('Stop vdsmd')
             service_manager = service.Factory.create_generic_service()
@@ -454,13 +501,8 @@ def run(test, params, env):
             logging.info('Start network "default"')
             virsh.net_start('default')
             virsh.undefine(vm_name)
-        if params.get('vmchecker'):
-            params['vmchecker'].cleanup()
         if output_mode == 'libvirt':
             pvt.cleanup_pool(pool_name, pool_type, pool_target, '')
-        if bk_xml:
-            bk_xml.sync(virsh_instance=virsh_instance)
-            virsh_instance.close_session()
         if checkpoint == 'ssh_banner':
             logging.info('Remove ssh_banner file')
             session = remote.remote_login("ssh", xen_host, "22", "root",
@@ -469,3 +511,5 @@ def run(test, params, env):
             session.cmd('service sshd restart')
         if checkpoint.startswith('virtio_win'):
             utils_package.package_install(['virtio-win'])
+        utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
+        process.run('ssh-agent -k')
