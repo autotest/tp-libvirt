@@ -9,9 +9,12 @@ from virttest import remote
 from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_disk
+from virttest import utils_misc
 from virttest import utils_npiv as mpath
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
+
+WAIT_FOR_MPATH_DEVS_TIMEOUT = 60
 
 
 def run(test, params, env):
@@ -92,6 +95,26 @@ def run(test, params, env):
         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as err:
             test.fail("Error happens when check disk in vm: %s" % err)
 
+    def get_new_mpath_devs(old_mpath_devs):
+        """
+        Return function that determines new multipath devices
+
+        :param old_mpath_devs: known old multipath devices
+        :return: Function returning new multipath devices
+        """
+
+        def has_new_mpath_devs():
+            """
+            Determine new multipath devices
+
+            :return: List of new multipath devices
+            """
+            cur_mpath_devs = mpath.find_mpath_devs()
+            return list(set(cur_mpath_devs).difference(
+                set(old_mpath_devs)))
+
+        return has_new_mpath_devs
+
     storage_size = params.get("storage_size", "1G")
     hotplug_disk = "yes" == params.get("hotplug_disk", "no")
     status_error = "yes" == params.get("status_error")
@@ -110,9 +133,8 @@ def run(test, params, env):
         old_mpath_devs = mpath.find_mpath_devs()
         libvirt.setup_or_cleanup_iscsi(is_setup=True)
         mpath.restart_multipathd()
-        cur_mpath_devs = mpath.find_mpath_devs()
-        new_mpath_devs = list(set(cur_mpath_devs).difference(
-            set(old_mpath_devs)))
+        new_mpath_devs = utils_misc.wait_for(
+            get_new_mpath_devs(old_mpath_devs), WAIT_FOR_MPATH_DEVS_TIMEOUT, 0.5)
         if not new_mpath_devs:
             test.fail("No newly added multipath devices found.")
         logging.debug("newly added mpath devs are: %s", new_mpath_devs)
