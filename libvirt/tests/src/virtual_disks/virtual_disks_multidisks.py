@@ -987,13 +987,15 @@ def run(test, params, env):
         first_disk = vm.get_first_disk_devices()
         first_disk_source = first_disk['source']
         minimal_vm_xml_file = minimal_vm_xml.xml
+        arch = params.get("vm_arch_name", "x86_64")
+        machine = params.get("machine_type", "pc")
         minimal_xml_content = """<domain type='kvm'>
         <name>%s</name>
         <memory unit='KiB'>1048576</memory>
         <currentMemory unit='KiB'>1048576</currentMemory>
         <vcpu placement='static'>1</vcpu>
         <os>
-          <type arch='x86_64' machine='pc'>hvm</type>
+          <type arch='%s' machine='%s'>hvm</type>
           <boot dev='hd'/>
         </os>
         <devices>
@@ -1004,7 +1006,7 @@ def run(test, params, env):
             <target dev='vda' bus='virtio'/>
           </disk>
         </devices>
-        </domain>""" % (vm_name, first_disk_source)
+        </domain>""" % (vm_name, arch, machine, first_disk_source)
         with open(minimal_vm_xml_file, 'w') as xml_file:
             xml_file.seek(0)
             xml_file.truncate()
