@@ -59,6 +59,8 @@ def run(test, params, env):
     pvt = libvirt.PoolVolumeTest(test, params)
     tmp_demo_img = "/tmp/demo.img"
     se_obj = None
+    arch = params.get("vm_arch_name", "x86_64")
+    machine = params.get("machine_type", "pc")
 
     original_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     disk_devices = original_xml.get_devices('disk')
@@ -430,7 +432,10 @@ def run(test, params, env):
         try:
             session = vm.wait_for_login()
             for target in targets_name:
-                if target == "hdc":
+                target_list = ["hdc"]
+                if arch == 's390x':
+                    target_list = ["hdc", "sda"]
+                if target in target_list:
                     mount_cmd = "mount /dev/cdrom /mnt"
                 elif target == "fda":
                     mount_cmd = "modprobe floppy && mount /dev/fd0 /mnt"
@@ -440,7 +445,7 @@ def run(test, params, env):
                        "'test' > /mnt/test || umount /mnt)" % mount_cmd)
                 s, o = session.cmd_status_output(cmd)
                 logging.debug("cmd exit: %s, output: %s", s, o)
-                if s:
+                if s or "Read-only file system" not in o:
                     session.close()
                     return False
             session.close()
@@ -921,6 +926,19 @@ def run(test, params, env):
     # Check special characters xml.
     test_special_characters_xml = "yes" == params.get("test_special_characters_xml", "no")
 
+    # Cancel early
+    if (dom_iothreads and not
+            libvirt_version.version_compare(1, 2, 8)):
+        test.cancel("iothreads not supported for"
+                    " this libvirt version")
+
+    if (attach_ccw_address_at_dt_disk and
+            device_attach_option and
+            "ccw:00" in device_attach_option[0] and
+            utils_misc.compare_qemu_version(2, 12, 0, is_rhev=False)):
+        test.cancel("ccsid values are unrestricted in this"
+                    " qemu version")
+
     # Backup selinux_mode and virt_use_nfs status
     virt_use_nfs_off = "yes" == params.get("virt_use_nfs_off", "no")
     if virt_use_nfs_off:
@@ -952,11 +970,6 @@ def run(test, params, env):
     if virtio_disk_hot_unplug_event_watch:
         config_libvirtd_log()
 
-    if dom_iothreads:
-        if not libvirt_version.version_compare(1, 2, 8):
-            test.cancel("iothreads not supported for"
-                        " this libvirt version")
-
     if test_block_size:
         logical_block_size = params.get("logical_block_size")
         physical_block_size = params.get("physical_block_size")
@@ -967,7 +980,8 @@ def run(test, params, env):
         session = vm.wait_for_login()
         if test_boot_console:
             # Setting console to kernel parameters
-            vm.set_kernel_console("ttyS0", "115200")
+            vm.set_kernel_console("ttyS0", "115200",
+                                  guest_arch_name=arch)
         if add_disk_driver:
             # Ignore errors here
             session.cmd("dracut --force --add-drivers '%s'"
@@ -994,7 +1008,7 @@ def run(test, params, env):
         <currentMemory unit='KiB'>1048576</currentMemory>
         <vcpu placement='static'>1</vcpu>
         <os>
-          <type arch='x86_64' machine='pc'>hvm</type>
+          <type arch='%s' machine='%s'>hvm</type>
           <boot dev='hd'/>
         </os>
         <devices>
@@ -1005,7 +1019,7 @@ def run(test, params, env):
             <target dev='vda' bus='virtio'/>
           </disk>
         </devices>
-        </domain>""" % (vm_name, first_disk_source)
+        </domain>""" % (vm_name, arch, machine, first_disk_source)
         with open(minimal_vm_xml_file, 'w') as xml_file:
             xml_file.seek(0)
             xml_file.truncate()
@@ -1393,7 +1407,7 @@ def run(test, params, env):
 
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         # Start the VM.
-        logging.debug('wait for a while')
+        logging.debug("Starting VM: %s", vmxml)
         vm.start()
         if test_minimal_xml:
             return
@@ -1556,6 +1570,7 @@ def run(test, params, env):
         if test_disk_option_cmd:
             # Check if disk options take affect in qemu commmand line.
             cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
+            logging.debug("VM cmdline: %s", process.system_output(cmd, shell=True))
             if test_with_boot_disk:
                 d_target = bootdisk_target
             else:
@@ -1633,7 +1648,10 @@ def run(test, params, env):
                         if d[0].strip() == "event_idx":
                             iface_event_idx = d[1].strip()
             if iface_event_idx != "":
-                cmd += " | grep virtio-net-pci,event_idx=%s" % iface_event_idx
+                driver = "virtio-net-pci"
+                if 's390x' in arch:
+                    driver = "virtio-net-ccw"
+                cmd += " | grep %s,event_idx=%s" % (driver, iface_event_idx)
 
             if process.system(cmd, ignore_status=True, shell=True):
                 test.fail("Check disk driver option failed")
@@ -1665,63 +1683,80 @@ def run(test, params, env):
         # Check disk bus device option in qemu command line.
         if test_bus_device_option:
             cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
-            dev_bus = int(vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
-                                                     "address", "bus"), 16)
-            if device_bus[0] == "virtio":
-                pci_slot = int(vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
-                                                          "address", "slot"), 16)
-                if devices[0] == "lun":
-                    device_option = "scsi=on"
-                else:
-                    device_option = "scsi=off"
-                cmd += (" | grep virtio-blk-pci,%s,bus=pci.%x,addr=0x%x"
-                        % (device_option, dev_bus, pci_slot))
-            if device_bus[0] in ["ide", "sata", "scsi"]:
-                dev_unit = int(vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
-                                                          "address", "unit"), 16)
-                dev_id = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
-                                                    "alias", "name")
-            if device_bus[0] == "ide":
-                if devices[0] == "cdrom":
-                    device_option = "ide-cd"
-                else:
-                    device_option = "ide-hd"
-                cmd += (" | grep %s,bus=ide.%d,unit=%d,drive=drive-%s,id=%s"
-                        % (device_option, dev_bus, dev_unit, dev_id, dev_id))
-            if device_bus[0] == "sata":
-                cmd += (" | grep 'device ahci,.*,bus=pci.%s'" % dev_bus)
-            if device_bus[0] == "scsi":
-                if devices[0] == "lun":
-                    device_option = "scsi-block"
-                elif devices[0] == "cdrom":
-                    device_option = "scsi-cd"
-                else:
-                    device_option = "scsi-hd"
-                cmd += (" | grep %s,bus=scsi%d.%d,.*drive=drive-%s,id=%s"
-                        % (device_option, dev_bus, dev_unit, dev_id, dev_id))
-            if device_bus[0] == "usb":
-                dev_port = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
-                                                      "address", "port")
-                dev_id = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
-                                                    "alias", "name")
-                if devices[0] == "disk":
-                    # For dev_bus ==0,it hardcode bus=usb.0,other than usb%s.0.
-                    usb_bus_str = "usb%s.0" % dev_bus
-                    if dev_bus == 0:
-                        usb_bus_str = "usb.0"
-                    cmd += (" | grep usb-storage,bus=%s,port=%s,"
-                            "drive=drive-%s,id=%s"
-                            % (usb_bus_str, dev_port, dev_id, dev_id))
-                if "input" in usb_devices:
-                    input_addr = get_device_addr('input', 'tablet')
-                    cmd += (" | grep usb-tablet,id=input[0-9],bus=usb.%s,"
-                            "port=%s" % (input_addr["bus"],
-                                         input_addr["port"]))
-                if "hub" in usb_devices:
-                    hub_addr = get_device_addr('hub', 'usb')
-                    cmd += (" | grep usb-hub,id=hub0,bus=usb.%s,"
-                            "port=%s" % (hub_addr["bus"],
-                                         hub_addr["port"]))
+            logging.debug("Qemu cmdline: %s",
+                          process.system_output(cmd, ignore_status=True, shell=True))
+            if "s390" in arch and device_bus[0] == "virtio" and not devices[0] == "lun":
+                dev_devno = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                       "address", "devno").replace("0x", "")
+                dev_id_prefix = "fe.0."
+                device_option = "scsi=off"
+
+                cmd += (" | grep virtio-blk-ccw,%s,devno=%s%s"
+                        % (device_option, dev_id_prefix, dev_devno))
+
+                if device_bus[0] == 'scsi':
+                    dev_id = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                        "alias", "name")
+                    cmd += " | grep drive.*id=%s" % dev_id
+            else:
+                dev_bus = int(vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                         "address", "bus"), 16)
+                if device_bus[0] == "virtio":
+                    pci_slot = int(vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                              "address", "slot"), 16)
+                    if devices[0] == "lun":
+                        device_option = "scsi=on"
+                    else:
+                        device_option = "scsi=off"
+                    cmd += (" | grep virtio-blk-pci,%s,bus=pci.%x,addr=0x%x"
+                            % (device_option, dev_bus, pci_slot))
+                if device_bus[0] in ["ide", "sata", "scsi"]:
+                    dev_unit = int(vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                              "address", "unit"), 16)
+                    dev_id = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                        "alias", "name")
+                if device_bus[0] == "ide":
+                    if devices[0] == "cdrom":
+                        device_option = "ide-cd"
+                    else:
+                        device_option = "ide-hd"
+                    cmd += (" | grep %s,bus=ide.%d,unit=%d,drive=drive-%s,id=%s"
+                            % (device_option, dev_bus, dev_unit, dev_id, dev_id))
+                if device_bus[0] == "sata":
+                    cmd += (" | grep 'device ahci,.*,bus=pci.%s'" % dev_bus)
+                if device_bus[0] == "scsi":
+                    if devices[0] == "lun":
+                        device_option = "scsi-block"
+                    elif devices[0] == "cdrom":
+                        device_option = "scsi-cd"
+                    else:
+                        device_option = "scsi-hd"
+                    cmd += (" | grep %s,bus=scsi%d.%d,.*drive=drive-%s,id=%s"
+                            % (device_option, dev_bus, dev_unit, dev_id, dev_id))
+                if device_bus[0] == "usb":
+                    dev_port = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                          "address", "port")
+                    dev_id = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
+                                                        "alias", "name")
+                    if devices[0] == "disk":
+                        # For dev_bus ==0,it hardcode bus=usb.0,other than usb%s.0.
+                        usb_bus_str = "usb%s.0" % dev_bus
+                        if dev_bus == 0:
+                            usb_bus_str = "usb.0"
+                        cmd += (" | grep usb-storage,bus=%s,port=%s,"
+                                "drive=drive-%s,id=%s"
+                                % (usb_bus_str, dev_port, dev_id, dev_id))
+                    if "input" in usb_devices:
+                        input_addr = get_device_addr('input', 'tablet')
+                        cmd += (" | grep usb-tablet,id=input[0-9],bus=usb.%s,"
+                                "port=%s" % (input_addr["bus"],
+                                             input_addr["port"]))
+                    if "hub" in usb_devices:
+                        hub_addr = get_device_addr('hub', 'usb')
+                        cmd += (" | grep usb-hub,id=hub0,bus=usb.%s,"
+                                "port=%s" % (hub_addr["bus"],
+                                             hub_addr["port"]))
+
             time.sleep(1)
             if process.system(cmd, ignore_status=True, shell=True):
                 test.fail("Can not see disk option"
