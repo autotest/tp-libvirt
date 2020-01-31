@@ -104,6 +104,22 @@ def run(test, params, env):
                                       aft_line.lstrip().strip())
             test.fail("Failed xml before/after comparison")
 
+    def log_first_lines(pre_xml, after_xml, count=15):
+        """
+        Print only first lines of xml info
+
+        :param pre_xml: snapshot xml before edit
+        :param after_xml: snapshot xml after edit
+        :param count: number of lines to be printed at most
+        """
+
+        pre = pre_xml.split()
+        after = after_xml.split()
+
+        for i in range(max(len(pre), len(after), count)):
+            logging.debug("before xml=%s", pre[i].lstrip())
+            logging.debug(" after xml=%s", after[i].lstrip())
+
     snapshot_oldlist = None
     try:
         # Create disk snapshot before all to make the origin image clean
@@ -171,11 +187,8 @@ def run(test, params, env):
             if snap_desc:
                 logging.debug("Failed to edit snapshot edit_opts=%s, match=%s",
                               edit_opts, match_str)
-                # Only print first 15 lines - they are most relevant
-                for i in range(15):
-                    logging.debug("before xml=%s", pre_xml.split()[i].lstrip())
-                    logging.debug(" after xml=%s",
-                                  after_xml.split()[i].lstrip())
+                log_first_lines(pre_xml, after_xml)
+
                 test.fail("Failed to edit snapshot description")
 
         # Check edit options --clone
