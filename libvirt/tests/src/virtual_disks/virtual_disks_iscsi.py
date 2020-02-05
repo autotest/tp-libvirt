@@ -283,12 +283,13 @@ def run(test, params, env):
                 ctrl.model = cntlr_model
             if cntlr_index is not None:
                 ctrl.index = cntlr_index
-            ctrl_addr_dict = {}
-            for addr_option in controller_addr_options.split(','):
-                if addr_option != "":
-                    addr_part = addr_option.split('=')
-                    ctrl_addr_dict.update({addr_part[0].strip(): addr_part[1].strip()})
-            ctrl.address = ctrl.new_controller_address(attrs=ctrl_addr_dict)
+            if controller_addr_options:
+                ctrl_addr_dict = {}
+                for addr_option in controller_addr_options.split(','):
+                    if addr_option != "":
+                        addr_part = addr_option.split('=')
+                        ctrl_addr_dict.update({addr_part[0].strip(): addr_part[1].strip()})
+                ctrl.address = ctrl.new_controller_address(attrs=ctrl_addr_dict)
 
             # If driver_iothread is true, need add iothread attribute in controller.
             if driver_iothread:
