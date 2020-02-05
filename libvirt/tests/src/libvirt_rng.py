@@ -384,13 +384,13 @@ def run(test, params, env):
         if device_num > 1:
             rng_dev = rng_avail.split()
             if len(rng_dev) != device_num:
-                test.skip("Multiple virtio-rng devices are not"
-                          " supported on this guest kernel. "
-                          "Bug: https://bugzilla.redhat.com/"
-                          "show_bug.cgi?id=915335")
+                test.cancel("Multiple virtio-rng devices are not"
+                            " supported on this guest kernel. "
+                            "Bug: https://bugzilla.redhat.com/"
+                            "show_bug.cgi?id=915335")
             session.cmd("echo -n %s > %s" % (rng_dev[1], rng_files[1]))
             # Read the random device
-            if session.cmd_status(cmd, timeout=120):
+            if session.cmd_status(cmd, timeout=timeout):
                 test.fail("Failed to read the random device")
 
     def get_rng_device(guest_arch, rng_model):
