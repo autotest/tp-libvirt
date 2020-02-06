@@ -171,11 +171,11 @@ def run(test, params, env):
             process.run('systemctl restart virtlogd.socket', ignore_status=True, shell=True)
         except path.CmdNotFoundError:
             pass
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
         libvirtd.exit()
         if config_path:
             config.restore()
             if os.path.exists(config_path):
                 os.remove(config_path)
-        if vm.is_alive():
-            vm.destroy(gracefully=False)
         backup_xml.sync()
