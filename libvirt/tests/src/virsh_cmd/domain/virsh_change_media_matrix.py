@@ -1,6 +1,7 @@
 import os
 import time
 import logging
+import platform
 from virttest import virsh
 from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
@@ -36,7 +37,9 @@ def run(test, params, env):
                 continue
             if disk.target['dev'] != target_dev:
                 continue
-            if disk.xmltreefile.find('source') is not None:
+            if disk.xmltreefile.find('source') is not None and \
+                    not ('ppc64le' in platform.machine()
+                         and 'file' not in disk.source.attrs):
                 if disk.source.attrs['file'] != source_file:
                     continue
             else:
