@@ -36,6 +36,8 @@ def run(test, params, env):
     status_error = 'yes' == params.get('status_error', 'no')
     address_cache = env.get('address_cache')
     checkpoint = params.get('checkpoint', '')
+    skip_vm_check = params.get('skip_vm_check', 'no')
+    skip_reason = params.get('skip_reason')
     error_list = []
     remote_host = vpx_hostname
     # For VDDK
@@ -277,10 +279,12 @@ def run(test, params, env):
             logging.info('Checking common checkpoints for v2v')
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
-            if checkpoint != 'GPO_AV':
+            if skip_vm_check != 'yes':
                 ret = vmchecker.run()
                 if len(ret) == 0:
                     logging.info("All common checkpoints passed")
+            else:
+                logging.info('Skip checking vm after conversion: %s' % skip_reason)
             # Check specific checkpoints
             if checkpoint == 'cdrom':
                 virsh_session = utils_sasl.VirshSessionSASL(params)
