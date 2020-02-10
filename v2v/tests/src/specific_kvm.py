@@ -16,6 +16,7 @@ from virttest import libvirt_vm
 from virttest import data_dir
 from virttest import utils_selinux
 from virttest import remote
+from virttest import xml_utils
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
@@ -315,13 +316,17 @@ def run(test, params, env):
         line += ' --current'
         logging.debug(virsh.attach_interface(vm_name, option=line))
 
-    def check_multi_netcards(mac_list, virsh_instance):
+    def check_multi_netcards(mac_list, vmxml):
         """
         Check if number and type of network cards meet expectation
         """
-        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
-            vm_name, virsh_instance=virsh_instance)
-        iflist = vmxml.get_iface_all()
+        xmltree = xml_utils.XMLTreeFile(vmxml)
+        iface_nodes = xmltree.find('devices').findall('interface')
+        iflist = {}
+        for node in iface_nodes:
+            mac_addr = node.find('mac').get('address')
+            iflist[mac_addr] = node
+
         logging.debug('MAC list before v2v: %s' % mac_list)
         logging.debug('MAC list after  v2v: %s' % list(iflist.keys()))
         if set(mac_list).difference(list(iflist.keys())):
@@ -585,9 +590,7 @@ def run(test, params, env):
                 ret = vmchecker.run()
                 if len(ret) == 0:
                     logging.info("All common checkpoints passed")
-            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
-                vm_name, virsh_instance=vmchecker.virsh_instance)
-            logging.debug(vmxml)
+            logging.debug(vmchecker.vmxml)
             if checkpoint == 'multi_kernel':
                 check_boot_kernel(vmchecker.checker)
                 check_vmlinuz_initramfs(output)
@@ -600,7 +603,7 @@ def run(test, params, env):
                 check_disks(vmchecker.checker)
             if checkpoint == 'multi_netcards':
                 check_multi_netcards(params['mac_address'],
-                                     vmchecker.virsh_instance)
+                                     vmchecker.vmxml)
             if checkpoint.startswith(('spice', 'vnc')):
                 if checkpoint == 'spice_encrypt':
                     vmchecker.check_graphics(params[checkpoint])

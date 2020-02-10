@@ -103,7 +103,7 @@ class VMChecker(object):
 
         logging.debug('new virsh session %s is created', self.virsh_session)
         if not self.virsh_session_id:
-            raise exceptions.TestError('Fail to create SASL virsh session')
+            raise exceptions.TestError('Fail to create virsh session')
 
     def log_err(self, msg):
         logging.error(msg)
