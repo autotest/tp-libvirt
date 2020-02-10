@@ -1,6 +1,7 @@
 import logging
 
 from avocado.utils import path as utils_path
+from avocado.utils import process
 
 from virttest import libvirt_xml
 from virttest import virsh
@@ -106,11 +107,17 @@ def set_numa_parameter(test, params, cgstop):
     nodeset = params.get("numa_nodeset")
     options = params.get("options", None)
     start_vm = params.get("start_vm", "yes")
+    exceed_num = "yes" == params.get("exceed_num", "no")
 
     # Get host numa node list
     host_numa_node = utils_misc.NumaInfo()
     node_list = host_numa_node.online_nodes_withmem
     logging.debug("host online nodes with memory %s", node_list)
+
+    # Get host numa node number if exceed_num
+    if exceed_num:
+        nodeset = str(len(host_numa_node.all_nodes) + 1)
+        params['numa_nodeset'] = nodeset
 
     # Get original numatune memory mode
     ori_mode = ''
@@ -217,6 +224,7 @@ def run(test, params, env):
 
     # positive and negative testing #########
 
+    ori_pid_libvirtd = process.getoutput("pidof libvirtd")
     cgstop = False
     try:
         if status_error == "no":
@@ -255,6 +263,10 @@ def run(test, params, env):
                 get_numa_parameter(test, params, cgstop)
             else:
                 set_numa_parameter(test, params, cgstop)
+
+            aft_pid_libvirtd = process.getoutput("pidof libvirtd")
+            if not utils_libvirtd.libvirtd_is_running() or ori_pid_libvirtd != aft_pid_libvirtd:
+                test.fail("Libvirtd crash after numatune operation")
     finally:
         # Restore guest
         original_vm_xml.sync()
