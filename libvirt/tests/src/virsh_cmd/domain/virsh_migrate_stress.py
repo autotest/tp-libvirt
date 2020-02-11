@@ -63,7 +63,7 @@ def do_stress_migration(vms, srcuri, desturi, migration_type, test, params,
             migrate_setup.do_migration(vms, srcuri, desturi, migration_type,
                                        options=migrate_options,
                                        thread_timeout=thread_timeout)
-        except Exception, info:
+        except Exception as info:
             test.fail(info)
 
         uptime = migrate_setup.post_migration_check(vms, params, uptime,
@@ -77,7 +77,7 @@ def do_stress_migration(vms, srcuri, desturi, migration_type, test, params,
                                            options=migrate_options,
                                            thread_timeout=thread_timeout,
                                            virsh_uri=desturi)
-            except Exception, info:
+            except Exception as info:
                 test.fail(info)
             uptime = migrate_setup.post_migration_check(vms, params, uptime)
             migrate_setup.migrate_pre_setup(srcuri, params, cleanup=True)
@@ -136,7 +136,7 @@ def run(test, params, env):
         try:
             hstress = utils_test.HostStress(stress_tool, params)
             hstress.load_stress_tool()
-        except utils_test.StressError, info:
+        except utils_test.StressError as info:
             test.error(info)
 
     if remote_stress:
@@ -156,7 +156,7 @@ def run(test, params, env):
             rstress = utils_test.HostStress(stress_tool, params, remote_server=True)
             rstress.load_stress_tool()
             remote_session.close()
-        except utils_test.StressError, info:
+        except utils_test.StressError as info:
             remote_session.close()
             test.error(info)
 
@@ -182,7 +182,7 @@ def run(test, params, env):
                     try:
                         vstress[vm.name] = utils_test.VMStress(vm, stress_tool, params)
                         vstress[vm.name].load_stress_tool()
-                    except utils_test.StressError, info:
+                    except utils_test.StressError as info:
                         session.close()
                         test.error(info)
                 session.close()
