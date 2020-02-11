@@ -259,14 +259,15 @@ class VMChecker(object):
         :param dev_id: the ID of the video device
         :return: log error will be recored if not found, else return nothing
         """
-        # Check by 'lspci'
+        # Check by 'lspci' or 'lshw'
+        cmd = ["lspci", "lshw"]
         if self.checker.vm_general_search(
-            "lspci",
+            cmd,
             video_type,
             re.IGNORECASE,
                 ignore_status=True):
             return
-        elif len(dev_id) > 0 and any([self.checker.vm_general_search("lspci", id_i, debug=False, ignore_status=True) for id_i in dev_id]):
+        elif len(dev_id) > 0 and any([self.checker.vm_general_search(cmd, id_i, debug=False, ignore_status=True) for id_i in dev_id]):
             return
 
         # Check by 'journalctl'
