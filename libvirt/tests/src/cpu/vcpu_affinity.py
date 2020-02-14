@@ -131,6 +131,12 @@ def run(test, params, env):
         vmxml.vcpu = int(maxvcpu)
         vmxml.current_vcpu = current_vcpu
 
+        # Remove cpu topology to avoid that it doesn't match vcpu count
+        if vmxml.get_cpu_topology():
+            new_cpu = vmxml.cpu
+            del new_cpu.topology
+            vmxml.cpu = new_cpu
+
         # config vcpu cpuset for cpuset range test
         num = 1 if not status_error else 0
         cpuset_new = "0-{},^{}".format(hostcpu_num-num, cpuset_mask)
@@ -140,6 +146,12 @@ def run(test, params, env):
 
         if vcpu_placement:
             vmxml.placement = vcpu_placement
+
+            # Remove numatune node since it will be automatically set
+            # under 'auto' state
+            if vcpu_placement == 'auto':
+                vmxml.xmltreefile.remove_by_xpath('/numatune', remove_all=True)
+                vmxml.xmltreefile.write()
 
         if config_xml == "cputune":
             cputune = vm_xml.VMCPUTuneXML()
