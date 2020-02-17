@@ -10,6 +10,8 @@ from virttest.libvirt_xml import vm_xml
 
 from provider import libvirt_version
 
+CMD_TIMEOUT = 30
+
 
 def xml_console_config(vm_name, serial_type='pty',
                        serial_port='0', serial_path=None):
@@ -87,7 +89,7 @@ def check_duplicated_console(command, force_command, status_error, login_user,
     session = aexpect.ShellSession(command)
     if not status_error:
         # Test duplicated console session
-        res = process.run(command, timeout=10, ignore_status=True, shell=True)
+        res = process.run(command, timeout=CMD_TIMEOUT, ignore_status=True, shell=True)
         logging.debug(res)
         if res.exit_status == 0:
             test.fail("Duplicated console session should fail. "
@@ -96,7 +98,7 @@ def check_duplicated_console(command, force_command, status_error, login_user,
         # Test duplicated console session with force option
         force_session = aexpect.ShellSession(force_command)
         force_status = utils_test.libvirt.verify_virsh_console(
-            force_session, login_user, login_passwd, timeout=10, debug=True)
+            force_session, login_user, login_passwd, timeout=CMD_TIMEOUT, debug=True)
         if not force_status:
             test.fail("Expect force console session should succeed, "
                       "but failed.")
@@ -244,7 +246,7 @@ def run(test, params, env):
         console_session = aexpect.ShellSession(command)
 
         status = utils_test.libvirt.verify_virsh_console(
-            console_session, login_user, login_passwd, timeout=10, debug=True)
+            console_session, login_user, login_passwd, timeout=CMD_TIMEOUT, debug=True)
         console_session.close()
 
         check_duplicated_console(command, force_command, status_error,
