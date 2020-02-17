@@ -853,9 +853,8 @@ def run(test, params, env):
         if output_mode is None:
             pvt.cleanup_pool(pool_name, pool_type, pool_target, emulated_img)
         vmcheck_flag = params.get("vmcheck_flag")
-        if vmcheck_flag:
-            vmcheck = utils_v2v.VMCheck(test, params, env)
-            vmcheck.cleanup()
+        if vmcheck_flag and params.get('vmchecker'):
+            params['vmchecker'].cleanup()
         if new_v2v_user:
             process.system("userdel -f %s" % v2v_user)
         if backup_xml:

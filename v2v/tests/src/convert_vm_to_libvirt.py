@@ -134,7 +134,6 @@ def run(test, params, env):
     try:
         # Execute virt-v2v command
         ret = utils_v2v.v2v_cmd(v2v_params)
-        logging.debug("virt-v2v verbose messages:\n%s", ret)
         if ret.exit_status != 0:
             raise exceptions.TestFail("Convert VM failed")
 
@@ -157,7 +156,19 @@ def run(test, params, env):
 
         # Check all checkpoints after convert
         vmchecker = VMChecker(test, params, env)
-        ret = vmchecker.run()
+        # Cannot do "params['vmchecker'] = vmchecker" if vm was to_libvirt,
+        # or exception 'Fatal Python error: Cannot recover from stack overflow'
+        # will happen. Not sure how it happens now, if somebody knows about it,
+        # Please help to fix it.
+        #
+        # The exception happens at:
+        # avocado/utils/stacktrace.py, line 98 in analyze_unpickable_item
+        # <FIXIT> in future.
+        try:
+            ret = vmchecker.run()
+        finally:
+            vmchecker.cleanup()
+
         if len(ret) == 0:
             logging.info("All checkpoints passed")
         else:
@@ -165,8 +176,6 @@ def run(test, params, env):
                 "%d checkpoints failed: %s" %
                 (len(ret), ret))
     finally:
-        vmcheck = utils_v2v.VMCheck(test, params, env)
-        vmcheck.cleanup()
         utils_v2v.cleanup_constant_files(params)
         if hypervisor == "xen":
             # Restore crypto-policies to DEFAULT, the setting is impossible to be
