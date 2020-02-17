@@ -58,6 +58,7 @@ def run(test, params, env):
         '/')[2] if params.get("ovirt_engine_url") else None
     ovirt_ca_file_path = params.get("ovirt_ca_file_path")
     local_ca_file_path = params.get("local_ca_file_path")
+    virsh_instance = None
 
     def log_fail(msg):
         """

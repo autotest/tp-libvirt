@@ -182,7 +182,7 @@ def run(test, params, env):
             test.error("Import VM failed")
 
         # Check all checkpoints after convert
-        vmchecker = VMChecker(test, params, env)
+        params['vmchecker'] = vmchecker = VMChecker(test, params, env)
         ret = vmchecker.run()
 
         # Other checks
@@ -232,8 +232,8 @@ def run(test, params, env):
         else:
             test.fail("%d checkpoints failed: %s" % (len(ret), ret))
     finally:
-        vmcheck = utils_v2v.VMCheck(test, params, env)
-        vmcheck.cleanup()
+        if params.get('vmchecker'):
+            params['vmchecker'].cleanup()
         if v2v_sasl:
             v2v_sasl.cleanup()
             v2v_sasl.close_session()
