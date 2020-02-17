@@ -105,7 +105,9 @@ Enhancement (best practice):
 - avoid too generic logging message
 - not recommended to use mutable default value as an argument see <https://docs.quantifiedcode.com/python-anti-patterns/correctness/mutable_default_value_as_argument.html>
 - without timeout value in infinite loop
-- use with to open files
+- use `with` to open files
+- either use global constants for timeouts or test `params` to set values for timeouts (e.g. `wait_for_loging(..., timeout=LOGIN_TIMEOUT)`);
+  this way it is easier for others to tweak timeouts on slower systems
 - make sure this is run before sending patch::
 
     inspekt checkall --disable-style E501,E265,W601,E402,E722,E741 --no-license-check <test-script-name>.py
