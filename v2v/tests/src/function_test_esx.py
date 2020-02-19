@@ -407,6 +407,16 @@ def run(test, params, env):
             if not os.path.isfile(os.getenv('VIRTIO_WIN')):
                 test.fail('%s does not exist' % os.getenv('VIRTIO_WIN'))
 
+        if checkpoint == 'invalid_pem':
+            # simply change the 2nd line to lowercase to get an invalid pem
+            with open(local_ca_file_path, 'r+') as fd:
+                for i in range(2):
+                    pos = fd.tell()
+                    res = fd.readline()
+                fd.seek(pos)
+                fd.write(res.lower())
+                fd.flush()
+
         if checkpoint == 'empty_cdrom':
             virsh_dargs = {'uri': remote_uri, 'remote_ip': remote_host,
                            'remote_user': 'root', 'remote_pwd': vpx_passwd,
