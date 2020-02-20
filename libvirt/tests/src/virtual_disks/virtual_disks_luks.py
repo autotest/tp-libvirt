@@ -267,7 +267,7 @@ def run(test, params, env):
             gluster_vol_name = params.get("gluster_vol_name", "gluster_vol1")
             gluster_pool_name = params.get("gluster_pool_name", "gluster_pool1")
             gluster_img_name = params.get("gluster_img_name", "gluster1.img")
-            gluster_host_ip = libvirt.setup_or_cleanup_gluster(
+            gluster_host_ip = gluster.setup_or_cleanup_gluster(
                     is_setup=True,
                     vol_name=gluster_vol_name,
                     pool_name=gluster_pool_name,
