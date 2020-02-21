@@ -69,6 +69,7 @@ def run(test, params, env):
     vpx_hostname = params.get("vpx_hostname")
     vpx_password = params.get("vpx_password")
     src_uri_type = params.get('src_uri_type')
+    v2v_opts = '-v -x' if params.get('v2v_debug', 'on') == 'on' else ''
     error_list = []
 
     # create different sasl_user name for different job
@@ -154,7 +155,7 @@ def run(test, params, env):
 
     try:
         v2v_params = {
-            'main_vm': vm_name, 'target': target, 'v2v_opts': '-v -x',
+            'main_vm': vm_name, 'target': target, 'v2v_opts': v2v_opts,
             'storage': output_storage, 'network': network, 'bridge': bridge,
             'input_mode': input_mode, 'input_file': input_file,
             'new_name': 'ova_vm_' + utils_misc.generate_random_string(3),
