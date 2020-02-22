@@ -109,22 +109,32 @@ def run(test, params, env):
         times['local_hw'] -= datetime.timedelta(seconds=delta)
 
         # Guest system local timezone time
-        output, _ = run_cmd(session, 'date')
-        # Strip timezone info from output
-        # e.g. 'Sun Feb 15 07:31:40 CST 2009' -> 'Sun Feb 15 07:31:40 2009'
-        time_str = re.sub(r'\S+ (?=\S+$)', '', output.strip())
-        times['local_sys'] = datetime.datetime.strptime(
-            time_str, r"%a %b %d %H:%M:%S %Y")
+        try:
+            output, _ = run_cmd(session, 'date')
+            # Strip timezone info from output
+            # e.g. 'Sun Feb 15 07:31:40 CST 2009' -> 'Sun Feb 15 07:31:40 2009'
+            time_str = re.sub(r'\S+ (?=\S+$)', '', output.strip())
+            times['local_sys'] = datetime.datetime.strptime(
+                    time_str, r"%a %b %d %H:%M:%S %Y")
+        except ValueError:
+            output, _ = run_cmd(session, 'date +"%a %b %d %H:%M:%S %Y"')
+            times['local_sys'] = datetime.datetime.strptime(
+                    output.strip(), r"%a %b %d %H:%M:%S %Y")
         delta = time.time() - get_begin
         times['local_sys'] -= datetime.timedelta(seconds=delta)
 
         # Guest system UTC timezone time
-        output, _ = run_cmd(session, 'date -u')
-        # Strip timezone info from output
-        # e.g. 'Sun Feb 15 07:31:40 CST 2009' -> 'Sun Feb 15 07:31:40 2009'
-        time_str = re.sub(r'\S+ (?=\S+$)', '', output.strip())
-        times['utc_sys'] = datetime.datetime.strptime(
-            time_str, r"%a %b %d %H:%M:%S %Y")
+        try:
+            output, _ = run_cmd(session, 'date -u')
+            # Strip timezone info from output
+            # e.g. 'Sun Feb 15 07:31:40 CST 2009' -> 'Sun Feb 15 07:31:40 2009'
+            time_str = re.sub(r'\S+ (?=\S+$)', '', output.strip())
+            times['utc_sys'] = datetime.datetime.strptime(
+                    time_str, r"%a %b %d %H:%M:%S %Y")
+        except ValueError:
+            output, _ = run_cmd(session, 'date -u +"%a %b %d %H:%M:%S %Y"')
+            times['utc_sys'] = datetime.datetime.strptime(
+                    output.strip(), r"%a %b %d %H:%M:%S %Y")
         delta = time.time() - get_begin
         times['utc_sys'] -= datetime.timedelta(seconds=delta)
 
