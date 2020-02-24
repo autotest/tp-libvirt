@@ -34,6 +34,7 @@ def run(test, params, env):
         if "V2V_EXAMPLE" in v:
             test.cancel("Please set real value for %s" % v)
 
+    version_requried = params.get("version_requried")
     vm_name = params.get("main_vm", "EXAMPLE")
     new_vm_name = params.get("new_vm_name")
     input_mode = params.get("input_mode")
@@ -572,6 +573,9 @@ def run(test, params, env):
     backup_xml = None
     vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
     try:
+        if version_requried and not utils_v2v.compare_version(version_requried):
+            test.cancel("Testing requries version: %s" % version_requried)
+
         if hypervisor == "xen":
             # See man virt-v2v-input-xen(1)
             process.run(
