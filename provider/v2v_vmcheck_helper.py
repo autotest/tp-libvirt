@@ -55,6 +55,9 @@ class VMChecker(object):
         self.vmxml = virsh.dumpxml(
             self.vm_name,
             session_id=self.virsh_session_id).stdout.strip()
+        self.xmltree = None
+        if self.vmxml:
+            self.xmltree = xml_utils.XMLTreeFile(self.vmxml)
         # Save NFS mount records like {0:(src, dst, fstype)}
         self.mount_records = {}
 

@@ -610,11 +610,11 @@ def run(test, params, env):
                 else:
                     graph_type = checkpoint.split('_')[0]
                     vmchecker.check_graphics({'type': graph_type})
-                    video_type = vmxml.get_devices('video')[0].model_type
+                    video_type = vmchecker.xmltree.find('./devices/video/model').get('type')
                     if video_type.lower() != 'qxl':
                         log_fail('Video expect QXL, actual %s' % video_type)
             if checkpoint.startswith('listen'):
-                listen_type = vmxml.get_devices('graphics')[0].listen_type
+                listen_type = vmchecker.xmltree.find('./devices/graphics/listen').get('type')
                 logging.info('listen type is: %s', listen_type)
                 if listen_type != checkpoint.split('_')[-1]:
                     log_fail('listen type changed after conversion')
