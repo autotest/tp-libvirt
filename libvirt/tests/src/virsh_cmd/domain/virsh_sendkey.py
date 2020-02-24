@@ -42,6 +42,7 @@ def run(test, params, env):
     unprivileged_user = params.get('unprivileged_user')
     is_crash = ("yes" == params.get("is_crash", "no"))
     add_panic_device = ("yes" == params.get("add_panic_device", "yes"))
+    force_vm_boot_text_mode = ("yes" == params.get("force_vm_boot_text_mode", "yes"))
     crash_dir = "/var/crash"
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
@@ -67,12 +68,13 @@ def run(test, params, env):
     vm.wait_for_login().close()
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
-    # Boot the guest in text only mode so that send-key commands would succeed
-    # in creating a file
-    try:
-        utils_test.update_boot_option(vm, args_added="3", guest_arch_name=params.get('vm_arch_name'))
-    except Exception as info:
-        test.error(info)
+    if force_vm_boot_text_mode:
+        # Boot the guest in text only mode so that send-key commands would succeed
+        # in creating a file
+        try:
+            utils_test.update_boot_option(vm, args_added="3", guest_arch_name=params.get('vm_arch_name'))
+        except Exception as info:
+            test.error(info)
 
     session = vm.wait_for_login()
     if sysrq_test:
