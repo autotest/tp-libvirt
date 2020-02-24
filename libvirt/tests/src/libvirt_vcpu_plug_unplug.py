@@ -390,8 +390,8 @@ def run(test, params, env):
                     try:
                         vm.wait_for_login(timeout=600)
                     except Exception as e:
-                        test.warn("Skip remaining test steps as domain"
-                                  " not resume in 10 mins: %s" % e)
+                        test.cancel("Skip remaining test steps as domain"
+                                    " not resume in 10 mins: %s" % e)
                     # For hotplug/unplug vcpu without '--config flag, after
                     # suspend domain to disk(shut off) and re-start it, the
                     # current live vcpu number will recover to orinial value
@@ -518,8 +518,8 @@ def run(test, params, env):
                     try:
                         vm.wait_for_login(timeout=600)
                     except Exception as e:
-                        test.warn("Skip remaining test steps as domain"
-                                  " not resume in 10 mins: %s" % e)
+                        test.cancel("Skip remaining test steps as domain"
+                                    " not resume in 10 mins: %s" % e)
                     # For hotplug/unplug vcpu without '--config flag, after
                     # suspend domain to disk(shut off) and re-start it, the
                     # current live vcpu number will recover to orinial value
