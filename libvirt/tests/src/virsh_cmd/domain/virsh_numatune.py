@@ -265,8 +265,9 @@ def run(test, params, env):
                 set_numa_parameter(test, params, cgstop)
 
             aft_pid_libvirtd = process.getoutput("pidof libvirtd")
-            if not utils_libvirtd.libvirtd_is_running() or ori_pid_libvirtd != aft_pid_libvirtd:
-                test.fail("Libvirtd crash after numatune operation")
+            if libvirtd == "on":
+                if not utils_libvirtd.libvirtd_is_running() or ori_pid_libvirtd != aft_pid_libvirtd:
+                    test.fail("Libvirtd crash after numatune operation")
     finally:
         # Restore guest
         original_vm_xml.sync()
