@@ -5,6 +5,7 @@ import logging
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+from virttest.utils_disk import get_scsi_info
 
 from avocado.utils import process
 
@@ -24,7 +25,7 @@ def run(test, params, env):
     detach_options = params.get("detach_alias_options", "")
     detach_check_xml = params.get("detach_check_xml")
     # hostdev device params
-    hostdev_type = params.get("detach_hostdev_type")
+    hostdev_type = params.get("detach_hostdev_type", "")
     hostdev_managed = params.get("detach_hostdev_managed")
     # controller params
     contr_type = params.get("detach_controller_type")
@@ -60,12 +61,20 @@ def run(test, params, env):
     # wait for vm start successfully
     vm.wait_for_login()
 
-    if hostdev_type:
-        usb_address = get_usb_info()
-        device_xml = libvirt.create_hostdev_xml(pci_id=usb_address,
+    if hostdev_type in ["usb", "scsi"]:
+        if hostdev_type == "usb":
+            pci_id = get_usb_info()
+        elif hostdev_type == "scsi":
+            source_disk = libvirt.create_scsi_disk(scsi_option="",
+                                                   scsi_size="8")
+            pci_id = get_scsi_info(source_disk)
+        device_xml = libvirt.create_hostdev_xml(pci_id=pci_id,
                                                 dev_type=hostdev_type,
                                                 managed=hostdev_managed,
                                                 alias=device_alias)
+    else:
+        test.error("Hostdev type %s not handled by test."
+                   " Please check code." % hostdev_type)
     if contr_type:
         controllers = vmxml.get_controllers(contr_type)
         contr_index = len(controllers) + 1
@@ -106,3 +115,5 @@ def run(test, params, env):
             test.fail("Still can find %s in domxml" % detach_check_xml)
     finally:
         backup_xml.sync()
+        if hostdev_type == "scsi":
+            libvirt.delete_scsi_disk()
