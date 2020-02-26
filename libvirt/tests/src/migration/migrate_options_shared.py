@@ -888,6 +888,7 @@ def run(test, params, env):
     asynch_migration = "yes" == params.get("asynch_migrate", "no")
     grep_str_remote_log = params.get("grep_str_remote_log", "")
     grep_str_not_in_remote_log = params.get("grep_str_not_in_remote_log", "")
+    grep_str_not_in_local_log = params.get("grep_str_not_in_local_log", "")
     grep_str_local_log = params.get("grep_str_local_log", "")
     grep_str_local_log_1 = params.get("grep_str_local_log_1", "")
     disable_verify_peer = "yes" == params.get("disable_verify_peer", "no")
@@ -1239,6 +1240,8 @@ def run(test, params, env):
         for grep_str in [grep_str_local_log, grep_str_local_log_1]:
             if grep_str:
                 libvirt.check_logfile(grep_str, log_file)
+        if grep_str_not_in_local_log:
+            libvirt.check_logfile(grep_str_not_in_local_log, log_file, False)
         if grep_str_remote_log:
             libvirt.check_logfile(grep_str_remote_log, log_file, True, cmd_parms,
                                   runner_on_target)
