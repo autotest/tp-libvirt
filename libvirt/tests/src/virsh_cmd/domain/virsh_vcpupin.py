@@ -204,7 +204,7 @@ def run(test, params, env):
                                            vcpucount_option).stdout.strip()
 
         # Find the alive cpus list
-        cpus_list = list(map(str, cpuutils.cpu_online_list()))
+        cpus_list = list(map(str, cpuutils.online_list()))
         logging.info("Active cpus in host are %s", cpus_list)
 
         # If the cpus_list has too many cpus, then only test the
@@ -227,7 +227,7 @@ def run(test, params, env):
             for vcpu in range(int(guest_vcpu_count)):
                 vcpu_pid = vm.get_vcpus_pid()[vcpu]
                 # Check the result of vcpupin command.
-                check_vcpupin(vm.name, vcpu, str(','.join(list(map(str, cpuutils.cpu_online_list())))), pid, vcpu_pid)
+                check_vcpupin(vm.name, vcpu, str(','.join(list(map(str, cpuutils.online_list())))), pid, vcpu_pid)
             return
 
         if multi_dom:
@@ -254,7 +254,7 @@ def run(test, params, env):
         # Get the host cpu count
         host_online_cpu_count = len(cpus_list)
         online_cpu_max = max(map(int, cpus_list))
-        host_cpu_count = cpuutils.total_cpus_count()
+        host_cpu_count = cpuutils.total_count()
         cpu_max = int(host_cpu_count) - 1
         if (host_online_cpu_count < 2) and (not cpu_list == "x"):
             test.cancel("We need more cpus on host in this "

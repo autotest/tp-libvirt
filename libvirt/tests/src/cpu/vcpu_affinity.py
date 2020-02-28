@@ -92,7 +92,7 @@ def run(test, params, env):
         affinity = vcpu_cpuset if not cputune_cpuset else cputune_cpuset
         affinity = {vcpu: affinity}
         virsh.vcpuinfo(vm_name, debug=True)
-        host_cpu_count = cpuutil.total_cpus_count()
+        host_cpu_count = cpuutil.total_count()
 
         vmxml_live = vm_xml.VMXML.new_from_dumpxml(vm_name)
         logging.debug(vmxml_live)
@@ -117,7 +117,7 @@ def run(test, params, env):
             test.fail("vcpu affinity check fail")
 
     try:
-        hostcpu_num = int(cpuutil.total_cpus_count())
+        hostcpu_num = int(cpuutil.total_count())
         if hostcpu_num < 8:
             test.cancel("The host should have at least 8 CPUs for this test.")
 

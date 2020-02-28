@@ -33,7 +33,7 @@ def run(test, params, env):
         vm_ref = vm_name
 
     # get host cpus num
-    cpus = cpu.online_cpus_count()
+    cpus = cpu.online_count()
     logging.debug("host online cpu num is %s", cpus)
 
     # get options and put into a dict
@@ -63,7 +63,7 @@ def run(test, params, env):
     if (status_error == "no"):
         cpu_start = int(option_dict.get("start", "0"))
         if cpu_start == 32:
-            cpus = cpu.total_cpus_count()
+            cpus = cpu.total_count()
             logging.debug("Host total cpu num: %s", cpus)
         if (cpu_start >= cpus):
             test.cancel("Host cpus are not enough")

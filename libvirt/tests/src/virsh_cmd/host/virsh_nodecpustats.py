@@ -174,7 +174,7 @@ def run(test, params, env):
         utils_libvirtd.libvirtd_stop()
 
     # Get the host cpu list
-    host_cpus_list = cpuutil.cpu_online_list()
+    host_cpus_list = cpuutil.online_list()
 
     # Run test case for 5 iterations default can be changed in subtests.cfg
     # file

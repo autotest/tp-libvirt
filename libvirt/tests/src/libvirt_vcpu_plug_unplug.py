@@ -250,7 +250,7 @@ def run(test, params, env):
                     "=%s. But current number of cpu on host is %s."
                     % (pin_cpu_list, host_cpu_count))
 
-    cpus_list = cpu_util.cpu_online_list()
+    cpus_list = cpu_util.online_list()
     logging.debug("Active cpus in host are %s", cpus_list)
 
     cpu_seq_str = ""

@@ -63,7 +63,7 @@ def run(test, params, env):
                 result = cpu.check_vcpu_value(vm, exp_vcpu,
                                               option="--live")
             elif condn == "host_smt":
-                if cpuutil.get_cpu_vendor_name() == 'power9':
+                if cpuutil.get_family() == 'power9':
                     result = process.run("ppc64_cpu --smt=4", shell=True)
                 else:
                     test.cancel("Host SMT changes not allowed during guest live")
@@ -160,7 +160,7 @@ def run(test, params, env):
     # Destroy the vm
     vm.destroy()
     try:
-        cpus_list = cpuutil.cpu_online_list()
+        cpus_list = cpuutil.online_list()
         if len(cpus_list) < 2:
             test.cancel("Need minimum two online host cpus")
         # Set vcpu and topology

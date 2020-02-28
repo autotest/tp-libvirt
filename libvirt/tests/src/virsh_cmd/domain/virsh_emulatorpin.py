@@ -204,7 +204,7 @@ def run(test, params, env):
     test_dicts = dict(params)
     test_dicts['vm'] = vm
 
-    host_cpus = cpu.online_cpus_count()
+    host_cpus = cpu.online_count()
     test_dicts['host_cpus'] = host_cpus
     cpu_max = int(host_cpus) - 1
 
@@ -215,7 +215,7 @@ def run(test, params, env):
         if cpulist is None:
             pass
         elif cpulist == "x":
-            cpu_online_map = list(map(str, cpu.cpu_online_list()))
+            cpu_online_map = list(map(str, cpu.online_list()))
             cpulist = random.choice(cpu_online_map)
         elif cpulist == "x-y":
             # By default, emulator is pined to all cpus, and element
@@ -228,7 +228,7 @@ def run(test, params, env):
             else:
                 cpulist = "0-%s" % (cpu_max - 1)
         elif cpulist == "x,y":
-            cpu_online_map = list(map(str, cpu.cpu_online_list()))
+            cpu_online_map = list(map(str, cpu.online_list()))
             cpulist = ','.join(random.sample(cpu_online_map, 2))
         elif cpulist == "x-y,^z":
             cpulist = "0-%s,^%s" % (cpu_max, cpu_max)

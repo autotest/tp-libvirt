@@ -187,7 +187,7 @@ def run(test, params, env):
     option = params.get("virsh_node_options")
     status_error = params.get("status_error")
     cpu_off_on_test = params.get("cpu_off_on", "no") == "yes"
-    online_cpus = cpu.cpu_online_list()
+    online_cpus = cpu.online_list()
     test_cpu = random.choice(online_cpus)
 
     if cpu_off_on_test:

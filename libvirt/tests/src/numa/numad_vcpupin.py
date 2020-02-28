@@ -60,7 +60,7 @@ def run(test, params, env):
         vm.wait_for_login()
 
         # Test vcpupin to the alive cpus list
-        cpus_list = list(map(str, cpuutils.cpu_online_list()))
+        cpus_list = list(map(str, cpuutils.online_list()))
         logging.info("active cpus in host are %s", cpus_list)
         for cpu in cpus_list:
             ret = virsh.vcpupin(vm_name, 0, cpu, debug=True,

@@ -3,7 +3,7 @@ import platform
 import re
 import os
 
-from avocado.utils import cpu
+from avocado.utils import cpu as cpuutils
 from avocado.utils import process
 
 from virttest import virsh
@@ -145,14 +145,14 @@ def run(test, params, env):
 
         # Test on ppc64le hosts
         if arch.lower() == 'ppc64le':
-            cpu_arch = cpu.get_cpu_arch()
-            logging.debug('cpu_arch is: %s', cpu_arch)
-            if skip_p8 and cpu_arch == 'power8':
+            cpu_family = cpuutils.get_family()
+            logging.debug('cpu_arch is: %s', cpu_family)
+            if skip_p8 and cpu_family == 'power8':
                 test.cancel('This case is not for POWER8')
             if maxpagesize and not utils_misc.compare_qemu_version(3, 1, 0):
                 test.cancel('Qemu version is too low, '
                             'does not support maxpagesize setting')
-            if maxpagesize == 16384 and cpu_arch == 'power9':
+            if maxpagesize == 16384 and cpu_family == 'power9':
                 test.cancel('Power9 does not support 16M pagesize.')
 
             set_hpt(vmxml, True, **hpt_attrs)

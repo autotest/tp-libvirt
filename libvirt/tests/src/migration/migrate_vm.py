@@ -496,7 +496,7 @@ def get_same_processor(test, server_ip, server_user, server_pwd, verbose):
     :param verbose: the flag to control whether or not to log messages
     :raise: test.fail if test fails
     """
-    local_processors = list(map(str, cpuutil.cpu_online_list()))
+    local_processors = list(map(str, cpuutil.online_list()))
     cmd = "grep processor /proc/cpuinfo"
     status, output = run_remote_cmd(cmd, server_ip, server_user, server_pwd)
     if status:
