@@ -884,6 +884,7 @@ def run(test, params, env):
     check_domjobinfo_results = "yes" == params.get("check_domjobinfo_results")
     check_log_interval = params.get("check_log_interval")
     check_event_output = params.get("check_event_output")
+    check_tls_destination = "yes" == params.get("check_tls_destination", "no")
     contrl_index = params.get("new_contrl_index", None)
     asynch_migration = "yes" == params.get("asynch_migrate", "no")
     grep_str_remote_log = params.get("grep_str_remote_log", "")
@@ -978,6 +979,10 @@ def run(test, params, env):
             if not libvirt_version.version_compare(5, 2, 0):
                 test.cancel("This libvirt version doesn't support "
                             "multifd feature.")
+        if check_tls_destination:
+            if not libvirt_version.version_compare(5, 6, 0):
+                test.cancel("This libvirt version doesn't support "
+                            "tls-destination option.")
 
         if vcpu_num:
             cmd = "grep -c processor /proc/cpuinfo"
