@@ -1059,15 +1059,24 @@ def read_domjobinfo(test, domjobinfo):
     return jobinfo_dict
 
 
-def get_virtual_size(disk_source):
+def get_virtual_size(test, disk_source):
     """
     Get the virtual size of image.
+
     :param disk_source: path to the image
     :return: virtual size, e.g. 10G
+    :raise: test.error if checking fails
     """
     result = process.run("qemu-img info %s" % disk_source, ignore_status=False)
-    size_pattern = r"virtual size: (\d+\w)"
-    return re.findall(size_pattern, to_text(result.stdout))[0]
+    size_pattern = r"virtual size: (\d+) (.*) \("
+    match = re.findall(size_pattern, to_text(result.stdout))[0]
+    if match:
+        size = match[0]
+        unit = match[1][0]
+        return size + unit
+    else:
+        test.error("Can not find valid virtual size "
+                   "in %s" % to_text(result.stdout))
 
 
 def redefine_vm_with_iscsi_target(host_ip, disk_format,
@@ -1117,7 +1126,7 @@ def create_image_on_iscsi(test, vm, disk_source, disk_format, emulated_image):
     output = to_text(result.stdout)
     logging.debug("Result: %s", output)
     if result.exit_status:
-        test.error("Couldn't prepare vm image on iscsi, %s", output)
+        test.error("Couldn't prepare vm image on iscsi, %s" % output)
     logging.debug("Stopped VM and make it available on iscsi block device %s", emulated_path)
 
 
@@ -1417,7 +1426,7 @@ def run(test, params, env):
     try:
         if iscsi_setup:
             fileio_name = "emulated-iscsi"
-            img_vsize = get_virtual_size(disk_source)
+            img_vsize = get_virtual_size(test, disk_source)
 
             target = libvirt.setup_or_cleanup_iscsi(is_setup=True, is_login=False,
                                                     emulated_image=fileio_name,
