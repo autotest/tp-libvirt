@@ -1,5 +1,5 @@
 import logging
-from string import letters
+from string import ascii_letters as letters
 import os
 
 from avocado.utils import process
