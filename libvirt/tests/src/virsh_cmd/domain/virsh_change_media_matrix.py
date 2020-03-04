@@ -36,7 +36,8 @@ def run(test, params, env):
                 continue
             if disk.target['dev'] != target_dev:
                 continue
-            if disk.xmltreefile.find('source') is not None:
+            if disk.xmltreefile.find('source') is not None and \
+                    'file' in disk.source.attrs:
                 if disk.source.attrs['file'] != source_file:
                     continue
             else:

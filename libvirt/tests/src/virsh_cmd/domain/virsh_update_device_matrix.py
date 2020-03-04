@@ -62,6 +62,7 @@ def create_attach_xml(update_xmlfile, disk_type, target_bus,
         disk.alias = dict(name=disk_alias)
     disk.xmltreefile.write()
     shutil.copyfile(disk.xml, update_xmlfile)
+    logging.debug('Disk xml created: \n %s', disk)
 
 
 def run(test, params, env):
@@ -97,7 +98,8 @@ def run(test, params, env):
                 continue
             if disk.target['dev'] != target_dev:
                 continue
-            if disk.xmltreefile.find('source') is not None:
+            if disk.xmltreefile.find('source') is not None and \
+                    'file' in disk.source.attrs:
                 if disk.source.attrs['file'] != source_file:
                     continue
             else:
