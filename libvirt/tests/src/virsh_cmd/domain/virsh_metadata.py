@@ -9,6 +9,8 @@ from virttest.utils_test import libvirt as utlv
 from virttest.utils_libvirtd import Libvirtd
 from virttest.libvirt_xml import vm_xml
 
+CMD_TIMEOUT = 60
+
 
 def run(test, params, env):
     """
@@ -90,7 +92,7 @@ def run(test, params, env):
                     session.sendline(".")
                     session.send('ZZ')
                     remote.handle_prompts(session, None, None, r"[\#\$]\s*$",
-                                          debug=True)
+                                          debug=True, timeout=CMD_TIMEOUT)
                 except Exception as e:
                     logging.error("Error occured: %s", e)
                 session.close()
