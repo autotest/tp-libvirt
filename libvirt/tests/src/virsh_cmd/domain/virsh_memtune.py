@@ -136,7 +136,8 @@ def mem_step(params, path, vm, test, acceptable_minus=8):
         mt_limits = [str(hard_mem), str(soft_mem), str(swaphard)]
         options = " %s --live" % ' '.join(mt_limits)
 
-        result = virsh.memtune_set(vm.name, options)
+        result = virsh.memtune_set(vm.name, options, debug=True)
+        libvirt.check_exit_status(result)
         check_limits(path, mt_limits, vm, test, acceptable_minus)
 
         Mem += hard_base
