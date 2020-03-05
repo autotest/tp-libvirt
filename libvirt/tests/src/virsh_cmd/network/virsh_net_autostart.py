@@ -1,7 +1,9 @@
+import os
 import logging
 
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import libvirt_version
 from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import xcepts
 from virttest.utils_test import libvirt
@@ -112,6 +114,10 @@ def run(test, params, env):
         # Check if autostart or disable is successful with libvirtd restart.
         # TODO: Since autostart is designed for host reboot,
         #       we'd better check it with host reboot.
+        autostart_file = '/var/run/libvirt/network/autostarted'
+        if (libvirt_version.version_compare(5, 6, 0) and
+                os.path.exists(autostart_file)):
+            os.unlink(autostart_file)
         utils_libvirtd.libvirtd_restart()
 
         # Reopen testbr_xml
