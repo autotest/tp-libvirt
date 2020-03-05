@@ -343,7 +343,7 @@ def run(test, params, env):
             # Check VM shutdown log is written into log file correctly.
             if with_console_log:
                 check_info_in_vm_log_file(vm_name, guest_log_file,
-                                          matchedMsg="Reached target Shutdown")
+                                          matchedMsg="Powering off")
             else:
                 check_info_in_vm_log_file(vm_name, guest_log_file, matchedMsg="shutting down")
 
