@@ -43,7 +43,9 @@ def run(test, params, env):
     vpx_dc = params.get("vpx_dc")
     esx_ip = params.get("esx_hostname")
     address_cache = env.get('address_cache')
-    v2v_opts = params.get("v2v_opts")
+    v2v_opts = '-v -x' if params.get('v2v_debug', 'on') == 'on' else ''
+    if params.get("v2v_opts"):
+        v2v_opts += params.get("v2v_opts")
     v2v_timeout = int(params.get('v2v_timeout', 1200))
     # for construct rhv-upload option in v2v cmd
     output_method = params.get("output_method")

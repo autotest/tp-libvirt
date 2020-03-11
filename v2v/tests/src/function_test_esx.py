@@ -33,6 +33,9 @@ def run(test, params, env):
     pool_target = params.get('pool_target_path', 'v2v_pool')
     pvt = libvirt.PoolVolumeTest(test, params)
     v2v_timeout = int(params.get('v2v_timeout', 1200))
+    v2v_opts = '-v -x' if params.get('v2v_debug', 'on') == 'on' else ''
+    if params.get("v2v_opts"):
+        v2v_opts += params.get("v2v_opts")
     status_error = 'yes' == params.get('status_error', 'no')
     address_cache = env.get('address_cache')
     checkpoint = params.get('checkpoint', '')
@@ -319,7 +322,7 @@ def run(test, params, env):
             'hostname': remote_host, 'hypervisor': 'esx', 'main_vm': vm_name,
             'vpx_dc': vpx_dc, 'esx_ip': esx_ip,
             'new_name': vm_name + utils_misc.generate_random_string(4),
-            'v2v_opts': '-v -x', 'input_mode': 'libvirt',
+            'v2v_opts': v2v_opts, 'input_mode': 'libvirt',
             'storage': params.get('output_storage', 'default'),
             'network': params.get('network'),
             'bridge': params.get('bridge'),
