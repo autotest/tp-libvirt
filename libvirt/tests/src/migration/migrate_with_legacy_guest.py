@@ -183,8 +183,7 @@ def run(test, params, env):
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     orig_config_xml = new_xml.copy()
 
-    migrate_setup = libvirt.MigrationTest()
-
+    migration_test = libvirt.MigrationTest()
     try:
         # Create a remote runner for later use
         runner_on_target = remote.RemoteRunner(host=server_ip,
@@ -228,7 +227,6 @@ def run(test, params, env):
         check_vm_network_accessed()
 
         # Execute migration process
-        migration_test = libvirt.MigrationTest()
         vms = [vm]
         migration_test.do_migration(vms, None, dest_uri, 'orderly',
                                     options, thread_timeout=900,
@@ -280,7 +278,7 @@ def run(test, params, env):
                 ssh_connection.conn_check()
 
             # Pre migration setup for local machine
-            migrate_setup.migrate_pre_setup(src_uri, params)
+            migration_test.migrate_pre_setup(src_uri, params)
             cmd = "virsh migrate %s %s %s" % (vm_name,
                                               virsh_options, src_uri)
             logging.debug("Start migration: %s", cmd)
@@ -304,9 +302,8 @@ def run(test, params, env):
         if migr_vm_back:
             if 'ssh_connection' in locals():
                 ssh_connection.auto_recover = True
-            migrate_setup = libvirt.MigrationTest()
-            migrate_setup.migrate_pre_setup(src_uri, params,
-                                            cleanup=True)
+            migration_test.migrate_pre_setup(src_uri, params,
+                                             cleanup=True)
         if remote_virsh_session:
             remote_virsh_session.close_session()
 
