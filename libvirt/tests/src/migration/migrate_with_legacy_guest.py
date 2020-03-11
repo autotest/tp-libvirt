@@ -206,12 +206,14 @@ def run(test, params, env):
 
         if check_memballoon:
             membal_dict = {'membal_model': membal_model}
-            libvirt.update_memballoon_xml(new_xml, membal_dict)
+            dom_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            libvirt.update_memballoon_xml(dom_xml, membal_dict)
 
         if check_rng:
             rng_dict = {'rng_model': rng_model}
             rng_xml = libvirt.create_rng_xml(rng_dict)
-            libvirt.add_vm_device(new_xml, rng_xml)
+            dom_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            libvirt.add_vm_device(dom_xml, rng_xml)
 
         # Change the disk of the vm
         libvirt.set_vm_disk(vm, params)
