@@ -51,7 +51,9 @@ def run(test, params, env):
     pool_type = params.get('pool_type', 'dir')
     pool_target = params.get('pool_target_path', 'v2v_pool')
     pvt = utlv.PoolVolumeTest(test, params)
-    v2v_opts = params.get('v2v_opts', '-v -x')
+    v2v_opts = '-v -x' if params.get('v2v_debug', 'on') == 'on' else ''
+    if params.get("v2v_opts"):
+        v2v_opts += params.get("v2v_opts")
     v2v_timeout = int(params.get('v2v_timeout', 3600))
     skip_vm_check = params.get('skip_vm_check', 'no')
     status_error = 'yes' == params.get('status_error', 'no')

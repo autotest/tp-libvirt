@@ -35,6 +35,9 @@ def run(test, params, env):
     xen_host_passwd = params.get('xen_host_passwd', 'redhat')
     output_mode = params.get('output_mode')
     v2v_timeout = int(params.get('v2v_timeout', 1200))
+    v2v_opts = '-v -x' if params.get('v2v_debug', 'on') == 'on' else ''
+    if params.get("v2v_opts"):
+        v2v_opts += params.get("v2v_opts")
     status_error = 'yes' == params.get('status_error', 'no')
     skip_vm_check = params.get('skip_vm_check', 'no')
     skip_reason = params.get('skip_reason')
@@ -221,7 +224,7 @@ def run(test, params, env):
     try:
         v2v_params = {
             'hostname': xen_host, 'hypervisor': 'xen', 'main_vm': vm_name,
-            'v2v_opts': '-v -x', 'input_mode': 'libvirt',
+            'v2v_opts': v2v_opts, 'input_mode': 'libvirt',
             'new_name': new_vm_name,
             'password': xen_host_passwd,
             'storage': params.get('output_storage', 'default'),

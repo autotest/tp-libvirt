@@ -34,7 +34,9 @@ def run(test, params, env):
     hypervisor = params.get("hypervisor")
     input_mode = params.get("input_mode")
     target = params.get("target")
-    v2v_opts = params.get("v2v_opts")
+    v2v_opts = '-v -x' if params.get('v2v_debug', 'on') == 'on' else ''
+    if params.get('v2v_opts'):
+        v2v_opts += params.get('v2v_opts')
     # For VDDK
     input_transport = params.get("input_transport")
     vddk_libdir = params.get('vddk_libdir')
