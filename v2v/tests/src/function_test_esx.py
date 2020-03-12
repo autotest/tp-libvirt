@@ -267,7 +267,7 @@ def run(test, params, env):
         Check virt-v2v command result
         """
         libvirt.check_exit_status(result, status_error)
-        output = result.stdout + result.stderr
+        output = result.stdout_text + result.stderr_text
         if checkpoint == 'empty_cdrom':
             if status_error:
                 log_fail('Virsh dumpxml failed for empty cdrom image')

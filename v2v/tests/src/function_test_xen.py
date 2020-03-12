@@ -159,7 +159,7 @@ def run(test, params, env):
         Check virt-v2v command result
         """
         libvirt.check_exit_status(result, status_error)
-        output = result.stdout + result.stderr
+        output = result.stdout_text + result.stderr_text
         if not status_error and checkpoint != 'vdsm':
             if output_mode == 'rhev':
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
