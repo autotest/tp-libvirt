@@ -11,6 +11,8 @@ from virttest import data_dir
 from virttest import utils_net
 from virttest import utils_test
 from virttest import utils_misc
+from virttest import libvirt_version
+
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.interface import Interface
@@ -261,6 +263,10 @@ def run(test, params, env):
     guest_src_url = params.get("guest_src_url")
     params['disk_model'] = params['virtio_model']
     guest_os_type = params['os_type']
+
+    if not libvirt_version.version_compare(5, 0, 0):
+        test.cancel("This libvirt version doesn't support "
+                    "virtio-transitional model.")
 
     # Download and replace image when guest_src_url provided
     if guest_src_url:
