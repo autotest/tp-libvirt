@@ -6,6 +6,8 @@ from avocado.utils import download
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_misc
+from virttest import libvirt_version
+
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
@@ -35,6 +37,10 @@ def run(test, params, env):
     virtio_model = params['virtio_model']
     os_variant = params.get("os_variant", "")
     params["disk_model"] = virtio_model
+
+    if not libvirt_version.version_compare(5, 0, 0):
+        test.cancel("This libvirt version doesn't support "
+                    "virtio-transitional model.")
 
     # Download and replace image when guest_src_url provided
     if guest_src_url:

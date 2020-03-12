@@ -7,6 +7,8 @@ from avocado.utils import process
 from virttest import data_dir
 from virttest import virsh
 from virttest import utils_misc
+from virttest import libvirt_version
+
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
@@ -113,6 +115,10 @@ def run(test, params, env):
     hotplug = (params.get('hotplug', 'no') == 'yes')
     device_exists = (params.get('device_exists', 'yes') == 'yes')
     plug_to = params.get('plug_to', '')
+
+    if not libvirt_version.version_compare(5, 0, 0):
+        test.cancel("This libvirt version doesn't support "
+                    "virtio-transitional model.")
 
     # Download and update image if required
     if guest_src_url:

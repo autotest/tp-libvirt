@@ -7,6 +7,8 @@ from avocado.utils import download
 from virttest import remote
 from virttest import data_dir
 from virttest import utils_misc
+from virttest import libvirt_version
+
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 from virttest.utils_test import libvirt
@@ -25,6 +27,11 @@ def run(test, params, env):
     guest_src_url = params["guest_src_url"]
     image_name = params['image_path']
     target_path = utils_misc.get_path(data_dir.get_data_dir(), image_name)
+
+    if not libvirt_version.version_compare(5, 0, 0):
+        test.cancel("This libvirt version doesn't support "
+                    "virtio-transitional model.")
+
     if not os.path.exists(target_path):
         download.get_file(guest_src_url, target_path)
         params["blk_source_name"] = target_path

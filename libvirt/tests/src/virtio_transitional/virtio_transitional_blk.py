@@ -8,6 +8,8 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import utils_misc
 from virttest import utils_package
+from virttest import libvirt_version
+
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import devices
 from virttest.utils_test import libvirt
@@ -212,6 +214,10 @@ def run(test, params, env):
     pci_bridge_index = None
     tmp_dir = data_dir.get_tmp_dir()
     guest_src_url = params.get("guest_src_url")
+
+    if not libvirt_version.version_compare(5, 0, 0):
+        test.cancel("This libvirt version doesn't support "
+                    "virtio-transitional model.")
 
     if guest_src_url:
 

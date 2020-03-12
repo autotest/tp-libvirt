@@ -5,6 +5,8 @@ from avocado.utils import download
 
 from virttest import data_dir
 from virttest import utils_misc
+from virttest import libvirt_version
+
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.devices.channel import Channel
@@ -72,6 +74,10 @@ def run(test, params, env):
     add_pcie_to_pci_bridge = params.get("add_pcie_to_pci_bridge")
     guest_src_url = params.get("guest_src_url")
     virtio_model = params['virtio_model']
+
+    if not libvirt_version.version_compare(5, 0, 0):
+        test.cancel("This libvirt version doesn't support "
+                    "virtio-transitional model.")
 
     # Download and replace image when guest_src_url provided
     if guest_src_url:

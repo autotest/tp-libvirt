@@ -7,6 +7,8 @@ from avocado.utils import download
 from virttest import data_dir
 from virttest import virsh
 from virttest import utils_misc
+from virttest import libvirt_version
+
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
@@ -32,6 +34,10 @@ def run(test, params, env):
     hotplug = (params.get('hotplug', 'no') == 'yes')
     addr_pattern = params['addr_pattern']
     device_pattern = params['device_pattern']
+
+    if not libvirt_version.version_compare(5, 0, 0):
+        test.cancel("This libvirt version doesn't support "
+                    "virtio-transitional model.")
 
     def check_vsock_inside_guest():
         """
