@@ -82,6 +82,8 @@ def run(test, params, env):
         Create libvirt pool as the output storage
         """
         if output_uri == "qemu:///session" or user_pool:
+            pool_name = params.get('session_pool')
+            pool_target = params.get('session_pool_target')
             target_path = os.path.join("/home", v2v_user, pool_target)
             cmd = su_cmd + "'mkdir -p %s'" % target_path
             process.system(cmd, verbose=True)
@@ -99,6 +101,8 @@ def run(test, params, env):
         Clean up libvirt pool
         """
         if output_uri == "qemu:///session" or user_pool:
+            pool_name = params.get('session_pool')
+            pool_target = params.get('session_pool_target')
             cmd = su_cmd + "'virsh pool-destroy %s'" % pool_name
             process.system(cmd, verbose=True)
             target_path = os.path.join("/home", v2v_user, pool_target)
@@ -641,7 +645,7 @@ def run(test, params, env):
             output_option = "-o %s -os %s" % (output_mode, output_storage)
             if checkpoint == 'rhv':
                 output_option = output_option.replace('rhev', 'rhv')
-            if checkpoint in ['with_ic', 'without_ic']:
+            if checkpoint in ['with_ic', 'without_ic'] or output_uri == "qemu:///session":
                 output_option = output_option.replace('v2v_dir', 'src_pool')
         output_format = params.get("output_format")
         if output_format and output_format != input_format:
