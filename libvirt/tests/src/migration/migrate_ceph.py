@@ -21,8 +21,6 @@ from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml.devices.disk import Disk
 
 from virttest.utils_test import libvirt
-from virttest.compat_52lts import decode_to_text as to_text
-from virttest.compat_52lts import results_stdout_52lts
 
 from provider import libvirt_version
 
@@ -210,7 +208,7 @@ def get_secret_list(session=None):
         secret_list_result = session.secret_list()
     else:
         secret_list_result = virsh.secret_list()
-    secret_list = results_stdout_52lts(secret_list_result).strip().splitlines()
+    secret_list = secret_list_result.stdout_text.strip().splitlines()
     # First two lines contain table header followed by entries
     # for each secret, such as:
     #
@@ -539,7 +537,7 @@ def run(test, params, env):
             build_disk_xml(vm_name, disk_format, host_ip, disk_src_protocol,
                            vol_name, disk_image, auth=auth_attrs)
 
-            vm_xml_cxt = to_text(process.system_output("virsh dumpxml %s" % vm_name, shell=True))
+            vm_xml_cxt = process.run("virsh dumpxml %s" % vm_name, shell=True).stdout_text
             logging.debug("The VM XML with ceph disk source: \n%s", vm_xml_cxt)
             try:
                 if vm.is_dead():

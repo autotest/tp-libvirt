@@ -13,8 +13,6 @@ from virttest import gluster
 
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
-from virttest.compat_52lts import results_stdout_52lts
-from virttest.compat_52lts import results_stderr_52lts
 
 
 def check_parameters(test, params):
@@ -118,15 +116,15 @@ def run(test, params, env):
         """
         if not result:
             test.error("No migration result is returned.")
-        logging.info("Migration out: %s", results_stdout_52lts(result).strip())
-        logging.info("Migration error: %s", results_stderr_52lts(result).strip())
+        logging.info("Migration out: %s", result.stdout_text.strip())
+        logging.info("Migration error: %s", result.stderr_text.strip())
 
         if status_error:  # Migration should fail
             if err_msg:   # Special error messages are expected
-                if not re.search(err_msg, results_stderr_52lts(result).strip()):
+                if not re.search(err_msg, result.stderr_text.strip()):
                     test.fail("Can not find the expected patterns '%s' in "
                               "output '%s'" % (err_msg,
-                                               results_stderr_52lts(result).strip()))
+                                               result.stderr_text.strip()))
                 else:
                     logging.debug("It is the expected error message")
             else:
@@ -136,7 +134,7 @@ def run(test, params, env):
                     test.fail("Migration success is unexpected result")
         else:
             if int(result.exit_status) != 0:
-                test.fail(results_stderr_52lts(result).strip())
+                test.fail(result.stderr_text.strip())
 
     # Local variables
     virsh_args = {"debug": True}
