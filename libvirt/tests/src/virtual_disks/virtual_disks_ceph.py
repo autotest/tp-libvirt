@@ -836,6 +836,11 @@ def run(test, params, env):
         if additional_guest:
             if additional_vm.is_dead():
                 additional_vm.start()
+
+        # After block-dev introduced in libvirt 6.0.0 afterwards, file=rbd:* format information is not provided from qemu output
+        if libvirt_version.version_compare(6, 0, 0):
+            test_qemu_cmd = False
+
         # Check qemu command line
         if test_qemu_cmd:
             check_qemu_cmd()
