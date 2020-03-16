@@ -1,10 +1,8 @@
 import os
-import re
-import logging
+import aexpect
 
 from avocado.utils import download
 
-from virttest import remote
 from virttest import data_dir
 from virttest import utils_misc
 from virttest import libvirt_version
@@ -27,6 +25,7 @@ def run(test, params, env):
     guest_src_url = params["guest_src_url"]
     image_name = params['image_path']
     target_path = utils_misc.get_path(data_dir.get_data_dir(), image_name)
+    params["blk_source_name"] = target_path
 
     if not libvirt_version.version_compare(5, 0, 0):
         test.cancel("This libvirt version doesn't support "
@@ -34,7 +33,6 @@ def run(test, params, env):
 
     if not os.path.exists(target_path):
         download.get_file(guest_src_url, target_path)
-        params["blk_source_name"] = target_path
     try:
         if (params["os_variant"] == 'rhel6' or
                 'rhel6' in params.get("shortname")):
@@ -55,20 +53,14 @@ def run(test, params, env):
             if not vm.is_alive():
                 vm.start()
             vm.wait_for_serial_login()
-        except remote.LoginTimeoutError:
+        except aexpect.ExpectError:
             pass
         else:
             test.fail("Vm is expected to fail on booting from disk"
                       " with wrong model, while login successfully.")
-        data = vm.serial_console.get_output()
-        if data is None or len(data.splitlines()) < 5:
-            logging.warn(
-                "Unable to read serial console or no sufficient data in"
-                " serial console output to detect the kernel panic.")
-        else:
-            match = re.search('Kernel panic', data, re.S | re.M | re.I)
-            if not match:
-                test.fail("Can not find 'Kernel panic' keyword in"
-                          " serial console output.")
+
+        vm.serial_console.read_until_output_matches(['Kernel panic'],
+                                                    utils_misc.strip_console_codes)
+
     finally:
         backup_xml.sync()
