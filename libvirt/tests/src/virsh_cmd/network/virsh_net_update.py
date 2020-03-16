@@ -12,7 +12,6 @@ from virttest import remote
 from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml import vm_xml
-from virttest.compat_52lts import results_stdout_52lts
 from avocado.utils import process
 
 
@@ -509,7 +508,7 @@ def run(test, params, env):
                              net_state == "active" and options != "--config")
             if check_dnsmasq:
                 cmd = "ps aux|grep dnsmasq|grep -v grep|grep %s|awk '{print $2}'" % net_name
-                pid_list_bef = results_stdout_52lts(process.run(cmd, shell=True)).strip().split('\n')
+                pid_list_bef = process.run(cmd, shell=True).stdout_text.strip().split('\n')
 
             if parent_index:
                 options += " --parent-index %s" % parent_index
@@ -625,7 +624,7 @@ def run(test, params, env):
 
             # Get dnsmasq pid after update
             if check_dnsmasq:
-                pid_list_aft = results_stdout_52lts(process.run(cmd, shell=True)).strip().split('\n')
+                pid_list_aft = process.run(cmd, shell=True).stdout_text.strip().split('\n')
                 for pid in pid_list_aft:
                     if pid in pid_list_bef:
                         test.fail("dnsmasq do not updated")
