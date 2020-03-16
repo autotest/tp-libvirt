@@ -70,6 +70,9 @@ def run(test, params, env):
     vpx_password = params.get("vpx_password")
     src_uri_type = params.get('src_uri_type')
     v2v_opts = '-v -x' if params.get('v2v_debug', 'on') == 'on' else ''
+    if params.get('v2v_opts'):
+        # Add a blank by force
+        v2v_opts += ' ' + params.get("v2v_opts")
     error_list = []
 
     # create different sasl_user name for different job
@@ -166,7 +169,8 @@ def run(test, params, env):
             'vmx_nfs_src': vmx_nfs_src,
             'output_method': output_method,
             'storage_name': storage_name,
-            'rhv_upload_opts': rhv_upload_opts
+            'rhv_upload_opts': rhv_upload_opts,
+            'params': params
         }
         if input_mode == 'vmx':
             v2v_params.update(

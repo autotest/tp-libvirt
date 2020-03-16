@@ -45,7 +45,8 @@ def run(test, params, env):
     address_cache = env.get('address_cache')
     v2v_opts = '-v -x' if params.get('v2v_debug', 'on') == 'on' else ''
     if params.get("v2v_opts"):
-        v2v_opts += params.get("v2v_opts")
+        # Add a blank by force
+        v2v_opts += ' ' + params.get("v2v_opts")
     v2v_timeout = int(params.get('v2v_timeout', 1200))
     # for construct rhv-upload option in v2v cmd
     output_method = params.get("output_method")
@@ -152,6 +153,7 @@ def run(test, params, env):
                   'vddk_thumbprint': vddk_thumbprint,
                   'vddk_libdir': vddk_libdir,
                   'vddk_libdir_src': vddk_libdir_src,
+                  'params': params
                   }
     if vpx_dc:
         v2v_params.update({"vpx_dc": vpx_dc})
