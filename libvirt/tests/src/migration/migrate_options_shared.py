@@ -32,7 +32,6 @@ from virttest.utils_iptables import Iptables
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_conn import TLSConnection
-from virttest.compat_52lts import results_stdout_52lts, results_stderr_52lts
 from virttest.libvirt_xml.devices.controller import Controller
 
 
@@ -707,7 +706,7 @@ def run(test, params, env):
         timeout = int(params.get("timeout_postcopy", 10))
         time.sleep(timeout + 1)
         remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
-        vm_state = results_stdout_52lts(remote_virsh_session.domstate(vm_name)).strip()
+        vm_state = remote_virsh_session.domstate(vm_name).stdout_text.strip()
         if vm_state != "running":
             remote_virsh_session.close_session()
             test.fail("After timeout '%s' seconds, "
@@ -828,15 +827,15 @@ def run(test, params, env):
         if not result:
             test.error("No migration result is returned.")
 
-        logging.info("Migration out: %s", results_stdout_52lts(result).strip())
-        logging.info("Migration error: %s", results_stderr_52lts(result).strip())
+        logging.info("Migration out: %s", result.stdout_text.strip())
+        logging.info("Migration error: %s", result.stderr_text.strip())
 
         if status_error:  # Migration should fail
             if err_msg:   # Special error messages are expected
-                if not re.search(err_msg, results_stderr_52lts(result).strip()):
+                if not re.search(err_msg, result.stderr_text.strip()):
                     test.fail("Can not find the expected patterns '%s' in "
                               "output '%s'" % (err_msg,
-                                               results_stderr_52lts(result).strip()))
+                                               result.stderr_text.strip()))
                 else:
                     logging.debug("It is the expected error message")
             else:
@@ -846,7 +845,7 @@ def run(test, params, env):
                     test.fail("Migration success is unexpected result")
         else:
             if int(result.exit_status) != 0:
-                test.fail(results_stderr_52lts(result).strip())
+                test.fail(result.stderr_text.strip())
 
     check_parameters(test, params)
 
@@ -1220,7 +1219,7 @@ def run(test, params, env):
             vm_pwd = params.get("password")
             remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd, timeout=60)
             cmd_result = remote_vm_obj.run_command(vm_ip, cmd_run_in_remote_guest_1)
-            remote_vm_obj.run_command(vm_ip, cmd_run_in_remote_guest % results_stdout_52lts(cmd_result).strip())
+            remote_vm_obj.run_command(vm_ip, cmd_run_in_remote_guest % cmd_result.stdout_text.strip())
             logging.debug("Sending message is done")
 
             # Check message on remote host from the channel
@@ -1275,10 +1274,10 @@ def run(test, params, env):
         if xml_check_after_mig:
             if not remote_virsh_session:
                 remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
-            target_guest_dumpxml = results_stdout_52lts(
+            target_guest_dumpxml = (
                 remote_virsh_session.dumpxml(vm_name,
                                              debug=True,
-                                             ignore_status=True)).strip()
+                                             ignore_status=True).stdout_text.strip())
             if hpt_resize:
                 check_str = hpt_resize
             elif htm_state:
