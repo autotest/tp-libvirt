@@ -497,6 +497,13 @@ def run(test, params, env):
     # Setup migration context
     migrate_setup = libvirt.MigrationTest()
     migrate_setup.migrate_pre_setup(test_dict["desuri"], params)
+
+    # Install ceph-common on remote host machine.
+    remote_ssh_session = remote.remote_login("ssh", server_ip, "22", server_user,
+                                             server_pwd, r"[\#\$]\s*$")
+    if not utils_package.package_install(["ceph-common"], remote_ssh_session):
+        test.error("Failed ot install required packages on remote host")
+    remote_ssh_session.close()
     try:
         # Create a remote runner for later use
         runner_on_target = remote.RemoteRunner(host=server_ip,
