@@ -6,7 +6,6 @@ from avocado.utils import process
 from virttest import virsh
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import nodedev_xml
-from virttest.compat_52lts import results_stdout_52lts
 
 
 def run(test, params, env):
@@ -97,7 +96,7 @@ def run(test, params, env):
         net_lists = net_list.stdout.strip().splitlines()
         device_check = False
         route_cmd = " route | grep default"
-        route_default = results_stdout_52lts(process.run(route_cmd, shell=True)).strip().split(' ')
+        route_default = process.run(route_cmd, shell=True).stdout_text.strip().split(' ')
         ip_default = route_default[-1]
 
         for net_device_name in net_lists:

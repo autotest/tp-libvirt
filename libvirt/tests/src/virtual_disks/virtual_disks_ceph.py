@@ -29,7 +29,6 @@ from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml.devices.lease import Lease
 from virttest import data_dir
-from virttest.compat_52lts import results_stdout_52lts
 
 from provider import libvirt_version
 
@@ -462,7 +461,7 @@ def run(test, params, env):
         """
         logging.info("Get secret list ...")
         secret_list_result = virsh.secret_list()
-        secret_list = results_stdout_52lts(secret_list_result).strip().splitlines()
+        secret_list = secret_list_result.stdout_text.strip().splitlines()
         # First two lines contain table header followed by entries
         # for each secret, such as:
         #

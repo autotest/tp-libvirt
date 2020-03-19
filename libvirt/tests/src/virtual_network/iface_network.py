@@ -21,7 +21,6 @@ from virttest.utils_test import libvirt
 from virttest.utils_test.__init__ import ping
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.network_xml import NetworkXML
-from virttest.compat_52lts import decode_to_text as to_text
 from provider import libvirt_version
 
 
@@ -57,9 +56,6 @@ def run(test, params, env):
         process.system("wget %s -O %s/vmlinuz" % (boot_vmlinuz, tftp_root))
         process.system("cp -f /usr/share/syslinux/pxelinux.0 {0};"
                        " mkdir -m 777 -p {0}/pxelinux.cfg".format(tftp_root), shell=True)
-        ldlinux_file = "/usr/share/syslinux/ldlinux.c32"
-        if os.path.exists(ldlinux_file):
-            process.system("cp -f {0} {1}".format(ldlinux_file, tftp_root), shell=True)
         pxe_file = "%s/pxelinux.cfg/default" % tftp_root
         boot_txt = """
 DISPLAY boot.txt
@@ -217,7 +213,7 @@ TIMEOUT 3"""
         Check bandwidth settings via 'tc class' output
         """
         cmd = "tc class show dev %s" % ifname
-        class_output = to_text(process.system_output(cmd))
+        class_output = process.run(cmd, shell=True).stdout_text
         logging.debug("Bandwidth class output: %s", class_output)
         class_pattern = (r"class htb %s.*rate (\d+)(K?M?)bit ceil (\d+)(K?M?)bit burst (\d+)(K?M?)b.*" % rule_id)
         se = re.search(class_pattern, class_output, re.M)
@@ -261,7 +257,7 @@ TIMEOUT 3"""
                             else return False
         """
         cmd = "tc -d filter show dev %s parent ffff:" % ifname
-        filter_output = to_text(process.system_output(cmd))
+        filter_output = process.run(cmd, shell=True).stdout_text
         logging.debug("Bandwidth filter output: %s", filter_output)
         if expect_none:
             return not filter_output.strip()
@@ -297,7 +293,7 @@ TIMEOUT 3"""
                 cmd = "ip route list %s" % addr
                 if "family" in route and route["family"] == "ipv6":
                     cmd = "ip -6 route list %s" % addr
-                output = to_text(process.system_output(cmd))
+                output = process.run(cmd, shell=True).stdout_text
                 match_obj = re.search(r"via (\S+).*metric (\d+)", output)
                 if match_obj:
                     via_addr = match_obj.group(1)
@@ -325,7 +321,7 @@ TIMEOUT 3"""
             if check_net and net_inbound:
                 # Check qdisc rules
                 cmd = "tc -d qdisc show dev %s" % net_bridge_name
-                qdisc_output = to_text(process.system_output(cmd))
+                qdisc_output = process.run(cmd, shell=True).stdout_text
                 logging.debug("Bandwidth qdisc output: %s", qdisc_output)
                 if not qdisc_output.count("qdisc ingress ffff:"):
                     test.fail("Can't find ingress setting")
@@ -441,13 +437,13 @@ TIMEOUT 3"""
                           % (forward_out, net_ipv4, br_name, net_dev_out))]
                 ipv4_rules.extend(rules)
 
-            output = to_text(process.system_output('iptables-save'))
+            output = process.run('iptables-save', shell=True).stdout_text
             logging.debug("iptables: %s", output)
             if "mode" in net_forward and net_forward["mode"] == "open":
                 if re.search(r"%s|%s" % (net_ipv4, br_name), output, re.M):
                     test.fail("Find iptable rule for open mode")
                 utils_libvirtd.libvirtd_restart()
-                output_again = to_text(process.system_output('iptables-save'))
+                output_again = process.run('iptables-save', shell=True).stdout_text
                 if re.search(r"%s|%s" % (net_ipv4, br_name), output_again, re.M):
                     test.fail("Find iptable rule for open mode after restart "
                               "libvirtd")
@@ -469,13 +465,13 @@ TIMEOUT 3"""
                          ("%s -s %s -i %s%s -j ACCEPT"
                           % (forward_out, net_ipv6, br_name, net_dev_out))]
                 ipv6_rules.extend(rules)
-            output = to_text(process.system_output("ip6tables-save"))
+            output = process.run("ip6tables-save", shell=True).stdout_text
             logging.debug("ip6tables: %s", output)
             if "mode" in net_forward and net_forward["mode"] == "open":
                 if re.search(r"%s|%s" % (net_ipv6, br_name), output, re.M):
                     test.fail("Find ip6table rule for open mode")
                 utils_libvirtd.libvirtd_restart()
-                output_again = to_text(process.system_output('ip6tables-save'))
+                output_again = process.run('ip6tables-save', shell=True).stdout_text
                 if re.search(r"%s|%s" % (net_ipv6, br_name), output_again, re.M):
                     test.fail("Find ip6table rule for open mode after restart "
                               "libvirtd")
@@ -631,7 +627,7 @@ TIMEOUT 3"""
     # Enabling IPv6 forwarding with RA routes without accept_ra set to 2
     # is likely to cause routes loss
     sysctl_cmd = 'sysctl net.ipv6.conf.all.accept_ra'
-    original_accept_ra = to_text(process.system_output(sysctl_cmd + ' -n'))
+    original_accept_ra = process.run(sysctl_cmd + ' -n', shell=True).stdout_text
     if test_ipv6_address and original_accept_ra != '2':
         process.system(sysctl_cmd + '=2')
 
@@ -768,7 +764,7 @@ TIMEOUT 3"""
                 test.fail("Bridge interface isn't up")
         if test_dnsmasq:
             # Check dnsmasq process
-            dnsmasq_cmd = to_text(process.system_output("ps -aux|grep dnsmasq", shell=True))
+            dnsmasq_cmd = process.run("ps -aux|grep dnsmasq", shell=True).stdout_text
             logging.debug(dnsmasq_cmd)
             if not re.search("dnsmasq --conf-file=/var/lib/libvirt/dnsmasq/%s.conf"
                              % net_name, dnsmasq_cmd):
@@ -792,8 +788,8 @@ TIMEOUT 3"""
                         logging.debug("Expect forward_delay is %s ms" % br_delay)
                         cmd = ("ip -d link sh %s | grep 'bridge forward_delay'"
                                % bridge['name'])
-                        out = to_text(process.system_output(
-                            cmd, shell=True, ignore_status=False))
+                        out = process.run(
+                            cmd, shell=True, ignore_status=False).stdout_text
                         logging.debug("bridge statistics output: %s", out)
                         pattern = (r"\s*bridge forward_delay\s+(\d+)")
                         match_obj = re.search(pattern, out, re.M)
@@ -903,6 +899,8 @@ TIMEOUT 3"""
                     vm.serial_console.read_until_output_matches(
                         ["Loading vmlinuz", "Loading initrd.img"],
                         utils_misc.strip_console_codes)
+                    output = vm.serial_console.get_stripped_output()
+                    logging.debug("Boot messages: %s", output)
                 except ExpectTimeoutError as details:
                     if boot_failure:
                         logging.info("Fail to boot from pxe as expected")
@@ -1020,12 +1018,12 @@ TIMEOUT 3"""
         if net_name != "default":
             virsh.net_destroy(net_name)
         if ipt_rules:
-            output_des = to_text(process.system_output('iptables-save'))
+            output_des = process.run('iptables-save', shell=True).stdout_text
             for ipt in ipt_rules:
                 if re.search(r"%s" % ipt, output_des, re.M):
                     test.fail("Find iptable rule %s after net destroyed" % ipt)
         if ipt6_rules:
-            output_des = to_text(process.system_output('ip6tables-save'))
+            output_des = process.run('ip6tables-save', shell=True).stdout_text
             for ipt in ipt6_rules:
                 if re.search(r"%s" % ipt, output_des, re.M):
                     test.fail("Find ip6table rule %s after net destroyed" % ipt)

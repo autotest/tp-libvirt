@@ -9,7 +9,6 @@ from virttest import data_dir
 from virttest import virsh
 from virttest.staging import lv_utils
 from virttest.utils_test import libvirt as utlv
-from virttest.compat_52lts import decode_to_text as to_text
 
 from provider import libvirt_version
 
@@ -272,7 +271,7 @@ def run(test, params, env):
             logging.error("Can't delete pool: %s", pool_name)
         if cleanup_env[2]:
             cmd = "pvs |grep %s |awk '{print $1}'" % vg_name
-            pv_name = to_text(process.system_output(cmd, shell=True))
+            pv_name = process.run(cmd, shell=True).stdout_text
             lv_utils.vg_remove(vg_name)
             process.run("pvremove %s" % pv_name, shell=True)
         if cleanup_env[1]:
