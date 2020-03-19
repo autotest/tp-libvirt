@@ -194,7 +194,7 @@ def run(test, params, env):
             nic_xml.xmltreefile.write()
             xml_file = nic_xml.xml
             with open(xml_file) as nic_file:
-                logging.debug("Attach disk by XML: %s", nic_file.read())
+                logging.debug("Attach device by XML: %s", nic_file.read())
             ret = virsh.attach_device(
                 domainarg=vm_name, filearg=xml_file, debug=True)
         libvirt.check_exit_status(ret)
@@ -243,11 +243,17 @@ def run(test, params, env):
         ret = virsh.restore(save_path)
         libvirt.check_exit_status(ret)
 
-    def ping_test():
+    def ping_test(restart_network=False):
         """
         Basic ping test for interface
+
+        :param restart_network: True or False. Whether to restart network
+        :raise: test.fail if ping test fails
         """
         session = vm.wait_for_login()
+        if restart_network:
+            utils_net.restart_guest_network(session)
+
         dest = params.get('ping_dest', 'www.baidu.com')
         status, output = utils_test.ping(dest, 10, session=session,
                                          timeout=20)
@@ -263,6 +269,8 @@ def run(test, params, env):
     guest_src_url = params.get("guest_src_url")
     params['disk_model'] = params['virtio_model']
     guest_os_type = params['os_type']
+
+    target_path = None
 
     if not libvirt_version.version_compare(5, 0, 0):
         test.cancel("This libvirt version doesn't support "
@@ -297,7 +305,10 @@ def run(test, params, env):
         if test_step:
             eval(test_step)()
             # Test if nic still work well afeter sub steps test
-            ping_test()
+            ping_test(True)
     finally:
         vm.destroy()
         backup_xml.sync()
+
+        if guest_src_url and target_path:
+            libvirt.delete_local_disk("file", path=target_path)
