@@ -241,6 +241,11 @@ def run(test, params, env):
                 test.fail("failed to prepare agent: %s" % detail)
             # Run dompmsuspend command.
             test_pmsuspend(vm_name)
+
+        # After block-dev introduced in libvirt 6.0.0 afterwards, gluster+%s.*format information is not provided from qemu output
+        if libvirt_version.version_compare(6, 0, 0):
+            test_qemu_cmd = False
+
         if test_qemu_cmd:
             # Check qemu-kvm command line
             cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
