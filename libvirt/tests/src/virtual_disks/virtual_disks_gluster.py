@@ -12,6 +12,8 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 
+from virttest import libvirt_version
+
 
 def run(test, params, env):
     """
@@ -163,6 +165,10 @@ def run(test, params, env):
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vmxml = vmxml_backup.copy()
     mnt_src = ""
+
+    # This is brought by new feature:block-dev
+    if libvirt_version.version_compare(6, 0, 0) and transport == "rdma":
+        test.cancel("transport protocol 'rdma' is not yet supported")
     try:
         # Build new vm xml.
         if pm_enabled:
