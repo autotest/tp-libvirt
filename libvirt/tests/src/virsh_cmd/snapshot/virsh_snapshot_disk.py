@@ -47,6 +47,7 @@ def run(test, params, env):
     pool_name = params.get("pool_name", "gluster-pool")
     brick_path = os.path.join(tmp_dir, pool_name)
     multi_gluster_disks = "yes" == params.get("multi_gluster_disks", "no")
+    transport = params.get("transport", "")
 
     # Pool variables.
     snapshot_with_pool = "yes" == params.get("snapshot_with_pool", "no")
@@ -99,6 +100,10 @@ def run(test, params, env):
                         "current version. Check more info with "
                         "https://bugzilla.redhat.com/buglist.cgi?"
                         "bug_id=1017289,1032370")
+
+    # This is brought by new feature:block-dev
+    if libvirt_version.version_compare(6, 0, 0) and transport == "rdma":
+        test.cancel("transport protocol 'rdma' is not yet supported")
 
     # Init snapshot_name
     snapshot_name = None
