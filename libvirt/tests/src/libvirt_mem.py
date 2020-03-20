@@ -5,6 +5,7 @@ import uuid
 import logging
 import platform
 import tempfile
+import time
 import random
 
 from six.moves import xrange
@@ -380,6 +381,7 @@ def run(test, params, env):
     maxmem_error = "yes" == params.get("maxmem_error", "no")
     attach_option = params.get("attach_option", "")
     test_qemu_cmd = "yes" == params.get("test_qemu_cmd", "no")
+    wait_before_save_secs = int(params.get("wait_before_save_secs", 0))
     test_managedsave = "yes" == params.get("test_managedsave", "no")
     test_save_restore = "yes" == params.get("test_save_restore", "no")
     test_mem_binding = "yes" == params.get("test_mem_binding", "no")
@@ -587,6 +589,8 @@ def run(test, params, env):
 
         # Run managedsave command to check domain xml.
         if test_managedsave:
+            # Wait 10s for vm to be ready before managedsave
+            time.sleep(wait_before_save_secs)
             ret = virsh.managedsave(vm_name, **virsh_dargs)
             libvirt.check_exit_status(ret)
             vm.start()
@@ -596,6 +600,8 @@ def run(test, params, env):
 
         # Run save and restore command to check domain xml
         if test_save_restore:
+            # Wait 10s for vm to be ready before save
+            time.sleep(wait_before_save_secs)
             check_save_restore()
             if test_dom_xml:
                 check_dom_xml(at_mem=attach_device)
