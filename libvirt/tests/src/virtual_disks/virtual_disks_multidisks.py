@@ -1596,8 +1596,18 @@ def run(test, params, env):
                 cmd += " | grep discard=%s" % discard
             copy_on_read = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
                                                       "driver", "copy_on_read")
+            # After blockdev introduced, if copy_on_read == "off", nothing is shown up in qemu command output
+            # And if copy_on_read == "on", the output is packaged in json format characterized with key=value
             if copy_on_read:
-                cmd += " | grep copy-on-read=%s" % copy_on_read
+                # The change is introduced by block-dev feature.
+                if libvirt_version.version_compare(6, 0, 0):
+                    if copy_on_read == "on":
+                        cmd += " | grep .*driver.*copy-on-read.*"
+                    else:
+                        # ignore the checking if copy_on_read == "off"
+                        pass
+                else:
+                    cmd += " | grep copy-on-read=%s" % copy_on_read
 
             iothread = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
                                                   "driver", "iothread")
