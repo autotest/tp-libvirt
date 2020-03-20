@@ -294,15 +294,17 @@ def run(test, params, env):
     test_iso = os.path.join(data_dir.get_tmp_dir(), "test.iso")
 
     # Check the version first.
-    host_rhel6 = check_rhel_version('rhel6')
+    host_rhel6 = False
     guest_rhel6 = False
-    if not vm.is_alive():
-        vm.start()
-    session = vm.wait_for_login()
-    if check_rhel_version('rhel6', session):
-        guest_rhel6 = True
-    session.close()
-    vm.destroy(gracefully=False)
+    if not params.get("skip_release_check", "no") == "yes":
+        host_rhel6 = check_rhel_version('rhel6')
+        if not vm.is_alive():
+            vm.start()
+        session = vm.wait_for_login()
+        if check_rhel_version('rhel6', session):
+            guest_rhel6 = True
+        session.close()
+        vm.destroy(gracefully=False)
 
     try:
         # Prepare the disk first.
