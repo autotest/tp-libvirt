@@ -21,7 +21,6 @@ from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import snapshot_xml
 from virttest.utils_test import libvirt as utl
-from virttest.compat_52lts import results_stdout_52lts
 
 from provider import libvirt_version
 
@@ -200,7 +199,7 @@ def kill_blockcopy_process():
     Kill running blockcopy process
     """
     kill_cmd = "ps aux|grep -i 'blockcopy'|grep -v grep|grep -v transient_job|awk '{print $2}'"
-    pid_list = results_stdout_52lts(process.run(kill_cmd, shell=True)).strip().split('\n')
+    pid_list = process.run(kill_cmd, shell=True).stdout_text.strip().split('\n')
     for pid in pid_list:
         utils_misc.safe_kill(pid, signal.SIGKILL)
 

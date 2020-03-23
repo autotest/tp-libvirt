@@ -8,7 +8,6 @@ from virttest import xml_utils
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import network_xml
 from virttest.utils_test import libvirt
-from virttest.compat_52lts import decode_to_text as to_text
 
 from provider import libvirt_version
 
@@ -185,8 +184,7 @@ def run(test, params, env):
             # Enabling IPv6 forwarding with RA routes without accept_ra set to 2
             # is likely to cause routes loss
             sysctl_cmd = 'sysctl net.ipv6.conf.all.accept_ra'
-            original_accept_ra = to_text(
-                process.system_output(sysctl_cmd + ' -n'))
+            original_accept_ra = process.run(sysctl_cmd + ' -n').stdout_text
             if original_accept_ra != '2':
                 process.system(sysctl_cmd + '=2')
             # add another ipv4 address and dhcp range
