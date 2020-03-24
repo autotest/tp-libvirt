@@ -1067,11 +1067,11 @@ def get_virtual_size(test, disk_source):
     :raise: test.error if checking fails
     """
     result = process.run("qemu-img info %s" % disk_source, ignore_status=False)
-    size_pattern = r"virtual size: (\d+) (.*) \("
-    match = re.findall(size_pattern, result.stdout_text)[0]
-    if match:
-        size = match[0]
-        unit = match[1][0]
+    size_pattern = r"virtual size: (\d+)\s?(.*) \("
+    match = re.findall(size_pattern, result.stdout_text)
+    if match and match[0]:
+        size = match[0][0]
+        unit = match[0][1][0]
         return size + unit
     else:
         test.error("Can not find valid virtual size "
@@ -2615,13 +2615,15 @@ def run(test, params, env):
                 test.error("Failed to run '%s' on remote: %s"
                            % (cmd, cmdResult))
             local_disk_size = test_dict.get("local_disk_size")
-            if cmdResult.stdout.strip() != local_disk_size:
+            remote_disk_size = cmdResult.stdout.strip()
+            if (str(float(remote_disk_size[:-1]))+remote_disk_size[-1] !=
+               str(float(local_disk_size[:-1]))+local_disk_size[-1]):
                 test.fail("Image location: %s \n"
                           "The image sizes are not equal.\n"
                           "Remote size is %s\n"
                           "Local size is %s"
                           % (local_disk_image,
-                             cmdResult.stdout.strip(),
+                             remote_disk_size,
                              local_disk_size))
 
         if cmd and check_image_size and not support_precreation:
