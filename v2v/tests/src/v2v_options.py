@@ -11,6 +11,7 @@ import aexpect
 
 from avocado.core import exceptions
 from avocado.utils import process
+from avocado.utils.astring import to_text
 
 from virttest import data_dir
 from virttest import utils_misc
@@ -19,7 +20,6 @@ from virttest import virsh
 from virttest import libvirt_storage
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
-from virttest.compat_52lts import decode_to_text as to_text
 
 from provider.v2v_vmcheck_helper import VMChecker
 

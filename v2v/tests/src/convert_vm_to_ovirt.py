@@ -214,7 +214,7 @@ def run(test, params, env):
         if os_ver in os_list:
             vga_log = 'The guest will be configured to use a basic VGA ' \
                       'display driver'
-            if re.search(vga_log, v2v_ret.stdout):
+            if re.search(vga_log, v2v_ret.stdout_text):
                 logging.debug('Found vga log')
             else:
                 err_list.append('Not find vga log')
@@ -222,7 +222,7 @@ def run(test, params, env):
                 qxl_warn = 'virt-v2v: warning: there is no QXL driver for ' \
                            'this version of Windows \(%s[.\s]*?%s\)' %\
                            (os_map[os_ver], vm_arch)
-                if re.search(qxl_warn, v2v_ret.stdout):
+                if re.search(qxl_warn, v2v_ret.stdout_text):
                     logging.debug('Found QXL warning')
                 else:
                     err_list.append('Not find QXL warning')

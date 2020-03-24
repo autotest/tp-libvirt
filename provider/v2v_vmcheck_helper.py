@@ -13,7 +13,6 @@ from virttest import virsh
 from virttest import utils_misc
 from virttest import xml_utils
 from virttest.libvirt_xml import vm_xml
-from virttest.compat_52lts import results_stdout_52lts
 
 V2V_7_3_VERSION = 'virt-v2v-1.32.1-1.el7'
 RETRY_TIMES = 10
@@ -231,7 +230,7 @@ class VMChecker(object):
             shell=True,
             ignore_status=True,
             verbose=False)
-        short_id_all = results_stdout_52lts(output).splitlines()
+        short_id_all = output.stdout_text.splitlines()
         if short_id not in [os_id.strip() for os_id in short_id_all]:
             raise exceptions.TestError('Invalid short_id: %s' % short_id)
 
@@ -242,7 +241,7 @@ class VMChecker(object):
             verbose=True,
             shell=True,
             ignore_status=True)
-        long_id = results_stdout_52lts(output).strip()
+        long_id = output.stdout_text.strip()
         # '<libosinfo:os id' was changed to '<ns0:os id' after calling
         # vm_xml.VMXML.new_from_inactive_dumpxml.
         # It's problably a problem in vm_xml.
@@ -636,7 +635,7 @@ class VMChecker(object):
             cmd = "cat {}/{name}/{name}.vmx".format(
                 mount_point, name=self.original_vm_name)
             cmd_result = process.run(cmd, timeout=20, ignore_status=True)
-            cmd_result.stdout = results_stdout_52lts(cmd_result)
+            cmd_result.stdout = cmd_result.stdout_text
             genid_pattern = r'vm.genid = "(-?\d+)"'
             genidX_pattern = r'vm.genidX = "(-?\d+)"'
 
