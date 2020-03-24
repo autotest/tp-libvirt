@@ -7,7 +7,6 @@ from avocado.utils import process
 from virttest import libvirt_xml, utils_libvirtd, virsh
 from virttest.staging import utils_cgroup
 from virttest.utils_misc import get_dev_major_minor
-from virttest.compat_52lts import results_stdout_52lts
 
 # By default path to first I/O scheduler is this. The value is
 # platform dependent and is updated through update_schedulerfd(arch).
@@ -265,7 +264,7 @@ def prepare_scheduler(params, test, vm):
     test_dict['vm'] = vm
 
     cmd = "cat " + schedulerfd
-    iosche = results_stdout_52lts(process.run(cmd, shell=True))
+    iosche = process.run(cmd, shell=True).stdout_text
     logging.debug("iosche value is:%s", iosche)
     test_dict['oldmode'] = re.findall(r"\[(.*?)\]", iosche)[0]
 
