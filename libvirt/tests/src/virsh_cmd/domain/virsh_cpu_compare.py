@@ -2,11 +2,13 @@ import os
 import logging
 import platform
 
+from virttest import data_dir
 from virttest import virsh
+
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import capability_xml
 from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
-from virttest import data_dir
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):
@@ -212,7 +214,8 @@ def run(test, params, env):
         if check_vm_ps:
             vmxml['cpu'] = cpu_compare_xml
             vmxml.sync()
-            virsh.start(vm_name, ignore_status=True, debug=True)
+            result = virsh.start(vm_name, ignore_status=True, debug=True)
+            libvirt.check_exit_status(result)
             vm_pid = vm.get_pid()
             if vm_pid is None:
                 test.error("Could not get VM pid")
