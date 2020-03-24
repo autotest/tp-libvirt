@@ -814,9 +814,14 @@ TIMEOUT 3"""
                 run_dnsmasq_default_test("dhcp-range", "192.168.122.2,192.168.122.254,255.255.252.0")
             # check the left part in dnsmasq conf
             run_dnsmasq_default_test("strict-order", name=net_name)
-            run_dnsmasq_default_test("pid-file",
-                                     "/var/run/libvirt/network/%s.pid" % net_name,
-                                     name=net_name)
+            if os.path.exists("/run/libvirt/network/%s.pid" % net_name):
+                run_dnsmasq_default_test("pid-file",
+                                         "/run/libvirt/network/%s.pid" % net_name,
+                                         name=net_name)
+            else:
+                run_dnsmasq_default_test("pid-file",
+                                         "/var/run/libvirt/network/%s.pid" % net_name,
+                                         name=net_name)
             run_dnsmasq_default_test("except-interface", "lo", name=net_name)
             run_dnsmasq_default_test("bind-dynamic", name=net_name)
             run_dnsmasq_default_test("dhcp-no-override", name=net_name)
