@@ -352,6 +352,7 @@ def run(test, params, env):
     tmp_dir = data_dir.get_tmp_dir()
     pool_name = params.get("pool_name", "gluster-pool")
     brick_path = os.path.join(tmp_dir, pool_name)
+    transport = params.get("transport", "")
 
     uri = params.get("virsh_uri")
     usr = params.get('unprivileged_user')
@@ -390,6 +391,10 @@ def run(test, params, env):
             logging.info("--no-metadata and --print-xml can be used together "
                          "in this libvirt version. Not expecting a failure.")
             status_error = "no"
+
+    # This is brought by new feature:block-dev
+    if libvirt_version.version_compare(6, 0, 0) and transport == "rdma":
+        test.cancel("transport protocol 'rdma' is not yet supported")
 
     opt_names = locals()
     if memspec_opts is not None:
