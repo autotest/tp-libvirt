@@ -7,7 +7,6 @@ from avocado.utils import process
 
 from virttest import utils_config
 from virttest.utils_libvirtd import Libvirtd
-from virttest.compat_52lts import results_stdout_52lts
 
 
 def run(test, params, env):
@@ -92,7 +91,7 @@ def run(test, params, env):
         if check_dmesg:
             cmdline = 'diff %s %s' % \
                       (message_src_file, message_dest_file)
-            res = results_stdout_52lts(process.run(cmdline, shell=True, ignore_status=True))
+            res = process.run(cmdline, shell=True, ignore_status=True).stdout_text
             if check_dmesg not in res:
                 test.fail('%s should in %s , but not now' % (check_dmesg, message_src_file))
 

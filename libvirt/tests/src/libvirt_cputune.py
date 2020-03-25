@@ -7,7 +7,6 @@ from avocado.utils import process
 
 from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
-from virttest.compat_52lts import decode_to_text as to_text
 
 
 def verify_membind_value(schemata_file, mb_value):
@@ -20,7 +19,7 @@ def verify_membind_value(schemata_file, mb_value):
     """
 
     found_mb = False
-    schemata_content = to_text(process.system_output("cat %s" % schemata_file))
+    schemata_content = process.run("cat %s" % schemata_file).stdout_text
     logging.debug("mb_value:%s." % mb_value)
     for line in schemata_content.splitlines():
         logging.debug("line:%s." % line)
@@ -77,7 +76,7 @@ def run(test, params, env):
     cmd = "virsh capabilities | awk '/<memory_bandwidth>/,\
            /<\/memory_bandwidth>/'"
     out = ""
-    out = to_text(process.system_output(cmd, shell=True))
+    out = process.run(cmd, shell=True).stdout_text
 
     if not re.search('node', out):
         test.fail("There is no memory_bandwidth info in capablities")

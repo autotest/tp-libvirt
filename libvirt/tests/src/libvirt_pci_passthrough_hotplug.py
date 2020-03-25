@@ -31,7 +31,6 @@ from virttest import utils_package
 from virttest import utils_net
 from provider import libvirt_version
 from virttest.utils_test import libvirt
-from virttest.compat_52lts import decode_to_text as to_text
 
 
 def run(test, params, env):
@@ -122,13 +121,13 @@ def run(test, params, env):
             pci_value = pci_value.replace(".", "_")
             cmd = "lspci -ks %s | grep 'Kernel driver in use' |\
                    awk '{print $5}'" % pci_node
-            driver_name = to_text(process.system_output(cmd, shell=True).strip())
+            driver_name = process.run(cmd, shell=True).stdout_text.strip()
             if driver_name == "vfio-pci":
                 logging.debug("device alreay detached")
             else:
                 if virsh.nodedev_detach(pci_value).exit_status:
                     test.error("Hostdev node detach failed")
-                driver_name = to_text(process.system_output(cmd, shell=True).strip())
+                driver_name = process.run(cmd, shell=True).stdout_text.strip()
                 if driver_name != "vfio-pci":
                     test.error("driver bind failed after detach")
 
@@ -138,13 +137,13 @@ def run(test, params, env):
             pci_value = pci_value.replace(".", "_")
             cmd = "lspci -ks %s | grep 'Kernel driver in use' |\
                    awk '{print $5}'" % pci_node
-            driver_name = to_text(process.system_output(cmd, shell=True).strip())
+            driver_name = process.run(cmd, shell=True).stdout_text.strip()
             if driver_name != "vfio-pci":
                 logging.debug("device alreay attached")
             else:
                 if virsh.nodedev_reattach(pci_value).exit_status:
                     test.fail("Hostdev node reattach failed")
-                driver_name = to_text(process.system_output(cmd, shell=True).strip())
+                driver_name = process.run(cmd, shell=True).stdout_text.strip()
                 if driver_name == "vfio-pci":
                     test.error("driver bind failed after reattach")
 

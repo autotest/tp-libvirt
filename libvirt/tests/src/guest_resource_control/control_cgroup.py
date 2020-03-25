@@ -8,7 +8,6 @@ from virttest import virsh
 from virttest import utils_disk
 
 from virttest.libvirt_cgroup import CgroupTest
-from virttest.compat_52lts import results_stdout_52lts
 
 from avocado.utils import process
 
@@ -167,7 +166,7 @@ def run(test, params, env):
     if virsh_cmd in ['blkiotune']:
         scheduler_file = "/sys/block/%s/queue/scheduler" % host_disk
         cmd = "cat %s" % scheduler_file
-        iosche = results_stdout_52lts(process.run(cmd, shell=True))
+        iosche = process.run(cmd, shell=True).stdout_text
         logging.debug("iosche value is:%s", iosche)
         oldmode = re.findall(r"\[(.*?)\]", iosche)[0]
         cfq_enabled = False
