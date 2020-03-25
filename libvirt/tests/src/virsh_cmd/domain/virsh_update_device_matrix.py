@@ -304,7 +304,7 @@ def run(test, params, env):
         if check_rhel_version('rhel6', session):
             guest_rhel6 = True
         session.close()
-        vm.destroy(gracefully=False)
+    vm.destroy(gracefully=False)
 
     try:
         # Prepare the disk first.
