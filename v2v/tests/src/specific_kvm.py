@@ -53,7 +53,8 @@ def run(test, params, env):
     pvt = utlv.PoolVolumeTest(test, params)
     v2v_opts = '-v -x' if params.get('v2v_debug', 'on') in ['on', 'force_on'] else ''
     if params.get("v2v_opts"):
-        v2v_opts += params.get("v2v_opts")
+        # Add a blank by force
+        v2v_opts += ' ' + params.get("v2v_opts")
     v2v_timeout = int(params.get('v2v_timeout', 3600))
     skip_vm_check = params.get('skip_vm_check', 'no')
     status_error = 'yes' == params.get('status_error', 'no')
@@ -640,6 +641,8 @@ def run(test, params, env):
                       (len(error_list), error_list))
 
     try:
+        v2v_sasl = None
+
         v2v_params = {
             'target': target,
             'hypervisor': hypervisor,
@@ -661,6 +664,7 @@ def run(test, params, env):
             'vddk_thumbprint': vddk_thumbprint,
             'vddk_libdir': vddk_libdir,
             'vddk_libdir_src': vddk_libdir_src,
+            'params': params,
         }
         if vpx_dc:
             v2v_params.update({"vpx_dc": vpx_dc})

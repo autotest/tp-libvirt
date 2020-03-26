@@ -36,7 +36,8 @@ def run(test, params, env):
     target = params.get("target")
     v2v_opts = '-v -x' if params.get('v2v_debug', 'on') == 'on' else ''
     if params.get('v2v_opts'):
-        v2v_opts += params.get('v2v_opts')
+        # Add a blank by force
+        v2v_opts += ' ' + params.get("v2v_opts")
     # For VDDK
     input_transport = params.get("input_transport")
     vddk_libdir = params.get('vddk_libdir')
@@ -122,6 +123,7 @@ def run(test, params, env):
                   'vddk_thumbprint': vddk_thumbprint,
                   'vddk_libdir': vddk_libdir,
                   'vddk_libdir_src': vddk_libdir_src,
+                  'params': params
                   }
     if vpx_dc:
         v2v_params.update({"vpx_dc": vpx_dc})

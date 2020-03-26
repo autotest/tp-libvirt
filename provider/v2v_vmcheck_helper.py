@@ -33,6 +33,7 @@ class VMChecker(object):
         self.errors = []
         self.params = params
         self.vm_name = params.get('main_vm')
+        self.v2v_cmd = params.get('v2v_command', '')
         self.original_vm_name = params.get('original_vm_name')
         # The expected boottype of guest, default 0 is 'i440fx+bios'
         # Other values are 1 for q35+bios, 2 for q35+uefi, 3 for
@@ -51,9 +52,12 @@ class VMChecker(object):
         self.setup_session()
         if not self.checker.virsh_session_id:
             self.checker.virsh_session_id = self.virsh_session_id
-        self.vmxml = virsh.dumpxml(
-            self.vm_name,
-            session_id=self.virsh_session_id).stdout.strip()
+        if self.v2v_cmd and '-o rhv-upload' in self.v2v_cmd and '--no-copy' in self.v2v_cmd:
+            self.vmxml = ''
+        else:
+            self.vmxml = virsh.dumpxml(
+                self.vm_name,
+                session_id=self.virsh_session_id).stdout.strip()
         self.xmltree = None
         if self.vmxml:
             self.xmltree = xml_utils.XMLTreeFile(self.vmxml)

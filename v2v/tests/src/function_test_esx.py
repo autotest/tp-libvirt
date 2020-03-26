@@ -1,7 +1,7 @@
 import os
 import logging
 import re
-
+import uuid
 
 from virttest import utils_misc
 from virttest import utils_sasl
@@ -22,6 +22,7 @@ def run(test, params, env):
             test.cancel("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
+    version_requried = params.get("version_requried")
     vpx_hostname = params.get('vpx_hostname')
     vpx_passwd = params.get("vpx_password")
     esxi_host = esx_ip = params.get('esx_hostname')
@@ -33,9 +34,11 @@ def run(test, params, env):
     pool_target = params.get('pool_target_path', 'v2v_pool')
     pvt = libvirt.PoolVolumeTest(test, params)
     v2v_timeout = int(params.get('v2v_timeout', 1200))
+    v2v_cmd_timeout = int(params.get('v2v_cmd_timeout', 18000))
     v2v_opts = '-v -x' if params.get('v2v_debug', 'on') == 'on' else ''
     if params.get("v2v_opts"):
-        v2v_opts += params.get("v2v_opts")
+        # Add a blank by force
+        v2v_opts += ' ' + params.get("v2v_opts")
     status_error = 'yes' == params.get('status_error', 'no')
     address_cache = env.get('address_cache')
     checkpoint = params.get('checkpoint', '')
@@ -63,6 +66,10 @@ def run(test, params, env):
         '/')[2] if params.get("ovirt_engine_url") else None
     ovirt_ca_file_path = params.get("ovirt_ca_file_path")
     local_ca_file_path = params.get("local_ca_file_path")
+    v2v_sasl = None
+    # default values for v2v_cmd
+    auto_clean = True
+    cmd_only = False
 
     def log_fail(msg):
         """
@@ -272,6 +279,8 @@ def run(test, params, env):
             if status_error:
                 log_fail('Virsh dumpxml failed for empty cdrom image')
         elif not status_error:
+            vmchecker = VMChecker(test, params, env)
+            params['vmchecker'] = vmchecker
             if output_mode == 'rhev':
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                     timeout=v2v_timeout):
@@ -280,14 +289,14 @@ def run(test, params, env):
                 virsh.start(vm_name, debug=True)
             # Check guest following the checkpoint document after convertion
             logging.info('Checking common checkpoints for v2v')
-            vmchecker = VMChecker(test, params, env)
-            params['vmchecker'] = vmchecker
             if skip_vm_check != 'yes':
                 ret = vmchecker.run()
                 if len(ret) == 0:
                     logging.info("All common checkpoints passed")
             else:
-                logging.info('Skip checking vm after conversion: %s' % skip_reason)
+                logging.info(
+                    'Skip checking vm after conversion: %s' %
+                    skip_reason)
             # Check specific checkpoints
             if checkpoint == 'cdrom':
                 virsh_session = utils_sasl.VirshSessionSASL(params)
@@ -318,6 +327,10 @@ def run(test, params, env):
                       (len(error_list), error_list))
 
     try:
+        if version_requried and not utils_v2v.compare_version(
+                version_requried):
+            test.cancel("Testing requries version: %s" % version_requried)
+
         v2v_params = {
             'hostname': remote_host, 'hypervisor': 'esx', 'main_vm': vm_name,
             'vpx_dc': vpx_dc, 'esx_ip': esx_ip,
@@ -339,7 +352,8 @@ def run(test, params, env):
             'esxi_host': esxi_host,
             'output_method': output_method,
             'storage_name': storage_name,
-            'rhv_upload_opts': rhv_upload_opts
+            'rhv_upload_opts': rhv_upload_opts,
+            'params': params
         }
 
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
@@ -429,9 +443,36 @@ def run(test, params, env):
             v2v_result = remote_virsh.dumpxml(vm_name)
             remote_virsh.close_session()
         else:
-            v2v_result = utils_v2v.v2v_cmd(v2v_params)
+            if checkpoint == 'exist_uuid':
+                auto_clean = False
+            if checkpoint in ['mismatched_uuid', 'no_uuid']:
+                cmd_only = True
+                auto_clean = False
+            v2v_result = utils_v2v.v2v_cmd(v2v_params, auto_clean, cmd_only)
         if 'new_name' in v2v_params:
             vm_name = params['main_vm'] = v2v_params['new_name']
+
+        if checkpoint == 'mismatched_uuid':
+            # append more uuid
+            new_cmd = v2v_result + ' -oo rhv-disk-uuid=%s' % str(uuid.uuid4())
+        if checkpoint == 'no_uuid':
+            new_cmd = v2v_result
+            rhv_disk_uuid = r'-oo rhv-disk-uuid=\S+'
+            for item in re.findall(rhv_disk_uuid, new_cmd):
+                new_cmd = new_cmd.replace(item, '').strip()
+        if checkpoint == 'exist_uuid':
+            new_vm_name = v2v_params['new_name'] + '_exist_uuid'
+            new_cmd = v2v_result.command.replace(
+                '-on %s' %
+                vm_name,
+                '-on %s' %
+                new_vm_name)
+            logging.debug('re-run v2v command:\n%s', new_cmd)
+
+        if checkpoint in ['mismatched_uuid', 'no_uuid', 'exist_uuid']:
+            v2v_result = utils_v2v.cmd_run(
+                new_cmd, params.get('v2v_dirty_resources'))
+
         check_result(v2v_result, status_error)
 
     finally:

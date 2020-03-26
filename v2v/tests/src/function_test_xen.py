@@ -37,7 +37,8 @@ def run(test, params, env):
     v2v_timeout = int(params.get('v2v_timeout', 1200))
     v2v_opts = '-v -x' if params.get('v2v_debug', 'on') == 'on' else ''
     if params.get("v2v_opts"):
-        v2v_opts += params.get("v2v_opts")
+        # Add a blank by force
+        v2v_opts += ' ' + params.get("v2v_opts")
     status_error = 'yes' == params.get('status_error', 'no')
     skip_vm_check = params.get('skip_vm_check', 'no')
     skip_reason = params.get('skip_reason')
@@ -222,6 +223,8 @@ def run(test, params, env):
                 (len(error_list), error_list))
 
     try:
+        v2v_sasl = None
+
         v2v_params = {
             'hostname': xen_host, 'hypervisor': 'xen', 'main_vm': vm_name,
             'v2v_opts': v2v_opts, 'input_mode': 'libvirt',
@@ -233,7 +236,8 @@ def run(test, params, env):
             'target': params.get('target'),
             'output_method': output_method,
             'storage_name': storage_name,
-            'rhv_upload_opts': rhv_upload_opts
+            'rhv_upload_opts': rhv_upload_opts,
+            'params': params
         }
 
         bk_xml = None
