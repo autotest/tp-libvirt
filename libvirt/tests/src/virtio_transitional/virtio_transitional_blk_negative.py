@@ -59,8 +59,5 @@ def run(test, params, env):
             test.fail("Vm is expected to fail on booting from disk"
                       " with wrong model, while login successfully.")
 
-        vm.serial_console.read_until_output_matches(['Kernel panic'],
-                                                    utils_misc.strip_console_codes)
-
     finally:
         backup_xml.sync()
