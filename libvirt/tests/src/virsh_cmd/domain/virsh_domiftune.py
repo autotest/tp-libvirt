@@ -180,10 +180,26 @@ def check_domiftune(params, test_clear):
     return True
 
 
-def get_domiftune_parameter(params, test):
+def check_libvirtd(test, libvirtd):
+    """
+    Check if libvirtd is running and restart to ensure available for cleanup.
+
+    :param test: test instance
+    :param libvirtd: libvirt daemon instance
+    """
+    if not libvirtd.is_running():
+        try:
+            libvirtd.start()
+        finally:
+            test.fail('Libvirtd crashed after running `virsh domiftune`')
+
+
+def get_domiftune_parameter(params, test, libvirtd):
     """
     Get the domiftune parameters
     :params: the parameter dictionary
+    :param test: test instance
+    :param libvirtd: libvirt daemon instance
     """
     vm_name = params.get("main_vm")
     options = params.get("options")
@@ -197,9 +213,7 @@ def get_domiftune_parameter(params, test):
 
     if status_error == "yes":
         if status:
-            libvirtd = utils_libvirtd.Libvirtd()
-            if not libvirtd.is_running():
-                test.fail('Libvirtd crashed after getting domiftune!')
+            check_libvirtd(libvirtd)
             logging.info("It's an expected error: %s", result.stderr)
         else:
             test.fail("%d not a expected command return value" %
@@ -212,10 +226,12 @@ def get_domiftune_parameter(params, test):
             logging.info("getdominfo return succesfully")
 
 
-def set_domiftune_parameter(params, test):
+def set_domiftune_parameter(params, test, libvirtd):
     """
     Set the domiftune parameters
     :params: the parameter dictionary
+    :param test: test instance
+    :param libvirtd: libvirt daemon instance
     """
     vm_name = params.get("main_vm")
     inbound = params.get("inbound", "")
@@ -260,9 +276,7 @@ def set_domiftune_parameter(params, test):
 
     if status_error == "yes":
         if status:
-            libvirtd = utils_libvirtd.Libvirtd()
-            if not libvirtd.is_running():
-                test.fail('Libvirtd crashed after setting domiftune!')
+            check_libvirtd(libvirtd)
             logging.info("It's an expected error: %s", result.stderr)
         else:
             test.fail("%d not a expected command return value" %
@@ -354,13 +368,12 @@ def run(test, params, env):
         vm.destroy()
 
     # positive and negative testing #########
-    if change_parameters == "no":
-        get_domiftune_parameter(test_dict, test)
-    else:
-        set_domiftune_parameter(test_dict, test)
-
     libvirtd = utils_libvirtd.Libvirtd()
-    libvirtd.restart()
+    if change_parameters == "no":
+        get_domiftune_parameter(test_dict, test, libvirtd)
+    else:
+        set_domiftune_parameter(test_dict, test, libvirtd)
+
     if change_parameters != "no":
         ret = virsh.domiftune(vm_name, interface, 'current', '0', '0', debug=True)
         libvirt.check_exit_status(ret)
