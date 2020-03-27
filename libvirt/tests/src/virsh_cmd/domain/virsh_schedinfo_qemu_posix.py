@@ -207,7 +207,8 @@ def run(test, params, env):
         # Check result
         if status_error == "no":
             if status:
-                test.fail("Run failed with right command.")
+                test.fail("Run failed with right command. Error: {}"
+                          .format(result.stderr.strip()))
             else:
                 if set_ref and set_value_expected:
                     logging.info("value will be set:%s\n"
@@ -239,10 +240,13 @@ def run(test, params, env):
                                       "value is not expected.")
         else:
             if not status:
-                test.fail("Run successfully with wrong command.")
+                test.fail("Run successfully with wrong command. Output: {}"
+                          .format(result.stdout.strip()))
             if readonly:
                 if not re.search(expect_msg, result.stderr.strip()):
-                    test.fail("Fail to get expect err msg: %s" % expect_msg)
+                    test.fail("Fail to get expect err msg! "
+                              "Expected: {} Actual: {}"
+                              .foramt(expect_msg, result.stderr.strip()))
     finally:
         if set_ref and bef_current_value:
             for j in range(0, len(set_ref.split(','))):
