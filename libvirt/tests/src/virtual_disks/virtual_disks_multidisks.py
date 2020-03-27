@@ -15,6 +15,7 @@ from virttest import virsh
 from virttest import remote
 from virttest import nfs
 from virttest import utils_libvirtd
+from virttest import utils_split_daemons
 from virttest import utils_misc
 from virttest import data_dir
 from virttest import utils_selinux
@@ -23,6 +24,7 @@ from virttest import utils_package
 from virttest.utils_test import libvirt
 from virttest.utils_config import LibvirtQemuConfig
 from virttest.utils_config import LibvirtdConfig
+from virttest.utils_config import VirtQemudConfig
 
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.devices.disk import Disk
@@ -776,7 +778,10 @@ def run(test, params, env):
         log_outputs = "1:file:%s" % log_config_path
         libvirtd_config.log_outputs = log_outputs
         libvirtd_config.log_filters = "1:json 1:libvirt 1:qemu 1:monitor 3:remote 4:event"
+        virtqemud_config.log_outputs = log_outputs
+        virtqemud_config.log_filters = "1:json 1:libvirt 1:qemu 1:monitor 3:remote 4:event"
         utils_libvirtd.libvirtd_restart()
+        utils_split_daemons.virtqemud_restart()
 
     def check_info_in_libvird_log_file(matchedMsg=None):
         """
@@ -966,6 +971,7 @@ def run(test, params, env):
     log_file = params.get("log_file", "libvirtd.log")
     log_config_path = os.path.join(data_dir.get_tmp_dir(), log_file)
     libvirtd_config = LibvirtdConfig()
+    virtqemud_config = VirtQemudConfig()
 
     if virtio_disk_hot_unplug_event_watch:
         config_libvirtd_log()
@@ -1870,10 +1876,12 @@ def run(test, params, env):
         # Restore qemu_config file.
         qemu_config.restore()
         utils_libvirtd.libvirtd_restart()
+        utils_split_daemons.virtqemud_restart()
 
         # Restore libvirtd config file.
         if virtio_disk_hot_unplug_event_watch:
             libvirtd_config.restore()
+            virtqemud_config.restore()
 
         # Restore selinux and virt_use_nfs
         if virt_use_nfs_off:
