@@ -77,14 +77,18 @@ def run(test, params, env):
     # check status_error
     if status_error == "yes":
         if status == 0:
-            test.fail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command! Output: {}"
+                      .format(output))
         else:
             # Check error message is expected
             if not re.search(error_msg, cmd_result.stderr.strip()):
-                test.fail("Error message is not expected!")
+                test.fail("Error message is not expected! "
+                          "Expected: {} Actual: {}"
+                          .format(error_msg, cmd_result.stderr.strip()))
     elif status_error == "no":
         if status != 0:
-            test.fail("Run failed with right command")
+            test.fail("Run failed with right command! Error: {}"
+                      .format(cmd_result.stderr.strip()))
         else:
             # Get cgroup cpu_time
             if not get_totalonly:
