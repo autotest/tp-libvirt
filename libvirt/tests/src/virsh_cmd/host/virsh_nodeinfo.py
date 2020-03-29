@@ -68,27 +68,28 @@ def run(test, params, env):
         # Check CPU frequency, frequency is under clock for ppc
         cpu_frequency_nodeinfo = _check_nodeinfo(
             nodeinfo_output, 'CPU frequency', 3)
-        cmd = ("cat /proc/cpuinfo | grep -E 'cpu MHz|clock|BogoMIPS' | "
-               "head -n1 | awk -F: '{print $2}' | awk -F. '{print $1}'")
-        cmd_result = process.run(cmd, ignore_status=True, shell=True)
-        cpu_frequency_os = cmd_result.stdout_text.strip()
-        logging.debug("cpu_frequency_nodeinfo=%s cpu_frequency_os=%s",
-                      cpu_frequency_nodeinfo, cpu_frequency_os)
-        #
-        # Matching CPU Frequency is not an exact science in todays modern
-        # processors and OS's. CPU's can have their execution speed varied
-        # based on current workload in order to save energy and keep cool.
-        # Thus since we're getting the values at disparate points in time,
-        # we cannot necessarily do a pure comparison.
-        # So, let's get the absolute value of the difference and ensure
-        # that it's within 20 percent of each value to give us enough of
-        # a "fudge" factor to declare "close enough". Don't return a failure
-        # just print a debug message and move on.
-        diffval = abs(int(cpu_frequency_nodeinfo) - int(cpu_frequency_os))
-        if (float(diffval) / float(cpu_frequency_nodeinfo) > 0.20 or
-                float(diffval) / float(cpu_frequency_os) > 0.20):
-            logging.debug("Virsh nodeinfo output didn't match CPU "
-                          "frequency within 20 percent")
+        if cpu_frequency_nodeinfo:
+            cmd = ("cat /proc/cpuinfo | grep -E 'cpu MHz|clock|BogoMIPS' | "
+                   "head -n1 | awk -F: '{print $2}' | awk -F. '{print $1}'")
+            cmd_result = process.run(cmd, ignore_status=True, shell=True)
+            cpu_frequency_os = cmd_result.stdout_text.strip()
+            logging.debug("cpu_frequency_nodeinfo=%s cpu_frequency_os=%s",
+                          cpu_frequency_nodeinfo, cpu_frequency_os)
+            #
+            # Matching CPU Frequency is not an exact science in todays modern
+            # processors and OS's. CPU's can have their execution speed varied
+            # based on current workload in order to save energy and keep cool.
+            # Thus since we're getting the values at disparate points in time,
+            # we cannot necessarily do a pure comparison.
+            # So, let's get the absolute value of the difference and ensure
+            # that it's within 20 percent of each value to give us enough of
+            # a "fudge" factor to declare "close enough". Don't return a failure
+            # just print a debug message and move on.
+            diffval = abs(int(cpu_frequency_nodeinfo) - int(cpu_frequency_os))
+            if (float(diffval) / float(cpu_frequency_nodeinfo) > 0.20 or
+                    float(diffval) / float(cpu_frequency_os) > 0.20):
+                logging.debug("Virsh nodeinfo output didn't match CPU "
+                              "frequency within 20 percent")
 
         # Get CPU topology from virsh capabilities xml
         cpu_topology = capability_xml.CapabilityXML()['cpu_topology']
