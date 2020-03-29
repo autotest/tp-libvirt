@@ -42,15 +42,20 @@ def run(test, params, env):
         # Check number of CPUs, nodeinfo CPUs represent online threads in the
         # system, check all online cpus in sysfs
         cpus_nodeinfo = _check_nodeinfo(nodeinfo_output, "CPU(s)", 2)
-        cmd = "cat /sys/devices/system/cpu/cpu*/online | grep 1 | wc -l"
-        cpus_online = process.run(cmd, ignore_status=True,
-                                  shell=True).stdout.strip()
-        cmd = "cat /sys/devices/system/cpu/cpu*/online | wc -l"
-        cpus_total = process.run(cmd, ignore_status=True,
-                                 shell=True).stdout.strip()
+        cpus_nodeinfo = int(cpus_nodeinfo)
+
         if not os.path.exists('/sys/devices/system/cpu/cpu0/online'):
-            cpus_online = str(int(cpus_online) + 1)
-            cpus_total = str(int(cpus_total) + 1)
+            cpus_online = 1
+            cpus_total = 1
+        else:
+            cmd = "cat /sys/devices/system/cpu/cpu*/online | grep 1 | wc -l"
+            cpus_online = process.run(cmd, ignore_status=True,
+                                      shell=True).stdout.strip()
+            cpus_online = int(cpus_online)
+            cmd = "cat /sys/devices/system/cpu/cpu*/online | wc -l"
+            cpus_total = process.run(cmd, ignore_status=True,
+                                 shell=True).stdout.strip()
+            cpus_total = int(cpus_total)
 
         logging.debug("host online cpus are %s", cpus_online)
         logging.debug("host total cpus are %s", cpus_total)
