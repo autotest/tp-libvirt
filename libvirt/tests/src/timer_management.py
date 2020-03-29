@@ -14,8 +14,9 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import virt_vm
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import xcepts
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 CLOCK_SOURCE_PATH = '/sys/devices/system/clocksource/clocksource0/'
 
@@ -455,7 +456,13 @@ def test_specific_timer(test, vm, params):
             config_clock_in_vm = False
     vm.destroy()
 
-    timer_dict_list = set_clock_xml(test, vm, params)
+    try:
+        timer_dict_list = set_clock_xml(test, vm, params)
+    except xcepts.LibvirtXMLError:
+        if libvirt_version.version_compare(6, 0, 0) and start_error:
+            return
+        else:
+            raise
 
     # Logging vm to verify whether setting is work
     try:
