@@ -1580,7 +1580,7 @@ def run(test, params, env):
                             (device_source_names[0].replace(',', ',,')))
             io = vm_xml.VMXML.get_disk_attr(vm_name, d_target, "driver", "io")
             if io:
-                cmd += " | grep aio=%s" % io
+                cmd += " | grep .*aio.*%s.*" % io
             ioeventfd = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
                                                    "driver", "ioeventfd")
             if ioeventfd:
@@ -1593,7 +1593,7 @@ def run(test, params, env):
             discard = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
                                                  "driver", "discard")
             if discard:
-                cmd += " | grep discard=%s" % discard
+                cmd += " | grep .*discard.*%s.*" % discard
             copy_on_read = vm_xml.VMXML.get_disk_attr(vm_name, d_target,
                                                       "driver", "copy_on_read")
             if copy_on_read:
