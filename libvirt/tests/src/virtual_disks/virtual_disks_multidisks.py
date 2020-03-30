@@ -804,6 +804,9 @@ def run(test, params, env):
     device_targets = params.get("virt_disk_device_target", "vda").split()
     device_formats = params.get("virt_disk_device_format", "raw").split()
     device_types = params.get("virt_disk_device_type", "file").split()
+    # After block-dev introduced, 'host_device' driver expects either a character or block device
+    if libvirt_version.version_compare(6, 0, 0) and params.get("virt_disk_device_type") == "block block block block":
+        device_types = "file file file file".split()
     device_bus = params.get("virt_disk_device_bus", "virtio").split()
     driver_options = params.get("driver_option", "").split()
     device_bootorder = params.get("virt_disk_boot_order", "").split()
