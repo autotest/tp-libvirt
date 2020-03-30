@@ -1336,7 +1336,11 @@ def run(test, params, env):
                 attach_option = '--config'
                 ret = virsh.attach_device(vm_name, custom_disk_xml.xml,
                                           flagstr=attach_option, debug=True)
-                libvirt.check_exit_status(ret)
+                # The change is introduced by block-dev feature,cold config the same index controller not allow now.
+                if libvirt_version.version_compare(6, 0, 0):
+                    libvirt.check_exit_status(ret, True)
+                else:
+                    libvirt.check_exit_status(ret)
                 vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
 
         # Create second controller,and add it to vmxml.
