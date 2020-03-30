@@ -1741,8 +1741,8 @@ def run(test, params, env):
                         device_option = "scsi-cd"
                     else:
                         device_option = "scsi-hd"
-                    cmd += (" | grep %s,bus=scsi%d.%d,.*drive=drive-%s,id=%s"
-                            % (device_option, dev_bus, dev_unit, dev_id, dev_id))
+                    cmd += (" | grep %s,bus=scsi%d.%d,.*drive=.*,id=%s"
+                            % (device_option, dev_bus, dev_unit, dev_id))
                 if device_bus[0] == "usb":
                     dev_port = vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
                                                           "address", "port")
@@ -1754,8 +1754,8 @@ def run(test, params, env):
                         if dev_bus == 0:
                             usb_bus_str = "usb.0"
                         cmd += (" | grep usb-storage,bus=%s,port=%s,"
-                                "drive=drive-%s,id=%s"
-                                % (usb_bus_str, dev_port, dev_id, dev_id))
+                                "drive=.*,id=%s"
+                                % (usb_bus_str, dev_port, dev_id))
                     if "input" in usb_devices:
                         input_addr = get_device_addr('input', 'tablet')
                         cmd += (" | grep usb-tablet,id=input[0-9],bus=usb.%s,"
