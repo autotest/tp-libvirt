@@ -54,7 +54,7 @@ def run(test, params, env):
             cpus_online = int(cpus_online)
             cmd = "cat /sys/devices/system/cpu/cpu*/online | wc -l"
             cpus_total = process.run(cmd, ignore_status=True,
-                                 shell=True).stdout.strip()
+                                     shell=True).stdout.strip()
             cpus_total = int(cpus_total)
 
         logging.debug("host online cpus are %s", cpus_online)
