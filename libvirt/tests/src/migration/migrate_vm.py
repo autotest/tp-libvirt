@@ -2065,10 +2065,16 @@ def run(test, params, env):
 
         if (total_bytes_sec or read_bytes_sec or write_bytes_sec or
                 total_iops_sec or read_iops_sec or write_iops_sec) and blkdevio_dev:
-            result = virsh.blkdeviotune(vm_name, blkdevio_dev, blkdevio_options,
-                                        total_bytes_sec, read_bytes_sec,
-                                        write_bytes_sec, total_iops_sec,
-                                        read_iops_sec, write_iops_sec)
+            blkdevio_params = {'total_iops_sec': total_iops_sec,
+                               'read_bytes_sec': read_bytes_sec,
+                               'write_bytes_sec': write_bytes_sec,
+                               'total_iops_sec': total_iops_sec,
+                               'read_iops_sec': read_iops_sec,
+                               'write_iops_sec': write_iops_sec}
+            result = virsh.blkdeviotune(vm_name, blkdevio_dev,
+                                        options=blkdevio_options,
+                                        params=blkdevio_params,
+                                        debug=True)
             libvirt.check_exit_status(result)
 
         if no_swap and vm_session:
@@ -2636,11 +2642,10 @@ def run(test, params, env):
         if cmd:
             status, output = run_remote_cmd(cmd, server_ip, server_user,
                                             server_pwd)
+            logging.debug("The filtered result:\n%s", output)
             if status:
                 test.fail("Failed to run '%s' on remote: %s"
                           % (cmd, output))
-            logging.debug("The filtered result:\n%s", output)
-
         if restart_libvirtd == "yes":
             libvirtd = utils_libvirtd.Libvirtd()
             libvirtd.restart()
