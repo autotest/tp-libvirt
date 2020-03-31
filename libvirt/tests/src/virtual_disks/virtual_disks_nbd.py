@@ -40,7 +40,6 @@ def run(test, params, env):
         :param save_file: the path to saved file
         """
         # Save the domain.
-        vm.save_to_file(save_file)
         ret = virsh.save(vm_name, save_file,
                          **virsh_dargs)
         libvirt.check_exit_status(ret)
