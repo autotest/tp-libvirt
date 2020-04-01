@@ -16,6 +16,7 @@ from virttest import remote
 from virttest import nfs
 from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import utils_disk
 from virttest import data_dir
 from virttest import utils_selinux
 from virttest import utils_package
@@ -1828,6 +1829,20 @@ def run(test, params, env):
                     libvirt.check_exit_status(ret)
                 if virtio_disk_hot_unplug_event_watch:
                     check_info_in_libvird_log_file('"event": "DEVICE_DELETED"')
+
+                def _check_disk_detach():
+                    try:
+                        session = vm.wait_for_login()
+                        if device_targets[i] not in utils_disk.get_parts_list():
+                            return True
+                        else:
+                            logging.debug("still can find device target after detaching")
+                    except Exception:
+                        return False
+                # If disk_detach_error is False, then wait for seconds to let detach operation accomplish complete
+                if not disk_detach_error:
+                    utils_misc.wait_for(_check_disk_detach, timeout=20)
+
             # Check disks in VM after hotunplug.
             if check_partitions_hotunplug:
                 if not check_vm_partitions(devices,
