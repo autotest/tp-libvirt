@@ -2,13 +2,13 @@ import re
 import logging
 
 from avocado.utils import process
+from avocado.utils import astring
 
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import utils_misc
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices import interface
-from virttest.compat_52lts import decode_to_text as to_text
 
 
 def run(test, params, env):
@@ -72,7 +72,7 @@ def run(test, params, env):
                                   timeout=30)
         if not ret:
             test.fail("Rum command '%s' failed" % check_cmd)
-        out = to_text(process.system_output(check_cmd, ignore_status=False, shell=True))
+        out = astring.to_text(process.system_output(check_cmd, ignore_status=False, shell=True))
         if expect_match and not re.search(expect_match, out):
             test.fail("'%s' not found in output: %s"
                       % (expect_match, out))

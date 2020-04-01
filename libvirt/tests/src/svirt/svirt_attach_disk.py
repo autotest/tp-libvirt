@@ -1,6 +1,7 @@
 import logging
 
 from avocado.utils import process
+from avocado.utils import astring
 from avocado.core import exceptions
 
 from virttest import qemu_storage
@@ -17,7 +18,6 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices import seclabel
-from virttest.compat_52lts import decode_to_text as to_text
 
 from provider import libvirt_version
 
@@ -227,8 +227,8 @@ def run(test, params, env):
                 else:
                     output = process.system_output('ls -Z %s' % img_path)
                 logging.debug("The default label is %s", default_label)
-                logging.debug("The label after guest started is %s", to_text(output.strip().split()[-2]))
-                if default_label not in to_text(output.strip().split()[-2]):
+                logging.debug("The label after guest started is %s", astring.to_text(output.strip().split()[-2]))
+                if default_label not in astring.to_text(output.strip().split()[-2]):
                     test.fail("The label is wrong after guest started\n")
         except virt_vm.VMStartError as e:
             # Starting VM failed.

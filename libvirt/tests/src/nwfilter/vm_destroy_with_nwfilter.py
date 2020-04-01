@@ -1,12 +1,12 @@
 import logging
 
 from avocado.utils import process
+from avocado.utils import astring
 
 from virttest import libvirt_xml
 from virttest import virsh
 from virttest.libvirt_xml.devices import interface
 from virttest.utils_test import libvirt as utlv
-from virttest.compat_52lts import decode_to_text as to_text
 
 
 def run(test, params, env):
@@ -51,7 +51,7 @@ def run(test, params, env):
         # destory vm see if libvirtd.log will get error
         virsh.destroy(vm_name)
         utlv.check_exit_status(ret, status_error)
-        out = to_text(process.system_output(
+        out = astring.to_text(process.system_output(
             check_cmd, ignore_status=True, shell=True))
         if out:
             test.fail("libvirtd.log get error")

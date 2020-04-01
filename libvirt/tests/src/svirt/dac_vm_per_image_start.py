@@ -5,6 +5,7 @@ import grp
 import logging
 
 from avocado.utils import process
+from avocado.utils import astring
 
 from virttest import utils_selinux
 from virttest import virt_vm
@@ -14,7 +15,6 @@ from virttest import utils_libvirtd
 from virttest import data_dir
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.vm_xml import VMXML
-from virttest.compat_52lts import decode_to_text as to_text
 
 from provider import libvirt_version
 
@@ -169,7 +169,7 @@ def run(test, params, env):
             if disk_type != "network":
                 disks = vm.get_blk_devices()
                 if libvirt_version.version_compare(3, 1, 0) and disk_type == "block":
-                    output = to_text(process.system_output(
+                    output = astring.to_text(process.system_output(
                         "nsenter -t %d -m -- ls -l %s" % (vm_pid, disks[disk_target]['source'])))
                     owner, group = output.strip().split()[2:4]
                     disk_context = format_user_group_str(owner, group)
