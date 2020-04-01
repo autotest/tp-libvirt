@@ -10,7 +10,6 @@ from virttest import data_dir
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import utils_test
-from virttest.compat_52lts import decode_to_text
 
 
 def run(test, params, env):
@@ -129,7 +128,7 @@ def run(test, params, env):
         process.run(hmi_cmd)
 
         # Check host and guest dmesg
-        host_dmesg = decode_to_text(process.system_output("dmesg -c", verbose=False))
+        host_dmesg = process.run("dmesg -c", verbose=False).stdout_text
         guest_dmesg = session.cmd_output("dmesg")
         if "Unrecovered" in host_dmesg:
             test.fail("Unrecovered host hmi\n%s", host_dmesg)
