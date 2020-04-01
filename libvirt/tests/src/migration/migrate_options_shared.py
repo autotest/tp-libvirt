@@ -12,6 +12,7 @@ import datetime
 from avocado.utils import process
 from avocado.utils import memory
 from avocado.utils import distro
+from avocado.utils import cpu as cpuutil
 from avocado.core import exceptions
 
 from virttest import libvirt_vm
@@ -1063,6 +1064,8 @@ def run(test, params, env):
             attach_channel_xml()
 
         if hpt_resize:
+            if cpuutil.get_cpu_vendor_name() != 'power8':
+                test.cancel('HPT cases are for Power8 only.')
             set_feature(new_xml, 'hpt', hpt_resize)
 
         if htm_state:
