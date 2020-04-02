@@ -17,7 +17,7 @@ from virttest import gluster
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def get_images_with_xattr(vm):
@@ -270,6 +270,12 @@ def run(test, params, env):
         if not libvirt_version.version_compare(1, 2, 4):
             test.cancel("live active block commit is not supported"
                         " in current libvirt version.")
+
+    # This is brought by new feature:block-dev
+    if (libvirt_version.version_compare(6, 0, 0) and
+       params.get("transport", "") == "rdma"):
+        test.cancel("If blockdev is enabled, the transport protocol 'rdma' is "
+                    "not yet supported.")
 
     # A backup of original vm
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
