@@ -739,6 +739,9 @@ def run(test, params, env):
                             (mon_host, key_opt, disk_src_name, snap_name))
                 process.run(snap_cmd, ignore_status=False, shell=True)
             if test_json_pseudo_protocol:
+                # After block-dev introduced, qemu-img: warning: RBD options encoded in the filename as keyvalue pairs is deprecated
+                if libvirt_version.version_compare(6, 0, 0):
+                    test.cancel("qemu-img: warning: RBD options encoded in the filename as keyvalue pairs in json format is deprecated")
                 # Create one frontend image with the rbd backing file.
                 json_str = ('json:{"file.driver":"rbd",'
                             '"file.filename":"rbd:%s:mon_host=%s"}'
