@@ -49,6 +49,10 @@ def run(test, params, env):
         """
         password = params.get("luks_encrypt_passwd", "password")
         size = params.get("luks_size", "500M")
+        # Upload to ceph server is time-consuming, keep the size in low value.
+        enable_auth_test = "yes" == params.get("enable_auth")
+        if enable_auth_test:
+            size = "100M"
         cmd = ("qemu-img create -f luks "
                "--object secret,id=sec0,data=`printf '%s' | base64`,format=base64 "
                "-o key-secret=sec0 %s %s" % (password, device, size))
@@ -315,6 +319,8 @@ def run(test, params, env):
                                       "secret_uuid": auth_sec_uuid}
                     cmd = ("rbd -m {0} {1} info {2} && rbd -m {0} {1} rm "
                            "{2}".format(ceph_mon_ip, key_opt, ceph_disk_name))
+                    cmd_result = process.run(cmd, ignore_status=True, shell=True)
+                    logging.debug("pre clean up rbd disk if exists: %s", cmd_result)
                 else:
                     test.error("No ceph client name/key provided.")
                 device_source = "rbd:%s:mon_host=%s:keyring=%s" % (ceph_disk_name,
