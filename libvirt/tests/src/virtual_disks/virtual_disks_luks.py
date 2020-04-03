@@ -374,9 +374,17 @@ def run(test, params, env):
             vol_encryption_params.update({"format": "luks"})
             vol_encryption_params.update({"secret": {"type": "passphrase", "uuid": luks_sec_uuid}})
             try:
+                # If target format is qcow2,need to create test image with "qemu-img create"
+                if volume_target_format == "qcow2":
+                    password = params.get("luks_encrypt_passwd", "password")
+                    cmd = ("qemu-img create -f qcow2 "
+                           "--object secret,id=sec0,data=`printf '%s' | base64`,format=base64 "
+                           "-o encrypt.format=luks,encrypt.key-secret=sec0 %s 1G" % (password, volume_target_path))
+                    process.system(cmd, shell=True)
+                else:
                 # If Libvirt version is lower than 2.5.0
                 # Creating luks encryption volume is not supported,so skip it.
-                create_vol(pool_name, vol_encryption_params, vol_params)
+                    create_vol(pool_name, vol_encryption_params, vol_params)
             except AssertionError as info:
                 err_msgs = ("create: invalid option")
                 if str(info).count(err_msgs):
@@ -397,7 +405,7 @@ def run(test, params, env):
         disk_xml = Disk(type_name=device_type)
         disk_xml.device = device
         disk_xml.target = {"dev": device_target, "bus": device_bus}
-        driver_dict = {"name": "qemu", "type": device_format}
+        driver_dict = {"name": "qemu", "type": volume_target_format}
         disk_xml.driver = driver_dict
         disk_source = disk_xml.new_disk_source(**disk_src_dict)
         if disk_auth_dict:
@@ -442,7 +450,10 @@ def run(test, params, env):
         if check_partitions and not status_error:
             if not check_in_vm(device_target, old_parts):
                 test.fail("Check disk partitions in VM failed")
-        check_dev_format(device_source)
+        if volume_target_format == "qcow2":
+            check_dev_format(device_source, fmt="qcow2")
+        else:
+            check_dev_format(device_source)
     finally:
         # Recover VM.
         if vm.is_alive():
