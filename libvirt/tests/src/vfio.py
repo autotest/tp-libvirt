@@ -295,7 +295,7 @@ def test_nic_group(test, vm, params):
                                    debug=True, ignore_status=False)
         else:
             xmlfile = utlv.create_hostdev_xml(pci_id)
-            virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
+            virsh.attach_device(vm.name, xmlfile,
                                 flagstr="--config", debug=True,
                                 ignore_status=False)
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
@@ -380,7 +380,7 @@ def test_fibre_group(test, vm, params):
             utlv.alter_boot_order(vm.name, pci_id, boot_order)
         else:
             xmlfile = utlv.create_hostdev_xml(pci_id)
-            virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
+            virsh.attach_device(vm.name, xmlfile,
                                 flagstr="--config", debug=True,
                                 ignore_status=False)
         logging.debug("VMXML with disk boot:\n%s", virsh.dumpxml(vm.name))
@@ -450,7 +450,7 @@ def test_win_fibre_group(test, vm, params):
     xmlfile = utlv.create_hostdev_xml(pci_id)
     prepare_devices(test, pci_id, device_type)
     try:
-        virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
+        virsh.attach_device(vm.name, xmlfile,
                             flagstr="--config", debug=True,
                             ignore_status=False)
         vm.start()
@@ -515,11 +515,11 @@ def test_nic_fibre_group(test, vm, params):
     prepare_devices(test, fibre_pci_id, "Fibre")
     try:
         nicxmlfile = utlv.create_hostdev_xml(nic_pci_id)
-        virsh.attach_device(domain_opt=vm.name, file_opt=nicxmlfile,
+        virsh.attach_device(vm.name, nicxmlfile,
                             flagstr="--config", debug=True,
                             ignore_status=False)
         fibrexmlfile = utlv.create_hostdev_xml(fibre_pci_id)
-        virsh.attach_device(domain_opt=vm.name, file_opt=fibrexmlfile,
+        virsh.attach_device(vm.name, fibrexmlfile,
                             flagstr="--config", debug=True,
                             ignore_status=False)
         vm.start()
@@ -604,7 +604,7 @@ def test_nic_single(test, vm, params):
     prepare_devices(test, pci_id, device_type, only=True)
     try:
         xmlfile = utlv.create_hostdev_xml(pci_id)
-        virsh.attach_device(domain_opt=vm.name, file_opt=xmlfile,
+        virsh.attach_device(vm.name, xmlfile,
                             flagstr="--config", debug=True,
                             ignore_status=False)
         vm.start()

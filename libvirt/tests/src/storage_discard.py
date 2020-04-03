@@ -262,11 +262,11 @@ def run(test, params, env):
         status_error = "yes" == params.get("status_error", "no")
         xmlfile = create_disk_xml(disk_type, device_path, discard_type,
                                   target_dev, target_bus)
-        virsh.attach_device(domain_opt=new_vm_name, file_opt=xmlfile,
+        virsh.attach_device(new_vm_name, xmlfile,
                             flagstr="--persistent", ignore_status=False)
         if fstrim_type == "qemu-guest-agent":
             channelfile = prepare_channel_xml(new_vm_name)
-            virsh.attach_device(domain_opt=new_vm_name, file_opt=channelfile,
+            virsh.attach_device(new_vm_name, channelfile,
                                 flagstr="--persistent", ignore_status=False)
         logging.debug("New VMXML:\n%s", virsh.dumpxml(new_vm_name))
 
