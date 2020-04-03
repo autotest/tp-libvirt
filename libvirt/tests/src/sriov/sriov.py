@@ -608,7 +608,8 @@ def run(test, params, env):
         pci_bridge_controllers = []
         for device in controller_devices:
             logging.debug(device)
-            if device.type == 'pci' and device.model == "pci-bridge":
+            if device.type == 'pci' and device.model in (
+                    "pci-bridge", "pcie-root-port"):
                 pci_bridge_controllers.append(device)
         if not pci_bridge_controllers:
             pci_bridge_controller = Controller("controller")
