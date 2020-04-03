@@ -1584,8 +1584,10 @@ def run(test, params, env):
             else:
                 d_target = device_targets[0]
                 if device_with_source:
-                    cmd += (" | grep %s" %
-                            (device_source_names[0].replace(',', ',,')))
+                    # After blockdev introduced on libvirt 5.6.0 afterwards, below step is not needed.
+                    if not libvirt_version.version_compare(6, 0, 0):
+                        cmd += (" | grep %s" %
+                                (device_source_names[0].replace(',', ',,')))
             io = vm_xml.VMXML.get_disk_attr(vm_name, d_target, "driver", "io")
             if io:
                 cmd += " | grep .*aio.*%s.*" % io
@@ -1827,8 +1829,6 @@ def run(test, params, env):
                     libvirt.check_exit_status(ret, disk_detach_error)
                 else:
                     libvirt.check_exit_status(ret)
-                if virtio_disk_hot_unplug_event_watch:
-                    check_info_in_libvird_log_file('"event": "DEVICE_DELETED"')
 
                 def _check_disk_detach():
                     try:
@@ -1842,7 +1842,9 @@ def run(test, params, env):
                 # If disk_detach_error is False, then wait for seconds to let detach operation accomplish complete
                 if not disk_detach_error:
                     utils_misc.wait_for(_check_disk_detach, timeout=20)
-
+                # Give time to log file to collect more events
+                if virtio_disk_hot_unplug_event_watch:
+                    check_info_in_libvird_log_file('"event": "DEVICE_DELETED"')
             # Check disks in VM after hotunplug.
             if check_partitions_hotunplug:
                 if not check_vm_partitions(devices,
