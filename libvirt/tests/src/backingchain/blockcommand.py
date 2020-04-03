@@ -76,7 +76,7 @@ def check_bc_base_top(command, vmxml, dev, bc_chain):
         return False
     bs = disk.find('backingStore')
     logging.debug('Current backing store: %s', bs)
-    if bs.find('source') is not None:
+    if bs and bs.find('source') is not None:
         logging.error('Backing store of disk %s, should be empty', dev)
         return False
 
@@ -254,7 +254,7 @@ def run(test, params, env):
         if blockcommand == 'blockcommit':
             virsh.blockjob(vm_name, new_dev, '--pivot', **virsh_dargs)
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        logging.debug(vmxml)
+        logging.debug("XML after %s: %s" % (blockcommand, vmxml))
 
         # Check backing chain after blockpull/blockcommit
         check_bc_func_name = 'check_bc_%s' % check_func
