@@ -28,7 +28,8 @@ def check_backingchain(img_list, img_info):
     pattern = ''
     for i in range(len(img_list) - 1):
         pattern += 'image: ' + img_list[i]
-        pattern += '.*backing file: ' + img_list[i + 1]
+        if img_list[i + 1]:
+            pattern += '.*backing file: ' + img_list[i + 1]
         pattern += '.*'
 
     logging.debug(pattern)
@@ -138,6 +139,7 @@ def run(test, params, env):
         # Setup lvm
         elif disk_src == 'lvm':
             # Stop multipathd to avoid vgcreate fail
+            lvm_vol_size = '100M'
             multipathd = service.Factory.create_service("multipathd")
             multipathd_status = multipathd.status()
             if multipathd_status:
@@ -156,13 +158,12 @@ def run(test, params, env):
 
             # Create logical volume as backing store
             vol_bk, vol_disk = 'vol1', 'vol2'
-            lv_utils.lv_create(vg_name, vol_bk, '100M')
+            if disk_type == "block":
+                vol_bk, vol_disk = 'vol1', 'vol1'
+            lv_utils.lv_create(vg_name, vol_bk, lvm_vol_size)
 
             disk_target = '/dev/%s/%s' % (vg_name, vol_bk)
             src_vol = '/dev/%s/%s' % (vg_name, vol_disk)
-
-            # Command of creating block disk
-            cmd_create_img = 'qemu-img create -f qcow2 -b %s %s' % (disk_target, src_vol)
 
         # Setup gluster
         elif disk_src == 'gluster':
@@ -190,6 +191,8 @@ def run(test, params, env):
             file_to_del.append(new_image)
 
         cmd_create_img = 'qemu-img create -f qcow2 -b %s %s' % (disk_target, new_image)
+        if disk_type == "block":
+            cmd_create_img = 'qemu-img create -f qcow2 %s %s' % (disk_target, lvm_vol_size)
         process.run(cmd_create_img, verbose=True, shell=True)
         info_new = utils_misc.get_image_info(new_image)
         logging.debug(info_new)
@@ -234,7 +237,10 @@ def run(test, params, env):
             qemu_img_cmd += " -U"
         bc_info = process.run(qemu_img_cmd, verbose=True, shell=True).stdout_text
 
-        bc_chain = snapshot_image_list[::-1] + [new_image, disk_target]
+        if not disk_type == "block":
+            bc_chain = snapshot_image_list[::-1] + [new_image, disk_target]
+        else:
+            bc_chain = snapshot_image_list[::-1] + [disk_target, None]
         bc_result = check_backingchain(bc_chain, bc_info)
         if not bc_result:
             test.fail('qemu-img info output of backing chain is not correct: %s'
@@ -287,7 +293,6 @@ def run(test, params, env):
         if disk_src == 'iscsi':
             libvirt.setup_or_cleanup_iscsi(is_setup=False)
         elif disk_src == 'lvm':
-            process.run('rm -rf /dev/%s/%s' % (vg_name, vol_disk), ignore_status=True)
             if 'vol_bk' in locals():
                 lv_utils.lv_remove(vg_name, vol_bk)
             if 'vg_created' in locals() and vg_created:
@@ -296,6 +301,7 @@ def run(test, params, env):
                 pv_name = process.system_output(cmd, shell=True, verbose=True).strip()
                 if pv_name:
                     process.run("pvremove %s" % pv_name, verbose=True, ignore_status=True)
+            process.run('rm -rf /dev/%s' % vg_name, ignore_status=True)
             libvirt.setup_or_cleanup_iscsi(is_setup=False)
         elif disk_src == 'gluster':
             gluster.setup_or_cleanup_gluster(is_setup=False, vol_name=vol_name, brick_path=brick_path, pool_name=pool_name)
