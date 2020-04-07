@@ -1743,7 +1743,11 @@ def run(test, params, env):
                     cmd += (" | grep %s,bus=ide.%d,unit=%d,drive=drive-%s,id=%s"
                             % (device_option, dev_bus, dev_unit, dev_id, dev_id))
                 if device_bus[0] == "sata":
-                    cmd += (" | grep 'device ahci,.*,bus=pci.%s'" % dev_bus)
+                    # After block-dev feature introduced, the qemu output is changed accordingly with dev_bus only.
+                    if libvirt_version.version_compare(6, 0, 0):
+                        cmd += (" | grep '.*%s'" % dev_bus)
+                    else:
+                        cmd += (" | grep 'device ahci,.*,bus=pci.%s'" % dev_bus)
                 if device_bus[0] == "scsi":
                     if devices[0] == "lun":
                         device_option = "scsi-block"
