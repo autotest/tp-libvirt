@@ -56,6 +56,9 @@ def run(test, params, env):
         process.system("wget %s -O %s/vmlinuz" % (boot_vmlinuz, tftp_root))
         process.system("cp -f /usr/share/syslinux/pxelinux.0 {0};"
                        " mkdir -m 777 -p {0}/pxelinux.cfg".format(tftp_root), shell=True)
+        ldlinux_file = "/usr/share/syslinux/ldlinux.c32"
+        if os.path.exists(ldlinux_file):
+            process.system("cp -f {0} {1}".format(ldlinux_file, tftp_root), shell=True)
         pxe_file = "%s/pxelinux.cfg/default" % tftp_root
         boot_txt = """
 DISPLAY boot.txt
@@ -905,8 +908,6 @@ TIMEOUT 3"""
                     vm.serial_console.read_until_output_matches(
                         ["Loading vmlinuz", "Loading initrd.img"],
                         utils_misc.strip_console_codes)
-                    output = vm.serial_console.get_stripped_output()
-                    logging.debug("Boot messages: %s", output)
                 except ExpectTimeoutError as details:
                     if boot_failure:
                         logging.info("Fail to boot from pxe as expected")
