@@ -790,9 +790,7 @@ def run(test, params, env):
         if not os.path.exists(libvirtd_log_file):
             test.fail("Expected VM log file: %s not exists" % libvirtd_log_file)
         cmd = ("grep -nr '%s' %s" % (matchedMsg, libvirtd_log_file))
-        if process.run(cmd, ignore_status=True, shell=True).exit_status:
-            test.fail("Failed to get expected messages from log file: %s."
-                      % libvirtd_log_file)
+        return process.run(cmd, ignore_status=True, shell=True).exit_status == 0
 
     status_error = "yes" == params.get("status_error", "no")
     define_error = "yes" == params.get("define_error", "no")
@@ -1844,7 +1842,10 @@ def run(test, params, env):
                     utils_misc.wait_for(_check_disk_detach, timeout=20)
                 # Give time to log file to collect more events
                 if virtio_disk_hot_unplug_event_watch:
-                    check_info_in_libvird_log_file('"event": "DEVICE_DELETED"')
+                    result = utils_misc.wait_for(lambda: check_info_in_libvird_log_file('"event": "DEVICE_DELETED"'), timeout=20)
+                    if not result:
+                        test.fail("Failed to get expected messages from log file: %s."
+                                  % log_config_path)
             # Check disks in VM after hotunplug.
             if check_partitions_hotunplug:
                 if not check_vm_partitions(devices,
