@@ -1,13 +1,15 @@
 import re
 import os
+import stat
 import logging
 
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
-from virttest.libvirt_xml import vm_xml
+from virttest import libvirt_version
 
-from provider import libvirt_version
+from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):
@@ -46,6 +48,9 @@ def run(test, params, env):
     if "--xml" in extra_param:
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name, options="--migratable")
         backup_xml = vmxml.copy()
+        # Grant more priveledge on the file in order for un-priveledge user
+        # to access.
+        os.chmod(vmxml.xml, stat.S_IRWXU | stat.S_IRGRP | stat.S_IROTH)
         extra_param = "--xml %s" % vmxml.xml
         dict_os_attrs = {}
         if "hd" in vmxml.os.boots:
@@ -71,7 +76,8 @@ def run(test, params, env):
             if not re.search("processor", output):
                 test.fail("Unable to read /proc/cpuinfo")
         tmp_file = os.path.join(data_dir.get_tmp_dir(), "save.file")
-        virsh.save(vm_name, tmp_file)
+        ret = virsh.save(vm_name, tmp_file, debug=True)
+        libvirt.check_exit_status(ret)
         if vm_ref == "saved_file":
             vm_ref = tmp_file
         elif vm_ref == "empty_new_file":
