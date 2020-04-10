@@ -312,6 +312,8 @@ def run(test, params, env):
                     elif options == "--config":
                         if options_twice in ["--force", "--current", ""]:
                             status_error = True
+                        elif options_twice in ["--config --live"] and pre_vm_state in ["running"]:
+                            status_error = False
                         elif options_twice.count("live"):
                             status_error = True
                 elif pre_vm_state == "transient":
