@@ -61,6 +61,12 @@ def run(test, params, env):
             if (e[0] == '-' and enext[0] == '-') or e[0] != '-':
                 retlist.append(e)
             else:
+                # -blockdev '{"driver":"file",...,"discard":"unmap"}' should be
+                # turned into
+                # -blockdev {"driver":"file",...,"discard":"unmap"} in order to
+                # match the qemu command line format
+                if e == '-blockdev':
+                    enext = enext.strip("'")
                 # Append this and the next and set our skip flag
                 retlist.append(e + " " + enext)
                 skip = True
@@ -148,8 +154,11 @@ def run(test, params, env):
         # do the same if we find "/usr/bin/qemu-kvm" in the incoming
         # argument list and we find "qemu-system-x86_64 -machine accel=kvm"
         # in the running guest's cmdline
-        # ubuntu use /usr/bin/kvm as qemu binary
-        qemu_bin = ["/usr/bin/qemu-kvm", "/usr/bin/kvm"]
+        # ubuntu uses /usr/bin/kvm as qemu binary
+        # RHEL uses /usr/libexec/qemu-kvm as qemu binary
+        qemu_bin = ["/usr/bin/qemu-kvm",
+                    "/usr/bin/kvm",
+                    "/usr/libexec/qemu-kvm"]
         arch_bin = ["/usr/bin/qemu-system-x86_64 -machine accel=kvm",
                     "/usr/bin/qemu-system-ppc64 -machine accel=kvm",
                     "qemu-system-ppc64 -enable-kvm"]
@@ -174,15 +183,15 @@ def run(test, params, env):
                                if x not in set(qemu_arg_lines)))
         if diff1:
             logging.debug("Found the following in conv_arg not in qemu_arg:")
-        for elem in diff1:
-            logging.debug("\t%s", elem)
+            for elem in diff1:
+                logging.debug("\t%s", elem)
 
         diff2 = filtlist(tuple(x for x in qemu_arg_lines
                                if x not in set(conv_arg_lines)))
         if diff2:
             logging.debug("Found the following in qemu_arg not in conv_arg:")
-        for elem in diff2:
-            logging.debug("\t%s", elem)
+            for elem in diff2:
+                logging.debug("\t%s", elem)
 
         if diff1 or diff2:
             return False
