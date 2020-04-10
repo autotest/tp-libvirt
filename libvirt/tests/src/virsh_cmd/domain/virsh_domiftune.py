@@ -213,7 +213,7 @@ def get_domiftune_parameter(params, test, libvirtd):
 
     if status_error == "yes":
         if status:
-            check_libvirtd(libvirtd)
+            check_libvirtd(test, libvirtd)
             logging.info("It's an expected error: %s", result.stderr)
         else:
             test.fail("%d not a expected command return value" %
@@ -276,7 +276,7 @@ def set_domiftune_parameter(params, test, libvirtd):
 
     if status_error == "yes":
         if status:
-            check_libvirtd(libvirtd)
+            check_libvirtd(test, libvirtd)
             logging.info("It's an expected error: %s", result.stderr)
         else:
             test.fail("%d not a expected command return value" %
