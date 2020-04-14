@@ -1064,7 +1064,7 @@ def run(test, params, env):
             obj_migration = libvirt.MigrationTest()
             migrate_options = "%s %s" % (options, extra)
             # start stress inside VM
-            stress_tool = params.get("stress_tool", "stress")
+            stress_tool = params.get("stress_package", "stress")
             try:
                 vm_stress = utils_test.VMStress(vm, stress_tool, params)
                 vm_stress.load_stress_tool()
