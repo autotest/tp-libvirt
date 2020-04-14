@@ -102,7 +102,7 @@ def run(test, params, env):
                 test.error('Failed to add device %s to %s. Result:\n %s'
                            % (char_dev, vm_name, result))
         elif type == "attach":
-            xml_file = os.path.join(tmp_dir, "xml_%s" % char_dev)
+            xml_file = os.path.join(tmp_dir, char_dev)
             if char_dev in ["file", "socket"]:
                 prepare_channel_xml(xml_file, char_dev)
             elif char_dev == "pty":
