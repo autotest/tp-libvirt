@@ -170,7 +170,7 @@ def run(test, params, env):
             if not os.path.exists(dev_file):
                 test.fail("%s doesn't exist." % dev_file)
             p = subprocess.Popen(["/usr/bin/cat", dev_file], universal_newlines=True,
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             session.cmd("echo test >> /tmp/file &")
             while True:
                 r_o = p.stdout.readline()
