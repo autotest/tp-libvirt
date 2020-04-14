@@ -1,5 +1,7 @@
 import logging
 
+from avocado.utils import process
+
 from virttest import utils_misc
 from virttest.utils_libvirtd import LibvirtdSession
 
@@ -44,3 +46,5 @@ def run(test, params, env):
             test.fail("Expect recieve signal, but not.")
     finally:
         libvirtd.exit()
+        # Need to restart libvirtd.socket after starting libvirtd in the foreground
+        process.system("systemctl restart libvirtd.socket", ignore_status=True)
