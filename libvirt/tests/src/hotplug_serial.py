@@ -38,13 +38,18 @@ def run(test, params, env):
     # add controller for each char device
     devices = vm_xml.get_devices()
     controllers = vm_xml.get_devices(device_type="controller")
+    virtio_serial_flag = False
     for dev in controllers:
-        if dev.type == "virtio-serial":
+        if dev.type == "virtio-serial" and dev.index == "0":
+            virtio_serial_flag = True
+            continue
+        elif dev.type == "virtio-serial":
             devices.remove(dev)
-    controller = Controller("controller")
-    controller.type = "virtio-serial"
-    controller.index = 0
-    devices.append(controller)
+    if not virtio_serial_flag:
+        controller = Controller("controller")
+        controller.type = "virtio-serial"
+        controller.index = 0
+        devices.append(controller)
     vm_xml.set_devices(devices)
     vm_xml.sync()
 
