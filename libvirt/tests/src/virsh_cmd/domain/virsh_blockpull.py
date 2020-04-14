@@ -388,14 +388,21 @@ def run(test, params, env):
             #Use block pull with --keep-relative flag,and reset base_index to 2.
             base_index = 2
             for count in range(1, snapshot_take):
-                # If block pull operations are more than or equal to 3,it need reset base_index to 1.
                 if count >= 3:
+                    if libvirt_version.version_compare(6, 0, 0):
+                        break
+                    # If block pull operations are more than or equal to 3,
+                    # it need reset base_index to 1. It only affects the test
+                    # of libvirt < 6.0.0
                     base_index = 1
                 base_image = "%s[%s]" % (disk_target, base_index)
                 blockpull_options = "  --wait --verbose --base %s --keep-relative" % base_image
                 res = virsh.blockpull(vm_name, blk_target,
                                       blockpull_options, **virsh_dargs)
                 libvirt.check_exit_status(res, status_error)
+
+                if libvirt_version.version_compare(6, 0, 0):
+                    base_index += 1
             # Check final backing chain files.
             check_chain_backing_files(blk_source_image, True)
             return
