@@ -17,10 +17,15 @@ from virttest import utils_misc
 from virttest import utils_package
 from virttest import utils_libguestfs
 from virttest import utils_libvirtd
+from virttest import utils_config
+from virttest import data_dir
+from virttest import utils_selinux
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import capability_xml
 from virttest.libvirt_xml.devices.interface import Interface
 from virttest.libvirt_xml import xcepts
+from virttest.staging import utils_memory
 
 from provider import libvirt_version
 
@@ -216,6 +221,8 @@ def run(test, params, env):
             if not driver_dict[driver_opt] == iface.driver.driver_attr[driver_opt]:
                 test.fail("Can't see driver option %s=%s in vm xml"
                           % (driver_opt, driver_dict[driver_opt]))
+            else:
+                logging.info("Find %s=%s in vm xml" % (driver_opt, driver_dict[driver_opt]))
         if iface_target:
             if ("dev" not in iface.target or
                     not iface.target["dev"].startswith(iface_target)):
@@ -369,15 +376,14 @@ def run(test, params, env):
             test.fail("The dns found is %s, which expect is %s" %
                       (ns_list, expect_ns))
 
-    def check_mcast_network(session):
+    def check_mcast_network(session, add_session):
         """
         Check multicast ip address on guests
+
+        :param session: vm session
+        :param add_session: additional vm session
         """
-        username = params.get("username")
-        password = params.get("password")
         src_addr = ast.literal_eval(iface_source)['address']
-        add_session = additional_vm.wait_for_serial_login(username=username,
-                                                          password=password)
         vms_sess_dict = {vm_name: session,
                          additional_vm.name: add_session}
 
@@ -438,6 +444,53 @@ def run(test, params, env):
         else:
             return iface_model
 
+    def check_vhostuser_guests(session1, session2):
+        """
+        Check the vhostuser interface in guests
+
+        param session1: Session of original guest
+        param session2: Session of original additional guest
+        """
+        logging.debug("iface details is %s" % libvirt.get_interface_details(vm_name))
+        vm1_mac = str(libvirt.get_interface_details(vm_name)[0]['mac'])
+        vm2_mac = str(libvirt.get_interface_details(add_vm_name)[0]['mac'])
+
+        utils_net.set_guest_ip_addr(session1, vm1_mac, guest1_ip)
+        utils_net.set_guest_ip_addr(session2, vm2_mac, guest2_ip)
+        ping_status, ping_output = utils_net.ping(dest=guest2_ip, count='3',
+                                                  timeout=5, session=session1)
+        logging.info("output:%s" % ping_output)
+        if ping_status != 0:
+            if ping_expect_fail:
+                logging.info("Can not ping guest2 as expected")
+            else:
+                test.fail("Can not ping guest2 from guest1")
+        else:
+            if ping_expect_fail:
+                test.fail("Ping guest2 successfully not expected")
+            else:
+                logging.info("Can ping guest2 from guest1")
+
+    def get_ovs_statis(ovs):
+        """
+        Get ovs-vsctl interface statistics and format in dict
+
+        param ovs: openvswitch instance
+        """
+        ovs_statis_dict = {}
+        ovs_iface_info = ovs.ovs_vsctl(["list", "interface"]).stdout_text.strip()
+        ovs_iface_list = re.findall('name\s+: (\S+)\n.*?statistics\s+: {(.*?)}\n',
+                                    ovs_iface_info, re.S)
+        logging.info("ovs iface list is %s", ovs_iface_list)
+        # Dict of iface name and statistics
+        for iface_name in vhostuser_names.split():
+            for ovs_iface in ovs_iface_list:
+                if iface_name == eval(ovs_iface[0]):
+                    format_statis = dict(re.findall(r'(\S*?)=(\d*?),', ovs_iface[1]))
+                    ovs_statis_dict[iface_name] = format_statis
+                    break
+        return ovs_statis_dict
+
     status_error = "yes" == params.get("status_error", "no")
     start_error = "yes" == params.get("start_error", "no")
     define_error = "yes" == params.get("define_error", "no")
@@ -452,8 +505,12 @@ def run(test, params, env):
     iface_backend = params.get("iface_backend", "{}")
     iface_driver_host = params.get("iface_driver_host")
     iface_driver_guest = params.get("iface_driver_guest")
+    ovs_br_name = params.get("ovs_br_name")
+    vhostuser_names = params.get("vhostuser_names")
     attach_device = params.get("attach_iface_device")
     expect_tx_size = params.get("expect_tx_size")
+    guest1_ip = params.get("vhostuser_guest1_ip", "192.168.100.1")
+    guest2_ip = params.get("vhostuser_guest2_ip", "192.168.100.2")
     change_option = "yes" == params.get("change_iface_options", "no")
     update_device = "yes" == params.get("update_iface_device", "no")
     additional_guest = "yes" == params.get("additional_guest", "no")
@@ -472,6 +529,8 @@ def run(test, params, env):
     test_iface_mcast = "yes" == params.get(
                        "test_iface_mcast", "no")
     test_libvirtd = "yes" == params.get("test_libvirtd", "no")
+    restart_libvirtd = "yes" == params.get("restart_libvirtd", "no")
+    restart_vm = "yes" == params.get("restart_vm", "no")
     test_guest_ip = "yes" == params.get("test_guest_ip", "no")
     test_backend = "yes" == params.get("test_backend", "no")
     check_guest_trans = "yes" == params.get("check_guest_trans", "no")
@@ -482,6 +541,28 @@ def run(test, params, env):
     expect_ns = params.get("expect_ns")
     test_target = "yes" == params.get("test_target", "no")
     target_dev = params.get("target_dev", None)
+
+    # test params for vhostuser test
+    huge_page = ast.literal_eval(params.get("huge_page", "{}"))
+    numa_cell = ast.literal_eval(params.get("numa_cell", "{}"))
+    additional_iface_source = ast.literal_eval(params.get("additional_iface_source", "{}"))
+    vcpu_num = params.get("vcpu_num")
+    cpu_mode = params.get("cpu_mode")
+    hugepage_num = params.get("hugepage_num")
+    log_pattern = params.get("log_pattern")
+
+    # judgement params for vhostuer test
+    need_vhostuser_env = "yes" == params.get("need_vhostuser_env", "no")
+    ping_expect_fail = "yes" == params.get("ping_expect_fail", "no")
+    check_libvirtd_log = "yes" == params.get("check_libvirtd_log", "no")
+    check_statistics = "yes" == params.get("check_statistics", "no")
+    enable_multiqueue = "yes" == params.get("enable_multiqueue", "no")
+
+    queue_size = None
+    if iface_driver:
+        driver_dict = ast.literal_eval(iface_driver)
+        if "queues" in driver_dict:
+            queue_size = int(driver_dict.get("queues"))
 
     if iface_driver_host or iface_driver_guest or test_backend:
         if not libvirt_version.version_compare(1, 2, 8):
@@ -516,6 +597,26 @@ def run(test, params, env):
     # Additional vm for test
     additional_vm = None
     libvirtd = utils_libvirtd.Libvirtd()
+
+    libvirtd_log_path = None
+    libvirtd_conf = None
+    if check_libvirtd_log:
+        libvirtd_log_path = os.path.join(test.tmpdir, "libvirtd.log")
+        libvirtd_conf = utils_config.LibvirtdConfig()
+        libvirtd_conf["log_outputs"] = '"1:file:%s"' % libvirtd_log_path
+        libvirtd.restart()
+
+    # Prepare vhostuser
+    ovs = None
+    if need_vhostuser_env:
+        # Reserve selinux status
+        selinux_mode = utils_selinux.get_status()
+        # Reserve orig page size
+        orig_size = utils_memory.get_num_huge_pages()
+        ovs_dir = data_dir.get_tmp_dir()
+        ovs = utils_net.setup_ovs_vhostuser(hugepage_num, ovs_dir,
+                                            ovs_br_name, vhostuser_names,
+                                            queue_size)
 
     try:
         # Build the xml and run test.
@@ -568,16 +669,57 @@ def run(test, params, env):
                                           ignore_status=True)
                 libvirt.check_exit_status(ret)
 
+            # Add hugepage and update cpu for vhostuser testing
+            if huge_page:
+                vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+                membacking = vm_xml.VMMemBackingXML()
+                hugepages = vm_xml.VMHugepagesXML()
+                pagexml = hugepages.PageXML()
+                pagexml.update(huge_page)
+                hugepages.pages = [pagexml]
+                membacking.hugepages = hugepages
+                vmxml.mb = membacking
+
+                vmxml.vcpu = int(vcpu_num)
+                cpu_xml = vm_xml.VMCPUXML()
+                cpu_xml.xml = "<cpu><numa/></cpu>"
+                cpu_xml.numa_cell = [numa_cell]
+                cpu_xml.mode = cpu_mode
+                if cpu_mode == "custom":
+                    vm_capability = capability_xml.CapabilityXML()
+                    cpu_xml.model = vm_capability.model
+                vmxml.cpu = cpu_xml
+
+                vmxml.sync()
+                logging.debug("xmltreefile:%s", vmxml.xmltreefile)
+
             # Clone additional vm
             if additional_guest:
-                guest_name = "%s_%s" % (vm_name, '1')
+                add_vm_name = "%s_%s" % (vm_name, '1')
                 # Clone additional guest
                 timeout = params.get("clone_timeout", 360)
-                utils_libguestfs.virt_clone_cmd(vm_name, guest_name,
+                utils_libguestfs.virt_clone_cmd(vm_name, add_vm_name,
                                                 True, timeout=timeout)
-                additional_vm = vm.clone(guest_name)
+                additional_vm = vm.clone(add_vm_name)
+                # Update iface source if needed
+                if additional_iface_source:
+                    add_vmxml = vm_xml.VMXML.new_from_dumpxml(add_vm_name)
+                    add_xml_devices = add_vmxml.devices
+                    add_iface_index = add_xml_devices.index(
+                        add_xml_devices.by_device_tag("interface")[0])
+                    add_iface = add_xml_devices[add_iface_index]
+                    add_iface.source = additional_iface_source
+                    add_vmxml.devices = add_xml_devices
+                    add_vmxml.xmltreefile.write()
+                    add_vmxml.sync()
+
+                logging.debug("add vm xmltreefile:%s", add_vmxml.xmltreefile)
                 additional_vm.start()
                 # additional_vm.wait_for_login()
+                username = params.get("username")
+                password = params.get("password")
+                add_session = additional_vm.wait_for_serial_login(username=username,
+                                                                  password=password)
 
             # Start the VM.
             if unprivileged_user:
@@ -643,7 +785,7 @@ def run(test, params, env):
                 check_user_network(session)
             if test_iface_mcast:
                 # Test mcast type network
-                check_mcast_network(session)
+                check_mcast_network(session, add_session)
             # Check guest ip address
             if test_guest_ip:
                 if not get_guest_ip(session, iface_mac):
@@ -674,10 +816,78 @@ def run(test, params, env):
                 logging.debug("Check if the target dev is set")
                 run_xml_test(iface_mac)
 
+            # Check vhostuser guest
+            if additional_iface_source:
+                check_vhostuser_guests(session, add_session)
+
+            # Check libvirtd log
+            if check_libvirtd_log:
+                find = 0
+                with open(libvirtd_log_path) as f:
+                    lines = "".join(f.readlines())
+                    if log_pattern in lines:
+                        logging.info("Finding msg<%s> in libvirtd log", log_pattern)
+                    else:
+                        test.fail("Can not find msg:<%s> in libvirtd.log" % log_pattern)
+
+            # Check statistics
+            if check_statistics:
+                session.sendline("ping %s" % guest2_ip)
+                add_session.sendline("ping %s" % guest1_ip)
+                time.sleep(5)
+                vhost_name = vhostuser_names.split()[0]
+                ovs_statis_dict = get_ovs_statis(ovs)[vhost_name]
+                domif_info = {}
+                domif_info = libvirt.get_interface_details(vm_name)
+                virsh.domiflist(vm_name, debug=True)
+                domif_stat_result = virsh.domifstat(vm_name, vhost_name)
+                if domif_stat_result.exit_status != 0:
+                    test.fail("domifstat cmd fail with msg:%s" % domif_stat_result.stderr)
+                else:
+                    domif_stat = domif_stat_result.stdout.strip()
+                logging.debug("vhost_name is %s, domif_stat is %s", vhost_name, domif_stat)
+                domif_stat_dict = dict(re.findall("%s (\S*) (\d*)" % vhost_name, domif_stat))
+                logging.debug("ovs_statis is %s, domif_stat is %s", ovs_statis_dict, domif_stat_dict)
+                ovs_cmp_dict = {'tx_bytes': ovs_statis_dict['rx_bytes'], 'tx_drop': ovs_statis_dict['rx_dropped'],
+                                'tx_errs': ovs_statis_dict['rx_errors'], 'tx_packets': ovs_statis_dict['rx_packets'],
+                                'rx_bytes': ovs_statis_dict['tx_bytes'], 'rx_drop': ovs_statis_dict['tx_dropped']}
+                logging.debug("ovs_cmp_dict is %s", ovs_cmp_dict)
+                for dict_key in ovs_cmp_dict.keys():
+                    if domif_stat_dict[dict_key] != ovs_cmp_dict[dict_key]:
+                        test.fail("Find ovs %s result (%s) different with domifstate result (%s)"
+                                  % (dict_key, ovs_cmp_dict[dict_key], domif_stat_dict[dict_key]))
+                    else:
+                        logging.info("ovs %s value %s is same with domifstate", dict_key, domif_stat_dict[dict_key])
+
+            # Check multi_queue
+            if enable_multiqueue:
+                ifname_guest = utils_net.get_linux_ifname(session, iface_mac)
+                for comb_size in (queue_size, queue_size-1):
+                    logging.info("Setting multiqueue size to %s" % comb_size)
+                    session.cmd_status("ethtool -L %s combined %s" % (ifname_guest, comb_size))
+                    ret, outp = session.cmd_status_output("ethtool -l %s" % ifname_guest)
+                    logging.debug("ethtool cmd output:%s" % outp)
+                    if not ret:
+                        pre_comb = re.search("Pre-set maximums:[\s\S]*?Combined:.*?(\d+)", outp).group(1)
+                        cur_comb = re.search("Current hardware settings:[\s\S]*?Combined:.*?(\d+)", outp).group(1)
+                        if int(pre_comb) != queue_size or int(cur_comb) != int(comb_size):
+                            test.fail("Fail to check the combined size: setting: %s,"
+                                      "Pre-set: %s, Current-set: %s, queue_size: %s"
+                                      % (comb_size, pre_comb, cur_comb, queue_size))
+                        else:
+                            logging.info("Getting correct Pre-set and Current set value")
+                    else:
+                        test.error("ethtool list fail: %s" % outp)
+
             session.close()
+            if additional_guest:
+                add_session.close()
+
             # Restart libvirtd and guest, then test again
-            if test_libvirtd:
+            if restart_libvirtd:
                 libvirtd.restart()
+
+            if restart_vm:
                 vm.destroy()
                 vm.start()
                 if test_option_xml:
@@ -686,7 +896,8 @@ def run(test, params, env):
             # Detach hot/cold-plugged interface at last
             if attach_device and not status_error:
                 ret = virsh.detach_device(vm_name, iface_xml_obj.xml,
-                                          flagstr="", ignore_status=True)
+                                          flagstr="", ignore_status=True,
+                                          debug=True)
                 libvirt.check_exit_status(ret)
 
         except virt_vm.VMStartError as e:
@@ -718,3 +929,14 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
         vmxml_backup.sync()
+
+        if need_vhostuser_env:
+            utils_net.clean_ovs_env(selinux_mode=selinux_mode, page_size=orig_size,
+                                    clean_ovs=True)
+
+        if libvirtd_conf:
+            libvirtd_conf.restore()
+            libvirtd.restart()
+
+        if libvirtd_log_path and os.path.exists(libvirtd_log_path):
+            os.unlink(libvirtd_log_path)
