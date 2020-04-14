@@ -446,14 +446,14 @@ def run(test, params, env):
                     if not ret:
                         test.fail(err_msg)
                 elif "base" or "shallow" in base_option:
-                    chain_lst = snap_src_lst[::-1]
                     if not base_index and base_image:
                         base_index = chain_lst.index(base_image)
-                    val_tmp = []
-                    for i in range(1, base_index):
-                        val_tmp.append(chain_lst[i])
-                    for i in val_tmp:
-                        chain_lst.remove(i)
+
+                    chain_lst = snap_src_lst[:base_index][::-1]
+                    if not libvirt_version.version_compare(6, 0, 0):
+                        chain_lst = snap_src_lst[::-1][base_index:]
+                    chain_lst.insert(0, snap_src_lst[-1])
+
                     ret = check_chain_xml(disk_xml, chain_lst)
                     if not ret:
                         test.fail(err_msg)
