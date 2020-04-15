@@ -744,8 +744,9 @@ def run(test, params, env):
     client_pwd = params.get('client_pwd', None)
     server_pwd = params.get('server_pwd', None)
     machine_type = params.get('machine_type', '')
-    remove_devices = params.get('remove_devices', 'serial,console').split(',')
-
+    remove_devices = params.get('remove_devices', 'serial,console')
+    if remove_devices:
+        remove_devices = remove_devices.split(',')
     args_list = [client_pwd, server_pwd]
 
     for arg in args_list:
@@ -761,8 +762,9 @@ def run(test, params, env):
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
     try:
-        for device_type in remove_devices:
-            vm_xml.remove_all_device_by_type(device_type)
+        if remove_devices:
+            for device_type in remove_devices:
+                vm_xml.remove_all_device_by_type(device_type)
         if serial_type == "tls":
             test_dict = dict(params)
             tls_obj = TLSConnection(test_dict)
