@@ -61,20 +61,21 @@ def run(test, params, env):
     # wait for vm start successfully
     vm.wait_for_login()
 
-    if hostdev_type in ["usb", "scsi"]:
-        if hostdev_type == "usb":
-            pci_id = get_usb_info()
-        elif hostdev_type == "scsi":
-            source_disk = libvirt.create_scsi_disk(scsi_option="",
-                                                   scsi_size="8")
-            pci_id = get_scsi_info(source_disk)
-        device_xml = libvirt.create_hostdev_xml(pci_id=pci_id,
-                                                dev_type=hostdev_type,
-                                                managed=hostdev_managed,
-                                                alias=device_alias)
-    else:
-        test.error("Hostdev type %s not handled by test."
-                   " Please check code." % hostdev_type)
+    if hostdev_type:
+        if hostdev_type in ["usb", "scsi"]:
+            if hostdev_type == "usb":
+                pci_id = get_usb_info()
+            elif hostdev_type == "scsi":
+                source_disk = libvirt.create_scsi_disk(scsi_option="",
+                                                       scsi_size="8")
+                pci_id = get_scsi_info(source_disk)
+            device_xml = libvirt.create_hostdev_xml(pci_id=pci_id,
+                                                    dev_type=hostdev_type,
+                                                    managed=hostdev_managed,
+                                                    alias=device_alias)
+        else:
+            test.error("Hostdev type %s not handled by test."
+                       " Please check code." % hostdev_type)
     if contr_type:
         controllers = vmxml.get_controllers(contr_type)
         contr_index = len(controllers) + 1
