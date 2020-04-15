@@ -9,6 +9,8 @@ from virttest import utils_config
 from virttest.utils_libvirtd import LibvirtdSession
 from virttest.libvirt_xml import capability_xml
 
+from provider import libvirt_version
+
 
 def run(test, params, env):
     """
@@ -52,7 +54,7 @@ def run(test, params, env):
         rw_sock_path = '/var/run/libvirt/libvirt-sock'
         ro_sock_path = '/var/run/libvirt/libvirt-sock-ro'
 
-        if libvirtd.running:
+        if libvirtd.running or libvirt_version.version_compare(5, 6, 0):
             if not os.path.exists(rw_sock_path):
                 test.fail('RW unix socket file not found at %s' %
                           rw_sock_path)
@@ -120,6 +122,7 @@ def run(test, params, env):
     try:
         check_unix_socket_files()
 
+        process.system('systemctl stop libvirtd', ignore_status=True)
         libvirtd.start(arg_str=arg_str, wait_for_working=False)
 
         start = time.time()
@@ -145,13 +148,16 @@ def run(test, params, env):
                 test.fail("Expected exit in %ss(+-%ss), but ran timeout in %ss" %
                           (expected_exit_time, time_tolerance, wait_time))
 
-        check_unix_socket_files()
+        not libvirt_version.version_compare(5, 6, 0) and check_unix_socket_files()
         if config_path:
             check_config_file()
         if pid_path:
             check_pid_file()
     finally:
         libvirtd.exit()
+        process.system('systemctl stop libvirtd', ignore_status=True)
+        process.system('systemctl restart libvirtd.socket', ignore_status=True)
+        process.system('systemctl start libvirtd', ignore_status=True)
 
         # Clean up config file
         if config_path:
