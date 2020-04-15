@@ -94,8 +94,8 @@ def login_to_check(vm, checked_mac):
         return (1, "Login to check failed.")
     else:
         if not re.search(checked_mac, output):
-            return (1, ("Can not find interface with mac in vm:%s"
-                        % output))
+            return (1, ("Can not find interface with mac(%s) in vm:%s"
+                        % (checked_mac, output)))
     return (0, "")
 
 
@@ -174,6 +174,24 @@ def check_interface_xml(vm_name, iface_type, iface_source, iface_mac, is_active=
     return False
 
 
+def add_pcie_controller(vm_name):
+    """
+    Add pcie-to-pci-bridge controller if not exists in vm
+
+    :param vm_name: name of vm
+    """
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    pci_controllers = vmxml.get_controllers('pci')
+    for controller in pci_controllers:
+        if controller.get('model') == 'pcie-to-pci-bridge':
+            break
+    else:
+        contr_dict = {'controller_type': 'pci',
+                      'controller_model': 'pcie-to-pci-bridge'}
+        libvirt.create_controller_xml(
+            contr_dict, "add_controller", vm_name)
+
+
 def run(test, params, env):
     """
     Test virsh {at|de}tach-interface command.
@@ -227,6 +245,8 @@ def run(test, params, env):
     attach_cmd = params.get("attach_cmd", "attach-interface")
     virsh_dargs = {'ignore_status': True, 'debug': True, 'uri': uri}
     validate_xml_result = "yes" == params.get("check_xml_result", "no")
+    paused_after_vm_start = "yes" == params.get("paused_after_vm_start", "no")
+    machine_type = params.get("machine_type")
 
     # Get iface name if iface_type is direct
     if iface_type == "direct":
@@ -262,6 +282,12 @@ def run(test, params, env):
     names = locals()
     iface_format = get_formatted_iface_dict(names, params.get("vm_arch_name"))
 
+    # for rtl8139 model, need to add pcie bridge
+    if iface_model == "rtl8139" and machine_type == "q35":
+        add_pcie_controller(vm_name)
+        if start_vm == "yes" and not vm.is_alive():
+            vm.start()
+
     try:
         # Generate xml file if using attach-device command
         if attach_cmd == "attach-device":
@@ -282,6 +308,9 @@ def run(test, params, env):
                 vm.destroy()
         else:
             vm.wait_for_login().close()
+
+        if paused_after_vm_start:
+            vm.pause()
 
         # Set attach-interface domain
         dom_uuid = vm.get_uuid()
@@ -377,6 +406,7 @@ def run(test, params, env):
             vm.start()
         elif vm.state() == "paused":
             vm.resume()
+        vm.wait_for_login().close()
 
         status, ret = login_to_check(vm, iface_mac)
         if status:
