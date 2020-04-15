@@ -1010,6 +1010,8 @@ def run(test, params, env):
                 use_firewall_cmd = False
                 firewall_rule = ["INPUT -s {}/32 -j DROP".format(server_ip)]
             else:
+                if not utils_package.package_install("firewalld"):
+                    test.error("Failed to install firewalld.")
                 use_firewall_cmd = True
                 firewall_cmd = utils_iptables.Firewall_cmd()
                 firewall_rule = ("ipv4 filter INPUT 0 --source {} -j DROP"
