@@ -410,8 +410,9 @@ def run(test, params, env):
         """
         Switch to postcopy during migration
         """
-        res = virsh.migrate_postcopy(vm_name)
-        logging.debug("Command output: %s", res)
+        if not utils_misc.wait_for(
+           lambda: not virsh.migrate_postcopy(vm_name, debug=True).exit_status, 5):
+            test.fail("Failed to set migration postcopy.")
 
         if not utils_misc.wait_for(
            lambda: libvirt.check_vm_state(vm_name, "paused",
