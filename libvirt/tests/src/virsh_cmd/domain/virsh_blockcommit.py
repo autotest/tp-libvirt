@@ -452,14 +452,37 @@ def run(test, params, env):
                                         blockcommit_options, **virsh_dargs)
                 libvirt.check_exit_status(res, status_error)
             if top_inactive:
-                blockcommit_options = "  --wait --verbose --top vda[1] --base vda[2] --keep-relative"
+                vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+                disk_xml = ''
+                disk_xmls = vmxml.get_devices(device_type="disk")
+                for disk in disk_xmls:
+                    if disk.get('device_tag') == 'disk':
+                        disk_xml = disk
+                        break
+
+                top_index = 1
+                try:
+                    top_index = disk_xml.backingstore.index
+                except AttributeError:
+                    pass
+                else:
+                    top_index = int(top_index)
+
                 block_commit_index = snapshot_take - 1
                 expect_backing_file = True
             # Do block commit with --wait if top_inactive
             for count in range(1, block_commit_index):
+                blockcommit_options = ("  --wait --verbose --top vda[%d] "
+                                       "--base vda[%d] --keep-relative"
+                                       % (top_index, top_index+1))
                 res = virsh.blockcommit(vm_name, blk_target,
                                         blockcommit_options, **virsh_dargs)
                 libvirt.check_exit_status(res, status_error)
+
+                if not libvirt_version.version_compare(6, 0, 0):
+                    top_index = 1
+                else:
+                    top_index += 1
             check_chain_backing_files(blk_source_image, expect_backing_file)
             return
 
