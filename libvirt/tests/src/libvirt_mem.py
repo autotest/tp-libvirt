@@ -616,12 +616,11 @@ def run(test, params, env):
         # Detach the memory device
         unplug_failed_with_known_error = False
         if detach_device:
-            if not dev_xml:
-                dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
-                                                       mem_addr, tg_sizeunit,
-                                                       pg_unit, tg_node,
-                                                       node_mask, mem_model,
-                                                       mem_discard)
+            dev_xml = utils_hotplug.create_mem_xml(tg_size, pg_size,
+                                                   mem_addr, tg_sizeunit,
+                                                   pg_unit, tg_node,
+                                                   node_mask, mem_model,
+                                                   mem_discard)
             for x in xrange(at_times):
                 if not detach_alias:
                     ret = virsh.detach_device(vm_name, dev_xml.xml,
