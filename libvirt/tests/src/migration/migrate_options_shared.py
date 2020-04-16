@@ -546,6 +546,21 @@ def run(test, params, env):
             dest_stats = remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
             logging.debug("domstats in destination: {}".format(dest_stats))
 
+        def _check_dest_state(expected_remote_state):
+            """
+            Check domstate of vm in target
+
+            :param expected_remote_state: The expected value
+            :return: True if expected domstate is not found
+            """
+            cmd = "virsh domstate {}".format(vm_name)
+            remote_vm_state = remote.run_remote_cmd(cmd, cmd_parms,
+                                                    runner_on_target,
+                                                    ignore_status=False)
+            if (len(remote_vm_state.stdout.split()) and
+               remote_vm_state.stdout.split()[0] == expected_remote_state):
+                return True
+
         expected_remote_state = "paused"
         expected_source_state = ["paused", "running"]
         if postcopy_options:
@@ -560,17 +575,12 @@ def run(test, params, env):
             test.fail("Incorrect VM stat on source machine: {}"
                       .format(vm_stat.stdout))
 
-        check_dest_stats(vm_name)
-        cmd = "virsh domstate {}".format(vm_name)
-        remote_vm_state = remote.run_remote_cmd(cmd, cmd_parms,
-                                                runner_on_target,
-                                                ignore_status=False)
-        if ((not len(remote_vm_state.stdout.split())) or
-           remote_vm_state.stdout.split()[0] != expected_remote_state):
-            test.fail("Incorrect VM stat on destination machine: {}"
-                      .format(remote_vm_state.stdout))
-        else:
-            logging.debug("vm stat on destination: {}".format(remote_vm_state))
+        if not utils_misc.wait_for(
+           lambda: _check_dest_state(expected_remote_state), 5,
+           text="check if dest vm state is %s" % expected_remote_state):
+            test.fail("Unable to get expected domstate on destination machine "
+                      "in 5s!")
+
         if postcopy_options:
             vm_stat = virsh.domstate(vm_name, ignore_status=False)
             if ((not len(vm_stat.stdout.split())) or
