@@ -1363,6 +1363,8 @@ def run(test, params, env):
     filetransfer = params.get("filetransfer", "not_set")
     default_mode = params.get("defaultMode", "not_set")
     insecure_channels = params.get("insecure_channels", "not_set")
+    autoport = params.get("spice_autoport", "yes")
+    spice_tls = params.get("spice_tls", "not_set")
 
     sockets = block_ports(params)
     networks = setup_networks(params, test)
@@ -1371,7 +1373,12 @@ def run(test, params, env):
     env_state = EnvState(params, expected_result)
 
     vm = env.get_vm(vm_name)
-    vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
+    virsh_instance = None
+    if is_negative and spice_xml and autoport == 'no' and spice_tls == '0':
+        virsh_instance = virsh.VirshPersistent(uri="qemu:///system")
+        vm_xml = VMXML.new_from_inactive_dumpxml(vm_name, virsh_instance=virsh_instance)
+    else:
+        vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
 
     config = utils_config.LibvirtQemuConfig()
@@ -1400,10 +1407,22 @@ def run(test, params, env):
             vnc_graphic = generate_vnc_graphic_xml(params, expected_result)
             logging.debug('Test VNC XML is: %s', vnc_graphic)
             vm_xml.devices = vm_xml.devices.append(vnc_graphic)
-        vm_xml.sync()
-        all_ips = utils_net.get_all_ips()
-
         fail_patts = expected_result['fail_patts']
+        if is_negative and spice_xml and autoport == 'no' and spice_tls == '0':
+            virsh_instance.remove_domain(vm_name)
+            result = virsh_instance.define(vm_xml.xml, ignore_status=True)
+            if result.exit_status:
+                logging.debug("Define %s failed as expected.\n"
+                              "Detail: %s.", vm_name, result)
+                for patt in fail_patts:
+                    if re.search(patt, result.stdout):
+                        return
+                test.fail(
+                    "Expect fail with error in %s, but failed with: %s"
+                    % (fail_patts, result.stdout))
+        else:
+            vm_xml.sync()
+        all_ips = utils_net.get_all_ips()
         try:
             vm.start()
         except virt_vm.VMStartError as detail:
