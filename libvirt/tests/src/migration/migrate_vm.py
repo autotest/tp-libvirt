@@ -14,15 +14,16 @@ from avocado.core import data_dir
 from avocado.utils import process
 from avocado.utils import cpu as cpuutil
 
+from virttest import cpu
 from virttest import ssh_key
 from virttest import data_dir
 from virttest import nfs
 from virttest import gluster
 from virttest import remote
+from virttest import libvirt_vm
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import utils_misc
-from virttest import cpu
 from virttest import utils_netperf
 from virttest import utils_package
 from virttest import utils_selinux
@@ -1421,7 +1422,8 @@ def run(test, params, env):
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
                           'ssh_remote_auth': True}
     migrate_setup = libvirt.MigrationTest()
-
+    dest_uri = libvirt_vm.complete_uri(server_ip)
+    migrate_setup.cleanup_dest_vm(vm, src_uri, dest_uri)
     try:
         if iscsi_setup:
             fileio_name = "emulated-iscsi"
