@@ -8,6 +8,7 @@ from virttest import libvirt_storage
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_selinux
+from virttest import utils_misc
 from virttest.utils_test import libvirt as utlv
 from virttest.tests import unattended_install
 
@@ -145,6 +146,8 @@ def run(test, params, env):
                     virsh.remove_domain(vm_name)
             elif application == "attach":
                 virsh.detach_disk(vm_name, disk_target)
+                utils_misc.wait_for(
+                   lambda: not utlv.device_exists(vm, disk_target), 10)
         finally:
             pvtest.cleanup_pool(pool_name, pool_type,
                                 pool_target, emulated_img,
