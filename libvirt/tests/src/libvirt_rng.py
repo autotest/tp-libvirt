@@ -349,8 +349,9 @@ def run(test, params, env):
                 logging.info("dd cmd failed as expected")
             elif ret:
                 test.fail("Failed to read the random device")
-        except aexpect.exceptions.ShellTimeoutError:
+        except aexpect.exceptions.ShellTimeoutError as stderr:
             logging.info("dd cmd timeout")
+            output = stderr
             # Close session as the current session still hang on last cmd
             session.close()
             session = vm.wait_for_login()
