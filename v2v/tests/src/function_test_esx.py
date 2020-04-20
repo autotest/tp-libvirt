@@ -66,6 +66,7 @@ def run(test, params, env):
         '/')[2] if params.get("ovirt_engine_url") else None
     ovirt_ca_file_path = params.get("ovirt_ca_file_path")
     local_ca_file_path = params.get("local_ca_file_path")
+    os_version = params.get('os_version')
     v2v_sasl = None
     # default values for v2v_cmd
     auto_clean = True
@@ -147,11 +148,10 @@ def run(test, params, env):
         """
         Check the content of grub files meet expectation.
         """
-        # Only for grub2
-        chkfiles = ['/etc/default/grub',
-                    '/boot/grub2/grub.cfg',
-                    '/etc/grub2.cfg']
-
+        if os_version == 'rhel7':
+            chkfiles = ['/etc/default/grub', '/boot/grub2/grub.cfg', '/etc/grub2.cfg']
+        if os_version == 'rhel6':
+            chkfiles = ['/boot/grub/grub.conf', '/etc/grub.conf']
         for file_i in chkfiles:
             status, content = vmcheck.run_cmd('cat %s' % file_i)
             if status != 0:
