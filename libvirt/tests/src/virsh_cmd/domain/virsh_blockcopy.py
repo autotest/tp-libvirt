@@ -254,6 +254,7 @@ def run(test, params, env):
     active_snap = "yes" == params.get("active_snap", "no")
     active_save = "yes" == params.get("active_save", "no")
     check_state_lock = "yes" == params.get("check_state_lock", "no")
+    check_finish_job = "yes" == params.get("check_finish_job", "yes")
     with_shallow = "yes" == params.get("with_shallow", "no")
     with_blockdev = "yes" == params.get("with_blockdev", "no")
     setup_libvirt_polkit = "yes" == params.get('setup_libvirt_polkit')
@@ -565,7 +566,7 @@ def run(test, params, env):
                 val = options.count("--pivot") + options.count("--finish")
                 # Don't wait for job finish when using --byte option
                 val += options.count('--bytes')
-                if val == 0:
+                if val == 0 and check_finish_job:
                     try:
                         finish_job(vm_name, target, timeout)
                     except JobTimeout as excpt:
