@@ -26,9 +26,11 @@ def check_backingchain(img_list, img_info):
     :return: bool, meets expectation or not
     """
     pattern = ''
-    for i in range(len(img_list) - 1):
+    chain_length = len(img_list)
+    for i in range(chain_length):
         pattern += 'image: ' + img_list[i]
-        pattern += '.*backing file: ' + img_list[i + 1]
+        if i + 1 < chain_length:
+            pattern += '.*backing file: ' + img_list[i + 1]
         pattern += '.*'
 
     logging.debug(pattern)
@@ -104,10 +106,12 @@ def run(test, params, env):
     check_func = params.get('check_func', '')
     disk_type = params.get('disk_type', '')
     disk_src = params.get('disk_src', '')
+    driver_type = params.get('driver_type', 'qcow2')
     vol_name = params.get('vol_name', 'vol_blockpull')
     pool_name = params.get('pool_name', '')
     brick_path = os.path.join(data_dir.get_tmp_dir(), pool_name)
     vg_name = params.get('vg_name', 'HostVG')
+    vol_size = params.get('vol_size', '10M')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
@@ -156,13 +160,10 @@ def run(test, params, env):
 
             # Create logical volume as backing store
             vol_bk, vol_disk = 'vol1', 'vol2'
-            lv_utils.lv_create(vg_name, vol_bk, '100M')
+            lv_utils.lv_create(vg_name, vol_bk, vol_size)
 
             disk_target = '/dev/%s/%s' % (vg_name, vol_bk)
             src_vol = '/dev/%s/%s' % (vg_name, vol_disk)
-
-            # Command of creating block disk
-            cmd_create_img = 'qemu-img create -f qcow2 -b %s %s' % (disk_target, src_vol)
 
         # Setup gluster
         elif disk_src == 'gluster':
@@ -182,15 +183,23 @@ def run(test, params, env):
 
         new_image = os.path.join(os.path.split(image_file)[0], 'test.img')
         params['snapshot_list'] = ['s%d' % i for i in range(1, 5)]
-        snapshot_image_list = [new_image.replace('img', i) for i in params['snapshot_list']]
 
         if disk_src == 'lvm':
             new_image = src_vol
+            if disk_type == 'block':
+                new_image = disk_target
+                for i in range(2, 6):
+                    lv_utils.lv_create(vg_name, 'vol%s' % i, vol_size)
+                snapshot_image_list = ['/dev/%s/vol%s' % (vg_name, i) for i in range(2, 6)]
         else:
             file_to_del.append(new_image)
+            snapshot_image_list = [new_image.replace('img', i) for i in params['snapshot_list']]
 
-        cmd_create_img = 'qemu-img create -f qcow2 -b %s %s' % (disk_target, new_image)
-        process.run(cmd_create_img, verbose=True, shell=True)
+        cmd_create_img = 'qemu-img create -f %s -b %s %s' % (driver_type, disk_target, new_image)
+        if disk_type == 'block' and driver_type == 'raw':
+            pass
+        else:
+            process.run(cmd_create_img, verbose=True, shell=True)
         info_new = utils_misc.get_image_info(new_image)
         logging.debug(info_new)
 
@@ -199,7 +208,7 @@ def run(test, params, env):
             new_disk = Disk()
             new_disk.xml = libvirt.create_disk_xml({
                 'type_name': disk_type,
-                'driver_type': 'qcow2',
+                'driver_type': driver_type,
                 'target_dev': new_dev,
                 'source_file': new_image
             })
@@ -234,7 +243,10 @@ def run(test, params, env):
             qemu_img_cmd += " -U"
         bc_info = process.run(qemu_img_cmd, verbose=True, shell=True).stdout_text
 
-        bc_chain = snapshot_image_list[::-1] + [new_image, disk_target]
+        if not disk_type == 'block':
+            bc_chain = snapshot_image_list[::-1] + [new_image, disk_target]
+        else:
+            bc_chain = snapshot_image_list[::-1] + [new_image]
         bc_result = check_backingchain(bc_chain, bc_info)
         if not bc_result:
             test.fail('qemu-img info output of backing chain is not correct: %s'
