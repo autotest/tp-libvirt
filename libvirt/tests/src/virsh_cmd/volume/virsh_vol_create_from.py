@@ -55,7 +55,7 @@ def run(test, params, env):
         if src_pool_type != dest_pool_type:
             pvt.pre_pool(dest_pool_name, dest_pool_type, dest_pool_target,
                          dest_emulated_image, image_size="100M",
-                         pre_disk_vol=["1M"])
+                         pre_disk_vol=["2M"])
 
         # Print current pools for debugging
         logging.debug("Current pools:%s",
