@@ -713,7 +713,7 @@ def run(test, params, env):
                     add_vmxml.xmltreefile.write()
                     add_vmxml.sync()
 
-                logging.debug("add vm xmltreefile:%s", add_vmxml.xmltreefile)
+                    logging.debug("add vm xmltreefile:%s", add_vmxml.xmltreefile)
                 additional_vm.start()
                 # additional_vm.wait_for_login()
                 username = params.get("username")
@@ -888,7 +888,7 @@ def run(test, params, env):
                 libvirtd.restart()
 
             if restart_vm:
-                vm.destroy()
+                vm.destroy(gracefully=True)
                 vm.start()
                 if test_option_xml:
                     run_xml_test(iface_mac)
@@ -927,7 +927,7 @@ def run(test, params, env):
             process.system("pidof omping && killall omping",
                            ignore_status=True, shell=True)
         if vm.is_alive():
-            vm.destroy(gracefully=False)
+            vm.destroy(gracefully=True)
         vmxml_backup.sync()
 
         if need_vhostuser_env:
