@@ -451,6 +451,7 @@ def run(test, params, env):
                 res = virsh.blockcommit(vm_name, blk_target,
                                         blockcommit_options, **virsh_dargs)
                 libvirt.check_exit_status(res, status_error)
+            top_index = 1
             if top_inactive:
                 vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
                 disk_xml = ''
@@ -460,7 +461,6 @@ def run(test, params, env):
                         disk_xml = disk
                         break
 
-                top_index = 1
                 try:
                     top_index = disk_xml.backingstore.index
                 except AttributeError:
