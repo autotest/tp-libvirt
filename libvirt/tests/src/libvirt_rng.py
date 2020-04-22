@@ -519,6 +519,7 @@ def run(test, params, env):
 
             vm.start()
             if attach_rng:
+                vm.wait_for_login(timeout=120)
                 ret = virsh.attach_device(vm_name, rng_xml.xml,
                                           flagstr=attach_options,
                                           debug=True, ignore_status=True)
