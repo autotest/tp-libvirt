@@ -37,6 +37,8 @@ def run(test, params, env):
     bridge_name = 'br_mtu' + utils_misc.generate_random_string(3)
     add_pkg = params.get('add_pkg', '')
     model = params.get('model', 'virtio')
+    timeout = int(params.get('timeout', 240))
+    wait_for_up = int(params.get('wait_for_up', 0))
 
     def set_network(size, net='default'):
         """
@@ -152,11 +154,11 @@ def run(test, params, env):
         if error:
             test.fail(error)
 
-    def check_mtu_in_vm(fn_login, mtu_size):
+    def check_mtu_in_vm(fn_login, mtu_size, timeout):
         """
         Check if mtu meets expectations in vm
         """
-        session = fn_login()
+        session = fn_login(timeout=timeout)
         check_cmd = 'ifconfig'
         output = session.cmd(check_cmd)
         session.close()
@@ -229,6 +231,7 @@ def run(test, params, env):
                     if params['mac'] not in str(dom_xml):
                         test.fail('Failed to attach interface with mtu')
                 save_path = os.path.join(data_dir.get_tmp_dir(), vm_name + '.save')
+                time.sleep(wait_for_up)
                 virsh.save(vm_name, save_path, debug=True)
                 virsh.restore(save_path, debug=True)
             if check == 'managedsave':
@@ -238,8 +241,8 @@ def run(test, params, env):
             # Check in both host and vm
             check_mtu(mtu_size, check_qemu)
             if mtu_type == 'interface' or with_iface:
-                check_mtu_in_vm(vm_login, mtu_size)
-                vm_login(timeout=60).close()
+                check_mtu_in_vm(vm_login, mtu_size, timeout=timeout)
+                vm_login(timeout=timeout).close()
 
             if check == 'hotplug_save':
                 virsh.detach_interface(vm_name, 'network %s' % params['mac'], debug=True)
