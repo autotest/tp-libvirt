@@ -33,6 +33,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
     vm_state = params.get("vm_state", "running")
+    timeout = int(params.get('timeout', 240))
     image_format = params.get("snapshot_image_format", "qcow2")
     snapshot_del_test = "yes" == params.get("snapshot_del_test", "no")
     status_error = ("yes" == params.get("status_error", "no"))
@@ -117,7 +118,7 @@ def run(test, params, env):
     try:
         if vm.is_dead():
             vm.start()
-        vm.wait_for_login().close()
+        vm.wait_for_login(timeout=timeout).close()
         if replace_vm_disk:
             utlv.set_vm_disk(vm, params, tmp_dir)
             if multi_gluster_disks:
@@ -337,7 +338,7 @@ def run(test, params, env):
         # Touch a file in VM.
         if vm.is_dead():
             vm.start()
-        session = vm.wait_for_login()
+        session = vm.wait_for_login(timeout=timeout)
 
         # Init a unique name for tmp_file.
         tmp_file = tempfile.NamedTemporaryFile(prefix=("snapshot_test_"),
@@ -394,7 +395,7 @@ def run(test, params, env):
                               "paused after reverting with --paused"
                               "  option.")
             # login vm.
-            session = vm.wait_for_login()
+            session = vm.wait_for_login(timeout=timeout)
             # Check the result of revert.
             status, output = session.cmd_status_output("cat %s" % tmp_file_path)
             logging.debug("After revert cat file output='%s'", output)
