@@ -145,8 +145,8 @@ def run(test, params, env):
                 if not virt_functions:
                     test.fail("No Virtual Functions found.")
                 for val in virt_functions:
-                    pci_dev = utils_test.libvirt.pci_label_from_address(val,
-                                                                        radix=16)
+                    pci_dev = utils_test.libvirt.pci_info_from_address(val,
+                                                                       radix=16)
                     pci_xml = NodedevXML.new_from_dumpxml(pci_dev)
                     pci_address = pci_xml.cap.get_address_dict()
                     vmxml.add_hostdev(pci_address)
