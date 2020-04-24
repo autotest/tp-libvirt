@@ -215,12 +215,15 @@ def run(test, params, env):
     volume_target_format = params.get("target_format")
     volume_target_encypt = params.get("target_encypt", "")
     volume_target_label = params.get("target_label")
+    extra_luks_parameter = params.get("extra_parameter")
 
     hotplug = "yes" == params.get("virt_disk_device_hotplug")
     status_error = "yes" == params.get("status_error")
     secret_type = params.get("secret_type", "passphrase")
     secret_password_no_encoded = params.get("secret_password_no_encoded", "redhat")
     virt_disk_qcow2_format = "yes" == params.get("virt_disk_qcow2_format")
+    slice_test = params.get("slice_test", "yes")
+    test_size = params.get("test_size", "1")
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -252,16 +255,19 @@ def run(test, params, env):
                       "capacity_unit": volume_cap_unit}
         vol_encryption_params = {}
         vol_encryption_params.update({"format": volume_target_encypt})
-        # For any disk format other than qcow2, it need create secret firstly.
-        if not virt_disk_qcow2_format:
-            # create secret.
-            sec_encryption_uuid = create_secret(volume_target_path)
-            sec_uuids.append(sec_encryption_uuid)
-            vol_encryption_params.update({"secret": {"type": secret_type, "uuid": sec_encryption_uuid}})
+        # create secret.
+        sec_encryption_uuid = create_secret(volume_target_path)
+        sec_uuids.append(sec_encryption_uuid)
+        vol_encryption_params.update({"secret": {"type": secret_type, "uuid": sec_encryption_uuid}})
         try:
-            # If Libvirt version is lower than 2.5.0
-            # Creating luks encryption volume is not supported,so skip it.
-            create_vol(pool_name, vol_encryption_params, vol_params)
+            # Create a qcow2 luks image for slice test
+            if slice_test == "yes" and volume_target_format == "qcow2":
+                libvirt.create_local_disk(disk_type="file", extra=extra_luks_parameter,
+                                          path=volume_target_path, size=test_size, disk_format=volume_target_format)
+                virsh.pool_refresh(pool_name)
+            else:
+                # Create luks image for other disk format
+                create_vol(pool_name, vol_encryption_params, vol_params)
         except AssertionError as info:
             err_msgs = ("create: invalid option")
             if str(info).count(err_msgs):
@@ -283,19 +289,30 @@ def run(test, params, env):
             dev_attrs = "dev"
         disk_source = disk_xml.new_disk_source(
                 **{"attrs": {dev_attrs: volume_target_path}})
+        if slice_test == "yes":
+            slice_size_param = process.run("du -b %s" % volume_target_path).stdout_text
+            slice_size = re.findall(r'[0-9]+', slice_size_param)
+            slice_size = ''.join(slice_size)
+            disk_source.slices = disk_xml.new_slices(
+                    **{"slice_type": "storage", "slice_offset": "0", "slice_size": slice_size})
         disk_xml.driver = {"name": "qemu", "type": volume_target_format,
                            "cache": "none"}
         disk_xml.target = {"dev": device_target, "bus": device_bus}
         v_xml = vol_xml.VolXML.new_from_vol_dumpxml(volume_name, pool_name)
-        sec_uuids.append(v_xml.encryption.secret["uuid"])
         if not status_error:
-            logging.debug("vol info -- format: %s, type: %s, uuid: %s",
-                          v_xml.encryption.format,
-                          v_xml.encryption.secret["type"],
-                          v_xml.encryption.secret["uuid"])
-            encryption_dict = {"encryption": v_xml.encryption.format,
-                               "secret": {"type": v_xml.encryption.secret["type"],
-                                          "uuid": v_xml.encryption.secret["uuid"]}}
+            # create encrytion field for qcow2 image
+            if volume_target_format == "qcow2":
+                vol_encryption_params['encryption'] = vol_encryption_params.pop('format')
+                encryption_dict = vol_encryption_params
+            else:
+                logging.debug("vol info -- format: %s, type: %s, uuid: %s",
+                              v_xml.encryption.format,
+                              v_xml.encryption.secret["type"],
+                              v_xml.encryption.secret["uuid"])
+                sec_uuids.append(v_xml.encryption.secret["uuid"])
+                encryption_dict = {"encryption": v_xml.encryption.format,
+                                   "secret": {"type": v_xml.encryption.secret["type"],
+                                              "uuid": v_xml.encryption.secret["uuid"]}}
             if encryption_in_source:
                 disk_source.encryption = disk_xml.new_encryption(
                         **encryption_dict)
