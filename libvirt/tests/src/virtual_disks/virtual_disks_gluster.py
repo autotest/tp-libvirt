@@ -167,7 +167,7 @@ def run(test, params, env):
     mnt_src = ""
 
     # This is brought by new feature:block-dev
-    if libvirt_version.version_compare(6, 0, 0) and transport == "rdma":
+    if transport == "rdma":
         test.cancel("transport protocol 'rdma' is not yet supported")
     try:
         # Build new vm xml.
