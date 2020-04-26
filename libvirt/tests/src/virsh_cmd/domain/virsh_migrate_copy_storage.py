@@ -6,6 +6,7 @@ from avocado.core import exceptions
 from virttest import ssh_key
 from virttest import utils_test
 from virttest import libvirt_vm
+from virttest import migration
 from virttest.utils_test import libvirt as utlv
 from virttest.staging import lv_utils
 from virttest import virsh
@@ -116,7 +117,7 @@ def copied_migration(test, vms, params):
         vm.wait_for_login()
         vms_ip[vm.name] = vm.get_address()
 
-    cp_mig = utlv.MigrationTest()
+    cp_mig = migration.MigrationTest()
     cp_mig.do_migration(vms, None, dest_uri, "orderly", options, timeout,
                         ignore_status=True)
     check_ip_failures = []

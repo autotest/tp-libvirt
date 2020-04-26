@@ -9,6 +9,7 @@ from avocado.utils import process
 from virttest import ssh_key
 from virttest import data_dir
 from virttest import remote
+from virttest import migration
 from virttest import utils_package
 from virttest import utils_selinux
 from virttest import utils_package
@@ -148,12 +149,12 @@ def migrate_vm(test, params):
 
     logging.info("Prepare migrate %s", vm_name)
     global MIGRATE_RET
-    MIGRATE_RET, mig_output = libvirt.do_migration(vm_name, uri, extra,
-                                                   auth_pwd, auth_user,
-                                                   options,
-                                                   virsh_patterns,
-                                                   su_user, timeout,
-                                                   extra_opt)
+    MIGRATE_RET, mig_output = migration.do_migration(vm_name, uri, extra,
+                                                     auth_pwd, auth_user,
+                                                     options,
+                                                     virsh_patterns,
+                                                     su_user, timeout,
+                                                     extra_opt)
 
     if status_error == "no":
         if MIGRATE_RET:
@@ -495,7 +496,7 @@ def run(test, params, env):
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     # Setup migration context
-    migrate_setup = libvirt.MigrationTest()
+    migrate_setup = migration.MigrationTest()
     migrate_setup.migrate_pre_setup(test_dict["desuri"], params)
 
     # Install ceph-common on remote host machine.

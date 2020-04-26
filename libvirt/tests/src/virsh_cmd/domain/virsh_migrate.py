@@ -19,6 +19,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
 from virttest import utils_misc
 from virttest import cpu
+from virttest import migration
 from virttest.qemu_storage import QemuImg
 from virttest.utils_test import libvirt
 from virttest import test_setup
@@ -799,7 +800,7 @@ def run(test, params, env):
         # Change the disk of the vm to shared disk
         libvirt.set_vm_disk(vm, params)
 
-        migrate_setup = libvirt.MigrationTest()
+        migrate_setup = migration.MigrationTest()
 
         subdriver = utils_test.get_image_info(shared_storage)['format']
         extra_attach = ("--config --driver qemu --subdriver %s --cache %s"
@@ -1047,7 +1048,7 @@ def run(test, params, env):
             timeout = int(params.get("timeout_before_suspend", 5))
             logging.debug("Set migration speed to %sM", speed)
             virsh.migrate_setspeed(vm_name, speed, debug=True)
-            migration_test = libvirt.MigrationTest()
+            migration_test = migration.MigrationTest()
             migrate_options = "%s %s" % (options, extra)
             vms = [vm]
             migration_test.do_migration(vms, None, dest_uri, 'orderly',
@@ -1061,7 +1062,7 @@ def run(test, params, env):
             vms = []
             vms.append(vm)
             cmd = params.get("virsh_postcopy_cmd")
-            obj_migration = libvirt.MigrationTest()
+            obj_migration = migration.MigrationTest()
             migrate_options = "%s %s" % (options, extra)
             # start stress inside VM
             stress_tool = params.get("stress_package", "stress")

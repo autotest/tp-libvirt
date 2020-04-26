@@ -2,6 +2,7 @@ import logging
 import platform
 
 from virttest import libvirt_vm
+from virttest import migration
 from virttest import virsh
 from virttest.utils_test import libvirt
 from virttest import libvirt_xml
@@ -111,7 +112,7 @@ def run(test, params, env):
         logging.debug("Supported machine types that are common in  source and "
                       "target are: %s", ", ".join(map(str, machine_list)))
 
-    migrate_setup = libvirt.MigrationTest()
+    migrate_setup = migration.MigrationTest()
     # Perform migration with each machine type
     try:
         for vm in vm_list:

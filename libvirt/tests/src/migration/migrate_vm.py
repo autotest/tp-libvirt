@@ -21,6 +21,7 @@ from virttest import nfs
 from virttest import gluster
 from virttest import remote
 from virttest import libvirt_vm
+from virttest import migration
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import utils_misc
@@ -1421,9 +1422,9 @@ def run(test, params, env):
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
                           'ssh_remote_auth': True}
-    migrate_setup = libvirt.MigrationTest()
+    migration_test = migration.MigrationTest()
     dest_uri = libvirt_vm.complete_uri(server_ip)
-    migrate_setup.cleanup_dest_vm(vm, src_uri, dest_uri)
+    migration_test.cleanup_dest_vm(vm, src_uri, dest_uri)
     try:
         if iscsi_setup:
             fileio_name = "emulated-iscsi"
@@ -1593,8 +1594,8 @@ def run(test, params, env):
             # Check if gluster server is deployed locally
             if host_ip == client_ip:
                 logging.debug("Enable port 24007 and 49152:49216")
-                migrate_setup.migrate_pre_setup(src_uri, params, ports="24007")
-                migrate_setup.migrate_pre_setup(src_uri, params)
+                migration_test.migrate_pre_setup(src_uri, params, ports="24007")
+                migration_test.migrate_pre_setup(src_uri, params)
 
         # generate remote IP
         if target_ip == "":
@@ -2371,8 +2372,8 @@ def run(test, params, env):
 
         if (transport in ('tcp', 'tls') and uri_port) or disk_port:
             port = disk_port if disk_port else uri_port[1:]
-            migrate_setup.migrate_pre_setup("//%s/" % server_ip, test_dict,
-                                            cleanup=False, ports=port)
+            migration_test.migrate_pre_setup("//%s/" % server_ip, test_dict,
+                                             cleanup=False, ports=port)
 
         # Case for --disk_ports option.
         # Start the storage migration on a thread
@@ -2388,7 +2389,6 @@ def run(test, params, env):
 
         if disk_port:
             # Run migration command on a seperate thread
-            migration_test = libvirt.MigrationTest()
             vms = [vm]
             func_dict = {"disk_port": disk_port, "server_ip": server_ip,
                          "server_user": server_user, "server_pwd": server_pwd,
@@ -2497,7 +2497,7 @@ def run(test, params, env):
 
                 # Permit iptables to permit special port to libvirt for
                 # migration on local machine
-                migrate_setup.migrate_pre_setup(src_uri, params, ports=uri_port[1:])
+                migration_test.migrate_pre_setup(src_uri, params, ports=uri_port[1:])
 
             except (process.CmdError, remote.SCPError) as e:
                 logging.debug(e)
@@ -2727,7 +2727,7 @@ def run(test, params, env):
 
         if migr_vm_back:
             # Pre migration setup for local machine
-            migrate_setup.migrate_pre_setup(src_uri, params)
+            migration_test.migrate_pre_setup(src_uri, params)
             cmd = "virsh migrate %s %s %s" % (vm_name,
                                               virsh_options, src_uri)
             logging.debug("Start migrating: %s", cmd)
@@ -2750,8 +2750,8 @@ def run(test, params, env):
 
         # Clean up of pre migration setup for local machine
         if migr_vm_back:
-            migrate_setup.migrate_pre_setup(src_uri, params,
-                                            cleanup=True)
+            migration_test.migrate_pre_setup(src_uri, params,
+                                             cleanup=True)
 
         if need_mkswap:
             if not vm.is_alive() or vm.is_dead():
@@ -2780,9 +2780,9 @@ def run(test, params, env):
         if gluster_disk and 'host_ip' in locals():
             if host_ip == client_ip:
                 logging.debug("Disable 24007 and 49152:49216 in Firewall")
-                migrate_setup.migrate_pre_setup(src_uri, params, cleanup=True,
-                                                ports="24007")
-                migrate_setup.migrate_pre_setup(src_uri, params, cleanup=True)
+                migration_test.migrate_pre_setup(src_uri, params, cleanup=True,
+                                                 ports="24007")
+                migration_test.migrate_pre_setup(src_uri, params, cleanup=True)
 
         # Restore libvirtd conf and restart libvirtd
         if libvirtd_conf:
@@ -2865,9 +2865,9 @@ def run(test, params, env):
             # destroy guest on target machine
             remote_virsh_session = None
             try:
-                migrate_setup.migrate_pre_setup(src_uri, params,
-                                                cleanup=True,
-                                                ports=uri_port[1:])
+                migration_test.migrate_pre_setup(src_uri, params,
+                                                 cleanup=True,
+                                                 ports=uri_port[1:])
                 remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
                 logging.debug("Destroy remote guest")
                 remote_virsh_session.destroy(target_vm_name)
@@ -2950,5 +2950,5 @@ def run(test, params, env):
             cleanup(objs_list)
         if (transport in ('tcp', 'tls') and uri_port) or disk_port:
             port = disk_port if disk_port else uri_port[1:]
-            migrate_setup.migrate_pre_setup("//%s/" % server_ip, test_dict,
-                                            cleanup=True, ports=port)
+            migration_test.migrate_pre_setup("//%s/" % server_ip, test_dict,
+                                             cleanup=True, ports=port)

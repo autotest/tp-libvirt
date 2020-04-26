@@ -5,6 +5,7 @@ import re
 from six import itervalues, string_types
 from avocado.utils import process
 
+from virttest import migration
 from virttest import utils_selinux
 from virttest import virsh
 from virttest import utils_package
@@ -136,7 +137,7 @@ def run(test, params, env):
     try:
         # Get a MigrationTest() Object
         logging.debug("Get a MigrationTest()  object")
-        obj_migration = libvirt.MigrationTest()
+        obj_migration = migration.MigrationTest()
 
         # Setup libvirtd remote connection TLS connection env
         if transport == "tls":

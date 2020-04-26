@@ -20,6 +20,7 @@ from virttest import utils_test
 from virttest import utils_misc
 from virttest import defaults
 from virttest import data_dir
+from virttest import migration
 from virttest import virsh
 from virttest import libvirt_version
 from virttest import libvirt_remote
@@ -34,29 +35,6 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_conn import TLSConnection
 from virttest.libvirt_xml.devices.controller import Controller
-
-
-def check_parameters(test, params):
-    """
-    Make sure all of parameters are assigned a valid value
-
-    :param test: the test object
-    :param params: the parameters to be checked
-
-    :raise: test.cancel if invalid value exists
-    """
-    migrate_dest_host = params.get("migrate_dest_host")
-    migrate_dest_pwd = params.get("migrate_dest_pwd")
-    migrate_source_host = params.get("migrate_source_host")
-    migrate_source_pwd = params.get("migrate_source_pwd")
-
-    args_list = [migrate_dest_host,
-                 migrate_dest_pwd, migrate_source_host,
-                 migrate_source_pwd]
-
-    for arg in args_list:
-        if arg and arg.count("EXAMPLE"):
-            test.cancel("Please assign a value for %s!" % arg)
 
 
 def run(test, params, env):
@@ -107,27 +85,6 @@ def run(test, params, env):
                 test.fail("'%s' is missing in dmesg" % (content % hpt_order))
             else:
                 logging.info("'%s' is found in dmesg", content % hpt_order)
-
-    def check_vm_network_accessed(session=None):
-        """
-        The operations to the VM need to be done before or after
-        migration happens
-
-        :param session: The session object to the host
-
-        :raise: test.error when ping fails
-        """
-        # Confirm local/remote VM can be accessed through network.
-        logging.info("Check VM network connectivity")
-        s_ping, _ = utils_test.ping(vm.get_address(),
-                                    count=10,
-                                    timeout=20,
-                                    output_func=logging.debug,
-                                    session=session)
-        if s_ping != 0:
-            if session:
-                session.close()
-            test.fail("%s did not respond after %d sec." % (vm.name, 20))
 
     def check_virsh_command_and_option(command, option=None):
         """
@@ -215,29 +172,6 @@ def run(test, params, env):
         cmd = "rm -f %s" % log_file
         logging.debug("Delete remote libvirt log file '%s'", log_file)
         remote.run_remote_cmd(cmd, cmd_parms, runner_on_target)
-
-    def cleanup_dest(vm):
-        """
-        Clean up the destination host environment
-        when doing the uni-direction migration.
-
-        :param vm: the guest to be cleaned up
-        """
-        logging.info("Cleaning up VMs on %s", vm.connect_uri)
-        try:
-            if virsh.domain_exists(vm.name, uri=vm.connect_uri):
-                vm_state = vm.state()
-                if vm_state == "paused":
-                    vm.resume()
-                elif vm_state == "shut off":
-                    vm.start()
-                vm.destroy(gracefully=False)
-
-                if vm.is_persistent():
-                    vm.undefine()
-
-        except Exception as detail:
-            logging.error("Cleaning up destination failed.\n%s", detail)
 
     def run_stress_in_vm():
         """
@@ -843,37 +777,8 @@ def run(test, params, env):
                                                         extra_params=params)
         return updated_conf
 
-    def check_migration_res(result):
-        """
-        Check if the migration result is as expected
-
-        :param result: the output of migration
-        :raise: test.fail if test is failed
-        """
-        if not result:
-            test.error("No migration result is returned.")
-
-        logging.info("Migration out: %s", result.stdout_text.strip())
-        logging.info("Migration error: %s", result.stderr_text.strip())
-
-        if status_error:  # Migration should fail
-            if err_msg:   # Special error messages are expected
-                if not re.search(err_msg, result.stderr_text.strip()):
-                    test.fail("Can not find the expected patterns '%s' in "
-                              "output '%s'" % (err_msg,
-                                               result.stderr_text.strip()))
-                else:
-                    logging.debug("It is the expected error message")
-            else:
-                if int(result.exit_status) != 0:
-                    logging.debug("Migration failure is expected result")
-                else:
-                    test.fail("Migration success is unexpected result")
-        else:
-            if int(result.exit_status) != 0:
-                test.fail(result.stderr_text.strip())
-
-    check_parameters(test, params)
+    migration_test = migration.MigrationTest()
+    migration_test.check_parameters(params)
 
     # Params for NFS shared storage
     shared_storage = params.get("migrate_shared_storage", "")
@@ -1178,7 +1083,7 @@ def run(test, params, env):
 
         # Check local guest network connection before migration
         vm_session = vm.wait_for_login()
-        check_vm_network_accessed()
+        migration_test.ping_vm(vm, params)
 
         if check_event_output:
             cmd = "event --loop --all"
@@ -1257,8 +1162,6 @@ def run(test, params, env):
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
         else:
-            migration_test = libvirt.MigrationTest()
-
             logging.debug("vm.connect_uri=%s", vm.connect_uri)
             vms = [vm]
             try:
@@ -1278,7 +1181,7 @@ def run(test, params, env):
                 mig_result = migration_test.ret
                 logging.error(details)
 
-        check_migration_res(mig_result)
+        migration_test.check_result(mig_result, params)
 
         if add_channel:
             # Get the channel device source path of remote guest
@@ -1397,11 +1300,7 @@ def run(test, params, env):
             remote_virsh_session.close_session()
 
         if int(mig_result.exit_status) == 0:
-            server_session = remote.wait_for_login('ssh', server_ip, '22',
-                                                   server_user, server_pwd,
-                                                   r"[\#\$]\s*$")
-            check_vm_network_accessed(server_session)
-            server_session.close()
+            migration_test.ping_vm(vm, params, dest_uri)
 
             if cmd_in_vm_after_migration:
                 vm_after_mig = utils_test.RemoteVMManager(cmd_parms)
@@ -1426,11 +1325,10 @@ def run(test, params, env):
                 ssh_connection.conn_setup()
                 ssh_connection.conn_check()
 
-            migrate_setup = libvirt.MigrationTest()
             # Pre migration setup for local machine
             src_full_uri = libvirt_vm.complete_uri(
                         params.get("migrate_source_host"))
-            migrate_setup.migrate_pre_setup(src_full_uri, params)
+            migration_test.migrate_pre_setup(src_full_uri, params)
             cmd = "virsh migrate %s %s %s" % (vm_name,
                                               virsh_opt, src_full_uri)
             logging.debug("Start migration: %s", cmd)
@@ -1471,9 +1369,9 @@ def run(test, params, env):
                                                              cleanup=True)
 
             # Clean VM on destination
-            vm.connect_uri = dest_uri
-            cleanup_dest(vm)
-            vm.connect_uri = src_uri
+            migration_test.cleanup_dest_vm(vm, src_uri, dest_uri)
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
 
             logging.info("Recovery VM XML configration")
             orig_config_xml.sync()
@@ -1498,10 +1396,9 @@ def run(test, params, env):
             if migr_vm_back:
                 if 'ssh_connection' in locals():
                     ssh_connection.auto_recover = True
-                migrate_setup = libvirt.MigrationTest()
                 if 'src_full_uri' in locals():
-                    migrate_setup.migrate_pre_setup(src_full_uri, params,
-                                                    cleanup=True)
+                    migration_test.migrate_pre_setup(src_full_uri, params,
+                                                     cleanup=True)
 
             # Delete files on target
             # Killing qemu process on target may lead a problem like

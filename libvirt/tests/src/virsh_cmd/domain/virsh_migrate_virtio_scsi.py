@@ -6,6 +6,7 @@ import time
 from avocado.utils import process
 from avocado.core import exceptions
 
+from virttest import migration
 from virttest import utils_test
 from virttest import virsh
 from virttest import utils_misc
@@ -161,7 +162,7 @@ def run(test, params, env):
     try:
         # For safety and easily reasons, we'd better define a new vm
         new_vm_name = "%s_vsmtest" % vm.name
-        mig = utlv.MigrationTest()
+        mig = migration.MigrationTest()
         if vm.is_alive():
             vm.destroy()
         utlv.define_new_vm(vm.name, new_vm_name)

@@ -7,7 +7,7 @@ from avocado.utils import path as utils_path
 
 from virttest import virsh
 from virttest import ssh_key
-from virttest.utils_test import libvirt as utlv
+from virttest import migration
 
 
 def get_page_size():
@@ -140,7 +140,7 @@ def run(test, params, env):
                 pass
 
         # Cleanup in case of successful migration
-        utlv.MigrationTest().cleanup_dest_vm(vm, None, remote_uri)
+        migration.MigrationTest().cleanup_dest_vm(vm, None, remote_uri)
 
     # Shut down the VM to make sure the compcache setting cleared
     if vm.is_alive():
