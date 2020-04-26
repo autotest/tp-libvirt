@@ -5,6 +5,8 @@ import platform
 import time
 import shutil
 
+from avocado.utils import process
+
 from virttest import remote
 from virttest import virt_vm
 from virttest import virsh
@@ -138,6 +140,13 @@ def run(test, params, env):
         if not new_mpath_devs:
             test.fail("No newly added multipath devices found.")
         logging.debug("newly added mpath devs are: %s", new_mpath_devs)
+
+        # Add debug information for states of multipathed_path and multipathed_device
+        multipathed_path = process.run('multipath -v2', ignore_status=True, shell=True, verbose=True).stdout_text.strip()
+        logging.debug("dumped multipathed_path: %s", multipathed_path)
+        multipathed_device = process.run('multipath -ll', ignore_status=True, shell=True, verbose=True).stdout_text.strip()
+        logging.debug("dumped multipathed_device: %s", multipathed_device)
+
         # Prepare disk xml
         disk_params = {}
         disk_params['type_name'] = params.get("virt_disk_type", "block")
