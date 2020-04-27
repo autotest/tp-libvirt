@@ -151,8 +151,8 @@ def check_output(test, output_msg, params):
                           with some conditions satisfied
     """
     err_msg = params.get("err_msg", None)
-    status_error = params.get("status_error", "no")
-    if status_error == "yes" and err_msg:
+    status_error = "yes" == params.get("status_error", "no")
+    if status_error and err_msg:
         if err_msg in output_msg:
             logging.debug("Expected error '%s' was found", err_msg)
             return
@@ -173,7 +173,6 @@ def check_output(test, output_msg, params):
 
     # Check for special case firstly
     migrate_disks = "yes" == params.get("migrate_disks")
-    status_error = "yes" == params.get("status_error")
     if migrate_disks and status_error:
         logging.debug("To check for migrate-disks...")
         disk = params.get("attach_A_disk_source")
@@ -1218,15 +1217,6 @@ def run(test, params, env):
     restart_vm = "yes" == test_dict.get("restart_vm", "no")
     diff_cpu_vendor = "yes" == test_dict.get("diff_cpu_vendor", "no")
 
-    # Get err_msg and status_error parameters
-    err_msg = test_dict.get("err_msg", None)
-    if err_msg == "error: internal error: unable to execute QEMU command 'nbd-server-add': Block node is read-only":
-        if utils_misc.compare_qemu_version(2, 10, 0, is_rhev=True):
-            test_dict["status_error"] = "yes"
-        else:
-            test_dict["status_error"] = "no"
-    status_error = test_dict.get("status_error", "no")
-
     # Get iothread parameters.
     driver_iothread = test_dict.get("driver_iothread")
 
@@ -1400,9 +1390,7 @@ def run(test, params, env):
 
     iscsi_setup = "yes" == test_dict.get("iscsi_setup", "no")
     disk_format = test_dict.get("disk_format", "qcow2")
-#    primary_target = vm.get_first_disk_devices()["target"]
-#    file_path, file_size = vm.get_device_size(primary_target)
-
+    status_error = test_dict.get("status_error", "no")
     nfs_serv = None
     nfs_cli = None
     se_obj = None
@@ -2202,7 +2190,7 @@ def run(test, params, env):
                 if ret.exit_status:
                     if ret.stderr.count("No more available PCI slots"):
                         break
-                    elif status_error:
+                    elif status_error == 'yes':
                         continue
                     else:
                         logging.error("Command output %s" %
@@ -2807,6 +2795,7 @@ def run(test, params, env):
                     logging.debug("Remove local image file %s.", img_file)
                     os.remove(img_file)
 
+        status_error = test_dict.get("status_error", "no")
         if migrate_disks is True:
             attach_A_disk_source = test_dict.get("attach_A_disk_source")
             attach_B_disk_source = test_dict.get("attach_B_disk_source")
