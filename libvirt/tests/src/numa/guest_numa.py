@@ -149,8 +149,6 @@ def run(test, params, env):
     page_list = handle_param(page_tuple, params)
     nr_pagesize_total = params.get("nr_pagesize_total")
     deallocate = False
-    default_nr_hugepages_path = "/sys/kernel/mm/hugepages/hugepages-2048kB/"
-    default_nr_hugepages_path += "nr_hugepages"
 
     if page_list:
         if not libvirt_version.version_compare(1, 2, 5):
@@ -220,7 +218,6 @@ def run(test, params, env):
             # Only set total 2M size huge page number as total 1G size runtime
             # update not supported now.
             deallocate = True
-            hp_cl.kernel_hp_file = default_nr_hugepages_path
             hp_cl.target_hugepages = int(nr_pagesize_total)
             hp_cl.set_hugepages()
         if page_list:
