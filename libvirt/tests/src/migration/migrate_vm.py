@@ -30,6 +30,7 @@ from virttest import utils_selinux
 from virttest import utils_test
 from virttest import virsh
 from virttest import virt_vm
+from virttest import migration
 
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import pool_xml
@@ -1409,7 +1410,7 @@ def run(test, params, env):
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
                           'ssh_remote_auth': True}
-    migrate_setup = libvirt.MigrationTest()
+    migrate_setup = migration.MigrationTest()
     dest_uri = libvirt_vm.complete_uri(server_ip)
     migrate_setup.cleanup_dest_vm(vm, src_uri, dest_uri)
     try:
@@ -2376,7 +2377,7 @@ def run(test, params, env):
 
         if disk_port:
             # Run migration command on a seperate thread
-            migration_test = libvirt.MigrationTest()
+            migration_test = migration.MigrationTest()
             vms = [vm]
             func_dict = {"disk_port": disk_port, "server_ip": server_ip,
                          "server_user": server_user, "server_pwd": server_pwd,

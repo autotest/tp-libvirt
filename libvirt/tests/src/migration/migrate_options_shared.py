@@ -28,6 +28,7 @@ from virttest import utils_package
 from virttest import utils_iptables
 from virttest import utils_conn
 from virttest import xml_utils
+from virttest import migration
 
 from virttest.utils_iptables import Iptables
 from virttest.libvirt_xml import vm_xml
@@ -1257,7 +1258,7 @@ def run(test, params, env):
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
         else:
-            migration_test = libvirt.MigrationTest()
+            migration_test = migration.MigrationTest()
 
             logging.debug("vm.connect_uri=%s", vm.connect_uri)
             vms = [vm]
@@ -1426,7 +1427,7 @@ def run(test, params, env):
                 ssh_connection.conn_setup()
                 ssh_connection.conn_check()
 
-            migrate_setup = libvirt.MigrationTest()
+            migrate_setup = migration.MigrationTest()
             # Pre migration setup for local machine
             src_full_uri = libvirt_vm.complete_uri(
                         params.get("migrate_source_host"))
@@ -1498,7 +1499,7 @@ def run(test, params, env):
             if migr_vm_back:
                 if 'ssh_connection' in locals():
                     ssh_connection.auto_recover = True
-                migrate_setup = libvirt.MigrationTest()
+                migrate_setup = migration.MigrationTest()
                 if 'src_full_uri' in locals():
                     migrate_setup.migrate_pre_setup(src_full_uri, params,
                                                     cleanup=True)

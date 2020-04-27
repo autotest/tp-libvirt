@@ -10,6 +10,7 @@ from virttest import remote
 from virttest import utils_test
 from virttest import nfs
 from virttest import ssh_key
+from virttest import migration
 from virttest.libvirt_xml import vm_xml
 
 
@@ -122,7 +123,7 @@ def multi_migration(vm, src_uri, dest_uri, options, migrate_type,
     :rrunner: remote session instance
     """
 
-    obj_migration = utils_test.libvirt.MigrationTest()
+    obj_migration = migration.MigrationTest()
     if migrate_type.lower() == "simultaneous":
         logging.info("Migrate vms simultaneously.")
         try:

@@ -4,6 +4,7 @@ from virttest import libvirt_vm
 from virttest import utils_test
 from virttest import utils_misc
 from virttest import utils_package
+from virttest import migration
 from virttest import remote
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import utils_memory
@@ -40,7 +41,7 @@ def do_stress_migration(vms, srcuri, desturi, migration_type, test, params,
 
     :raise: test.fail if migration fails
     """
-    migrate_setup = utils_test.libvirt.MigrationTest()
+    migrate_setup = migration.MigrationTest()
     options = params.get("migrate_options")
     ping_count = int(params.get("ping_count", 10))
     migrate_times = 1
@@ -192,8 +193,7 @@ def run(test, params, env):
     finally:
         logging.debug("Cleanup vms...")
         for vm in vms:
-            utils_test.libvirt.MigrationTest().cleanup_dest_vm(vm, None,
-                                                               dest_uri)
+            migration.MigrationTest().cleanup_dest_vm(vm, None, dest_uri)
             # Try to start vms in source once vms in destination are
             # cleaned up
             if not vm.is_alive():
