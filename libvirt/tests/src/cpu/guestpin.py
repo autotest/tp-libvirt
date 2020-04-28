@@ -149,6 +149,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     condition = params.get("condn", "")
     condn_sleep_sec = int(params.get("condn_sleep_sec", 30))
+    cpustats_settle_time = int(params.get("cpustats_settle_time", 2))
     pintype = params.get("pintype", "random")
     emulatorpin = "yes" == params.get("emulatorpin", "no")
     config_pin = "yes" == params.get("config_pin", "no")
@@ -166,49 +167,71 @@ def run(test, params, env):
         libvirt_xml.VMXML.set_vm_vcpus(vm_name, max_vcpu, current_vcpu,
                                        vm_sockets, vm_cores, vm_threads)
         if config_pin:
-            cpustats = {}
-            result = virsh.emulatorpin(vm_name, cpus_list[-1], "config",
+            cpustats_itr1 = {}
+            cpustats_itr2 = {}
+            conf_emupin_cpu = cpus_list[-1]
+            conf_vcpupin_cpu = cpus_list[0]
+            result = virsh.emulatorpin(vm_name, conf_emupin_cpu, "config",
                                        debug=True)
             libvirt.check_exit_status(result)
-            result = virsh.vcpupin(vm_name, "0", cpus_list[0], "--config",
+            result = virsh.vcpupin(vm_name, "0", conf_vcpupin_cpu, "--config",
                                    ignore_status=True, debug=True)
             libvirt.check_exit_status(result)
+
         try:
-            vm.start()
+            vm.start(autoconsole=False)
         except virt_vm.VMStartError as detail:
             test.fail("%s" % detail)
 
-        cpucount = vm.get_cpu_count()
-        if cpucount != current_vcpu:
-            test.fail("Incorrect initial guest vcpu\nExpected:%s Actual:%s" %
-                      (cpucount, current_vcpu))
-
         if config_pin:
-            cpustats = cpu.get_cpustats(vm)
-            if not cpustats:
-                test.fail("cpu stats command failed to run")
-
-            logging.debug("Check cpustats for emulatorpinned cpu")
-            if cpustats[cpus_list[-1]][0] > 0:
+            # https://www.redhat.com/archives/libvir-list/2020-April/msg00543.html
+            # Let's wait for 2 seconds initially and to be get more stable
+            # value wait for another 2 seconds for second iteration.
+            # Boot time of guest varies with increase in guest memory and
+            # host resources, So lets wait for 2 seconds, though documentation
+            # says 200 microseconds is enough, to accommodate all environments.
+            # by-default, cpustats_settle_time is set to 2 seconds due to above
+            # explanation, anyways user free to modify based on their environment.
+            time.sleep(cpustats_settle_time)
+            cpustats_itr1 = cpu.get_cpustats(vm)
+            if not cpustats_itr1:
+                test.fail("cpu-stats command failed to run")
+            time.sleep(cpustats_settle_time)
+            cpustats_itr2 = cpu.get_cpustats(vm)
+            non_pinned_vcputime_itr1 = 0.0
+            non_pinned_vcputime_itr2 = 0.0
+            non_pinned_emulatortime_itr1 = 0.0
+            non_pinned_emulatortime_itr2 = 0.0
+            for i in cpus_list:
+                if not i == conf_vcpupin_cpu:
+                    non_pinned_vcputime_itr1 += cpustats_itr1[i][0]
+                    non_pinned_vcputime_itr2 += cpustats_itr2[i][0]
+                if not i == conf_emupin_cpu:
+                    non_pinned_emulatortime_itr1 += cpustats_itr1[i][1]
+                    non_pinned_emulatortime_itr2 += cpustats_itr2[i][1]
+            logging.debug("Check cpustats for non-pinned cpus")
+            if non_pinned_vcputime_itr2 > non_pinned_vcputime_itr1:
                 fail = True
                 logging.error("Non zero vcputime even with no vcpu pinned")
-            if cpustats[cpus_list[-1]][1] == 0:
+            if non_pinned_emulatortime_itr2 > non_pinned_emulatortime_itr1:
+                fail = True
+                logging.error("Non zero emulatortime even with emulator unpinned")
+
+            logging.debug("Check cpustats for emulatorpinned cpu")
+            if cpustats_itr2[conf_emupin_cpu][1] == 0:
                 fail = True
                 logging.error("emulatortime should be positive as it is pinned")
 
             logging.debug("Check cpustats for vcpupinned cpu")
-            if cpustats[cpus_list[0]][0] == 0:
+            if cpustats_itr2[conf_vcpupin_cpu][0] == 0:
                 fail = True
                 logging.error("vcputime should be positive as vcpu it is pinned")
-            if cpustats[cpus_list[0]][1] > 0:
-                fail = True
-                logging.error("Non zero emulatortime even with emulator unpinned")
 
-            logging.debug("Check cpustats for non-pinned cpus")
-            for index in cpus_list[1:-1]:
-                if cpustats[index][2] > 0:
-                    fail = True
-                    logging.error("Non zero cputime even with no vcpu,emualtor pinned")
+        vm.create_serial_console()
+        cpucount = vm.get_cpu_count()
+        if cpucount != current_vcpu:
+            test.fail("Incorrect initial guest vcpu\nExpected:%s Actual:%s" %
+                      (cpucount, current_vcpu))
 
         if condition:
             condn_result = set_condition(vm_name, condition)
@@ -229,6 +252,7 @@ def run(test, params, env):
                     hostcpu = random.choice(cpus_list[:-1])
                 if pintype == "sequential":
                     hostcpu = cpus_list[vcpu % len(cpus_list[:-1])]
+                cpustats_before_pin = cpu.get_cpustats(vm, hostcpu)
                 result = virsh.vcpupin(vm_name, vcpu, hostcpu,
                                        ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
@@ -240,7 +264,7 @@ def run(test, params, env):
                     if cpustats[hostcpu][0] == 0:
                         fail = True
                         logging.error("vcputime should be positive as vcpu is pinned")
-                    if cpustats[hostcpu][1] > 0:
+                    if cpustats[hostcpu][1] > cpustats_before_pin[hostcpu][1]:
                         fail = True
                         logging.error("Non zero emulatortime even with emulator unpinned")
         if condition:
