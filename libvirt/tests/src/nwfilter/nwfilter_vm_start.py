@@ -13,6 +13,8 @@ from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices import interface
 from virttest.compat_52lts import decode_to_text as to_text
 
+from virttest import libvirt_version
+
 
 def run(test, params, env):
     """
@@ -128,7 +130,8 @@ def run(test, params, env):
             process.run(cmd, shell=True)
             ret = utils_misc.wait_for(lambda: not libvirtd.is_running(),
                                       timeout=30)
-            if not ret:
+            # After libvirt 5.6.0, libvirtd is using systemd socket activation by default
+            if not ret and not libvirt_version.version_compare(5, 6, 0):
                 test.fail("Failed to kill libvirtd. %s" % bug_url)
 
     finally:
