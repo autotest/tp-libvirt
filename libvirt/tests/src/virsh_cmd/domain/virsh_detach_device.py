@@ -10,6 +10,7 @@ from virttest import virt_vm
 from virttest import virsh
 from virttest import remote
 from virttest import data_dir
+from virttest import utils_misc
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 
@@ -254,7 +255,9 @@ def run(test, params, env):
         else:
             status = virsh.detach_device(vm_ref, device_xml, readonly=readonly, flagstr=dt_options,
                                          debug=True).exit_status
-
+        # If status_error is False, then wait for seconds to let detach operation accomplish complete.
+        if not status_error:
+            utils_misc.wait_for(lambda: not libvirt.device_exists(vm, device_target), timeout=40)
         time.sleep(2)
         # Resume guest after command. On newer libvirt this is fixed as it has
         # been a bug. The change in xml file is done after the guest is
