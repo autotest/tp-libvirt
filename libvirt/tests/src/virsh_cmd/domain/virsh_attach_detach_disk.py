@@ -31,6 +31,18 @@ def run(test, params, env):
     3.Recover test environment.
     4.Confirm the test result.
     """
+    def check_info_in_audit_log_file(test_cmd, device_source):
+        """
+        Check if information can be found in audit.log.
+
+        :params test_cmd: test command
+        :params device_source: device source
+        """
+        grep_audit = ('grep "%s" /var/log/audit/audit.log'
+                      % test_cmd.split("-")[0])
+        cmd = (grep_audit + ' | ' + 'grep "%s" | tail -n1 | grep "res=success"'
+               % device_source)
+        return process.run(cmd, ignore_status=True, shell=True).exit_status == 0
 
     def check_vm_partition(vm, device, os_type, target_name, old_parts):
         """
@@ -374,11 +386,8 @@ def run(test, params, env):
     # Check audit log
     check_audit_after_cmd = True
     if test_audit:
-        grep_audit = ('grep "%s" /var/log/audit/audit.log'
-                      % test_cmd.split("-")[0])
-        cmd = (grep_audit + ' | ' + 'grep "%s" | tail -n1 | grep "res=success"'
-               % device_source)
-        if process.run(cmd, shell=True).exit_status:
+        result = utils_misc.wait_for(lambda: check_info_in_audit_log_file(test_cmd, device_source), timeout=20)
+        if not result:
             logging.error("Audit check failed")
             check_audit_after_cmd = False
 
