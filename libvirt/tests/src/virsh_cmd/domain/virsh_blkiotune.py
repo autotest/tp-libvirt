@@ -8,10 +8,6 @@ from virttest import libvirt_xml, utils_libvirtd, virsh
 from virttest.staging import utils_cgroup
 from virttest.utils_misc import get_dev_major_minor
 
-# By default path to first I/O scheduler is this. The value is
-# platform dependent and is updated through update_schedulerfd(arch).
-schedulerfd = "/sys/block/sda/queue/scheduler"
-
 
 def check_blkiotune(test, params):
     """
@@ -132,6 +128,7 @@ def get_blkio_params_from_cgroup(test, params):
                                   qemu_path)
 
     bfq_scheduler = False
+    schedulerfd = params.get("schedulerfd")
     with open(schedulerfd, 'r') as iosche:
         if 'bfq' in iosche.readline():
             bfq_scheduler = True
@@ -237,17 +234,6 @@ def set_blkio_parameter(test, params, cgstop):
                           " value from cgroup blkio controller")
 
 
-def update_schedulerfd(params):
-    """
-    Updates the path to I/O scheduler
-    :param params: the test parameters
-    """
-    arch = params.get("vm_arch_name", "x86_64")
-    global schedulerfd
-    if arch == "s390x":
-        schedulerfd = "/sys/block/dasda/queue/scheduler"
-
-
 def prepare_scheduler(params, test, vm):
     """
     1. Save old scheduler for test tear down
@@ -258,11 +244,10 @@ def prepare_scheduler(params, test, vm):
     :param vm: test vm instance
     :return: dictionary of test parameters enriched with scheduler dynamic parameters
     """
-    update_schedulerfd(params)
-
     test_dict = dict(params)
     test_dict['vm'] = vm
 
+    schedulerfd = params.get("schedulerfd")
     cmd = "cat " + schedulerfd
     iosche = process.run(cmd, shell=True).stdout_text
     logging.debug("iosche value is:%s", iosche)
@@ -303,6 +288,7 @@ def run(test, params, env):
     status_error = params.get("status_error", "no")
     change_parameters = params.get("change_parameters", "no")
     original_vm_xml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    schedulerfd = params.get("schedulerfd")
 
     # Make sure vm is down if start not requested
     if start_vm == "no" and vm and vm.is_alive():
