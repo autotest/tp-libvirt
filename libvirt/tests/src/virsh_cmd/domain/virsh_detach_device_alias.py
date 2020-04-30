@@ -83,7 +83,7 @@ def run(test, params, env):
                       "controller_model": contr_model,
                       "controller_index": contr_index,
                       "contr_alias": device_alias}
-        device_xml = libvirt.create_controller_xml(contr_dict)
+        device_xml = libvirt.create_controller_xml(contr_dict).xml
         detach_check_xml = detach_check_xml % contr_index
 
     if redir_type:

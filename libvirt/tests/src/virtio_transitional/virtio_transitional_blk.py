@@ -185,10 +185,10 @@ def run(test, params, env):
             slot = get_free_slot(pci_bridge_index, v_xml)
             addr = '{"bus": %s, "slot": %s}' % (pci_bridge_index, slot)
             contr_dict.update({'controller_addr': addr})
-        xml = libvirt.create_controller_xml(contr_dict=contr_dict)
-        attach(xml, params['controller_model'])
-        xml = libvirt.create_controller_xml(contr_dict=contr_dict)
-        detach(xml, params['controller_model'])
+        cntl_add = libvirt.create_controller_xml(contr_dict=contr_dict)
+        attach(cntl_add.xml, params['controller_model'])
+        cntl_add = libvirt.create_controller_xml(contr_dict=contr_dict)
+        detach(cntl_add.xml, params['controller_model'])
 
     def snapshot():  # pylint: disable=W0611
         """
@@ -244,8 +244,8 @@ def run(test, params, env):
         else:
             contr_dict = {'controller_type': 'pci',
                           'controller_model': 'pcie-to-pci-bridge'}
-            pci_bridge = libvirt.create_controller_xml(
-                contr_dict, "add_controller", vm_name)
+            pci_bridge = libvirt.create_controller_xml(contr_dict)
+            libvirt.add_controller(vm_name, pci_bridge)
         pci_bridge_index = '%0#4x' % int(pci_bridge.get("index"))
     try:
         if (params["os_variant"] == 'rhel6' or
