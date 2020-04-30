@@ -1,5 +1,6 @@
 import re
 import logging
+import socket
 
 from avocado.utils import process
 
@@ -114,6 +115,22 @@ def run(test, params, env):
                                           timeout=30)
                 if not ret:
                     test.fail("Rum command '%s' failed" % check_cmd)
+                # This change anchors nwfilter_vm_start.possitive_test.new_filter.variable_notation case
+                # The matched destination could be ip address or hostname
+                if "iptables -L" in check_cmd and expect_match:
+                    # ip address that need to be replaced
+                    replace_param = params.get("parameter_value_2")
+                    #Get hostname by ip address.
+                    hostname_info = None
+                    try:
+                        hostname_info = socket.gethostbyaddr(replace_param)
+                    except socket.error as e:
+                        logging.info("Failed to get hostname from ip address with error: %s", str(e))
+                    if hostname_info:
+                        # String is used to replace ip address
+                        replace_with = "%s|%s" % (replace_param, hostname_info[0])
+                        expect_match = r"%s" % expect_match.replace(replace_param, replace_with)
+                        logging.debug("final iptables match string:%s", expect_match)
                 out = to_text(process.system_output(check_cmd, ignore_status=False, shell=True))
                 if expect_match and not re.search(expect_match, out):
                     test.fail("'%s' not found in output: %s"
