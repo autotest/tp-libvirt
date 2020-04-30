@@ -1,7 +1,9 @@
 import os
 import shutil
+import re
 import logging
 
+from avocado.utils import process
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_misc
@@ -11,35 +13,53 @@ from virttest.utils_test import libvirt
 from provider import libvirt_version
 
 
-def create_disk(test, vm_name, orig_iso, disk_type, target_dev, mode=""):
+def create_disk(params, test, vm_name, orig_iso, disk_type, target_dev, disk_format="", mode=""):
     """
+    Prepare image for attach and attach it to domain
+
+    :param parameters from cfg file
     :param vm_name : vm_name
     :param source_iso : disk's source backing file
     :param disk_type: disk's device type: cdrom or floppy
     :param target_dev: disk's target device name
+    :param disk_format: disk's target format
     :param mode: readonly or shareable
     """
+    slice_test = "yes" == params.get("disk_slice", "yes")
     try:
-        with open(orig_iso, 'wb') as _file:
-            _file.seek((1024 * 1024) - 1)
-            _file.write(str(0).encode())
+        # create slice cdrom image for slice test
+        if slice_test:
+            libvirt.create_local_disk("file", orig_iso, size="10", disk_format=disk_format, extra="-o preallocation=full")
+            params["input_source_file"] = orig_iso
+            params["disk_slice"] = {"slice": "yes"}
+            params["target_dev"] = "sdc"
+            disk_xml = libvirt.create_disk_xml(params)
+        else:
+            with open(orig_iso, 'wb') as _file:
+                _file.seek((1024 * 1024) - 1)
+                _file.write(str(0).encode())
     except IOError:
         test.fail("Create orig_iso failed!")
     options = "--type %s --sourcetype=file --config" % disk_type
-    if mode:
-        options += " --mode %s" % mode
     try:
-        virsh.attach_disk(vm_name, orig_iso, target_dev, options)
+        if mode:
+            options += " --mode %s" % mode
+        if slice_test:
+            # Use attach_device to add cdrom file with slice to guest
+            virsh.attach_device(vm_name, disk_xml, flagstr="--config")
+        else:
+            virsh.attach_disk(vm_name, orig_iso, target_dev, options)
     except Exception:
         os.remove(orig_iso)
         test.fail("Failed to attach")
 
 
-def create_attach_xml(test, update_xmlfile, source_iso, disk_type, target_bus,
+def create_attach_xml(params, test, update_xmlfile, source_iso, disk_type, target_bus,
                       target_dev, disk_mode="", disk_alias=None):
     """
     Create a xml file to update a device.
 
+    :param parameters from cfg file
     :param update_xmlfile : path/file to save device XML
     :param source_iso : disk's source backing file.
     :param disk_type: disk's device type: cdrom or floppy
@@ -48,18 +68,30 @@ def create_attach_xml(test, update_xmlfile, source_iso, disk_type, target_bus,
     :param disk_mode: readonly or shareable
     :param disk_alias: disk's alias name
     """
+    slice_test = "yes" == params.get("disk_slice", "no")
     try:
-        with open(source_iso, 'wb') as _file:
-            _file.seek((1024 * 1024) - 1)
-            _file.write(str(0).encode())
+        if slice_test:
+            libvirt.create_local_disk("file", source_iso, size="1", disk_format="qcow2", extra="-o preallocation=full")
+        else:
+            with open(source_iso, 'wb') as _file:
+                _file.seek((1024 * 1024) - 1)
+                _file.write(str(0).encode())
     except IOError:
         test.fail("Create source_iso failed!")
     disk_class = VMXML.get_device_class('disk')
     disk = disk_class(type_name='file')
-    # Static definition for comparison in check_attach()
+    # Static definition for comparison in check_attach()`
     disk.device = disk_type
     disk.driver = dict(name='qemu')
-    disk.source = disk.new_disk_source(attrs={'file': source_iso})
+    disk_source = disk.new_disk_source(**{"attrs": {'file': source_iso}})
+    # Add slice field involved in source
+    if slice_test:
+        slice_size_param = process.run("du -b %s" % source_iso).stdout_text.strip()
+        slice_size = re.findall(r'[0-9]+', slice_size_param)
+        slice_size = ''.join(slice_size)
+        disk_source.slices = disk.new_slices(
+                        **{"slice_type": "storage", "slice_offset": "0", "slice_size": slice_size})
+    disk.source = disk_source
     disk.target = dict(bus=target_bus, dev=target_dev)
     if disk_mode == "readonly":
         disk.readonly = True
@@ -166,17 +198,23 @@ def run(test, params, env):
     if vm.is_alive():
         vm.destroy(gracefully=False)
     # Vm should be in 'shut off' status
+    slice_test = params.get("disk_slice", "False")
+    disk_format = params.get("driver_type")
     utils_misc.wait_for(lambda: vm.state() == "shut off", 30)
-    create_disk(test, vm_name, orig_iso, disk_type, target_dev, disk_mode)
+    create_disk(params, test, vm_name, orig_iso, disk_type, target_dev, disk_format, disk_mode)
+    inactive_vmxml = VMXML.new_from_dumpxml(vm_name,
+                                            options="--inactive")
     if start_vm:
         vm.start()
         vm.wait_for_login().close()
         domid = vm.get_id()
     else:
         domid = "domid invalid; domain is shut-off"
-
-    disk_alias = libvirt.get_disk_alias(vm, orig_iso)
-    create_attach_xml(test, update_xmlfile, test_iso, disk_type, target_bus,
+    if slice_test:
+        disk_alias = ""
+    else:
+        disk_alias = libvirt.get_disk_alias(vm, orig_iso)
+    create_attach_xml(params, test, update_xmlfile, test_iso, disk_type, target_bus,
                       target_dev, disk_mode, disk_alias)
 
     # Get remaining parameters for configuration.
@@ -202,7 +240,7 @@ def run(test, params, env):
             if diff_iso:
                 # Swap filename of device backing file in update.xml
                 os.remove(update_xmlfile)
-                create_attach_xml(test, update_xmlfile, test_diff_iso, disk_type,
+                create_attach_xml(params, test, update_xmlfile, test_diff_iso, disk_type,
                                   target_bus, target_dev, disk_mode, disk_alias)
         elif vm_ref == "uuid":
             vm_ref = vmxml.uuid
