@@ -97,8 +97,8 @@ def run(test, params, env):
         else:
             contr_dict = {'controller_type': 'pci',
                           'controller_model': 'pcie-to-pci-bridge'}
-            pci_bridge = libvirt.create_controller_xml(
-                contr_dict, "add_controller", vm_name)
+            pci_bridge = libvirt.create_controller_xml(contr_dict)
+            libvirt.add_controller(vm_name, pci_bridge)
         pci_bridge_index = '%0#4x' % int(pci_bridge.get("index"))
 
     try:
@@ -126,8 +126,8 @@ def run(test, params, env):
             slot = get_free_pci_slot()
             addr = '{"bus": %s, "slot": %s}' % (pci_bridge_index, slot)
             contr_dict.update({'controller_addr': addr})
-        libvirt.create_controller_xml(
-            contr_dict, "add_controller", vm_name)
+        cntl_add = libvirt.create_controller_xml(contr_dict)
+        libvirt.add_controller(vm_name, cntl_add)
         # vmxml will not be updated since set_vm_disk
         # sync with another dumped xml inside the function
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
