@@ -874,6 +874,25 @@ def run(test, params, env):
             if int(result.exit_status) != 0:
                 test.fail(result.stderr_text.strip())
 
+    def time_diff_between_vm_host(localvm=True):
+        """
+        check the time difference between vm and source host
+        :param localvm: True if vm is not migrated yet
+        """
+        if localvm:
+            vm_time = virsh.domtime(vm_name, debug=True).stdout
+            vm_time_value = int(vm_time.strip().split(":")[-1])
+        else:
+            remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
+            vm_time = remote_virsh_session.domtime(vm_name, debug=True).stdout
+            vm_time_value = int(vm_time.strip().split(":")[-1])
+            remote_virsh_session.close_session()
+
+        host_time_value = int(time.time())
+        time_diff = host_time_value - vm_time_value
+        logging.debug("Time difference between source host and vm is %s", time_diff)
+        return time_diff
+
     check_parameters(test, params)
 
     # Params for NFS shared storage
@@ -923,6 +942,7 @@ def run(test, params, env):
     stress_in_vm = "yes" == params.get("stress_in_vm", "no")
     low_speed = params.get("low_speed", None)
     migr_vm_back = "yes" == params.get("migr_vm_back", "no")
+    timer_migration = "yes" == params.get("timer_migration")
 
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
@@ -1215,6 +1235,9 @@ def run(test, params, env):
                                              args=())
             stress_thread.start()
 
+        if timer_migration:
+            source_vm_host_time_diff = time_diff_between_vm_host(localvm=True)
+
         if extra.count("timeout-postcopy"):
             func_name = check_timeout_postcopy
         if params.get("actions_during_migration"):
@@ -1444,6 +1467,11 @@ def run(test, params, env):
                 test.fail("Failed to run '%s' on remote: %s"
                           % (cmd, cmd_result))
 
+        if timer_migration:
+            target_vm_host_time_diff = time_diff_between_vm_host(localvm=False)
+            if abs(target_vm_host_time_diff - source_vm_host_time_diff) > 1:
+                test.fail("The difference of target_vm_host_time_diff and source_vm_host_time_diff"
+                          "should not more than 1 second")
     except exceptions.TestFail as details:
         is_TestFail = True
         test_exception = details
