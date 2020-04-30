@@ -5,7 +5,6 @@ import re
 from avocado.utils import download
 
 from virttest import libvirt_vm
-from virttest import utils_test
 from virttest import defaults
 from virttest import virsh
 from virttest import remote
@@ -17,86 +16,12 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
 
-def check_parameters(test, params):
-    """
-    Make sure all of parameters are assigned a valid value
-
-    :param test: the test object
-    :param params: the parameters to be checked
-
-    :raise: test.cancel if invalid value exists
-    """
-    migrate_dest_host = params.get("migrate_dest_host")
-    migrate_dest_pwd = params.get("migrate_dest_pwd")
-    migrate_source_host = params.get("migrate_source_host")
-    migrate_source_pwd = params.get("migrate_source_pwd")
-
-    args_list = [migrate_dest_host,
-                 migrate_dest_pwd, migrate_source_host,
-                 migrate_source_pwd]
-
-    for arg in args_list:
-        if arg and arg.count("EXAMPLE"):
-            test.cancel("Please assign a value for %s!" % arg)
-
-
 def run(test, params, env):
     """
     Test virsh migrate command.
     """
-
-    def check_vm_network_accessed(session=None):
-        """
-        The operations to the VM need to be done before or after
-        migration happens
-
-        :param session: The session object to the host
-
-        :raise: test.error when ping fails
-        """
-        # Confirm local/remote VM can be accessed through network.
-        logging.info("Check VM network connectivity")
-        s_ping, _ = utils_test.ping(vm.get_address(),
-                                    count=10,
-                                    timeout=20,
-                                    output_func=logging.debug,
-                                    session=session)
-        if s_ping != 0:
-            if session:
-                session.close()
-            test.fail("%s did not respond after %d sec." % (vm.name, 20))
-
-    def check_migration_res(result):
-        """
-        Check if the migration result is as expected
-
-        :param result: the output of migration
-        :raise: test.fail if test is failed
-        """
-        if not result:
-            test.error("No migration result is returned.")
-
-        logging.info("Migration out: %s", result.stdout_text.strip())
-        logging.info("Migration error: %s", result.stderr_text.strip())
-
-        if status_error:  # Migration should fail
-            if err_msg:   # Special error messages are expected
-                if not re.search(err_msg, result.stderr_text.strip()):
-                    test.fail("Can not find the expected patterns '%s' in "
-                              "output '%s'" % (err_msg,
-                                               result.stderr_text.strip()))
-                else:
-                    logging.debug("It is the expected error message")
-            else:
-                if int(result.exit_status) != 0:
-                    logging.debug("Migration failure is expected result")
-                else:
-                    test.fail("Migration success is unexpected result")
-        else:
-            if int(result.exit_status) != 0:
-                test.fail(result.stderr_text.strip())
-
-    check_parameters(test, params)
+    migration_test = migration.MigrationTest()
+    migration_test.check_parameters(params)
 
     # Params for NFS shared storage
     shared_storage = params.get("migrate_shared_storage", "")
@@ -163,8 +88,6 @@ def run(test, params, env):
     if not libvirt_version.version_compare(5, 0, 0):
         test.cancel("This libvirt version doesn't support "
                     "virtio-transitional model.")
-    # Make sure all of parameters are assigned a valid value
-    check_parameters(test, params)
 
     # params for migration connection
     params["virsh_migrate_desturi"] = libvirt_vm.complete_uri(
@@ -182,7 +105,6 @@ def run(test, params, env):
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     orig_config_xml = new_xml.copy()
 
-    migration_test = migration.MigrationTest()
     try:
         # Create a remote runner for later use
         runner_on_target = remote.RemoteRunner(host=server_ip,
@@ -225,7 +147,7 @@ def run(test, params, env):
 
         # Check local guest network connection before migration
         vm_session = vm.wait_for_login(restart_network=True)
-        check_vm_network_accessed()
+        migration_test.ping_vm(vm, params)
 
         # Execute migration process
         vms = [vm]
@@ -235,14 +157,10 @@ def run(test, params, env):
                                     extra_opts=extra)
         mig_result = migration_test.ret
 
-        check_migration_res(mig_result)
+        migration_test.check_result(mig_result, params)
 
         if int(mig_result.exit_status) == 0:
-            server_session = remote.wait_for_login('ssh', server_ip, '22',
-                                                   server_user, server_pwd,
-                                                   r"[\#\$]\s*$")
-            check_vm_network_accessed(server_session)
-            server_session.close()
+            migration_test.ping_vm(vm, params, dest_uri)
 
         if xml_check_after_mig:
             if not remote_virsh_session:
@@ -292,8 +210,9 @@ def run(test, params, env):
     finally:
         logging.debug("Recover test environment")
         # Clean VM on destination
-        vm.connect_uri = ''
-        migration_test.cleanup_dest_vm(vm, src_uri, dest_uri)
+        migration_test.cleanup_dest_vm(vm, vm.connect_uri, dest_uri)
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
 
         logging.info("Recovery VM XML configration")
         orig_config_xml.sync()
