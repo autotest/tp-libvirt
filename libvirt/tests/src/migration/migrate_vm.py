@@ -1412,7 +1412,7 @@ def run(test, params, env):
                           'ssh_remote_auth': True}
     migrate_setup = migration.MigrationTest()
     dest_uri = libvirt_vm.complete_uri(server_ip)
-    migrate_setup.cleanup_dest_vm(vm, src_uri, dest_uri)
+    migrate_setup.cleanup_dest_vm(vm, vm.connect_uri, dest_uri)
     try:
         if iscsi_setup:
             fileio_name = "emulated-iscsi"
