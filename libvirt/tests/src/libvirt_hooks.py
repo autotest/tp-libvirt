@@ -10,6 +10,7 @@ from virttest import virsh
 from virttest import utils_misc
 from virttest import data_dir
 from virttest import utils_libvirtd
+from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.controller import Controller
@@ -218,8 +219,7 @@ def run(test, params, env):
 
         if output.exit_status:
             logging.debug("output.stderr1: %s", output.stderr.lower())
-            if (exit1 == "yes" and
-               "hook script execution failed" in output.stderr.lower()):
+            if (exit1 == "yes" and "hook script execution failed" in output.stderr.lower()):
                 return True
             else:
                 test.fail("Create %s domain failed:%s" %
@@ -401,7 +401,10 @@ def run(test, params, env):
             libvirt.check_exit_status(ret)
             if utils_misc.wait_for(is_attached_interface, timeout=20) is not True:
                 test.fail("Attaching interface failed.")
-            hook_str = hook_file + " " + net_name + " plugged begin -"
+            if libvirt_version.version_compare(6, 0, 0):
+                hook_str = hook_file + " " + net_name + " port-created begin -"
+            else:
+                hook_str = hook_file + " " + net_name + " plugged begin -"
             assert check_hooks(hook_str)
 
             def is_detached_interface():
@@ -416,14 +419,20 @@ def run(test, params, env):
                 libvirt.check_exit_status(ret)
             if utils_misc.wait_for(is_detached_interface, timeout=50) is not True:
                 test.fail("Detaching interface failed.")
-            hook_str = hook_file + " " + net_name + " unplugged begin -"
+            if libvirt_version.version_compare(6, 0, 0):
+                hook_str = hook_file + " " + net_name + " port-deleted begin -"
+            else:
+                hook_str = hook_file + " " + net_name + " unplugged begin -"
             assert check_hooks(hook_str)
             # remove the log file
             if os.path.exists(hook_log):
                 os.remove(hook_log)
             # destroy the domain
             vm.destroy()
-            hook_str = hook_file + " " + net_name + " unplugged begin -"
+            if libvirt_version.version_compare(6, 0, 0):
+                hook_str = hook_file + " " + net_name + " port-deleted begin -"
+            else:
+                hook_str = hook_file + " " + net_name + " unplugged begin -"
             assert check_hooks(hook_str)
         except AssertionError:
             utils_misc.log_last_traceback()
