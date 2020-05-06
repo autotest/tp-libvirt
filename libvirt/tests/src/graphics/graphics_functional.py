@@ -248,7 +248,6 @@ def check_addr_port(all_ips, expected_ips, ports, test):
             if int(port) == 0:
                 continue
             logging.debug("Checking %s %s:%s", ip.iface, ip, port)
-            ip.addr = ipaddress.ip_address(ip.addr).compressed
             if not ip.listening_on(port) and ip in expected_ips:
                 test.fail(
                     'Expect listening on %s:%s but not.' % (ip, port))
@@ -1464,6 +1463,9 @@ def run(test, params, env):
         else:
             vm_xml.sync()
         all_ips = utils_net.get_all_ips()
+        if spice_listen_type == "network" or vnc_listen_type == "network":
+            for ip in all_ips:
+                ip.addr = ipaddress.ip_address(ip.addr).compressed
         try:
             vm.start()
         except virt_vm.VMStartError as detail:
