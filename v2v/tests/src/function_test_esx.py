@@ -269,6 +269,26 @@ def run(test, params, env):
         if not re.search(status_ptn, output):
             log_fail('qemu-guest-agent service exception')
 
+    def check_ubuntools(vmcheck):
+        """
+        Check open-vm-tools, ubuntu-server in VM
+
+        :param vmcheck: VMCheck object for vm checking
+        """
+        logging.info('Check if open-vm-tools service stopped')
+        status = utils_misc.get_guest_service_status(
+            vmcheck.session, 'open-vm-tools')
+        logging.info('Service open-vm-tools status: %s', status)
+        if status != 'inactive':
+            log_fail('Service open-vm-tools is not stopped')
+        else:
+            logging.info('Check if the ubuntu-server exist')
+            content = vmcheck.session.cmd('dpkg -s ubuntu-server')
+            if 'install ok installed' in content:
+                logging.info('ubuntu-server has not been removed.')
+            else:
+                log_fail('ubuntu-server has been removed')
+
     def check_result(result, status_error):
         """
         Check virt-v2v command result
@@ -317,6 +337,8 @@ def run(test, params, env):
                 check_file_architecture(vmchecker.checker)
             if checkpoint == 'ogac':
                 check_ogac(vmchecker.checker)
+            if checkpoint == 'ubuntu_tools':
+                check_ubuntools(vmchecker.checker)
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
         log_check = utils_v2v.check_log(params, output)
