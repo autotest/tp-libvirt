@@ -26,6 +26,7 @@ cleanup_iscsi = False
 cleanup_gluster = False
 cleanup_iso_file = False
 cleanup_image_file = False
+cleanup_released_image_file = False
 
 
 def get_stripped_output(cont, custom_codes=None):
@@ -210,6 +211,8 @@ def setup_test_env(params, test):
     boot_iso_file = os.path.join(data_dir.get_tmp_dir(), "boot.iso")
     non_release_os_url = params.get("non_release_os_url", "")
     download_file_path = os.path.join(data_dir.get_tmp_dir(), "non_released_os.qcow2")
+    release_os_url = params.get("release_os_url", "")
+    download_released_file_path = os.path.join(data_dir.get_tmp_dir(), "released_os.qcow2")
     mon_host = params.get("mon_host")
     disk_src_name = params.get("disk_source_name")
     disk_src_host = params.get("disk_source_host")
@@ -220,6 +223,7 @@ def setup_test_env(params, test):
 
     global cleanup_iso_file
     global cleanup_image_file
+    global cleanup_released_image_file
 
     os_version = params.get("os_version")
     if not os_version.count("EXAMPLE"):
@@ -278,6 +282,10 @@ def setup_test_env(params, test):
         if download_file(non_release_os_url, download_file_path, test):
             cleanup_image_file = True
 
+    if release_os_url:
+        if download_file(release_os_url, download_released_file_path, test):
+            cleanup_released_image_file = True
+
 
 def apply_boot_options(vmxml, params, test):
     """
@@ -307,7 +315,7 @@ def apply_boot_options(vmxml, params, test):
     dict_os_attrs = {}
     # Set attributes of loader of VMOSXML
     if with_loader:
-        logging.debug("Set os loader")
+        logging.debug("Set os loader to test non-released os version without secure boot enabling")
         dict_os_attrs.update({"loader": loader})
         if with_readonly:
             dict_os_attrs.update({"loader_readonly": readonly})
@@ -316,18 +324,10 @@ def apply_boot_options(vmxml, params, test):
     else:
         if not libvirt_version.version_compare(5, 3, 0):
             test.cancel("Firmware attribute is not supported in"
-                        "current libvirt version")
+                        " current libvirt version")
         else:
-            logging.debug("Set os firmware:")
+            logging.debug("Set os firmware to test released os version with secure boot enabling")
             dict_os_attrs.update({"os_firmware": os_firmware})
-            # Need to prepare a zero-length file named "40-edk2-ovmf-sb.json" to hide it
-            # when test SB disabled guest (BZ 1564270)
-            file_path = "/etc/qemu/firmware/"
-            hidden_file = os.path.join(file_path, "40-edk2-ovmf-sb.json")
-            if not os.path.exists(file_path):
-                os.makedirs(file_path)
-            cmd = 'touch %s' % hidden_file
-            process.run(cmd, shell=True, ignore_status=True)
             # Include secure='yes' in loader and support no smm element in guest xml
             if with_secure:
                 dict_os_attrs.update({"secure": "yes"})
@@ -496,6 +496,8 @@ def set_domain_disk(vmxml, blk_source, params, test):
     boot_iso_file = os.path.join(data_dir.get_tmp_dir(), "boot.iso")
     non_release_os_url = params.get("non_release_os_url", "")
     download_file_path = os.path.join(data_dir.get_tmp_dir(), "non_released_os.qcow2")
+    release_os_url = params.get("release_os_url", "")
+    download_released_file_path = os.path.join(data_dir.get_tmp_dir(), "released_os.qcow2")
     brick_path = os.path.join(test.virtdir, "gluster-pool")
     usb_index = params.get("usb_index", "0")
     bus_controller = params.get("bus_controller", "")
@@ -567,6 +569,8 @@ def set_domain_disk(vmxml, blk_source, params, test):
     elif boot_dev == "cdrom":
         disk_params.update({'device_type': 'cdrom',
                             'source_file': boot_iso_file})
+    elif release_os_url:
+        disk_params.update({'source_file': download_released_file_path})
     else:
         disk_params.update({'source_file': blk_source})
 
@@ -620,9 +624,10 @@ def run(test, params, env):
     check_point = params.get("checkpoint", "")
     status_error = "yes" == params.get("status_error", "no")
     boot_iso_file = os.path.join(data_dir.get_tmp_dir(), "boot.iso")
-    secure_boot_mode = (params.get("secure_boot_mode", "no") == "yes")
     non_release_os_url = params.get("non_release_os_url", "")
     download_file_path = os.path.join(data_dir.get_tmp_dir(), "non_released_os.qcow2")
+    release_os_url = params.get("release_os_url", "")
+    download_released_file_path = os.path.join(data_dir.get_tmp_dir(), "released_os.qcow2")
     uefi_iso = params.get("uefi_iso", "")
     custom_codes = params.get("uefi_custom_codes", "")
     uefi_target_dev = params.get("uefi_target_dev", "")
@@ -646,8 +651,6 @@ def run(test, params, env):
 
     # Prepare a blank params to confirm if delete the configure at the end of the test
     ceph_cfg = ''
-    file_path = "/etc/qemu/firmware/"
-    hidden_file = os.path.join(file_path, "40-edk2-ovmf-sb.json")
     try:
         # Create config file if it doesn't exist
         ceph_cfg = ceph.create_config_file(params.get("mon_host"))
@@ -656,7 +659,7 @@ def run(test, params, env):
         blk_source = vm.get_first_disk_devices()['source']
         set_domain_disk(vmxml, blk_source, params, test)
         vmxml.remove_all_boots()
-        if with_boot and not secure_boot_mode:
+        if with_boot:
             boot_kwargs = {"boot_ref": boot_ref,
                            "boot_dev": boot_dev,
                            "boot_order": boot_order,
@@ -664,18 +667,11 @@ def run(test, params, env):
             if "yes" == params.get("two_same_boot_dev", "no"):
                 boot_kwargs.update({"two_same_boot_dev": True})
             set_boot_dev_or_boot_order(vmxml, **boot_kwargs)
-        if secure_boot_mode:
-            secure_boot_kwargs = {"uefi_iso": uefi_iso,
-                                  "uefi_target_dev": uefi_target_dev,
-                                  "uefi_device_bus": uefi_device_bus,
-                                  "uefi_custom_codes": custom_codes}
-            enable_secure_boot(vm, vmxml, test, **secure_boot_kwargs)
-        if not secure_boot_mode:
-            define_error = ("yes" == params.get("define_error", "no"))
-            enable_normal_boot(vmxml, check_points, define_error, test)
-            # Some negative cases failed at virsh.define
-            if define_error:
-                return
+        define_error = ("yes" == params.get("define_error", "no"))
+        enable_normal_boot(vmxml, check_points, define_error, test)
+        # Some negative cases failed at virsh.define
+        if define_error:
+            return
 
         # Start VM and check result
         # For boot from cdrom or non_released_os, just verify key words from serial console output
@@ -685,11 +681,9 @@ def run(test, params, env):
                 vm.start()
                 check_prompt = params.get("check_prompt", "")
                 while True:
-                    match, text = read_until_any_line_matches(
-                            vm.serial_console,
+                    match, text = vm.serial_console.read_until_any_line_matches(
                             [check_prompt],
-                            timeout=30.0, internal_timeout=0.5,
-                            custom_codes=custom_codes)
+                            timeout=30.0, internal_timeout=0.5)
                     logging.debug("matches %s", check_prompt)
                     if match == -1:
                         logging.debug("Got check point as expected")
@@ -719,8 +713,6 @@ def run(test, params, env):
         if ceph_cfg:
             os.remove(ceph_cfg)
         logging.debug("Start to cleanup")
-        if os.path.exists(hidden_file):
-            os.remove(hidden_file)
         if vm.is_alive:
             vm.destroy()
         logging.debug("Restore the VM XML")
@@ -734,3 +726,5 @@ def run(test, params, env):
             process.run("rm -rf %s" % boot_iso_file, shell=True, ignore_status=True)
         if cleanup_image_file:
             process.run("rm -rf %s" % download_file_path, shell=True, ignore_status=True)
+        if cleanup_released_image_file:
+            process.run("rm -rf %s" % download_released_file_path, shell=True, ignore_status=True)
