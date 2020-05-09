@@ -78,7 +78,9 @@ def run(test, params, env):
         utils_libvirtd.libvirtd_start()
 
     if savefile:
+        time.sleep(10) # extra seconds for guest to be ready
         virsh.restore(savefile, debug=True)
+        time.sleep(10) # extra seconds for guest to be ready
 
     # check status_error
     try:
