@@ -53,7 +53,7 @@ def run(test, params, env):
             test.fail("At least VM name and virsh cmd name should be provided "
                       "to prepare the virsh cmd line.")
         if virsh_cmd not in ["blkiotune", "memtune", "schedinfo"]:
-            test.fail("Unsupported virsh cmd '%s' provided.", virsh_cmd)
+            test.fail("Unsupported virsh cmd '%s' provided." % virsh_cmd)
         cmd_params = virsh_cmd_param.strip().split(";")
         cmd_values = virsh_cmd_param_value.strip().split(";")
         if len(cmd_params) == 0 or len(cmd_params) != len(cmd_values):
@@ -177,7 +177,7 @@ def run(test, params, env):
             elif 'bfq' in iosche:
                 scf.write('bfq')
             else:
-                test.fail("Unknown scheduler in %s", scheduler_file)
+                test.fail("Unknown scheduler in %s" % scheduler_file)
         if not cfq_enabled and "--device-weights" in virsh_cmd_param:
             logging.info("cfq scheduler cannot be enabled in the host, "
                          "so 'blkiotune --device-weights' is not supported. "
@@ -200,7 +200,7 @@ def run(test, params, env):
             if status_error:
                 logging.debug("Expected error happens")
             else:
-                test.fail("Failed to run: %s", virsh_cmd_line)
+                test.fail("Failed to run: %s" % virsh_cmd_line)
         else:
             if "--config" in virsh_cmd_options:
                 try:
