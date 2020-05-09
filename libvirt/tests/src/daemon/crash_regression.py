@@ -249,6 +249,7 @@ def run(test, params, env):
     except path.CmdNotFoundError:
         pass
     libvirtd = LibvirtdSession(gdb=True)
+    process.run("rm -rf /var/run/libvirt/libvirt-*", shell=True, ignore_status=True)
     try:
         libvirtd.start()
 
@@ -275,6 +276,7 @@ def run(test, params, env):
             path.find_command('virtlogd')
             process.run('pkill virtlogd', ignore_status=True)
             process.run('systemctl restart virtlogd.socket', ignore_status=True)
+            process.run('systemctl restart libvirtd.socket', ignore_status=True)
         except path.CmdNotFoundError:
             pass
         libvirtd.exit()
