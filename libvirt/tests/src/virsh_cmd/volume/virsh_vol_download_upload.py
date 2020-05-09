@@ -111,7 +111,7 @@ def create_disk(disk_type, disk_path, disk_format, disk_device_type,
     return custom_disk
 
 
-def write_disk(test, guest_vm, target_name, size=100):
+def write_disk(test, guest_vm, target_name, size=200):
     """
     Write data into disk in VM discard value.
 
