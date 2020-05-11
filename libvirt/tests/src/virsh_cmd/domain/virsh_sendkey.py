@@ -107,7 +107,19 @@ def run(test, params, env):
 
         # clear messages, restart rsyslog, and make sure it's running
         session.cmd("echo '' > %s" % LOG_FILE)
-        session.cmd("service rsyslog restart")
+        # check the result of restart rsyslog
+        status, output = session.cmd_status_output("service rsyslog restart")
+        if status:
+            # if rsyslog.service is empty, need to reinstall rsyslog
+            out = session.cmd_output("file /usr/lib/systemd/system/rsyslog.service")
+            if "empty" in out:
+                utils_package.package_remove("rsyslog", session)
+                utils_package.package_install("rsyslog", session)
+            # if rsyslog.service is masked, need to unmask rsyslog
+            if "Unit rsyslog.service is masked" in output:
+                session.cmd("systemctl unmask rsyslog")
+            session.cmd("echo '' > %s" % LOG_FILE)
+            session.cmd("service rsyslog restart")
         ps_stat = session.cmd_status("ps aux |grep rsyslog")
         if ps_stat != 0:
             test.fail("rsyslog is not running in guest")
