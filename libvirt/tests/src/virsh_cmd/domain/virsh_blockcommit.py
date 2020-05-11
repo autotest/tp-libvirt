@@ -354,13 +354,13 @@ def run(test, params, env):
             vmxml.del_device(disk_xml)
             disk_dict = {'attrs': {'file': snap_top}}
             disk_xml.source = disk_xml.new_disk_source(**disk_dict)
-            bs_source = {'file': blk_source}
-            bs_dict = {"type": params.get("disk_type", "file"),
-                       "format": {'type': params.get("disk_format", "qcow2")}}
-
-            new_bs = disk_xml.new_backingstore(**bs_dict)
-            new_bs["source"] = disk_xml.backingstore.new_source(**bs_source)
-            disk_xml.backingstore = new_bs
+            if libvirt_version.version_compare(6, 0, 0):
+                bs_source = {'file': blk_source}
+                bs_dict = {"type": params.get("disk_type", "file"),
+                           "format": {'type': params.get("disk_format", "qcow2")}}
+                new_bs = disk_xml.new_backingstore(**bs_dict)
+                new_bs["source"] = disk_xml.backingstore.new_source(**bs_source)
+                disk_xml.backingstore = new_bs
             vmxml.add_device(disk_xml)
             vmxml.sync()
             vm.start()
