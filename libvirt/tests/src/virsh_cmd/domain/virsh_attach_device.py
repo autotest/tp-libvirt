@@ -14,6 +14,7 @@ from six import iteritems
 from avocado.utils import astring
 
 from virttest import virt_vm, virsh, remote, utils_misc, data_dir
+from virttest.utils_test import libvirt
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.vm_xml import VMXML
 
@@ -866,14 +867,52 @@ def run(test, params, env):
     6) Handle results
     """
     vm_name = params.get('main_vm')
+    machine_type = params.get("machine_type", "pc")
     backup_vm_xml = vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
 
     dev_obj = params.get("vadu_dev_objs")
+    vadu_vdb = int(params.get("vadu_dev_obj_count_VirtualDiskBasic", "0"))
+    vadu_dom_ref = params.get("vadu_dom_ref", "dom_ref")
+    status_error = "yes" == params.get("status_error", "no")
+    vadu_domain_positional = "yes" == params.get("vadu_domain_positional", "no")
+    vadu_file_positional = "yes" == params.get("vadu_file_positional", "no")
+    vadu_preboot_error = "yes" == params.get("vadu_preboot_function_error", "no")
+
     # Skip chardev hotplug on rhel6 host as it is not supported
     if "Serial" in dev_obj:
         if not libvirt_version.version_compare(1, 1, 0):
             test.cancel("You libvirt version not supported"
                         " attach/detach Serial devices")
+    # Prepare test environment and its parameters
+    test_params = TestParams(params, env, test)
+
+    xml_machine = vmxml.os.machine
+    # Only limited q35 with machine_type set correctly under block type condition
+    if 'q35' in xml_machine and machine_type == 'q35' and "VirtualDiskBasic" in dev_obj:
+        # Only apply change on some cases with feature:
+        # block.multi_virtio_file..normal_test.hot_attach_hot_vm..name_ref.file_positional.domain_positional
+        # those cases often throw No more available PCI slots
+        if vadu_vdb == 16 and not status_error \
+            and not vadu_preboot_error and 'name' in vadu_dom_ref \
+                and vadu_file_positional and vadu_domain_positional:
+
+            previous_state_running = test_params.main_vm.is_alive()
+            if previous_state_running:
+                test_params.main_vm.destroy(gracefully=True)
+            vmxml.remove_all_device_by_type('controller')
+            machine_list = vmxml.os.machine.split("-")
+            vmxml.set_os_attrs(**{"machine": machine_list[0] + "-q35-" + machine_list[2]})
+            q35_pcie_dict0 = {'model': 'pcie-root', 'type': 'pci', 'index': 0}
+            q35_pcie_dict1 = {'model': 'pcie-root-port', 'type': 'pci'}
+            vmxml.add_device(libvirt.create_controller_xml(q35_pcie_dict0))
+            # Add enough controllers to match max times disk attaching requirements
+            for i in list(range(1, 24)):
+                q35_pcie_dict1.update({'index': "%d" % i})
+                vmxml.add_device(libvirt.create_controller_xml(q35_pcie_dict1))
+            vmxml.sync()
+            logging.debug("Guest XMl with adding many controllers: %s", test_params.main_vm.get_xml())
+            if previous_state_running:
+                test_params.main_vm.start()
 
     remove_non_disks(vm_name, vmxml)
 
@@ -881,8 +920,7 @@ def run(test, params, env):
         remove_chardevs(vm_name, vmxml)
 
     logging.info("Preparing initial VM state")
-    # Prepare test environment and its parameters
-    test_params = TestParams(params, env, test)
+
     if test_params.start_vm:
         # Make sure VM is working
         test_params.main_vm.verify_alive()
