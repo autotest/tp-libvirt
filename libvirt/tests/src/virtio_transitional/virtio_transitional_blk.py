@@ -2,12 +2,12 @@ import os
 import re
 import logging
 
+from avocado.utils import download
 from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_misc
-from virttest import utils_package
 from virttest import libvirt_version
 
 from virttest.libvirt_xml import vm_xml
@@ -220,19 +220,10 @@ def run(test, params, env):
                     "virtio-transitional model.")
 
     if guest_src_url:
-
-        def _download():
-            download_cmd = ("wget %s -O %s" % (guest_src_url, target_path))
-            if process.system(download_cmd, shell=True):
-                test.error("Failed to download file")
-
         image_name = params['image_path']
         target_path = utils_misc.get_path(data_dir.get_data_dir(), image_name)
         if not os.path.exists(target_path):
-            if utils_package.package_install("wget"):
-                utils_misc.wait_for(_download, timeout=360)
-            else:
-                test.error("Fail to install wget")
+            download.get_file(guest_src_url, target_path)
         params["blk_source_name"] = target_path
 
     if add_pcie_to_pci_bridge:
