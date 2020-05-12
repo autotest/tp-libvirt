@@ -627,6 +627,13 @@ def run(test, params, env):
                 logging.info('Selinux status after v2v:%s', status)
                 if status != checkpoint[8:]:
                     log_fail('Selinux status not match')
+            if checkpoint == 'check_selinuxtype':
+                expect_output = vmchecker.checker.session.cmd('cat /etc/selinux/config')
+                expect_selinuxtype = re.search(r'^SELINUXTYPE=\s*(\S+)$', expect_output, re.MULTILINE).group(1)
+                actual_output = vmchecker.checker.session.cmd('sestatus')
+                actual_selinuxtype = re.search(r'^Loaded policy name:\s*(\S+)$', actual_output, re.MULTILINE).group(1)
+                if actual_selinuxtype != expect_selinuxtype:
+                    log_fail('Seliunx type not match')
             if checkpoint == 'guest_firewalld_status':
                 check_firewalld_status(vmchecker.checker, params[checkpoint])
             if checkpoint in ['ntpd_on', 'sync_ntp']:
