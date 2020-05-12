@@ -916,8 +916,7 @@ TIMEOUT 3"""
             else:
                 if serial_login:
                     session = vm.wait_for_serial_login(username=username,
-                                                       password=password,
-                                                       timeout=120)
+                                                       password=password)
                 else:
                     session = vm.wait_for_login()
 
