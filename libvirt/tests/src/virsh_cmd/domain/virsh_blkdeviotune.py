@@ -1,6 +1,7 @@
 import logging
 import tempfile
 
+
 from virttest import libvirt_xml
 from virttest import utils_libvirtd
 from virttest import virsh
@@ -167,6 +168,8 @@ def run(test, params, env):
     disk_bus = params.get("disk_bus", 'virtio')
     disk_alias = params.get("disk_alias")
     attach_options = params.get("attach_options")
+    slice_test = "yes" == params.get("disk_slice", "yes")
+    test_size = params.get("test_size", "1")
 
     original_vm_xml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
@@ -178,8 +181,9 @@ def run(test, params, env):
     if (start_vm == "no" or attach_before_start) and vm and vm.is_alive():
         vm.destroy()
 
-    if attach_disk:
-        disk_source = tempfile.mktemp(dir=data_dir.get_tmp_dir())
+    disk_source = tempfile.mktemp(dir=data_dir.get_tmp_dir())
+    params["input_source_file"] = disk_source
+    if attach_disk and not slice_test:
         libvirt.create_local_disk(disk_type, path=disk_source, size='1',
                                   disk_format=disk_format)
         attach_extra = ""
@@ -191,8 +195,17 @@ def run(test, params, env):
             attach_extra += " --subdriver %s" % disk_format
         if attach_options:
             attach_extra += " %s" % attach_options
-    # Coldplug disk
-    if attach_disk and attach_before_start:
+    test_dict = dict(params)
+    test_dict['vm'] = vm
+    # Coldplug disk with slice image
+    if attach_disk and slice_test and attach_before_start:
+        libvirt.create_local_disk(disk_type="file", extra=" -o preallocation=full",
+                                  path=disk_source, disk_format="qcow2", size=test_size)
+        disk_xml = libvirt.create_disk_xml(params)
+        ret = virsh.attach_device(vm_name, disk_xml, flagstr="--config")
+        libvirt.check_exit_status(ret)
+    # Coldplug disk without slice image
+    if attach_disk and attach_before_start and not slice_test:
         ret = virsh.attach_disk(vm_name, disk_source, device,
                                 extra=attach_extra, debug=True)
         libvirt.check_exit_status(ret)
@@ -204,14 +217,21 @@ def run(test, params, env):
         except (virt_vm.VMError, remote.LoginError) as detail:
             vm.destroy()
             test.fail(str(detail))
-    # Hotplug disk
-    if attach_disk and not attach_before_start:
+
+    # Hotplug disk with slice image
+    if attach_disk and slice_test and not attach_before_start:
+        libvirt.create_local_disk(disk_type="file", extra=" -o preallocation=full",
+                                  path=disk_source, disk_format="qcow2", size=test_size)
+        disk_xml = libvirt.create_disk_xml(params)
+        ret = virsh.attach_device(vm_name, disk_xml, flagstr="")
+        libvirt.check_exit_status(ret)
+
+    # Hotplug disk without slice image
+    if attach_disk and not attach_before_start and not slice_test:
         ret = virsh.attach_disk(vm_name, disk_source, device,
                                 extra=attach_extra, debug=True)
         libvirt.check_exit_status(ret)
 
-    test_dict = dict(params)
-    test_dict['vm'] = vm
     if device == "vmblk":
         test_dict['device_name'] = sys_image_target
 
