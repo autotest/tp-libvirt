@@ -150,7 +150,7 @@ def run(test, params, env):
                         logging.debug("options %s are mutually exclusive" % attach_option)
                         if not ("--current" in sep_options and len(sep_options) > 1):
                             test.fail("return mutualy exclusive, but it is unexpected")
-                    elif err_msg_rom in ret.stderr:
+                    elif err_msg_rom and err_msg_rom in ret.stderr:
                         logging.debug("Attach failed with expect err msg: %s" % err_msg_rom)
                     else:
                         test.fail("Failed to attach-interface: %s" % ret.stderr.strip())
