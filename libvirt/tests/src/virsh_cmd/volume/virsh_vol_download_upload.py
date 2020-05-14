@@ -375,8 +375,10 @@ def run(test, params, env):
             one_g_in_bytes = 1073741824
             download_img_info = utils_misc.get_image_info(download_file_path)
             download_disk_size = int(download_img_info['dsize'])
-            if download_disk_size < original_disk_size or download_disk_size > one_g_in_bytes:
-                test.fail("download image size:%d is greater than original size:%d or larger than 1G"
+            if (download_disk_size < original_disk_size or
+               download_disk_size > one_g_in_bytes):
+                test.fail("download image size:%d is less than original size:%d "
+                          "or larger than 1G."
                           % (download_disk_size, original_disk_size))
 
             # Create one upload sparse image file.
