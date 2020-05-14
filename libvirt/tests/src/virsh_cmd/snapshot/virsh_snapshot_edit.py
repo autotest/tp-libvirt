@@ -67,6 +67,7 @@ def run(test, params, env):
 
         :param pre_xml: snapshot xml before edit
         :param after_xml: snapshot xml after edit
+        :return: None if comparison succeeds, else failure message
         """
 
         desc_sec = "<description>%s</description>" % snap_desc
@@ -102,7 +103,8 @@ def run(test, params, env):
                     if aft_line is not None:
                         logging.debug("diff  after='%s'",
                                       aft_line.lstrip().strip())
-            test.fail("Failed xml before/after comparison")
+            return "Failed xml before/after comparison"
+        return None
 
     def log_first_lines(pre_xml, after_xml, count=15):
         """
@@ -119,6 +121,55 @@ def run(test, params, env):
         for i in range(max(len(pre), len(after), count)):
             logging.debug("before xml=%s", pre[i].lstrip())
             logging.debug(" after xml=%s", after[i].lstrip())
+
+    def check_edit(check_name, edit_opts, pre_name, pre_xml,
+                   snap_cur, snap_desc, snap_name, snap_opt):
+        """
+        Checks the edit result
+
+        :param check_name: check name
+        :param edit_opts: edit options
+        :param pre_name: name before edit
+        :param pre_xml: xml before edit
+        :param snap_cur: current snapshot
+        :param snap_desc: current snapshot description
+        :param snap_name: current name
+        :param snap_opt: current options
+        :return: None if check succeeds, else failure message
+        """
+        snapshots = virsh.snapshot_list(vm_name)
+        after_xml = virsh.snapshot_dumpxml(vm_name, check_name).stdout
+        match_str = "<description>" + snap_desc + "</description>"
+        if not re.search(match_str, after_xml.strip("\n")):
+            if snap_desc:
+                logging.debug("Failed to edit snapshot edit_opts=%s, match=%s",
+                              edit_opts, match_str)
+                log_first_lines(pre_xml, after_xml)
+
+                return "Failed to edit snapshot description"
+
+        # Check edit options --clone
+        if snap_opt == "--clone":
+            if pre_name not in snapshots:
+                return "After clone, previous snapshot missing"
+            compare_result = snap_xml_compare(pre_xml, after_xml)
+            if compare_result:
+                return compare_result
+        if snap_opt == "--rename":
+            if pre_name in snapshots:
+                return "After rename, snapshot %s still exist" % pre_name
+            compare_result = snap_xml_compare(pre_xml, after_xml)
+            if compare_result:
+                return compare_result
+        # Check if --current effect take effect
+        if len(snap_cur) > 0 and len(snap_name) > 0:
+            cmd_result = virsh.snapshot_current(vm_name)
+            snap_cur = cmd_result.stdout.strip()
+            if snap_cur == check_name:
+                logging.info("Check current is same as set %s", check_name)
+            else:
+                return ("Fail to check --current, current is %s "
+                        "but set is %s" % (snap_cur, check_name))
 
     snapshot_oldlist = None
     try:
@@ -179,39 +230,14 @@ def run(test, params, env):
 
         edit_snap_xml(vm_name, edit_opts, edit_cmd)
 
-        # Do edit check
-        snapshots = virsh.snapshot_list(vm_name)
-        after_xml = virsh.snapshot_dumpxml(vm_name, check_name).stdout
-        match_str = "<description>" + snap_desc + "</description>"
-        if not re.search(match_str, after_xml.strip("\n")):
-            if snap_desc:
-                logging.debug("Failed to edit snapshot edit_opts=%s, match=%s",
-                              edit_opts, match_str)
-                log_first_lines(pre_xml, after_xml)
-
-                test.fail("Failed to edit snapshot description")
-
-        # Check edit options --clone
-        if snap_opt == "--clone":
-            if pre_name not in snapshots:
-                test.fail("After clone, previous snapshot missing")
-            snap_xml_compare(pre_xml, after_xml)
-
-        if snap_opt == "--rename":
-            if pre_name in snapshots:
-                test.fail("After rename, snapshot %s still exist"
-                          % pre_name)
-            snap_xml_compare(pre_xml, after_xml)
-
-        # Check if --current effect take effect
-        if len(snap_cur) > 0 and len(snap_name) > 0:
-            cmd_result = virsh.snapshot_current(vm_name)
-            snap_cur = cmd_result.stdout.strip()
-            if snap_cur == check_name:
-                logging.info("Check current is same as set %s", check_name)
-            else:
-                test.fail("Fail to check --current, current is %s "
-                          "but set is %s" % (snap_cur, check_name))
+        check_result = check_edit(check_name, edit_opts, pre_name, pre_xml,
+                                  snap_cur, snap_desc, snap_name, snap_opt)
+        if check_result and params.get("double_check", "no") == "yes":
+            time.sleep(1)
+            check_result = check_edit(check_name, edit_opts, pre_name, pre_xml,
+                                      snap_cur, snap_desc, snap_name, snap_opt)
+        if check_result:
+            test.fail(check_result)
 
     finally:
         utils_test.libvirt.clean_up_snapshots(vm_name, snapshot_oldlist)
