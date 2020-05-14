@@ -470,19 +470,20 @@ def run(test, params, env):
 
                 block_commit_index = snapshot_take - 1
                 expect_backing_file = True
-            # Do block commit with --wait if top_inactive
             for count in range(1, block_commit_index):
-                blockcommit_options = ("  --wait --verbose --top vda[%d] "
-                                       "--base vda[%d] --keep-relative"
-                                       % (top_index, top_index+1))
+                # Do block commit with --wait if top_inactive
+                if top_inactive:
+                    blockcommit_options = ("  --wait --verbose --top vda[%d] "
+                                           "--base vda[%d] --keep-relative"
+                                           % (top_index, top_index+1))
+                    if not libvirt_version.version_compare(6, 0, 0):
+                        top_index = 1
+                    else:
+                        top_index += 1
                 res = virsh.blockcommit(vm_name, blk_target,
                                         blockcommit_options, **virsh_dargs)
                 libvirt.check_exit_status(res, status_error)
 
-                if not libvirt_version.version_compare(6, 0, 0):
-                    top_index = 1
-                else:
-                    top_index += 1
             check_chain_backing_files(blk_source_image, expect_backing_file)
             return
 
