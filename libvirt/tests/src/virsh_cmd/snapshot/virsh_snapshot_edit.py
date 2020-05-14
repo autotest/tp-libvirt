@@ -116,7 +116,7 @@ def run(test, params, env):
         pre = pre_xml.split()
         after = after_xml.split()
 
-        for i in range(max(len(pre), len(after), count)):
+        for i in range(min(len(pre), len(after), count)):
             logging.debug("before xml=%s", pre[i].lstrip())
             logging.debug(" after xml=%s", after[i].lstrip())
 
