@@ -321,6 +321,48 @@ def run(test, params, env):
             cmd = cmd.replace(item, '').strip()
         return cmd
 
+    def find_net(bridge_name):
+        """
+        Find which network use specified bridge
+
+       :param bridge_name: bridge name you want to find
+        """
+        net_list = virsh.net_state_dict(only_names=True)
+        net_name = ''
+        if len(net_list):
+            for net in net_list:
+                net_info = virsh.net_info(net).stdout.strip()
+                search = re.search(r'Bridge:\s+(\S+)', net_info)
+                if search:
+                    if bridge_name == search.group(1):
+                        net_name = net
+        else:
+            logging.info('Conversion server has no network')
+        return net_name
+
+    def destroy_net(net_name):
+        """
+        destroy network in conversion server
+        """
+        if virsh.net_state_dict()[net_name]['active']:
+            logging.info("Remove network %s in conversion server", net_name)
+            virsh.net_destroy(net_name)
+            if virsh.net_state_dict()[net_name]['autostart']:
+                virsh.net_autostart(net_name, "--disable")
+        output = virsh.net_list("--all").stdout.strip()
+        logging.info(output)
+
+    def start_net(net_name):
+        """
+        start network in conversion server
+        """
+        logging.info("Recover network %s in conversion server", net_name)
+        virsh.net_autostart(net_name)
+        if not virsh.net_state_dict()[net_name]['active']:
+            virsh.net_start(net_name)
+        output = virsh.net_list("--all").stdout.strip()
+        logging.info(output)
+
     def check_result(result, status_error):
         """
         Check virt-v2v command result
@@ -371,6 +413,9 @@ def run(test, params, env):
                 check_ogac(vmchecker.checker)
             if checkpoint == 'ubuntu_tools':
                 check_ubuntools(vmchecker.checker)
+            if checkpoint == 'without_default_net':
+                if virsh.net_state_dict()[net_name]['active']:
+                    log_fail("Bridge virbr0 already started during conversion")
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
         log_check = utils_v2v.check_log(params, output)
@@ -488,6 +533,11 @@ def run(test, params, env):
                 fd.write(res.lower())
                 fd.flush()
 
+        if checkpoint == 'without_default_net':
+            net_name = find_net('virbr0')
+            if net_name:
+                destroy_net(net_name)
+
         if checkpoint == 'empty_cdrom':
             virsh_dargs = {'uri': remote_uri, 'remote_ip': remote_host,
                            'remote_user': 'root', 'remote_pwd': vpx_passwd,
@@ -553,6 +603,9 @@ def run(test, params, env):
             os.environ.pop('VIRTIO_WIN')
         if checkpoint == 'system_rhv_pem_set':
             global_pem_cleanup()
+        if checkpoint == 'without_default_net':
+            if net_name:
+                start_net(net_name)
         if params.get('vmchecker'):
             params['vmchecker'].cleanup()
         if output_mode == 'rhev' and v2v_sasl:
