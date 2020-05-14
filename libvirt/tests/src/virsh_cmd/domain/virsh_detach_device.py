@@ -250,7 +250,7 @@ def run(test, params, env):
             vm_ref = ""
 
         if detach_alias:
-            status = virsh.detach_device_alias(vm_ref, device_alias, dt_options, readonly=readonly,
+            status = virsh.detach_device_alias(vm_ref, device_alias, dt_options, True, 7, readonly=readonly,
                                                debug=True).exit_status
         else:
             status = virsh.detach_device(vm_ref, device_xml, readonly=readonly, flagstr=dt_options,
