@@ -51,7 +51,8 @@ def run(test, params, env):
     pool_type = params.get('pool_type', 'dir')
     pool_target = params.get('pool_target_path', 'v2v_pool')
     pvt = utlv.PoolVolumeTest(test, params)
-    v2v_opts = '-v -x' if params.get('v2v_debug', 'on') in ['on', 'force_on'] else ''
+    v2v_opts = '-v -x' if params.get('v2v_debug',
+                                     'on') in ['on', 'force_on'] else ''
     if params.get("v2v_opts"):
         # Add a blank by force
         v2v_opts += ' ' + params.get("v2v_opts")
@@ -613,11 +614,13 @@ def run(test, params, env):
                 else:
                     graph_type = checkpoint.split('_')[0]
                     vmchecker.check_graphics({'type': graph_type})
-                    video_type = vmchecker.xmltree.find('./devices/video/model').get('type')
+                    video_type = vmchecker.xmltree.find(
+                        './devices/video/model').get('type')
                     if video_type.lower() != 'qxl':
                         log_fail('Video expect QXL, actual %s' % video_type)
             if checkpoint.startswith('listen'):
-                listen_type = vmchecker.xmltree.find('./devices/graphics/listen').get('type')
+                listen_type = vmchecker.xmltree.find(
+                    './devices/graphics/listen').get('type')
                 logging.info('listen type is: %s', listen_type)
                 if listen_type != checkpoint.split('_')[-1]:
                     log_fail('listen type changed after conversion')
@@ -628,10 +631,15 @@ def run(test, params, env):
                 if status != checkpoint[8:]:
                     log_fail('Selinux status not match')
             if checkpoint == 'check_selinuxtype':
-                expect_output = vmchecker.checker.session.cmd('cat /etc/selinux/config')
-                expect_selinuxtype = re.search(r'^SELINUXTYPE=\s*(\S+)$', expect_output, re.MULTILINE).group(1)
+                expect_output = vmchecker.checker.session.cmd(
+                    'cat /etc/selinux/config')
+                expect_selinuxtype = re.search(
+                    r'^SELINUXTYPE=\s*(\S+)$', expect_output, re.MULTILINE).group(1)
                 actual_output = vmchecker.checker.session.cmd('sestatus')
-                actual_selinuxtype = re.search(r'^Loaded policy name:\s*(\S+)$', actual_output, re.MULTILINE).group(1)
+                actual_selinuxtype = re.search(
+                    r'^Loaded policy name:\s*(\S+)$',
+                    actual_output,
+                    re.MULTILINE).group(1)
                 if actual_selinuxtype != expect_selinuxtype:
                     log_fail('Seliunx type not match')
             if checkpoint == 'guest_firewalld_status':
@@ -717,6 +725,8 @@ def run(test, params, env):
             ori_vm_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             params['ori_graphic'] = ori_vm_xml.xmltreefile.find(
                 'devices').find('graphics').get('type')
+            params['vm_machine'] = ori_vm_xml.xmltreefile.find(
+                './os/type').get('machine')
 
         backup_xml = None
         # Only kvm guest's xml needs to be backup currently
@@ -735,6 +745,11 @@ def run(test, params, env):
         if checkpoint == 'sata_disk':
             change_disk_bus('sata')
         if checkpoint.startswith('floppy'):
+            if params['vm_machine'] and 'q35' in params['vm_machine'] and int(
+                    re.search(r'pc-q35-rhel(\d+)\.', params['vm_machine']).group(1)) >= 8:
+                test.cancel(
+                    'Device isa-fdc is not supported with machine type %s' %
+                    params['vm_machine'])
             img_path = data_dir.get_tmp_dir() + '/floppy.img'
             utlv.create_local_disk('floppy', img_path)
             attach_removable_media('floppy', img_path, 'fda')
