@@ -902,12 +902,12 @@ def run(test, params, env):
             vmxml.remove_all_device_by_type('controller')
             machine_list = vmxml.os.machine.split("-")
             vmxml.set_os_attrs(**{"machine": machine_list[0] + "-q35-" + machine_list[2]})
-            q35_pcie_dict0 = {'model': 'pcie-root', 'type': 'pci', 'index': 0}
-            q35_pcie_dict1 = {'model': 'pcie-root-port', 'type': 'pci'}
+            q35_pcie_dict0 = {'controller_model': 'pcie-root', 'controller_type': 'pci', 'controller_index': 0}
+            q35_pcie_dict1 = {'controller_model': 'pcie-root-port', 'controller_type': 'pci'}
             vmxml.add_device(libvirt.create_controller_xml(q35_pcie_dict0))
             # Add enough controllers to match max times disk attaching requirements
             for i in list(range(1, 24)):
-                q35_pcie_dict1.update({'index': "%d" % i})
+                q35_pcie_dict1.update({'controller_index': "%d" % i})
                 vmxml.add_device(libvirt.create_controller_xml(q35_pcie_dict1))
             vmxml.sync()
             logging.debug("Guest XMl with adding many controllers: %s", test_params.main_vm.get_xml())
