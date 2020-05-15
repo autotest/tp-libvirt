@@ -63,7 +63,7 @@ def run(test, params, env):
     topology_correction = "yes" == params.get("topology_correction", "no")
 
     # 1.Check virsh capabilities
-    if not utils_misc.get_cpu_info()['Flags'].find('mba '):
+    if utils_misc.get_cpu_info()['Flags'].find('mba ') == -1:
         test.cancel("This machine doesn't support cpu 'mba' flag")
 
     # 2.Mount resctrl
