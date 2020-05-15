@@ -188,6 +188,95 @@ class VMChecker(object):
         Note: This is not a mandatory checking, if you need to check it, you have to
         set related parameters correctly.
         """
+        def _guess_long_id(short_id):
+            """
+            If libosinfo doesn't have the short_id of an OS, we have to
+            guess the final long_id based on the short_id.
+
+            This usually happens when v2v server is on a lower rhel version,
+            but the guest has a higher rhel version. On which the libosinfo
+            doesn't include the guest info.
+            """
+
+            # 'winnt' must precede 'win'
+            # 'rhel-atomic' must precede 'rhel'
+            os_list = [
+                'rhel-atomic',
+                'rhel',
+                'sles',
+                'centos',
+                'opensuse',
+                'debian',
+                'ubuntu',
+                'fedora',
+                'winnt',
+                'win']
+            long_id = ''
+
+            for os_i in os_list:
+                ptn = r'(%s)(\S+)' % os_i
+                res = re.search(ptn, short_id)
+                if not res:
+                    continue
+                os_name, os_ver = res.group(1), res.group(2).lstrip('-')
+
+                if os_name == 'rhel':
+                    long_id = 'http://redhat.com/%s/%s' % (os_name, os_ver)
+                elif os_name == 'sles':
+                    long_id = 'http://suse.com/%s/%s' % (
+                        os_name, os_ver.replace('sp', '.'))
+                elif os_name == 'centos':
+                    long_id = 'http://centos.org/%s/%s' % (os_name, os_ver)
+                elif os_name == 'opensuse':
+                    long_id = 'http://opensuse.org/%s/%s' % (os_name, os_ver)
+                elif os_name == 'debian':
+                    long_id = 'http://debian.org/%s/%s' % (os_name, os_ver)
+                elif os_name == 'ubuntu':
+                    long_id = 'http://ubuntu.com/%s/%s' % (os_name, os_ver)
+                elif os_name == 'fedora':
+                    long_id = 'http://fedoraproject.org/%s/%s' % (
+                        os_name, os_ver)
+                elif os_name in ['winnt', 'win']:
+                    long_id = 'http://microsoft.com/%s/%s' % (os_name, os_ver)
+                else:
+                    logging.debug("Guess long id failed")
+
+                break
+
+            if not long_id:
+                raise exceptions.TestError(
+                    'Cannot guess long id for %s' % short_id)
+
+            return long_id
+
+        def _id_short_to_long(short_id):
+            """
+            Convert short_id to long_id
+            """
+            cmd = 'osinfo-query os --fields=short-id | tail -n +3'
+            # Too much debug output if verbose is True
+            output = process.run(
+                cmd,
+                timeout=20,
+                shell=True,
+                ignore_status=True,
+                verbose=False)
+            short_id_all = output.stdout_text.splitlines()
+            if short_id not in [os_id.strip() for os_id in short_id_all]:
+                logging.info("Not found shourt_id '%s' on host", short_id)
+                long_id = _guess_long_id(short_id)
+            else:
+                cmd = "osinfo-query os --fields=id short-id='%s'| tail -n +3" % short_id
+                output = process.run(
+                    cmd,
+                    timeout=20,
+                    verbose=True,
+                    shell=True,
+                    ignore_status=True)
+                long_id = output.stdout_text.strip()
+
+            return long_id
+
         logging.info("Checking metadata libosinfo")
         # 'os_short_id' must be set for libosinfo checking, you can query it by
         # 'osinfo-query os'
@@ -226,26 +315,8 @@ class VMChecker(object):
                 reason)
             return
 
-        cmd = 'osinfo-query os --fields=short-id | tail -n +3'
-        # Too much debug output if verbose is True
-        output = process.run(
-            cmd,
-            timeout=20,
-            shell=True,
-            ignore_status=True,
-            verbose=False)
-        short_id_all = output.stdout_text.splitlines()
-        if short_id not in [os_id.strip() for os_id in short_id_all]:
-            raise exceptions.TestError('Invalid short_id: %s' % short_id)
+        long_id = _id_short_to_long(short_id)
 
-        cmd = "osinfo-query os --fields=id short-id='%s'| tail -n +3" % short_id
-        output = process.run(
-            cmd,
-            timeout=20,
-            verbose=True,
-            shell=True,
-            ignore_status=True)
-        long_id = output.stdout_text.strip()
         # '<libosinfo:os id' was changed to '<ns0:os id' after calling
         # vm_xml.VMXML.new_from_inactive_dumpxml.
         # It's problably a problem in vm_xml.
