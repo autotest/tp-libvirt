@@ -498,6 +498,8 @@ def run(test, params, env):
     create_snapshot = "yes" == params.get("create_snapshot", "no")
     convert_image = "yes" == params.get("convert_image", "no")
     create_volume = "yes" == params.get("create_volume", "no")
+    rbd_blockcopy = "yes" == params.get("rbd_blockcopy", "no")
+    enable_slice = "yes" == params.get("enable_slice", "no")
     create_by_xml = "yes" == params.get("create_by_xml", "no")
     client_key = params.get("client_key")
     client_name = params.get("client_name")
@@ -527,6 +529,10 @@ def run(test, params, env):
     # After libvirt 3.9.0, auth element can be put into source part.
     if auth_place_in_source and not libvirt_version.version_compare(3, 9, 0):
         test.cancel("place auth in source is not supported in current libvirt version")
+
+    # After libvirt 6.0.0, blockcopy rbd backend feature is support.
+    if rbd_blockcopy and not libvirt_version.version_compare(6, 0, 0):
+        test.cancel("blockcopy rbd backend is not supported in current libvirt version")
 
     # Start vm and get all partions in vm.
     if vm.is_dead():
@@ -723,6 +729,19 @@ def run(test, params, env):
             create_pool()
             create_vol(vol_params)
             check_vol(vol_params)
+        elif rbd_blockcopy:
+            # Create one disk to attach to VM as second disk device
+            second_disk_params = {}
+            disk_size = params.get("virt_disk_device_size", "50M")
+            device_source = libvirt.create_local_disk(
+                "file", img_file, disk_size, disk_format="qcow2")
+            second_disk_params.update({"source_file": device_source})
+            second_disk_params.update({"driver_type": "qcow2"})
+            second_xml_file = libvirt.create_disk_xml(second_disk_params)
+            opts = params.get("attach_option", "--config")
+            ret = virsh.attach_device(vm_name, second_xml_file,
+                                      flagstr=opts, debug=True)
+            libvirt.check_result(ret)
         else:
             # Create an local image and make FS on it.
             disk_cmd = ("qemu-img create -f %s %s 10M && mkfs.ext4 -F %s" %
@@ -820,6 +839,35 @@ def run(test, params, env):
             snapshot_path = make_snapshot()
             if vm.is_alive():
                 vm.destroy()
+        elif rbd_blockcopy:
+            if enable_slice:
+                disk_cmd = ("rbd -m %s %s create %s --size 400M 2> /dev/null"
+                            % (mon_host, key_opt, disk_src_name))
+                process.run(disk_cmd, ignore_status=False, shell=True)
+                slice_dict = {"slice_type": "storage", "slice_offset": "12345", "slice_size": "105185280"}
+                params.update({"disk_slice": slice_dict})
+                logging.debug('create one volume on ceph backend storage for slice testing')
+            # Create one file on VM before doing blockcopy
+            try:
+                session = vm.wait_for_login()
+                cmd = ("mkfs.ext4 -F /dev/{0} && mount /dev/{0} /mnt && ls /mnt && (sleep 3;"
+                       " touch /mnt/rbd_blockcopyfile; umount /mnt)"
+                       .format(targetdev))
+                s, o = session.cmd_status_output(cmd, timeout=60)
+                session.close()
+                logging.info("touch one file in new added disk in VM:\n, %s, %s", s, o)
+            except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
+                logging.error(str(e))
+            # Create rbd backend xml
+            rbd_blockcopy_xml_file = libvirt.create_disk_xml(params)
+            logging.debug("The rbd blockcopy xml is: %s" % rbd_blockcopy_xml_file)
+            dest_path = " --xml %s" % rbd_blockcopy_xml_file
+            options1 = params.get("rbd_pivot_option", " --wait --verbose --transient-job --pivot")
+            extra_dict = {'debug': True}
+            cmd_result = virsh.blockcopy(vm_name, targetdev,
+                                         dest_path, options1,
+                                         **extra_dict)
+            libvirt.check_exit_status(cmd_result)
         elif not create_volume:
             libvirt.set_vm_disk(vm, params)
         if test_blockcopy:
@@ -868,6 +916,32 @@ def run(test, params, env):
         if test_disk_internal_snapshot:
             snap_option = params.get("snapshot_option", "")
             check_snapshot(snap_option, targetdev)
+        # Check rbd blockcopy inside VM
+        if rbd_blockcopy:
+            try:
+                session = vm.wait_for_login()
+                cmd = ("mount /dev/{0} /mnt && ls /mnt/rbd_blockcopyfile && (sleep 3;"
+                       " umount /mnt)"
+                       .format(targetdev))
+                s, o = session.cmd_status_output(cmd, timeout=60)
+                session.close()
+                logging.info("list one file in new rbd backend disk in VM:\n, %s, %s", s, o)
+            except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
+                logging.error(str(e))
+            debug_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+
+            def _check_slice_in_xml():
+                """
+                Check slice attribute in disk xml.
+                """
+                debug_vmxml = virsh.dumpxml(vm_name, "", debug=True).stdout.strip()
+                if 'slices' in debug_vmxml:
+                    return True
+                else:
+                    return False
+            if enable_slice:
+                if not _check_slice_in_xml():
+                    test.fail("Failed to find slice attribute in VM xml")
         # Detach the device.
         if attach_device:
             xml_file = libvirt.create_disk_xml(params)
