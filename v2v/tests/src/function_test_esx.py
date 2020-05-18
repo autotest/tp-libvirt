@@ -2,6 +2,7 @@ import os
 import logging
 import re
 import uuid
+import shutil
 
 from virttest import utils_misc
 from virttest import utils_sasl
@@ -9,7 +10,7 @@ from virttest import utils_v2v
 from virttest import virsh
 from virttest import remote
 from virttest.utils_test import libvirt
-
+from avocado.utils import process
 from provider.v2v_vmcheck_helper import VMChecker
 
 
@@ -149,7 +150,10 @@ def run(test, params, env):
         Check the content of grub files meet expectation.
         """
         if os_version == 'rhel7':
-            chkfiles = ['/etc/default/grub', '/boot/grub2/grub.cfg', '/etc/grub2.cfg']
+            chkfiles = [
+                '/etc/default/grub',
+                '/boot/grub2/grub.cfg',
+                '/etc/grub2.cfg']
         if os_version == 'rhel6':
             chkfiles = ['/boot/grub/grub.conf', '/etc/grub.conf']
         for file_i in chkfiles:
@@ -288,6 +292,34 @@ def run(test, params, env):
                 logging.info('ubuntu-server has not been removed.')
             else:
                 log_fail('ubuntu-server has been removed')
+
+    def global_pem_setup(f_pem):
+        """
+        Setup global rhv server ca
+
+        :param f_pem: ca file path
+        """
+        ca_anchors_dir = '/etc/pki/ca-trust/source/anchors'
+        shutil.copy(f_pem, ca_anchors_dir)
+        process.run('update-ca-trust extract', shell=True)
+        os.unlink(os.path.join(ca_anchors_dir, os.path.basename(f_pem)))
+
+    def global_pem_cleanup():
+        """
+        Cleanup global rhv server ca
+        """
+        process.run('update-ca-trust extract', shell=True)
+
+    def cmd_remove_option(cmd, opt_pattern):
+        """
+        Remove an option from cmd
+
+        :param cmd: the cmd
+        :param opt_pattern: a pattern stands for the option
+        """
+        for item in re.findall(opt_pattern, cmd):
+            cmd = cmd.replace(item, '').strip()
+        return cmd
 
     def check_result(result, status_error):
         """
@@ -467,21 +499,30 @@ def run(test, params, env):
         else:
             if checkpoint == 'exist_uuid':
                 auto_clean = False
-            if checkpoint in ['mismatched_uuid', 'no_uuid']:
+            if checkpoint in [
+                'mismatched_uuid',
+                'no_uuid',
+                'system_rhv_pem_set',
+                    'system_rhv_pem_unset']:
                 cmd_only = True
                 auto_clean = False
             v2v_result = utils_v2v.v2v_cmd(v2v_params, auto_clean, cmd_only)
         if 'new_name' in v2v_params:
             vm_name = params['main_vm'] = v2v_params['new_name']
 
+        if checkpoint.startswith('system_rhv_pem'):
+            if checkpoint == 'system_rhv_pem_set':
+                global_pem_setup(local_ca_file_path)
+            rhv_cafile = r'-oo rhv-cafile=\S+\s*'
+            new_cmd = cmd_remove_option(v2v_result, rhv_cafile)
+            logging.debug('New v2v command:\n%s', new_cmd)
         if checkpoint == 'mismatched_uuid':
             # append more uuid
             new_cmd = v2v_result + ' -oo rhv-disk-uuid=%s' % str(uuid.uuid4())
         if checkpoint == 'no_uuid':
-            new_cmd = v2v_result
-            rhv_disk_uuid = r'-oo rhv-disk-uuid=\S+'
-            for item in re.findall(rhv_disk_uuid, new_cmd):
-                new_cmd = new_cmd.replace(item, '').strip()
+            rhv_disk_uuid = r'-oo rhv-disk-uuid=\S+\s*'
+            new_cmd = cmd_remove_option(v2v_result, rhv_disk_uuid)
+            logging.debug('New v2v command:\n%s', new_cmd)
         if checkpoint == 'exist_uuid':
             new_vm_name = v2v_params['new_name'] + '_exist_uuid'
             new_cmd = v2v_result.command.replace(
@@ -491,7 +532,12 @@ def run(test, params, env):
                 new_vm_name)
             logging.debug('re-run v2v command:\n%s', new_cmd)
 
-        if checkpoint in ['mismatched_uuid', 'no_uuid', 'exist_uuid']:
+        if checkpoint in [
+            'mismatched_uuid',
+            'no_uuid',
+            'exist_uuid',
+            'system_rhv_pem_set',
+                'system_rhv_pem_unset']:
             v2v_result = utils_v2v.cmd_run(
                 new_cmd, params.get('v2v_dirty_resources'))
 
@@ -505,6 +551,8 @@ def run(test, params, env):
                     params['tmp_mount_point'],
                     'iso9660')
             os.environ.pop('VIRTIO_WIN')
+        if checkpoint == 'system_rhv_pem_set':
+            global_pem_cleanup()
         if params.get('vmchecker'):
             params['vmchecker'].cleanup()
         if output_mode == 'rhev' and v2v_sasl:
