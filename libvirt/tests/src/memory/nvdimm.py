@@ -21,7 +21,7 @@ def run(test, params, env):
     nvdimm_file = params.get('nvdimm_file')
     check = params.get('check', '')
     qemu_checks = params.get('qemu_checks', '').split('`')
-    test_str = 'This is a test!'
+    test_str = 'This is a test'
 
     def check_boot_config(session):
         """
