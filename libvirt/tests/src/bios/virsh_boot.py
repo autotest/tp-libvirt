@@ -639,6 +639,7 @@ def run(test, params, env):
     target_dev = params.get("target_dev", "vdb")
     vol_name = params.get("vol_name")
     brick_path = os.path.join(test.virtdir, "gluster-pool")
+    boot_type = params.get("boot_type", "seabios")
 
     # Prepare result checkpoint list
     check_points = []
@@ -681,9 +682,15 @@ def run(test, params, env):
                 vm.start()
                 check_prompt = params.get("check_prompt", "")
                 while True:
-                    match, text = vm.serial_console.read_until_any_line_matches(
-                            [check_prompt],
-                            timeout=30.0, internal_timeout=0.5)
+                    if boot_type == "ovmf":
+                        match, text = vm.serial_console.read_until_any_line_matches(
+                                [check_prompt],
+                                timeout=30.0, internal_timeout=0.5)
+                    else:
+                        match, text = read_until_any_line_matches(
+                                vm.serial_console,
+                                [check_prompt],
+                                timeout=30.0, internal_timeout=0.5)
                     logging.debug("matches %s", check_prompt)
                     if match == -1:
                         logging.debug("Got check point as expected")
@@ -700,7 +707,7 @@ def run(test, params, env):
             if not status_error:
                 vm_ip = vm.wait_for_get_address(0, timeout=240)
                 remote_session = remote.wait_for_login("ssh", vm_ip, "22", username, password,
-                                                       "[\#\$]\s*$")
+                                                       r"[\#\$]\s*$")
                 if test_cmd:
                     status, output = remote_session.cmd_status_output(test_cmd)
                     logging.debug("CMD '%s' running result is:\n%s", test_cmd, output)
