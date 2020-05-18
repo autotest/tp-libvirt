@@ -66,11 +66,12 @@ def run(test, params, env):
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
 
-    def get_usb_source(lsusb_list):
+    def get_usb_source(lsusb_list, session=None):
         """
         calculate a dict of the source xml of usb device based on the output from command lsusb
 
         :param lsusb_list: a list of the output from command lsusb
+        :param session: a console session of guest
         :return: a dict of the source xml of usb device
         """
 
@@ -81,12 +82,21 @@ def run(test, params, env):
             source = {}
             product = {}
             src = {}
+            # filter out the usb hub device without vendor/product id
             if re.search("hub", line, re.IGNORECASE):
                 continue
             if len(line.split()[5].split(':')) == 2:
                 vendor_id, product_id = line.split()[5].split(':')
             if not (vendor_id and product_id):
                 test.fail("vendor/product id is not available")
+            # filter out the remaining usb hub devcie not catched above
+            cmd = "lsusb -v -d {}:{}".format(vendor_id, product_id)
+            if session:
+                output = session.get_command_output(cmd)
+            else:
+                output = process.run(cmd).stdout_text
+            if "hub" in output:
+                continue
             product['vendor_id'] = "0x" + vendor_id
             product['product_id'] = "0x" + product_id
             product_list.append(product.copy())
@@ -154,7 +164,7 @@ def run(test, params, env):
 
         if device_name == "hostdev" or device_type == "tcp":
             # check the pid and vid of usb passthrough device in guest
-            src_guest = get_usb_source(output.strip().splitlines())
+            src_guest = get_usb_source(output.strip().splitlines(), session)
             for host in src_host['product']:
                 flag = False
                 for guest in src_guest['product']:
