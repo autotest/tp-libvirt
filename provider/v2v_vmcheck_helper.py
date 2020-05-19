@@ -336,8 +336,8 @@ class VMChecker(object):
         :param dev_id: the ID of the video device
         :return: log error will be recored if not found, else return nothing
         """
-        # Check by 'lspci' or 'lshw'
-        cmd = ["lspci", "lshw"]
+        # Check by 'lspci' or 'lshw' or 'hwinfo --gfxcard'
+        cmd = ["lspci", "lshw", "hwinfo --gfxcard"]
         if self.checker.vm_general_search(
             cmd,
             video_type,
