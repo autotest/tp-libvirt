@@ -150,6 +150,10 @@ def run(test, params, env):
                          " removing from domain xml if present...")
             vmxml.del_seclabel([('model', 'dac')])
 
+            # Set vm memory to 2G if it's larger than 2G
+            if vmxml.memory > 2097152:
+                vmxml.memory = vmxml.current_mem = 2097152
+
             vmxml.xmltreefile.write()
             logging.debug("New VM xml: %s", vmxml)
             process.run("chmod a+rw %s" % vmxml.xml, shell=True)
@@ -729,7 +733,7 @@ def run(test, params, env):
                 session = aexpect.ShellSession(cmd)
                 session.sendline()
                 remote.handle_prompts(session, params.get("username"),
-                                      params.get("password"), r"[\#\$]\s*$", 30)
+                                      params.get("password"), r"[\#\$]\s*$", 60)
                 # Get ip address on guest
                 if not get_guest_ip(session, iface_mac):
                     test.error("Can't get ip address on guest")
