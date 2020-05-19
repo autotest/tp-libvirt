@@ -42,6 +42,7 @@ def run(test, params, env):
     unprivileged_user = params.get('unprivileged_user')
     is_crash = ("yes" == params.get("is_crash", "no"))
     add_panic_device = ("yes" == params.get("add_panic_device", "yes"))
+    panic_model = params.get('panic_model', 'isa')
     force_vm_boot_text_mode = ("yes" == params.get("force_vm_boot_text_mode", "yes"))
     crash_dir = "/var/crash"
     if unprivileged_user:
@@ -92,7 +93,7 @@ def run(test, params, env):
             session.cmd("rm -rf {0}; mkdir {0}".format(crash_dir))
             libvirt.update_on_crash(vm_name, "destroy")
             if add_panic_device:
-                libvirt.add_panic_device(vm_name)
+                libvirt.add_panic_device(vm_name, model=panic_model)
             if not vm.is_alive():
                 vm.start()
             session = vm.wait_for_login()
