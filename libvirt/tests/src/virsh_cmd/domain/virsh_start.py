@@ -1,8 +1,12 @@
+import logging
+
 from virttest import remote
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import utils_libvirtd
 from virttest import ssh_key
+
+from provider import libvirt_version
 
 
 def run(test, params, env):
@@ -114,9 +118,13 @@ def run(test, params, env):
                 else:
                     # start vm successfully
                     if status_error == "yes":
-                        test.fail("Run successfully with wrong "
-                                  "command!\n Detail:%s"
-                                  % cmd_result)
+                        if libvirtd_state == "off" and libvirt_version.version_compare(5, 6, 0):
+                            logging.info("From libvirt version 5.6.0 libvirtd is restarted,"
+                                         " command should succeed.")
+                        else:
+                            test.fail("Run successfully with wrong "
+                                      "command!\n Detail:%s"
+                                      % cmd_result)
 
             if opt.count("paused"):
                 if not (vm.state() == "paused"):
