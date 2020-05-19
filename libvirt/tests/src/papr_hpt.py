@@ -84,6 +84,11 @@ def run(test, params, env):
 
         logging.debug(numa_cell)
         if numa_cell:
+            # Remove cpu topology to avoid that it doesn't match vcpu count
+            if vmxml.get_cpu_topology():
+                new_cpu = vmxml.cpu
+                new_cpu.del_topology()
+                vmxml.cpu = new_cpu
             vmxml.vcpu = max([int(cell['cpus'][-1]) for cell in numa_cell]) + 1
         vmxml.sync()
 
@@ -147,6 +152,9 @@ def run(test, params, env):
             if maxpagesize and not utils_misc.compare_qemu_version(3, 1, 0):
                 test.cancel('Qemu version is too low, '
                             'does not support maxpagesize setting')
+            if maxpagesize == 16384 and cpu_arch == 'power9':
+                test.cancel('Power9 does not support 16M pagesize.')
+
             set_hpt(vmxml, True, **hpt_attrs)
             if cpu_attrs or numa_cell:
                 if numa_cell:
