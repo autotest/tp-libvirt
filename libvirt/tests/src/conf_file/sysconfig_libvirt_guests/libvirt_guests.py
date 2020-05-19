@@ -269,7 +269,8 @@ def run(test, params, env):
         guest_name = ("%s" % main_vm_name[:-1])+("%s" % str(i+2))
         logging.debug("guest_name : %s", guest_name)
         utils_libguestfs.virt_clone_cmd(main_vm_name, guest_name,
-                                        True, timeout=360)
+                                        True, timeout=360,
+                                        ignore_status=False)
         vms.append(main_vm.clone(guest_name))
         logging.debug("Now the vms is: %s", [dom.name for dom in vms])
 
