@@ -117,7 +117,7 @@ def run(test, params, env):
                     test.fail("Rum command '%s' failed" % check_cmd)
                 # This change anchors nwfilter_vm_start.possitive_test.new_filter.variable_notation case
                 # The matched destination could be ip address or hostname
-                if "iptables -L" in check_cmd and expect_match:
+                if "iptables -L" in check_cmd and expect_match and 'ACCEPT' in expect_match:
                     # ip address that need to be replaced
                     replace_param = params.get("parameter_value_2")
                     #Get hostname by ip address.
