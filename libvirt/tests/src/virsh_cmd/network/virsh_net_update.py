@@ -5,7 +5,7 @@ import tempfile
 import time
 
 
-from virttest import data_dir
+from virttest import data_dir, utils_libvirtd
 from virttest import virsh
 from virttest import utils_net
 from virttest import remote
@@ -378,6 +378,8 @@ def run(test, params, env):
                     if update_command in ['add-first', 'add-last', 'add']:
                         newxml = newxml.replace("engineering", "sales")
                         flag_list.append("sales")
+                    if update_command == "modify" and status_error == "yes":
+                        newxml = newxml.replace("engineering", "")
                 elif net_section == "forward-interface":
                     new_forward_iface = params.get("new_forward_iface")
                     if error_type != "interface-duplicate":
@@ -535,11 +537,16 @@ def run(test, params, env):
                 if dns_host_str:
                     check_host(hostline)
 
+            # check libvirtd should not crash during the net-update
+            ori_pid_libvirtd = process.getoutput("pidof libvirtd")
             # Do net-update operation
             cmd_result = virsh.net_update(net_name,
                                           update_command,
                                           net_section,
                                           xmlfile, options, debug=True)
+            aft_pid_libvirtd = process.getoutput("pidof libvirtd")
+            if not utils_libvirtd.libvirtd_is_running() or ori_pid_libvirtd != aft_pid_libvirtd:
+                test.fail("Libvirtd crash after net-update operation")
 
             if cmd_result.exit_status:
                 err = cmd_result.stderr.strip()
@@ -610,6 +617,7 @@ def run(test, params, env):
                     err_dic["unrecognized"] = "unrecognized section name"
                     err_dic["interface-duplicate"] = "there is an existing interface entry " + \
                                                      "in network.* that matches"
+                    err_dic["XML error"] = "XML error: Missing required name attribute in portgroup"
 
                     if (error_type in list(err_dic.keys()) and
                             re.search(err_dic[error_type], err) or mismatch_expect):
