@@ -159,10 +159,11 @@ def run(test, params, env):
     # Disk specific attributes.
     device = params.get("virt_disk_device", "disk")
     device_target = params.get("virt_disk_device_target", "vdd")
-    device_format = params.get("virt_disk_device_format", "raw")
     device_type = params.get("virt_disk_device_type", "file")
+    device_format = params.get("virt_disk_device_format", "raw")
     device_bus = params.get("virt_disk_device_bus", "virtio")
     backend_storage_type = params.get("backend_storage_type", "iscsi")
+    volume_target_format = params.get("target_format", "raw")
 
     # Backend storage options.
     storage_size = params.get("storage_size", "1G")
@@ -365,6 +366,7 @@ def run(test, params, env):
             volume_cap = params.get("vol_cap")
             volume_target_path = params.get("sec_volume")
             volume_target_format = params.get("target_format")
+            device_format = volume_target_format
             volume_target_encypt = params.get("target_encypt", "")
             volume_target_label = params.get("target_label")
             vol_params = {"name": volume_name, "capacity": int(volume_cap),
@@ -376,9 +378,15 @@ def run(test, params, env):
             vol_encryption_params.update({"format": "luks"})
             vol_encryption_params.update({"secret": {"type": "passphrase", "uuid": luks_sec_uuid}})
             try:
-                # If Libvirt version is lower than 2.5.0
-                # Creating luks encryption volume is not supported,so skip it.
-                create_vol(pool_name, vol_encryption_params, vol_params)
+                # If target format is qcow2,need to create test image with "qemu-img create"
+                if volume_target_format == "qcow2":
+                    option = params.get("luks_extra_elements")
+                    libvirt.create_local_disk("file", path=volume_target_path, extra=option,
+                                              disk_format="qcow2", size="1")
+                else:
+                    # If Libvirt version is lower than 2.5.0
+                    # Creating luks encryption volume is not supported,so skip it.
+                    create_vol(pool_name, vol_encryption_params, vol_params)
             except AssertionError as info:
                 err_msgs = ("create: invalid option")
                 if str(info).count(err_msgs):
@@ -399,6 +407,7 @@ def run(test, params, env):
         disk_xml = Disk(type_name=device_type)
         disk_xml.device = device
         disk_xml.target = {"dev": device_target, "bus": device_bus}
+        print()
         driver_dict = {"name": "qemu", "type": device_format}
         disk_xml.driver = driver_dict
         disk_source = disk_xml.new_disk_source(**disk_src_dict)
@@ -444,7 +453,10 @@ def run(test, params, env):
         if check_partitions and not status_error:
             if not check_in_vm(device_target, old_parts):
                 test.fail("Check disk partitions in VM failed")
-        check_dev_format(device_source)
+        if volume_target_format == "qcow2":
+            check_dev_format(device_source, fmt="qcow2")
+        else:
+            check_dev_format(device_source)
     finally:
         # Recover VM.
         if vm.is_alive():
