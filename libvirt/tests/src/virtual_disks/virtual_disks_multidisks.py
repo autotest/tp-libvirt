@@ -1016,7 +1016,7 @@ def run(test, params, env):
         <devices>
           <emulator>/usr/libexec/qemu-kvm</emulator>
           <disk type='file' device='disk'>
-            <driver name='qemu' type='qcow2' cache='none'/>
+            <driver name='qemu' type='qcow2'/>
             <source file='%s'/>
             <target dev='vda' bus='virtio'/>
           </disk>
