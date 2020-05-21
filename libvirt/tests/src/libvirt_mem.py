@@ -274,8 +274,14 @@ def run(test, params, env):
                                  "%s.save" % vm_name)
         ret = virsh.save(vm_name, save_file, **virsh_dargs)
         libvirt.check_exit_status(ret)
-        ret = virsh.restore(save_file, **virsh_dargs)
-        libvirt.check_exit_status(ret)
+
+        def _wait_for_restore():
+            try:
+                virsh.restore(save_file, debug=True, ignore_status=False)
+                return True
+            except Exception as e:
+                logging.error(e)
+        utils_misc.wait_for(_wait_for_restore, 30, step=5)
         if os.path.exists(save_file):
             os.remove(save_file)
         # Login to check vm status
@@ -593,7 +599,14 @@ def run(test, params, env):
             time.sleep(wait_before_save_secs)
             ret = virsh.managedsave(vm_name, **virsh_dargs)
             libvirt.check_exit_status(ret)
-            vm.start()
+
+            def _wait_for_vm_start():
+                try:
+                    vm.start()
+                    return True
+                except Exception as e:
+                    logging.error(e)
+            utils_misc.wait_for(_wait_for_vm_start, timeout=30, step=5)
             vm.wait_for_login().close()
             if test_dom_xml:
                 check_dom_xml(at_mem=attach_device)
