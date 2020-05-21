@@ -4,7 +4,6 @@ import re
 
 from virttest.libvirt_xml.devices import interface
 from virttest import virsh
-from virttest.compat_52lts import results_stdout_52lts
 from virttest.utils_test import libvirt as utlv
 from virttest import libvirt_xml
 from virttest import utils_libvirtd
@@ -65,7 +64,7 @@ def run(test, params, env):
         """
         check the list binding ports
         """
-        list_res = results_stdout_52lts(cmd_res).strip()
+        list_res = cmd_res.stdout_text.strip()
         if list_res and re.search(match, list_res):
             if not is_match:
                 test.fail("expected not match %s" % match)

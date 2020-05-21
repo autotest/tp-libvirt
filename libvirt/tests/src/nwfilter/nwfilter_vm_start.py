@@ -3,6 +3,7 @@ import logging
 import socket
 
 from avocado.utils import process
+from avocado.utils import astring
 
 from virttest import virsh
 from virttest import virt_vm
@@ -12,7 +13,6 @@ from virttest import utils_misc
 from virttest import utils_package
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices import interface
-from virttest.compat_52lts import decode_to_text as to_text
 
 from virttest import libvirt_version
 
@@ -131,7 +131,7 @@ def run(test, params, env):
                         replace_with = "%s|%s" % (replace_param, hostname_info[0])
                         expect_match = r"%s" % expect_match.replace(replace_param, replace_with)
                         logging.debug("final iptables match string:%s", expect_match)
-                out = to_text(process.system_output(check_cmd, ignore_status=False, shell=True))
+                out = astring.to_text(process.system_output(check_cmd, ignore_status=False, shell=True))
                 if expect_match and not re.search(expect_match, out):
                     test.fail("'%s' not found in output: %s"
                               % (expect_match, out))
