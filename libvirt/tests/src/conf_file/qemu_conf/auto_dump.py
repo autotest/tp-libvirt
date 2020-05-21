@@ -31,6 +31,7 @@ def run(test, params, env):
     addr_type = params.get("addr_type")
     addr_iobase = params.get("addr_iobase")
     vm = env.get_vm(vm_name)
+    target_flags = int(params.get('target_flags', '0o40000'), 8)
 
     if panic_model and not libvirt_version.version_compare(1, 3, 1):
         test.cancel("panic device model attribute not supported"
@@ -126,8 +127,8 @@ def run(test, params, env):
 
         if arch in ['x86_64', 'ppc64le', 's390x']:
             # Check if bypass cache flag set or unset accordingly.
-            cond1 = (flags & 0o40000) and bypass_cache != '1'
-            cond2 = not (flags & 0o40000) and bypass_cache == '1'
+            cond1 = (flags & target_flags) and bypass_cache != '1'
+            cond2 = not (flags & target_flags) and bypass_cache == '1'
             if cond1 or cond2:
                 test.fail('auto_dump_bypass_cache is %s but flags '
                           'is %o' % (bypass_cache, flags))
