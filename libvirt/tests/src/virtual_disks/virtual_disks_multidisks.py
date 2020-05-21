@@ -833,6 +833,7 @@ def run(test, params, env):
     hotplug = "yes" == params.get(
         "virt_disk_device_hotplug", "no")
     device_at_dt_disk = "yes" == params.get("virt_disk_at_dt_disk", "no")
+    device_cold_dt = "yes" == params.get("virt_disk_cold_dt", "no")
     device_with_source = "yes" == params.get(
         "virt_disk_with_source", "yes")
     virtio_scsi_controller = "yes" == params.get(
@@ -1509,6 +1510,7 @@ def run(test, params, env):
                 ret = virsh.attach_device(vm_name, disks_xml[i].xml,
                                           flagstr=attach_option)
                 attach_error = False
+                logging.debug(vm_xml.VMXML.new_from_dumpxml(vm_name))
                 if len(device_attach_error) > i:
                     attach_error = "yes" == device_attach_error[i]
                 libvirt.check_exit_status(ret, attach_error)
@@ -1672,7 +1674,7 @@ def run(test, params, env):
                 cmd += " | grep %s,event_idx=%s" % (driver, iface_event_idx)
 
             if process.system(cmd, ignore_status=True, shell=True):
-                test.fail("Check disk driver option failed")
+                test.fail("Check disk driver option failed with %s" % cmd)
 
         if test_disk_snapshot:
             ret = virsh.snapshot_create_as(vm_name, "s1 %s" % snapshot_option, debug=True)
@@ -1855,7 +1857,15 @@ def run(test, params, env):
                 if not check_vm_partitions(devices,
                                            device_targets, False):
                     test.fail("See device in VM after hotunplug")
-
+        elif device_cold_dt:
+            ret = virsh.detach_disk(vm_name, device_targets[0],
+                                    '--config', **virsh_dargs)
+            libvirt.check_exit_status(ret)
+            ret = virsh.domblklist(vm_name, '--inactive',
+                                   ignore_status=False, debug=True)
+            target_disks = re.findall(r"[v,s]d[a-z]", ret.stdout.strip())
+            if len(target_disks) > 1:
+                test.fail("Fail to cold unplug disks. ")
         elif hotplug:
             # Test attach device multiple iteration
             if test_attach_device_iteration:
