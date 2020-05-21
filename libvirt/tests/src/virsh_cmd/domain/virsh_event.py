@@ -269,12 +269,19 @@ def run(test, params, env):
                     virsh.detach_disk(dom.name, 'vdb', **virsh_dargs)
                     expected_events_list.append("'device-removed' for %s:"
                                                 " virtio-disk1")
-                    iface_xml_obj = create_iface_xml()
-                    iface_xml_obj.xmltreefile.write()
-                    virsh.detach_device(dom.name, iface_xml_obj.xml, **virsh_dargs)
+                    ifaces = vmxml.devices.by_device_tag('interface')
+                    if ifaces:
+                        iface_xml_obj = ifaces[0]
+                        iface_xml_obj.del_address()
+                        logging.debug(iface_xml_obj)
+                    else:
+                        test.error('No interface in vm to be detached.')
+
+                    virsh.detach_device(dom.name, iface_xml_obj.xml,
+                                        wait_remove_event=True, event_timeout=60,
+                                        **virsh_dargs)
                     expected_events_list.append("'device-removed' for %s:"
                                                 " net0")
-                    time.sleep(2)
                     virsh.attach_device(dom.name, iface_xml_obj.xml, **virsh_dargs)
                     expected_events_list.append("'device-added' for %s:"
                                                 " net0")
