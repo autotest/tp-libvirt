@@ -832,6 +832,9 @@ def run(test, params, env):
     check_complete_job = "yes" == params.get("check_complete_job", "no")
     check_domjobinfo_results = "yes" == params.get("check_domjobinfo_results")
     check_log_interval = params.get("check_log_interval")
+    maxdowntime_before_mig = "yes" == params.get("set_maxdowntime_before_migration",
+                                                 "no")
+    check_default_maxdowntime = params.get("check_default_maxdowntime")
     check_event_output = params.get("check_event_output")
     check_tls_destination = "yes" == params.get("check_tls_destination", "no")
     contrl_index = params.get("new_contrl_index", None)
@@ -1139,6 +1142,16 @@ def run(test, params, env):
                                              args=())
             stress_thread.start()
 
+        # Check maxdowntime before migration
+        if check_default_maxdowntime:
+            res = virsh.migrate_getmaxdowntime(vm_name,
+                                               **virsh_args).stdout.strip()
+            if check_default_maxdowntime != res:
+                test.fail("Unable to get expected maxdowntime! Expected: {},"
+                          "Actual: {}.".format(check_default_maxdowntime, res))
+        if maxdowntime_before_mig:
+            check_maxdowntime(params)
+
         if timer_migration:
             source_vm_host_time_diff = time_diff_between_vm_host(localvm=True)
 
@@ -1251,6 +1264,12 @@ def run(test, params, env):
             check_virsh_command_and_option("domjobinfo", opts)
             if extra.count("comp-xbzrle-cache"):
                 params.update({'compare_to_value': cache // 1024})
+            # The output of domjobinfo with '--completed' option does not
+            # contain "Expected downtime:". So update to check
+            # "Total downtime". The value of "Total downtime" should be
+            # around the expected value of "Expected downtime".
+            if params.get("jobinfo_item", "") == "Expected downtime:":
+                params.update({"jobinfo_item": "Total downtime:"})
             check_domjobinfo(params, option=opts)
             if check_domjobinfo_results:
                 check_domjobinfo_output(option=opts, is_mig_compelete=True)
