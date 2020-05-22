@@ -2,6 +2,7 @@ import re
 import os
 import stat
 import logging
+import time
 
 from virttest import virsh
 from virttest import data_dir
@@ -36,6 +37,8 @@ def run(test, params, env):
     vm_ref = params.get("restore_vm_ref")
     uri = params.get("virsh_uri")
     unprivileged_user = params.get('unprivileged_user')
+    time_before_save = int(params.get('time_before_save', 0))
+
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
             unprivileged_user = 'testacl'
@@ -76,6 +79,7 @@ def run(test, params, env):
             if not re.search("processor", output):
                 test.fail("Unable to read /proc/cpuinfo")
         tmp_file = os.path.join(data_dir.get_tmp_dir(), "save.file")
+        time.sleep(time_before_save)
         ret = virsh.save(vm_name, tmp_file, debug=True)
         libvirt.check_exit_status(ret)
         if vm_ref == "saved_file":
