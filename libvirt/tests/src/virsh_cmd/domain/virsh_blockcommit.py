@@ -10,6 +10,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest import utils_package
 from virttest import libvirt_storage
 from virttest import ceph
@@ -305,6 +306,14 @@ def run(test, params, env):
                 ceph_cfg = ceph.create_config_file(mon_host)
                 if src_host.count("EXAMPLE") or mon_host.count("EXAMPLE"):
                     test.cancel("Please provide rbd host first.")
+
+                params.update(
+                   {"disk_source_name": os.path.join(
+                      pool_name, 'rbd_'+utils_misc.generate_random_string(4)+'.img')})
+                if utils_package.package_install(["ceph-common"]):
+                    ceph.rbd_image_rm(mon_host, *params.get("disk_source_name").split('/'))
+                else:
+                    test.error('Failed to install ceph-common to clean image.')
             if backing_file_relative_path:
                 if vm.is_alive():
                     vm.destroy(gracefully=False)
@@ -626,13 +635,8 @@ def run(test, params, env):
                                                   debug=True)
             libvirt.check_exit_status(cmd_result, snap_in_mirror_err)
     finally:
-        # Remove ceph configure file if created
-        if ceph_cfg:
-            os.remove(ceph_cfg)
         if vm.is_alive():
             vm.destroy(gracefully=False)
-        # Recover xml of vm.
-        vmxml_backup.sync("--snapshots-metadata")
         # Clean ceph image if used in test
         if 'mon_host' in locals():
             if utils_package.package_install(["ceph-common"]):
@@ -643,6 +647,12 @@ def run(test, params, env):
                 logging.debug("result of rbd removal: %s", cmd_result)
             else:
                 logging.debug('Failed to install ceph-common to clean ceph.')
+        # Recover xml of vm.
+        vmxml_backup.sync("--snapshots-metadata")
+
+        # Remove ceph configure file if created
+        if ceph_cfg:
+            os.remove(ceph_cfg)
 
         if cmd_session:
             cmd_session.close()
