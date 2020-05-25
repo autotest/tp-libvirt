@@ -93,7 +93,7 @@ def run(test, params, env):
         if ret.exit_status:
             logging.error("Failed to update device to up state")
             return False
-        if not guest_if_state(if_name, session):
+        if not utils_misc.wait_for(lambda: guest_if_state(if_name, session), 5):
             logging.error("Guest link should be up now")
             return False
 
@@ -105,7 +105,7 @@ def run(test, params, env):
         if ret.exit_status:
             logging.error("Failed to update device to down state")
             return False
-        if guest_if_state(if_name, session):
+        if utils_misc.wait_for(lambda: guest_if_state(if_name, session), 5):
             logging.error("Guest link should be down now")
             return False
 
