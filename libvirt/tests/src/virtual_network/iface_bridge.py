@@ -105,7 +105,7 @@ def run(test, params, env):
         """
         status, output = utils_net.ping(dest=dest_ip, count=ping_count,
                                         interface=src_ip, timeout=timeout,
-                                        session=session)
+                                        session=session, force_ipv4=True)
         if status:
             test.fail("Fail to ping %s from %s" % (dest_ip, src_ip))
 
