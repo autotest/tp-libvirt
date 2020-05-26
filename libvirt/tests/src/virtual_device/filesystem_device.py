@@ -6,6 +6,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_test
+from virttest import test_setup
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import utils_memory
 from virttest.utils_test import libvirt_device_utils
@@ -141,16 +142,18 @@ def run(test, params, env):
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[index])
             vmxml_backup = vmxml.copy()
             vmxml_backups.append(vmxml_backup)
-            huge_pages_num += 1024
+            if vmxml.max_mem < 1024000:
+                vmxml.max_mem = 1024000
+            hp_obj = test_setup.HugePageConfig(params)
+            host_hp_size = hp_obj.get_hugepage_size()
+            huge_pages_num = vmxml.max_mem // host_hp_size + 128
             utils_memory.set_num_huge_pages(huge_pages_num)
             vmxml.remove_all_device_by_type('filesystem')
             vmxml.sync()
-            vmxml.max_mem = int(2048000)
             numa_no = vmxml.vcpu // 2 if vmxml.vcpu != 1 else 1
             vm_xml.VMXML.set_vm_vcpus(vmxml.vm_name, vmxml.vcpu, numa_number=numa_no)
             vm_xml.VMXML.set_memoryBacking_tag(vmxml.vm_name, access_mode="shared")
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[index])
-            vmxml.sync()
             logging.debug(vmxml)
             if coldplug:
                 ret = virsh.attach_device(vm_names[index], fs_devs[0].xml,
