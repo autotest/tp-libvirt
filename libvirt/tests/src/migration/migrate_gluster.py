@@ -214,7 +214,7 @@ def run(test, params, env):
 
     finally:
         logging.info("Recovery test environment")
-        migrate_test.cleanup_dest_vm(vm, src_uri, dest_uri)
+        migrate_test.cleanup_dest_vm(vm, vm.connect_uri, dest_uri)
         if vm.is_alive():
             vm.destroy(gracefully=False)
         orig_config_xml.sync()
