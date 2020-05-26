@@ -581,7 +581,7 @@ def run(test, params, env):
             logging.info(output)
             if status:
                 destroy_cmd = "virsh destroy %s" % vm_name
-                remote.run_remote_cmd(cmd, params, runner_on_target)
+                remote.run_remote_cmd(destroy_cmd, params, runner_on_target)
                 test.fail("Failed to run '%s' on remote: %s"
                           % (cmd, output))
     finally:
@@ -592,7 +592,7 @@ def run(test, params, env):
                                             cleanup=True)
         # Ensure VM can be cleaned up on remote host even migrating fail.
         destroy_vm_cmd = "virsh destroy %s" % vm_name
-        remote.run_remote_cmd(cmd, params, runner_on_target)
+        remote.run_remote_cmd(destroy_vm_cmd, params, runner_on_target)
 
         logging.info("Recovery VM XML configration")
         vmxml_backup.sync()
