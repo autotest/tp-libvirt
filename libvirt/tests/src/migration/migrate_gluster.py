@@ -64,7 +64,7 @@ def run(test, params, env):
     client_ip = params["client_ip"] = params.get("local_ip")
     client_pwd = params["client_pwd"] = params.get("local_pwd")
     extra = params.get("virsh_migrate_extra")
-    options = params.get("virsh_migrate_options", "--live --verbose")
+    options = params.get("virsh_migrate_options", "--live --p2p --verbose")
     virsh_options = params.get("virsh_options", "")
 
     vol_name = params.get("vol_name")
@@ -199,8 +199,8 @@ def run(test, params, env):
 
             # Pre migration setup for local machine
             migrate_test.migrate_pre_setup(src_uri, params)
-            cmd = "virsh migrate %s %s %s" % (vm_name,
-                                              virsh_options, src_uri)
+            cmd = "virsh migrate %s %s %s %s" % (vm_name, options,
+                                                 virsh_options, src_uri)
             logging.debug("Start migrating: %s", cmd)
             cmd_result = remote.run_remote_cmd(cmd, params, runner_on_target)
             logging.info(cmd_result)
