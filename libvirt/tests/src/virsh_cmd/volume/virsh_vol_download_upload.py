@@ -136,6 +136,19 @@ def write_disk(test, guest_vm, target_name, size=200):
         logging.error(str(e))
 
 
+def check_vol(pool_name):
+    """
+    Wrapper for getting volume
+
+    :params pool_name: The name of pool
+    :return: First volume in volume list by pool
+    """
+    virsh.pool_refresh(pool_name, debug=True)
+    vol_list = virsh.vol_list(pool_name, debug=True).stdout_text.splitlines()
+    if len(vol_list) > 3:
+        return vol_list[2]
+
+
 def run(test, params, env):
     """
     Do test for vol-download and vol-upload
@@ -223,11 +236,13 @@ def run(test, params, env):
             else:
                 pvt.pre_vol(vol_name, frmt, capacity, allocation, pool_name)
 
-        virsh.pool_refresh(pool_name, debug=True)
-        vol_list = virsh.vol_list(pool_name, debug=True).stdout.strip()
         # iscsi volume name is different from others
         if pool_type == "iscsi":
-            vol_name = vol_list.split('\n')[2].split()[0]
+            if not utils_misc.wait_for(lambda: check_vol(pool_name), 30):
+                test.fail("Failed to get iscsi type volume in 30s.")
+            else:
+                vol_list = check_vol(pool_name)
+                vol_name = vol_list.split()[0]
 
         vol_path = virsh.vol_path(vol_name, pool_name,
                                   ignore_status=False).stdout.strip()
