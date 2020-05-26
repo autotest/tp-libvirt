@@ -243,6 +243,7 @@ def run(test, params, env):
     replace_vm_disk = "yes" == params.get("replace_vm_disk", "no")
     top_inactive = ("yes" == params.get("top_inactive"))
     with_timeout = ("yes" == params.get("with_timeout_option", "no"))
+    cmd_timeout = params.get("cmd_timeout", "1")
     status_error = ("yes" == params.get("status_error", "no"))
     base_option = params.get("base_option", "none")
     middle_base = "yes" == params.get("middle_base", "no")
@@ -423,7 +424,7 @@ def run(test, params, env):
         blockcommit_options = "--wait --verbose"
 
         if with_timeout:
-            blockcommit_options += " --timeout 1"
+            blockcommit_options += " --timeout %s" % cmd_timeout
 
         if base_option == "shallow":
             blockcommit_options += " --shallow"
