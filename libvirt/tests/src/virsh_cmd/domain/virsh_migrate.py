@@ -988,12 +988,14 @@ def run(test, params, env):
                 ifaces = vm_xml.VMXML.get_net_dev(vm.name)
                 new_nic_mac = vm.get_virsh_mac_address(
                     ifaces.index("tmp-vnet"))
-                vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+                vmxml = vm_xml.VMXML\
+                    .new_from_dumpxml(vm.name, "--security-info --migratable")
                 logging.debug("Xml file on source:\n%s", vm.get_xml())
                 extra = ("%s --xml=%s" % (extra, vmxml.xml))
             elif extra.count("--dname"):
                 vm_new_name = params.get("vm_new_name")
-                vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+                vmxml = vm_xml.VMXML\
+                    .new_from_dumpxml(vm.name, "--security-info --migratable")
                 if vm_new_name:
                     logging.debug("Preparing change VM XML with a new name")
                     vmxml.vm_name = vm_new_name
