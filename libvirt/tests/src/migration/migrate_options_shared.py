@@ -945,23 +945,7 @@ def run(test, params, env):
             if not utils_misc.compare_qemu_version(4, 0, 0, is_rhev=False):
                 test.cancel("This qemu version doesn't support "
                             "vtpm emulator backend.")
-        if vcpu_num:
-            cmd = "grep -c processor /proc/cpuinfo"
-            remote_session = remote.remote_login("ssh", server_ip, "22",
-                                                 server_user, server_pwd,
-                                                 r'[$#%]')
-            for loc in ['source', 'target']:
-                session = None
-                if loc == 'target':
-                    session = remote_session
-                cmdStd, cmdStdout = utils_misc.cmd_status_output(cmd, shell=True,
-                                                                 session=session)
-                if cmdStd:
-                    test.fail("Failed to run %s." % cmd)
-                if (cmdStdout.split('\n')[0] and
-                   int(cmdStdout.split('\n')[0]) <= int(vcpu_num)):
-                    test.cancel("The %s host may not have enough cpus to start "
-                                "vm with %s cpu(s)." % (loc, vcpu_num))
+
         # Create a remote runner for later use
         runner_on_target = remote.RemoteRunner(host=server_ip,
                                                username=server_user,
