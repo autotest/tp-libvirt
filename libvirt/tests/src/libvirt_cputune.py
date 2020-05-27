@@ -5,7 +5,10 @@ import re
 
 from avocado.utils import process
 
+from virttest import virsh
 from virttest import utils_misc
+from virttest import libvirt_version
+from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 
 
@@ -95,6 +98,15 @@ def run(test, params, env):
     node_item_list.append(node_item_list1)
     node_item_list.append(node_item_list2)
     cachetune_items = params.get("cachetune_items")
+    mem_monitor_item1 = [ast.literal_eval(x)
+                         for x in params.get("mem_monitor_item1",
+                                             "").split(';')]
+    mem_monitor_item2 = [ast.literal_eval(x)
+                         for x in params.get("mem_monitor_item2",
+                                             "").split(';')]
+    mem_monitor_item_list = []
+    mem_monitor_item_list.append(mem_monitor_item1)
+    mem_monitor_item_list.append(mem_monitor_item2)
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
@@ -120,6 +132,10 @@ def run(test, params, env):
                     nodexml.bandwidth = node['bandwidth']
                     memorytunexml.set_node(nodexml)
 
+                for monitor in mem_monitor_item_list[mitem]:
+                    monitorxml = memorytunexml.MonitorXML()
+                    monitorxml.vcpus = monitor['vcpus']
+                    memorytunexml.set_monitor(monitorxml)
                 logging.debug("memorytunexml.xml %s" % memorytunexml.xml)
 
                 cputunexml.set_memorytune(memorytunexml)
@@ -175,7 +191,15 @@ def run(test, params, env):
             test.fail("The second schemata %s for vcpus is not set valid" %
                       schemata_file2)
 
-        # 6. Destroy the vm and verify the libvirt dir exist
+        # 6. Check domstats memory
+        if libvirt_version.version_compare(6, 0, 0):
+            result = virsh.domstats(vm_name, "--memory", ignore_status=True,
+                                    debug=True)
+            libvirt.check_exit_status(result)
+            output = result.stdout.strip()
+            logging.debug("domstats output is %s", output)
+
+        # 7. Destroy the vm and verify the libvirt dir exist
         test_vm.destroy(gracefully=False)
         if os.path.exists(schemata_file1) or os.path.exists(schemata_file2):
             test.fail("The schemata file should be deleted after vm destroy")
