@@ -93,6 +93,7 @@ def run(test, params, env):
     driver_type = params.get("driver_type", "virtiofs")
     guest_num = int(params.get("guest_num", "1"))
     fs_num = int(params.get("fs_num", "1"))
+    vcpus_per_cell = int(params.get("vcpus_per_cell", 2))
     source_dir_prefix = params.get("source_dir_prefix", "/dir")
     target_prefix = params.get("target_prefix", "mount_tag")
     error_msg_start = params.get("error_msg_start", "")
@@ -150,7 +151,7 @@ def run(test, params, env):
             utils_memory.set_num_huge_pages(huge_pages_num)
             vmxml.remove_all_device_by_type('filesystem')
             vmxml.sync()
-            numa_no = vmxml.vcpu // 2 if vmxml.vcpu != 1 else 1
+            numa_no = vmxml.vcpu // vcpus_per_cell if vmxml.vcpu != 1 else 1
             vm_xml.VMXML.set_vm_vcpus(vmxml.vm_name, vmxml.vcpu, numa_number=numa_no)
             vm_xml.VMXML.set_memoryBacking_tag(vmxml.vm_name, access_mode="shared")
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[index])
