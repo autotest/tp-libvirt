@@ -70,7 +70,7 @@ def run(test, params, env):
         if params.get("set_postcopy_in_precopy_phase"):
             virsh.migrate_setspeed(vm_name,
                                    params.get("set_postcopy_in_precopy_phase"),
-                                   **virsh_args)
+                                   "--postcopy", **virsh_args)
             get_speed(exp_migrate_speed)
 
         params.update({'compare_to_value':
