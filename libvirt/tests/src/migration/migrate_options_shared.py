@@ -832,6 +832,7 @@ def run(test, params, env):
     check_complete_job = "yes" == params.get("check_complete_job", "no")
     check_domjobinfo_results = "yes" == params.get("check_domjobinfo_results")
     check_log_interval = params.get("check_log_interval")
+    comp_cache_size = params.get("comp_cache_size")
     maxdowntime_before_mig = "yes" == params.get("set_maxdowntime_before_migration",
                                                  "no")
     check_default_maxdowntime = params.get("check_default_maxdowntime")
@@ -1104,6 +1105,20 @@ def run(test, params, env):
                                                  server_user, server_pwd,
                                                  r'[$#%]')
             remote_session.sendline("virsh " + cmd)
+
+        if comp_cache_size:
+            if (not (int(comp_cache_size) & (int(comp_cache_size)-1)) and
+               int(comp_cache_size) > memory.get_page_size()):
+                res = virsh.migrate_compcache(vm_name, comp_cache_size,
+                                              **virsh_args).stdout_text.strip()
+                regx = (r"Compression cache: %.3f M"
+                        % (int(comp_cache_size)/(1024*1024)))
+                if not re.findall(regx, res):
+                    test.fail("Failed to find '%s' in '%s'." % (regx, res))
+            else:
+                # TODO: non-power-of-2 value or smaller than default pagesize
+                test.error("%s is not power of 2 or smaller than "
+                           "default pagesize." % comp_cache_size)
 
         # Preparation for the running guest before migration
         if hpt_resize and hpt_resize != 'disabled':
