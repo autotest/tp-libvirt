@@ -31,6 +31,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     managed_save_file = "/var/lib/libvirt/qemu/save/%s.save" % vm_name
+    shutdown_timeout = int(params.get('shutdown_timeout', 60))
 
     # define function
     def vm_recover_check(option, libvirtd, check_shutdown=False):
@@ -91,7 +92,8 @@ def run(test, params, env):
             # Shutdown and start the domain,
             # it should be in runing state and can be login.
             vm.shutdown()
-            vm.wait_for_shutdown()
+            if not vm.wait_for_shutdown(shutdown_timeout):
+                test.fail('VM failed to shutdown')
             vm.start()
             vm.wait_for_login()
 
