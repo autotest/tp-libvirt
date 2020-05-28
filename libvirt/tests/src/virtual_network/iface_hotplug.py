@@ -10,6 +10,7 @@ from virttest import virt_vm
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.interface import Interface
 from virttest.utils_test import libvirt
+from avocado.utils import process
 
 
 def run(test, params, env):
@@ -140,7 +141,7 @@ def run(test, params, env):
                     if any([msg in ret.stderr for msg in err_msgs]):
                         logging.debug("No more pci slots, can't attach more devices")
                         break
-                    elif (ret.stderr.count("doesn't support option %s" % attach_option)):
+                    elif ret.stderr.count("doesn't support option %s" % attach_option):
                         test.cancel(ret.stderr)
                     elif err_msgs1 in ret.stderr:
                         logging.debug("option %s is not supported when domain running is %s" % (attach_option, vm.is_alive()))
@@ -301,11 +302,15 @@ def run(test, params, env):
                             pci_dict = ast.literal_eval(pci_addr)
                             addr = iface_xml_det.new_iface_address(**{"attrs": pci_dict})
                             iface_xml_det.set_address(addr)
+                        ori_pid_libvirtd = process.getoutput("pidof libvirtd")
                         ret = virsh.detach_device(vm_name,
                                                   iface_xml_det.xml,
                                                   flagstr="",
                                                   ignore_status=True)
                         libvirt.check_exit_status(ret, status_error)
+                        aft_pid_libvirtd = process.getoutput("pidof libvirtd")
+                        if not utils_libvirtd.Libvirtd.is_running or ori_pid_libvirtd != aft_pid_libvirtd:
+                            test.fail("Libvirtd crash after detach non-exists interface")
                 else:
                     for iface in iface_list:
                         options = ("%s --mac %s" %
