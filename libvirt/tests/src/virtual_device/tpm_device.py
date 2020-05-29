@@ -2,20 +2,23 @@ import os
 import re
 import logging
 import time
+import platform
 
-from virttest.libvirt_xml.devices.tpm import Tpm
-from virttest.libvirt_xml.vm_xml import VMXML
-from virttest.libvirt_xml import LibvirtXMLError
+from virttest import data_dir
+from virttest import libvirt_version
 from virttest import libvirt_vm
 from virttest import virsh
 from virttest import utils_package
 from virttest import utils_misc
 from virttest import utils_libguestfs
 from virttest import utils_libvirtd
+
+from virttest.libvirt_xml.devices.tpm import Tpm
+from virttest.libvirt_xml.vm_xml import VMXML
+from virttest.libvirt_xml import LibvirtXMLError
 from virttest.utils_test import libvirt
 from virttest.virt_vm import VMStartError
 
-from provider import libvirt_version
 from avocado.utils import service
 from avocado.utils import process
 from avocado.utils import astring
@@ -63,6 +66,10 @@ def run(test, params, env):
     no_backend = ("yes" == params.get("no_backend", "no"))
     status_error = ("yes" == params.get("status_error", "no"))
     xml_error = ("yes" == params.get("xml_error", "no"))
+    loader = params.get("loader", "")
+    nvram = params.get("nvram", "")
+    uefi_disk_url = params.get("uefi_disk_url", "")
+    download_file_path = os.path.join(data_dir.get_tmp_dir(), "uefi_disk.qcow2")
 
     # Check tpm chip on host for passthrough testing
     if backend_type == "passthrough":
@@ -85,20 +92,62 @@ def run(test, params, env):
                 # If "1.2 TPM" or no version info in dmesg, try to test a tpm1.2 at first
                 if not utils_package.package_install("tpm-tools"):
                     test.error("Failed to install tpm-tools on host")
+    # Check host env for vtpm testing
     elif backend_type == "emulator":
         if not utils_misc.compare_qemu_version(4, 0, 0, is_rhev=False):
             test.cancel("vtpm(emulator backend) is not supported "
                         "on current qemu version.")
-        # Todo: if not a uefi guest, cancel test
         # Install swtpm pkgs on host for vtpm emulation
         if not utils_package.package_install("swtpm*"):
             test.error("Failed to install swtpm swtpm-tools on host")
+
+    def replace_os_disk(vm_xml, vm_name, nvram):
+        """
+        Replace os(nvram) and disk(uefi) for x86 vtpm test
+
+        :param vm_xml: current vm's xml
+        :param vm_name: current vm name
+        :param nvram: nvram file path of vm
+        """
+        # Add loader, nvram in <os>
+        nvram = nvram.replace("<VM_NAME>", vm_name)
+        dict_os_attrs = {"loader_readonly": "yes",
+                         "secure": "yes",
+                         "loader_type": "pflash",
+                         "loader": loader,
+                         "nvram": nvram}
+        vm_xml.set_os_attrs(**dict_os_attrs)
+        logging.debug("Set smm=on in VMFeaturesXML")
+        # Add smm in <features>
+        features_xml = vm_xml.features
+        features_xml.smm = "on"
+        vm_xml.features = features_xml
+        vm_xml.sync()
+        # Replace disk with an uefi image
+        if not utils_package.package_install("wget"):
+            test.error("Failed to install wget on host")
+        if uefi_disk_url.count("EXAMPLE"):
+            test.error("Please provide the URL %s" % uefi_disk_url)
+        else:
+            download_cmd = ("wget %s -O %s" % (uefi_disk_url, download_file_path))
+            process.system(download_cmd, verbose=False, shell=True)
+        vm = env.get_vm(vm_name)
+        uefi_disk = {'disk_source_name': download_file_path}
+        libvirt.set_vm_disk(vm, uefi_disk)
 
     vm_names = params.get("vms").split()
     vm_name = vm_names[0]
     vm = env.get_vm(vm_name)
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
+    os_xml = getattr(vm_xml, "os")
+    host_arch = platform.machine()
+    if backend_type == "emulator" and host_arch == 'x86_64':
+        if not utils_package.package_install("OVMF"):
+            test.error("Failed to install OVMF or edk2-ovmf pkgs on host")
+        if os_xml.xmltreefile.find('nvram') is None:
+            replace_os_disk(vm_xml, vm_name, nvram)
+            vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     if vm.is_alive():
         vm.destroy()
 
@@ -376,7 +425,7 @@ def run(test, params, env):
             file_version = kernel_version
         src_url = "%s/v%s.x/linux-%s.tar.xz" % (parent_path, major_version, file_version)
         download_cmd = "wget %s -O %s" % (src_url, "/root/linux.tar.xz")
-        output = session.cmd_output(download_cmd, timeout=360)
+        output = session.cmd_output(download_cmd, timeout=480)
         logging.debug("Command output: %s", output)
         # Install neccessary pkgs to build test suite
         if not utils_package.package_install(["tar", "make", "gcc", "rsync", "python2"], session, 360):
@@ -478,7 +527,7 @@ def run(test, params, env):
                 # Stop test when get expected failure
                 return
             else:
-                test.fail("Test failed in vmxml.sync(), detail:%s." % e)
+                test.fail("Test failed in vm_xml.sync(), detail:%s." % e)
         if xml_error:
             test.fail("invalid tpm xml should not define succeed.")
         if vm_operate != "restart":
