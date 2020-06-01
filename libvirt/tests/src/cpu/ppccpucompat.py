@@ -116,9 +116,11 @@ def run(test, params, env):
         if condn == "filetrans":
             utils_test.run_file_transfer(test, params, env)
         elif condn == "stress":
-            bt = utils_test.run_avocado_bg(vm, params, test)
+            testlist = utils_test.get_avocadotestlist(params)
+            bt = utils_test.run_avocado_bg(vm, params, test, testlist)
             if not bt:
                 test.cancel("guest stress failed to start")
+            bt.join()
         elif condn == "save":
             save_file = os.path.join(data_dir.get_tmp_dir(), vm_name + ".save")
             result = virsh.save(vm_name, save_file, ignore_status=True,

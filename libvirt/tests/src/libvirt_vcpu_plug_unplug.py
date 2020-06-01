@@ -301,7 +301,8 @@ def run(test, params, env):
         vm.start()
         vm_uptime_init = vm.uptime()
         if with_stress:
-            bt = utils_test.run_avocado_bg(vm, params, test)
+            testlist = utils_test.get_avocadotestlist(params)
+            bt = utils_test.run_avocado_bg(vm, params, test, testlist)
             if not bt:
                 test.cancel("guest stress failed to start")
         # Create swap partition/file if nessesary
@@ -545,7 +546,7 @@ def run(test, params, env):
             vm.cleanup_swap()
         if with_stress:
             if "bt" in locals() and bt:
-                bt.join(ignore_status=True)
+                bt.join()
         vm.destroy()
         backup_xml.sync()
 
