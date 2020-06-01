@@ -7,6 +7,7 @@ from virttest import data_dir
 from virttest import virt_vm
 from virttest import virsh
 from virttest import remote
+from virttest import utils_misc
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
@@ -359,7 +360,8 @@ def run(test, params, env):
         for img in disks:
             if 'format' in img:
                 if img["format"] == "scsi":
-                    libvirt.delete_scsi_disk()
+                    utils_misc.wait_for(libvirt.delete_scsi_disk,
+                                        120, ignore_errors=True)
                 elif img["format"] == "iscsi":
                     libvirt.setup_or_cleanup_iscsi(is_setup=False)
             elif "source" in img:
