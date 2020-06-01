@@ -359,7 +359,7 @@ def run(test, params, env):
         find_attach_disk(not status_error)
 
         # Detach disk
-        cmd_result = virsh.detach_disk(vm_name, disk_target)
+        cmd_result = virsh.detach_disk(vm_name, disk_target, wait_remove_event=True)
         libvirt.check_exit_status(cmd_result, status_error)
 
         # Check disk inside the VM

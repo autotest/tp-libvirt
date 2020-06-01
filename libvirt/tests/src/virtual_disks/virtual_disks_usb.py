@@ -231,7 +231,7 @@ def run(test, params, env):
         # Detach the disk from vm
         result = virsh.detach_device(vm_name, disk_xml.xml,
                                      flagstr=attach_options,
-                                     ignore_status=True, debug=True)
+                                     ignore_status=True, debug=True, wait_remove_event=True)
         libvirt.check_exit_status(result, status_error)
 
         # Check the detached disk in vm

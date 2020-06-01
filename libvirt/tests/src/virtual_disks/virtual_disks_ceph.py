@@ -945,13 +945,13 @@ def run(test, params, env):
         # Detach the device.
         if attach_device:
             xml_file = libvirt.create_disk_xml(params)
-            ret = virsh.detach_device(vm_name, xml_file)
+            ret = virsh.detach_device(vm_name, xml_file, wait_remove_event=True)
             libvirt.check_exit_status(ret)
             if additional_guest:
-                ret = virsh.detach_device(guest_name, xml_file)
+                ret = virsh.detach_device(guest_name, xml_file, wait_remove_event=True)
                 libvirt.check_exit_status(ret)
         elif attach_disk:
-            ret = virsh.detach_disk(vm_name, targetdev)
+            ret = virsh.detach_disk(vm_name, targetdev, wait_remove_event=True)
             libvirt.check_exit_status(ret)
 
         # Check disk in vm after detachment.
