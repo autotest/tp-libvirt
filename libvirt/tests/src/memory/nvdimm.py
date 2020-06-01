@@ -96,6 +96,16 @@ def run(test, params, env):
 
         return mem_xml.copy()
 
+    def check_nvdimm_file(file_name):
+        """
+        check if the file exists in nvdimm memory device
+
+        :param file_name: the file name in nvdimm device
+        """
+        vm_session = vm.wait_for_login()
+        if test_str not in vm_session.cmd('cat /mnt/%s ' % file_name):
+            test.fail('"%s" should be in output' % test_str)
+
     bkxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     try:
@@ -187,7 +197,7 @@ def run(test, params, env):
 
             libvirt.check_qemu_cmd_line('mem-path=/tmp/nvdimm,share=no')
 
-            private_str = 'This is a test for foo-private!'
+            private_str = 'This is a test for foo-private'
             vm_session.cmd('mount -o dax /dev/pmem0 /mnt/')
 
             file_private = 'foo-private'
@@ -222,7 +232,7 @@ def run(test, params, env):
             test_str = 'This is a test with label'
             vm_session.cmd('echo "%s" >/mnt/foo-label' % test_str)
             if test_str not in vm_session.cmd('cat /mnt/foo-label '):
-                test.fail('"%s" should be in output' % test_str)
+                test.fail('"%s" should be in the output of cat cmd' % test_str)
 
             # Reboot the guest, and remount the nvdimm device in the guest.
             # Check the file foo-label is exited
@@ -233,6 +243,20 @@ def run(test, params, env):
             vm_session.cmd('mount -o dax /dev/pmem0  /mnt')
             if test_str not in vm_session.cmd('cat /mnt/foo-label '):
                 test.fail('"%s" should be in output' % test_str)
+
+            if params.get('check_life_cycle', 'no') == 'yes':
+                virsh.managedsave(vm_name, ignore_status=False, debug=True)
+                vm.start()
+                check_nvdimm_file('foo-label')
+
+                vm_s1 = vm_name + ".s1"
+                virsh.save(vm_name, vm_s1, ignore_status=False, debug=True)
+                virsh.restore(vm_s1, ignore_status=False, debug=True)
+                check_nvdimm_file('foo-label')
+
+                virsh.snapshot_create_as(vm_name, vm_s1, ignore_status=False, debug=True)
+                virsh.snapshot_revert(vm_name, vm_s1, ignore_status=False, debug=True)
+                virsh.snapshot_delete(vm_name, vm_s1, ignore_status=False, debug=True)
 
         if check == 'hot_plug':
             # Create file for 2nd nvdimm device
