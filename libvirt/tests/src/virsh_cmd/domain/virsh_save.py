@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import logging
 
 from virttest import virsh
@@ -37,6 +38,8 @@ def run(test, params, env):
     readonly = ("yes" == params.get("save_readonly", "no"))
     expect_msg = params.get("save_err_msg", "")
     unprivileged_user = params.get('unprivileged_user')
+    start_vm = params.get("start_vm", "yes")
+
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
             unprivileged_user = 'testacl'
@@ -67,6 +70,12 @@ def run(test, params, env):
 
     if progress:
         options += " --verbose"
+
+    # This is to ensure the vm is fully started before executing save operation.
+    if start_vm == 'yes' and not vm.is_alive():
+        vm.start()
+    if vm.is_alive() and not vm.is_paused():
+        vm.wait_for_login().close()
     result = virsh.save(vm_ref, savefile, options, ignore_status=True,
                         unprivileged_user=unprivileged_user,
                         uri=uri, debug=True, readonly=readonly)
@@ -78,6 +87,7 @@ def run(test, params, env):
         utils_libvirtd.libvirtd_start()
 
     if savefile:
+        time.sleep(10)
         virsh.restore(savefile, debug=True)
 
     # check status_error
