@@ -9,7 +9,7 @@ branches:
 
 matrix:
     allow_failures:
-        - python: "3.4"
+        - python: "2.7"
 
 sudo: false
 
