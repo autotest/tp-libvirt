@@ -11,6 +11,9 @@ from virttest import virsh
 from virttest import remote
 from virttest.utils_test import libvirt
 from avocado.utils import process
+from avocado.utils import download
+from aexpect.exceptions import ShellProcessTerminatedError
+
 from provider.v2v_vmcheck_helper import VMChecker
 
 
@@ -68,6 +71,12 @@ def run(test, params, env):
     ovirt_ca_file_path = params.get("ovirt_ca_file_path")
     local_ca_file_path = params.get("local_ca_file_path")
     os_version = params.get('os_version')
+    os_type = params.get('os_type')
+    virtio_win_path = params.get('virtio_win_path')
+    # qemu-guest-agent path in virtio-win or rhv-guest-tools-iso
+    qa_path = params.get('qa_path')
+    # download url of qemu-guest-agent
+    qa_url = params.get('qa_url')
     v2v_sasl = None
     # default values for v2v_cmd
     auto_clean = True
@@ -204,7 +213,38 @@ def run(test, params, env):
                 'file /lib/modules/%s/fileaccess/fileaccess_mod.ko is not owned by any package' %
                 content)
 
-    def check_ogac(vmcheck):
+    def check_windows_ogac(vmcheck):
+        """
+        Check qemu-guest-agent service in VM
+
+        :param vmcheck: VMCheck object for vm checking
+        """
+        try:
+            res = utils_misc.wait_for(
+                lambda: re.search(
+                    'running',
+                    vmcheck.get_service_info('qemu-ga'),
+                    re.I),
+                300,
+                step=30)
+        except ShellProcessTerminatedError:
+            # Windows guest may reboot after installing qemu-ga service
+            logging.debug('Windows guest is rebooting')
+            if vmcheck.session:
+                vmcheck.session.close()
+            vmcheck.create_session()
+            res = utils_misc.wait_for(
+                lambda: re.search(
+                    'running',
+                    vmcheck.get_service_info('qemu-ga'),
+                    re.I),
+                300,
+                step=30)
+
+        if not res:
+            test.fail('Not found running qemu-ga service')
+
+    def check_linux_ogac(vmcheck):
         """
         Check qemu-guest-agent service in VM
 
@@ -239,14 +279,18 @@ def run(test, params, env):
                     return re.search(ptn, output).group(1)
             return ''
 
-        mount_point = utils_v2v.v2v_mount(
-            os.getenv('VIRTIO_WIN'),
-            'rhv_tools_setup_iso',
-            fstype='iso9660')
-        params['tmp_mount_point'] = mount_point
-        qemu_guest_agent_dir = os.path.join(mount_point, 'linux')
+        if os.path.isfile(os.getenv('VIRTIO_WIN')):
+            mount_point = utils_v2v.v2v_mount(
+                os.getenv('VIRTIO_WIN'),
+                'rhv_tools_setup_iso',
+                fstype='iso9660')
+            export_path = params['tmp_mount_point'] = mount_point
+        else:
+            export_path = os.getenv('VIRTIO_WIN')
+
+        qemu_guest_agent_dir = os.path.join(export_path, qa_path)
         all_pkgs = get_pkgs(qemu_guest_agent_dir)
-        logging.debug('All packages in qemu-guest-agent-iso: %s' % all_pkgs)
+        logging.debug('The installing qemu-guest-agent is: %s' % all_pkgs)
         vm_pkg_ver = get_pkg_version_vm()
         logging.debug('qemu-guest-agent verion in vm: %s' % vm_pkg_ver)
 
@@ -368,7 +412,10 @@ def run(test, params, env):
             if checkpoint == 'file_architecture':
                 check_file_architecture(vmchecker.checker)
             if checkpoint == 'ogac':
-                check_ogac(vmchecker.checker)
+                if os_type == 'windows':
+                    check_windows_ogac(vmchecker.checker)
+                else:
+                    check_linux_ogac(vmchecker.checker)
             if checkpoint == 'ubuntu_tools':
                 check_ubuntools(vmchecker.checker)
             # Merge 2 error lists
@@ -473,10 +520,24 @@ def run(test, params, env):
             os.environ['https_proxy'] = https_proxy
 
         if checkpoint == 'ogac':
-            rhv_iso_path = '/usr/share/rhv-guest-tools-iso/rhv-tools-setup.iso'
-            os.environ['VIRTIO_WIN'] = rhv_iso_path
-            if not os.path.isfile(os.getenv('VIRTIO_WIN')):
+            os.environ['VIRTIO_WIN'] = virtio_win_path
+            if not os.path.exists(os.getenv('VIRTIO_WIN')):
                 test.fail('%s does not exist' % os.getenv('VIRTIO_WIN'))
+
+            if os.path.isdir(os.getenv('VIRTIO_WIN')) and os_type == 'linux':
+                export_path = os.getenv('VIRTIO_WIN')
+                qemu_guest_agent_dir = os.path.join(export_path, qa_path)
+                if not os.path.exists(qemu_guest_agent_dir) and os.access(
+                        export_path, os.W_OK) and qa_url:
+                    logging.debug(
+                        'Not found qemu-guest-agent in virtio-win or rhv-guest-tools-iso,'
+                        ' Try to prepare it manually. This is not a permanant step, once'
+                        ' the official build includes it, this step should be removed.')
+                    os.makedirs(qemu_guest_agent_dir)
+                    rpm_name = os.path.basename(qa_url)
+                    download.get_file(
+                        qa_url, os.path.join(
+                            qemu_guest_agent_dir, rpm_name))
 
         if checkpoint == 'invalid_pem':
             # simply change the 2nd line to lowercase to get an invalid pem
