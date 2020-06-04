@@ -36,21 +36,21 @@ def run(test, params, env):
             return True
         return False
 
-    def custom_cpu(vm_name, cpu_match):
+    def custom_cpu(vm_name, cpu_match, model, policies):
         """
         Custom guest cpu match/model/features for --update-cpu option.
+
+        :param vm_name: name of the domain
+        :param cpu_match: match mode
+        :param model: cpu model
+        :param policies: features and their policies dict
         """
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         vmcpu_xml = vm_xml.VMCPUXML()
         vmcpu_xml['match'] = cpu_match
-        vmcpu_xml['model'] = "Penryn"
-        vmcpu_xml.add_feature('xtpr', 'optional')
-        vmcpu_xml.add_feature('tm2', 'disable')
-        vmcpu_xml.add_feature('est', 'force')
-        vmcpu_xml.add_feature('vmx', 'forbid')
-        # Unsupport feature 'ia64'
-        vmcpu_xml.add_feature('ia64', 'optional')
-        vmcpu_xml.add_feature('vme', 'optional')
+        vmcpu_xml['model'] = model
+        for feature in policies:
+            vmcpu_xml.add_feature(feature, policies[feature])
         vmxml['cpu'] = vmcpu_xml
         logging.debug('Custom VM CPU: %s', vmcpu_xml.xmltreefile)
         vmxml.sync()
@@ -70,7 +70,48 @@ def run(test, params, env):
                     features.append(key)
         return list(set(features) | set(cpu.get_model_features(modelname)))
 
-    def check_cpu(xml, cpu_match, arch):
+    def get_cpu_model_policies(arch):
+        """
+        Get model and policies to be set
+        :param arch: architecture, e.g. x86_64
+        :return model, policies: cpu model and features with their policies
+        """
+        if arch == "s390x":
+            return "z13.2-base", {"msa1": "require",
+                                  "msa2": "force",
+                                  "edat": "disable",
+                                  "vmx": "forbid"}
+        else:
+            return "Penryn", {"xtpr": "optional",
+                              "tm2": "disable",
+                              "est": "force",
+                              "vmx": "forbid",
+                              # Unsupported feature 'ia64'
+                              "ia64": "optional",
+                              "vme": "optional"}
+
+    def is_supported_on_host_func(host_capa):
+        """
+        Create function to determine if feature is supported on host
+
+        :param host_capa: previously loaded host capability xml
+        :return: func to determine if supported on host
+        """
+        # Check if feature is supported on the host
+        # Since libvirt3.9, libvirt queries qemu/kvm
+        # to get one feature support or not
+        if libvirt_version.version_compare(3, 9, 0):
+            cpu_features = get_cpu_features()
+
+            def is_supported_on_host(f_name):
+                return f_name in cpu_features
+        else:
+
+            def is_supported_on_host(f_name):
+                return host_capa.check_feature_name(f_name)
+        return is_supported_on_host
+
+    def check_cpu(xml, cpu_match, arch, model, policies):
         """
         Check the dumpxml result for --update-cpu option
 
@@ -93,50 +134,32 @@ def run(test, params, env):
         check_pass = True
         require_count = 0
         expect_require_features = 0
-        if arch == 's390x':
-            # on s390x custom is left as-is
-            pass
-        else:
-            cpu_feature_list = vmcpu_xml.get_feature_list()
-            host_capa = capability_xml.CapabilityXML()
-            for i in range(len(cpu_feature_list)):
-                f_name = vmcpu_xml.get_feature_name(i)
-                f_policy = vmcpu_xml.get_feature_policy(i)
-                err_msg = "Policy of '%s' is not expected: %s" % (f_name, f_policy)
-                expect_policy = "disable"
-                if f_name in ["xtpr", "vme", "ia64"]:
-                    # Check if feature is support on the host
-                    # Since libvirt3.9, libvirt query qemu/kvm to get one feature support or not
-                    if libvirt_version.version_compare(3, 9, 0):
-                        if f_name in get_cpu_features():
-                            expect_policy = "require"
-                    else:
-                        if host_capa.check_feature_name(f_name):
-                            expect_policy = "require"
-                    if f_policy != expect_policy:
-                        logging.error(err_msg)
-                        check_pass = False
-                if f_name == "tm2":
-                    if f_policy != "disable":
-                        logging.error(err_msg)
-                        check_pass = False
-                if f_name == "est":
-                    if f_policy != "force":
-                        logging.error(err_msg)
-                        check_pass = False
-                if f_name == "vmx":
-                    if f_policy != "forbid":
-                        logging.error(err_msg)
-                        check_pass = False
-                # Count expect require features
-                if expect_policy == "require":
-                    expect_require_features += 1
-                # Count actual require features
-                if f_policy == "require":
-                    require_count += 1
+        cpu_feature_list = vmcpu_xml.get_feature_list()
+        host_capa = capability_xml.CapabilityXML()
+        is_supported_on_host = is_supported_on_host_func(host_capa)
+        for i in range(len(cpu_feature_list)):
+            f_name = vmcpu_xml.get_feature_name(i)
+            f_policy = vmcpu_xml.get_feature_policy(i)
+            err_msg = "Policy of '%s' is not expected: %s" % (f_name, f_policy)
+            expect_policy = "disable"
+            if f_name in policies:
+                if policies[f_name] == "optional" and arch != "s390x":
+                    if is_supported_on_host(f_name):
+                        expect_policy = "require"
+                else:
+                    expect_policy = policies[f_name]
+                if f_policy != expect_policy:
+                    logging.error(err_msg)
+                    check_pass = False
+            # Count expect require features
+            if expect_policy == "require":
+                expect_require_features += 1
+            # Count actual require features
+            if f_policy == "require":
+                require_count += 1
 
         # Check optional feature is changed to require/disable
-        expect_model = 'Penryn'
+        expect_model = model
 
         if cpu_match == "minimum":
             # libvirt commit 3b6be3c0 change the behavior of update-cpu
@@ -198,7 +221,8 @@ def run(test, params, env):
 
     backup_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     if options_ref.count("update-cpu"):
-        custom_cpu(vm_name, cpu_match)
+        model, policies = get_cpu_model_policies(arch)
+        custom_cpu(vm_name, cpu_match, model, policies)
     elif options_ref.count("security-info"):
         new_xml = backup_xml.copy()
         try:
@@ -243,7 +267,7 @@ def run(test, params, env):
                 test.fail("Found domain id in XML when run virsh dumpxml"
                           " with --inactive option")
             elif options_ref.count("update-cpu"):
-                if not check_cpu(output, cpu_match, arch):
+                if not check_cpu(output, cpu_match, arch, model, policies):
                     test.fail("update-cpu option check failed")
             elif options_ref.count("security-info"):
                 if not output.count("passwd='%s'" % security_pwd):
