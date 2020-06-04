@@ -604,6 +604,20 @@ def run(test, params, env):
             test.fail("The number of established connections is unexpected: %s"
                       % result.stdout.strip())
 
+    def suspend_vm(vm):
+        """
+        Suspend guest on source host and then check state
+
+        :params vm: Vm
+        :raise: test.fail if failed to pause vm or
+            the state of vm is not 'paused'
+        """
+        if not vm.pause():
+            test.fail("Failed to suspend vm.")
+        if not utils_misc.wait_for(
+           lambda: libvirt.check_vm_state(vm.name, "paused"), 10):
+            test.fail("vm statue is expected to 'paused'")
+
     def do_actions_during_migrate(params):
         """
         The entry point to execute action list during migration
@@ -634,6 +648,8 @@ def run(test, params, env):
                 check_established(expConnNum)
             elif action == 'drop_network_connection':
                 drop_network_connection(block_time)
+            elif action == 'suspendvm':
+                suspend_vm(vm)
             time.sleep(3)
 
     def attach_channel_xml():
