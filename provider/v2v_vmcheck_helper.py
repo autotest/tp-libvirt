@@ -673,6 +673,11 @@ class VMChecker(object):
                     map(lambda x: hex(int(x) & ((1 << 64) - 1)), [vm_genid, vm_genidX])):
                 # Remove 'L' suffix for python2
                 val = val.rstrip('L')
+                # if length of val is not equal 18, we must fill the length
+                # to 18 with 0.
+                if len(val) < 18:
+                    zero_pad = 18 - len(val)
+                    val = '0x' + '0' * zero_pad + val[2:]
                 if index == 0:
                     gen_id = '-'.join([val[n:] if n == -8 else val[n:n + 4]
                                        for n in range(-8, -17, -4)])
@@ -683,6 +688,7 @@ class VMChecker(object):
             return gen_id + '-' + gen_idX
 
         has_genid = self.params.get('has_genid')
+        # Return if not set has_genid
         if not has_genid:
             return
 
