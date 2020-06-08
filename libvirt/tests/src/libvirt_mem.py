@@ -252,8 +252,10 @@ def run(test, params, env):
         all_align = True
         for key in dom_mem:
             logging.info('%-20s:%15d', key, dom_mem[key])
-            if dom_mem[key] % 256:
+            if dom_mem[key] % 262144:
                 logging.error('%s not align to 256', key)
+                if key == 'currentMemory':
+                    continue
                 all_align = False
 
         if not all_align:
