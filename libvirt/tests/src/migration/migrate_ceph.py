@@ -1,230 +1,31 @@
 import logging
 import os
 import re
+import socket
+
 
 from avocado.core import exceptions
 from avocado.core import data_dir
 from avocado.utils import process
 
 from virttest import ssh_key
-from virttest import data_dir
 from virttest import remote
 from virttest import utils_package
 from virttest import utils_selinux
-from virttest import utils_package
 from virttest import utils_conn
+from virttest import utils_misc
 from virttest import virsh
 from virttest import virt_vm
 from virttest import migration
+from virttest import ceph
+from virttest import libvirt_vm
+from virttest import utils_secret
 
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml.devices.disk import Disk
 
 from virttest.utils_test import libvirt
-
-from virttest import libvirt_version
-
-MIGRATE_RET = False
-
-
-def check_output(test, output_msg, params):
-    """
-    Check if known messages exist in the given output messages.
-
-    :param test: the test object
-    :param output_msg: the given output messages
-    :param params: the dictionary including necessary parameters
-
-    :raise TestSkipError: raised if the known error is found together
-                          with some conditions satisfied
-    """
-    err_msg = params.get("err_msg", None)
-    status_error = params.get("status_error", "no")
-    if status_error == "yes" and err_msg:
-        if err_msg in output_msg:
-            logging.debug("Expected error '%s' was found", err_msg)
-            return
-        else:
-            test.fail("The expected error '%s' was not found in output '%s'" % (err_msg, output_msg))
-
-    ERR_MSGDICT = {"Bug 1249587": "error: Operation not supported: " +
-                   "pre-creation of storage targets for incremental " +
-                   "storage migration is not supported",
-                   "ERROR 1": "error: internal error: unable to " +
-                   "execute QEMU command 'migrate': " +
-                   "this feature or command is not currently supported",
-                   "ERROR 2": "error: Cannot access storage file",
-                   "ERROR 3": "Unable to read TLS confirmation: " +
-                   "Input/output error",
-                   "ERROR 4": "error: Unsafe migration: Migration " +
-                   "without shared storage is unsafe"}
-
-    # Check for special case firstly
-    migrate_disks = "yes" == params.get("migrate_disks")
-    status_error = "yes" == params.get("status_error")
-    if migrate_disks and status_error:
-        logging.debug("To check for migrate-disks...")
-        disk = params.get("attach_A_disk_source")
-        last_msg = "(as uid:107, gid:107): No such file or directory"
-        if not libvirt_version.version_compare(4, 5, 0):
-            expect_msg = "%s '%s' %s" % (ERR_MSGDICT["ERROR 2"],
-                                         disk,
-                                         last_msg)
-        else:
-            expect_msg = ERR_MSGDICT["ERROR 4"]
-        if output_msg.find(expect_msg) >= 0:
-            logging.debug("The expected error '%s' was found", expect_msg)
-            return
-        else:
-            test.fail("The actual output:\n%s\n"
-                      "The expected error '%s' was not found"
-                      % (output_msg, expect_msg))
-
-    if params.get("target_vm_name"):
-        if output_msg.find(ERR_MSGDICT['ERROR 3']) >= 0:
-            logging.debug("The expected error is found: %s", ERR_MSGDICT['ERROR 3'])
-            return
-        else:
-            test.fail("The actual output:\n%s\n"
-                      "The expected error '%s' was not found"
-                      % (output_msg, ERR_MSGDICT['ERROR 3']))
-
-    for (key, value) in ERR_MSGDICT.items():
-        if output_msg.find(value) >= 0:
-            if key == "ERROR 1" and params.get("support_precreation") is True:
-                logging.debug("The error is not expected: '%s'.", value)
-            elif key == "ERROR 2":
-                break
-            else:
-                logging.debug("The known error was found: %s --- %s",
-                              key, value)
-                test.cancel("Known error: %s --- %s in %s"
-                            % (key, value, output_msg))
-
-
-def check_virsh_command_and_option(test, command, option=None):
-    """
-    Check if virsh command exists
-
-    :param test: test object
-    :param command: the command to validate
-    :param option: the option for the command
-    :raise: test.cancel if commmand is not supported
-    """
-    msg = "This version of libvirt does not support "
-    if not virsh.has_help_command(command):
-        test.cancel(msg + "virsh command '%s'" % command)
-
-    if option and not virsh.has_command_help_match(command, option):
-        test.cancel(msg + "virsh command '%s' with option '%s'"
-                    % (command, option))
-
-
-def migrate_vm(test, params):
-    """
-    Connect libvirt daemon
-
-    :param test: the test object
-    :param params: parameters used
-    :raise: test.fail if migration does not get expected result
-    """
-    vm_name = params.get("vm_name_to_migrate")
-    if vm_name is None:
-        vm_name = params.get("main_vm", "")
-    uri = params.get("desuri")
-    options = params.get("virsh_options", "--live --verbose")
-    extra = params.get("extra_args", "")
-    su_user = params.get("su_user", "")
-    auth_user = params.get("server_user")
-    auth_pwd = params.get("server_pwd")
-    virsh_patterns = params.get("patterns_virsh_cmd", r".*100\s%.*")
-    status_error = params.get("status_error", "no")
-    timeout = int(params.get("migration_timeout", 30))
-    extra_opt = params.get("extra_opt", "")
-
-    for option in options.split():
-        if option.startswith("--"):
-            check_virsh_command_and_option(test, "migrate", option)
-
-    logging.info("Prepare migrate %s", vm_name)
-    global MIGRATE_RET
-    MIGRATE_RET, mig_output = libvirt.do_migration(vm_name, uri, extra,
-                                                   auth_pwd, auth_user,
-                                                   options,
-                                                   virsh_patterns,
-                                                   su_user, timeout,
-                                                   extra_opt)
-
-    if status_error == "no":
-        if MIGRATE_RET:
-            logging.info("Get an expected migration result:\n%s" % mig_output)
-        else:
-            check_output(test, mig_output, params)
-            test.fail("Can't get an expected migration result:\n%s"
-                      % mig_output)
-    else:
-        if not MIGRATE_RET:
-            check_output(test, mig_output, params)
-            logging.info("It's an expected error:\n%s" % mig_output)
-        else:
-            test.fail("Unexpected return result:\n%s" % mig_output)
-
-
-def check_parameters(test, params):
-    """
-    Make sure all of parameters are assigned a valid value
-
-    :param test: the test object
-    :param params: parameters used
-    :raise: test.cancel if not enough parameters are specified
-    """
-    client_ip = params.get("client_ip")
-    server_ip = params.get("server_ip")
-    ipv6_addr_src = params.get("ipv6_addr_src")
-    ipv6_addr_des = params.get("ipv6_addr_des")
-    client_cn = params.get("client_cn")
-    server_cn = params.get("server_cn")
-    client_ifname = params.get("client_ifname")
-    server_ifname = params.get("server_ifname")
-
-    args_list = [client_ip, server_ip, ipv6_addr_src,
-                 ipv6_addr_des, client_cn, server_cn,
-                 client_ifname, server_ifname]
-
-    for arg in args_list:
-        if arg and arg.count("ENTER.YOUR."):
-            test.cancel("Please assign a value for %s!" % arg)
-
-
-def get_secret_list(session=None):
-    """
-    Get secret list by virsh secret-list from local or remote host.
-
-    :param session: virsh shell session.
-    :return secret list
-    """
-    logging.info("Get secret list ...")
-    if session:
-        secret_list_result = session.secret_list()
-    else:
-        secret_list_result = virsh.secret_list()
-    secret_list = secret_list_result.stdout_text.strip().splitlines()
-    # First two lines contain table header followed by entries
-    # for each secret, such as:
-    #
-    # UUID                                  Usage
-    # --------------------------------------------------------------------------------
-    # b4e8f6d3-100c-4e71-9f91-069f89742273  ceph client.libvirt secret
-    secret_list = secret_list[2:]
-    result = []
-    # If secret list is empty.
-    if secret_list:
-        for line in secret_list:
-            # Split on whitespace, assume 1 column
-            linesplit = line.split(None, 1)
-            result.append(linesplit[0])
-    return result
 
 
 def prepare_ceph_disk(ceph_params, remote_virsh_dargs, test, runner_on_target):
@@ -235,11 +36,10 @@ def prepare_ceph_disk(ceph_params, remote_virsh_dargs, test, runner_on_target):
     :param ceph_params: parameter to setup ceph.
     :param remote_virsh_dargs: parameter to remote virsh.
     :param test: test itself.
+    :param runner_on_target: remote runner
     """
     # Ceph server config parameters
     virsh_dargs = {'debug': True, 'ignore_status': True}
-    prompt = ceph_params.get("prompt", r"[\#\$]\s*$")
-    ceph_disk = "yes" == ceph_params.get("ceph_disk")
     mon_host = ceph_params.get('mon_host')
     client_name = ceph_params.get('client_name')
     client_key = ceph_params.get("client_key")
@@ -262,10 +62,7 @@ def prepare_ceph_disk(ceph_params, remote_virsh_dargs, test, runner_on_target):
     remote_pwd = ceph_params.get("server_pwd")
 
     # Clean up dirty secrets in test environments if there are.
-    dirty_secret_list = get_secret_list()
-    if dirty_secret_list:
-        for dirty_secret_uuid in dirty_secret_list:
-            virsh.secret_undefine(dirty_secret_uuid)
+    utils_secret.clean_up_secrets()
 
     # Install ceph-common package which include rbd command
     if utils_package.package_install(["ceph-common"]):
@@ -273,9 +70,7 @@ def prepare_ceph_disk(ceph_params, remote_virsh_dargs, test, runner_on_target):
             # Clean up dirty secrets on remote host.
             try:
                 remote_virsh = virsh.VirshPersistent(**remote_virsh_dargs)
-                remote_dirty_secret_list = get_secret_list(remote_virsh)
-                for dirty_secret_uuid in remote_dirty_secret_list:
-                    remote_virsh.secret_undefine(dirty_secret_uuid)
+                utils_secret.clean_up_secrets(remote_virsh)
             except (process.CmdError, remote.SCPError) as detail:
                 raise exceptions.TestError(detail)
             finally:
@@ -344,6 +139,8 @@ def prepare_ceph_disk(ceph_params, remote_virsh_dargs, test, runner_on_target):
         disk_src_name = "%s/%s" % (vol_name, disk_img)
         cmd = ("rbd -m {0} {1} info {2} && rbd -m {0} {1} rm "
                "{2}".format(mon_host, key_opt, disk_src_name))
+        copy_key_config_cmd = "yes|cp %s /etc/ceph/ceph.conf" % key_file
+        process.run(copy_key_config_cmd, ignore_status=True, shell=True)
         process.run(cmd, ignore_status=True, shell=True)
 
         # Convert the disk format
@@ -384,8 +181,7 @@ def build_disk_xml(vm_name, disk_format, host_ip, disk_src_protocol,
 
     disk_xml = Disk(type_name="network")
     driver_dict = {"name": "qemu",
-                   "type": disk_format,
-                   "cache": "none"}
+                   "type": disk_format}
     disk_xml.driver = driver_dict
     disk_xml.target = {"dev": "vda", "bus": "virtio"}
     # If protocol is rbd,create ceph disk xml.
@@ -406,88 +202,161 @@ def build_disk_xml(vm_name, disk_format, host_ip, disk_src_protocol,
     vmxml.sync()
 
 
+def download_guest_image(test, guest_image_url, target_image_name="/mnt/cephfs/jeos-common-x86_64-latest.qcow2"):
+    """
+    Download given guest image file from url.
+
+    :param test: test object.
+    :param guest_image_url: downloaded image url.
+    :param target_image_name: target iso path
+    :return: downloaded target image path if succeed, otherwise test fail.
+    """
+    if utils_package.package_install("wget"):
+        logging.debug('begin download guest images ..............................')
+
+        def _download():
+            download_cmd = ("wget %s -O %s" % (guest_image_url, target_image_name))
+            if process.system(download_cmd, verbose=False, shell=True):
+                test.error("Failed to download image file")
+            return True
+        utils_misc.wait_for(_download, timeout=900, ignore_errors=True)
+        logging.debug('finish download guest images ..............................')
+        return target_image_name
+    else:
+        test.fail("Fail to install wget")
+
+
+def setup_or_cleanup_cephfs_disk(test, cephfs_params, vm, is_setup=True):
+    """
+    Setup or cleanup cephfs disk
+
+    :param test: test object.
+    :param cephfs_params: parameter to setup cephfs.
+    :param vm: vm object
+    :param is_setup: one boolean to show setup or clean up
+    """
+    # Cephfs config parameters
+    mon_host = cephfs_params.get('mon_host')
+    ceph_uri = "%s:6789:/" % (mon_host)
+    mount_point = cephfs_params.get('cephfs_mount_dir')
+    mount_options = "name=%s,secret=%s" % (cephfs_params.get("auth_user"), cephfs_params.get("auth_key"))
+
+    server_ip = cephfs_params.get("server_ip")
+    server_user = cephfs_params.get("server_user")
+    server_pwd = cephfs_params.get("server_pwd")
+    symlink_name = cephfs_params.get("cephfs_symlink")
+    cephfs_create_symlink = "yes" == cephfs_params.get("cephfs_create_symlink", "no")
+
+    default_guest_image_download_path = cephfs_params.get("default_guest_image_download_path")
+    image_download = cephfs_params.get("guest_image_download_path")
+    guest_image_download_path = default_guest_image_download_path if 'EXAMPLE' in image_download else image_download
+
+    clean_up_cmd = "rm -rf %s/*" % mount_point
+    if is_setup:
+        ceph.cephfs_mount(ceph_uri, mount_point, mount_options, verbose=True, session=None)
+        process.run(clean_up_cmd, ignore_status=True, shell=True)
+        remote_ssh_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                   server_user, server_pwd,
+                                                   r"[\#\$]\s*$", timeout=480)
+        ceph.cephfs_mount(ceph_uri, mount_point, mount_options, verbose=True, session=remote_ssh_session)
+        remote_ssh_session.cmd(clean_up_cmd, ok_status=[0, 1], ignore_all_errors=True)
+
+        first_disk_img = os.path.basename(vm.get_first_disk_devices()['source'])
+        cephfs_img_path = os.path.join(mount_point, first_disk_img)
+        if cephfs_create_symlink:
+            utils_misc.make_symlink(mount_point, symlink_name)
+            utils_misc.make_symlink(mount_point, symlink_name, remote_ssh_session)
+            cephfs_img_path = os.path.join(symlink_name, first_disk_img)
+        remote_ssh_session.close()
+        cephfs_backend_disk = {'disk_source_name': cephfs_img_path, 'enable_cache': 'no', 'driver_cache': 'unsafe'}
+        replace_guest_image_url = "%s/%s" % (guest_image_download_path, first_disk_img)
+        download_guest_image(test, replace_guest_image_url, "%s/%s" % (mount_point, first_disk_img))
+        libvirt.set_vm_disk(vm, cephfs_backend_disk)
+    else:
+        if cephfs_create_symlink:
+            utils_misc.rm_link(symlink_name)
+            utils_misc.rm_link(symlink_name, remote_ssh_session)
+        ceph.cephfs_umount(ceph_uri, mount_point, verbose=True, session=None)
+        remote_ssh_session = remote.remote_login("ssh", server_ip, "22", server_user,
+                                                 server_pwd, r"[\#\$]\s*$", timeout=480)
+        ceph.cephfs_umount(ceph_uri, mount_point, verbose=True, session=remote_ssh_session)
+        remote_ssh_session.close()
+
+
 def run(test, params, env):
     """
     Test remote access with TCP, TLS connection
     """
-    test_dict = dict(params)
-    vm_name = test_dict.get("main_vm")
+    vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
-    start_vm = test_dict.get("start_vm", "no")
+    start_vm = params.get("start_vm", "no")
 
     # Server and client parameters
-    server_ip = test_dict.get("server_ip")
-    server_user = test_dict.get("server_user")
-    server_pwd = test_dict.get("server_pwd")
-    client_ip = test_dict.get("client_ip")
-    client_user = test_dict.get("client_user")
-    client_pwd = test_dict.get("client_pwd")
-    server_cn = test_dict.get("server_cn")
-    client_cn = test_dict.get("client_cn")
-    target_ip = test_dict.get("target_ip", "")
-    # generate remote IP
-    if target_ip == "":
-        if server_cn:
-            target_ip = server_cn
-        elif server_ip:
-            target_ip = server_ip
-        else:
-            target_ip = target_ip
+    server_ip = params["server_ip"] = params.get("remote_ip")
+    server_user = params["server_user"] = params.get("remote_user", "root")
+    server_pwd = params["server_pwd"] = params.get("remote_pwd")
+    client_ip = params["client_ip"] = params.get("local_ip")
+    client_user = params["client_user"] = params.get("remote_user", "root")
+    client_pwd = params["client_pwd"] = params.get("local_pwd")
+
+    extra = params.get("virsh_migrate_extra")
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
                           'ssh_remote_auth': True}
 
     # Ceph disk parameters
-    driver = test_dict.get("test_driver", "qemu")
-    transport = test_dict.get("transport")
-    plus = test_dict.get("conn_plus", "+")
-    source_type = test_dict.get("vm_disk_source_type", "file")
-    virsh_options = test_dict.get("virsh_options", "--verbose --live")
-    vol_name = test_dict.get("vol_name")
+    driver = params.get("test_driver", "qemu")
+    transport = params.get("transport")
+    plus = params.get("conn_plus", "+")
+    options = params.get("virsh_migrate_options", "--live --p2p --verbose --timeout=1200")
+    virsh_options = params.get("virsh_options", "")
+    func_name = None
+
+    vol_name = params.get("vol_name")
     disk_src_protocol = params.get("disk_source_protocol")
-    source_file = test_dict.get("disk_source_file")
-    disk_format = test_dict.get("disk_format", "qcow2")
+    source_file = params.get("disk_source_file")
+    disk_format = params.get("disk_format", "qcow2")
     mon_host = params.get("mon_host")
     ceph_key_opt = ""
     attach_disk = False
     # Disk XML file
     disk_xml = None
-    # Define ceph_disk conditional variable
-    ceph_disk = "yes" == test_dict.get("ceph_disk")
 
-    # For --postcopy enable
-    postcopy_options = test_dict.get("postcopy_options")
-    if postcopy_options and not virsh_options.count(postcopy_options):
-        virsh_options = "%s %s" % (virsh_options, postcopy_options)
-        test_dict['virsh_options'] = virsh_options
+    # Ceph and cephfs  disk parameters
+    ceph_disk = "yes" == params.get("ceph_disk")
+    ceph_cephfs_disk = "yes" == params.get("ceph_cephfs_disk")
 
-    # For bi-directional and tls reverse test
-    uri_port = test_dict.get("uri_port", ":22")
-    uri_path = test_dict.get("uri_path", "/system")
-    src_uri = test_dict.get("migration_source_uri", "qemu:///system")
-    uri = "%s%s%s://%s%s%s" % (driver, plus, transport,
-                               target_ip, uri_port, uri_path)
-    test_dict["desuri"] = uri
-
-    # Make sure all of parameters are assigned a valid value
-    check_parameters(test, test_dict)
     # Set up SSH key
-
-    #ssh_key.setup_ssh_key(server_ip, server_user, server_pwd, port=22)
     remote_session = remote.wait_for_login('ssh', server_ip, '22',
                                            server_user, server_pwd,
                                            r"[\#\$]\s*$")
     remote_session.close()
-    #ssh_key.setup_ssh_key(server_ip, server_user, server_pwd, port=22)
+
+    # Check whether migrate back
+    migr_vm_back = "yes" == params.get("migrate_vm_back", "no")
+
+    # Params for migration connection
+    params["virsh_migrate_desturi"] = libvirt_vm.complete_uri(
+        params.get("migrate_dest_host"))
+    params["virsh_migrate_connect_uri"] = libvirt_vm.complete_uri(
+        params.get("migrate_source_host"))
+    src_uri = params.get("virsh_migrate_connect_uri")
+    dest_uri = params.get("virsh_migrate_desturi")
+
+    # Add local ssh to remote authorization file
+    ssh_key.setup_remote_ssh_key(client_ip, client_user, client_pwd, server_ip, server_user, server_pwd)
+    add_host_cmd = "ssh-keyscan -H %s >> ~/.ssh/known_hosts" % server_ip
+    process.run(add_host_cmd, ignore_status=True, shell=True)
 
     # Set up remote ssh key and remote /etc/hosts file for bi-direction migration
-    migr_vm_back = "yes" == test_dict.get("migrate_vm_back", "no")
+    migr_vm_back = "yes" == params.get("migrate_vm_back", "no")
     if migr_vm_back:
         ssh_key.setup_remote_ssh_key(server_ip, server_user, server_pwd)
-        ssh_key.setup_remote_known_hosts_file(client_ip,
-                                              server_ip,
-                                              server_user,
-                                              server_pwd)
+        remote_known_hosts_obj = ssh_key.setup_remote_known_hosts_file(client_ip,
+                                                                       server_ip,
+                                                                       server_user,
+                                                                       server_pwd)
+
     # Reset Vm state if needed
     if vm.is_alive() and start_vm == "no":
         vm.destroy(gracefully=False)
@@ -496,8 +365,14 @@ def run(test, params, env):
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     # Setup migration context
-    migrate_setup = migration.MigrationTest()
-    migrate_setup.migrate_pre_setup(test_dict["desuri"], params)
+    migrate_test = migration.MigrationTest()
+    migrate_test.check_parameters(params)
+
+    # For --postcopy enable
+    postcopy_options = params.get("postcopy_options")
+    if postcopy_options:
+        extra = "%s %s" % (virsh_options, postcopy_options)
+        func_name = virsh.migrate_postcopy
 
     # Install ceph-common on remote host machine.
     remote_ssh_session = remote.remote_login("ssh", server_ip, "22", server_user,
@@ -505,6 +380,7 @@ def run(test, params, env):
     if not utils_package.package_install(["ceph-common"], remote_ssh_session):
         test.error("Failed ot install required packages on remote host")
     remote_ssh_session.close()
+
     try:
         # Create a remote runner for later use
         runner_on_target = remote.RemoteRunner(host=server_ip,
@@ -516,7 +392,6 @@ def run(test, params, env):
         cmd_result = remote.run_remote_cmd('getenforce', params, runner_on_target)
         REMOTE_SELINUX_ENFORCING_STATUS = cmd_result.stdout_text
         logging.info("previous remote enforce :%s", REMOTE_SELINUX_ENFORCING_STATUS)
-
         if ceph_disk:
             logging.info("Put local SELinux in permissive mode when test ceph migrating")
             utils_selinux.set_status("enforcing")
@@ -531,11 +406,11 @@ def run(test, params, env):
 
             # Prepare ceph disk.
             key_file = os.path.join(data_dir.get_tmp_dir(), "ceph.key")
-            test_dict['key_file'] = key_file
-            test_dict['first_disk'] = vm.get_first_disk_devices()
-            ceph_key_opt, secret_uuid = prepare_ceph_disk(test_dict, remote_virsh_dargs, test, runner_on_target)
-            host_ip = test_dict.get('mon_host')
-            disk_image = test_dict.get('disk_img')
+            params['key_file'] = key_file
+            params['first_disk'] = vm.get_first_disk_devices()
+            ceph_key_opt, secret_uuid = prepare_ceph_disk(params, remote_virsh_dargs, test, runner_on_target)
+            host_ip = params.get('mon_host')
+            disk_image = params.get('disk_img')
 
             # Build auth information.
             auth_attrs = {}
@@ -544,23 +419,35 @@ def run(test, params, env):
             auth_attrs['secret_uuid'] = secret_uuid
             build_disk_xml(vm_name, disk_format, host_ip, disk_src_protocol,
                            vol_name, disk_image, auth=auth_attrs)
+        elif ceph_cephfs_disk:
+            write_hostname_into_etc_host()
+            setup_or_cleanup_cephfs_disk(test, params, vm, is_setup=True)
+        try:
+            if vm.is_dead():
+                vm.start()
+        except virt_vm.VMStartError as e:
+            logging.info("Failed to start VM")
+            test.fail("Failed to start VM: %s" % vm_name)
 
-            vm_xml_cxt = process.run("virsh dumpxml %s" % vm_name, shell=True).stdout_text
-            logging.debug("The VM XML with ceph disk source: \n%s", vm_xml_cxt)
-            try:
-                if vm.is_dead():
-                    vm.start()
-            except virt_vm.VMStartError as e:
-                logging.info("Failed to start VM")
-                test.fail("Failed to start VM: %s" % vm_name)
+        vm_xml_cxt = process.run("virsh dumpxml %s" % vm_name, shell=True).stdout_text
+        logging.debug("**************The VM XML after started: \n%s", vm_xml_cxt)
 
         # Ensure the same VM name doesn't exist on remote host before migrating.
         destroy_vm_cmd = "virsh destroy %s" % vm_name
-        remote.run_remote_cmd(cmd, params, runner_on_target)
+        remote.run_remote_cmd(destroy_vm_cmd, params, runner_on_target)
 
         # Trigger migration
-        migrate_vm(test, test_dict)
+        vm.wait_for_login(timeout=900).close()
+        migrate_test.ping_vm(vm, params)
 
+        vms = [vm]
+        migrate_test.do_migration(vms, None, dest_uri, 'orderly',
+                                  options, thread_timeout=1200,
+                                  ignore_status=True, virsh_opt=virsh_options,
+                                  func=func_name, extra_opts=extra,
+                                  func_params=params)
+        mig_result = migrate_test.ret
+        migrate_test.check_result(mig_result, params)
         if migr_vm_back:
             ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
                                                       server_pwd=client_pwd,
@@ -572,7 +459,7 @@ def run(test, params, env):
                 ssh_connection.conn_setup()
                 ssh_connection.conn_check()
             # Pre migration setup for local machine
-            migrate_setup.migrate_pre_setup(src_uri, params)
+            migrate_test.migrate_pre_setup(src_uri, params)
             cmd = "virsh migrate %s %s %s" % (vm_name,
                                               virsh_options, src_uri)
             logging.debug("Start migrating: %s", cmd)
@@ -585,41 +472,38 @@ def run(test, params, env):
                 test.fail("Failed to run '%s' on remote: %s"
                           % (cmd, output))
     finally:
-        logging.info("Recovery test environment")
+        logging.info("Recovery test environment...................................")
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
+        vmxml_backup.sync()
+
         # Clean up of pre migration setup for local machine
         if migr_vm_back:
-            migrate_setup.migrate_pre_setup(src_uri, params,
-                                            cleanup=True)
+            if 'ssh_connection' in locals():
+                ssh_connection.auto_recover = True
+            migrate_test.migrate_pre_setup(src_uri, params,
+                                           cleanup=True)
         # Ensure VM can be cleaned up on remote host even migrating fail.
         destroy_vm_cmd = "virsh destroy %s" % vm_name
         remote.run_remote_cmd(destroy_vm_cmd, params, runner_on_target)
 
-        logging.info("Recovery VM XML configration")
-        vmxml_backup.sync()
-        logging.debug("The current VM XML:\n%s", vmxml_backup.xmltreefile)
-
         # Clean up ceph environment.
         if disk_src_protocol == "rbd":
             # Clean up secret
-            secret_list = get_secret_list()
-            if secret_list:
-                for secret_uuid in secret_list:
-                    virsh.secret_undefine(secret_uuid)
+            utils_secret.clean_up_secrets()
             # Clean up dirty secrets on remote host if testing involve in ceph auth.
-            client_name = test_dict.get('client_name')
-            client_key = test_dict.get("client_key")
+            client_name = params.get('client_name')
+            client_key = params.get("client_key")
             if client_name and client_key:
                 try:
                     remote_virsh = virsh.VirshPersistent(**remote_virsh_dargs)
-                    remote_dirty_secret_list = get_secret_list(remote_virsh)
-                    for dirty_secret_uuid in remote_dirty_secret_list:
-                        remote_virsh.secret_undefine(dirty_secret_uuid)
+                    utils_secret.clean_up_secrets(remote_virsh)
                 except (process.CmdError, remote.SCPError) as detail:
                     test.Error(detail)
                 finally:
                     remote_virsh.close_session()
             # Delete the disk if it exists.
-            disk_src_name = "%s/%s" % (vol_name, test_dict.get('disk_img'))
+            disk_src_name = "%s/%s" % (vol_name, params.get('disk_img'))
             cmd = ("rbd -m {0} {1} info {2} && rbd -m {0} {1} rm "
                    "{2}".format(mon_host, ceph_key_opt, disk_src_name))
             process.run(cmd, ignore_status=True, shell=True)
@@ -631,11 +515,5 @@ def run(test, params, env):
             logging.info("Put remote SELinux in original mode")
             cmd = "yes yes | setenforce %s" % REMOTE_SELINUX_ENFORCING_STATUS
             remote.run_remote_cmd(cmd, params, runner_on_target)
-
-        # Remove known hosts on local host
-        cmd = "ssh-keygen -R  %s" % server_ip
-        process.run(cmd, ignore_status=True, shell=True)
-
-        # Remove known hosts on remote host
-        cmd = "ssh-keygen -R  %s" % client_ip
-        remote.run_remote_cmd(cmd, params, runner_on_target)
+        if ceph_cephfs_disk:
+            setup_or_cleanup_cephfs_disk(test, params, vm, is_setup=False)
