@@ -1,6 +1,7 @@
 import re
 import os
 import logging
+import json
 
 from avocado.utils import process
 
@@ -190,6 +191,9 @@ def run(test, params, env):
     tcp_recovery = test_dict.get("tcp_auto_recovery", "yes")
     tls_recovery = test_dict.get("tls_auto_recovery", "yes")
     unix_recovery = test_dict.get("unix_auto_recovery", "yes")
+    sasl_allowed_username_list = test_dict.get("sasl_allowed_username_list")
+    auth_unix_rw = test_dict.get("auth_unix_rw")
+    kinit_pwd = test_dict.get("kinit_pwd")
 
     port = ""
     # extra URI arguments
@@ -402,6 +406,13 @@ def run(test, params, env):
             test_dict['tls_obj_new'] = tls_obj_new
             # only setup new CA and server
             tls_obj_new.conn_setup(True, False)
+
+        # obtain and cache a ticket
+        if kinit_pwd and sasl_type == 'gssapi' and auth_unix_rw == 'sasl':
+            username_list = json.loads(sasl_allowed_username_list)
+            for username in username_list:
+                kinit_cmd = "echo '%s' | kinit %s" % (kinit_pwd, username)
+                process.system(kinit_cmd, ignore_status=True, shell=True)
 
         # setup SASL certification
         # From libvirt-3.2.0, the default sasl change from
