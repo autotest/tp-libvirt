@@ -334,9 +334,12 @@ def run(test, params, env):
             path_pattern1 = path.split()[1].replace('.vmdk', '-flat.vmdk')
             # In newer qemu version, '_' is replaced with '%5f'.
             path_pattern2 = path_pattern1.replace('_', '%5f')
+            # nbd:unix:/tmp/v2vnbdkit.u44G6C/nbdkit1.sock:exportname=/ (raw)
+            # [scsi]
+            path_pattern_nbd = r'nbd:unix:/.*? \(raw\) \[%s\]' % bus
             # For esx, '(raw)' is fixed? Let's see if others will be met.
             disks_info_pattern = '|'.join(
-                [
+                [path_pattern_nbd] + [
                     r"https://%s/folder/%s\?dcPath=data&dsName=esx.*} \(raw\) \[%s" %
                     (remote_host, i, bus) for i in [
                         path_pattern1, path_pattern2]])
@@ -573,7 +576,8 @@ def run(test, params, env):
     backup_xml = None
     vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
     try:
-        if version_requried and not utils_v2v.compare_version(version_requried):
+        if version_requried and not utils_v2v.compare_version(
+                version_requried):
             test.cancel("Testing requries version: %s" % version_requried)
 
         if hypervisor == "xen":
