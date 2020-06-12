@@ -16,6 +16,7 @@ from avocado.utils.astring import to_text
 from virttest import data_dir
 from virttest import utils_misc
 from virttest import utils_v2v
+from virttest import utils_sasl
 from virttest import virsh
 from virttest import libvirt_storage
 from virttest.libvirt_xml import vm_xml
@@ -427,8 +428,9 @@ def run(test, params, env):
                         v2v_start = True
                     if line.startswith('libvirt:'):
                         v2v_start = False
-                    if v2v_start and len(line) > 72:
-                        test.fail('Error log longer than 72 charactors: %s' %
+                    # 76 is the max length in v2v
+                    if v2v_start and len(line) > 76:
+                        test.fail('Error log longer than 76 charactors: %s' %
                                   line)
             if checkpoint == 'disk_not_exist':
                 vol_list = virsh.vol_list(pool_name)
@@ -472,6 +474,8 @@ def run(test, params, env):
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache):
                     test.fail("Import VM failed")
                 else:
+                    vmchecker = VMChecker(test, params, env)
+                    params['vmchecker'] = vmchecker
                     params['vmcheck_flag'] = True
             if output_mode == "libvirt":
                 if "qemu:///session" not in v2v_options and not no_root:
@@ -671,6 +675,21 @@ def run(test, params, env):
                 os.makedirs(vdsm_image_dir)
                 os.makedirs(vdsm_vm_dir)
 
+            if output_mode == 'rhev':
+                # create different sasl_user name for different job
+                params.update({'sasl_user': params.get("sasl_user") +
+                               utils_misc.generate_random_string(3)})
+                logging.info('sals user name is %s' % params.get("sasl_user"))
+
+                user_pwd = "[['%s', '%s']]" % (params.get("sasl_user"),
+                                               params.get("sasl_pwd"))
+                v2v_sasl = utils_sasl.SASL(sasl_user_pwd=user_pwd)
+                v2v_sasl.server_ip = params.get("remote_ip")
+                v2v_sasl.server_user = params.get('remote_user')
+                v2v_sasl.server_pwd = params.get('remote_pwd')
+                v2v_sasl.setup(remote=True)
+                logging.debug('A SASL session %s was created', v2v_sasl)
+
         # Output more messages except quiet mode
         if checkpoint == 'quiet':
             v2v_options += ' -q'
@@ -863,6 +882,10 @@ def run(test, params, env):
             process.system("userdel -f %s" % v2v_user)
         if backup_xml:
             backup_xml.sync()
+        if output_mode == 'rhev' and v2v_sasl:
+            v2v_sasl.cleanup()
+            logging.debug('SASL session %s is closing', v2v_sasl)
+            v2v_sasl.close_session()
         if checkpoint == 'vmx':
             utils_misc.umount(params['nfs_vmx'], params['mount_point'], 'nfs')
             os.rmdir(params['mount_point'])
