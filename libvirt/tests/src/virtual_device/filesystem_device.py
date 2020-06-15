@@ -147,7 +147,7 @@ def run(test, params, env):
                 vmxml.max_mem = 1024000
             hp_obj = test_setup.HugePageConfig(params)
             host_hp_size = hp_obj.get_hugepage_size()
-            huge_pages_num = vmxml.max_mem // host_hp_size + 128
+            huge_pages_num += vmxml.max_mem // host_hp_size + 128
             utils_memory.set_num_huge_pages(huge_pages_num)
             vmxml.remove_all_device_by_type('filesystem')
             vmxml.sync()
