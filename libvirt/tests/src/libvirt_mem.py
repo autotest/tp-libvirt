@@ -10,6 +10,7 @@ import random
 
 from six.moves import xrange
 
+from avocado.utils import cpu as cpu_util
 from avocado.utils import process
 
 from virttest import virsh
@@ -439,6 +440,12 @@ def run(test, params, env):
     config = utils_config.LibvirtQemuConfig()
     setup_hugepages_flag = params.get("setup_hugepages")
     if (setup_hugepages_flag == "yes"):
+        cpu_arch = cpu_util.get_cpu_arch()
+        if cpu_arch == 'power8':
+            pg_size = '16384'
+        elif cpu_arch == 'power9':
+            pg_size = '2048'
+        [x.update({'size': pg_size}) for x in huge_pages]
         setup_hugepages(int(pg_size))
 
     # Back up xml file.
