@@ -227,16 +227,6 @@ def run(test, params, env):
                     if not re.search(pattern, str(xml_after_attach.xmltreefile)):
                         test.fail('Missing memory alias: %s' % pattern)
 
-                # Log in the guest and check dmesg
-                dmesg = session.cmd('dmesg')
-                logging.debug(dmesg)
-                dmesg_content = params.get('dmesg_content', '').split('|')
-                for order in range(1, 3):
-                    order += hpt_order
-                    for content in dmesg_content:
-                        if content % order not in dmesg:
-                            test.fail('Missing dmesg: %s' % (content % order))
-
         # Test on non-ppc64le hosts
         else:
             set_hpt(vmxml, sync=False, **hpt_attrs)
