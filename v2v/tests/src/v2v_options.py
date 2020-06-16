@@ -86,11 +86,25 @@ def run(test, params, env):
             target_path = os.path.join("/home", v2v_user, pool_target)
             cmd = su_cmd + "'mkdir -p %s'" % target_path
             process.system(cmd, verbose=True)
-            cmd = su_cmd + "'virsh pool-create-as %s dir" % pool_name
-            cmd += " --target %s'" % target_path
-            process.system(cmd, verbose=True)
+            # Sometimes pool_creat_as returns sucess, but the pool can
+            # not be found in user session.
+            virsh.pool_create_as(
+                pool_name,
+                'dir',
+                target_path,
+                unprivileged_user=v2v_user,
+                debug=True)
+
+            res = virsh.pool_info(
+                pool_name,
+                unprivileged_user=v2v_user,
+                debug=True)
+            if res.exit_status != 0:
+                return False
         else:
             pvt.pre_pool(pool_name, pool_type, pool_target, emulated_img)
+
+        return True
 
     def cleanup_pool(
             user_pool=False,
@@ -100,8 +114,10 @@ def run(test, params, env):
         Clean up libvirt pool
         """
         if output_uri == "qemu:///session" or user_pool:
-            cmd = su_cmd + "'virsh pool-destroy %s'" % pool_name
-            process.system(cmd, verbose=True)
+            virsh.pool_destroy(
+                pool_name,
+                unprivileged_user=v2v_user,
+                debug=True)
             target_path = os.path.join("/home", v2v_user, pool_target)
             cmd = su_cmd + "'rm -rf %s'" % target_path
             process.system(cmd, verbose=True)
@@ -708,7 +724,7 @@ def run(test, params, env):
             except KeyError:
                 # create new user
                 process.system("useradd %s" % v2v_user, ignore_status=True)
-                new_v2v_user = True
+            new_v2v_user = True
             user_info = pwd.getpwnam(v2v_user)
             logging.info("Convert to qemu:///session by user '%s'", v2v_user)
             if input_mode == "disk":
@@ -766,7 +782,7 @@ def run(test, params, env):
 
         # Create libvirt dir pool
         if output_mode == "libvirt":
-            create_pool()
+            utils_misc.wait_for(create_pool, timeout=30, step=3)
 
         # Work around till bug fixed
         os.environ['LIBGUESTFS_BACKEND'] = 'direct'
@@ -774,11 +790,13 @@ def run(test, params, env):
         if checkpoint in ['with_ic', 'without_ic']:
             new_v2v_user = True
             v2v_options += ' -on %s' % new_vm_name
-            create_pool(user_pool=True, pool_name='src_pool',
-                        pool_target='v2v_src_pool')
-            cmd = su_cmd + \
-                "'virsh -c %s pool-info %s'" % ('qemu:///session', 'src_pool')
-            process.system(cmd, verbose=True)
+            utils_misc.wait_for(
+                lambda: create_pool(
+                    user_pool=True,
+                    pool_name='src_pool',
+                    pool_target='v2v_src_pool'),
+                timeout=30,
+                step=3)
 
         if checkpoint == 'vmx':
             mount_point = params.get('mount_point')
@@ -883,7 +901,7 @@ def run(test, params, env):
         if vmcheck_flag and params.get('vmchecker'):
             params['vmchecker'].cleanup()
         if new_v2v_user:
-            process.system("userdel -f %s" % v2v_user)
+            process.system("userdel -fr %s" % v2v_user)
         if backup_xml:
             backup_xml.sync()
         if output_mode == 'rhev' and v2v_sasl:
