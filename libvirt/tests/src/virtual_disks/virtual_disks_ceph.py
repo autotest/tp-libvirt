@@ -265,8 +265,13 @@ def run(test, params, env):
             options = snap_name
 
         ret = virsh.snapshot_create_as(vm_name, options)
-        if test_disk_internal_snapshot or test_disk_readonly:
+        if test_disk_internal_snapshot:
             libvirt.check_result(ret, expected_fails=unsupported_err)
+        elif test_disk_readonly:
+            if libvirt_version.version_compare(6, 0, 0):
+                libvirt.check_result(ret)
+            else:
+                libvirt.check_result(ret, expected_fails=unsupported_err)
         else:
             libvirt.check_result(ret, skip_if=unsupported_err)
 
@@ -910,7 +915,7 @@ def run(test, params, env):
             check_snapshot(snap_option)
         if test_blockcopy:
             check_blockcopy(targetdev)
-        if test_disk_readonly:
+        if test_disk_readonly and not libvirt_version.version_compare(6, 0, 0):
             snap_option = params.get("snapshot_option", "")
             check_snapshot(snap_option, 'vdb')
         if test_disk_internal_snapshot:
