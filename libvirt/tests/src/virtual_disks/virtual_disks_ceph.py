@@ -360,6 +360,9 @@ def run(test, params, env):
             elif target.startswith("hd"):
                 if added_parts[0].startswith("sd"):
                     added_part = added_parts[0]
+            elif target.startswith("sd"):
+                if added_parts[0].startswith("sd"):
+                    added_part = added_parts[0]
 
             if not added_part:
                 logging.error("Can't see added partition in VM")
@@ -520,6 +523,7 @@ def run(test, params, env):
     test_json_pseudo_protocol = "yes" == params.get("json_pseudo_protocol", "no")
     disk_snapshot_with_sanlock = "yes" == params.get("disk_internal_with_sanlock", "no")
     auth_place_in_source = params.get("auth_place_in_source")
+    test_target_bus = "yes" == params.get("scsi_target_test", "no")
 
     # Prepare a blank params to confirm if delete the configure at the end of the test
     ceph_cfg = ""
@@ -700,11 +704,21 @@ def run(test, params, env):
             disk_path += (":id=%s:key=%s" %
                           (auth_user, auth_key))
         targetdev = params.get("disk_target", "vdb")
+        targetbus = params.get("disk_target_bus", "virtio")
+        if test_target_bus:
+            targetdev = params.get("disk_target", "sdb")
+            targetbus = params.get("disk_target_bus", "scsi")
+            # Add virtio-scsi controller for sd* test
+            controller_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            condict = {'controller_type': targetbus}
+            ctrl = libvirt.create_controller_xml(condict)
+            libvirt.add_controller(vm.name, ctrl)
+            logging.debug("Controller XML is:%s", ctrl)
         # To be compatible with create_disk_xml function,
         # some parameters need to be updated.
         params.update({
             "type_name": params.get("disk_type", "network"),
-            "target_bus": params.get("disk_target_bus"),
+            "target_bus": targetbus,
             "target_dev": targetdev,
             "secret_uuid": secret_uuid,
             "source_protocol": params.get("disk_source_protocol"),
