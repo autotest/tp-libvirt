@@ -227,6 +227,9 @@ def run(test, params, env):
         vol_list = virsh.vol_list(pool_name, debug=True).stdout.strip()
         # iscsi volume name is different from others
         if pool_type == "iscsi":
+            # Due to BZ 1843791, the volume cannot be obtained sometimes.
+            if len(vol_list.splitlines()) < 3:
+                test.fail("Failed to get iscsi type volume.")
             vol_name = vol_list.split('\n')[2].split()[0]
 
         vol_path = virsh.vol_path(vol_name, pool_name,
