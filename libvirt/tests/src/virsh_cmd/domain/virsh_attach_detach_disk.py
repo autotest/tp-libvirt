@@ -283,7 +283,7 @@ def run(test, params, env):
             q35_pcie_dict1 = {'controller_model': 'pcie-root-port', 'controller_type': 'pci'}
             vm_dump_xml.add_device(libvirt.create_controller_xml(q35_pcie_dict0))
             # Add enough controllers to match multiple times disk attaching requirements
-            for i in list(range(1, 5)):
+            for i in list(range(1, 15)):
                 q35_pcie_dict1.update({'controller_index': "%d" % i})
                 vm_dump_xml.add_device(libvirt.create_controller_xml(q35_pcie_dict1))
             vm_dump_xml.sync()
