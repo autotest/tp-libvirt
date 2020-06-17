@@ -658,7 +658,8 @@ def run(test, params, env):
 
     finally:
         # Remove renamed domain if it exists
-        virsh.remove_domain(new_name, "--nvram", debug=True)
+        if new_name:
+            virsh.remove_domain(new_name, "--nvram", debug=True)
         if os.path.exists("/var/log/swtpm/libvirt/qemu/%s-swtpm.log" % new_name):
             os.remove("/var/log/swtpm/libvirt/qemu/%s-swtpm.log" % new_name)
         # Remove snapshot if exists
