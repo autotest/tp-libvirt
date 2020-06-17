@@ -584,6 +584,18 @@ def run(test, params, env):
                         qa_url, os.path.join(
                             qemu_guest_agent_dir, rpm_name))
 
+        if checkpoint == 'virtio_iso_blk':
+            if not os.path.exists(virtio_win_path):
+                test.fail('%s does not exist' % virtio_win_path)
+
+            # Find a free loop device
+            free_loop_dev = process.run(
+                "losetup --find", shell=True).stdout_text.strip()
+            # Setup a loop device
+            cmd = 'losetup %s %s' % (free_loop_dev, virtio_win_path)
+            process.run(cmd, shell=True)
+            os.environ['VIRTIO_WIN'] = free_loop_dev
+
         if checkpoint == 'invalid_pem':
             # simply change the 2nd line to lowercase to get an invalid pem
             with open(local_ca_file_path, 'r+') as fd:
@@ -661,6 +673,9 @@ def run(test, params, env):
                     os.getenv('VIRTIO_WIN'),
                     params['tmp_mount_point'],
                     'iso9660')
+            os.environ.pop('VIRTIO_WIN')
+        if checkpoint == 'virtio_iso_blk':
+            process.run('losetup -d %s' % free_loop_dev, shell=True)
             os.environ.pop('VIRTIO_WIN')
         if checkpoint == 'system_rhv_pem_set':
             global_pem_cleanup()
