@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 
 from virttest import virsh
@@ -192,8 +193,9 @@ def run(test, params, env):
             output = result.stdout.strip()
             if not output:
                 output = result.stderr.strip()
-            if not output.count(msg_pattern):
-                test.fail("Not find expect key word in command output")
+            if not re.findall(msg_pattern, output):
+                test.fail("Not find expect key word '%s' in command "
+                          "output '%s'" % (msg_pattern, output))
     finally:
         backup_xml.sync()
         if os.path.exists(domcapa_file):
