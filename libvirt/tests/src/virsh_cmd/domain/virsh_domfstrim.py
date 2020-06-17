@@ -220,4 +220,8 @@ def run(test, params, env):
         # Do domain recovery
         vm.shutdown()
         xml_backup.sync()
-        linux_modules.unload_module("scsi_debug")
+
+        def _unload():
+            linux_modules.unload_module("scsi_debug")
+            return True
+        utils_misc.wait_for(_unload, timeout=30, ignore_errors=True)
