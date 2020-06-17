@@ -62,6 +62,10 @@ def run(test, params, env):
     coldunplug = "yes" == params.get("coldunplug", "no")
     usb_alias = "yes" == params.get("usb_alias", "no")
     redirdev_alias = "yes" == params.get("redirdev_alias", "no")
+    set_addr = params.get("set_addr", "yes")
+    ctrl_addr_domain = params.get("ctrl_addr_domain", "")
+    ctrl_addr_slot = params.get("ctrl_addr_slot", "")
+    ctrl_addr_function = params.get("ctrl_addr_function", "")
 
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
@@ -227,6 +231,10 @@ def run(test, params, env):
             pci_bridge.type = "pci"
             pci_bridge.model = model
             vmxml.add_device(pci_bridge)
+        # find the pci endpoint's name that usb controller will attach
+        pci_endpoint = bus_controller.split(",")[-1]
+        # find the pci's index that usb controller will attach
+        pci_index_for_usb_controller = len(bus_controller.split(",")) - 1
 
         device_alias = {}
         random_id = process.run("uuidgen").stdout_text.strip()
@@ -243,6 +251,15 @@ def run(test, params, env):
                 if "ich9" not in model:
                     controller.index = i
                 controller.alias = alias
+            # for 'usb_all' case, will not set addr
+            if set_addr == "yes":
+                ctrl_addr_dict = {'type': 'pci', 'domain': ctrl_addr_domain, 'bus': '0x0'+str(pci_index_for_usb_controller), 'slot': ctrl_addr_slot, 'function': ctrl_addr_function}
+                if "uhci" in controller.model:
+                    ctrl_addr_dict['function'] = "0x0"+str(i)
+                # pcie-switch-downstream-port only supports slot 0
+                if pci_endpoint == "pcie-switch-downstream-port":
+                    ctrl_addr_dict['slot'] = "0x00"
+                controller.address = controller.new_controller_address(attrs=ctrl_addr_dict)
             vmxml.add_device(controller)
 
         if usb_hub:
