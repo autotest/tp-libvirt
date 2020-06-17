@@ -37,8 +37,9 @@ def run(test, params, env):
         """
         bt = None
         if not reset:
-            if condn == "avocadotest":
-                bt = utils_test.run_avocado_bg(vm, params, test)
+            if condn == "avocado_test":
+                testlist = utils_test.get_avocadotestlist(params)
+                bt = utils_test.run_avocado_bg(vm, params, test, testlist)
                 if not bt:
                     test.cancel("guest stress failed to start")
                 # Allow stress to start
@@ -93,8 +94,8 @@ def run(test, params, env):
             elif condn == "suspend":
                 result = virsh.resume(vm_name, ignore_status=True, debug=True)
                 libvirt.check_exit_status(result)
-            elif condn == "avocadotest":
-                guestbt.join(ignore_status=True)
+            elif condn == "avocado_test":
+                guestbt.join()
             elif condn == "stress":
                 utils_test.unload_stress("stress_in_vms", params=params, vms=[vm])
             elif condn == "hotplug":
