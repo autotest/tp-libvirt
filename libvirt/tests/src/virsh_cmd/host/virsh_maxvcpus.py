@@ -63,8 +63,13 @@ def run(test, params, env):
             connect_uri = libvirt_vm.get_uri_with_transport(
                 uri_type=canonical_uri_type,
                 transport=transport, dest_ip=server_ip)
+            virsh_dargs = {'remote_ip': server_ip, 'remote_user': 'root',
+                           'remote_pwd': server_pwd,
+                           'ssh_remote_auth': True}
+            virsh_instance = virsh.VirshPersistent(**virsh_dargs)
     else:
         connect_uri = connect_arg
+        virsh_instance = virsh
 
     if libvirt_version.version_compare(2, 3, 0):
         try:
@@ -73,7 +78,7 @@ def run(test, params, env):
             dom_capabilities = None
             # make sure we take maxvcpus from right host, helps incase remote
             try:
-                dom_capabilities = domcap.DomCapabilityXML()
+                dom_capabilities = domcap.DomCapabilityXML(virsh_instance=virsh_instance)
                 maxvcpus = dom_capabilities.max
                 logging.debug("maxvcpus calculate from domcapabilities "
                               "is %s", maxvcpus)
@@ -84,6 +89,7 @@ def run(test, params, env):
             try:
                 cap_xml = capability_xml.CapabilityXML()
                 maxvcpus_cap = cap_xml.get_guest_capabilities()['hvm'][platform.machine()]['maxcpus']
+                logging.debug('maxvcpus_cap is %s', maxvcpus_cap)
             except Exception as details:
                 logging.debug("Failed to get maxvcpu from virsh "
                               "capabilities: %s", details)
