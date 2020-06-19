@@ -513,7 +513,7 @@ def run(test, params, env):
 
         try:
             # Add random server
-            if random_source and params.get("backend_type") == "tcp":
+            if random_source and params.get("backend_type") == "tcp" and not test_guest_dump:
                 cmd = "cat /dev/random | nc -4 -l localhost 1024"
                 bgjob = utils_misc.AsyncJob(cmd)
 
@@ -521,6 +521,7 @@ def run(test, params, env):
             if attach_rng:
                 ret = virsh.attach_device(vm_name, rng_xml.xml,
                                           flagstr=attach_options,
+                                          wait_remove_event=True,
                                           debug=True, ignore_status=True)
                 libvirt.check_exit_status(ret, status_error)
                 if status_error:
@@ -545,6 +546,9 @@ def run(test, params, env):
             if test_guest:
                 check_guest(session)
             if test_guest_dump:
+                if params.get("backend_type") == "tcp":
+                    cmd = "cat /dev/random | nc -4 localhost 1024"
+                    bgjob = utils_misc.AsyncJob(cmd)
                 check_guest_dump(session, True)
             if test_snapshot:
                 check_snapshot(bgjob)
