@@ -7,6 +7,8 @@ import aexpect
 
 from avocado.utils import process
 
+from multiprocessing.pool import ThreadPool
+
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
@@ -83,6 +85,21 @@ def check_chain_xml(disk_xml, chain_lst):
         logging.debug("after reroot the xml is %s", disk_xml)
 
     return True
+
+
+def check_bandwidth_thread(func, vm_name, blk_target, bandwidth, test):
+    """
+    Create one separate thread to check bandwidth
+
+    :param func: function name
+    :param vm_name: string, VM name
+    :param blk_target: string, target disk
+    :param bandwidth: string, bandwidth value
+    :param test: string, test case object
+    """
+    ret = utils_misc.wait_for(lambda: func(vm_name, blk_target, "bandwidth", bandwidth), 30)
+    if not ret:
+        test.fail("Failed to get bandwidth limit output")
 
 
 def run(test, params, env):
@@ -254,6 +271,8 @@ def run(test, params, env):
     multiple_chain = "yes" == params.get("multiple_chain", "no")
     virsh_dargs = {'debug': True}
     check_snapshot_tree = "yes" == params.get("check_snapshot_tree", "no")
+    bandwidth = params.get("blockcommit_bandwidth", "")
+    bandwidth_byte = "yes" == params.get("bandwidth_byte", "no")
 
     # Check whether qemu-img need add -U suboption since locking feature was added afterwards qemu-2.10
     qemu_img_locking_feature_support = libvirt_storage.check_qemu_image_lock_support()
@@ -433,7 +452,10 @@ def run(test, params, env):
                 snap_name = "%s.%s1" % (diskname, postfix_n)
                 blk_source = os.path.join(tmp_dir, snap_name)
             blockcommit_options += " --base %s" % blk_source
-
+        if len(bandwidth):
+            blockcommit_options += " --bandwidth %s" % bandwidth
+        if bandwidth_byte:
+            blockcommit_options += " --bytes"
         if top_inactive:
             snap_name = "%s.%s2" % (diskname, postfix_n)
             top_image = os.path.join(tmp_dir, snap_name)
@@ -496,6 +518,12 @@ def run(test, params, env):
 
             check_chain_backing_files(blk_source_image, expect_backing_file)
             return
+
+        # Start one thread to check the bandwidth in output
+        if bandwidth and bandwidth_byte:
+            bandwidth += 'B'
+            pool = ThreadPool(processes=1)
+            pool.apply_async(check_bandwidth_thread, (libvirt.check_blockjob, vm_name, blk_target, bandwidth, test))
 
         # Run test case
         # Active commit does not support on rbd based disk with bug 1200726
