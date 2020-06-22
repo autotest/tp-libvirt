@@ -28,7 +28,7 @@ def run(test, params, env):
     if vm.is_alive():
         vm.wait_for_login()
 
-    def create_iface_xml(mac):
+    def create_iface_xml(mac=None):
         """
         Create interface xml file
         """
@@ -37,11 +37,25 @@ def run(test, params, env):
         iface.model = iface_model if iface_model else "virtio"
         if iface_target:
             iface.target = {'dev': iface_target}
-        iface.mac_address = mac
+        if mac:
+            iface.mac_address = mac
         if iface_rom:
             iface.rom = eval(iface_rom)
         logging.debug("Create new interface xml: %s", iface)
         return iface
+
+    def get_all_mac_in_vm():
+        """
+        get the mac address list of all the interfaces from a running vm os
+
+        return: a list of the mac addresses
+        """
+        mac_list = []
+        interface_list = vm.get_interfaces()
+        for iface_ in interface_list:
+            mac_ = vm.get_interface_mac(iface_)
+            mac_list.append(mac_)
+        return mac_list
 
     # Interface specific attributes.
     iface_num = params.get("iface_num", '1')
@@ -73,6 +87,7 @@ def run(test, params, env):
     set_mac = "yes" == params.get("set_mac", "no")
     status_error = "yes" == params.get("status_error", "no")
     pci_addr = params.get("pci")
+    check_mac = "yes" == params.get("check_mac", "no")
 
     # stree_test require detach operation
     stress_test_detach_device = False
@@ -121,10 +136,15 @@ def run(test, params, env):
                     logging.info("Try to attach device loop %s" % i)
                     if iface_mac:
                         mac = iface_mac
+                        iface_xml_obj = create_iface_xml(mac)
+                    elif check_mac:
+                        iface_xml_obj = create_iface_xml()
                     else:
                         mac = utils_net.generate_mac_address_simple()
-                    iface_xml_obj = create_iface_xml(mac)
+                        iface_xml_obj = create_iface_xml(mac)
                     iface_xml_obj.xmltreefile.write()
+                    if check_mac:
+                        mac_bef = get_all_mac_in_vm()
                     ret = virsh.attach_device(vm_name, iface_xml_obj.xml,
                                               flagstr=attach_option,
                                               ignore_status=True,
@@ -170,6 +190,14 @@ def run(test, params, env):
                     libvirt.check_exit_status(ret)
                 else:
                     if attach_device:
+                        if check_mac:
+                            mac_aft = get_all_mac_in_vm()
+                            add_mac = list(set(mac_aft).difference(set(mac_bef)))
+                            try:
+                                mac = add_mac[0]
+                                logging.debug("The mac address of the attached interface is %s" % mac)
+                            except IndexError:
+                                test.fail("Can not find the new added interface in the guest os!")
                         iface_list.append({'mac': mac,
                                            'iface_xml': iface_xml_obj})
                     elif attach_iface:
@@ -285,7 +313,7 @@ def run(test, params, env):
 
             # Detach hot/cold-plugged interface at last
             if detach_device:
-                logging.debug("detach interface here***************")
+                logging.debug("detach interface here:")
                 if attach_device:
                     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
                     iface_xml_ls = vmxml.get_devices("interface")
