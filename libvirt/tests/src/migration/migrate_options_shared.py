@@ -866,7 +866,7 @@ def run(test, params, env):
     stress_in_vm = "yes" == params.get("stress_in_vm", "no")
     low_speed = params.get("low_speed", None)
     migr_vm_back = "yes" == params.get("migr_vm_back", "no")
-    timer_migration = "yes" == params.get("timer_migration")
+    timer_migration = "yes" == params.get("timer_migration", "no")
 
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
@@ -1285,7 +1285,25 @@ def run(test, params, env):
             # around the expected value of "Expected downtime".
             if params.get("jobinfo_item", "") == "Expected downtime:":
                 params.update({"jobinfo_item": "Total downtime:"})
-            check_domjobinfo(params, option=opts)
+            if timer_migration:
+                opts = vm_name + " --completed"
+                res = virsh.domjobinfo(opts, **virsh_args)
+                if res.exit_status:
+                    test.fail("Failed to get domjobinfo --completed: %s"
+                              % res.stderr)
+                actual_dt = re.findall(r"Total downtime:\s+(\d+)",
+                                       res.stdout_text)
+                if actual_dt:
+                    min_time = eval(params.get("min_total_downtime", "3000"))
+                    if int(actual_dt[0]) < min_time:
+                        test.fail("The value of 'Total downtime' "
+                                  "should be greater than {}s."
+                                  .format(int(min_time/1000)))
+                else:
+                    test.fail("Unable to get value of 'Total downtime' "
+                              "in '%s'." % res.stdout_text)
+            else:
+                check_domjobinfo(params, option=opts)
             if check_domjobinfo_results:
                 check_domjobinfo_output(option=opts, is_mig_compelete=True)
 
@@ -1371,6 +1389,12 @@ def run(test, params, env):
                 if cmd_result.exit_status:
                     test.fail("Failed to run '{}' in vm. Result: {}"
                               .format(cmd_in_vm_after_migration, cmd_result))
+        if timer_migration:
+            target_vm_host_time_diff = time_diff_between_vm_host(localvm=False)
+            if abs(target_vm_host_time_diff - source_vm_host_time_diff) > 1:
+                test.fail("The difference of target_vm_host_time_diff and "
+                          "source_vm_host_time_diff "
+                          "should not more than 1 second")
 
         if migr_vm_back:
             ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
@@ -1399,11 +1423,6 @@ def run(test, params, env):
                 test.fail("Failed to run '%s' on remote: %s"
                           % (cmd, cmd_result))
 
-        if timer_migration:
-            target_vm_host_time_diff = time_diff_between_vm_host(localvm=False)
-            if abs(target_vm_host_time_diff - source_vm_host_time_diff) > 1:
-                test.fail("The difference of target_vm_host_time_diff and source_vm_host_time_diff"
-                          "should not more than 1 second")
     except exceptions.TestFail as details:
         is_TestFail = True
         test_exception = details
