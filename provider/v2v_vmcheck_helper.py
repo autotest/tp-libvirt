@@ -32,6 +32,8 @@ class VMChecker(object):
     def __init__(self, test, params, env):
         self.errors = []
         self.params = params
+        self.vmxml = ''
+        self.xmltree = None
         self.vm_name = params.get('main_vm')
         self.v2v_cmd = params.get('v2v_command', '')
         self.original_vm_name = params.get('original_vm_name')
@@ -52,15 +54,7 @@ class VMChecker(object):
         self.setup_session()
         if not self.checker.virsh_session_id:
             self.checker.virsh_session_id = self.virsh_session_id
-        if self.v2v_cmd and '-o rhv-upload' in self.v2v_cmd and '--no-copy' in self.v2v_cmd:
-            self.vmxml = ''
-        else:
-            self.vmxml = virsh.dumpxml(
-                self.vm_name,
-                session_id=self.virsh_session_id).stdout.strip()
-        self.xmltree = None
-        if self.vmxml:
-            self.xmltree = xml_utils.XMLTreeFile(self.vmxml)
+        self.init_vmxml(raise_exception=False)
         # Save NFS mount records like {0:(src, dst, fstype)}
         self.mount_records = {}
 
@@ -115,7 +109,41 @@ class VMChecker(object):
         logging.error(msg)
         self.errors.append(msg)
 
+    def init_vmxml(self, raise_exception=True):
+        """
+        Initialize the self.vmxml.
+
+        The self.vmxml could be empty untill VMChecker.run begins.
+        It's not neccessary to get the xml if you don't need to check it or the
+        env is not ready to get the xml.
+
+        e.g. When the VM is in a rhv host, the dumpxml will not success unless
+        the VM is started. But the VM may fail to start because of unexpected
+        reason, so we should not assume the dumpxml always returns success in
+        vmchecker.__init__ function.
+
+        But the self.vmxml must not be empty when vmchecker.run begins.
+
+        :param raise_exception: True to raise exception, False to ignore it.
+        """
+        if self.vmxml:
+            return
+
+        try:
+            res = virsh.dumpxml(
+                self.vm_name,
+                session_id=self.virsh_session_id,
+                debug=True)
+            if res.exit_status == 0:
+                self.vmxml = res.stdout_text.strip()
+                self.xmltree = xml_utils.XMLTreeFile(self.vmxml)
+        except Exception as e:
+            if raise_exception:
+                raise
+            logging.debug('Failed to dumpxml: %s', str(e))
+
     def run(self):
+        self.init_vmxml()
         self.check_metadata_libosinfo()
         self.check_genid()
         if self.os_type == 'linux':

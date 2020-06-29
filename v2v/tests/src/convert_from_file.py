@@ -125,14 +125,14 @@ def run(test, params, env):
         libvirt.check_exit_status(result, status_error)
         output = result.stdout_text + result.stderr_text
         if not status_error:
-            if output_mode == 'rhev':
-                if not utils_v2v.import_vm_to_ovirt(params, address_cache,
-                                                    timeout=v2v_timeout):
-                    test.fail('Import VM failed')
             # Create vmchecker before virsh.start so that the vm can be undefined
             # if started failed.
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
+            if output_mode == 'rhev':
+                if not utils_v2v.import_vm_to_ovirt(params, address_cache,
+                                                    timeout=v2v_timeout):
+                    test.fail('Import VM failed')
             if output_mode == 'libvirt':
                 try:
                     virsh.start(vm_name, debug=True, ignore_status=False)

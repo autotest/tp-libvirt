@@ -180,13 +180,13 @@ def run(test, params, env):
         params['main_vm'] = v2v_params['new_name']
 
         logging.info("output_method is %s" % output_method)
+        # Check all checkpoints after convert
+        params['vmchecker'] = vmchecker = VMChecker(test, params, env)
         # Import the VM to oVirt Data Center from export domain, and start it
         if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                             timeout=v2v_timeout):
             test.error("Import VM failed")
 
-        # Check all checkpoints after convert
-        params['vmchecker'] = vmchecker = VMChecker(test, params, env)
         ret = vmchecker.run()
 
         # Other checks

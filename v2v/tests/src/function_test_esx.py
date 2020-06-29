@@ -417,6 +417,8 @@ def run(test, params, env):
             if status_error:
                 log_fail('Virsh dumpxml failed for empty cdrom image')
         elif not status_error:
+            vmchecker = VMChecker(test, params, env)
+            params['vmchecker'] = vmchecker
             if output_mode == 'rhev':
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                     timeout=v2v_timeout):
@@ -425,8 +427,6 @@ def run(test, params, env):
                 virsh.start(vm_name, debug=True)
             # Check guest following the checkpoint document after convertion
             logging.info('Checking common checkpoints for v2v')
-            vmchecker = VMChecker(test, params, env)
-            params['vmchecker'] = vmchecker
             if skip_vm_check != 'yes':
                 ret = vmchecker.run()
                 if len(ret) == 0:

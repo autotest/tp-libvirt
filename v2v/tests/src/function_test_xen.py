@@ -162,6 +162,8 @@ def run(test, params, env):
         libvirt.check_exit_status(result, status_error)
         output = result.stdout_text + result.stderr_text
         if not status_error and checkpoint != 'vdsm':
+            vmchecker = VMChecker(test, params, env)
+            params['vmchecker'] = vmchecker
             if output_mode == 'rhev':
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                     timeout=v2v_timeout):
@@ -173,8 +175,6 @@ def run(test, params, env):
                     test.fail('Start vm failed: %s', str(e))
             # Check guest following the checkpoint document after convertion
             logging.info('Checking common checkpoints for v2v')
-            vmchecker = VMChecker(test, params, env)
-            params['vmchecker'] = vmchecker
             if params.get('skip_vm_check') != 'yes':
                 ret = vmchecker.run()
                 if len(ret) == 0:
