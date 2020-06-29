@@ -877,12 +877,10 @@ def run(test, params, env):
             logging.info('Attach network')
             virsh.attach_interface(
                 vm_name, 'network default --current', debug=True)
-            v2v_params.pop('bridge')
         if checkpoint == 'only_br':
             logging.info('Attatch bridge')
             virsh.attach_interface(
                 vm_name, 'bridge virbr0 --current', debug=True)
-            v2v_params.pop('network')
         if checkpoint == 'no_libguestfs_backend':
             os.environ.pop('LIBGUESTFS_BACKEND')
         if checkpoint == 'file_image':
