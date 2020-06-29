@@ -122,7 +122,8 @@ def run(test, params, env):
             utils_selinux.verify_defcon(pathname=disk_path,
                                         readonly=False,
                                         forcedesc=True)
-            os.chown(disk_path, 107, 107)
+            if sec_relabel == "no" and sec_type == 'none':
+                os.chown(disk_path, 107, 107)
 
         # Set selinux of host.
         utils_selinux.set_status(host_sestatus)
