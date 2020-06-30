@@ -42,8 +42,7 @@ def run(test, params, env):
                 vsize = image_info['vsize'] / 1073741824.0
                 logging.info('Virtual size of image file: %f', vsize)
 
-                # Size of new image file should be larger
-                new_image_size = vsize + 1
+                new_image_size = vsize
                 image_dir = '/'.join(image_file.split('/')[:-1])
                 new_image_path = os.path.join(image_dir, 'new_image_' + utils_misc.generate_random_string(3))
                 file_to_del.append(new_image_path)
