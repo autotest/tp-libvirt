@@ -91,7 +91,7 @@ def run(test, params, env):
         def _booting_completed():
             session = vm.wait_for_login()
             status = None
-            second_boot_time = None
+            second_boot_time = ""
             try:
                 status, second_boot_time = session.cmd_status_output("uptime --since")
                 logging.debug("The second boot time is %s", second_boot_time)
