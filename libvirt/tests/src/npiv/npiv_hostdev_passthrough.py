@@ -110,6 +110,8 @@ def run(test, params, env):
                 {"nodedev_parent": first_online_hba,
                  "scsi_wwnn": scsi_wwnn,
                  "scsi_wwpn": scsi_wwpn})
+        # enable multipath service
+        process.run("mpathconf --enable", shell=True)
         if not utils_misc.wait_for(lambda: utils_npiv.is_vhbas_added(old_vhbas),
                                    timeout=_TIMEOUT):
             test.fail("vhba not successfully created")
