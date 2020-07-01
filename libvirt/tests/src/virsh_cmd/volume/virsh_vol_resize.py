@@ -14,7 +14,7 @@ from virttest import libvirt_xml
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import secret_xml
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def get_expect_info(new_capacity, vol_path, test, resize_option=None):

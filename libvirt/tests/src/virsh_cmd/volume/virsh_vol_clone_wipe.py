@@ -17,7 +17,7 @@ from virttest import virsh
 from virttest import utils_misc
 from virttest import libvirt_xml
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def create_luks_secret(vol_path, password, test):

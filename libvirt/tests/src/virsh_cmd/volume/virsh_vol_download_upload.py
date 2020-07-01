@@ -20,7 +20,7 @@ from virttest.libvirt_xml.devices.disk import Disk
 from virttest.utils_test import libvirt
 from virttest.utils_test import libvirt as utlv
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def digest(path, offset, length):

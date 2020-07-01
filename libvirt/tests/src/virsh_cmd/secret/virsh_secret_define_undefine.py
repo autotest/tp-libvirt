@@ -9,7 +9,7 @@ from virttest import data_dir
 from virttest.libvirt_xml.secret_xml import SecretXML
 from virttest.utils_test import libvirt
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 SECRET_DIR = "/etc/libvirt/secrets/"
 SECRET_BASE64 = "c2VjcmV0X3Rlc3QK"
