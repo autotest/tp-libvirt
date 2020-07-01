@@ -86,7 +86,7 @@ def get_node_memtune_parameter(test, params):
 
     _params = {}
 
-    for i in result.stdout.strip().split('\n\t')[1:]:
+    for i in result.stdout_text.strip().split('\n\t')[1:]:
         _params[i.split(' ')[0]] = i.split(' ')[-1]
 
     logging.debug(_params)
