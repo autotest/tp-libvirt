@@ -53,7 +53,7 @@ def run(test, params, env):
         """
         actual_state = ""
         if uri:
-            actual_state = virsh.domstate(vm.name, uri=uri).stdout.strip()
+            actual_state = virsh.domstate(vm.name, uri=uri).stdout_text.strip()
         else:
             actual_state = vm.state()
         if actual_state != state:
