@@ -8,7 +8,7 @@ from avocado.core import exceptions
 from virttest import virsh
 from virttest.libvirt_xml.nodedev_xml import NodedevXML
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 _FC_HOST_PATH = "/sys/class/fc_host"
 

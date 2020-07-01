@@ -6,7 +6,7 @@ from avocado.utils import process
 from avocado.utils import path as utils_path
 from virttest import virsh
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def get_avail_caps(all_caps):

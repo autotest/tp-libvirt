@@ -12,7 +12,7 @@ from virttest import cpu
 from virttest.libvirt_xml import capability_xml
 from virttest.staging import utils_memory
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):

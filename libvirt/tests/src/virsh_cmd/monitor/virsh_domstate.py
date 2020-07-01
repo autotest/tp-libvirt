@@ -21,7 +21,7 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 find_dump_file = False
 
