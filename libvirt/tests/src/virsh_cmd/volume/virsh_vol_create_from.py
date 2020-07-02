@@ -9,7 +9,7 @@ from virttest import libvirt_storage
 from virttest.utils_test import libvirt as utlv
 from virttest import utils_misc
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):

@@ -19,7 +19,7 @@ from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.devices import disk
 from virttest import libvirt_storage
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def xml_recover(vmxml):

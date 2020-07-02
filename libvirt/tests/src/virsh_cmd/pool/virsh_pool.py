@@ -11,10 +11,9 @@ from virttest import virsh
 from virttest.utils_test import libvirt as utlv
 from virttest.staging import service
 from virttest.libvirt_xml import pool_xml
-from provider import libvirt_version
+from virttest import libvirt_version
 from virttest import element_tree as ET
 from virttest import data_dir
-from virttest import libvirt_version
 
 
 def run(test, params, env):

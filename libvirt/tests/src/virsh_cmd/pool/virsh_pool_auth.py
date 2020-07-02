@@ -12,7 +12,7 @@ from virttest import ceph
 from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml import xcepts
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
