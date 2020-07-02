@@ -9,7 +9,7 @@ from virttest import utils_libvirtd
 from virttest.libvirt_xml import network_xml
 from virttest.utils_test import libvirt
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def get_network_xml_instance(virsh_dargs, test_xml, net_name,

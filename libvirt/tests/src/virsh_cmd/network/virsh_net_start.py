@@ -3,7 +3,7 @@ import logging
 from virttest import virsh
 from virttest import libvirt_vm
 from virttest.libvirt_xml import network_xml, IPXML
-from provider import libvirt_version
+from virttest import libvirt_version
 from virttest.utils_test import libvirt
 
 

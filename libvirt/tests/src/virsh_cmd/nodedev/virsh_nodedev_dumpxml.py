@@ -5,7 +5,7 @@ import os
 from avocado.utils import process
 from virttest import virsh
 from virttest.libvirt_xml import nodedev_xml
-from provider import libvirt_version
+from virttest import libvirt_version
 from virttest.utils_test import libvirt
 
 

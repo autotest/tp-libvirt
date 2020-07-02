@@ -4,7 +4,7 @@ import os
 from virttest import data_dir
 from avocado.utils import process
 from virttest import virsh
-from provider import libvirt_version
+from virttest import libvirt_version
 from virttest import utils_test
 from virttest.libvirt_xml import vm_xml
 from virttest import utils_libvirtd

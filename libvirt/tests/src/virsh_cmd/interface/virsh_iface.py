@@ -12,7 +12,7 @@ from virttest.utils_test import libvirt
 from virttest.staging import service
 from virttest import data_dir
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 NETWORK_SCRIPT = "/etc/sysconfig/network-scripts/ifcfg-"
 

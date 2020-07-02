@@ -3,7 +3,7 @@ import logging
 from virttest import virsh
 from virttest import libvirt_xml
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def check_list(filter_ref):

@@ -7,7 +7,7 @@ from virttest import virsh
 from virttest import utils_conn
 from virttest.libvirt_xml import domcapability_xml as domcap
 from virttest.libvirt_xml import capability_xml
-from provider import libvirt_version
+from virttest import libvirt_version
 import platform
 
 
