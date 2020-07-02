@@ -232,6 +232,7 @@ def run(test, params, env):
             logging.debug('Windows guest is rebooting')
             if vmcheck.session:
                 vmcheck.session.close()
+                vmcheck.session = None
             vmcheck.create_session()
             res = utils_misc.wait_for(
                 lambda: re.search(
@@ -428,6 +429,17 @@ def run(test, params, env):
             # Check guest following the checkpoint document after convertion
             logging.info('Checking common checkpoints for v2v')
             if skip_vm_check != 'yes':
+                if checkpoint == 'ogac':
+                    # windows guests will reboot at any time after qemu-ga is
+                    # installed. The process cannot be controled. In order to
+                    # don't break vmchecker.run() process, It's better to put
+                    # check_windows_ogac before vmchecker.run(). Because in
+                    # check_windows_ogac, it waits until rebooting completes.
+                    vmchecker.checker.create_session()
+                    if os_type == 'windows':
+                        check_windows_ogac(vmchecker.checker)
+                    else:
+                        check_linux_ogac(vmchecker.checker)
                 ret = vmchecker.run()
                 if len(ret) == 0:
                     logging.info("All common checkpoints passed")
@@ -453,11 +465,6 @@ def run(test, params, env):
                 check_rhev_file_exist(vmchecker.checker)
             if checkpoint == 'file_architecture':
                 check_file_architecture(vmchecker.checker)
-            if checkpoint == 'ogac':
-                if os_type == 'windows':
-                    check_windows_ogac(vmchecker.checker)
-                else:
-                    check_linux_ogac(vmchecker.checker)
             if checkpoint == 'ubuntu_tools':
                 check_ubuntools(vmchecker.checker)
             if checkpoint == 'without_default_net':
