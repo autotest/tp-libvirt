@@ -118,6 +118,8 @@ def run(test, params, env):
 
     try:
         hostcpu_num = int(cpuutil.total_cpus_count())
+        if hostcpu_num < 8:
+            test.cancel("The host should have at least 8 CPUs for this test.")
 
         # online all host cpus
         for x in range(1, hostcpu_num):
