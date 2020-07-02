@@ -6,6 +6,9 @@ from virttest import virt_vm
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest.libvirt_xml.vm_xml import VMXML
+from virttest import utils_test
+
+from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -76,8 +79,7 @@ def run(test, params, env):
         disk_path = disk['source']
         backup_labels_of_disks[disk_path] = utils_selinux.get_context_of_file(
             filename=disk_path)
-        f = os.open(disk_path, 0)
-        stat_re = os.fstat(f)
+        stat_re = os.stat(disk_path)
         backup_ownership_of_disks[disk_path] = "%s:%s" % (stat_re.st_uid,
                                                           stat_re.st_gid)
     # Backup selinux of host.
@@ -181,25 +183,43 @@ def run(test, params, env):
                               "VM\nDetal: disk_context="
                               "%s, imagelabel=%s"
                               % (disk_context, imagelabel))
+                expected_results = "trusted.libvirt.security.ref_dac=\"1\"\n"
+                expected_results += "trusted.libvirt.security.ref_selinux=\"1\""
+                cmd = "getfattr -m trusted.libvirt.security -d %s " % list(disks.values())[0]['source']
+                utils_test.libvirt.check_cmd_output(cmd, content=expected_results)
+
             # Check the label of disk after VM being destroyed.
             if poweroff_with_destroy:
                 vm.destroy(gracefully=False)
             else:
                 vm.wait_for_login()
                 vm.shutdown()
-            img_label_after = utils_selinux.get_context_of_file(
-                filename=list(disks.values())[0]['source'])
-            if (not img_label_after == img_label):
-                # Bug 547546 - RFE: the security drivers must remember original
-                # permissions/labels and restore them after
-                # https://bugzilla.redhat.com/show_bug.cgi?id=547546
-
-                err_msg = "Label of disk is not restored in VM shuting down.\n"
-                err_msg += "Detail: img_label_after=%s, " % img_label_after
-                err_msg += "img_label_before=%s.\n" % img_label
-                err_msg += "More info in https://bugzilla.redhat.com/show_bug"
-                err_msg += ".cgi?id=547546"
-                test.fail(err_msg)
+            filename = list(disks.values())[0]['source']
+            img_label_after = utils_selinux.get_context_of_file(filename)
+            stat_re = os.stat(filename)
+            ownership_of_disk = "%s:%s" % (stat_re.st_uid, stat_re.st_gid)
+            logging.debug("The ownership of disk after guest starting is:\n")
+            logging.debug(ownership_of_disk)
+            logging.debug("The ownership of disk before guest starting is:\n")
+            logging.debug(backup_ownership_of_disks[filename])
+            if not (sec_relabel == "no" and sec_type == 'none'):
+                if not libvirt_version.version_compare(5, 6, 0):
+                    if img_label_after != img_label:
+                        # Bug 547546 - RFE: the security drivers must remember original
+                        # permissions/labels and restore them after
+                        # https://bugzilla.redhat.com/show_bug.cgi?id=547546
+                        err_msg = "Label of disk is not restored in VM shuting down.\n"
+                        err_msg += "Detail: img_label_after=%s, " % img_label_after
+                        err_msg += "img_label_before=%s.\n" % img_label
+                        err_msg += "More info in https://bugzilla.redhat.com/show_bug"
+                        err_msg += ".cgi?id=547546"
+                        test.fail(err_msg)
+                elif (img_label_after != img_label or
+                      ownership_of_disk != backup_ownership_of_disks[filename]):
+                    err_msg = "Label of disk is not restored in VM shuting down.\n"
+                    err_msg += "Detail: img_label_after=%s, %s " % (img_label_after, ownership_of_disk)
+                    err_msg += "img_label_before=%s, %s\n" % (img_label, backup_ownership_of_disks[filename])
+                    test.fail(err_msg)
         except virt_vm.VMStartError as e:
             # Starting VM failed.
             # VM with seclabel can not access the image with the context.
