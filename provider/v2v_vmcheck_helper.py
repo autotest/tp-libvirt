@@ -598,6 +598,7 @@ class VMChecker(object):
                 self.checker.run_cmd('dir')
             except BaseException:
                 self.checker.session.close()
+                self.checker.session = None
                 self.checker.create_session()
             else:
                 break
