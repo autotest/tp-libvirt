@@ -623,10 +623,11 @@ def run(test, params, env):
         The entry point to execute action list during migration
 
         :param params: the parameters used
+        :raise: test.error if parameter is invalid
         """
         actions_during_migration = params.get("actions_during_migration")
         if not actions_during_migration:
-            return
+            test.error("Invalid parameter is provided!")
         for action in actions_during_migration.split(","):
             if action == 'setspeed':
                 check_setspeed(params)
@@ -651,6 +652,34 @@ def run(test, params, env):
             elif action == 'suspendvm':
                 suspend_vm(vm)
             time.sleep(3)
+
+    def do_actions_after_migrate(params):
+        """
+        The entry point to execute action list on remote vm after migration
+
+        :param params: the parameters used
+        :raise: test.error if parameter is invalid
+        """
+        actions_after_migration = params.get("actions_after_migration")
+        if not actions_after_migration:
+            test.error("Invalid parameter is provided!")
+        remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
+        savefile = params.get("save_file", "/tmp/save.file")
+        for action in actions_after_migration.split(","):
+            if action == 'save_restore':
+                ret = remote_virsh_session.save(vm_name, savefile, debug=True)
+                libvirt.check_exit_status(ret)
+                time.sleep(3)
+
+                ret = remote_virsh_session.restore(savefile, debug=True)
+                remote.run_remote_cmd('rm -f %s' % savefile,
+                                      cmd_parms, runner_on_target)
+                libvirt.check_exit_status(ret)
+                if not libvirt.check_vm_state(vm_name, state="running",
+                                              uri=dest_uri):
+                    test.fail("Can't get the expected vm state 'running'")
+            time.sleep(3)
+        remote_virsh_session.close_session()
 
     def attach_channel_xml():
         """
@@ -1395,6 +1424,8 @@ def run(test, params, env):
                 test.fail("The difference of target_vm_host_time_diff and "
                           "source_vm_host_time_diff "
                           "should not more than 1 second")
+
+        do_actions_after_migrate(params)
 
         if migr_vm_back:
             ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
