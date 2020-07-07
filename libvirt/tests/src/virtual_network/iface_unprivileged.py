@@ -70,9 +70,14 @@ def run(test, params, env):
     process.run('useradd %s' % up_user, shell=True, verbose=True)
     root_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
+    upu_args = {
+        'unprivileged_user': up_user,
+        'ignore_status': False,
+        'debug': True,
+    }
+
     try:
         # Create vm as unprivileged user
-        upu_virsh = virsh.VirshPersistent(unprivileged_user=up_user)
         logging.info('Create vm as unprivileged user')
         upu_vmxml = root_vmxml.copy()
 
@@ -108,11 +113,11 @@ def run(test, params, env):
         shutil.copyfile(upu_vmxml.xml, new_xml_path)
 
         # Define vm for unprivileged user
-        upu_virsh.define(new_xml_path)
-        upu_virsh.domrename(vm_name, upu_vm_name)
-        logging.debug(upu_virsh.dumpxml(upu_vm_name))
-        upu_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(
-            upu_vm_name, virsh_instance=upu_virsh)
+        virsh.define(new_xml_path, **upu_args)
+        virsh.domrename(vm_name, upu_vm_name, **upu_args)
+        logging.debug(virsh.dumpxml(upu_vm_name, **upu_args))
+        upu_vmxml = vm_xml.VMXML()
+        upu_vmxml.xml = virsh.dumpxml(upu_vm_name, **upu_args).stdout_text
 
         if case == 'precreated':
             if device_type == 'tap':
@@ -142,7 +147,12 @@ def run(test, params, env):
                 tap_index = process.run(cmd_get_tap, shell=True, verbose=True).stdout_text.strip()
                 device_path = '/dev/tap{}'.format(tap_index)
                 logging.debug('device_path: {}'.format(device_path))
-                shutil.chown(device_path, up_user, up_user)
+                # Change owner and group for device
+                process.run('chown {user} {path};chgrp {user} {path}'.format(
+                    user=up_user, path=device_path),
+                    shell=True, verbose=True)
+                # Check if device owner is changed to unprivileged user
+                process.run('ls -l %s' % device_path, shell=True, verbose=True)
 
             # Modify interface
             all_devices = upu_vmxml.devices
@@ -180,11 +190,12 @@ def run(test, params, env):
             # Define updated xml
             shutil.copyfile(upu_vmxml.xml, new_xml_path)
             upu_vmxml.xml = new_xml_path
-            upu_virsh.define(new_xml_path)
+            virsh.define(new_xml_path, **upu_args)
 
             # Switch to unprivileged user and modify vm's interface
             # Start vm as unprivileged user and test network
-            upu_virsh.start(upu_vm_name, debug=True, ignore_status=False)
+            virsh.start(upu_vm_name, debug=True, ignore_status=False,
+                        unprivileged_user=up_user)
             cmd = ("su - %s -c 'virsh console %s'"
                    % (up_user, upu_vm_name))
             session = aexpect.ShellSession(cmd)
@@ -197,17 +208,18 @@ def run(test, params, env):
 
     finally:
         if 'upu_virsh' in locals():
-            upu_virsh.destroy(upu_vm_name, ignore_status=True)
-            upu_virsh.undefine(upu_vm_name)
-            upu_virsh.close_session()
+            virsh.destroy(upu_vm_name, unprivileged_user=up_user)
+            virsh.undefine(upu_vm_name, unprivileged_user=up_user)
         if case == 'precreated':
             try:
                 if device_type == 'tap':
                     process.run('ip tuntap del mode tap {}'.format(tap_name), shell=True, verbose=True)
                 elif device_type == 'macvtap':
                     process.run('ip l del {}'.format(macvtap_name), shell=True, verbose=True)
+            except Exception:
+                pass
             finally:
                 cmd = 'tmux -c "ip link set {1} nomaster;  ip link delete {0};' \
                       'pkill dhclient; sleep 6; dhclient {1}"'.format(bridge_name, iface_name)
                 process.run(cmd, shell=True, verbose=True, ignore_status=True)
-        process.run('userdel -f -r %s' % up_user, shell=True, verbose=True, ignore_status=True)
+        process.run('pkill -u {0};userdel -f -r {0}'.format(up_user), shell=True, verbose=True, ignore_status=True)
