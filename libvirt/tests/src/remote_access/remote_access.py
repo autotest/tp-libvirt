@@ -36,7 +36,7 @@ def remote_access(params, test):
     extra_env = params.get("extra_env", "")
     pattern = params.get("filter_pattern", "")
     su_user = params.get("su_user", "")
-    virsh_patterns = params.get("patterns_virsh_cmd", ".*Id\s*Name\s*State\s*.*")
+    virsh_patterns = params.get("patterns_virsh_cmd", r".*Id\s*Name\s*State\s*.*")
     patterns_extra_dict = params.get("patterns_extra_dict", None)
     log_level = params.get("log_level", "LIBVIRT_DEBUG=3")
 
@@ -313,7 +313,7 @@ def run(test, params, env):
                 # cleanup authorized_keys on remote
                 ssh_pubkey_file = "/root/.ssh/id_rsa.pub"
                 if (os.path.exists("/root/.ssh/id_rsa") and
-                   os.path.exists(ssh_pubkey_file)):
+                        os.path.exists(ssh_pubkey_file)):
                     remote_file_obj = remote.RemoteFile(address=server_ip,
                                                         client='scp',
                                                         username=server_user,
@@ -334,12 +334,7 @@ def run(test, params, env):
             # reserve cert path
             tmp_dir = tls_obj.tmp_dir
             # setup test environment
-            if tls_sanity_cert == "no":
-                # only setup CA and client
-                tls_obj.conn_setup(False, True)
-            else:
-                # setup CA, server and client
-                tls_obj.conn_setup()
+            tls_obj.conn_setup()
 
         # setup TCP
         if transport == "tcp" or tcp_setup == "yes":
