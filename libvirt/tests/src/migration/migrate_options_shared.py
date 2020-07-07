@@ -1424,8 +1424,8 @@ def run(test, params, env):
                 test.fail("The difference of target_vm_host_time_diff and "
                           "source_vm_host_time_diff "
                           "should not more than 1 second")
-
-        do_actions_after_migrate(params)
+        if params.get("actions_after_migration"):
+            do_actions_after_migrate(params)
 
         if migr_vm_back:
             ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
