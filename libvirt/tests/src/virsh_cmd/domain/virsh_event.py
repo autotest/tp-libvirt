@@ -9,14 +9,17 @@ import shutil
 from aexpect import ShellTimeoutError
 from aexpect import ShellProcessTerminatedError
 
+from provider import libvirt_version
+
 from virttest import virsh
 from virttest import data_dir
+from virttest import remote
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices.interface import Interface
 from virttest.libvirt_xml.devices.panic import Panic
-from virttest import utils_misc
-from provider import libvirt_version
+
 from xml.dom.minidom import parseString
 
 
@@ -124,6 +127,7 @@ def run(test, params, env):
 
         try:
             for event in events_list:
+                logging.debug("Current event is: %s", event)
                 if event in ['start', 'restore', 'create', 'edit', 'define', 'undefine', 'crash']:
                     if dom.is_alive():
                         dom.destroy()
@@ -310,7 +314,62 @@ def run(test, params, env):
                                        all_options, **virsh_dargs)
                     expected_events_list.append("'tray-change' for %s disk" + " .*%s.*:" % device_target_bus +
                                                 " opened")
-
+                elif event == "hwclock":
+                    session = dom.wait_for_login()
+                    try:
+                        session.cmd("hwclock --systohc", timeout=60)
+                    except (ShellTimeoutError, ShellProcessTerminatedError) as details:
+                        logging.info(details)
+                    session.close()
+                    expected_events_list.append("'rtc-change' for %s:")
+                elif event == "metadata_set":
+                    metadata_uri = params.get("metadata_uri")
+                    metadata_key = params.get("metadata_key")
+                    metadata_value = params.get("metadata_value")
+                    virsh.metadata(dom.name,
+                                   metadata_uri,
+                                   options="",
+                                   key=metadata_key,
+                                   new_metadata=metadata_value,
+                                   **virsh_dargs)
+                    expected_events_list.append("'metdata-change' for %s: "
+                                                "element http://app.org/")
+                elif event == "metadata_edit":
+                    metadata_uri = "http://herp.derp/"
+                    metadata_key = "herp"
+                    metadata_value = "<derp xmlns:foobar='http://foo.bar/'>foo<bar></bar></derp>"
+                    virsh_cmd = r"virsh metadata %s --uri %s --key %s %s"
+                    virsh_cmd = virsh_cmd % (dom.name, metadata_uri,
+                                             metadata_key, "--edit")
+                    session = aexpect.ShellSession("sudo -s")
+                    logging.info("Running command: %s", virsh_cmd)
+                    try:
+                        session.sendline(virsh_cmd)
+                        session.sendline(r":insert")
+                        session.sendline(metadata_value)
+                        session.sendline(".")
+                        session.send('ZZ')
+                        remote.handle_prompts(session, None, None, r"[\#\$]\s*$",
+                                              debug=True, timeout=60)
+                    except Exception as e:
+                        test.error("Error occured: %s" % e)
+                    session.close()
+                    # Check metadata after edit
+                    virsh.metadata(dom.name,
+                                   metadata_uri,
+                                   options="",
+                                   key=metadata_key,
+                                   **virsh_dargs)
+                    expected_events_list.append("'metdata-change' for %s: "
+                                                "element http://app.org/")
+                elif event == "metadata_remove":
+                    virsh.metadata(dom.name,
+                                   metadata_uri,
+                                   options="--remove",
+                                   key=metadata_key,
+                                   **virsh_dargs)
+                    expected_events_list.append("'metdata-change' for %s: "
+                                                "element http://app.org/")
                 else:
                     test.error("Unsupported event: %s" % event)
                 # Event may not received immediately
