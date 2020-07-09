@@ -428,6 +428,7 @@ def run(test, params, env):
     tg_node = params.get("tg_node", 0)
     pg_size = params.get("page_size")
     pg_unit = params.get("page_unit", "KiB")
+    huge_page_num = int(params.get('huge_page_num', 2000))
     node_mask = params.get("node_mask", "0")
     mem_addr = ast.literal_eval(params.get("memory_addr", "{}"))
     huge_pages = [ast.literal_eval(x)
@@ -446,7 +447,7 @@ def run(test, params, env):
         elif cpu_arch == 'power9':
             pg_size = '2048'
         [x.update({'size': pg_size}) for x in huge_pages]
-        setup_hugepages(int(pg_size))
+        setup_hugepages(int(pg_size), shp_num=huge_page_num)
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
