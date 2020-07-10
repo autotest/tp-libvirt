@@ -48,6 +48,8 @@ def run(test, params, env):
     del_rom = "yes" == params.get("del_rom")
     del_filter = "yes" == params.get("del_filter")
     check_libvirtd = "yes" == params.get("check_libvirtd")
+    new_iface_filter_parameters = eval(params.get("new_iface_filter_parameters", "{}"))
+    rules = eval(params.get("rules", "{}"))
 
     # Backup the vm xml for recover at last
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -76,7 +78,7 @@ def run(test, params, env):
         update_list_aft = [
             "driver", "driver_host", "driver_guest", "model", "rom", "inbound",
             "outbound", "link", "source", "target", "addr", "filter", "mtu", "type",
-            "alias"]
+            "alias", "filter_parameters"]
         for update_item_aft in update_list_aft:
             if names["new_iface_"+update_item_aft]:
                 iface_dict_aft.update({update_item_aft: names["new_iface_"+update_item_aft]})
@@ -184,6 +186,11 @@ def run(test, params, env):
                 else:
                     test.fail("Get filter %s is not equal to set %s"
                               % (iface_filter_value, new_iface_filter))
+            if new_iface_filter_parameters:
+                ebtables_outputs = process.run("ebtables -t nat -L", shell=True).stdout_text
+                for rule in rules:
+                    if rule not in ebtables_outputs:
+                        test.fail("Can not find the corresponding rule after update filter with parameters!")
             if del_filter:
                 iface_filter_value = iface_aft.find('filterref')
                 if iface_filter_value is not None:
