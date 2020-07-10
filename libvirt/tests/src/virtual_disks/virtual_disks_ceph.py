@@ -522,6 +522,7 @@ def run(test, params, env):
     start_vm = "yes" == params.get("start_vm", "no")
     test_disk_readonly = "yes" == params.get("test_disk_readonly", "no")
     test_disk_internal_snapshot = "yes" == params.get("test_disk_internal_snapshot", "no")
+    test_disk_external_snapshot = "yes" == params.get("test_disk_external_snapshot", "no")
     test_json_pseudo_protocol = "yes" == params.get("json_pseudo_protocol", "no")
     disk_snapshot_with_sanlock = "yes" == params.get("disk_internal_with_sanlock", "no")
     auth_place_in_source = params.get("auth_place_in_source")
@@ -919,6 +920,9 @@ def run(test, params, env):
             snap_option = params.get("snapshot_option", "")
             check_snapshot(snap_option, 'vdb')
         if test_disk_internal_snapshot:
+            snap_option = params.get("snapshot_option", "")
+            check_snapshot(snap_option, targetdev)
+        if test_disk_external_snapshot:
             snap_option = params.get("snapshot_option", "")
             check_snapshot(snap_option, targetdev)
         # Check rbd blockcopy inside VM
