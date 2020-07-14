@@ -770,9 +770,13 @@ def run_remote_cmd(command, server_ip, server_user, server_pwd,
         return (session, status, output)
 
 
-def setup_netsever_and_launch_netperf(params):
+def setup_netsever_and_launch_netperf(test, params):
     """
     Setup netserver and run netperf client
+
+    :param test: test object
+    :param params: parameters used
+    :raise: test.error if automake installation fails
     """
     server_ip = params.get("server_ip")
     server_user = params.get("server_user")
@@ -797,7 +801,15 @@ def setup_netsever_and_launch_netperf(params):
     netperf_package_sizes = params.get("netperf_package_sizes")
     test_option = params.get("test_option", "")
     direction = params.get("direction", "remote")
-
+    remote_session = remote.remote_login("ssh", server_ip, "22", server_user,
+                                         server_pwd, r'[$#%]')
+    for loc in ['source', 'target']:
+        session = None
+        if loc == 'target':
+            session = remote_session
+        if not utils_package.package_install("automake", session):
+            test.error("Failed to install automake on %s host." % loc)
+    remote_session.close()
     n_client = utils_netperf.NetperfClient(client_ip,
                                            client_path,
                                            client_md5sum,
@@ -2149,7 +2161,8 @@ def run(test, params, env):
             if not utils_package.package_install(["tar"], remote_session):
                 test.error("Failed to install tar on server")
 
-            ret, n_client_c, n_server_c = setup_netsever_and_launch_netperf(test_dict)
+            ret, n_client_c, n_server_c = setup_netsever_and_launch_netperf(
+                test, test_dict)
             if not ret:
                 test.error("Can not start netperf on %s" % client_ip)
 
@@ -2167,7 +2180,8 @@ def run(test, params, env):
             new_args_dict["client_path"] = test_dict.get("server_path", "/var/tmp")
             new_args_dict["compile_option_client"] = test_dict.get("compile_option_server", "")
 
-            ret, n_client_s, n_server_s = setup_netsever_and_launch_netperf(new_args_dict)
+            ret, n_client_s, n_server_s = setup_netsever_and_launch_netperf(
+                test, new_args_dict)
             if not ret:
                 test.error("Can not start netperf on %s" % client_ip)
 
