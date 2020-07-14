@@ -1099,10 +1099,9 @@ def run(test, params, env):
                     if not remote_virsh_session:
                         remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
 
-                    remote_virsh_session.secret_set_value(dest_tmp_sec_uuid,
-                                                          dst_secret_value,
-                                                          encode=True,
-                                                          debug=True)
+                    remote_virsh_session.secret_set_value(
+                        dest_tmp_sec_uuid, dst_secret_value, encode=True,
+                        debug=True, ignore_status=True)
                     remote_virsh_session.close_session()
 
             remote_session = remote.remote_login("ssh", server_ip, "22",
@@ -1409,10 +1408,15 @@ def run(test, params, env):
 
             if cmd_in_vm_after_migration:
                 vm_after_mig = utils_test.RemoteVMManager(cmd_parms)
-                vm_after_mig.setup_ssh_auth(vm.get_address(),
+                remote_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                       server_user, server_pwd,
+                                                       r"[\#\$]\s*$")
+                vm_ip = vm.get_address(session=remote_session)
+                remote_session.close()
+                vm_after_mig.setup_ssh_auth(vm_ip,
                                             params.get("password"),
                                             timeout=60)
-                cmd_result = vm_after_mig.run_command(vm.get_address(),
+                cmd_result = vm_after_mig.run_command(vm_ip,
                                                       cmd_in_vm_after_migration)
                 logging.debug("cmd_result is %s", cmd_result)
                 if cmd_result.exit_status:
