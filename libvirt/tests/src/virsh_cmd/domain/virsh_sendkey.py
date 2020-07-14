@@ -111,11 +111,9 @@ def run(test, params, env):
         # check the result of restart rsyslog
         status, output = session.cmd_status_output("service rsyslog restart")
         if status:
-            # if rsyslog.service is empty, need to reinstall rsyslog
-            out = session.cmd_output("file /usr/lib/systemd/system/rsyslog.service")
-            if "empty" in out:
-                utils_package.package_remove("rsyslog", session)
-                utils_package.package_install("rsyslog", session)
+            # To avoid 'Exec format error'
+            utils_package.package_remove("rsyslog", session)
+            utils_package.package_install("rsyslog", session)
             # if rsyslog.service is masked, need to unmask rsyslog
             if "Unit rsyslog.service is masked" in output:
                 session.cmd("systemctl unmask rsyslog")
