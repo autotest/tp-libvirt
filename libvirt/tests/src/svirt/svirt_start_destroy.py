@@ -1,14 +1,17 @@
 import os
 import logging
+import re
 
 from virttest import utils_selinux
 from virttest import virt_vm
 from virttest import utils_config
 from virttest import utils_libvirtd
-from virttest.libvirt_xml.vm_xml import VMXML
 from virttest import utils_test
-
+from virttest import virsh
 from virttest import libvirt_version
+from virttest.libvirt_xml.vm_xml import VMXML
+
+from avocado.utils import process
 
 
 def run(test, params, env):
@@ -33,6 +36,7 @@ def run(test, params, env):
     security_default_confined = params.get("security_default_confined", None)
     security_require_confined = params.get("security_require_confined", None)
     no_sec_model = 'yes' == params.get("no_sec_model", 'no')
+    xattr_check = 'yes' == params.get("xattr_check", 'no')
     sec_relabel = params.get("svirt_start_destroy_vm_sec_relabel", "yes")
     sec_dict = {'type': sec_type, 'relabel': sec_relabel}
     sec_dict_list = []
@@ -152,11 +156,23 @@ def run(test, params, env):
 
         # Start VM to check the VM is able to access the image or not.
         try:
+            # Need another guest to test the xattr added by libvirt
+            if xattr_check:
+                blklist = virsh.domblklist(vm_name, debug=True)
+                target_disk = re.findall(r"[v,s]d[a-z]", blklist.stdout.strip())[0]
+                guest_name = "%s_%s" % (vm_name, '1')
+                cmd = "virt-clone --original %s --name %s " % (vm_name, guest_name)
+                cmd += "--auto-clone --skip-copy=%s" % target_disk
+                process.run(cmd, shell=True, verbose=True)
             vm.start()
             # Start VM successfully.
             # VM with seclabel can access the image with the context.
             if status_error:
                 test.fail("Test succeeded in negative case.")
+            # Start another vm with the same disk image.
+            # The xattr will not be changed.
+            if xattr_check:
+                virsh.start(guest_name, ignore_status=True, debug=True)
             # Check the label of VM and image when VM is running.
             vm_context = utils_selinux.get_context_of_process(vm.get_pid())
             if (sec_type == "static") and (not vm_context == sec_label):
@@ -220,6 +236,9 @@ def run(test, params, env):
                     err_msg += "Detail: img_label_after=%s, %s " % (img_label_after, ownership_of_disk)
                     err_msg += "img_label_before=%s, %s\n" % (img_label, backup_ownership_of_disks[filename])
                     test.fail(err_msg)
+            # The xattr should be cleaned after guest shutoff.
+            cmd = "getfattr -m trusted.libvirt.security -d %s " % list(disks.values())[0]['source']
+            utils_test.libvirt.check_cmd_output(cmd, content="")
         except virt_vm.VMStartError as e:
             # Starting VM failed.
             # VM with seclabel can not access the image with the context.
@@ -246,6 +265,8 @@ def run(test, params, env):
             label_list = label.split(":")
             os.chown(path, int(label_list[0]), int(label_list[1]))
         backup_xml.sync()
+        if xattr_check:
+            virsh.undefine(guest_name, ignore_status=True)
         utils_selinux.set_status(backup_sestatus)
         if (security_driver or security_default_confined or
                 security_require_confined):
