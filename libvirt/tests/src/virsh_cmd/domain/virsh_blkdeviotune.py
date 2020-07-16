@@ -168,7 +168,7 @@ def run(test, params, env):
     disk_bus = params.get("disk_bus", 'virtio')
     disk_alias = params.get("disk_alias")
     attach_options = params.get("attach_options")
-    slice_test = "yes" == params.get("disk_slice", "yes")
+    slice_test = "yes" == params.get("disk_slice_enabled", "yes")
     test_size = params.get("test_size", "1")
 
     original_vm_xml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -183,6 +183,7 @@ def run(test, params, env):
 
     disk_source = tempfile.mktemp(dir=data_dir.get_tmp_dir())
     params["input_source_file"] = disk_source
+    params["disk_slice"] = {"slice_test": "yes"}
     if attach_disk and not slice_test:
         libvirt.create_local_disk(disk_type, path=disk_source, size='1',
                                   disk_format=disk_format)
