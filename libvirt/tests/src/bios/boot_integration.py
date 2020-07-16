@@ -1,10 +1,13 @@
+import time
 import logging
 import os
+import re
 
 from virttest import virsh
 from virttest import utils_package
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
+from virttest.utils_misc import wait_for
 from virttest import data_dir
 
 from virttest import libvirt_version
@@ -29,12 +32,14 @@ def prepare_boot_xml(vmxml, params):
     dict_os_attrs = {}
 
     logging.debug("Set boot loader common attributes")
-    dict_os_attrs.update({"loader": loader})
-    dict_os_attrs.update({"loader_type": loader_type})
-    dict_os_attrs.update({"loader_readonly": readonly})
     dict_os_attrs.update({"bootmenu_enable": bootmenu_enable})
     dict_os_attrs.update({"bootmenu_timeout": bootmenu_timeout})
-    dict_os_attrs.update({"smbios_mode": smbios_mode})
+    if loader:
+        dict_os_attrs.update({"loader": loader})
+        dict_os_attrs.update({"loader_type": loader_type})
+        dict_os_attrs.update({"loader_readonly": readonly})
+    if smbios_mode:
+        dict_os_attrs.update({"smbios_mode": smbios_mode})
 
     # Set Uefi special attributes
     if boot_type == "ovmf":
@@ -56,13 +61,34 @@ def prepare_boot_xml(vmxml, params):
     return vmxml
 
 
+def console_check(vm, pattern, debug_log=False):
+    """
+    Return function for use with wait_for.
+
+    :param vm: vm to check serial console for
+    :param pattern: line or pattern to match
+    :param debug_log: if to log all output for debugging
+    :return: function returning true if console output matches pattern
+    """
+    def _matches():
+        output = vm.serial_console.get_stripped_output()
+        matches = re.search(pattern, output, re.S)
+        if debug_log:
+            logging.debug("Checked for '%s' in '%s'", pattern, output)
+        if matches:
+            logging.debug("Found '%s' in '%s'", pattern, output)
+            return True
+        return False
+    return _matches
+
+
 def run(test, params, env):
     """
     Test Define/undefine/start/destroy/save/restore a OVMF/Seabios domain
     with 'boot dev' element or 'boot order' element
 
     Steps:
-    1) Prepare a typical VM XML for OVMF or Seabios Guest boot
+    1) Prepare a typical VM XML, e.g. for OVMF or Seabios Guest boot
     2) Setup boot sequence by element 'boot dev' or 'boot order'
     2) Define/undefine/start/destroy/save/restore VM and check result
     """
@@ -75,6 +101,8 @@ def run(test, params, env):
     disk_target_bus = params.get("disk_target_bus", "")
     save_file = os.path.join(data_dir.get_tmp_dir(), vm_name + ".save")
     nvram_file = params.get("nvram", "")
+    expected_text = params.get("expected_text", None)
+    boot_entry = params.get("boot_entry", None)
 
     # Back VM XML
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
@@ -114,38 +142,60 @@ def run(test, params, env):
         vmxml.undefine()
 
         virsh_dargs = {"debug": True, "ignore_status": True}
-        # Start test and check result
-        ret = virsh.define(vmxml.xml, **virsh_dargs)
-        stdout_patt = "Domain %s defined from %s" % (vm_name, vmxml.xml)
-        utlv.check_result(ret, expected_match=[stdout_patt])
 
-        ret = virsh.start(vm_name, **virsh_dargs)
-        stdout_patt = "Domain %s started" % vm_name
-        utlv.check_result(ret, expected_match=[stdout_patt])
-        vm.wait_for_login()
+        if boot_type == "s390_qemu":
+            # Start test and check result
+            ret = virsh.define(vmxml.xml, **virsh_dargs)
+            ret = virsh.start(vm_name, "--paused", **virsh_dargs)
+            time.sleep(1)
+            vm.create_serial_console()
+            time.sleep(1)
+            vm.resume()
+            if not boot_entry:
+                check_boot = console_check(vm, expected_text)
+                if not wait_for(check_boot, 60, 1):
+                    test.fail("No boot menu found. Please check log.")
+            else:
+                vm.serial_console.send(boot_entry)
+                time.sleep(0.5)
+                vm.serial_console.sendcontrol('m')
+                check_boot = console_check(vm, expected_text)
+                if not wait_for(check_boot, 60, 1):
+                    test.fail("Boot entry not selected. Please check log.")
+                vm.wait_for_login()
+        else:
+            # Start test and check result
+            ret = virsh.define(vmxml.xml, **virsh_dargs)
+            stdout_patt = "Domain %s defined from %s" % (vm_name, vmxml.xml)
+            utlv.check_result(ret, expected_match=[stdout_patt])
 
-        ret = virsh.destroy(vm_name, **virsh_dargs)
-        stdout_patt = "Domain %s destroyed" % vm_name
-        utlv.check_result(ret, expected_match=[stdout_patt])
+            ret = virsh.start(vm_name, **virsh_dargs)
+            stdout_patt = "Domain %s started" % vm_name
+            utlv.check_result(ret, expected_match=[stdout_patt])
+            vm.wait_for_login()
 
-        vm.start()
-        ret = virsh.save(vm_name, save_file, **virsh_dargs)
-        stdout_patt = "Domain %s saved to %s" % (vm_name, save_file)
-        utlv.check_result(ret, expected_match=[stdout_patt])
+            ret = virsh.destroy(vm_name, **virsh_dargs)
+            stdout_patt = "Domain %s destroyed" % vm_name
+            utlv.check_result(ret, expected_match=[stdout_patt])
 
-        ret = virsh.restore(save_file, **virsh_dargs)
-        stdout_patt = "Domain restored from %s" % save_file
-        utlv.check_result(ret, expected_match=[stdout_patt])
+            vm.start()
+            ret = virsh.save(vm_name, save_file, **virsh_dargs)
+            stdout_patt = "Domain %s saved to %s" % (vm_name, save_file)
+            utlv.check_result(ret, expected_match=[stdout_patt])
 
-        ret = virsh.undefine(vm_name, options="--nvram", **virsh_dargs)
-        stdout_patt = "Domain %s has been undefined" % vm_name
-        utlv.check_result(ret, expected_match=[stdout_patt])
-        if boot_type == "ovmf":
-            if os.path.exists(nvram_file):
-                test.fail("nvram file still exists after vm undefine")
+            ret = virsh.restore(save_file, **virsh_dargs)
+            stdout_patt = "Domain restored from %s" % save_file
+            utlv.check_result(ret, expected_match=[stdout_patt])
+
+            ret = virsh.undefine(vm_name, options="--nvram", **virsh_dargs)
+            stdout_patt = "Domain %s has been undefined" % vm_name
+            utlv.check_result(ret, expected_match=[stdout_patt])
+            if boot_type == "ovmf":
+                if os.path.exists(nvram_file):
+                    test.fail("nvram file still exists after vm undefine")
     finally:
         logging.debug("Start to cleanup")
         if vm.is_alive:
             vm.destroy()
         logging.debug("Restore the VM XML")
-        vmxml_backup.define()
+        vmxml_backup.sync()
