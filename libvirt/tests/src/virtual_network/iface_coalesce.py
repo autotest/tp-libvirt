@@ -12,7 +12,7 @@ from virttest.libvirt_xml.network_xml import NetworkXML
 from virttest.libvirt_xml.devices.interface import Interface
 from avocado.utils import process
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):

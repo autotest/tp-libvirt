@@ -5,7 +5,6 @@ from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.video import Video
 from virttest import virsh
 
-#from provider import libvirt_version
 from six import iteritems
 
 from math import ceil

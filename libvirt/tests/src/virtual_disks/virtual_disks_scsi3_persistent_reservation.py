@@ -19,7 +19,7 @@ from virttest.libvirt_xml import secret_xml
 
 from virttest.libvirt_xml.devices.disk import Disk
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):

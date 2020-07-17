@@ -27,7 +27,7 @@ from virttest.libvirt_xml.devices.interface import Interface
 from virttest.libvirt_xml import xcepts
 from virttest.staging import utils_memory
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):
