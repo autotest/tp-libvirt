@@ -150,7 +150,8 @@ def run(test, params, env):
                                                       client_ip=client_ip,
                                                       client_pwd=client_pwd,
                                                       server_cn=server_cn,
-                                                      client_cn=client_cn)
+                                                      client_cn=client_cn,
+                                                      special_cn='yes')
             tls_connection.conn_setup()
 
             connect_uri = libvirt_vm.get_uri_with_transport(
