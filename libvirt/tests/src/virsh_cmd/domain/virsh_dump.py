@@ -85,13 +85,17 @@ def run(test, params, env):
         Get the file flags of domain core dump file and check it.
         """
         error = ''
-        cmd1 = "lsof -w %s" % dump_file
+        cmd1 = "lsof -w %s |awk '/libvirt_i/{print $2}'" % dump_file
         while True:
-            if not os.path.exists(dump_file) or process.system(cmd1):
-                time.sleep(0.1)
+            if not os.path.exists(dump_file):
+                time.sleep(0.05)
                 continue
-            cmd2 = ("cat /proc/$(%s |awk '/libvirt_i/{print $2}')/fdinfo/1"
-                    "|grep flags|awk '{print $NF}'" % cmd1)
+            ret = process.run(cmd1, shell=True)
+            status, output = ret.exit_status, ret.stdout_text.strip()
+            if status:
+                time.sleep(0.05)
+                continue
+            cmd2 = "cat /proc/%s/fdinfo/1 |grep flags|awk '{print $NF}'" % output
             ret = process.run(cmd2, allow_output_check='combined', shell=True)
             status, output = ret.exit_status, ret.stdout_text.strip()
             if status:
