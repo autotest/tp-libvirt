@@ -199,7 +199,7 @@ def run(test, params, env):
             logging.info(o_ping)
             if s_ping:
                 test.fail("Ping test failed")
-        except aexpect.ShellError, detail:
+        except aexpect.ShellError as detail:
             test.error("Succeed to set ip on guest, but failed "
                        "to bring up interface.\n"
                        "Detail: %s." % detail)
