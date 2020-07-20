@@ -13,10 +13,9 @@ from virttest import gluster
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import data_dir
+from virttest import libvirt_version
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.vm_xml import VMXML
-
-from provider import libvirt_version
 
 
 def format_user_group_str(user, group):

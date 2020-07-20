@@ -7,8 +7,7 @@ from virttest import remote
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import ssh_key
-
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):

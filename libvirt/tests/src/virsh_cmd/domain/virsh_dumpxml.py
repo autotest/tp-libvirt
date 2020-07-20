@@ -4,12 +4,11 @@ import platform
 
 from virttest import virsh
 from virttest import cpu
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import capability_xml
 from virttest.libvirt_xml import domcapability_xml
 from virttest.utils_test import libvirt as utlv
-
-from provider import libvirt_version
 
 
 def run(test, params, env):

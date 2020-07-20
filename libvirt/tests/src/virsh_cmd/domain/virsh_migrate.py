@@ -20,13 +20,12 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
 from virttest import utils_misc
 from virttest import cpu
+from virttest import libvirt_version
 from virttest.qemu_storage import QemuImg
 from virttest.utils_test import libvirt
 from virttest import test_setup
 from virttest.staging import utils_memory
 from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
-
-from provider import libvirt_version
 
 
 def run(test, params, env):

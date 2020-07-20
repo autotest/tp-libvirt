@@ -3,8 +3,8 @@ import re
 
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
-from provider import libvirt_version
 from virttest.utils_test import libvirt
 
 
