@@ -23,7 +23,7 @@ from virttest.libvirt_xml.devices.disk import Disk
 
 from virttest.utils_test import libvirt
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 MIGRATE_RET = False
 

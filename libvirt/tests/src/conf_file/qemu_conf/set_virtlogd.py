@@ -16,7 +16,7 @@ from virttest.libvirt_xml.devices.console import Console
 from virttest.libvirt_xml.devices.graphics import Graphics
 from virttest.libvirt_xml.devices.serial import Serial
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 # Define qemu log path.

@@ -19,7 +19,7 @@ from virttest.utils_net import check_listening_port_remote_by_service
 from virttest.utils_test.libvirt import remotely_control_libvirtd
 from virttest.utils_test.libvirt import connect_libvirtd
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def remote_access(params, test):

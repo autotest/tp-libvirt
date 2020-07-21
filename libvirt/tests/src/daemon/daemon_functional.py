@@ -9,7 +9,7 @@ from virttest import utils_config
 from virttest.utils_libvirtd import LibvirtdSession
 from virttest.libvirt_xml import capability_xml
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):

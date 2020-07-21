@@ -8,7 +8,7 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import capability_xml
 from virttest.libvirt_xml.devices.iommu import Iommu
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):

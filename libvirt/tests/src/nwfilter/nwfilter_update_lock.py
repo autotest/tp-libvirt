@@ -8,7 +8,7 @@ from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest.libvirt_xml.devices import interface
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):

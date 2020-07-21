@@ -19,7 +19,7 @@ from virttest.libvirt_xml.devices.controller import Controller
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 # Global test env cleanup variables
 cleanup_iscsi = False

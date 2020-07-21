@@ -11,7 +11,7 @@ from virttest import data_dir
 from virttest import utils_config
 from virttest import utils_libvirtd
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):

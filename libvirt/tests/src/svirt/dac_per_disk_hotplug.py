@@ -11,7 +11,7 @@ from virttest import utils_libvirtd
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.vm_xml import VMXML
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def check_ownership(file_path):

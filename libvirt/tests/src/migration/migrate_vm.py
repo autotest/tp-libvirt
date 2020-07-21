@@ -47,7 +47,7 @@ from virttest.utils_net import block_specific_ip_by_time
 from virttest.utils_net import check_listening_port_remote_by_service
 from virttest.utils_test import libvirt
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 MIGRATE_RET = False
 

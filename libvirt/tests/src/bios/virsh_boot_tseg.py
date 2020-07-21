@@ -6,7 +6,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml import xcepts
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def unify_to_MiB(unit, size):
