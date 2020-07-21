@@ -17,7 +17,7 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import pool_xml
 from virttest.xml_utils import XMLTreeFile
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def run(test, params, env):

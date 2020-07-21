@@ -21,7 +21,7 @@ from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml.secret_xml import SecretXML
 from virttest.staging import lv_utils
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def clean_up_lvm(device_source, vg_name, lv_name):
