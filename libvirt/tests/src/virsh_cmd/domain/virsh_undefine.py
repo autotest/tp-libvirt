@@ -15,11 +15,10 @@ from virttest import remote
 from virttest import utils_libvirtd
 from virttest import libvirt_storage
 from virttest import ssh_key
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.xcepts import LibvirtXMLError
 from virttest.utils_test import libvirt as utlv
-
-from provider import libvirt_version
 
 
 def run(test, params, env):

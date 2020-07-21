@@ -13,13 +13,12 @@ from virttest import libvirt_storage
 from virttest import libvirt_xml
 from virttest import utils_config
 from virttest import utils_libvirtd
+from virttest import libvirt_version
 from virttest.utils_test import libvirt as utlv
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices import seclabel
-
-from provider import libvirt_version
 
 
 def run(test, params, env):

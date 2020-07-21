@@ -10,8 +10,8 @@ from virttest import utils_selinux
 from virttest import virt_vm
 from virttest import utils_config
 from virttest import utils_libvirtd
+from virttest import libvirt_version
 from virttest.libvirt_xml.vm_xml import VMXML
-from provider import libvirt_version
 
 
 def check_qemu_grp_user(user, test):

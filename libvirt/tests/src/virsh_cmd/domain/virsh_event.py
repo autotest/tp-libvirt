@@ -9,8 +9,7 @@ import shutil
 from aexpect import ShellTimeoutError
 from aexpect import ShellProcessTerminatedError
 
-from provider import libvirt_version
-
+from virttest import libvirt_version
 from virttest import virsh
 from virttest import data_dir
 from virttest import remote

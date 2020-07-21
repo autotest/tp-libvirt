@@ -4,10 +4,9 @@ import time
 from virttest import virsh
 from virttest import utils_package
 from virttest import utils_test
+from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
-
-from provider import libvirt_version
 
 from avocado.utils import wait
 
