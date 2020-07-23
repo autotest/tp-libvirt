@@ -15,7 +15,6 @@ from virttest import utils_libvirtd
 
 from virttest.libvirt_xml.devices.tpm import Tpm
 from virttest.libvirt_xml.vm_xml import VMXML
-from virttest.libvirt_xml import LibvirtXMLError
 from virttest.utils_test import libvirt
 from virttest.virt_vm import VMStartError
 
@@ -65,7 +64,7 @@ def run(test, params, env):
     restart_libvirtd = ("yes" == params.get("restart_libvirtd", "no"))
     no_backend = ("yes" == params.get("no_backend", "no"))
     status_error = ("yes" == params.get("status_error", "no"))
-    xml_error = ("yes" == params.get("xml_error", "no"))
+    err_msg = params.get("xml_errmsg", "")
     loader = params.get("loader", "")
     nvram = params.get("nvram", "")
     uefi_disk_url = params.get("uefi_disk_url", "")
@@ -295,6 +294,21 @@ def run(test, params, env):
                 test.fail("Swtpm file: %s does not exist" % swtpm_file)
         logging.info("------PASS on Swtpm cmdline and files check------")
 
+    def get_tpm2_tools_cmd(session=None):
+        """
+        Get tpm2-tools pkg version and return corresponding getrandom cmd
+
+        :session: guest console session
+        :return: tpm2_getrandom cmd usage
+        """
+        cmd = 'rpm -q tpm2-tools'
+        get_v_tools = session.cmd(cmd) if session else process.run(cmd).stdout_text
+        v_tools_list = get_v_tools.strip().split('-')
+        if session:
+            logging.debug("The tpm2-tools version is %s", v_tools_list[2])
+        v_tools = int(v_tools_list[2].split('.')[0])
+        return "tpm2_getrandom 8" if v_tools < 4 else "tpm2_getrandom -T device:/dev/tpm0 8 --hex"
+
     def get_host_tpm_bef(tpm_v):
         """
         Test host tpm function and identify its real version before passthrough
@@ -327,7 +341,8 @@ def run(test, params, env):
             # Try tpm2.0 tools
             if not utils_package.package_install("tpm2-tools"):
                 test.error("Failed to install tpm2-tools on host")
-            if process.run("tpm2_getrandom 5", ignore_status=True).exit_status:
+            tpm2_getrandom_cmd = get_tpm2_tools_cmd()
+            if process.run(tpm2_getrandom_cmd, ignore_status=True).exit_status:
                 test.cancel("Both tcsd and tpm2-tools can not work, "
                             "pls check your host tpm version and test env.")
             else:
@@ -350,7 +365,8 @@ def run(test, params, env):
             else:
                 logging.info("Expected failure: Tpm is being used by guest.")
         elif tpm_real_v == "2.0":
-            if not process.run("tpm2_getrandom 7", ignore_status=True).exit_status:
+            tpm2_getrandom_cmd = get_tpm2_tools_cmd()
+            if not process.run(tpm2_getrandom_cmd, ignore_status=True).exit_status:
                 test.fail("Host tpm should not work after passthrough to guest.")
             else:
                 logging.info("Expected failure: Tpm is being used by guest.")
@@ -390,9 +406,10 @@ def run(test, params, env):
             if not utils_package.package_install(["tpm2-tools"], session, 360):
                 test.error("Failed to install tpm2-tools package in guest")
             else:
+                tpm2_getrandom_cmd = get_tpm2_tools_cmd(session)
                 status1, output1 = session.cmd_status_output("ls /dev/|grep tpm")
                 logging.debug("Command output: %s", output1)
-                status2, output2 = session.cmd_status_output("tpm2_getrandom 11")
+                status2, output2 = session.cmd_status_output(tpm2_getrandom_cmd)
                 logging.debug("Command output: %s", output2)
                 if status1 or status2:
                     if not expect_fail:
@@ -519,17 +536,14 @@ def run(test, params, env):
         logging.debug("tpm dev xml to add is:\n %s", tpm_dev)
         for num in range(tpm_num):
             vm_xml.add_device(tpm_dev, True)
-        try:
-            vm_xml.sync()
-        except LibvirtXMLError as e:
-            if xml_error:
-                logging.info("Expected failure: %s" % e)
-                # Stop test when get expected failure
-                return
-            else:
-                test.fail("Test failed in vm_xml.sync(), detail:%s." % e)
-        if xml_error:
-            test.fail("invalid tpm xml should not define succeed.")
+        ret = virsh.define(vm_xml.xml, ignore_status=True, debug=True)
+        expected_match = ""
+        if not err_msg:
+            expected_match = "Domain %s defined from %s" % (vm_name, vm_xml.xml)
+        libvirt.check_result(ret, err_msg, "", False, expected_match)
+        if err_msg:
+            # Stop test when get expected failure
+            return
         if vm_operate != "restart":
             check_dumpxml(vm_name)
         # For default model, no need start guest to test
@@ -671,6 +685,13 @@ def run(test, params, env):
                     virsh.snapshot_delete(vm_name, snap, "--metadata")
                 if os.path.exists("/tmp/testvm_sp1"):
                     os.remove("/tmp/testvm_sp1")
+        # Clear guest os
+        if test_suite:
+            session = vm.wait_for_login()
+            logging.info("Removing dir /root/linux-*")
+            output = session.cmd_output("rm -rf /root/linux-*")
+            logging.debug("Command output:\n %s", output)
+            session.close()
         if vm_operate == "create":
             vm.define(vm_xml.xml)
         vm_xml_backup.sync(options="--nvram --managed-save")
