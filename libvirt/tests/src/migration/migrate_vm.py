@@ -1704,15 +1704,13 @@ def run(test, params, env):
 
         # setup TLS
         if transport == "tls" and setup_tls == "yes":
+            if target_vm_name is not None:
+                # setup CA, server, client and server on local
+                test_dict['server_setup_local'] = True
             tls_obj = TLSConnection(test_dict)
             if tls_recovery == "yes":
                 objs_list.append(tls_obj)
-            if target_vm_name is None:
-                # setup CA, server and client
-                tls_obj.conn_setup()
-            else:
-                # setup CA, server, client and server on local
-                tls_obj.conn_setup(server_setup_local=True)
+            tls_obj.conn_setup()
 
         # setup TCP
         if transport == "tcp" and setup_tcp == "yes":
