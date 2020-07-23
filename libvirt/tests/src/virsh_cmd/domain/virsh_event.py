@@ -331,7 +331,7 @@ def run(test, params, env):
                                    key=metadata_key,
                                    new_metadata=metadata_value,
                                    **virsh_dargs)
-                    expected_events_list.append("'metdata-change' for %s: "
+                    expected_events_list.append("'metadata-change' for %s: "
                                                 "element http://app.org/")
                 elif event == "metadata_edit":
                     metadata_uri = "http://herp.derp/"
@@ -359,7 +359,7 @@ def run(test, params, env):
                                    options="",
                                    key=metadata_key,
                                    **virsh_dargs)
-                    expected_events_list.append("'metdata-change' for %s: "
+                    expected_events_list.append("'metadata-change' for %s: "
                                                 "element http://app.org/")
                 elif event == "metadata_remove":
                     virsh.metadata(dom.name,
@@ -367,7 +367,7 @@ def run(test, params, env):
                                    options="--remove",
                                    key=metadata_key,
                                    **virsh_dargs)
-                    expected_events_list.append("'metdata-change' for %s: "
+                    expected_events_list.append("'metadata-change' for %s: "
                                                 "element http://app.org/")
                 else:
                     test.error("Unsupported event: %s" % event)
