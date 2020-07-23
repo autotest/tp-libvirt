@@ -210,7 +210,7 @@ def run(test, params, env):
                                            server_user, server_pwd,
                                            r"[\#\$]\s*$")
 
-    remote_libvirtd = utils_libvirtd.Libvirtd(server_session)
+    remote_libvirtd = utils_libvirtd.Libvirtd(session=server_session)
     if not remote_libvirtd.is_running():
         logging.debug("start libvirt on remote")
         res = remote_libvirtd.start()
