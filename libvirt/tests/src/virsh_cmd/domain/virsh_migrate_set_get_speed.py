@@ -5,8 +5,8 @@ from virttest import virsh
 from virttest import libvirt_vm
 from virttest import utils_test
 from virttest import migration
+from virttest import libvirt_version
 
-from provider import libvirt_version
 
 UINT32_MAX = (1 << 32) - 1
 INT64_MAX = (1 << 63) - 1

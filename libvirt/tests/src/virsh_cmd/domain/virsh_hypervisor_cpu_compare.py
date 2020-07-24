@@ -3,13 +3,12 @@ import re
 import logging
 
 from virttest import virsh
+from virttest import data_dir
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import capability_xml
 from virttest.libvirt_xml import domcapability_xml
 from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
-from virttest import data_dir
-
-from provider import libvirt_version
 
 
 def get_domcapa_output(test):

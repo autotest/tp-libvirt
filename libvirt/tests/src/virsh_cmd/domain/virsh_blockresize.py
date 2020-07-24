@@ -8,8 +8,8 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import utils_misc
 from virttest import libvirt_storage
+from virttest import libvirt_version
 
-from provider import libvirt_version
 
 OVER_SIZE = (1 << 64)
 

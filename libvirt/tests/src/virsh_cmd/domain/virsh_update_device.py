@@ -5,10 +5,9 @@ import logging
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_misc
+from virttest import libvirt_version
 from virttest.libvirt_xml import VMXML
 from virttest.utils_test import libvirt
-
-from provider import libvirt_version
 
 
 def create_disk(test, vm_name, orig_iso, disk_type, target_dev, mode=""):
