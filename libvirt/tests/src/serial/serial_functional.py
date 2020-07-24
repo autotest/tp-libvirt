@@ -19,7 +19,7 @@ from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices import librarian
 from virttest.libvirt_xml.devices.graphics import Graphics
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 from avocado.utils import astring
 

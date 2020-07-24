@@ -35,7 +35,7 @@ from virttest.libvirt_xml.devices.graphics import Graphics
 from virttest.libvirt_xml.secret_xml import SecretXML
 from virttest.libvirt_xml import vm_xml
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 q = Queue.Queue()
 

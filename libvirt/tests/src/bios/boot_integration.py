@@ -7,7 +7,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 from virttest import data_dir
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def prepare_boot_xml(vmxml, params):

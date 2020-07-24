@@ -13,7 +13,7 @@ from virttest import utils_libvirtd
 from virttest import test_setup
 from virttest import utils_params
 
-from provider import libvirt_version
+from virttest import libvirt_version
 
 
 def handle_param(param_tuple, params):
