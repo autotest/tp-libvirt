@@ -112,12 +112,13 @@ def run(test, params, env):
     4) Check result.
     """
 
-    def make_disk_snapshot(postfix_n, snapshot_take, is_check_snapshot_tree=False):
+    def make_disk_snapshot(postfix_n, snapshot_take, is_check_snapshot_tree=False, is_create_image_file_in_vm=False):
         """
         Make external snapshots for disks only.
 
         :param postfix_n: postfix option
         :param snapshot_take: snapshots taken.
+        :param is_create_image_file_in_vm: create image file in VM.
         """
         # Add all disks into command line.
         disks = vm.get_disk_devices()
@@ -143,6 +144,7 @@ def run(test, params, env):
                 snapshot_external_disks.append(disk_external)
                 options += " %s,snapshot=external,file=%s" % (disk,
                                                               disk_external)
+
             if is_check_snapshot_tree:
                 options = options.replace("--no-metadata", "")
             cmd_result = virsh.snapshot_create_as(vm_name, options,
@@ -151,6 +153,11 @@ def run(test, params, env):
             status = cmd_result.exit_status
             if status != 0:
                 test.fail("Failed to make snapshots for disks!")
+
+            if is_create_image_file_in_vm:
+                create_file_cmd = "dd if=/dev/urandom of=/mnt/snapshot_%s.img bs=1M count=2" % count
+                session.cmd_status_output(create_file_cmd)
+                created_image_files_in_vm.append("snapshot_%s.img" % count)
 
             # Create a file flag in VM after each snapshot
             flag_file = tempfile.NamedTemporaryFile(prefix=("snapshot_test_"),
@@ -198,14 +205,18 @@ def run(test, params, env):
         first_disk_src = first_device['source']
         return first_disk_src
 
-    def make_relative_path_backing_files():
+    def make_relative_path_backing_files(pre_set_root_dir=None):
         """
         Create backing chain files of relative path.
+        :param pre_set_root_dir: preset root dir
         :return: absolute path of top active file
         """
         first_disk_source = get_first_disk_source()
         basename = os.path.basename(first_disk_source)
-        root_dir = os.path.dirname(first_disk_source)
+        if pre_set_root_dir is None:
+            root_dir = os.path.dirname(first_disk_source)
+        else:
+            root_dir = pre_set_root_dir
         cmd = "mkdir -p %s" % os.path.join(root_dir, '{b..d}')
         ret = process.run(cmd, shell=True)
         libvirt.check_exit_status(ret)
@@ -215,11 +226,17 @@ def run(test, params, env):
         backing_file_dict["b"] = "../%s" % basename
         backing_file_dict["c"] = "../b/b.img"
         backing_file_dict["d"] = "../c/c.img"
+        if pre_set_root_dir:
+            backing_file_dict["b"] = "%s" % first_disk_source
+            backing_file_dict["c"] = "%s/b/b.img" % root_dir
+            backing_file_dict["d"] = "%s/c/c.img" % root_dir
+        disk_format = params.get("disk_format", "qcow2")
         for key, value in list(backing_file_dict.items()):
             backing_file_path = os.path.join(root_dir, key)
-            cmd = ("cd %s && qemu-img create -f qcow2 -o backing_file=%s,backing_fmt=qcow2 %s.img"
-                   % (backing_file_path, value, key))
+            cmd = ("cd %s && qemu-img create -f %s -o backing_file=%s,backing_fmt=%s %s.img"
+                   % (backing_file_path, "qcow2", value, disk_format, key))
             ret = process.run(cmd, shell=True)
+            disk_format = "qcow2"
             libvirt.check_exit_status(ret)
         return os.path.join(backing_file_path, "d.img")
 
@@ -250,6 +267,46 @@ def run(test, params, env):
             else:
                 logging.debug("The actual qemu-img output:%s\n", ret)
 
+    def create_reuse_external_snapshots(pre_set_root_dir=None):
+        """
+        Create reuse external snapshots
+        :param pre_set_root_dir: preset root directory
+        :return: absolute path of base file
+        """
+        if pre_set_root_dir is None:
+            first_disk_source = get_first_disk_source()
+            basename = os.path.basename(first_disk_source)
+            root_dir = os.path.dirname(first_disk_source)
+        else:
+            root_dir = pre_set_root_dir
+        meta_options = " --reuse-external --disk-only --no-metadata"
+        # Make three external relative path backing files.
+        backing_file_dict = collections.OrderedDict()
+        backing_file_dict["b"] = "b.img"
+        backing_file_dict["c"] = "c.img"
+        backing_file_dict["d"] = "d.img"
+        for key, value in list(backing_file_dict.items()):
+            backing_file_path = os.path.join(root_dir, key)
+            external_snap_shot = "%s/%s" % (backing_file_path, value)
+            snapshot_external_disks.append(external_snap_shot)
+            options = "%s --diskspec %s,file=%s" % (meta_options, disk_target, external_snap_shot)
+            cmd_result = virsh.snapshot_create_as(vm_name, options,
+                                                  ignore_status=False,
+                                                  debug=True)
+            libvirt.check_exit_status(cmd_result)
+        logging.debug('reuse external snapshots:%s' % snapshot_external_disks)
+        return root_dir
+
+    def check_file_in_vm():
+        """
+        Check whether certain image files exists in VM internal.
+        """
+        for img_file in created_image_files_in_vm:
+            status, output = session.cmd_status_output("ls -l /mnt/%s" % img_file)
+            logging.debug(output)
+            if status:
+                test.fail("blockcommit from top to base failed when ls image file in VM: %s" % output)
+
     # MAIN TEST CODE ###
     # Process cartesian parameters
     vm_name = params.get("main_vm")
@@ -273,6 +330,14 @@ def run(test, params, env):
     check_snapshot_tree = "yes" == params.get("check_snapshot_tree", "no")
     bandwidth = params.get("blockcommit_bandwidth", "")
     bandwidth_byte = "yes" == params.get("bandwidth_byte", "no")
+    disk_target = params.get("disk_target", "vda")
+    disk_format = params.get("disk_format", "qcow2")
+    reuse_external_snapshot = "yes" == params.get("reuse_external_snapshot", "no")
+    restart_vm_before_commit = "yes" == params.get("restart_vm_before_commit", "no")
+    check_image_file_in_vm = "yes" == params.get("check_image_file_in_vm", "no")
+    pre_set_root_dir = None
+    blk_source_folder = None
+    convert_qcow2_image_to_raw = "yes" == params.get("convert_qcow2_image_to_raw", "no")
 
     # Check whether qemu-img need add -U suboption since locking feature was added afterwards qemu-2.10
     qemu_img_locking_feature_support = libvirt_storage.check_qemu_image_lock_support()
@@ -312,6 +377,10 @@ def run(test, params, env):
     # Prepare a blank params to confirm if delete the configure at the end of the test
     ceph_cfg = ''
     try:
+        if disk_src_protocol == 'iscsi' and disk_type == 'block' and reuse_external_snapshot:
+            first_disk = vm.get_first_disk_devices()
+            pre_set_root_dir = os.path.dirname(first_disk['source'])
+
         if disk_src_protocol == 'iscsi' and disk_type == 'network':
             if not libvirt_version.version_compare(1, 0, 4):
                 test.cancel("'iscsi' disk doesn't support in"
@@ -345,6 +414,20 @@ def run(test, params, env):
                                'disk_type': 'file',
                                'disk_src_protocol': 'file'})
                 vm.start()
+            if convert_qcow2_image_to_raw:
+                if vm.is_alive():
+                    vm.destroy(gracefully=False)
+                first_src_file = get_first_disk_source()
+                blk_source_image = os.path.basename(first_src_file)
+                blk_source_folder = os.path.dirname(first_src_file)
+                blk_source_image_after_converted = "%s/converted_%s" % (blk_source_folder, blk_source_image)
+                # Convert the image from qcow2 to raw
+                convert_disk_cmd = ("qemu-img convert"
+                                    " -O %s %s %s" % (disk_format, first_src_file, blk_source_image_after_converted))
+                process.run(convert_disk_cmd, ignore_status=False, shell=True)
+                params.update({'disk_source_name': blk_source_image_after_converted,
+                               'disk_type': 'file',
+                               'disk_src_protocol': 'file'})
             libvirt.set_vm_disk(vm, params, tmp_dir)
 
         if needs_agent:
@@ -356,12 +439,17 @@ def run(test, params, env):
         blk_source = first_disk['source']
         blk_target = first_disk['target']
         snapshot_flag_files = []
+        created_image_files_in_vm = []
 
         # get a vm session before snapshot
         session = vm.wait_for_login()
         # do snapshot
         postfix_n = 'snap'
-        make_disk_snapshot(postfix_n, snapshot_take, check_snapshot_tree)
+        if reuse_external_snapshot:
+            make_relative_path_backing_files(pre_set_root_dir)
+            blk_source_folder = create_reuse_external_snapshots(pre_set_root_dir)
+        else:
+            make_disk_snapshot(postfix_n, snapshot_take, check_snapshot_tree, check_image_file_in_vm)
 
         basename = os.path.basename(blk_source)
         diskname = basename.split(".")[0]
@@ -432,7 +520,7 @@ def run(test, params, env):
             test.fail("Can't find disk xml with target %s" %
                       blk_target)
         elif libvirt_version.version_compare(1, 2, 4):
-            # backingStore element introuduced in 1.2.4
+            # backingStore element introduced in 1.2.4
             chain_lst = snap_src_lst[::-1]
             ret = check_chain_xml(disk_xml, chain_lst)
             if not ret:
@@ -459,11 +547,22 @@ def run(test, params, env):
         if top_inactive:
             snap_name = "%s.%s2" % (diskname, postfix_n)
             top_image = os.path.join(tmp_dir, snap_name)
+            if reuse_external_snapshot:
+                index = len(snapshot_external_disks) - 2
+                top_image = snapshot_external_disks[index]
             blockcommit_options += " --top %s" % top_image
         else:
             blockcommit_options += " --active"
             if pivot_opt:
                 blockcommit_options += " --pivot"
+
+        if restart_vm_before_commit:
+            top = 2
+            base = len(snapshot_external_disks)
+            blockcommit_options = ("--top %s[%d] --base %s[%d] --verbose --wait --keep-relative"
+                                   % (disk_target, top, disk_target, base))
+            vm.destroy(gracefully=True)
+            vm.start()
 
         if vm_state == "shut off":
             vm.destroy(gracefully=True)
@@ -519,6 +618,23 @@ def run(test, params, env):
             check_chain_backing_files(blk_source_image, expect_backing_file)
             return
 
+        if reuse_external_snapshot and not top_inactive:
+            block_commit_index = len(snapshot_external_disks) - 1
+            for index in range(block_commit_index):
+                # Do block commit with --shallow --wait
+                external_blockcommit_options = ("  --shallow --wait --verbose --top %s "
+                                                % (snapshot_external_disks[index]))
+
+                res = virsh.blockcommit(vm_name, blk_target,
+                                        external_blockcommit_options, **virsh_dargs)
+                libvirt.check_exit_status(res, status_error)
+            # Do blockcommit with top active
+            result = virsh.blockcommit(vm_name, blk_target,
+                                       blockcommit_options, **virsh_dargs)
+            # Check status_error
+            libvirt.check_exit_status(result, status_error)
+            return
+
         # Start one thread to check the bandwidth in output
         if bandwidth and bandwidth_byte:
             bandwidth += 'B'
@@ -529,9 +645,16 @@ def run(test, params, env):
         # Active commit does not support on rbd based disk with bug 1200726
         result = virsh.blockcommit(vm_name, blk_target,
                                    blockcommit_options, **virsh_dargs)
-
         # Check status_error
         libvirt.check_exit_status(result, status_error)
+
+        # Skip check chain file as per test case description
+        if restart_vm_before_commit:
+            return
+
+        if check_image_file_in_vm:
+            check_file_in_vm()
+
         if result.exit_status and status_error:
             return
 
@@ -689,9 +812,10 @@ def run(test, params, env):
             if os.path.exists(disk):
                 os.remove(disk)
 
-        if backing_file_relative_path:
+        if backing_file_relative_path or reuse_external_snapshot:
             libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)
-            process.run("cd %s && rm -rf b c d" % blk_source_folder, shell=True)
+            if blk_source_folder:
+                process.run("cd %s && rm -rf b c d" % blk_source_folder, shell=True)
         if disk_src_protocol == 'iscsi':
             libvirt.setup_or_cleanup_iscsi(is_setup=False,
                                            restart_tgtd=restart_tgtd)
