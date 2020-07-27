@@ -19,6 +19,7 @@ from virttest import utils_v2v
 from virttest import utils_sasl
 from virttest import virsh
 from virttest import libvirt_storage
+from virttest import ssh_key
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
@@ -630,6 +631,11 @@ def run(test, params, env):
         elif input_mode == "libvirt":
             uri_obj = utils_v2v.Uri(hypervisor)
             ic_uri = uri_obj.get_uri(remote_host, vpx_dc, esx_ip)
+            # Remote libvirt connection is not offically supported by
+            # v2v and may fail. Just use localhost to simulate a remote
+            # connection to test the warnings.
+            if checkpoint == 'remote_libvirt_conn':
+                ic_uri = 'qemu+ssh://localhost/system'
             input_option = "-i %s -ic %s %s" % (input_mode, ic_uri, vm_name)
             if checkpoint == 'with_ic':
                 ic_uri = 'qemu:///session'
@@ -662,7 +668,9 @@ def run(test, params, env):
         # Build output options
         output_option = ""
         if output_mode:
-            output_option = "-o %s -os %s" % (output_mode, output_storage)
+            output_option = "-o %s" % output_mode
+            if output_mode != 'null':
+                output_option += " -os %s" % output_storage
             if checkpoint == 'rhv':
                 output_option = output_option.replace('rhev', 'rhv')
             if checkpoint in ['with_ic', 'without_ic']:
@@ -835,6 +843,15 @@ def run(test, params, env):
                 'v2v_print_estimate')
             v2v_options += " --machine-readable=file:%s" % estimate_file
 
+        if checkpoint == 'remote_libvirt_conn':
+            # Add localhost to known_hosts
+            cmd = 'ssh-keyscan -t ecdsa localhost >> ~/.ssh/known_hosts'
+            process.run(cmd, shell=True)
+            # Setup remote login without password
+            public_key = ssh_key.get_public_key().rstrip()
+            cmd = 'echo "%s" >> ~/.ssh/authorized_keys' % public_key
+            process.run(cmd, shell=True)
+
         # Running virt-v2v command
         cmd = "%s %s %s %s" % (utils_v2v.V2V_EXEC, input_option,
                                output_option, v2v_options)
@@ -928,3 +945,10 @@ def run(test, params, env):
                 shell=True)
             utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
             process.run("ssh-agent -k")
+        if checkpoint == 'remote_libvirt_conn':
+            cmd = r"sed -i '/localhost/d' ~/.ssh/known_hosts"
+            process.run(cmd, shell=True, ignore_status=True)
+            if locals().get('public_key'):
+                key = public_key.rstrip().split()[1].split('/')[0]
+                cmd = r"sed -i '/%s/d' ~/.ssh/authorized_keys" % key
+                process.run(cmd, shell=True, ignore_status=True)
