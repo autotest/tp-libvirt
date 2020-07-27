@@ -7,13 +7,13 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import ssh_key
-from virttest.libvirt_xml import vm_xml
-from virttest.utils_test import libvirt
 from virttest import utils_libvirtd
 from virttest import utils_config
 from virttest import utils_misc
+from virttest import libvirt_version
 
-from provider import libvirt_version
+from virttest.libvirt_xml import vm_xml
+from virttest.utils_test import libvirt
 
 
 # To get result in thread, using global parameters

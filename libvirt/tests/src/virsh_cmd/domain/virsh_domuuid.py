@@ -3,9 +3,9 @@ import logging
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest import utils_libvirtd
-from virttest.utils_test.libvirt import check_domuuid_compliant_with_rfc4122
+from virttest import libvirt_version
 
-from provider import libvirt_version
+from virttest.utils_test.libvirt import check_domuuid_compliant_with_rfc4122
 
 
 def run(test, params, env):

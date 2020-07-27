@@ -6,9 +6,9 @@ import aexpect
 from avocado.utils import process
 
 from virttest import utils_test
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 
-from provider import libvirt_version
 
 CMD_TIMEOUT = 30
 

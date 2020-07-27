@@ -5,11 +5,10 @@ import string
 import platform
 
 from virttest import virsh
+from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices import librarian
-
-from provider import libvirt_version
 
 
 def run(test, params, env):

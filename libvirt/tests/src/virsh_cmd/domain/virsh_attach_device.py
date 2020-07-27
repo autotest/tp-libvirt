@@ -13,12 +13,12 @@ from six import iteritems
 
 from avocado.utils import astring
 
+from virttest import libvirt_version
 from virttest import virt_vm, virsh, remote, utils_misc, data_dir
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.vm_xml import VMXML
 
-from provider import libvirt_version
 
 # TODO: Move all these helper classes someplace else
 

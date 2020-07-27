@@ -1,8 +1,6 @@
-#import logging
-from virttest.utils_test import libvirt
 from virttest import virsh
-
-from provider import libvirt_version
+from virttest import libvirt_version
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):

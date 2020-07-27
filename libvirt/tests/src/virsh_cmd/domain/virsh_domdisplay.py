@@ -6,11 +6,10 @@ import logging
 from virttest import utils_misc
 from virttest import data_dir
 from virttest import utils_libvirtd
+from virttest import libvirt_version
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.graphics import Graphics
-
-from provider import libvirt_version
 
 
 def run(test, params, env):

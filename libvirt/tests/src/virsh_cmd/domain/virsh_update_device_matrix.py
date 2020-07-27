@@ -2,12 +2,15 @@ import os
 import time
 import shutil
 import logging
+
 from avocado.core import exceptions
 from avocado.utils import process
+
 from virttest import virsh
 from virttest import data_dir
+from virttest import libvirt_version
+
 from virttest.libvirt_xml import VMXML
-from provider import libvirt_version
 from virttest.utils_test import libvirt
 
 
