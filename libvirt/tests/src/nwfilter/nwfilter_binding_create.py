@@ -87,7 +87,7 @@ def run(test, params, env):
         # wait_for nwfilter-binding-create command exec finish
         time.sleep(wait_time)
 
-        utlv.check_cmd_expected(check_cmd, expected_match, True)
+        utlv.check_cmd_output(check_cmd, expected_match, True)
 
         cmd_res = process.run(cmd_restart, shell=True)
         if cmd_res.exit_status:
