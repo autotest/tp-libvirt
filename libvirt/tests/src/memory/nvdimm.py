@@ -5,6 +5,7 @@ import platform
 
 from avocado.utils import process
 
+from virttest import libvirt_version
 from virttest import virsh
 from virttest import utils_hotplug
 from virttest.libvirt_xml import vm_xml
@@ -20,6 +21,8 @@ def run(test, params, env):
 
     nvdimm_file = params.get('nvdimm_file')
     check = params.get('check', '')
+    status_error = "yes" == params.get('status_error', 'no')
+    error_msg = params.get('error_msg', '')
     qemu_checks = params.get('qemu_checks', '').split('`')
     test_str = 'This is a test'
 
@@ -83,6 +86,7 @@ def run(test, params, env):
             mem_addr={'slot': mem_param['address_slot']},
             tg_sizeunit=mem_param['target_size_unit'],
             tg_node=mem_param['target_node'],
+            mem_discard=mem_param.get('discard'),
             mem_model="nvdimm",
             lb_size=mem_param.get('label_size'),
             lb_sizeunit=mem_param.get('label_size_unit'),
@@ -107,6 +111,11 @@ def run(test, params, env):
             test.fail('"%s" should be in output' % test_str)
 
     bkxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+
+    if 'ppc64le' in platform.machine().lower():
+        if not libvirt_version.version_compare(6, 2, 0):
+            test.cancel('Libvirt version should be > 6.2.0'
+                        ' to support nvdimm on pseries')
 
     try:
         vm = env.get_vm(vm_name)
@@ -133,6 +142,10 @@ def run(test, params, env):
                          for k, v in params.items() if k.startswith('nvdimmxml_')}
         nvdimm_xml = create_nvdimm_xml(**nvdimm_params)
         vmxml.add_device(nvdimm_xml)
+        if check in ['ppc_no_label', 'discard']:
+            result = virsh.define(vmxml.xml, debug=True)
+            libvirt.check_result(result, expected_fails=[error_msg])
+            return
         vmxml.sync()
         logging.debug(virsh.dumpxml(vm_name))
 
