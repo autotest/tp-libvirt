@@ -80,7 +80,9 @@ def run(test, params, env):
         guest_features = guest_features.split(',')
         if guest_version:
             guest_features.append(guest_version)
-    if host_version not in cpu_util.get_cpu_arch():
+    cpu_arch = cpu_util.get_family() if hasattr(cpu_util, 'get_family')\
+        else cpu_util.get_cpu_arch()
+    if host_version not in cpu_arch:
         test.cancel("Unsupported Host cpu version")
 
     vmxml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)

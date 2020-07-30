@@ -70,7 +70,9 @@ def run(test, params, env):
     hmi_name = params.get("hmi_name", "")
     hmi_iterations = int(params.get("hmi_iterations", 1))
 
-    if host_version not in cpu.get_cpu_arch():
+    cpu_arch = cpu.get_family() if hasattr(cpu, 'get_family')\
+        else cpu.get_cpu_arch()
+    if host_version not in cpu_arch:
         test.cancel("Unsupported Host cpu version")
 
     vm_name = params.get("main_vm")

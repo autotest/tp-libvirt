@@ -441,10 +441,13 @@ def run(test, params, env):
     config = utils_config.LibvirtQemuConfig()
     setup_hugepages_flag = params.get("setup_hugepages")
     if (setup_hugepages_flag == "yes"):
-        cpu_arch = cpu_util.get_cpu_arch()
+        cpu_arch = cpu_util.get_family() if hasattr(cpu_util, 'get_family')\
+            else cpu_util.get_cpu_arch()
         if cpu_arch == 'power8':
+            logging.debug('Set page size to 16M for Power8')
             pg_size = '16384'
         elif cpu_arch == 'power9':
+            logging.debug('Set page size to 2M for Power9')
             pg_size = '2048'
         [x.update({'size': pg_size}) for x in huge_pages]
         setup_hugepages(int(pg_size), shp_num=huge_page_num)
