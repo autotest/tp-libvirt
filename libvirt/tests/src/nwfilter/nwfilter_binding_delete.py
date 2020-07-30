@@ -65,7 +65,10 @@ def run(test, params, env):
             new_iface.target['dev'], debug=True)
         utlv.check_exit_status(ret, status_error)
         # check rule
-        utlv.check_cmd_expected(check_cmd, expected_not_match, False)
+        if not utlv.check_cmd_output(check_cmd, expected_not_match, True):
+            logging.debug("the rules are deleted as expected!")
+        else:
+            test.fail("the rules are still exists after binding delete")
 
         # restart libvirtd, the nwfilter-binding will restore
         cmd_res = process.run(restart_cmd, shell=True)
