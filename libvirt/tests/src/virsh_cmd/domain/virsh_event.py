@@ -6,6 +6,7 @@ import signal
 import aexpect
 import shutil
 
+from avocado.utils import process
 from aexpect import ShellTimeoutError
 from aexpect import ShellProcessTerminatedError
 
@@ -50,6 +51,7 @@ def run(test, params, env):
     panic_model = params.get("panic_model")
     addr_type = params.get("addr_type")
     addr_iobase = params.get("addr_iobase")
+    disk_format = params.get("disk_format", "")
     event_cmd = "event"
     dump_path = '/var/lib/libvirt/qemu/dump'
     if qemu_monitor_test:
@@ -83,7 +85,7 @@ def run(test, params, env):
         logging.debug("Create new interface xml: %s", iface)
         return iface
 
-    def add_disk(vm_name, init_source, target_device, extra_param):
+    def add_disk(vm_name, init_source, target_device, extra_param, format=''):
         """
         Add disk/cdrom for test vm
 
@@ -91,9 +93,17 @@ def run(test, params, env):
         :param init_source: source file
         :param target_device: target of disk device
         :param extra_param: additional arguments to command
+        :param format: init_source format(qcow2 or raw)
         """
         if not os.path.exists(new_disk):
-            open(new_disk, 'a').close()
+            if format == "qcow2":
+                process.run('qemu-img create -f qcow2 %s %s -o preallocation=full' % (new_disk, '1G'),
+                            shell=True, verbose=True)
+            elif format == "raw":
+                process.run('qemu-img create -f raw %s %s' % (new_disk, '1G'),
+                            shell=True, verbose=True)
+            else:
+                open(new_disk, 'a').close()
         if virsh.is_alive(vm_name) and 'cdrom' in extra_param:
             virsh.destroy(vm_name)
         virsh.attach_disk(vm_name, init_source, target_device,
@@ -272,22 +282,27 @@ def run(test, params, env):
                     virsh.detach_disk(dom.name, 'vdb', **virsh_dargs)
                     expected_events_list.append("'device-removed' for %s:"
                                                 " virtio-disk1")
-                    ifaces = vmxml.devices.by_device_tag('interface')
-                    if ifaces:
-                        iface_xml_obj = ifaces[0]
-                        iface_xml_obj.del_address()
-                        logging.debug(iface_xml_obj)
-                    else:
-                        test.error('No interface in vm to be detached.')
-
-                    virsh.detach_device(dom.name, iface_xml_obj.xml,
-                                        wait_remove_event=True, event_timeout=60,
-                                        **virsh_dargs)
+                    iface_xml_obj = create_iface_xml()
+                    iface_xml_obj.xmltreefile.write()
+                    virsh.detach_device(dom.name, iface_xml_obj.xml, **virsh_dargs)
                     expected_events_list.append("'device-removed' for %s:"
                                                 " net0")
+                    time.sleep(2)
                     virsh.attach_device(dom.name, iface_xml_obj.xml, **virsh_dargs)
                     expected_events_list.append("'device-added' for %s:"
                                                 " net0")
+                elif event == "block-threshold":
+                    add_disk(dom.name, new_disk, 'vdb', '', format=disk_format)
+                    logging.debug(process.run('qemu-img info %s -U' % new_disk))
+                    virsh.domblkthreshold(vm_name, 'vdb', '100M')
+                    session = dom.wait_for_login()
+                    session.cmd("mkfs.ext4 /dev/vdb && mount /dev/vdb /mnt && ls /mnt && "
+                                "dd if=/dev/urandom of=/mnt/bigfile bs=1M count=300 && sync")
+                    time.sleep(5)
+                    session.close()
+                    expected_events_list.append("'block-threshold' for %s:"
+                                                " dev: vdb(%s)  104857600 29368320")
+                    virsh.detach_disk(dom.name, 'vdb', **virsh_dargs)
                 elif event == "change-media":
                     target_device = "hdc"
                     device_target_bus = params.get("device_target_bus", "ide")
@@ -401,7 +416,10 @@ def run(test, params, env):
         for dom_name, event in expected_events_list:
             if event in expected_events_list[0]:
                 event_idx = 0
-            event_str = "event " + event % ("domain %s" % dom_name)
+            if re.search("block-threshold", event):
+                event_str = "block-threshold"
+            else:
+                event_str = "event " + event % ("domain %s" % dom_name)
             logging.info("Expected event: %s", event_str)
             match = re.search(event_str, output[event_idx:])
             if match:
