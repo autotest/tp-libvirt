@@ -50,6 +50,7 @@ def run(test, params, env):
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
             unprivileged_user = 'testacl'
+    document_string = eval(params.get("document_string", "[]"))
 
     if not libvirt_version.version_compare(1, 1, 1):
         if params.get('setup_libvirt_polkit') == 'yes':
@@ -217,6 +218,17 @@ def run(test, params, env):
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
 
+    # check the explanation of "--memory-only" option in virsh dump man.
+    if document_string:
+        logging.info("document string: %s" % document_string)
+        ret = process.run("man virsh", shell=True)
+        if ret.exit_status:
+            test.error("failed to run 'man virsh'.")
+        man_virsh = ret.stdout_text.strip()
+        if not all([item in man_virsh for item in document_string]):
+            test.fail("failed to check document string in virsh man page.")
+        logging.info("the document string in virsh man page.")
+        return
     dump_guest_core = params.get("dump_guest_core", "")
     if dump_guest_core not in ["", "on", "off"]:
         test.error("invalid dumpCore value: %s" % dump_guest_core)
