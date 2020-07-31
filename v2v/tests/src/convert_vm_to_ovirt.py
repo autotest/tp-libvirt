@@ -30,7 +30,7 @@ def run(test, params, env):
     # nfs mount source
     vddk_libdir_src = params.get('vddk_libdir_src')
     vddk_thumbprint = params.get('vddk_thumbprint')
-    storage = params.get('storage')
+    os_pool = storage = params.get('storage')
     storage_name = params.get('storage_name')
     network = params.get('network')
     bridge = params.get('bridge')
@@ -143,11 +143,11 @@ def run(test, params, env):
     v2v_params = {'target': target, 'hypervisor': hypervisor,
                   'main_vm': vm_name, 'input_mode': input_mode,
                   'network': network, 'bridge': bridge,
-                  'storage': storage, 'hostname': source_ip,
+                  'os_storage': storage, 'hostname': source_ip,
                   # For virsh connection
                   'password': source_pwd,
                   'new_name': vm_name + utils_misc.generate_random_string(3),
-                  'output_method': output_method, 'storage_name': storage_name,
+                  'output_method': output_method, 'os_storage_name': storage_name,
                   'input_transport': input_transport, 'vcenter_host': vpx_ip,
                   'vcenter_password': vpx_pwd,
                   'vddk_thumbprint': vddk_thumbprint,
@@ -166,7 +166,7 @@ def run(test, params, env):
     output_format = params.get('output_format')
     # output_format will be set to 'raw' in utils_v2v.v2v_cmd if it's None
     if output_format:
-        v2v_params.update({'output_format': output_format})
+        v2v_params.update({'of_format': output_format})
 
     # Set libguestfs environment variable
     if hypervisor in ('xen', 'kvm'):

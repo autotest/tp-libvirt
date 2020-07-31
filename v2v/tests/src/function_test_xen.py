@@ -54,6 +54,7 @@ def run(test, params, env):
     output_method = params.get("output_method")
     rhv_upload_opts = params.get("rhv_upload_opts")
     storage_name = params.get('storage_name')
+    os_pool = os_storage = params.get('output_storage', 'default')
     # for get ca.crt file from ovirt engine
     rhv_passwd = params.get("rhv_upload_passwd")
     rhv_passwd_file = params.get("rhv_upload_passwd_file")
@@ -230,12 +231,13 @@ def run(test, params, env):
             'v2v_opts': v2v_opts, 'input_mode': 'libvirt',
             'new_name': new_vm_name,
             'password': xen_host_passwd,
-            'storage': params.get('output_storage', 'default'),
+            'os_pool': os_pool,
+            'os_storage': os_storage,
+            'os_storage_name': storage_name,
             'network': params.get('network'),
             'bridge': params.get('bridge'),
             'target': params.get('target'),
             'output_method': output_method,
-            'storage_name': storage_name,
             'rhv_upload_opts': rhv_upload_opts,
             'params': params
         }
@@ -257,12 +259,12 @@ def run(test, params, env):
         utils_misc.add_identities_into_ssh_agent()
 
         if params.get('output_format'):
-            v2v_params.update({'output_format': params.get('output_format')})
+            v2v_params.update({'of_format': params.get('output_format')})
 
         # Build rhev related options
         if output_mode == 'rhev':
             # To RHV doesn't support 'qcow2' right now
-            v2v_params['output_format'] = 'raw'
+            v2v_params['of_format'] = 'raw'
             # create different sasl_user name for different job
             params.update({'sasl_user': params.get("sasl_user") +
                            utils_misc.generate_random_string(3)})
@@ -331,7 +333,7 @@ def run(test, params, env):
         if checkpoint == 'pool_uuid':
             virsh.pool_start(pool_name)
             pooluuid = virsh.pool_uuid(pool_name).stdout.strip()
-            v2v_params['storage'] = pooluuid
+            v2v_params['os_pool'] = pooluuid
         if checkpoint.startswith('vnc'):
             vm_xml.VMXML.set_graphics_attr(vm_name, {'type': 'vnc'},
                                            virsh_instance=virsh_instance)

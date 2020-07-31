@@ -40,7 +40,7 @@ def run(test, params, env):
     output_mode = params.get('output_mode')
     output_format = params.get('output_format')
     source_user = params.get("username", "root")
-    storage = params.get('output_storage')
+    os_pool = storage = params.get('output_storage')
     bridge = params.get('bridge')
     network = params.get('network')
     ntp_server = params.get('ntp_server')
@@ -665,13 +665,14 @@ def run(test, params, env):
             'input_mode': input_mode,
             'network': network,
             'bridge': bridge,
-            'storage': storage,
+            'os_storage': storage,
+            'os_pool': os_pool,
             'hostname': source_ip,
             'password': source_pwd,
             'v2v_opts': v2v_opts,
             'new_name': vm_name + utils_misc.generate_random_string(3),
             'output_method': output_method,
-            'storage_name': storage_name,
+            'os_storage_name': storage_name,
             'rhv_upload_opts': rhv_upload_opts,
             'input_transport': input_transport,
             'vcenter_host': source_ip,
@@ -687,7 +688,7 @@ def run(test, params, env):
             v2v_params.update({"esx_ip": esx_ip})
         output_format = params.get('output_format')
         if output_format:
-            v2v_params.update({'output_format': output_format})
+            v2v_params.update({'of_format': output_format})
         # Build rhev related options
         if output_mode == 'rhev':
             # Create different sasl_user name for different job
@@ -714,7 +715,7 @@ def run(test, params, env):
                                        ovirt_ca_file_path,
                                        local_ca_file_path)
         if output_mode == 'local':
-            v2v_params['storage'] = data_dir.get_tmp_dir()
+            v2v_params['os_directory'] = data_dir.get_tmp_dir()
         if output_mode == 'libvirt':
             pvt.pre_pool(pool_name, pool_type, pool_target, '')
         # Set libguestfs environment variable

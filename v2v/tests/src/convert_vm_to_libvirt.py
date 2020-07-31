@@ -116,7 +116,7 @@ def run(test, params, env):
     v2v_params = {'target': target, 'hypervisor': hypervisor,
                   'main_vm': vm_name, 'input_mode': input_mode,
                   'network': network, 'bridge': bridge,
-                  'storage': pool_name, 'hostname': source_ip,
+                  'os_pool': pool_name, 'hostname': source_ip,
                   'password': source_pwd,
                   'input_transport': input_transport, 'vcenter_host': vpx_ip,
                   'vcenter_password': vpx_pwd,
