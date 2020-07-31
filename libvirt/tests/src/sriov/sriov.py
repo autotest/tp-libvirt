@@ -375,7 +375,7 @@ def run(test, params, env):
             result = virsh.nodedev_detach(nodedev_pci_addr)
             utils_test.libvirt.check_exit_status(result, expect_error=False)
         logging.debug("attach interface xml:\n %s", new_iface)
-        result = virsh.attach_device(vm_name, file_opt=new_iface.xml, flagstr=option, debug=True)
+        result = virsh.attach_device(vm_name, new_iface.xml, flagstr=option, debug=True)
         utils_test.libvirt.check_exit_status(result, expect_error=False)
         if option == "--config":
             result = virsh.start(vm_name)
@@ -670,7 +670,7 @@ def run(test, params, env):
             vf_addr = vf_list[0]
             new_iface = create_interface()
             if inactive_pool:
-                result = virsh.attach_device(vm_name, file_opt=new_iface.xml, flagstr=option,
+                result = virsh.attach_device(vm_name, new_iface.xml, flagstr=option,
                                              ignore_status=True, debug=True)
                 utils_test.libvirt.check_exit_status(result, expected_error)
             else:
@@ -733,7 +733,7 @@ def run(test, params, env):
             iface_list = create_iface_list(bus_id, nic_num, vf_list)
             for iface in iface_list:
                 process.run("cat %s" % iface.xml, shell=True).stdout_text
-                result = virsh.attach_device(vm_name, file_opt=iface.xml, flagstr=option,
+                result = virsh.attach_device(vm_name, iface.xml, flagstr=option,
                                              ignore_status=True, debug=True)
                 utils_test.libvirt.check_exit_status(result, expect_error=False)
             result = virsh.start(vm_name, debug=True)

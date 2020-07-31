@@ -137,8 +137,7 @@ def run(test, params, env):
         logging.debug("disk_list_debug = %s", bef_list)
 
         # Attach disk to guest
-        ret = virsh.attach_device(domain_opt=vm_name,
-                                  file_opt=img_disk.xml)
+        ret = virsh.attach_device(vm_name, img_disk.xml)
         if ret.exit_status != 0:
             test.fail("Fail to attach device %s" % ret.stderr)
         time.sleep(2)

@@ -696,7 +696,7 @@ def run(test, params, env):
                   'target_type': target_type,
                   'target_name': target_name}
         channel_xml = libvirt.create_channel_xml(params)
-        virsh.attach_device(domain_opt=vm_name, file_opt=channel_xml.xml,
+        virsh.attach_device(vm_name, channel_xml.xml,
                             flagstr="--config", ignore_status=False)
         logging.debug("New VMXML with channel:\n%s", virsh.dumpxml(vm_name))
 
