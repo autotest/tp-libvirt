@@ -13,12 +13,11 @@ from avocado.utils import process
 from virttest import virt_vm, virsh
 from virttest import utils_package
 from virttest import utils_misc
+from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.devices import rng
-
-from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -199,6 +198,7 @@ def run(test, params, env):
         rng_model = dparams.get("rng_model", "virtio")
         rng_rate = dparams.get("rng_rate")
         backend_type = dparams.get("backend_type")
+        backend_model = dparams.get("backend_model")
         backend_source_list = dparams.get("backend_source",
                                           "").split()
         cmd = ("ps -ef | grep %s | grep -v grep" % vm_name)
@@ -213,6 +213,8 @@ def run(test, params, env):
                 src_host = source['host']
                 src_port = source['service']
 
+        if backend_model == "builtin":
+            cmd += (" | grep rng-builtin")
         if chardev and src_host and src_port:
             cmd += (" | grep 'chardev %s,.*host=%s,port=%s'"
                     % (chardev, src_host, src_port))
@@ -307,7 +309,7 @@ def run(test, params, env):
         """
         check_cmd = "hexdump /dev/hwrng"
         try:
-            status = session.cmd_status(check_cmd, 5)
+            status = session.cmd_status(check_cmd, 3)
 
             if status != 0 and exists:
                 test.fail("Fail to check hexdump in guest")
