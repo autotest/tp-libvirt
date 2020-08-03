@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 
 from avocado.utils import process
 
@@ -117,9 +118,11 @@ def run(test, params, env):
     iface_model = params.get("iface_model", "virtio")
     iface_source = eval(params.get("iface_source", "{'bridge':'test_br0'}"))
     iface_type = params.get("iface_type", None)
-    iface_target = params.get("iface_target", None)
+    iface_target = params.get("iface_target", "br_target")
     iface_alias = params.get("iface_alias", None)
     hotplug = "yes" == params.get("hotplug", "no")
+    iface_driver = params.get("iface_driver", None)
+    start_vm2 = "yes" == params.get("start_vm2", "no")
 
     vms = params.get("vms").split()
     if len(vms) <= 1:
@@ -174,12 +177,11 @@ def run(test, params, env):
                 iface_alias = str({'name': iface_alias})
                 vm_iface_source = str(iface_source)
                 iface_params = {"type": "bridge", "source": vm_iface_source, "filter": filter_name, "mac": mac,
-                                'alias': iface_alias, 'target': target, 'model': iface_model}
+                                'alias': iface_alias, 'target': target, 'model': iface_model,
+                                'driver': iface_driver}
                 attach_xml = interface.Interface(iface_params['type'])
                 attach_xml.xml = libvirt.modify_vm_iface(vm1_name, 'get_xml', iface_params)
-                ret = virsh.attach_device(vm1_name, attach_xml.xml,
-                                          ignore_status=True,
-                                          debug=True)
+                ret = virsh.attach_device(vm1_name, attach_xml.xml, ignore_status=True, debug=True)
             if ret.exit_status:
                 if any([msg in ret.stderr for msg in err_msgs]):
                     test.error("No more pci slots, can't attach more devices")
@@ -190,7 +192,8 @@ def run(test, params, env):
 
         else:
             vm_iface_source = str(iface_source)
-            vm1_iface_params = {"type": "bridge", "source": vm_iface_source, "filter": filter_name, "mac": mac}
+            vm1_iface_params = {"type": "bridge", "source": vm_iface_source, "filter": filter_name,
+                                "mac": mac, 'driver': iface_driver, "iface_model": iface_model}
             libvirt.modify_vm_iface(vm1_name, "update_iface", vm1_iface_params)
 
             if vm1.is_alive():
@@ -227,6 +230,39 @@ def run(test, params, env):
             session1 = vm1.wait_for_serial_login()
             ping(vm1_ip, remote_url, ping_count, ping_timeout, session=session1)
             logging.info("after reboot and restart libvirtd, the network works fine")
+            if iface_driver:
+                try:
+                    driver_dict = eval(iface_driver)
+                    if session1 is None:
+                        session1 = vm1.wait_for_serial_login()
+                    guest_iface_info = session1.cmd_output("ip l").strip()
+                    guest_iface_name = re.findall(r"^\d+: (\S+?)[@:].*state UP.*$", guest_iface_info, re.MULTILINE)[0]
+                    comb_size = driver_dict.get('queues')
+                    rx_size = driver_dict.get('rx_queue_size')
+                    session1.cmd_status("ethtool -L %s combined %s" % (guest_iface_name, comb_size))
+                    ret, outp = session1.cmd_status_output("ethtool -l %s" % guest_iface_name)
+                    logging.debug("ethtool cmd output:%s" % outp)
+                    if not ret:
+                        pre_comb = re.search("Pre-set maximums:[\s\S]*?Combined:.*?(\d+)", outp).group(1)
+                        cur_comb = re.search("Current hardware settings:[\s\S]*?Combined:.*?(\d+)", outp).group(1)
+                        if int(pre_comb) != int(comb_size) or int(cur_comb) != int(comb_size):
+                            test.fail("Fail to check the combined size: setting: %s,"
+                                      "Pre-set: %s, Current-set: %s"
+                                      % (comb_size, pre_comb, cur_comb))
+                        else:
+                            logging.info("Getting correct Pre-set and Current set value")
+                    else:
+                        test.error("ethtool list fail: %s" % outp)
+                    # as tx_queue size is only supported for vhost-user interface, only check rx_queue size
+                    ret1, outp1 = session1.cmd_status_output("ethtool -g %s" % guest_iface_name)
+                    logging.debug("guest queue size setting is %s" % outp1)
+                    if not ret1:
+                        pre_set = re.search(r"Pre-set maximums:\s*RX:\s*(\d+)", outp1).group(1)
+                        cur_set = re.search(r"Current hardware settings:\s*RX:\s*(\d+)", outp1).group(1)
+                        if int(pre_set) != int(rx_size) or int(cur_set) != int(rx_size):
+                            test.fail("Fail to check the rx_queue_size!")
+                except Exception as errs:
+                    test.fail("fail to get driver info")
             # hot-unplug interface/device
             if attach_interface:
                 ret = virsh.detach_interface(vm1_name, "bridge",
@@ -241,30 +277,31 @@ def run(test, params, env):
                 logging.info("hot-unplug interface/device succeed")
 
         else:
-            # Start vm2 connect to the same bridge
-            mac2 = utils_net.generate_mac_address_simple()
-            vm2_iface_params = {"type": "bridge", "source": vm_iface_source, "filter": filter_name, "mac": mac2}
-            libvirt.modify_vm_iface(vm2_name, "update_iface", vm2_iface_params)
-            if vm2.is_alive():
-                vm2.destroy()
-            vm2.start()
+            if start_vm2:
+                # Start vm2 connect to the same bridge
+                mac2 = utils_net.generate_mac_address_simple()
+                vm2_iface_params = {"type": "bridge", "source": vm_iface_source, "filter": filter_name, "mac": mac2}
+                libvirt.modify_vm_iface(vm2_name, "update_iface", vm2_iface_params)
+                if vm2.is_alive():
+                    vm2.destroy()
+                vm2.start()
 
-            # Check if vm1 and vm2 can ping each other
-            try:
-                utils_net.update_mac_ip_address(vm2, timeout=120)
-                vm2_ip = vm2.get_address()
-            except Exception as errs:
-                test.fail("vm2 can't get IP with the new create bridge: %s" % errs)
-            session2 = vm2.wait_for_login()
-            # make sure guest has got ip address
-            utils_net.restart_guest_network(session2)
-            output2 = session2.cmd_output("ifconfig || ip a")
-            logging.debug("guest ip info %s" % output2)
-            # check 2 guests' network functions
-            check_net_functions(vm1_ip, ping_count, ping_timeout, session1,
-                                host_ip, remote_url, vm2_ip)
-            check_net_functions(vm2_ip, ping_count, ping_timeout, session2,
-                                host_ip, remote_url, vm1_ip)
+                # Check if vm1 and vm2 can ping each other
+                try:
+                    utils_net.update_mac_ip_address(vm2, timeout=120)
+                    vm2_ip = vm2.get_address()
+                except Exception as errs:
+                    test.fail("vm2 can't get IP with the new create bridge: %s" % errs)
+                session2 = vm2.wait_for_login()
+                # make sure guest has got ip address
+                utils_net.restart_guest_network(session2)
+                output2 = session2.cmd_output("ifconfig || ip a")
+                logging.debug("guest ip info %s" % output2)
+                # check 2 guests' network functions
+                check_net_functions(vm1_ip, ping_count, ping_timeout, session1,
+                                    host_ip, remote_url, vm2_ip)
+                check_net_functions(vm2_ip, ping_count, ping_timeout, session2,
+                                    host_ip, remote_url, vm1_ip)
 
     finally:
         logging.debug("Start to restore")
