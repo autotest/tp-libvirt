@@ -512,6 +512,8 @@ def set_domain_disk(vmxml, blk_source, params, test):
                    'driver_type': driver_type}
     if source_protocol == 'iscsi':
         if disk_type == 'block':
+            if release_os_url:
+                blk_source = download_released_file_path
             kwargs = {'image_size': image_size, 'disk_format': disk_format}
             iscsi_target = prepare_iscsi_disk(blk_source, **kwargs)
             if iscsi_target is None:
@@ -543,6 +545,8 @@ def set_domain_disk(vmxml, blk_source, params, test):
 
     elif source_protocol == 'gluster':
         if disk_type == 'network':
+            if release_os_url:
+                blk_source = download_released_file_path
             host_ip = prepare_gluster_disk(blk_source, test, brick_path=brick_path, **params)
             if host_ip is None:
                 test.error("Failed to create glusterfs disk")
@@ -555,6 +559,8 @@ def set_domain_disk(vmxml, blk_source, params, test):
                                 'source_protocol': source_protocol})
     elif source_protocol == 'rbd':
         if disk_type == 'network':
+            if release_os_url:
+                blk_source = download_released_file_path
             disk_path = ("rbd:%s:mon_host=%s" %
                          (disk_src_name, mon_host))
             disk_cmd = ("qemu-img convert -O %s %s %s"
