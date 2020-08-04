@@ -254,6 +254,23 @@ def run(test, params, env):
         if not start_vm:
             if reload_virtlogd:
                 reload_and_check_virtlogd()
+            if expected_result == 'virtlogd_restart':
+                # check virtlogd status
+                virtlogd_pid = check_service_status("virtlogd", service_start=True)
+                logging.info("virtlogd PID: %s", virtlogd_pid)
+                # restart virtlogd
+                ret = process.run("systemctl restart virtlogd", ignore_status=True, shell=True)
+                if ret.exit_status:
+                    test.fail("failed to restart virtlogd.")
+                # check virtlogd status
+                new_virtlogd_pid = check_service_status("virtlogd", service_start=False)
+                logging.info("new virtlogd PID: %s", new_virtlogd_pid)
+                if virtlogd_pid == new_virtlogd_pid:
+                    test.fail("virtlogd pid don't change.")
+                cmd = "ps -o ppid,pid,pgid,sid,tpgid,tty,stat,command -C virtlogd"
+                ret = process.run(cmd, ignore_status=True, shell=True)
+                if ret.exit_status:
+                    test.fail("virtlogd don't exist.")
         else:
             # Stop all VMs if VMs are already started.
             for tmp_vm in env.get_all_vms():
