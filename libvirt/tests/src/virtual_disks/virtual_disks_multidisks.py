@@ -1173,6 +1173,8 @@ def run(test, params, env):
                 disk_xml.readonly = "yes" == device_readonly[i]
 
             if disk_transient:
+                if libvirt_version.version_compare(6, 5, 0):
+                    test.cancel("unsupported configuration: transient disks not supported")
                 disk_xml.transient = "yes"
 
             # Add driver options from parameters
