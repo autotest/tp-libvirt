@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+import time
 
 from avocado.utils import process
 
@@ -192,9 +193,17 @@ def run(test, params, env):
                     if rule not in ebtables_outputs:
                         test.fail("Can not find the corresponding rule after update filter with parameters!")
             if del_filter:
+                # if the filter is deleted, it should not exists in the xml and the rules should be deleted as well
                 iface_filter_value = iface_aft.find('filterref')
                 if iface_filter_value is not None:
                     test.fail("After delete, the filter still exists: %s" % iface_filter_value)
+                ebtables_outputs = process.run("ebtables -t nat -L", shell=True).stdout_text
+                logging.debug("after nwfilter deleted, ebtables rules are %s" % ebtables_outputs)
+                time.sleep(5)
+                entries_num = re.findall(r'entries:\s+(\d)', ebtables_outputs)
+                for i in entries_num:
+                    if i != '0':
+                        test.fail("After delete, the rules are still exists!")
             if new_iface_alias:
                 iface_alias_value = iface_aft.find('alias').get('name')
                 if iface_alias_value == eval(new_iface_alias)['name']:
