@@ -11,6 +11,7 @@ from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import utils_package
 from virttest import virt_vm
+from virttest.staging import service
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.console import Console
 from virttest.libvirt_xml.devices.graphics import Graphics
@@ -271,6 +272,20 @@ def run(test, params, env):
                 ret = process.run(cmd, ignore_status=True, shell=True)
                 if ret.exit_status:
                     test.fail("virtlogd don't exist.")
+            if expected_result == 'virtlogd_disabled':
+                # check virtlogd status
+                virtlogd_pid = check_service_status("virtlogd", service_start=True)
+                logging.info("virtlogd PID: %s", virtlogd_pid)
+                # disabled virtlogd
+                service_manager = service.Factory.create_generic_service()
+                service_manager.stop('virtlogd')
+                # check virtlogd status
+                if service_manager.status('virtlogd'):
+                    test.fail("virtlogd status is not inactive.")
+                cmd = "ps -C virtlogd"
+                ret = process.run(cmd, ignore_status=True, shell=True)
+                if not ret.exit_status:
+                    test.fail("virtlogd still exist.")
         else:
             # Stop all VMs if VMs are already started.
             for tmp_vm in env.get_all_vms():
