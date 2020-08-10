@@ -2,6 +2,7 @@ import os
 import shutil
 import logging
 import platform
+import time
 
 from avocado.utils import process
 
@@ -187,6 +188,7 @@ def run(test, params, env):
         """
         prepare_hook_file(hook_script % (vm_name, hook_log))
         hook_para = "%s %s" % (hook_file, vm_name)
+        time.sleep(2)
         libvirtd.restart()
         try:
             hook_str = hook_para + " reconnect begin -"
