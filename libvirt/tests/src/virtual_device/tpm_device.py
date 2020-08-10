@@ -201,10 +201,11 @@ def run(test, params, env):
                       "in the guest xml file." % backend_type)
         # Check backend version
         if backend_version:
-            pattern = '"emulator" version="%s"' % backend_version
+            check_ver = backend_version if backend_version != 'none' else '2.0'
+            pattern = '"emulator" version="%s"' % check_ver
             if pattern not in astring.to_text(xml_after_adding_device):
                 test.fail("Can not find the %s backend version xml for tpm dev "
-                          "in the guest xml file." % backend_version)
+                          "in the guest xml file." % check_ver)
         # Check device path
         if backend_type == "passthrough":
             pattern = '<device path="/dev/tpm0"'
