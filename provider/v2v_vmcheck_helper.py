@@ -661,12 +661,6 @@ class VMChecker(object):
         if self.compare_version(V2V_7_3_VERSION):
             self.check_vm_xml()
 
-        # Renew network
-        logging.info("Renew network for windows guest")
-        if not self.checker.get_network_restart():
-            err_msg = "Renew network failed"
-            self.log_err(err_msg)
-
     def check_graphics(self, param):
         """
         Check if graphics attributes value in vm xml match with given param.
