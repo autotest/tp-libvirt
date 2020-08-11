@@ -62,7 +62,29 @@ def run(test, params, env):
 
     libvirtd = utils_libvirtd.Libvirtd()
     device_name = None
+
+    def clean_up_dirty_nwfilter_binding():
+        cmd_result = virsh.nwfilter_binding_list(debug=True)
+        binding_list = cmd_result.stdout_text.strip().splitlines()
+        binding_list = binding_list[2:]
+        result = []
+        # If binding list is not empty.
+        if binding_list:
+            for line in binding_list:
+                # Split on whitespace, assume 1 column
+                linesplit = line.split(None, 1)
+                result.append(linesplit[0])
+        logging.info("nwfilter binding list is: %s", result)
+        for binding_uuid in result:
+            try:
+                virsh.nwfilter_binding_delete(binding_uuid)
+            except Exception as e:
+                logging.error("Exception thrown while undefining nwfilter-binding: %s", str(e))
+                raise
+
     try:
+        # Clean up dirty nwfilter binding if there are.
+        clean_up_dirty_nwfilter_binding()
         rule = params.get("rule")
         if rule:
             # Create new filter xml
