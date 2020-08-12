@@ -10,6 +10,7 @@ from virttest import virsh
 from virttest.utils_test import libvirt
 from virttest.staging import service
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.devices import interface
 from virttest import utils_package
 
 NETWORK_SCRIPT = "/etc/sysconfig/network-scripts/ifcfg-"
@@ -174,8 +175,9 @@ def run(test, params, env):
                 vm_iface_source = str(iface_source)
                 iface_params = {"type": "bridge", "source": vm_iface_source, "filter": filter_name, "mac": mac,
                                 'alias': iface_alias, 'target': target, 'model': iface_model}
-                attach_xml = libvirt.modify_vm_iface(vm1_name, 'get_xml', iface_params)
-                ret = virsh.attach_device(vm1_name, attach_xml,
+                attach_xml = interface.Interface(iface_params['type'])
+                attach_xml.xml = libvirt.modify_vm_iface(vm1_name, 'get_xml', iface_params)
+                ret = virsh.attach_device(vm1_name, attach_xml.xml,
                                           ignore_status=True,
                                           debug=True)
             if ret.exit_status:
@@ -230,7 +232,7 @@ def run(test, params, env):
                 ret = virsh.detach_interface(vm1_name, "bridge",
                                              ignore_status=True)
             else:
-                ret = virsh.detach_device(vm1_name, attach_xml,
+                ret = virsh.detach_device(vm1_name, attach_xml.xml,
                                           ignore_status=True,
                                           debug=True)
             if ret.exit_status:
