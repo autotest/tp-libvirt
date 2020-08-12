@@ -15,6 +15,8 @@ from virttest import remote
 from virttest.utils_test import libvirt
 
 from provider.v2v_vmcheck_helper import VMChecker
+from provider.v2v_vmcheck_helper import check_json_output
+from provider.v2v_vmcheck_helper import check_local_output
 
 
 def run(test, params, env):
@@ -34,7 +36,7 @@ def run(test, params, env):
     input_file = params.get('input_file')
     output_mode = params.get('output_mode')
     output_format = params.get('output_format')
-    output_storage = params.get('output_storage', 'default')
+    os_pool = output_storage = params.get('output_storage', 'default')
     bridge = params.get('bridge')
     network = params.get('network')
     address_cache = env.get('address_cache')
@@ -122,9 +124,17 @@ def run(test, params, env):
         """
         Check virt-v2v command result
         """
-        libvirt.check_exit_status(result, status_error)
-        output = result.stdout_text + result.stderr_text
-        if not status_error:
+        def vm_check():
+            """
+            Checking the VM
+            """
+            if output_mode == 'json' and not check_json_output(params):
+                test.fail('check json output failed')
+            if output_mode == 'local' and not check_local_output(params):
+                test.fail('check local output failed')
+            if output_mode in ['null', 'json', 'local']:
+                return
+
             # Create vmchecker before virsh.start so that the vm can be undefined
             # if started failed.
             vmchecker = VMChecker(test, params, env)
@@ -148,6 +158,11 @@ def run(test, params, env):
                     check_BSOD()
                 # Merge 2 error lists
                 error_list.extend(vmchecker.errors)
+
+        libvirt.check_exit_status(result, status_error)
+        output = result.stdout_text + result.stderr_text
+        if not status_error:
+            vm_check()
         log_check = utils_v2v.check_log(params, output)
         if log_check:
             log_fail(log_check)
@@ -159,7 +174,7 @@ def run(test, params, env):
     try:
         v2v_params = {
             'main_vm': vm_name, 'target': target, 'v2v_opts': v2v_opts,
-            'storage': output_storage, 'network': network, 'bridge': bridge,
+            'os_storage': output_storage, 'network': network, 'bridge': bridge,
             'input_mode': input_mode, 'input_file': input_file,
             'new_name': 'ova_vm_' + utils_misc.generate_random_string(3),
             'datastore': datastore,
@@ -168,7 +183,8 @@ def run(test, params, env):
             'input_transport': input_transport,
             'vmx_nfs_src': vmx_nfs_src,
             'output_method': output_method,
-            'storage_name': storage_name,
+            'os_storage_name': storage_name,
+            'os_pool': os_pool,
             'rhv_upload_opts': rhv_upload_opts,
             'params': params
         }
@@ -190,7 +206,7 @@ def run(test, params, env):
             else:
                 logging.debug('%s already exists, Skip copying' % dest_dir)
         if output_format:
-            v2v_params.update({'output_format': output_format})
+            v2v_params.update({'of_format': output_format})
         # Create libvirt dir pool
         if output_mode == 'libvirt':
             pvt.pre_pool(pool_name, pool_type, pool_target, '')
@@ -205,7 +221,7 @@ def run(test, params, env):
             v2v_sasl.server_pwd = params.get('remote_pwd')
             v2v_sasl.setup(remote=True)
         if output_mode == 'local':
-            v2v_params['storage'] = data_dir.get_tmp_dir()
+            v2v_params['os_directory'] = data_dir.get_tmp_dir()
 
         if checkpoint == 'ova_relative_path':
             logging.debug('Current dir: %s', os.getcwd())

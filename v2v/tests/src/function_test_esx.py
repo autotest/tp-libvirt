@@ -15,6 +15,8 @@ from avocado.utils import download
 from aexpect.exceptions import ShellProcessTerminatedError
 
 from provider.v2v_vmcheck_helper import VMChecker
+from provider.v2v_vmcheck_helper import check_json_output
+from provider.v2v_vmcheck_helper import check_local_output
 
 
 def run(test, params, env):
@@ -58,10 +60,12 @@ def run(test, params, env):
     vddk_thumbprint = params.get('vddk_thumbprint')
     src_uri_type = params.get('src_uri_type')
     esxi_password = params.get('esxi_password')
+    json_disk_pattern = params.get('json_disk_pattern')
     # For construct rhv-upload option in v2v cmd
     output_method = params.get("output_method")
     rhv_upload_opts = params.get("rhv_upload_opts")
     storage_name = params.get('storage_name')
+    os_pool = os_storage = params.get('output_storage', 'default')
     # for get ca.crt file from ovirt engine
     rhv_passwd = params.get("rhv_upload_passwd")
     rhv_passwd_file = params.get("rhv_upload_passwd_file")
@@ -412,12 +416,20 @@ def run(test, params, env):
         """
         Check virt-v2v command result
         """
-        libvirt.check_exit_status(result, status_error)
-        output = result.stdout_text + result.stderr_text
-        if checkpoint == 'empty_cdrom':
+        def vm_check(status_error):
+            """
+            Checking the VM
+            """
             if status_error:
-                log_fail('Virsh dumpxml failed for empty cdrom image')
-        elif not status_error:
+                return
+
+            if output_mode == 'json' and not check_json_output(params):
+                test.fail('check json output failed')
+            if output_mode == 'local' and not check_local_output(params):
+                test.fail('check local output failed')
+            if output_mode in ['null', 'json', 'local']:
+                return
+
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
             if output_mode == 'rhev':
@@ -428,25 +440,20 @@ def run(test, params, env):
                 virsh.start(vm_name, debug=True)
             # Check guest following the checkpoint document after convertion
             logging.info('Checking common checkpoints for v2v')
-            if skip_vm_check != 'yes':
-                if checkpoint == 'ogac':
-                    # windows guests will reboot at any time after qemu-ga is
-                    # installed. The process cannot be controled. In order to
-                    # don't break vmchecker.run() process, It's better to put
-                    # check_windows_ogac before vmchecker.run(). Because in
-                    # check_windows_ogac, it waits until rebooting completes.
-                    vmchecker.checker.create_session()
-                    if os_type == 'windows':
-                        check_windows_ogac(vmchecker.checker)
-                    else:
-                        check_linux_ogac(vmchecker.checker)
-                ret = vmchecker.run()
-                if len(ret) == 0:
-                    logging.info("All common checkpoints passed")
-            else:
-                logging.info(
-                    'Skip checking vm after conversion: %s' %
-                    skip_reason)
+            if checkpoint == 'ogac':
+                # windows guests will reboot at any time after qemu-ga is
+                # installed. The process cannot be controled. In order to
+                # don't break vmchecker.run() process, It's better to put
+                # check_windows_ogac before vmchecker.run(). Because in
+                # check_windows_ogac, it waits until rebooting completes.
+                vmchecker.checker.create_session()
+                if os_type == 'windows':
+                    check_windows_ogac(vmchecker.checker)
+                else:
+                    check_linux_ogac(vmchecker.checker)
+            ret = vmchecker.run()
+            if len(ret) == 0:
+                logging.info("All common checkpoints passed")
             # Check specific checkpoints
             if checkpoint == 'cdrom':
                 virsh_session = utils_sasl.VirshSessionSASL(params)
@@ -472,6 +479,16 @@ def run(test, params, env):
                     log_fail("Bridge virbr0 already started during conversion")
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
+
+        libvirt.check_exit_status(result, status_error)
+        output = result.stdout_text + result.stderr_text
+        if skip_vm_check != 'yes':
+            vm_check(status_error)
+        else:
+            logging.info(
+                'Skip checking vm after conversion: %s' %
+                skip_reason)
+
         log_check = utils_v2v.check_log(params, output)
         if log_check:
             log_fail(log_check)
@@ -489,7 +506,8 @@ def run(test, params, env):
             'vpx_dc': vpx_dc, 'esx_ip': esx_ip,
             'new_name': vm_name + utils_misc.generate_random_string(4),
             'v2v_opts': v2v_opts, 'input_mode': 'libvirt',
-            'storage': params.get('output_storage', 'default'),
+            'os_storage': os_storage,
+            'os_pool': os_pool,
             'network': params.get('network'),
             'bridge': params.get('bridge'),
             'target': params.get('target'),
@@ -504,8 +522,9 @@ def run(test, params, env):
             'esxi_password': esxi_password,
             'esxi_host': esxi_host,
             'output_method': output_method,
-            'storage_name': storage_name,
+            'os_storage_name': storage_name,
             'rhv_upload_opts': rhv_upload_opts,
+            'oo_json_disk_pattern': json_disk_pattern,
             'params': params
         }
 
@@ -523,7 +542,7 @@ def run(test, params, env):
         v2v_params['v2v_opts'] += " -ip %s" % vpx_passwd_file
 
         if params.get('output_format'):
-            v2v_params.update({'output_format': params['output_format']})
+            v2v_params.update({'of_format': params['output_format']})
         # Rename guest with special name while converting to rhev
         if '#' in vm_name and output_mode == 'rhev':
             v2v_params['new_name'] = v2v_params['new_name'].replace('#', '_')
