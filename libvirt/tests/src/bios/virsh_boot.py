@@ -599,6 +599,7 @@ def set_boot_dev_or_boot_order(vmxml, **kwargs):
     boot_order = kwargs.get("boot_order", "1")
     target_dev = kwargs.get("target_dev", "vdb")
     two_same_boot_dev = kwargs.get("two_same_boot_dev", False)
+    boot_loadparm = kwargs.get("loadparm", None)
     if boot_ref == "dev":
         boot_list = []
         boot_list.append(boot_dev)
@@ -607,7 +608,8 @@ def set_boot_dev_or_boot_order(vmxml, **kwargs):
             boot_list.append(boot_dev)
         vmxml.set_os_attrs(**{"boots": boot_list})
     elif boot_ref == "order":
-        vmxml.set_boot_order_by_target_dev(target_dev, boot_order)
+        vmxml.set_boot_attrs_by_target_dev(target_dev, order=boot_order,
+                                           loadparm=boot_loadparm)
 
 
 def run(test, params, env):
@@ -627,6 +629,7 @@ def run(test, params, env):
     username = params.get("username", "root")
     password = params.get("password", "redhat")
     test_cmd = params.get("test_cmd", "")
+    expected_output = params.get("expected_output", "")
     check_point = params.get("checkpoint", "")
     status_error = "yes" == params.get("status_error", "no")
     boot_iso_file = os.path.join(data_dir.get_tmp_dir(), "boot.iso")
@@ -646,6 +649,7 @@ def run(test, params, env):
     vol_name = params.get("vol_name")
     brick_path = os.path.join(test.virtdir, "gluster-pool")
     boot_type = params.get("boot_type", "seabios")
+    boot_loadparm = params.get("boot_loadparm", None)
 
     # Prepare result checkpoint list
     check_points = []
@@ -670,7 +674,8 @@ def run(test, params, env):
             boot_kwargs = {"boot_ref": boot_ref,
                            "boot_dev": boot_dev,
                            "boot_order": boot_order,
-                           "target_dev": target_dev}
+                           "target_dev": target_dev,
+                           "loadparm": boot_loadparm}
             if "yes" == params.get("two_same_boot_dev", "no"):
                 boot_kwargs.update({"two_same_boot_dev": True})
             set_boot_dev_or_boot_order(vmxml, **boot_kwargs)
@@ -717,6 +722,11 @@ def run(test, params, env):
                 if test_cmd:
                     status, output = remote_session.cmd_status_output(test_cmd)
                     logging.debug("CMD '%s' running result is:\n%s", test_cmd, output)
+                    if expected_output:
+                        if not re.search(expected_output, output):
+                            test.fail("Expected '%s' to match '%s'"
+                                      " but failed." % (output,
+                                                        expected_output))
                     if status:
                         test.fail("Failed to boot %s from %s" % (vm_name, vmxml.xml))
                 remote_session.close()
