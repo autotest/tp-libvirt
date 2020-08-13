@@ -289,7 +289,7 @@ def run(test, params, env):
                                        % snapshot_name2, debug=True)
         if ret.exit_status:
             if ret.stderr.count(err_msgs):
-                test.skip(err_msgs)
+                test.cancel(err_msgs)
             else:
                 test.fail("Failed to create external snapshot")
         snap_lists = virsh.snapshot_list(vm_name, debug=True)
@@ -428,9 +428,12 @@ def run(test, params, env):
     timeout = int(params.get("timeout", 600))
     wait_timeout = int(params.get("wait_timeout", 60))
 
+    if params.get("backend_model") == "builtin" and not libvirt_version.version_compare(6, 2, 0):
+        test.cancel("Builtin backend is not supported on this libvirt version")
+
     if device_num > 1 and not libvirt_version.version_compare(1, 2, 7):
-        test.skip("Multiple virtio-rng devices not "
-                  "supported on this libvirt version")
+        test.cancel("Multiple virtio-rng devices not "
+                    "supported on this libvirt version")
 
     guest_arch = params.get("vm_arch_name", "x86_64")
 
