@@ -2004,7 +2004,8 @@ def run(test, params, env):
                 del img["disk_dev"]
             else:
                 if img["format"] == "scsi":
-                    libvirt.delete_scsi_disk()
+                    utils_misc.wait_for(libvirt.delete_scsi_disk,
+                                        120, ignore_errors=True)
                 elif img["format"] == "iscsi" or network_iscsi_baseimg:
                     libvirt.setup_or_cleanup_iscsi(is_setup=False)
                     # Clean up secret
