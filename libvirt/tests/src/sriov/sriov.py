@@ -11,6 +11,7 @@ from virttest import virsh
 from virttest import utils_net
 from virttest import utils_misc
 from virttest import utils_test
+from virttest import utils_libvirtd
 from virttest.libvirt_xml.nodedev_xml import NodedevXML
 from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import vm_xml
@@ -132,6 +133,7 @@ def run(test, params, env):
             net = net.split('_')
             length = len(net)
             net = '_'.join(net[1:length-6])
+            mac = ':'.join(net[length-6:])
             net_name.append(net)
         for pci_addr in pci_diff:
             temp_addr = pci_addr.split("_")
@@ -215,7 +217,7 @@ def run(test, params, env):
 
     def create_macvtap_network():
         """
-            Create macvtap type network xml.
+        Create macvtap type network xml.
         """
         forward_interface_list = []
         for vf_name in vf_name_list:
@@ -253,6 +255,11 @@ def run(test, params, env):
         if operation == "save":
             result = virsh.managedsave(vm_name, ignore_status=True, debug=True)
             utils_test.libvirt.check_exit_status(result, expect_error=True)
+
+        if operation == "restart_libvirtd":
+            detach_interface()
+            utils_libvirtd.libvirtd_restart()
+            interface = attach_interface()
 
     def check_info():
         """
@@ -335,12 +342,29 @@ def run(test, params, env):
             result = virsh.domiflist(vm_name, "", ignore_status=True)
             return result.stdout.find(mac_addr) == -1
 
+        def check_addr_attrs():
+            live_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            device = live_xml.devices
+            hostdev_list = device.by_device_tag("hostdev")
+            for hostdev in hostdev_list:
+                addr = hostdev.source.untyped_address
+                hostdev_addr_attrs = {"domain": addr.domain, "bus": addr.bus, "slot": addr.slot, "function": addr.function}
+                if hostdev_addr_attrs == vf_addr_attrs:
+                    return False
+            return True
+
         result = virsh.detach_device(vm_name, new_iface.xml)
         utils_test.libvirt.check_exit_status(result, expect_error=False)
-        utils_misc.wait_for(_detach_completed, timeout=60)
+        if vf_type == "hostdev":
+            check_ret = utils_misc.wait_for(check_addr_attrs, timeout=60)
+            if not check_ret:
+                test.fail("The hostdev device detach failed from xml\n")
+        else:
+            utils_misc.wait_for(_detach_completed, timeout=60)
         live_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         device = live_xml.devices
         logging.debug("Domain xml after detach interface:\n %s", live_xml)
+
         if vf_type == "vf" or vf_type == "vf_pool":
             for interface in device.by_device_tag("interface"):
                 if interface.type_name == "hostdev":
@@ -387,8 +411,22 @@ def run(test, params, env):
             utils_test.libvirt.check_exit_status(result, expect_error=False)
         live_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         logging.debug(live_xml)
-        get_ip_by_mac(mac_addr, timeout=60)
+
+        if vf_type != "hostdev":
+            get_ip_by_mac(mac_addr, timeout=60)
+
         device = live_xml.devices
+
+        if vf_type == "hostdev":
+            hostdev_list = device.by_device_tag("hostdev")
+            if len(hostdev_list) == 0:
+                test.fail("The hostdev device attach failed from xml\n")
+            else:
+                for hostdev in hostdev_list:
+                    if hostdev.type == "pci":
+                        break
+                interface = hostdev
+
         if vf_type == "vf" or vf_type == "vf_pool":
             for interface in device.by_device_tag("interface"):
                 if interface.type_name == "hostdev":
@@ -584,6 +622,7 @@ def run(test, params, env):
     attach = params.get("attach", "")
     option = params.get("option", "")
     vf_type = params.get("vf_type", "")
+    dev_type = params.get("dev_type", "")
     info_check = params.get("info_check", "no")
     info_type = params.get("info_type", "")
     vf_pool_source = params.get("vf_pool_source", "vf_list")
@@ -658,23 +697,33 @@ def run(test, params, env):
 
         vf_list = []
         vf_name_list = []
+        vf_mac_list = []
 
         for i in range(vf_num):
             vf = os.readlink("%s/virtfn%s" % (pci_address, str(i)))
             vf = os.path.split(vf)[1]
             vf_list.append(vf)
             vf_name = os.listdir('%s/%s/net' % (pci_device_dir, vf))[0]
+            with open('%s/%s/net/%s/address' % (pci_device_dir, vf, vf_name), 'r') as f:
+                vf_mac = f.readline().strip()
             vf_name_list.append(vf_name)
+            vf_mac_list.append(vf_mac)
 
         if attach == "yes" and not nfv:
             vf_addr = vf_list[0]
-            new_iface = create_interface()
+            if dev_type:
+                mac_addr = vf_mac_list[0]
+                new_iface = utils_test.libvirt.create_hostdev_xml(vf_addr,
+                                                                  managed=managed,
+                                                                  xmlfile=False)
+            else:
+                new_iface = create_interface()
+                mac_addr = new_iface.mac_address
             if inactive_pool:
                 result = virsh.attach_device(vm_name, new_iface.xml, flagstr=option,
                                              ignore_status=True, debug=True)
                 utils_test.libvirt.check_exit_status(result, expected_error)
             else:
-                mac_addr = new_iface.mac_address
                 nodedev_pci_addr = create_nodedev_pci(vf_addr)
                 origin_driver = os.readlink(os.path.join(pci_device_dir, vf_addr, "driver")).split('/')[-1]
                 logging.debug("The driver of vf before attaching to guest is %s\n", origin_driver)
@@ -683,6 +732,10 @@ def run(test, params, env):
                     interface = attach_interface()
                     if vf_type in ["vf", "vf_pool"]:
                         vf_addr_attrs = interface.hostdev_address.attrs
+                    if vf_type == "hostdev":
+                        addr = interface.source.untyped_address
+                        vf_addr_attrs = {"domain": addr.domain, "bus": addr.bus,
+                                         "slot": addr.slot, "function": addr.function}
                     if operation != "":
                         do_operation()
                     detach_interface()
