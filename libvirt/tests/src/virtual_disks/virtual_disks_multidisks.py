@@ -1884,7 +1884,8 @@ def run(test, params, env):
                 if devices[i] == "cdrom":
                     dt_options = "--config"
                 ret = virsh.detach_disk(vm_name, device_targets[i],
-                                        dt_options, **virsh_dargs)
+                                        dt_options, wait_remove_event=True,
+                                        **virsh_dargs)
                 disk_detach_error = False
                 if len(device_attach_error) > i:
                     disk_detach_error = "yes" == device_attach_error[i]
@@ -1933,7 +1934,7 @@ def run(test, params, env):
                 for counter in range(0, iteration_times):
                     logging.info("Begin to execute attach or detach %d operations", counter)
                     ret = virsh.detach_device(vm_name, disks_xml[0].xml,
-                                              flagstr=attach_option, debug=True)
+                                              flagstr=attach_option, debug=True, wait_remove_event=True)
                     libvirt.check_exit_status(ret)
                     # Sleep 10 seconds to let VM really cleanup devices.
                     time.sleep(10)
@@ -1952,7 +1953,7 @@ def run(test, params, env):
                     if device_attach_error[i] == "yes":
                         continue
                 ret = virsh.detach_device(vm_name, disks_xml[i].xml,
-                                          flagstr=attach_option, **virsh_dargs)
+                                          flagstr=attach_option, wait_remove_event=True, **virsh_dargs)
                 os.remove(disks_xml[i].xml)
                 libvirt.check_exit_status(ret)
 
