@@ -678,6 +678,14 @@ def run(test, params, env):
                 if not libvirt.check_vm_state(vm_name, state="running",
                                               uri=dest_uri):
                     test.fail("Can't get the expected vm state 'running'")
+            elif action == "checkdomstate":
+                ret = remote_virsh_session.domstate(vm_name, debug=True)\
+                    .stdout_text.strip()
+                exp_state = "running" if not pause_vm_before_mig else "paused"
+                if ret != exp_state:
+                    test.fail("The vm state on target host should "
+                              "be '%s', but '%s' found" % (exp_state, ret))
+
             time.sleep(3)
         remote_virsh_session.close_session()
 
@@ -913,6 +921,7 @@ def run(test, params, env):
     update_tpm_secret = "yes" == params.get("update_tpm_secret", "no")
     break_network_connection = "yes" == params.get("break_network_connection",
                                                    "no")
+    pause_vm_before_mig = "yes" == params.get("pause_vm_before_migration", "no")
 
     # For pty channel test
     add_channel = "yes" == params.get("add_channel", "no")
@@ -1237,6 +1246,9 @@ def run(test, params, env):
             control_migrate_speed(int(low_speed))
             if postcopy_options and libvirt_version.version_compare(5, 0, 0):
                 control_migrate_speed(int(low_speed), opts=postcopy_options)
+        if pause_vm_before_mig:
+            suspend_vm(vm)
+
         # Execute migration process
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
