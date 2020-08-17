@@ -307,6 +307,25 @@ def run(test, params, env):
             if status:
                 test.fail("blockcommit from top to base failed when ls image file in VM: %s" % output)
 
+    def do_blockcommit_pivot_repeatedly():
+        """
+        Validate bugzilla:https://bugzilla.redhat.com/show_bug.cgi?id=1857735
+        """
+        # Make external snapshot,pivot and delete snapshot file repeatedly.
+        tmp_snapshot_name = "external_snapshot_" + "repeated.qcow2"
+        block_target = 'vda'
+        for count in range(0, 5):
+            options = "%s " % tmp_snapshot_name
+            options += "--disk-only --atomic"
+            disk_external = os.path.join(tmp_dir, tmp_snapshot_name)
+            options += "  --diskspec  %s,snapshot=external,file=%s" % (block_target, disk_external)
+            virsh.snapshot_create_as(vm_name, options,
+                                     ignore_status=False, debug=True)
+            virsh.blockcommit(vm_name, block_target,
+                              " --active --pivot ", ignore_status=False, debug=True)
+            virsh.snapshot_delete(vm_name, tmp_snapshot_name, " --metadata")
+            libvirt.delete_local_disk('file', disk_external)
+
     # MAIN TEST CODE ###
     # Process cartesian parameters
     vm_name = params.get("main_vm")
@@ -338,6 +357,7 @@ def run(test, params, env):
     pre_set_root_dir = None
     blk_source_folder = None
     convert_qcow2_image_to_raw = "yes" == params.get("convert_qcow2_image_to_raw", "no")
+    repeatedly_do_blockcommit_pivot = "yes" == params.get("repeatedly_do_blockcommit_pivot", "no")
 
     # Check whether qemu-img need add -U suboption since locking feature was added afterwards qemu-2.10
     qemu_img_locking_feature_support = libvirt_storage.check_qemu_image_lock_support()
@@ -432,6 +452,9 @@ def run(test, params, env):
 
         if needs_agent:
             vm.prepare_guest_agent()
+
+        if repeatedly_do_blockcommit_pivot:
+            do_blockcommit_pivot_repeatedly()
 
         # The first disk is supposed to include OS
         # We will perform blockcommit operation for it.
