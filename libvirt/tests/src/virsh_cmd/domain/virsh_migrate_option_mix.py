@@ -321,10 +321,12 @@ def run(test, params, env):
             obj_migration.do_migration(vms, src_uri, dest_uri, "orderly",
                                        options="",
                                        thread_timeout=postcopy_timeout,
-                                       ignore_status=False,
+                                       ignore_status=True,
                                        func=virsh.migrate_postcopy,
                                        extra_opts=extra_options,
                                        shell=True)
+            # Check migration result
+            obj_migration.check_result(obj_migration.ret, params)
 
             # Check "postcopy-active" event after postcopy migration
             logging.debug("Check postcopy-active event after postcopy migration")
@@ -341,8 +343,10 @@ def run(test, params, env):
             logging.debug("Start to do precopy migration")
             obj_migration.do_migration(vms, src_uri, dest_uri, "orderly",
                                        options="",
-                                       ignore_status=False,
+                                       ignore_status=True,
                                        extra_opts=extra_options)
+            # Check migration result
+            obj_migration.check_result(obj_migration.ret, params)
 
         """
         # Check src vm after migration
