@@ -1,13 +1,13 @@
 import logging
 import time
 
-from avocado.utils import process
 
 from virttest.libvirt_xml.devices import interface
 from virttest import virsh
 from virttest.utils_test import libvirt as utlv
 from virttest import libvirt_xml
 from virttest.libvirt_xml import nwfilter_binding
+from virttest import utils_libvirtd
 
 
 def run(test, params, env):
@@ -24,7 +24,6 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     check_cmd = params.get("check_cmd")
     expected_match = params.get("expected_match")
-    cmd_restart = params.get("cmd_restart")
     status_error = "yes" == params.get("status_error")
     filter_name = params.get("filter_name", "clean-traffic")
     wait_time = params.get("wait_time", 1)
@@ -36,6 +35,7 @@ def run(test, params, env):
     param_dict = {}
     logging.debug("wait_time is : %s" % wait_time)
     wait_time = float(wait_time)
+    libvirtd = utils_libvirtd.Libvirtd()
 
     def prepare_env():
         vmxml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -89,8 +89,7 @@ def run(test, params, env):
 
         utlv.check_cmd_output(check_cmd, expected_match, True)
 
-        cmd_res = process.run(cmd_restart, shell=True)
-        if cmd_res.exit_status:
+        if not libvirtd.restart():
             virsh.nwfilter_binding_list(debug=True)
             test.fail("fail to restart libvirtd")
 
