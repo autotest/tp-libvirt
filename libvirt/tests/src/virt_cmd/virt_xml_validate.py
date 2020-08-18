@@ -3,6 +3,7 @@ import time
 import re
 
 from avocado.utils import process
+from avocado.utils import astring
 from avocado.core import exceptions
 
 from virttest import virsh
@@ -187,7 +188,7 @@ def run(test, params, env):
     """
     # Get the full path of virt-xml-validate command.
     try:
-        VIRT_XML_VALIDATE = process.system("which virt-xml-validate", shell=True)
+        VIRT_XML_VALIDATE = astring.to_text(process.system_output("which virt-xml-validate", shell=True))
     except ValueError:
         test.cancel("Not find virt-xml-validate command on host.")
 
