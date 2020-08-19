@@ -430,14 +430,23 @@ def run(test, params, env):
             if output_mode in ['null', 'json', 'local']:
                 return
 
+            # vmchecker must be put before skip_vm_check in order to clean up
+            # the VM.
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
+            if skip_vm_check == 'yes':
+                logging.info(
+                    'Skip checking vm after conversion: %s' %
+                    skip_reason)
+                return
+
             if output_mode == 'rhev':
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                     timeout=v2v_timeout):
                     test.fail('Import VM failed')
             elif output_mode == 'libvirt':
                 virsh.start(vm_name, debug=True)
+
             # Check guest following the checkpoint document after convertion
             logging.info('Checking common checkpoints for v2v')
             if checkpoint == 'ogac':
@@ -482,13 +491,9 @@ def run(test, params, env):
 
         libvirt.check_exit_status(result, status_error)
         output = result.stdout_text + result.stderr_text
-        if skip_vm_check != 'yes':
-            vm_check(status_error)
-        else:
-            logging.info(
-                'Skip checking vm after conversion: %s' %
-                skip_reason)
-
+        # VM or local output checking
+        vm_check(status_error)
+        # Log checking
         log_check = utils_v2v.check_log(params, output)
         if log_check:
             log_fail(log_check)
