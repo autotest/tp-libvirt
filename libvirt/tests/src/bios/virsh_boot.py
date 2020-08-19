@@ -608,8 +608,11 @@ def set_boot_dev_or_boot_order(vmxml, **kwargs):
             boot_list.append(boot_dev)
         vmxml.set_os_attrs(**{"boots": boot_list})
     elif boot_ref == "order":
-        vmxml.set_boot_attrs_by_target_dev(target_dev, order=boot_order,
-                                           loadparm=boot_loadparm)
+        if boot_loadparm:
+            vmxml.set_boot_attrs_by_target_dev(target_dev, order=boot_order,
+                                               loadparm=boot_loadparm)
+        else:
+            vmxml.set_boot_order_by_target_dev(target_dev, order=boot_order)
 
 
 def run(test, params, env):
