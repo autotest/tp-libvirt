@@ -302,12 +302,16 @@ def run(test, params, env):
         sta, pid = process.getstatusoutput("pgrep qemu-kvm")
         if not pid:
             test.fail("Cannot get pid of qemu command")
-        ret = virsh.qemu_attach(pid, **virsh_dargs)
-        if ret.exit_status:
+        try:
+            ret = virsh.qemu_attach(pid, **virsh_dargs)
+            if ret.exit_status:
+                utils_misc.kill_process_tree(pid)
+                test.fail("Cannot attach qemu process")
+            else:
+                virsh.destroy(vm_test)
+        except Exception as detail:
             utils_misc.kill_process_tree(pid)
-            test.fail("Cannot attach qemu process")
-        else:
-            virsh.destroy(vm_test)
+            test.fail("Failed to attach qemu process: %s" % str(detail))
         hook_str = hook_file + " " + vm_test + " attach begin -"
         if not check_hooks(hook_str):
             test.fail("Failed to check attach hooks")
