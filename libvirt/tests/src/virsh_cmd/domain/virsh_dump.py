@@ -3,6 +3,7 @@ import logging
 import multiprocessing
 import time
 import platform
+import re
 
 from avocado.utils import process
 
@@ -224,8 +225,9 @@ def run(test, params, env):
         ret = process.run("man virsh", shell=True)
         if ret.exit_status:
             test.error("failed to run 'man virsh'.")
-        man_virsh = ret.stdout_text.strip()
-        if not all([item in man_virsh for item in document_string]):
+        man_str = re.sub(r"\s+", " ", ret.stdout_text.strip())
+        logging.debug("man str: %s" % man_str)
+        if not all([item in man_str for item in document_string]):
             test.fail("failed to check document string in virsh man page.")
         logging.info("the document string in virsh man page.")
         return
