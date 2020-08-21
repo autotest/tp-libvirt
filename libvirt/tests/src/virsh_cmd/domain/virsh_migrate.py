@@ -1093,10 +1093,7 @@ def run(test, params, env):
             except Exception as info:
                 test.fail(info)
             if obj_migration.RET_MIGRATION:
-                utils_test.check_dest_vm_network(vm, vm.get_address(),
-                                                 server_ip, server_user,
-                                                 server_pwd,
-                                                 shell_prompt=r"[\#\$]\s*$")
+                remote.VMManager(params).check_network(vm_ip)
                 ret_migrate = True
             else:
                 ret_migrate = False
