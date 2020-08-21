@@ -6,6 +6,7 @@ import logging
 from avocado.utils import process
 
 from virttest import utils_config
+from virttest import utils_split_daemons
 from virttest.utils_libvirtd import Libvirtd
 
 
@@ -43,6 +44,8 @@ def run(test, params, env):
         process.run(cmdline, shell=True)
 
     pid_file = '/var/run/libvirtd.pid'
+    if utils_split_daemons.is_modular_daemon():
+        pid_file = '/var/run/virtqemud.pid'
     message_src_file = '/var/log/messages'
     message_dest_file = '/tmp/messages_tmp'
     signal_name = params.get("signal", "SIGTERM")
@@ -51,7 +54,7 @@ def run(test, params, env):
     sysconfig = params.get("sysconfig", None)
     check_dmesg = params.get("check_dmesg", None)
 
-    libvirtd = Libvirtd()
+    libvirtd = Libvirtd("virtqemud")
     try:
         libvirtd.start()
 
