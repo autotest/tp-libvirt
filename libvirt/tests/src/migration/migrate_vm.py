@@ -876,7 +876,7 @@ def check_vm_disk_after_migration(test, vm, params):
     mnt_dir = "/tmp/fdisk_test_dir"
     dd_cmd = "dd if=/dev/zero"
     dd_cmd = "%s of=%s/test_file bs=1024 count=512 && sync" % (dd_cmd, mnt_dir)
-    remote_vm_obj = utils_test.RemoteVMManager(params)
+    remote_vm_obj = remote.VMManager(params)
     remote_vm_obj.check_network(vm_ip)
     remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd, timeout=60)
     cmdres = remote_vm_obj.run_command(vm_ip, cmd, ignore_status=True)
@@ -2622,7 +2622,7 @@ def run(test, params, env):
             logging.info("Execute command <%s> in the VM after migration",
                          run_cmd_in_vm)
 
-            remote_vm_obj = utils_test.RemoteVMManager(test_dict)
+            remote_vm_obj = remote.VMManager(test_dict)
             remote_vm_obj.check_network(vm_ip)
 #            remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd, timeout=60)
 #            remote_vm_obj.run_command(vm_ip, run_cmd_in_vm)

@@ -409,7 +409,7 @@ def run(test, params, env):
                 # VF driver should not be vfio-pci
                 check_vfio_pci(vf_path, True)
 
-                vm_after_mig = utils_test.RemoteVMManager(cmd_parms)
+                vm_after_mig = remote.VMManager(cmd_parms)
                 vm_after_mig.setup_ssh_auth(vm_ipv4,
                                             params.get("password"),
                                             timeout=60)
