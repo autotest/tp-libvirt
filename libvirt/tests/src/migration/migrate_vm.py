@@ -872,15 +872,15 @@ def check_vm_disk_after_migration(test, vm, params):
     """
     cmd = "fdisk -l|grep '^Disk /dev'|cut -d: -f1|cut -d' ' -f2"
     vm_ip = vm.get_address()
-    vm_pwd = params.get("password", "redhat")
     tmp_file = "/tmp/fdisk_test_file"
     mnt_dir = "/tmp/fdisk_test_dir"
     dd_cmd = "dd if=/dev/zero"
     dd_cmd = "%s of=%s/test_file bs=1024 count=512 && sync" % (dd_cmd, mnt_dir)
+    params.update({'vm_ip': vm_ip, 'vm_pwd': params.get("password")})
     remote_vm_obj = remote.VMManager(params)
-    remote_vm_obj.check_network(vm_ip)
-    remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd, timeout=60)
-    cmdres = remote_vm_obj.run_command(vm_ip, cmd, ignore_status=True)
+    remote_vm_obj.check_network()
+    remote_vm_obj.setup_ssh_auth()
+    cmdres = remote_vm_obj.run_command(cmd, ignore_status=True)
     if cmdres.exit_status:
         test.fail("Command '%s' result: %s\n" % (cmd, cmdres))
     disks = cmdres.stdout.strip().split("\n")
@@ -2616,11 +2616,9 @@ def run(test, params, env):
             logging.debug("The VM IP: <%s> password: <%s>", vm_ip, vm_pwd)
             logging.info("Execute command <%s> in the VM after migration",
                          run_cmd_in_vm)
-
+            test_dict.update({'vm_ip': vm_ip, 'vm_pwd': vm_pwd})
             remote_vm_obj = remote.VMManager(test_dict)
-            remote_vm_obj.check_network(vm_ip)
-#            remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd, timeout=60)
-#            remote_vm_obj.run_command(vm_ip, run_cmd_in_vm)
+            remote_vm_obj.check_network()
 
         cmd = test_dict.get("check_disk_size_cmd")
         if (virsh_options.find("copy-storage-all") >= 0 and

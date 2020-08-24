@@ -1300,16 +1300,17 @@ def run(test, params, env):
                                                runner_on_target)
 
             # Send message from remote guest to the channel file
-            remote_vm_obj = remote.VMManager(cmd_parms)
             remote_session = remote.wait_for_login('ssh', server_ip, '22',
                                                    server_user, server_pwd,
                                                    r"[\#\$]\s*$")
             vm_ip = vm.get_address(session=remote_session, timeout=480)
             remote_session.close()
             vm_pwd = params.get("password")
-            remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd, timeout=60)
-            cmd_result = remote_vm_obj.run_command(vm_ip, cmd_run_in_remote_guest_1)
-            remote_vm_obj.run_command(vm_ip, cmd_run_in_remote_guest % cmd_result.stdout_text.strip())
+            cmd_parms.update({'vm_ip': vm_ip, 'vm_pwd': vm_pwd})
+            remote_vm_obj = remote.VMManager(cmd_parms)
+            remote_vm_obj.setup_ssh_auth()
+            cmd_result = remote_vm_obj.run_command(cmd_run_in_remote_guest_1)
+            remote_vm_obj.run_command(cmd_run_in_remote_guest % cmd_result.stdout_text.strip())
             logging.debug("Sending message is done")
 
             # Check message on remote host from the channel
@@ -1422,17 +1423,16 @@ def run(test, params, env):
             migration_test.ping_vm(vm, params, dest_uri)
 
             if cmd_in_vm_after_migration:
-                vm_after_mig = remote.VMManager(cmd_parms)
                 remote_session = remote.wait_for_login('ssh', server_ip, '22',
                                                        server_user, server_pwd,
                                                        r"[\#\$]\s*$")
                 vm_ip = vm.get_address(session=remote_session)
                 remote_session.close()
-                vm_after_mig.setup_ssh_auth(vm_ip,
-                                            params.get("password"),
-                                            timeout=60)
-                cmd_result = vm_after_mig.run_command(vm_ip,
-                                                      cmd_in_vm_after_migration)
+
+                cmd_parms.update({'vm_ip': vm_ip, 'vm_pwd': params.get("password")})
+                vm_after_mig = remote.VMManager(cmd_parms)
+                vm_after_mig.setup_ssh_auth()
+                cmd_result = vm_after_mig.run_command(cmd_in_vm_after_migration)
                 logging.debug("cmd_result is %s", cmd_result)
                 if cmd_result.exit_status:
                     test.fail("Failed to run '{}' in vm. Result: {}"
