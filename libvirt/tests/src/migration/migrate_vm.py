@@ -2256,7 +2256,7 @@ def run(test, params, env):
             if ctrl_c:
                 if p.pid:
                     logging.info("Send SIGINT signal to cancel migration.")
-                    if utils_misc.safe_kill(p.pid, signal.SIGINT):
+                    if utils_misc.safe_kill(p.pid, signal.SIGKILL):
                         logging.info("Succeed to cancel migration:"
                                      " [%s].", p.pid)
                         time.sleep(delay)
