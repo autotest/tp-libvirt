@@ -770,7 +770,7 @@ def run(test, params, env):
             tls_obj = TLSConnection(test_dict)
             if auto_recover == "yes":
                 objs_list.append(tls_obj)
-            tls_obj.conn_setup(False, True, True)
+            tls_obj.conn_setup(False, True)
 
         serial_dev = prepare_serial_device()
         if console_target_type == 'serial' or second_serial_console:
