@@ -2536,11 +2536,11 @@ def run(test, params, env):
                                     'server_user': server_user,
                                     'server_pwd': server_pwd,
                                     "file_path": "/etc/libvirt/libvirt.conf"}
-                    remote_libvirt_file = libvirt_config.remove_key_in_file(
-                        ["remote_mode"], remote_params=remote_dargs)
+                    remote_libvirt_file = libvirt_config.remove_key_in_conf(
+                        ["remote_mode"], "libvirt", remote_params=remote_dargs)
                 remote_session.close()
             if utils_split_daemons.is_modular_daemon():
-                src_libvirt_file = libvirt_config.remove_key_in_file(
+                src_libvirt_file = libvirt_config.remove_key_in_conf(
                         ["remote_mode"], "libvirt")
         if run_migr_front:
             migrate_vm(test, test_dict)
@@ -2757,10 +2757,9 @@ def run(test, params, env):
                                         'server_user': server_user,
                                         'server_pwd': server_pwd,
                                         "file_path": "/etc/libvirt/libvirt.conf"}
-                        remote_libvirt_file = libvirt_config.remove_key_in_file(
-                            "remote_mode", remote_params=remote_dargs)
+                        remote_libvirt_file = libvirt_config.remove_key_in_conf(
+                            ["remote_mode"], "libvirt", remote_params=remote_dargs)
                     remote_session.close()
-
             cmd = "virsh migrate %s %s %s" % (vm_name,
                                               virsh_options, src_uri)
             logging.debug("Start migrating: %s", cmd)
