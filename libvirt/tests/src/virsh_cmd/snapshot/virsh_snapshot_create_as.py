@@ -455,6 +455,7 @@ def run(test, params, env):
             process.run("chmod 500 %s" % disk_path, shell=True)
 
     qemu_conf = None
+    libvirtd_conf = None
     libvirtd_conf_dict = {}
     libvirtd_log_path = None
     conf_type = "libvirtd"
