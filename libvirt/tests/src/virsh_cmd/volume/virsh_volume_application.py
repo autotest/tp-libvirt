@@ -96,6 +96,7 @@ def run(test, params, env):
             if output != test_message:
                 test.fail("%s cannot be used normally!"
                           % vm_attach_device)
+            session.cmd("umount /mnt")
         elif application == "install":
             # Get a nonexist domain name anyway
             while virsh.domain_exists(vm_name):
