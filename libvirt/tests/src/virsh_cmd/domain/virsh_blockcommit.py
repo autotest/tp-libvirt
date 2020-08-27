@@ -358,6 +358,8 @@ def run(test, params, env):
     blk_source_folder = None
     convert_qcow2_image_to_raw = "yes" == params.get("convert_qcow2_image_to_raw", "no")
     repeatedly_do_blockcommit_pivot = "yes" == params.get("repeatedly_do_blockcommit_pivot", "no")
+    from_top_without_active_option = "yes" == params.get("from_top_without_active_option", "no")
+    top_to_middle_keep_overlay = "yes" == params.get("top_to_middle_keep_overlay", "no")
 
     # Check whether qemu-img need add -U suboption since locking feature was added afterwards qemu-2.10
     qemu_img_locking_feature_support = libvirt_storage.check_qemu_image_lock_support()
@@ -578,6 +580,14 @@ def run(test, params, env):
             blockcommit_options += " --active"
             if pivot_opt:
                 blockcommit_options += " --pivot"
+
+        if from_top_without_active_option:
+            blockcommit_options = blockcommit_options.replace("--active", "")
+
+        if top_to_middle_keep_overlay:
+            blockcommit_options = blockcommit_options.replace("--active", "")
+            blockcommit_options = blockcommit_options.replace("--pivot", "")
+            blockcommit_options += " --keep-overlay"
 
         if restart_vm_before_commit:
             top = 2
