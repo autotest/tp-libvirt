@@ -1,10 +1,12 @@
 import logging
 import time
+import re
 
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices import interface
 from virttest import virsh
 from virttest import libvirt_xml
+from virttest import utils_package
 
 
 def run(test, params, env):
@@ -54,6 +56,8 @@ def run(test, params, env):
     filterref_dict_2 = {}
     filterref_dict_2['name'] = new_filter_2
     filterref_dict_2['parameters'] = filter_param_list_2
+
+    utils_package.package_install('libvirt-daemon-config-nwfilter')
 
     def env_setting(filterref_dict_1, filterref_dict_2):
         ret = virsh.attach_interface(vm_name, option)
@@ -105,31 +109,38 @@ def run(test, params, env):
         # start vm
         virsh.start(vm_name, debug=True)
         # list binding port dev
+        logging.debug("check nwfilter binding for 2 interfaces")
         ret = virsh.nwfilter_binding_list(debug=True)
-        utlv.check_exit_status(ret, status_error)
+        utlv.check_result(ret, expected_match=[r"vnet0\s+clean-traffic"])
+        utlv.check_result(ret, expected_match=[r"vnet1\s+allow-dhcp-server"])
         # detach a interface
         option = "--type network" + " --mac " + new_iface_1.mac_address
-        time.sleep(time_wait)
         ret = virsh.detach_interface(vm_name, option, debug=True)
+        time.sleep(time_wait)
         utlv.check_exit_status(ret, status_error)
+        logging.debug("check nwfilter binding after detach one interface:")
         ret = virsh.nwfilter_binding_list(debug=True)
-        utlv.check_exit_status(ret, status_error)
+        if re.search(r'vnet0\s+clean-traffic.*', ret.stdout):
+            test.fail("vnet0 binding still exists after detach the interface!")
+        utlv.check_result(ret, expected_match=[r"vnet1\s+allow-dhcp-server"])
 
-        # update_device
-        vnet1_iface = interface.Interface('network')
-        vnet1_iface.xml = new_iface_2.xml
-        target = {'dev': "vnet1"}
-        vnet1_iface.target = target
+        # update_device to delete the filter
+        iface_dict = {'del_filter': True}
+        new_xml = utlv.modify_vm_iface(vm_name, 'get_xml', iface_dict)
         virsh.update_device(domainarg=vm_name,
-                            filearg=vnet1_iface.xml,
+                            filearg=new_xml,
                             debug=True)
+        logging.debug("check nwfilter-binding after delete the only interface")
         ret = virsh.nwfilter_binding_list(debug=True)
+        if re.search(r'vnet1\s+allow-dhcp-server.*', ret.stdout):
+            test.fail("vnet1 binding still exists after detach the interface!")
         utlv.check_exit_status(ret, status_error)
 
         # attach new interface
         attach_new_device()
         ret = virsh.nwfilter_binding_list(debug=True)
-        utlv.check_exit_status(ret, status_error)
+        logging.debug("Check nwfilter-binding exists after attach device")
+        utlv.check_result(ret, expected_match=[r"vnet0\s+clean-traffic"])
 
     finally:
         if vm.is_alive():
