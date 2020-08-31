@@ -483,6 +483,39 @@ class Console(AttachDeviceBase):
         return not self.test_params.status_error
 
 
+def _init_device_Serial2Console(self, index):
+    """
+    Helper function to merge init_device from two parent
+    classes SerialFile/Pipe and Console.
+
+    :param self: instance of ConsoleFile/Pipe
+    :param index: device index
+    """
+
+    self.type = self.type_name
+    console_device = Console.init_device(self, index)
+    filepath = self.make_filepath(index)
+    self.make_source(filepath)
+    console_device.add_source(path=filepath)
+    return console_device
+
+
+class ConsoleFile(Console, SerialFile):
+    """
+    Simplistic pipe-backed console
+    """
+    def init_device(self, index):
+        return _init_device_Serial2Console(self, index)
+
+
+class ConsolePipe(Console, SerialPipe):
+    """
+    Simplistic file-backed console
+    """
+    def init_device(self, index):
+        return _init_device_Serial2Console(self, index)
+
+
 class Channel(AttachDeviceBase):
 
     """
@@ -955,6 +988,7 @@ def run(test, params, env):
             test_params.main_vm.destroy(gracefully=True,
                                         free_mac_addresses=False)
         try:
+            logging.debug("vmxml %s", VMXML.new_from_inactive_dumpxml(vm_name))
             test_params.main_vm.start()
         except virt_vm.VMStartError as details:
             test.fail('VM Failed to start for some reason!: %s' % details)
