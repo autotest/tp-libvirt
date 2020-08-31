@@ -51,6 +51,7 @@ def run(test, params, env):
     check_libvirtd = "yes" == params.get("check_libvirtd")
     new_iface_filter_parameters = eval(params.get("new_iface_filter_parameters", "{}"))
     rules = eval(params.get("rules", "{}"))
+    del_mac = "yes" == params.get("del_mac", "no")
 
     # Backup the vm xml for recover at last
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -86,7 +87,7 @@ def run(test, params, env):
         logging.info("iface_dict_bef is %s, iface_dict_aft is %s",
                      iface_dict_bef, iface_dict_aft)
 
-        del_list = ["del_addr", "del_rom", "del_filter"]
+        del_list = ["del_addr", "del_rom", "del_filter", "del_mac"]
         for del_item in del_list:
             if names[del_item]:
                 iface_dict_aft.update({del_item: "True"})
