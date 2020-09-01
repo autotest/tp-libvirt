@@ -3,6 +3,7 @@ import collections
 
 from virttest import virsh
 from virttest import cpu
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
@@ -33,12 +34,18 @@ def run(test, params, env):
     setvcpu_option = eval(params.get("setvcpu_option", "{}"))
     setvcpu_action = params.get("setvcpu_action", "")
     start_timeout = int(params.get("start_timeout", "60"))
+    modify_non_hp_ol_vcpus = params.get("modify_non_hotpluggable_online", "no")
     check = params.get("check", "")
     err_msg = params.get("err_msg", "")
     status_error = "yes" == params.get("status_error", "no")
 
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
+
+    if (modify_non_hp_ol_vcpus == "yes" and
+       not libvirt_version.version_compare(6, 2, 0)):
+        test.cancel("This Libvirt version doesn't initialize 'firstcpu' "
+                    "variable properly.")
 
     def check_vcpu_status(cpulist, cpu_option, vcpus_online_pre=1):
         """
