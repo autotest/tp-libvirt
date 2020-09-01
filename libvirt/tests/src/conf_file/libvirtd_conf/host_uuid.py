@@ -4,6 +4,7 @@ import os
 
 from virttest import utils_config
 from virttest import utils_libvirtd
+from virttest import utils_split_daemons
 from virttest.libvirt_xml import capability_xml
 
 
@@ -42,6 +43,8 @@ def run(test, params, env):
         expected_uuid = str(uuid.UUID(new_uuid))
 
     config = utils_config.LibvirtdConfig()
+    if utils_split_daemons.is_modular_daemon():
+        config = utils_config.VirtQemudConfig()
     libvirtd = utils_libvirtd.Libvirtd()
     try:
         orig_uuid = capability_xml.CapabilityXML()['uuid']
