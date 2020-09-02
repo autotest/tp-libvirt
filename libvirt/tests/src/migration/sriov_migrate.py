@@ -20,6 +20,7 @@ from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import interface
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -247,6 +248,10 @@ def run(test, params, env):
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
                           'ssh_remote_auth': True}
+    remote_dargs = {'server_ip': server_ip, 'server_user': server_user,
+                    'server_pwd': server_pwd,
+                    'file_path': "/etc/libvirt/libvirt.conf"}
+
     destparams_dict = copy.deepcopy(params)
 
     remote_virsh_session = None
@@ -259,6 +264,9 @@ def run(test, params, env):
     default_dest_vf = 0
     default_src_rp_filter = 1
     default_dest_rp_filer = 1
+    remove_dict = {}
+    remote_libvirt_file = None
+    src_libvirt_file = None
 
     if not libvirt_version.version_compare(6, 0, 0):
         test.cancel("This libvirt version doesn't support migration with "
@@ -384,6 +392,10 @@ def run(test, params, env):
         if cancel_migration:
             func_name = migration_test.do_cancel
 
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
+        src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
+
         # Execute migration process
         vms = [vm]
 
@@ -444,9 +456,12 @@ def run(test, params, env):
 
                 # Pre migration setup for local machine
                 migration_test.migrate_pre_setup(src_uri, params)
+                remove_dict = {"do_search": ('{"%s": "ssh:/"}' % src_uri)}
+                remote_libvirt_file = libvirt_config\
+                    .remove_key_for_modular_daemon(remove_dict, remote_dargs)
 
                 cmd = "virsh migrate %s %s %s" % (vm_name,
-                                                  virsh_options, src_uri)
+                                                  options, src_uri)
                 logging.debug("Start migration: %s", cmd)
                 cmd_result = remote.run_remote_cmd(cmd, params, runner_on_target)
                 logging.info(cmd_result)
@@ -479,6 +494,11 @@ def run(test, params, env):
         logging.info("Recovery VM XML configration")
         orig_config_xml.sync()
         logging.debug("The current VM XML:\n%s", orig_config_xml.xmltreefile)
+
+        if src_libvirt_file:
+            src_libvirt_file.restore()
+        if remote_libvirt_file:
+            del remote_libvirt_file
 
         server_session = remote.wait_for_login('ssh', server_ip, '22',
                                                server_user, server_pwd,

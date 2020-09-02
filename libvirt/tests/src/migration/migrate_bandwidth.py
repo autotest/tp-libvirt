@@ -13,6 +13,7 @@ from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_test import libvirt_domjobinfo
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -117,6 +118,9 @@ def run(test, params, env):
     params["mnt_path_name"] = params.get("nfs_mount_dir")
 
     # Local variables
+    server_ip = params.get("server_ip")
+    server_user = params.get("server_user", "root")
+    server_pwd = params.get("server_pwd")
     virsh_args = {"debug": True}
     virsh_options = params.get("virsh_options", "")
     extra = params.get("virsh_migrate_extra")
@@ -134,6 +138,8 @@ def run(test, params, env):
     func_name = None
     libvirtd_conf = None
     mig_result = None
+    remove_dict = {}
+    src_libvirt_file = None
 
     if not libvirt_version.version_compare(6, 0, 0):
         test.cancel("This libvirt version doesn't support "
@@ -192,6 +198,10 @@ def run(test, params, env):
         vm.wait_for_login(restart_network=True).close()
         migration_test.ping_vm(vm, params)
 
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
+        src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
+
         if any([set_precopy_speed_before_mig, set_postcopy_speed_before_mig]):
             if set_precopy_speed_before_mig:
                 virsh.migrate_setspeed(vm_name, set_precopy_speed_before_mig,
@@ -237,6 +247,8 @@ def run(test, params, env):
             logging.debug("Recover the configurations")
             libvirt.customize_libvirt_config(None, is_recover=True,
                                              config_object=libvirtd_conf)
+        if src_libvirt_file:
+            src_libvirt_file.restore()
 
         logging.info("Remove local NFS image")
         source_file = params.get("source_file")

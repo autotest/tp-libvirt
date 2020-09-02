@@ -23,6 +23,7 @@ from virttest import cpu
 from virttest import libvirt_version
 from virttest.qemu_storage import QemuImg
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_config
 from virttest import test_setup
 from virttest.staging import utils_memory
 from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
@@ -623,6 +624,9 @@ def run(test, params, env):
                                                   "no")
     compat_guest_migrate = get_compat_guest_migrate(params)
     compat_mode = "yes" == params.get("compat_mode", "no")
+    remote_dargs = {'server_ip': server_ip, 'server_user': server_user,
+                    'server_pwd': server_pwd,
+                    'file_path': "/etc/libvirt/libvirt.conf"}
 
     # Configurations for cpu compat guest to boot
     if compat_mode:
@@ -794,6 +798,9 @@ def run(test, params, env):
     check_unsafe_result = True
     migrate_setup = None
     mem_xml = None
+    remove_dict = {}
+    remote_libvirt_file = None
+    src_libvirt_file = None
 
     try:
         # Change the disk of the vm to shared disk
@@ -1080,6 +1087,9 @@ def run(test, params, env):
                 if libvirt_version.version_compare(5, 0, 0):
                     virsh.migrate_setspeed(vm_name, speed,
                                            extra=postcopy_options, **virsh_args)
+            remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
+            src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+                remove_dict)
 
             logging.info("Starting migration in thread")
             try:
@@ -1136,6 +1146,10 @@ def run(test, params, env):
                 logging.debug("Migrating back to source from %s to %s" %
                               (dest_uri, src_uri))
                 params["connect_uri"] = dest_uri
+                remove_dict = {"do_search": ('{"%s": "ssh:/"}' % src_uri)}
+                remote_libvirt_file = libvirt_config\
+                    .remove_key_for_modular_daemon(remove_dict, remote_dargs)
+
                 if not asynch_migration:
                     ret_migrate = do_migration(delay, vm, src_uri, options,
                                                extra)
@@ -1323,6 +1337,11 @@ def run(test, params, env):
         vm.destroy()
         vm.undefine()
         orig_config_xml.define()
+
+        if src_libvirt_file:
+            src_libvirt_file.restore()
+        if remote_libvirt_file:
+            del remote_libvirt_file
 
         # cleanup xml created during memory hotplug test
         if mem_hotplug:
