@@ -5,18 +5,18 @@ from virttest import utils_package
 from virttest import libvirt_version
 
 
-def run_cmd_in_guest(vm, cmd, test):
+def run_cmd_in_guest(vm, cmd, test, timeout=60):
     """
     Run command in the guest
     :params vm: vm object
     :params cmd: a command needs to be ran
     """
     session = vm.wait_for_login()
-    status, output = session.cmd_status_output(cmd)
+    status, output = session.cmd_status_output(cmd, timeout=timeout)
     logging.debug("The '%s' output: %s", cmd, output)
     if status:
         session.close()
-        test.error("Can not run '%s' in guest: %s", cmd, output)
+        test.error("Can not run '%s' in guest: %s" % (cmd, output))
     else:
         session.close()
         return output
@@ -91,7 +91,7 @@ def run(test, params, env):
 
             # enable kdump service in the guest
             cmd = "service kdump start"
-            run_cmd_in_guest(vm, cmd, test)
+            run_cmd_in_guest(vm, cmd, test, timeout=120)
 
             # filter original 'NMI' information from the /proc/interrupts
             cmd = "grep NMI /proc/interrupts"
