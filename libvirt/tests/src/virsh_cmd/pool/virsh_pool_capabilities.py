@@ -39,7 +39,7 @@ def run(test, params, env):
                                        'raw': ['none', 'raw', 'dir', 'bochs', 'cloop', 'dmg', 'iso', 'vpc', 'vdi',
                                                'fat', 'vhd', 'ploop', 'cow', 'qcow', 'qcow2', 'qed', 'vmdk']},
                                'fs': {'auto': ['auto', 'ext2', 'ext3', 'ext4', 'ufs', 'iso9660', 'udf', 'gfs', 'gfs2',
-                                               'vfat', 'hfs+', 'xfs', 'ocfs2'],
+                                               'vfat', 'hfs+', 'xfs', 'ocfs2', 'vmfs'],
                                       'raw': ['none', 'raw', 'dir', 'bochs', 'cloop', 'dmg', 'iso', 'vpc', 'vdi',
                                               'fat', 'vhd', 'ploop', 'cow', 'qcow', 'qcow2', 'qed', 'vmdk']},
                                'netfs': {'auto': ['auto', 'nfs', 'glusterfs', 'cifs'],
