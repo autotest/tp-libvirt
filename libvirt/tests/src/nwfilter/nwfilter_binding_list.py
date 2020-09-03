@@ -92,6 +92,7 @@ def run(test, params, env):
     def attach_new_device():
         newnet_iface = interface.Interface('network')
         newnet_iface.source = {'network': "default"}
+        newnet_iface.model = 'virtio'
         filterref_dict = {}
         filterref_list = [{'name': "CTRL_IP_LEARNING", 'value': "dhcp"}]
         filterref_dict['name'] = "clean-traffic"
@@ -119,6 +120,7 @@ def run(test, params, env):
         time.sleep(time_wait)
         utlv.check_exit_status(ret, status_error)
         logging.debug("check nwfilter binding after detach one interface:")
+        time.sleep(3)
         ret = virsh.nwfilter_binding_list(debug=True)
         if re.search(r'vnet0\s+clean-traffic.*', ret.stdout):
             test.fail("vnet0 binding still exists after detach the interface!")
