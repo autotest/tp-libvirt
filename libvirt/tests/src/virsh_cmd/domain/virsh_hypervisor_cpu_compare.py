@@ -81,6 +81,7 @@ def run(test, params, env):
     if not vm.is_alive():
         vm.start()
 
+    baseline_provider = params.get("baseline_provider", "libvirt")
     dom_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     backup_xml = dom_xml.copy()
     compare_file = os.path.join(data_dir.get_tmp_dir(), "cpu.xml")
@@ -110,9 +111,12 @@ def run(test, params, env):
             domcapa_output = get_domcapa_output(test)
             with open(domcapa_file, "w+") as tmp_f:
                 tmp_f.write(domcapa_output)
-            ret = virsh.cpu_baseline(domcapa_file)
+            if "hypervisor" in baseline_provider:
+                ret = virsh.hypervisor_cpu_baseline(domcapa_file)
+            else:
+                ret = virsh.cpu_baseline(domcapa_file)
             if ret.exit_status:
-                test.fail("Fail to run virsh cpu-baseline: %s"
+                test.fail("Fail to run virsh (hypervisor-)cpu-baseline: %s"
                           % ret.stderr.strip())
             cpuxml.xml = ret.stdout.strip()
 
