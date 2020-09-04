@@ -16,7 +16,6 @@ from avocado.utils import cpu as cpuutil
 from avocado.core import exceptions
 
 from virttest import libvirt_vm
-from virttest import utils_test
 from virttest import utils_misc
 from virttest import defaults
 from virttest import data_dir
@@ -1301,7 +1300,7 @@ def run(test, params, env):
                                                runner_on_target)
 
             # Send message from remote guest to the channel file
-            remote_vm_obj = utils_test.RemoteVMManager(cmd_parms)
+            remote_vm_obj = remote.VMManager(cmd_parms)
             vm_ip = vm.get_address()
             vm_pwd = params.get("password")
             remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd, timeout=60)
@@ -1419,7 +1418,7 @@ def run(test, params, env):
             migration_test.ping_vm(vm, params, dest_uri)
 
             if cmd_in_vm_after_migration:
-                vm_after_mig = utils_test.RemoteVMManager(cmd_parms)
+                vm_after_mig = remote.VMManager(cmd_parms)
                 remote_session = remote.wait_for_login('ssh', server_ip, '22',
                                                        server_user, server_pwd,
                                                        r"[\#\$]\s*$")
