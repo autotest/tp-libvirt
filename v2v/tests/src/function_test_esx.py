@@ -41,7 +41,8 @@ def run(test, params, env):
     pvt = libvirt.PoolVolumeTest(test, params)
     v2v_timeout = int(params.get('v2v_timeout', 1200))
     v2v_cmd_timeout = int(params.get('v2v_cmd_timeout', 18000))
-    v2v_opts = '-v -x' if params.get('v2v_debug', 'on') == 'on' else ''
+    v2v_opts = '-v -x' if params.get('v2v_debug',
+                                     'on') in ['on', 'force_on'] else ''
     if params.get("v2v_opts"):
         # Add a blank by force
         v2v_opts += ' ' + params.get("v2v_opts")
@@ -493,6 +494,11 @@ def run(test, params, env):
         output = result.stdout_text + result.stderr_text
         # VM or local output checking
         vm_check(status_error)
+        # Check log size decrease option
+        if checkpoint == 'log decrease':
+            nbdkit_option = r'nbdkit\.backend\.datapath=0'
+            if not re.search(nbdkit_option, output):
+                test.fail("checkpoint '%s' failed" % checkpoint)
         # Log checking
         log_check = utils_v2v.check_log(params, output)
         if log_check:
@@ -502,7 +508,7 @@ def run(test, params, env):
                       (len(error_list), error_list))
 
     try:
-        if version_requried and not utils_v2v.compare_version(
+        if version_requried and not utils_v2v.multiple_versions_compare(
                 version_requried):
             test.cancel("Testing requries version: %s" % version_requried)
 
