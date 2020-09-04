@@ -180,7 +180,6 @@ def run(test, params, env):
         Check interface offloads by ethtool output
         """
         offloads = {"csum": "tx-checksumming",
-                    "gso": "generic-segmentation-offload",
                     "tso4": "tcp-segmentation-offload",
                     "tso6": "tx-tcp6-segmentation",
                     "ecn": "tx-tcp-ecn-segmentation",
