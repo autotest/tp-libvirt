@@ -358,13 +358,12 @@ def run(test, params, env):
                 vm.start()
 
             # Write 100M data into disk.
-            write_disk(test, vm, target)
+            data_size = 100
+            write_disk(test, vm, target, data_size)
+            data_size_in_bytes = data_size * 1024 * 1024
 
             # Refresh directory pool.
             virsh.pool_refresh(pool_name, debug=True)
-            # Get original disk image size by qemu-img info.
-            original_img_info = utils_misc.get_image_info(disk_file_path)
-            original_disk_size = int(original_img_info['dsize'])
 
             # Download volume to local with sparse option.
             download_spare_file = "download-sparse.raw"
@@ -378,11 +377,11 @@ def run(test, params, env):
             one_g_in_bytes = 1073741824
             download_img_info = utils_misc.get_image_info(download_file_path)
             download_disk_size = int(download_img_info['dsize'])
-            if (download_disk_size < original_disk_size or
-               download_disk_size > one_g_in_bytes):
-                test.fail("download image size:%d is less than original size:%d "
-                          "or larger than 1G."
-                          % (download_disk_size, original_disk_size))
+            if (download_disk_size < data_size_in_bytes or
+               download_disk_size >= one_g_in_bytes):
+                test.fail("download image size:%d is less than the generated "
+                          "data size:%d or greater than or equal to 1G."
+                          % (download_disk_size, data_size_in_bytes))
 
             # Create one upload sparse image file.
             upload_sparse_file = "upload-sparse.raw"
@@ -397,8 +396,11 @@ def run(test, params, env):
                                       uri=uri, debug=True)
             upload_img_info = utils_misc.get_image_info(upload_file_path)
             upload_disk_size = int(upload_img_info['dsize'])
-            if upload_disk_size != download_disk_size:
-                test.fail("upload image size with sparse option is wrong!")
+            if (upload_disk_size < data_size_in_bytes or
+               upload_disk_size >= one_g_in_bytes):
+                test.fail("upload image size:%d is less than the generated "
+                          "data size:%d or greater than or equal to 1G."
+                          % (upload_disk_size, data_size_in_bytes))
     finally:
         # Recover VM.
         if vm.is_alive():
