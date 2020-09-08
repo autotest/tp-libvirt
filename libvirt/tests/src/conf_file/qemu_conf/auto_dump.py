@@ -106,6 +106,9 @@ def run(test, params, env):
                         flags = int(line.split()[1], 8)
                         logging.debug('file open flag is: %o', flags)
             result_dict['flags'] = flags
+            with open('/proc/%s/cmdline' % iohelper_pid) as cmdinfo:
+                cmdline = cmdinfo.readline()
+                logging.debug(cmdline.split())
 
         session = vm.wait_for_login()
         result_dict = multiprocessing.Manager().dict()
@@ -128,10 +131,6 @@ def run(test, params, env):
             child_process.kill()
         flags = result_dict['flags']
         iohelper_pid = result_dict['pid']
-
-        with open('/proc/%s/cmdline' % iohelper_pid) as cmdinfo:
-            cmdline = cmdinfo.readline()
-            logging.debug(cmdline.split())
 
         # Kill core dump process to speed up test
         try:
