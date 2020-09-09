@@ -1301,7 +1301,11 @@ def run(test, params, env):
 
             # Send message from remote guest to the channel file
             remote_vm_obj = remote.VMManager(cmd_parms)
-            vm_ip = vm.get_address()
+            remote_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                   server_user, server_pwd,
+                                                   r"[\#\$]\s*$")
+            vm_ip = vm.get_address(session=remote_session, timeout=480)
+            remote_session.close()
             vm_pwd = params.get("password")
             remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd, timeout=60)
             cmd_result = remote_vm_obj.run_command(vm_ip, cmd_run_in_remote_guest_1)
