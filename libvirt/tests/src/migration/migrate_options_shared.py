@@ -565,7 +565,8 @@ def run(test, params, env):
 
         if use_firewall_cmd:
             firewall_cmd.add_direct_rule(firewall_rule)
-            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
+            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True,
+                                            zone=None)
             cmdRes = re.findall(firewall_rule, direct_rules)
             if len(cmdRes) == 0:
                 test.error("Rule '%s' is not added" % firewall_rule)
@@ -577,7 +578,8 @@ def run(test, params, env):
 
         if use_firewall_cmd:
             firewall_cmd.remove_direct_rule(firewall_rule)
-            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
+            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True,
+                                            zone=None)
             cmdRes = re.findall(firewall_rule, direct_rules)
             if len(cmdRes):
                 test.error("Rule '%s' is not removed correctly" % firewall_rule)
@@ -1488,7 +1490,8 @@ def run(test, params, env):
                 if use_firewall_cmd:
                     logging.debug("cleanup firewall rule via firewall-cmd.")
                     direct_rules = firewall_cmd.get(key="all-rules",
-                                                    is_direct=True)
+                                                    is_direct=True,
+                                                    zone=None)
                     cmdRes = re.findall(firewall_rule, direct_rules)
                     if len(cmdRes):
                         firewall_cmd.remove_direct_rule(firewall_rule)
