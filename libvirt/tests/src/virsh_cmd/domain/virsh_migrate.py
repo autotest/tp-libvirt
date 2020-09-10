@@ -832,7 +832,7 @@ def run(test, params, env):
             vmxml_cpu = vm_xml.VMCPUXML()
             vmxml_cpu.xml = "<cpu><numa/></cpu>"
             logging.debug(vmxml_cpu.numa_cell)
-            vmxml_cpu.numa_cell = numa_dict_list
+            vmxml_cpu.numa_cell = vmxml_cpu.dicts_to_cells(numa_dict_list)
             logging.debug(vmxml_cpu.numa_cell)
             vmxml.cpu = vmxml_cpu
             if enable_numa_pin:

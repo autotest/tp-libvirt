@@ -352,7 +352,7 @@ def run(test, params, env):
                 cpu_xml.mode = cpu_mode
             if model_fallback:
                 cpu_xml.fallback = model_fallback
-            cpu_xml.numa_cell = cells
+            cpu_xml.numa_cell = cpu_xml.dicts_to_cells(cells)
             vmxml.cpu = cpu_xml
             # Delete memory and currentMemory tag,
             # libvirt will fill it automatically

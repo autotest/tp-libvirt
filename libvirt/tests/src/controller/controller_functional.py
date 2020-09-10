@@ -797,7 +797,7 @@ def run(test, params, env):
         if cpu_numa_cells:
             vmxml_cpu = VMCPUXML()
             vmxml_cpu.xml = "<cpu><numa/></cpu>"
-            vmxml_cpu.numa_cell = eval(cpu_numa_cells)
+            vmxml_cpu.numa_cell = VMCPUXML.dicts_to_cells(eval(cpu_numa_cells))
             vm_xml.cpu = vmxml_cpu
             vm_xml.vcpu = int(params.get('vcpu_count', 4))
         if sound_dict:
