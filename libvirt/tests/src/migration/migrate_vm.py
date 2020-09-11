@@ -27,6 +27,7 @@ from virttest import utils_misc
 from virttest import utils_netperf
 from virttest import utils_package
 from virttest import utils_selinux
+from virttest import utils_split_daemons
 from virttest import utils_test
 from virttest import virsh
 from virttest import virt_vm
@@ -1751,18 +1752,12 @@ def run(test, params, env):
                 test.fail("Failed to run '%s' on the remote: %s"
                           % (cmd, output))
 
-            libvirtd_conf = config_libvirt(libvirtd_conf_dict)
-
-            if libvirtd_conf:
-                local_path = libvirtd_conf.conf_path
-                remote.scp_to_remote(server_ip, '22', server_user,
-                                     server_pwd, local_path, remote_path,
-                                     limit="", log_filename=None,
-                                     timeout=600, interface=None)
-
-                libvirt.remotely_control_libvirtd(server_ip, server_user,
-                                                  server_pwd, action='restart',
-                                                  status_error='no')
+            server_params = {'server_ip': server_ip,
+                             'server_user': server_user,
+                             'server_pwd': server_pwd}
+            libvirtd_conf = libvirt.customize_libvirt_config(libvirtd_conf_dict,
+                                                             remote_host=True,
+                                                             extra_params=server_params)
 
         # need to remotely stop libvirt service for negative testing
         if stop_libvirtd_remotely:
@@ -2690,6 +2685,12 @@ def run(test, params, env):
             check_iothread_after_migration(test, vm_name, remote_virsh_dargs, driver_iothread)
 
         grep_str_local = test_dict.get("grep_str_from_local_libvirt_log")
+        if grep_str_local == "migrate_set_downtime":
+            if not libvirt_version.version_compare(6, 5, 0):
+                grep_str_local = "migrate_set_downtime.*%s" % max_down_time
+            else:
+                grep_str_local = "migrate-set-parameters.*downtime-limit\":%s" % max_down_time
+
         if config_libvirtd == "yes" and grep_str_local:
             cmd = "grep -E '%s' %s" % (grep_str_local, log_file)
             logging.debug("Execute command %s: %s", cmd, process.run(cmd, shell=True).stdout_text)
@@ -2821,17 +2822,15 @@ def run(test, params, env):
 
         # Restore libvirtd conf and restart libvirtd
         if libvirtd_conf:
-            libvirtd_conf.restore()
-            libvirtd = utils_libvirtd.Libvirtd()
-            libvirtd.restart()
-            local_path = libvirtd_conf.conf_path
-            remote.scp_to_remote(server_ip, '22', server_user, server_pwd,
-                                 local_path, remote_path, limit="",
-                                 log_filename=None, timeout=600, interface=None)
-
-            libvirt.remotely_control_libvirtd(server_ip, server_user,
-                                              server_pwd, action='restart',
-                                              status_error='no')
+            logging.debug("Recover the configurations")
+            server_params = {'server_ip': server_ip,
+                             'server_user': server_user,
+                             'server_pwd': server_pwd}
+            libvirt.customize_libvirt_config(None,
+                                             remote_host=True,
+                                             extra_params=server_params,
+                                             is_recover=True,
+                                             config_object=libvirtd_conf)
 
         if deluser_cmd:
             process.run(deluser_cmd, ignore_status=True, shell=True)
