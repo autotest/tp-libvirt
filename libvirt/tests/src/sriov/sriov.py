@@ -536,7 +536,7 @@ def run(test, params, env):
         # Add cpu device with numa node setting in domain xml
         vmxml_cpu = vm_xml.VMCPUXML()
         vmxml_cpu.xml = "<cpu><numa/></cpu>"
-        vmxml_cpu.numa_cell = numa_dict_list
+        vmxml_cpu.numa_cell = vmxml_cpu.dicts_to_cells(numa_dict_list)
         vmxml.cpu = vmxml_cpu
 
     def create_iface_list(bus_id, nic_num, vf_list):

@@ -476,7 +476,9 @@ def run(test, params, env):
         spe_device = False
         if numa:
             vmcpuxml = vm_xml.xmltreefile.find('/cpu')
-            vmcpuxml.numa_cell = [{'id': '0', 'cpus': '0', 'memory': '1048576'}, {'id': '1', 'cpus': '1', 'memory': '1048576'}]
+            vmcpuxml.numa_cell = vmcpuxml.dicts_to_cells(
+                [{'id': '0', 'cpus': '0', 'memory': '1048576'},
+                 {'id': '1', 'cpus': '1', 'memory': '1048576'}])
             vm_xml.xmltreefile.write()
         if with_define:
             if addr_str:

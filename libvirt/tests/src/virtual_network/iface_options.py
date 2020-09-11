@@ -686,7 +686,7 @@ def run(test, params, env):
                 vmxml.vcpu = int(vcpu_num)
                 cpu_xml = vm_xml.VMCPUXML()
                 cpu_xml.xml = "<cpu><numa/></cpu>"
-                cpu_xml.numa_cell = [numa_cell]
+                cpu_xml.numa_cell = cpu_xml.dicts_to_cells([numa_cell])
                 cpu_xml.mode = cpu_mode
                 if cpu_mode == "custom":
                     vm_capability = capability_xml.CapabilityXML()

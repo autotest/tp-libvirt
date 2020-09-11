@@ -270,7 +270,7 @@ def run(test, params, env):
         if topology:
             vmcpuxml.topology = topology
         logging.debug(vmcpuxml.numa_cell)
-        vmcpuxml.numa_cell = numa_cell
+        vmcpuxml.numa_cell = vmcpuxml.dicts_to_cells(numa_cell)
         logging.debug(vmcpuxml.numa_cell)
         vmxml.cpu = vmcpuxml
 
