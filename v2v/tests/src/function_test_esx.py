@@ -86,6 +86,8 @@ def run(test, params, env):
     # default values for v2v_cmd
     auto_clean = True
     cmd_only = False
+    cmd_has_ip = 'yes' == params.get('cmd_has_ip', 'yes')
+    interaction_run = 'yes' == params.get('interaction_run', 'no')
 
     def log_fail(msg):
         """
@@ -360,17 +362,6 @@ def run(test, params, env):
         """
         process.run('update-ca-trust extract', shell=True)
 
-    def cmd_remove_option(cmd, opt_pattern):
-        """
-        Remove an option from cmd
-
-        :param cmd: the cmd
-        :param opt_pattern: a pattern stands for the option
-        """
-        for item in re.findall(opt_pattern, cmd):
-            cmd = cmd.replace(item, '').strip()
-        return cmd
-
     def find_net(bridge_name):
         """
         Find which network use specified bridge
@@ -490,7 +481,7 @@ def run(test, params, env):
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
 
-        libvirt.check_exit_status(result, status_error)
+        utils_v2v.check_exit_status(result, status_error)
         output = result.stdout_text + result.stderr_text
         # VM or local output checking
         vm_check(status_error)
@@ -536,6 +527,7 @@ def run(test, params, env):
             'os_storage_name': storage_name,
             'rhv_upload_opts': rhv_upload_opts,
             'oo_json_disk_pattern': json_disk_pattern,
+            'cmd_has_ip': cmd_has_ip,
             'params': params
         }
 
@@ -666,7 +658,8 @@ def run(test, params, env):
                     'system_rhv_pem_unset']:
                 cmd_only = True
                 auto_clean = False
-            v2v_result = utils_v2v.v2v_cmd(v2v_params, auto_clean, cmd_only)
+            v2v_result = utils_v2v.v2v_cmd(
+                v2v_params, auto_clean, cmd_only, interaction_run)
         if 'new_name' in v2v_params:
             vm_name = params['main_vm'] = v2v_params['new_name']
 
@@ -674,14 +667,14 @@ def run(test, params, env):
             if checkpoint == 'system_rhv_pem_set':
                 global_pem_setup(local_ca_file_path)
             rhv_cafile = r'-oo rhv-cafile=\S+\s*'
-            new_cmd = cmd_remove_option(v2v_result, rhv_cafile)
+            new_cmd = utils_v2v.cmd_remove_option(v2v_result, rhv_cafile)
             logging.debug('New v2v command:\n%s', new_cmd)
         if checkpoint == 'mismatched_uuid':
             # append more uuid
             new_cmd = v2v_result + ' -oo rhv-disk-uuid=%s' % str(uuid.uuid4())
         if checkpoint == 'no_uuid':
             rhv_disk_uuid = r'-oo rhv-disk-uuid=\S+\s*'
-            new_cmd = cmd_remove_option(v2v_result, rhv_disk_uuid)
+            new_cmd = utils_v2v.cmd_remove_option(v2v_result, rhv_disk_uuid)
             logging.debug('New v2v command:\n%s', new_cmd)
         if checkpoint == 'exist_uuid':
             new_vm_name = v2v_params['new_name'] + '_exist_uuid'
