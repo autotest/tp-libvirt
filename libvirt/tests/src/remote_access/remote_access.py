@@ -18,6 +18,7 @@ from virttest.utils_net import IPv6Manager
 from virttest.utils_net import check_listening_port_remote_by_service
 from virttest.utils_test.libvirt import remotely_control_libvirtd
 from virttest.utils_test.libvirt import connect_libvirtd
+from virttest.utils_libvirt import libvirt_config
 
 from virttest import libvirt_version
 
@@ -302,6 +303,12 @@ def run(test, params, env):
 
         # setup SSH
         if transport == "ssh" or ssh_setup == "yes":
+            # If in modular daemon mode, remove the config of direct remote_mode
+            # in /etc/libvirt/libvirt.conf
+            remove_dict = {"do_search": '{"%s": "ssh:/"}' % test_dict["uri"]}
+            client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+                remove_dict)
+
             if not test_dict.get("auth_pwd"):
                 ssh_obj = SSHConnection(test_dict)
                 if ssh_recovery == "yes":
@@ -469,3 +476,6 @@ def run(test, params, env):
 
         if polkit_pkla and os.path.isfile(polkit_pkla):
             os.unlink(polkit_pkla)
+
+        if 'client_libvirt_file' in locals():
+            client_libvirt_file.restore()
