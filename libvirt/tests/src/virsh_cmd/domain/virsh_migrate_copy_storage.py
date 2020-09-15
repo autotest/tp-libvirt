@@ -10,6 +10,7 @@ from virttest import migration
 from virttest.utils_test import libvirt as utlv
 from virttest.staging import lv_utils
 from virttest import virsh
+from virttest import utils_disk
 from virttest.utils_misc import is_qemu_capability_supported as qemu_test
 from virttest import remote
 
@@ -97,9 +98,16 @@ def check_output(test, output_msg, params):
                             (key, value, output_msg))
 
 
-def copied_migration(test, vms, params):
+def copied_migration(test, vms, vms_ip, params):
     """
     Migrate vms with storage copied.
+
+    :param test: The test object
+    :param vms: VM list
+    :param vms_ip: Dict for VM's IP
+    :param params: The parameters for the migration
+    :return: MigrationTest object
+    :raise: test.fail if anything goes wrong
     """
     dest_uri = params.get("migrate_dest_uri")
     remote_host = params.get("migrate_dest_host")
@@ -108,14 +116,6 @@ def copied_migration(test, vms, params):
     password = params.get("migrate_dest_pwd")
     timeout = int(params.get("thread_timeout", 1200))
     options = "--live %s" % copy_option
-
-    # Get vm ip for remote checking
-    vms_ip = {}
-    for vm in vms:
-        if vm.is_dead():
-            vm.start()
-        vm.wait_for_login()
-        vms_ip[vm.name] = vm.get_address()
 
     cp_mig = migration.MigrationTest()
     cp_mig.do_migration(vms, None, dest_uri, "orderly", options, timeout,
@@ -178,9 +178,12 @@ def run(test, params, env):
         vm = libvirt_vm.VM(new_vm_name, vm.params, vm.root_dir,
                            vm.address_cache)
     vms = [vm]
-    if vm.is_dead():
-        vm.start()
-
+    vms_ip = {}
+    for vm in vms:
+        if vm.is_dead():
+            vm.start()
+        vm.wait_for_login().close()
+        vms_ip[vm.name] = vm.get_address()
     # Check if image pre-creation is supported.
     support_precreation = False
     try:
@@ -247,11 +250,13 @@ def run(test, params, env):
         cp_mig = None
         try:
             logging.debug("Start migration...")
-            cp_mig = copied_migration(test, vms, params)
+            cp_mig = copied_migration(test, vms, vms_ip, params)
             # Check the new disk can be working well with I/O after migration
-            utils_test.check_remote_vm_disks(vm, {'server_ip': remote_host,
-                                                  'server_user': remote_user,
-                                                  'server_pwd': remote_passwd})
+            utils_disk.check_remote_vm_disks({'server_ip': remote_host,
+                                              'server_user': remote_user,
+                                              'server_pwd': remote_passwd,
+                                              'vm_ip': vms_ip[vm.name],
+                                              'vm_pwd': params.get('password')})
 
             if migrate_again:
                 fail_flag = True
@@ -267,7 +272,8 @@ def run(test, params, env):
             elif abnormal_type == "not_exist_file":
                 for disk, size in list(all_disks.items()):
                     if disk == file_path:
-                        rdm.create_image("file", disk, size, None, None)
+                        rdm.create_image("file", disk, size, None,
+                                         None, img_frmt='qcow2')
                     else:
                         rdm.create_image(disk_type, disk, size, vgname,
                                          os.path.basename(disk))
@@ -278,7 +284,7 @@ def run(test, params, env):
                 raise
 
             # Migrate it again to confirm failed reason
-            cp_mig = copied_migration(test, vms, params)
+            cp_mig = copied_migration(test, vms, vms_ip, params)
     finally:
         # Recover created vm
         if cp_mig:

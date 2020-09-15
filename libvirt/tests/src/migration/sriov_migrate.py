@@ -409,12 +409,12 @@ def run(test, params, env):
                 # VF driver should not be vfio-pci
                 check_vfio_pci(vf_path, True)
 
+                cmd_parms.update({'vm_ip': vm_ipv4,
+                                  'vm_pwd': params.get("password")})
                 vm_after_mig = remote.VMManager(cmd_parms)
-                vm_after_mig.setup_ssh_auth(vm_ipv4,
-                                            params.get("password"),
-                                            timeout=60)
+                vm_after_mig.setup_ssh_auth()
                 cmd = "ip link"
-                cmd_result = vm_after_mig.run_command(vm_ipv4, cmd)
+                cmd_result = vm_after_mig.run_command(cmd)
                 libvirt.check_result(cmd_result)
                 p_iface = re.findall(r"\d+:\s+(\w+):\s+.*", cmd_result.stdout_text)
                 p_iface = [x for x in p_iface if x != 'lo']
@@ -422,7 +422,7 @@ def run(test, params, env):
 
                 # Check the output of ping command
                 cmd = 'cat %s' % vm_tmp_file
-                cmd_result = vm_after_mig.run_command(vm_ipv4, cmd)
+                cmd_result = vm_after_mig.run_command(cmd)
                 libvirt.check_result(cmd_result)
 
                 if re.findall('Destination Host Unreachable', cmd_result.stdout_text, re.M):
