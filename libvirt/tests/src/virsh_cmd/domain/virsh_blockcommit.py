@@ -360,6 +360,8 @@ def run(test, params, env):
     repeatedly_do_blockcommit_pivot = "yes" == params.get("repeatedly_do_blockcommit_pivot", "no")
     from_top_without_active_option = "yes" == params.get("from_top_without_active_option", "no")
     top_to_middle_keep_overlay = "yes" == params.get("top_to_middle_keep_overlay", "no")
+    block_disk_type_based_on_file_backing_file = "yes" == params.get("block_disk_type_based_on_file_backing_file", "no")
+    block_disk_type_based_on_gluster_backing_file = "yes" == params.get("block_disk_type_based_on_gluster_backing_file", "no")
 
     # Check whether qemu-img need add -U suboption since locking feature was added afterwards qemu-2.10
     qemu_img_locking_feature_support = libvirt_storage.check_qemu_image_lock_support()
@@ -457,6 +459,27 @@ def run(test, params, env):
 
         if repeatedly_do_blockcommit_pivot:
             do_blockcommit_pivot_repeatedly()
+
+        # Create block type disk on file backing file
+        if block_disk_type_based_on_file_backing_file or block_disk_type_based_on_gluster_backing_file:
+            if not vm.is_alive():
+                vm.start()
+            first_src_file = get_first_disk_source()
+            libvirt.setup_or_cleanup_iscsi(is_setup=False)
+            iscsi_target = libvirt.setup_or_cleanup_iscsi(is_setup=True)
+            block_type_backstore = iscsi_target
+            if block_disk_type_based_on_file_backing_file:
+                first_src_file = get_first_disk_source()
+            if block_disk_type_based_on_gluster_backing_file:
+                first_src_file = "gluster://%s/%s/gluster.qcow2" % (params.get("gluster_server_ip"), params.get("vol_name"))
+            backing_file_create_cmd = ("qemu-img create -f %s -o backing_file=%s,backing_fmt=%s %s"
+                                       % ("qcow2", first_src_file, "qcow2", block_type_backstore))
+            process.run(backing_file_create_cmd, ignore_status=False, shell=True)
+            meta_options = " --reuse-external --disk-only --no-metadata"
+            options = "%s --diskspec %s,file=%s" % (meta_options, 'vda', block_type_backstore)
+            virsh.snapshot_create_as(vm_name, options,
+                                     ignore_status=False,
+                                     debug=True)
 
         # The first disk is supposed to include OS
         # We will perform blockcommit operation for it.
@@ -849,7 +872,7 @@ def run(test, params, env):
             libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)
             if blk_source_folder:
                 process.run("cd %s && rm -rf b c d" % blk_source_folder, shell=True)
-        if disk_src_protocol == 'iscsi':
+        if disk_src_protocol == 'iscsi' or 'iscsi_target' in locals():
             libvirt.setup_or_cleanup_iscsi(is_setup=False,
                                            restart_tgtd=restart_tgtd)
         elif disk_src_protocol == 'gluster':
