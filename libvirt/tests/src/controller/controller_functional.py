@@ -763,7 +763,8 @@ def run(test, params, env):
                     if 'model' in one_contrl:
                         contr_dict.update({'controller_model': one_contrl['model']})
                     if 'busNr' in one_contrl:
-                        contr_dict.update({'controller_busNr': one_contrl['busNr']})
+                        cntl_target = "{'busNr': %s}" % one_contrl['busNr']
+                        contr_dict.update({'controller_target': cntl_target})
                     if 'alias' in one_contrl:
                         contr_dict.update({'contr_alias': one_contrl['alias']})
                     if 'type' in one_contrl:
