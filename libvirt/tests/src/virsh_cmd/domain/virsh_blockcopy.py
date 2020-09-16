@@ -13,7 +13,6 @@ from avocado.core import exceptions
 from avocado.utils import path
 
 from virttest import utils_libvirtd
-from virttest import utils_config
 from virttest import virsh
 from virttest import qemu_storage
 from virttest import data_dir
@@ -344,13 +343,11 @@ def run(test, params, env):
                   'debug': True, 'ignore_status': True, 'timeout': timeout}
 
     libvirtd_utl = utils_libvirtd.Libvirtd()
-    libvirtd_conf = utils_config.LibvirtdConfig()
-    libvirtd_conf["log_filters"] = '"3:json 1:libvirt 1:qemu"'
-    libvirtd_log_path = os.path.join(data_dir.get_tmp_dir(), "libvirtd.log")
-    libvirtd_conf["log_outputs"] = '"1:file:%s"' % libvirtd_log_path
-    logging.debug("the libvirtd config file content is:\n %s" %
-                  libvirtd_conf)
-    libvirtd_utl.restart()
+    libvirtd_log_path = os.path.join(data_dir.get_tmp_dir(), "libvirt_daemons.log")
+    libvirtd_conf_dict = {"log_filter": '"3:json 1:libvirt 1:qemu"',
+                          "log_outputs": '"1:file:%s"' % libvirtd_log_path}
+    logging.debug("the libvirtd conf file content is :\n %s" % libvirtd_conf_dict)
+    libvirtd_conf = utl.customize_libvirt_config(libvirtd_conf_dict)
 
     def check_format(dest_path, dest_extension, expect):
         """
