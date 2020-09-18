@@ -302,21 +302,6 @@ def run(test, params, env):
         vm_pkg_ver = get_pkg_version_vm()
         logging.debug('qemu-guest-agent verion in vm: %s' % vm_pkg_ver)
 
-        # If qemu-guest-agent version in VM is higher than the pkg in qemu-guest-agent-iso,
-        # v2v will not update the qemu-guest-agent version and report a warning.
-        #
-        # e.g.
-        # virt-v2v: warning: failed to install QEMU Guest Agent: command:         package
-        # qemu-guest-agent-10:2.12.0-3.el7.x86_64 (which is newer than
-        # qemu-guest-agent-10:2.12.0-2.el7.x86_64) is already installed
-        if not any([vm_pkg_ver in pkg for pkg in all_pkgs]):
-            logging.debug(
-                'Wrong qemu-guest-agent version, maybe it is higher than package version in ISO')
-            logging.info(
-                'Unexpected qemu-guest-agent version, set v2v log checking')
-            expect_msg_ptn = r'virt-v2v: warning: failed to install QEMU Guest Agent.*?is newer than.*? is already installed'
-            params.update({'msg_content': expect_msg_ptn, 'expect_msg': 'yes'})
-
         # Check the service status of qemu-guest-agent in VM
         status_ptn = r'Active: active \(running\)|qemu-ga \(pid +[0-9]+\) is running'
         cmd = 'service qemu-ga status;systemctl status qemu-guest-agent'
