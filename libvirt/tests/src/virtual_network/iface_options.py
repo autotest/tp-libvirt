@@ -247,10 +247,9 @@ def run(test, params, env):
         # 3. Other scenarios, the target dev should be set successfully.
         if test_target:
             if target_dev != iface.target["dev"]:
-                if target_dev.startswith("vnet") or \
-                        (iface_type == "direct" and
-                         (target_dev.startswith("macvtap") or
-                          target_dev.startswith("macvlan"))):
+                if target_dev.startswith("vnet")\
+                        or target_dev.startswith("macvtap")\
+                        or target_dev.startswith("macvlan"):
                     logging.debug("target dev %s is override" % target_dev)
                 else:
                     test.fail("Failed to set target dev to %s", target_dev)
