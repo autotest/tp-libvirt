@@ -112,8 +112,8 @@ def run(test, params, env):
         # list binding port dev
         logging.debug("check nwfilter binding for 2 interfaces")
         ret = virsh.nwfilter_binding_list(debug=True)
-        utlv.check_result(ret, expected_match=[r"vnet0\s+clean-traffic"])
-        utlv.check_result(ret, expected_match=[r"vnet1\s+allow-dhcp-server"])
+        utlv.check_result(ret, expected_match=[r"vnet\d+\s+clean-traffic"])
+        utlv.check_result(ret, expected_match=[r"vnet\d+\s+allow-dhcp-server"])
         # detach a interface
         option = "--type network" + " --mac " + new_iface_1.mac_address
         ret = virsh.detach_interface(vm_name, option, debug=True)
@@ -122,9 +122,9 @@ def run(test, params, env):
         logging.debug("check nwfilter binding after detach one interface:")
         time.sleep(3)
         ret = virsh.nwfilter_binding_list(debug=True)
-        if re.search(r'vnet0\s+clean-traffic.*', ret.stdout):
-            test.fail("vnet0 binding still exists after detach the interface!")
-        utlv.check_result(ret, expected_match=[r"vnet1\s+allow-dhcp-server"])
+        if re.search(r'vnet\d+\s+clean-traffic.*', ret.stdout):
+            test.fail("vnet binding clean-traffic still exists after detach the interface!")
+        utlv.check_result(ret, expected_match=[r"vnet\d+\s+allow-dhcp-server"])
 
         # update_device to delete the filter
         iface_dict = {'del_filter': True}
@@ -134,15 +134,15 @@ def run(test, params, env):
                             debug=True)
         logging.debug("check nwfilter-binding after delete the only interface")
         ret = virsh.nwfilter_binding_list(debug=True)
-        if re.search(r'vnet1\s+allow-dhcp-server.*', ret.stdout):
-            test.fail("vnet1 binding still exists after detach the interface!")
+        if re.search(r'vnet\d+\s+allow-dhcp-server.*', ret.stdout):
+            test.fail("vnet binding allow-dhcp-server still exists after detach the interface!")
         utlv.check_exit_status(ret, status_error)
 
         # attach new interface
         attach_new_device()
         ret = virsh.nwfilter_binding_list(debug=True)
         logging.debug("Check nwfilter-binding exists after attach device")
-        utlv.check_result(ret, expected_match=[r"vnet0\s+clean-traffic"])
+        utlv.check_result(ret, expected_match=[r"vnet\d+\s+clean-traffic"])
 
     finally:
         if vm.is_alive():

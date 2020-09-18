@@ -46,6 +46,7 @@ def run(test, params, env):
 
         new_filterref = new_iface.new_filterref(**filterref_dict)
         new_iface.filterref = new_filterref
+        new_iface.target = {'dev': params.get('target_name', 'net_tap')}
         logging.debug("new interface xml is: %s" % new_iface)
         vmxml.add_device(new_iface)
         vmxml.sync()
