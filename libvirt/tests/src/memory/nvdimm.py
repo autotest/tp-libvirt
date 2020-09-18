@@ -25,6 +25,7 @@ def run(test, params, env):
     status_error = "yes" == params.get('status_error', 'no')
     error_msg = params.get('error_msg', '')
     qemu_checks = params.get('qemu_checks', '').split('`')
+    wait_sec = int(params.get('wait_sec', 5))
     test_str = 'This is a test'
 
     def check_boot_config(session):
@@ -326,7 +327,12 @@ def run(test, params, env):
                 test.fail('Number of memory devices after attach is %d, should be %d'
                           % (len(devices_after_attach), len(ori_devices) + 1))
 
-            time.sleep(5)
+            # Create namespace for ppc tests
+            if IS_PPC_TEST:
+                logging.debug(vm_session.cmd_output(
+                    'ndctl create-namespace --mode=fsdax --region=region1'))
+
+            time.sleep(wait_sec)
             check_file_in_vm(vm_session, '/dev/pmem1')
 
             nvdimm_detach = alive_vmxml.get_devices('memory')[-1]
@@ -355,3 +361,5 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
         bkxml.sync()
         os.remove(nvdimm_file)
+        if 'nvdimm_file_2' in locals():
+            os.remove(nvdimm_file_2)
