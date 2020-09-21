@@ -2397,10 +2397,14 @@ def run(test, params, env):
                                         func=check_migration_disk_port,
                                         func_params=func_dict)
             if migration_test.RET_MIGRATION:
-                utils_test.check_dest_vm_network(vm, vm.get_address(),
+                remote_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                       server_user, server_pwd,
+                                                       r"[\#\$]\s*$")
+                utils_test.check_dest_vm_network(vm, vm.get_address(session=remote_session),
                                                  server_ip, server_user,
                                                  server_pwd,
                                                  shell_prompt=r"[\#\$]\s*$")
+                remote_session.close()
             else:
                 check_output(test, str(migration_test.ret), test_dict)
                 test.fail("The migration with disks port failed")
@@ -2611,7 +2615,11 @@ def run(test, params, env):
 
         run_cmd_in_vm = test_dict.get("run_cmd_in_vm_after_migration")
         if run_cmd_in_vm:
-            vm_ip = vm.get_address()
+            remote_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                   server_user, server_pwd,
+                                                   r"[\#\$]\s*$")
+            vm_ip = vm.get_address(session=remote_session, timeout=480)
+            remote_session.close()
             vm_pwd = test_dict.get("password")
             logging.debug("The VM IP: <%s> password: <%s>", vm_ip, vm_pwd)
             logging.info("Execute command <%s> in the VM after migration",
