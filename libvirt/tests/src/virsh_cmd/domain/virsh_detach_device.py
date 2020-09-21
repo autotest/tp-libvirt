@@ -3,6 +3,7 @@ import time
 import logging
 import shutil
 import uuid
+import threading
 
 import aexpect
 
@@ -139,6 +140,47 @@ def run(test, params, env):
             shutil.copyfile(iface.xml, device_xml_file)
         return device_xml_file
 
+    def handle_detach_mix():
+        """
+        Do detach_device and detach_device_alias parallel for multiple times
+        """
+        detach_times = int(params.get("detach_times"))
+        thread_list = []
+
+        def _detach_device(by_alias, detach_target):
+            """
+            Route the invoke for suitable detach functions
+
+            :param by_alias: True to use detach_device_alias
+            :param detach_target: Device xml or device alias
+            :return: None
+            """
+            func_name = virsh.detach_device_alias if by_alias else virsh.detach_device
+            func_name(vm_ref, detach_target,
+                      extra=dt_options,
+                      wait_remove_event=True,
+                      event_timeout=7,
+                      debug=True)
+
+        for count in range(0, detach_times):
+            dt_thread = threading.Thread(target=_detach_device,
+                                         args=(False, device_xml))
+
+            dt_alias_thread = threading.Thread(target=_detach_device,
+                                               args=(True, device_alias))
+
+            dt_thread.start()
+            thread_list.append(dt_thread)
+            logging.debug("Start thread using detach_device %s", dt_thread.name)
+
+            dt_alias_thread.start()
+            thread_list.append(dt_alias_thread)
+            logging.debug("Start thread using detach_device_alias %s", dt_alias_thread.name)
+
+        for one_thread in thread_list:
+            logging.debug("Ensure thread '{}' to exist".format(one_thread.name))
+            one_thread.join()
+
     vm_ref = params.get("dt_device_vm_ref", "name")
     dt_options = params.get("dt_device_options", "")
     pre_vm_state = params.get("dt_device_pre_vm_state", "running")
@@ -149,6 +191,7 @@ def run(test, params, env):
     readonly = "yes" == params.get("detach_readonly", "no")
     tmp_dir = data_dir.get_tmp_dir()
     test_cmd = "detach-device"
+    detach_mixed = "yes" == params.get("detach_mixed", "no")
     detach_alias = "yes" == params.get("dt_device_alias", "no")
     if detach_alias:
         test_cmd = "detach-device-alias"
@@ -248,8 +291,10 @@ def run(test, params, env):
             vm_ref = domuuid
         else:
             vm_ref = ""
-
-        if detach_alias:
+        if detach_mixed:
+            handle_detach_mix()
+            status = 0  # We do not care the virsh command return result
+        elif detach_alias:
             status = virsh.detach_device_alias(vm_ref, device_alias, dt_options, True, 7, readonly=readonly,
                                                debug=True).exit_status
         else:
@@ -268,10 +313,14 @@ def run(test, params, env):
         # Check disk count after command.
         check_count_after_cmd = True
         if device in ['disk', 'cdrom']:
+            logging.debug("Checking disk count via VM xml...")
+            logging.debug(vm_xml.VMXML.new_from_dumpxml(vm_name))
             device_count_after_cmd = vm_xml.VMXML.get_disk_count(vm_name)
         else:
             vm_cls = vm_xml.VMXML.new_from_dumpxml(vm_name)
             device_count_after_cmd = len(vm_cls.devices)
+        logging.debug("device_count_after_cmd=%d, device_count_before_cmd=%d",
+                      device_count_after_cmd, device_count_before_cmd)
         if device_count_after_cmd < device_count_before_cmd:
             check_count_after_cmd = False
 
