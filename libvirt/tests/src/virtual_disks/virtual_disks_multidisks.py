@@ -1787,8 +1787,13 @@ def run(test, params, env):
                         device_option = "scsi=on"
                     else:
                         device_option = "scsi=off"
-                    cmd += (" | grep virtio-blk-pci,%s,bus=pci.%x,addr=0x%x"
-                            % (device_option, dev_bus, pci_slot))
+                    # scsi=on/off flag is removed from qemu command line after libvirt 6.6.0, so update cmd to make code compatible.
+                    if libvirt_version.version_compare(6, 6, 0):
+                        cmd += (" | grep virtio-blk-pci,bus=pci.%x,addr=0x%x"
+                                % (dev_bus, pci_slot))
+                    else:
+                        cmd += (" | grep virtio-blk-pci,%s,bus=pci.%x,addr=0x%x"
+                                % (device_option, dev_bus, pci_slot))
                 if device_bus[0] in ["ide", "sata", "scsi"]:
                     dev_unit = int(vm_xml.VMXML.get_disk_attr(vm_name, device_targets[0],
                                                               "address", "unit"), 16)
