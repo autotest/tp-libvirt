@@ -96,6 +96,22 @@ def run(test, params, env):
     # Back VM XML
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
+    # Fix no more PCI slots issue in certain cases.
+    vm_dump_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    machine_type = params.get("machine_type", "pc")
+    if machine_type == 'q35':
+        vm_dump_xml.remove_all_device_by_type('controller')
+        machine_list = vm_dump_xml.os.machine.split("-")
+        vm_dump_xml.set_os_attrs(**{"machine": machine_list[0] + "-q35-" + machine_list[2]})
+        q35_pcie_dict0 = {'controller_model': 'pcie-root', 'controller_type': 'pci', 'controller_index': 0}
+        q35_pcie_dict1 = {'controller_model': 'pcie-root-port', 'controller_type': 'pci'}
+        vm_dump_xml.add_device(libvirt.create_controller_xml(q35_pcie_dict0))
+        # Add enough controllers to match multiple times disk attaching requirements
+        for i in list(range(1, 12)):
+            q35_pcie_dict1.update({'controller_index': "%d" % i})
+            vm_dump_xml.add_device(libvirt.create_controller_xml(q35_pcie_dict1))
+        vm_dump_xml.sync()
+
     virsh_dargs = {'debug': True, 'ignore_status': True}
     try:
         start_vm = "yes" == params.get("start_vm", "yes")
@@ -283,6 +299,8 @@ def run(test, params, env):
         elif domain_operation == "snapshot":
             # Run snapshot related commands: snapshot-create-as, snapshot-list
             # snapshot-info, snapshot-dumpxml, snapshot-create
+            # virsh snapshot-revert is not supported on combined internal and external snapshots
+            # see more details from,https://bugzilla.redhat.com/show_bug.cgi?id=1733173
             snapshot_name1 = "snap1"
             snapshot_name2 = "snap2"
             cmd_result = virsh.snapshot_create_as(vm_name, snapshot_name1,
@@ -309,13 +327,9 @@ def run(test, params, env):
             cmd_result = virsh.snapshot_current(vm_name, **virsh_dargs)
             libvirt.check_exit_status(cmd_result)
 
-            snapshot_file = os.path.join(data_dir.get_tmp_dir(), snapshot_name2)
-            sn_create_op = ("%s --disk-only --diskspec %s,file=%s"
-                            % (snapshot_name2, disk_target, snapshot_file))
-            cmd_result = virsh.snapshot_create_as(vm_name, sn_create_op,
-                                                  **virsh_dargs)
+            virsh.snapshot_create_as(vm_name, snapshot_name2,
+                                     ignore_status=False, debug=True)
 
-            libvirt.check_exit_status(cmd_result)
             cmd_result = virsh.snapshot_revert(vm_name, snapshot_name1,
                                                **virsh_dargs)
 
