@@ -971,6 +971,12 @@ def run(test, params, env):
         test.cancel("ccsid values are unrestricted in this"
                     " qemu version")
 
+    if libvirt_version.version_compare(6, 6, 0):
+        disk_bus_volume_lun = "yes" == params.get("disk_bus_volume_lun", "no")
+        disk_bus_usb_lun = (device_bus[0] == "usb" and device_types[0] == "block")
+        if disk_bus_volume_lun or disk_bus_usb_lun:
+            test.cancel("disk device='lun' is only valid for block type disk source")
+
     # Backup selinux_mode and virt_use_nfs status
     virt_use_nfs_off = "yes" == params.get("virt_use_nfs_off", "no")
     if virt_use_nfs_off:
