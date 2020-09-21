@@ -24,7 +24,7 @@ def create_disk(params, test, vm_name, orig_iso, disk_type, target_dev, disk_for
     :param disk_format: disk's target format
     :param mode: readonly or shareable
     """
-    slice_test = "yes" == params.get("disk_slice", "yes")
+    slice_test = "yes" == params.get("disk_slice", "no")
     try:
         # create slice cdrom image for slice test
         if slice_test:
@@ -187,9 +187,10 @@ def run(test, params, env):
                    % (disk_mode, support_mode))
 
     # Prepare tmp directory and files.
-    orig_iso = os.path.join(test.virtdir, "orig.iso")
-    test_iso = os.path.join(test.virtdir, "test.iso")
-    test_diff_iso = os.path.join(test.virtdir, "test_diff.iso")
+    tmp_iso_dir = data_dir.get_tmp_dir()
+    orig_iso = os.path.join(tmp_iso_dir, "orig.iso")
+    test_iso = os.path.join(tmp_iso_dir, "test.iso")
+    test_diff_iso = os.path.join(tmp_iso_dir, "test_diff.iso")
     update_xmlfile = os.path.join(data_dir.get_tmp_dir(), "update.xml")
 
     # This test needs a cdrom/floppy attached first - attach a cdrom/floppy
