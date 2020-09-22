@@ -369,8 +369,10 @@ def run(test, params, env):
             dd_count = "1"
             dd_seek = str(backup_index * 10 + 10)
             dd_bs = "1M"
-            utils_disk.dd_data_to_vm_disk(vm, test_disk_in_vm, dd_bs,
+            session = vm.wait_for_login()
+            utils_disk.dd_data_to_vm_disk(session, test_disk_in_vm, dd_bs,
                                           dd_seek, dd_count)
+            session.close()
 
             backup_result = virsh.backup_begin(vm_name, backup_options,
                                                debug=True)
