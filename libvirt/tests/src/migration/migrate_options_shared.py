@@ -33,6 +33,7 @@ from virttest.utils_iptables import Iptables
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_conn import TLSConnection
+from virttest.utils_libvirt import libvirt_config
 from virttest.libvirt_xml.devices.controller import Controller
 
 
@@ -935,6 +936,9 @@ def run(test, params, env):
     cmd_run_in_remote_host_1 = params.get("cmd_run_in_remote_host_1", None)
     cmd_run_in_remote_host_2 = params.get("cmd_run_in_remote_host_2", None)
     cmd_in_vm_after_migration = params.get("cmd_in_vm_after_migration")
+    remote_dargs = {'server_ip': server_ip, 'server_user': server_user,
+                    'server_pwd': server_pwd,
+                    'file_path': "/etc/libvirt/libvirt.conf"}
 
     # For qemu command line checking
     qemu_check = params.get("qemu_check", None)
@@ -978,6 +982,9 @@ def run(test, params, env):
     expConnNum = 0
     tpm_sec_uuid = None
     dest_tmp_sec_uuid = None
+    remove_dict = {}
+    remote_libvirt_file = None
+    src_libvirt_file = None
 
     # Local variables
     vm_name = params.get("migrate_main_vm")
@@ -1250,6 +1257,10 @@ def run(test, params, env):
         if pause_vm_before_mig:
             suspend_vm(vm)
 
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
+        src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
+
         # Execute migration process
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
@@ -1463,8 +1474,12 @@ def run(test, params, env):
             src_full_uri = libvirt_vm.complete_uri(
                         params.get("migrate_source_host"))
             migration_test.migrate_pre_setup(src_full_uri, params)
+            remove_dict = {"do_search": ('{"%s": "ssh:/"}' % src_full_uri)}
+            remote_libvirt_file = libvirt_config\
+                .remove_key_for_modular_daemon(remove_dict, remote_dargs)
+
             cmd = "virsh migrate %s %s %s" % (vm_name,
-                                              virsh_opt, src_full_uri)
+                                              options, src_full_uri)
             logging.debug("Start migration: %s", cmd)
             cmd_result = remote.run_remote_cmd(cmd, params, runner_on_target)
             logging.info(cmd_result)
@@ -1565,6 +1580,10 @@ def run(test, params, env):
                                                      extra_params=params,
                                                      is_recover=True,
                                                      config_object=update_conf)
+            if src_libvirt_file:
+                src_libvirt_file.restore()
+            if remote_libvirt_file:
+                del remote_libvirt_file
 
             logging.info("Remove local NFS image")
             source_file = params.get("source_file")
