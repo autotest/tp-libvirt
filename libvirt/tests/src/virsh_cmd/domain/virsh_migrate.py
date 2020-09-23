@@ -1041,6 +1041,9 @@ def run(test, params, env):
             logging.debug("PID for process '%s': %s",
                           remote_viewer_executable, remote_viewer_pid)
 
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
+        src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
         # Case for option '--timeout --timeout-suspend'
         # 1. Start the guest
         # 2. Set migration speed to a small value. Ensure the migration
@@ -1087,9 +1090,6 @@ def run(test, params, env):
                 if libvirt_version.version_compare(5, 0, 0):
                     virsh.migrate_setspeed(vm_name, speed,
                                            extra=postcopy_options, **virsh_args)
-            remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
-            src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
-                remove_dict)
 
             logging.info("Starting migration in thread")
             try:
