@@ -32,6 +32,10 @@ def create_disk(params, test, vm_name, orig_iso, disk_type, target_dev, disk_for
             params["input_source_file"] = orig_iso
             params["disk_slice"] = {"slice": "yes"}
             params["target_dev"] = "sdc"
+            if mode == 'readonly':
+                params["readonly"] = "yes"
+            elif mode == "shareable":
+                params["shareable"] = "yes"
             disk_xml = libvirt.create_disk_xml(params)
         else:
             with open(orig_iso, 'wb') as _file:
