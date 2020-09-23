@@ -27,12 +27,10 @@ from virttest import utils_misc
 from virttest import utils_netperf
 from virttest import utils_package
 from virttest import utils_selinux
-from virttest import utils_split_daemons
 from virttest import utils_test
 from virttest import virsh
 from virttest import virt_vm
 from virttest import migration
-from virttest import utils_split_daemons
 
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import pool_xml
@@ -1251,6 +1249,9 @@ def run(test, params, env):
     libvirtd_conf_dict = {"log_level": log_level,
                           "log_filters": log_filters,
                           "log_outputs": '"%s:file:%s"' % (log_level, log_file)}
+    remote_dargs = {'server_ip': server_ip, 'server_user': server_user,
+                    'server_pwd': server_pwd,
+                    'file_path': "/etc/libvirt/libvirt.conf"}
 
     remote_port = test_dict.get("open_remote_listening_port")
 
@@ -1421,6 +1422,9 @@ def run(test, params, env):
     support_precreation = False
     pool_created = False
     remote_virsh_session = None
+    remove_dict = {}
+    remote_libvirt_file = None
+    src_libvirt_file = None
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
                           'ssh_remote_auth': True}
@@ -2240,6 +2244,10 @@ def run(test, params, env):
                 vm.start()
                 vm.wait_for_login()
 
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
+        src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
+
         if run_migr_back:
             command = "virsh migrate %s %s %s" % (vm_name, virsh_options, uri)
             logging.debug("Start migrating: %s", command)
@@ -2521,22 +2529,6 @@ def run(test, params, env):
             status_error = "no"
             test_dict['err_msg'] = None
 
-        if transport == "ssh":
-            if not virsh_options.count("--p2p"):
-                remote_session = remote.wait_for_login('ssh', server_ip, '22',
-                                                       server_user, server_pwd,
-                                                       r"[\#\$]\s*$")
-                if utils_split_daemons.is_modular_daemon(remote_session):
-                    remote_dargs = {'server_ip': server_ip,
-                                    'server_user': server_user,
-                                    'server_pwd': server_pwd,
-                                    "file_path": "/etc/libvirt/libvirt.conf"}
-                    remote_libvirt_file = libvirt_config.remove_key_in_conf(
-                        ["remote_mode"], "libvirt", remote_params=remote_dargs)
-                remote_session.close()
-            if utils_split_daemons.is_modular_daemon():
-                src_libvirt_file = libvirt_config.remove_key_in_conf(
-                        ["remote_mode"], "libvirt")
         if run_migr_front:
             migrate_vm(test, test_dict)
 
@@ -2745,20 +2737,9 @@ def run(test, params, env):
         if migr_vm_back:
             # Pre migration setup for local machine
             migrate_setup.migrate_pre_setup(src_uri, params)
-            if src_uri.count("ssh:/"):
-                if virsh_options.count("--p2p"):
-                    remote_session = remote.wait_for_login('ssh', server_ip,
-                                                           '22', server_user,
-                                                           server_pwd,
-                                                           r"[\#\$]\s*$")
-                    if utils_split_daemons.is_modular_daemon(remote_session):
-                        remote_dargs = {'server_ip': server_ip,
-                                        'server_user': server_user,
-                                        'server_pwd': server_pwd,
-                                        "file_path": "/etc/libvirt/libvirt.conf"}
-                        remote_libvirt_file = libvirt_config.remove_key_in_conf(
-                            ["remote_mode"], "libvirt", remote_params=remote_dargs)
-                    remote_session.close()
+            remove_dict = {"do_search": ('{"%s": "ssh:/"}' % src_uri)}
+            remote_libvirt_file = libvirt_config\
+                .remove_key_for_modular_daemon(remove_dict, remote_dargs)
             cmd = "virsh migrate %s %s %s" % (vm_name,
                                               virsh_options, src_uri)
             logging.debug("Start migrating: %s", cmd)
@@ -2778,9 +2759,9 @@ def run(test, params, env):
 
         logging.debug("Removing vm on remote if it exists.")
         virsh.remove_domain(vm.name, uri=uri)
-        if 'src_libvirt_file' in locals():
+        if src_libvirt_file:
             src_libvirt_file.restore()
-        if 'remote_libvirt_file' in locals():
+        if remote_libvirt_file:
             del remote_libvirt_file
         # Clean up of pre migration setup for local machine
         if migr_vm_back:
