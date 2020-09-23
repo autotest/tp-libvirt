@@ -639,6 +639,7 @@ def run(test, params, env):
             if checkpoint in [
                 'mismatched_uuid',
                 'no_uuid',
+                'invalid_source',
                 'system_rhv_pem_set',
                     'system_rhv_pem_unset']:
                 cmd_only = True
@@ -669,10 +670,18 @@ def run(test, params, env):
                 '-on %s' %
                 new_vm_name)
             logging.debug('re-run v2v command:\n%s', new_cmd)
+        if checkpoint == 'invalid_source':
+            if params.get('invalid_vpx_hostname'):
+                new_cmd = v2v_result.replace(
+                    vpx_hostname, params.get('invalid_vpx_hostname'))
+            if params.get('invalid_esx_hostname'):
+                new_cmd = v2v_result.replace(
+                    esxi_host, params.get('invalid_esx_hostname'))
 
         if checkpoint in [
             'mismatched_uuid',
             'no_uuid',
+            'invalid_source',
             'exist_uuid',
             'system_rhv_pem_set',
                 'system_rhv_pem_unset']:
