@@ -7,6 +7,7 @@ import os.path
 import logging
 import aexpect
 import itertools
+import platform
 from string import ascii_lowercase
 
 from six import iteritems
@@ -867,7 +868,7 @@ def remove_chardevs(vm_name, vmxml):
     for chardev_type in chardev_types:
         vmxml.del_device(chardev_type, by_tag=True)
     vmxml.sync()
-    virsh.start(vm_name, debug=True)
+    virsh.start(vm_name, debug=True, ignore_status=False)
 
 
 def remove_non_disks(vm_name, vmxml):
@@ -886,6 +887,22 @@ def remove_non_disks(vm_name, vmxml):
             virsh.detach_disk(vm_name, disk.target['dev'],
                               extra='--current',
                               debug=True)
+
+
+def update_controllers_ppc(vm_name, vmxml):
+    """
+    Update controller settings of vmxml to fit for test
+
+    :param vm_name: domain name
+    :param vmxml: domain xml
+    :return:
+    """
+    machine = platform.machine().lower()
+    if 'ppc64le' in machine:
+        # Remove old scsi controller, replace with virtio-scsi controller
+        vmxml.del_controller('scsi')
+        vmxml.sync()
+        virsh.start(vm_name, debug=True, ignore_status=False)
 
 
 def run(test, params, env):
@@ -948,6 +965,7 @@ def run(test, params, env):
                 test_params.main_vm.start()
 
     remove_non_disks(vm_name, vmxml)
+    update_controllers_ppc(vm_name, vmxml)
 
     if params.get("remove_all_chardev", "no") == "yes":
         remove_chardevs(vm_name, vmxml)
