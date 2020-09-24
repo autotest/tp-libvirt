@@ -1148,6 +1148,22 @@ def run(test, params, env):
     """
     Test remote access with TCP, TLS connection
     """
+
+    def get_target_hugepage_num(params):
+        """
+        Get the number of hugepage on target host
+
+        :param params: The parameters used
+        :return: the number of hugepage to be allocated on target host
+        """
+        hugepage_file = params.get("kernel_hp_file", "/proc/sys/vm/nr_hugepages")
+        with open(hugepage_file, 'r') as fp:
+            hugepage_num = int(fp.readline().strip())
+        more_less_hp = int(params.get("remote_target_hugepages", "0"))
+        logging.debug("Number of huge pages on target host to be allocated:%d",
+                      hugepage_num + more_less_hp)
+        return (hugepage_num + more_less_hp)
+
     test_dict = dict(params)
     vm_name = test_dict.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -1213,7 +1229,7 @@ def run(test, params, env):
     mb_enable = "yes" == test_dict.get("mb_enable", "no")
     config_remote_hugepages = "yes" == test_dict.get("config_remote_hugepages",
                                                      "no")
-    remote_tgt_hugepages = test_dict.get("remote_target_hugepages")
+    remote_tgt_hugepages = get_target_hugepage_num(test_dict)
     remote_hugetlbfs_path = test_dict.get("remote_hugetlbfs_path")
     delay = int(params.get("delay_time", 10))
 
@@ -1785,7 +1801,7 @@ def run(test, params, env):
         if config_remote_hugepages:
             cmds = ["mkdir -p %s" % remote_hugetlbfs_path,
                     "mount -t hugetlbfs none %s" % remote_hugetlbfs_path,
-                    "sysctl vm.nr_hugepages=%s" % int(remote_tgt_hugepages)]
+                    "sysctl vm.nr_hugepages=%s" % remote_tgt_hugepages]
             for cmd in cmds:
                 status, output = run_remote_cmd(cmd, server_ip, server_user,
                                                 server_pwd)
