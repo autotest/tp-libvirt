@@ -156,7 +156,8 @@ def run(test, params, env):
 
             if status_error:
                 if start_fail:
-                    if libvirt_version.version_compare(5, 6, 0):
+                    if (libvirt_version.version_compare(5, 6, 0) and
+                       not libvirt_version.version_compare(6, 6, 0)):
                         result_need_check = virsh.define(vmxml.xml, debug=True)
                     else:
                         vmxml.sync()
