@@ -869,7 +869,14 @@ def check_vm_disk_after_migration(test, vm, params):
     :raise: test.fail if command execution fails
     """
     cmd = "fdisk -l|grep '^Disk /dev'|cut -d: -f1|cut -d' ' -f2"
-    vm_ip = vm.get_address()
+    server_ip = params.get("server_ip")
+    server_user = params.get("server_user")
+    server_pwd = params.get("server_pwd")
+    remote_session = remote.wait_for_login('ssh', server_ip, '22',
+                                           server_user, server_pwd,
+                                           r"[\#\$]\s*$")
+    vm_ip = vm.get_address(session=remote_session, timeout=480)
+    remote_session.close()
     tmp_file = "/tmp/fdisk_test_file"
     mnt_dir = "/tmp/fdisk_test_dir"
     dd_cmd = "dd if=/dev/zero"
@@ -896,7 +903,7 @@ def check_vm_disk_after_migration(test, vm, params):
             # create partition and file system
             # mount disk and write file in it
             logging.debug("Execute command on remote VM: %s", cmd)
-            cmdres = remote_vm_obj.run_command(vm_ip, cmd, ignore_status=True)
+            cmdres = remote_vm_obj.run_command(cmd, ignore_status=True)
             if cmdres.exit_status:
                 test.fail("Command '%s' result: %s\n" % (cmd, cmdres))
 
