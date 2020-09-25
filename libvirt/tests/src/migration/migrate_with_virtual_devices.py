@@ -151,6 +151,135 @@ class MigrationVirtualDevicesBase(MigrationTemplate):
             func()
 
 
+class QemuGuestAgentStateError(Error):
+    """
+    Raise when qemu-guest-agent state is not expected
+
+    :param state: expected qemu-guest-agent state
+    """
+
+    def __init__(self, state):
+        self.state = state
+
+    def __str__(self):
+        super_str = super(QemuGuestAgentStateError, self).__str__()
+        return (super_str +
+                ("Unexpected qemu-guest-agent state: %s" % self.state))
+
+
+class migration_with_qemu_ga(MigrationVirtualDevicesBase):
+    """
+    Do migration with qemu guest agent
+
+    :param qemu_ga_state: qemu-guest-agent state: connected or disconnected
+    """
+
+    def __init__(self, test, env, params, *args, **dargs):
+        for k, v in iteritems(dict(*args, **dargs)):
+            params[k] = v
+        super(migration_with_qemu_ga, self).__init__(test, env, params, *args,
+                                                     **dargs)
+
+        self.qemu_ga_state = params.get("qemu_ga_state")
+        self.start_qemu_ga = self.qemu_ga_state == "connected"
+
+    def _pre_start_vm(self):
+        # Add qemu-guest-agent device in vm xml if it doesn't exist
+        if not self._get_qemu_ga_in_vmxml():
+            self._add_qemu_ga_in_vmxml()
+
+    def _post_start_vm(self):
+        # Install package qemu-guest-agent in vm
+        self.main_vm.install_package('qemu-guest-agent')
+
+        # Start/stop qemu-guest-agent in vm
+        self.main_vm.set_state_guest_agent(self.start_qemu_ga)
+
+        # Check qemu-guest-agent state in vm xml
+        self._check_qemu_ga_state_in_dumpxml()
+
+        # Run a virsh command via qemu-guest-agent
+        if self.qemu_ga_state == "connected":
+            self._run_virsh_cmd_via_qemu_ga()
+
+    def _post_migrate(self):
+        # Check qemu-guest-agent state in vm xml
+        self._check_qemu_ga_state_in_dumpxml()
+
+        # Run a virsh command via qemu-guest-agent
+        if self.qemu_ga_state == "connected":
+            self._run_virsh_cmd_via_qemu_ga()
+
+    def _post_migrate_back(self):
+        # Check qemu-guest-agent state in vm xml
+        self._check_qemu_ga_state_in_dumpxml()
+
+        # Run a virsh command via qemu-guest-agent
+        if self.qemu_ga_state == "connected":
+            self._run_virsh_cmd_via_qemu_ga()
+
+    def _add_qemu_ga_in_vmxml(self):
+        """
+        Add qemu-guest-agent device in vm xml
+        """
+
+        logging.info("Add qemu-ga device in vm dumpxml")
+        virsh_instance = virsh.Virsh(uri=self.main_vm.connect_uri)
+        vmxml = vm_xml.VMXML.new_from_dumpxml(self.main_vm.name,
+                                              virsh_instance=virsh_instance)
+        channel = vmxml.get_device_class('channel')()
+        channel.add_source(mode='bind')
+        channel.add_target(type='virtio', name='org.qemu.guest_agent.0')
+        vmxml.add_device(channel)
+        vmxml.sync()
+
+    def _get_qemu_ga_in_vmxml(self):
+        """
+        Get qemu-guest-agent device in vm dumpxml
+
+        :return channel device if found else None
+        """
+
+        logging.info("Get qemu-ga device in vm dumpxml")
+        ret = None
+        virsh_instance = virsh.Virsh(uri=self.main_vm.connect_uri)
+        vmxml = vm_xml.VMXML.new_from_dumpxml(self.main_vm.name,
+                                              virsh_instance=virsh_instance)
+        channels = vmxml.get_devices(device_type="channel")
+        for channel in channels:
+            if (channel.type_name == "unix" and
+                    channel.target.get("name") == "org.qemu.guest_agent.0"):
+                ret = channel
+                break
+        return ret
+
+    def _check_qemu_ga_state_in_dumpxml(self):
+        """
+        Check qemu-guest-agent state in dumpxml
+        """
+
+        logging.info("Check qemu-ga state in vm dumpxml")
+        channel = self._get_qemu_ga_in_vmxml()
+        if not channel:
+            raise DeviceXMLNotFoundError()
+
+        if channel.target.get("state") != self.qemu_ga_state:
+            raise QemuGuestAgentStateError(channel.target.get("state"))
+
+    def _run_virsh_cmd_via_qemu_ga(self, cmd="domtime", options=""):
+        """
+        Run a virsh cmd that uses qemu-guest-agent
+
+        :param cmd: virsh cmd name
+        :param options: virsh cmd options
+        """
+
+        logging.info("Run virsh cmd '%s' via qemu_ga", cmd)
+        virsh_cmd = getattr(virsh, cmd)
+        virsh_cmd(self.main_vm.name, options=options,
+                  uri=self.main_vm.connect_uri, ignore_status=False)
+
+
 class migration_with_rng(MigrationVirtualDevicesBase):
     """
     Do migration with rng device
@@ -588,7 +717,10 @@ def run(test, params, env):
         test.error("device_type is not configured")
 
     # Get migration object by device type
-    migration_class_dict = {'rng': migration_with_rng}
+    migration_class_dict = {
+            'rng': migration_with_rng,
+            'qemu_ga': migration_with_qemu_ga,
+            }
     obj_migration = migration_class_dict[device_type](test, env, params)
 
     try:
