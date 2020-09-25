@@ -1103,7 +1103,9 @@ def run(test, params, env):
             except Exception as info:
                 test.fail(info)
             if obj_migration.RET_MIGRATION:
-                remote.VMManager(params).check_network(vm_ip)
+                params.update({'vm_ip': vm_ip,
+                               'vm_pwd': params.get("password")})
+                remote.VMManager(params).check_network()
                 ret_migrate = True
             else:
                 ret_migrate = False
