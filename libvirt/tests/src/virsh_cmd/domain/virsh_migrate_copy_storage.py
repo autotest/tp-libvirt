@@ -11,8 +11,10 @@ from virttest.utils_test import libvirt as utlv
 from virttest.staging import lv_utils
 from virttest import virsh
 from virttest import utils_disk
-from virttest.utils_misc import is_qemu_capability_supported as qemu_test
 from virttest import remote
+
+from virttest.utils_misc import is_qemu_capability_supported as qemu_test
+from virttest.utils_libvirt import libvirt_config
 
 
 def create_destroy_pool_on_remote(test, action, params):
@@ -197,6 +199,7 @@ def run(test, params, env):
     abnormal_type = params.get("abnormal_type")
     added_disks_list = []
     rdm = None
+    src_libvirt_file = None
     try:
         rdm = utils_test.RemoteDiskManager(params)
         vgname = params.get("sm_vg_name", "SMTEST")
@@ -248,6 +251,10 @@ def run(test, params, env):
 
         fail_flag = False
         cp_mig = None
+        remove_dict = {
+            "do_search": '{"%s": "ssh:/"}' % params.get("migrate_dest_uri")}
+        src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
         try:
             logging.debug("Start migration...")
             cp_mig = copied_migration(test, vms, vms_ip, params)
@@ -291,6 +298,10 @@ def run(test, params, env):
             cp_mig.cleanup_dest_vm(vm, None, params.get("migrate_dest_uri"))
         if vm.is_alive():
             vm.destroy()
+
+        if src_libvirt_file:
+            src_libvirt_file.restore()
+
         if disks_count and vm.name == new_vm_name:
             vm.undefine()
         for disk in added_disks_list:
