@@ -978,7 +978,7 @@ def run(test, params, env):
             vmxml.vm_name = extra.split()[1].strip()
             del vmxml.uuid
             # Define a new vm on destination for --dname
-            virsh.define(vmxml.xml, uri=dest_uri)
+            virsh.define(vmxml.xml, uri=dest_uri, ignore_status=False)
 
         # Prepare for --xml.
         xml_option = params.get("xml_option", "no")
