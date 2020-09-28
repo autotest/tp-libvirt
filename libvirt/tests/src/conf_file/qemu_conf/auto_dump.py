@@ -2,6 +2,8 @@ import os
 import logging
 import shutil
 import platform
+import multiprocessing
+import time
 
 from aexpect import ShellTimeoutError
 
@@ -9,7 +11,6 @@ from avocado.utils import process
 
 from virttest import utils_config
 from virttest import utils_libvirtd
-from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
 from virttest import data_dir
@@ -81,7 +82,39 @@ def run(test, params, env):
             vm.destroy()
         vm.start()
 
+        def get_flags(dump_path, result_dict):
+            cmd = "lsof -w %s/* |awk '/libvirt_i/{print $2}'" % dump_path
+            start_time = time.time()
+            while (time.time() - start_time) < 30:
+                ret = process.run(cmd, shell=True, ignore_status=True)
+                status, iohelper_pid = ret.exit_status, ret.stdout_text.strip()
+                if status:
+                    time.sleep(0.1)
+                    continue
+                if not len(iohelper_pid):
+                    continue
+                else:
+                    logging.info('pid: %s', iohelper_pid)
+                    result_dict['pid'] = iohelper_pid
+                    break
+
+            # Get file open flags containing bypass cache information.
+            with open('/proc/%s/fdinfo/1' % iohelper_pid, 'r') as fdinfo:
+                flags = 0
+                for line in fdinfo.readlines():
+                    if line.startswith('flags:'):
+                        flags = int(line.split()[1], 8)
+                        logging.debug('file open flag is: %o', flags)
+            result_dict['flags'] = flags
+            with open('/proc/%s/cmdline' % iohelper_pid) as cmdinfo:
+                cmdline = cmdinfo.readline()
+                logging.debug(cmdline.split())
+
         session = vm.wait_for_login()
+        result_dict = multiprocessing.Manager().dict()
+        child_process = multiprocessing.Process(target=get_flags, args=(dump_path, result_dict))
+        child_process.start()
+
         # Stop kdump in the guest
         session.cmd("service kdump stop", ignore_all_errors=True)
         # Enable sysRq
@@ -93,29 +126,11 @@ def run(test, params, env):
             pass
         session.close()
 
-        def _get_iohelper_pid():
-            try:
-                return process.run('pgrep -f %s' % dump_path).stdout_text.strip()
-            except Exception:
-                return
-
-        if not utils_misc.wait_for(_get_iohelper_pid, 30, text='Waiting to get pid'):
-            test.error('Cannot get pid by running "pgrep -f %s"' % dump_path)
-
-        iohelper_pid = _get_iohelper_pid()
-        logging.error('%s', iohelper_pid)
-
-        # Get file open flags containing bypass cache information.
-        with open('/proc/%s/fdinfo/1' % iohelper_pid, 'r') as fdinfo:
-            flags = 0
-            for line in fdinfo.readlines():
-                if line.startswith('flags:'):
-                    flags = int(line.split()[1], 8)
-                    logging.debug('file open flag is: %o', flags)
-
-        with open('/proc/%s/cmdline' % iohelper_pid) as cmdinfo:
-            cmdline = cmdinfo.readline()
-            logging.debug(cmdline.split())
+        child_process.join(10)
+        if child_process.is_alive():
+            child_process.kill()
+        flags = result_dict['flags']
+        iohelper_pid = result_dict['pid']
 
         # Kill core dump process to speed up test
         try:

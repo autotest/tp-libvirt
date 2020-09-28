@@ -13,6 +13,7 @@ from virttest import xml_utils
 from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import gluster
+from virttest import utils_split_daemons
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
@@ -455,7 +456,11 @@ def run(test, params, env):
 
     qemu_conf = None
     libvirtd_conf = None
+    libvirtd_conf_dict = {}
     libvirtd_log_path = None
+    conf_type = "libvirtd"
+    if utils_split_daemons.is_modular_daemon():
+        conf_type = "virtqemud"
     libvirtd = utils_libvirtd.Libvirtd()
     try:
         # Config "snapshot_image_format" option in qemu.conf
@@ -466,11 +471,12 @@ def run(test, params, env):
             libvirtd.restart()
 
         if check_json_no_savevm:
-            libvirtd_conf = utils_config.LibvirtdConfig()
-            libvirtd_conf["log_level"] = '1'
-            libvirtd_conf["log_filters"] = '"1:json 3:remote 4:event"'
+            libvirtd_conf_dict["log_level"] = '1'
+            libvirtd_conf_dict["log_filters"] = '"1:json 3:remote 4:event"'
             libvirtd_log_path = os.path.join(data_dir.get_tmp_dir(), "libvirtd.log")
-            libvirtd_conf["log_outputs"] = '"1:file:%s"' % libvirtd_log_path
+            libvirtd_conf_dict["log_outputs"] = '"1:file:%s"' % libvirtd_log_path
+            libvirtd_conf = libvirt.customize_libvirt_config(libvirtd_conf_dict,
+                                                             conf_type,)
             logging.debug("the libvirtd config file content is:\n %s" %
                           libvirtd_conf)
             libvirtd.restart()

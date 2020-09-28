@@ -11,6 +11,7 @@ from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import utils_package
 from virttest import virt_vm
+from virttest.staging import service
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.console import Console
 from virttest.libvirt_xml.devices.graphics import Graphics
@@ -72,7 +73,7 @@ def run(test, params, env):
         # Get pipe node.
         else:
             result = process.run(cmd, timeout=90, ignore_status=True, shell=True)
-            ret, output = result.exit_status, result.stdout_text
+            ret, output = result.exit_status, result.stdout_text.strip()
             if ret:
                 test.fail("Failed to get pipe node")
             else:
@@ -220,6 +221,7 @@ def run(test, params, env):
     start_vm = "yes" == params.get("start_vm", "yes")
     reload_virtlogd = "yes" == params.get("reload_virtlogd", "no")
     restart_libvirtd = "yes" == params.get("restart_libvirtd", "no")
+    stop_libvirtd = "yes" == params.get("stop_libvirtd", "no")
     with_spice = "yes" == params.get("with_spice", "no")
     with_console_log = "yes" == params.get("with_console_log", "no")
 
@@ -236,7 +238,7 @@ def run(test, params, env):
     try:
         if stdio_handler != 'not_set':
             config['stdio_handler'] = "'%s'" % stdio_handler
-        if restart_libvirtd:
+        if restart_libvirtd or stop_libvirtd:
             virtlogd_pid = check_service_status("virtlogd", service_start=True)
             logging.info("virtlogd pid: %s", virtlogd_pid)
             check_service_status("libvirtd", service_start=True)
@@ -254,6 +256,37 @@ def run(test, params, env):
         if not start_vm:
             if reload_virtlogd:
                 reload_and_check_virtlogd()
+            if expected_result == 'virtlogd_restart':
+                # check virtlogd status
+                virtlogd_pid = check_service_status("virtlogd", service_start=True)
+                logging.info("virtlogd PID: %s", virtlogd_pid)
+                # restart virtlogd
+                ret = process.run("systemctl restart virtlogd", ignore_status=True, shell=True)
+                if ret.exit_status:
+                    test.fail("failed to restart virtlogd.")
+                # check virtlogd status
+                new_virtlogd_pid = check_service_status("virtlogd", service_start=False)
+                logging.info("new virtlogd PID: %s", new_virtlogd_pid)
+                if virtlogd_pid == new_virtlogd_pid:
+                    test.fail("virtlogd pid don't change.")
+                cmd = "ps -o ppid,pid,pgid,sid,tpgid,tty,stat,command -C virtlogd"
+                ret = process.run(cmd, ignore_status=True, shell=True)
+                if ret.exit_status:
+                    test.fail("virtlogd don't exist.")
+            if expected_result == 'virtlogd_disabled':
+                # check virtlogd status
+                virtlogd_pid = check_service_status("virtlogd", service_start=True)
+                logging.info("virtlogd PID: %s", virtlogd_pid)
+                # disabled virtlogd
+                service_manager = service.Factory.create_generic_service()
+                service_manager.stop('virtlogd')
+                # check virtlogd status
+                if service_manager.status('virtlogd'):
+                    test.fail("virtlogd status is not inactive.")
+                cmd = "ps -C virtlogd"
+                ret = process.run(cmd, ignore_status=True, shell=True)
+                if not ret.exit_status:
+                    test.fail("virtlogd still exist.")
         else:
             # Stop all VMs if VMs are already started.
             for tmp_vm in env.get_all_vms():
@@ -313,14 +346,26 @@ def run(test, params, env):
             cmd = ("lsof  -w |grep pipe|grep virtlogd|tail -n 1|awk '{print %s}'" % pipe_node_field)
             pipe_node = configure(cmd)
 
-            if restart_libvirtd:
-                libvirtd.restart()
+            if restart_libvirtd or stop_libvirtd:
+                cmd2 = "lsof %s | grep virtlogd | awk '{print $2}'" % guest_log_file
+                if restart_libvirtd:
+                    libvirtd.restart()
+                if stop_libvirtd:
+                    pid_in_log = configure(cmd2)
+                    logging.info("virtlogd pid in guest log: %s" % pid_in_log)
+                    libvirtd.stop()
                 new_virtlogd_pid = check_service_status("virtlogd", service_start=True)
-                logging.info("After libvirtd restart, virtlogd PID: %s", new_virtlogd_pid)
-                new_pipe_node = configure(cmd)
-                logging.info("After libvirtd restart, pipe node: %s", new_pipe_node)
-                if pipe_node != new_pipe_node and new_pipe_node != new_virtlogd_pid:
-                    test.fail("After libvirtd restart, pipe node changed.")
+                logging.info("New virtlogd PID: %s", new_virtlogd_pid)
+                if restart_libvirtd:
+                    new_pipe_node = configure(cmd)
+                    logging.info("After libvirtd restart, pipe node: %s", new_pipe_node)
+                    if pipe_node != new_pipe_node and new_pipe_node != new_virtlogd_pid:
+                        test.fail("After libvirtd restart, pipe node changed.")
+                if stop_libvirtd:
+                    new_pid_in_log = configure(cmd2)
+                    logging.info("After libvirtd stop, new virtlogd pid in guest log: %s" % new_pid_in_log)
+                    if pid_in_log != new_virtlogd_pid or pid_in_log != new_pid_in_log:
+                        test.fail("After libvirtd stop, virtlogd PID changed.")
 
             if with_spice or with_console_log:
                 reload_and_check_virtlogd()

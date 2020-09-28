@@ -292,6 +292,7 @@ def run(test, params, env):
 
             # Step (11)
             # Restart libvirtd and check the autostart pool
+            utils_libvirtd.unmark_storage_autostarted()
             utils_libvirtd.libvirtd_restart()
             option = "--autostart --persistent"
             check_pool_list(pool_name, option)

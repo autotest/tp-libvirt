@@ -12,6 +12,7 @@ from virttest import remote
 from virttest.utils_conn import TLSConnection
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -119,6 +120,8 @@ def run(test, params, env):
     mig_result = None
     remote_session = None
     vm_session = None
+    remove_dict = {}
+    src_libvirt_file = None
 
     # params for migration connection
     params["virsh_migrate_desturi"] = libvirt_vm.complete_uri(
@@ -182,6 +185,10 @@ def run(test, params, env):
         vm_session = vm.wait_for_login(restart_network=True)
         migration_test.ping_vm(vm, params)
 
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
+        src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
+
         # Execute migration process
         vms = [vm]
 
@@ -232,6 +239,9 @@ def run(test, params, env):
             logging.debug("Recover the configurations")
             libvirt.customize_libvirt_config(None, is_recover=True,
                                              config_object=daemon_conf)
+        if src_libvirt_file:
+            src_libvirt_file.restore()
+
         if tls_obj:
             logging.debug("Clean up local objs")
             del tls_obj

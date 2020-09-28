@@ -1,9 +1,8 @@
 import logging
 
-from avocado.utils import process
-
 from virttest import utils_misc
 from virttest.utils_libvirtd import LibvirtdSession
+from virttest.utils_libvirtd import Libvirtd
 
 
 def run(test, params, env):
@@ -47,4 +46,4 @@ def run(test, params, env):
     finally:
         libvirtd.exit()
         # Need to restart libvirtd.socket after starting libvirtd in the foreground
-        process.system("systemctl restart libvirtd.socket", ignore_status=True)
+        Libvirtd("libvirtd.socket").restart()

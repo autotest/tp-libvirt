@@ -1,7 +1,10 @@
 import os
 import re
-import logging
 import time
+import json
+import string
+import logging
+import xml.etree.ElementTree as ET
 from distutils.version import LooseVersion  # pylint: disable=E0611
 
 from avocado.core import exceptions
@@ -20,7 +23,28 @@ RETRY_TIMES = 10
 FEATURE_SUPPORT = {
     'genid': 'virt-v2v-1.40.1-1.el7',
     'libosinfo': 'virt-v2v-1.40.2-2.el7',
-    'virtio_rng': '2.6.26'}
+    'virtio_rng': '2.6.26',
+    'cache_none': 'virt-v2v-1.42.0-4'}
+
+
+def compare_version(compare_version, real_version=None, cmd=None):
+    """
+    Compare version against given version.
+
+    :param compare_version: The minumum version to be compared
+    :param real_version: The real version to compare
+    :param cmd: the command to get the real version
+
+    :return: If the real_version is greater equal than minumum version,
+            return True, others return False
+    """
+    if not real_version:
+        if not cmd:
+            cmd = 'rpm -q virt-v2v|grep virt-v2v'
+        real_version = process.run(cmd, shell=True).stdout_text.strip()
+    if LooseVersion(real_version) >= LooseVersion(compare_version):
+        return True
+    return False
 
 
 class VMChecker(object):
@@ -154,25 +178,6 @@ class VMChecker(object):
             logging.warn("Unspported os type: %s", self.os_type)
         return self.errors
 
-    def compare_version(self, compare_version, real_version=None, cmd=None):
-        """
-        Compare version against given version.
-
-        :param compare_version: The minumum version to be compared
-        :param real_version: The real version to compare
-        :param cmd: the command to get the real version
-
-        :return: If the real_version is greater equal than minumum version,
-                return True, others return False
-        """
-        if not real_version:
-            if not cmd:
-                cmd = 'rpm -q virt-v2v|grep virt-v2v'
-            real_version = process.run(cmd, shell=True).stdout_text.strip()
-        if LooseVersion(real_version) >= LooseVersion(compare_version):
-            return True
-        return False
-
     def get_expect_graphic_type(self):
         """
         The graphic type in VM XML is different for different target.
@@ -196,7 +201,7 @@ class VMChecker(object):
         # Since RHEL7.3(virt-v2v-1.32.1-1.el7), video model will change to
         # QXL for linux VMs
         if self.os_type == 'linux':
-            if self.compare_version(V2V_7_3_VERSION):
+            if compare_version(V2V_7_3_VERSION):
                 video_model = 'qxl'
         # Video model will change to QXL for Windows2008r2 and windows7
         if self.os_version in ['win7', 'win2008r2']:
@@ -317,7 +322,7 @@ class VMChecker(object):
             return
 
         # Checking if the feature is supported
-        if not self.compare_version(FEATURE_SUPPORT['libosinfo']):
+        if not compare_version(FEATURE_SUPPORT['libosinfo']):
             reason = "Unsupported if v2v < %s" % FEATURE_SUPPORT['libosinfo']
             logging.info(
                 'Skip Checking metadata libosinfo parameters: %s' %
@@ -489,6 +494,14 @@ class VMChecker(object):
             err_msg = "Checking boot os info failed"
             self.log_err(err_msg)
 
+        logging.info("Checking cache='none' not existing in VM XML")
+        if self.target == 'libvirt' and compare_version(FEATURE_SUPPORT['cache_none']):
+            root = ET.fromstring(self.vmxml)
+            err_msg = "Checking cache='none' not existing failed"
+            for disk in root.findall("./devices/disk/driver[@cache]"):
+                if disk.get('cache') == 'none':
+                    self.log_err(err_msg)
+
     def check_linux_vm(self):
         """
         Check linux VM after v2v convert.
@@ -530,7 +543,7 @@ class VMChecker(object):
                        "Virtio memory balloon"]
         # Virtio RNG supports from kernel-2.6.26
         # https://wiki.qemu.org/Features/VirtIORNG
-        if self.compare_version(FEATURE_SUPPORT['virtio_rng'], kernel_version):
+        if compare_version(FEATURE_SUPPORT['virtio_rng'], kernel_version):
             virtio_devs.append("Virtio RNG")
         logging.info("Virtio devices checking list: %s", virtio_devs)
         for dev in virtio_devs:
@@ -658,14 +671,8 @@ class VMChecker(object):
                 self.log_err("Not find driver: %s" % driver)
 
         # Check graphic and video type in VM XML
-        if self.compare_version(V2V_7_3_VERSION):
+        if compare_version(V2V_7_3_VERSION):
             self.check_vm_xml()
-
-        # Renew network
-        logging.info("Renew network for windows guest")
-        if not self.checker.get_network_restart():
-            err_msg = "Renew network failed"
-            self.log_err(err_msg)
 
     def check_graphics(self, param):
         """
@@ -722,7 +729,7 @@ class VMChecker(object):
             return
 
         # Checking if the feature is supported
-        if not self.compare_version(FEATURE_SUPPORT['genid']):
+        if not compare_version(FEATURE_SUPPORT['genid']):
             reason = "Unsupported if v2v < %s" % FEATURE_SUPPORT['genid']
             logging.info('Skip Checking genid: %s' % reason)
             return
@@ -771,3 +778,99 @@ class VMChecker(object):
         elif has_genid == 'no':
             if re.search(r'genid', self.vmxml):
                 self.log_err('Unexpected genid in xml')
+
+
+def check_local_output(params):
+    """
+    Check -o local result
+
+    Only do basic checking, '-o libvirt' already does
+    the whole checking process.
+    """
+    logging.info('checking local output')
+
+    os_directory = params.get('os_directory')
+    disk_count = int(params.get('vm_disk_count', 0))
+    vm_name = params.get('main_vm')
+
+    result = True
+    # Checking all disks
+    for i, c in enumerate(string.ascii_lowercase):
+        if i == disk_count:
+            break
+        disk_file_name = "%s-%s" % (vm_name, 'sd%s' % c)
+        disk_file = os.path.join(os_directory, disk_file_name)
+        if not os.path.isfile(disk_file):
+            logging.error('Not found %s' % disk_file)
+            result = False
+
+    # Check xml file
+    xml_file = os.path.join(os_directory, '%s.xml' % vm_name)
+    if not os.path.isfile(xml_file):
+        logging.error('Not found %s' % xml_file)
+        result = False
+    elif compare_version(FEATURE_SUPPORT['cache_none']):
+        # Check 'cache_none' in xml file
+        logging.info("Checking cache='none' not exist in %s" % xml_file)
+        root = ET.parse(xml_file).getroot()
+        for disk in root.findall("./devices/disk/driver[@cache]"):
+            if disk.get('cache') == 'none':
+                result = False
+                break
+
+    return result
+
+
+def check_json_output(params):
+    """
+    Check -o json result
+    """
+    logging.info('checking json output')
+
+    os_directory = params.get('os_directory')
+    disk_count = int(params.get('vm_disk_count', 0))
+    vm_name = params.get('main_vm')
+    json_disk_pattern = params.get('json_disk_pattern')
+
+    result = True
+
+    json_disk_dict = {
+        'GuestName': vm_name,
+        'DiskDeviceName': '',
+        'DiskNo': 0}
+
+    if json_disk_pattern:
+        json_disk_pattern = json_disk_pattern.replace('%{', '{')
+        json_disk_pattern = re.sub(
+            r'%{(.*?)}', r'%%{{\g<1>}}', json_disk_pattern)
+
+    # Checking all disks
+    for i, c in enumerate(string.ascii_lowercase):
+        if i == disk_count:
+            break
+
+        json_disk_dict.update({'DiskDeviceName': 'sd%s' % c})
+        json_disk_dict.update({'DiskNo': '%d' % (i + 1)})
+
+        disk_file_name = "%s-%s" % (vm_name, 'sd%s' % c)
+        if json_disk_pattern:
+            disk_file_name = json_disk_pattern.format(**json_disk_dict)
+        disk_file = os.path.join(os_directory, disk_file_name)
+        if not os.path.isfile(disk_file):
+            logging.error('Not found %s' % disk_file)
+            result = False
+
+    # Check json file
+    json_file = os.path.join(os_directory, '%s.json' % vm_name)
+    if not os.path.isfile(json_file):
+        logging.error('Not found %s' % json_file)
+        result = False
+
+    # Check content of the json file
+    with open(json_file) as fp:
+        vm = json.load(fp)
+        if vm['name'] != vm_name and len(vm['disks']) != disk_count:
+            logging.error('Verify content failed in %s' % json_file)
+            result = False
+
+    return result

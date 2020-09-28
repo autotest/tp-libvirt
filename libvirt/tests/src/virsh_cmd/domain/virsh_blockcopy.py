@@ -13,7 +13,6 @@ from avocado.core import exceptions
 from avocado.utils import path
 
 from virttest import utils_libvirtd
-from virttest import utils_config
 from virttest import virsh
 from virttest import qemu_storage
 from virttest import data_dir
@@ -265,6 +264,9 @@ def run(test, params, env):
     blkdev_n = None
     back_n = 'blockdev-backing-iscsi'
     snapshot_external_disks = []
+    snapshots_take = int(params.get("snapshots_take", '0'))
+    external_disk_only_snapshot = "yes" == params.get("external_disk_only_snapshot", "no")
+
     # Skip/Fail early
     if with_blockdev and not libvirt_version.version_compare(1, 2, 13):
         raise exceptions.TestSkipError("--blockdev option not supported in "
@@ -341,13 +343,11 @@ def run(test, params, env):
                   'debug': True, 'ignore_status': True, 'timeout': timeout}
 
     libvirtd_utl = utils_libvirtd.Libvirtd()
-    libvirtd_conf = utils_config.LibvirtdConfig()
-    libvirtd_conf["log_filters"] = '"3:json 1:libvirt 1:qemu"'
-    libvirtd_log_path = os.path.join(data_dir.get_tmp_dir(), "libvirtd.log")
-    libvirtd_conf["log_outputs"] = '"1:file:%s"' % libvirtd_log_path
-    logging.debug("the libvirtd config file content is:\n %s" %
-                  libvirtd_conf)
-    libvirtd_utl.restart()
+    libvirtd_log_path = os.path.join(data_dir.get_tmp_dir(), "libvirt_daemons.log")
+    libvirtd_conf_dict = {"log_filter": '"3:json 1:libvirt 1:qemu"',
+                          "log_outputs": '"1:file:%s"' % libvirtd_log_path}
+    logging.debug("the libvirtd conf file content is :\n %s" % libvirtd_conf_dict)
+    libvirtd_conf = utl.customize_libvirt_config(libvirtd_conf_dict)
 
     def check_format(dest_path, dest_extension, expect):
         """
@@ -390,84 +390,87 @@ def run(test, params, env):
                 failure_msg += "Hit on bug: %s " % bug_url_
             test.fail(failure_msg)
 
-    def _make_snapshot():
+    def _make_snapshot(snapshot_numbers_take):
         """
         Make external disk snapshot
+
+        :param snapshot_numbers_take: snapshot numbers.
         """
-        snap_xml = snapshot_xml.SnapshotXML()
-        snapshot_name = "blockcopy_snap"
-        snap_xml.snap_name = snapshot_name
-        snap_xml.description = "blockcopy snapshot"
+        for count in range(0, snapshot_numbers_take):
+            snap_xml = snapshot_xml.SnapshotXML()
+            snapshot_name = "blockcopy_snap"
+            snap_xml.snap_name = snapshot_name + "_%s" % count
+            snap_xml.description = "blockcopy snapshot"
 
-        # Add all disks into xml file.
-        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-        disks = vmxml.devices.by_device_tag('disk')
-        # Remove non-storage disk such as 'cdrom'
-        for disk in disks:
-            if disk.device != 'disk':
-                disks.remove(disk)
-        new_disks = []
-        src_disk_xml = disks[0]
-        disk_xml = snap_xml.SnapDiskXML()
-        disk_xml.xmltreefile = src_disk_xml.xmltreefile
-        del disk_xml.device
-        del disk_xml.address
-        disk_xml.snapshot = "external"
-        disk_xml.disk_name = disk_xml.target['dev']
+            # Add all disks into xml file.
+            vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            disks = vmxml.devices.by_device_tag('disk')
+            # Remove non-storage disk such as 'cdrom'
+            for disk in disks:
+                if disk.device != 'disk':
+                    disks.remove(disk)
+            new_disks = []
+            src_disk_xml = disks[0]
+            disk_xml = snap_xml.SnapDiskXML()
+            disk_xml.xmltreefile = src_disk_xml.xmltreefile
+            del disk_xml.device
+            del disk_xml.address
+            disk_xml.snapshot = "external"
+            disk_xml.disk_name = disk_xml.target['dev']
 
-        # Only qcow2 works as external snapshot file format, update it
-        # here
-        driver_attr = disk_xml.driver
-        driver_attr.update({'type': 'qcow2'})
-        disk_xml.driver = driver_attr
+            # Only qcow2 works as external snapshot file format, update it
+            # here
+            driver_attr = disk_xml.driver
+            driver_attr.update({'type': 'qcow2'})
+            disk_xml.driver = driver_attr
 
-        new_attrs = disk_xml.source.attrs
-        if 'file' in disk_xml.source.attrs:
-            new_file = os.path.join(tmp_dir, "blockcopy_shallow.snap")
-            snapshot_external_disks.append(new_file)
-            new_attrs.update({'file': new_file})
-            hosts = None
-        elif ('dev' in disk_xml.source.attrs or
-              'name' in disk_xml.source.attrs or
-              'pool' in disk_xml.source.attrs):
-            if (disk_xml.type_name == 'block' or
-                    disk_source_protocol == 'iscsi'):
-                disk_xml.type_name = 'block'
-                if 'name' in new_attrs:
-                    del new_attrs['name']
-                    del new_attrs['protocol']
-                elif 'pool' in new_attrs:
-                    del new_attrs['pool']
-                    del new_attrs['volume']
-                    del new_attrs['mode']
-                back_path = utl.setup_or_cleanup_iscsi(is_setup=True,
-                                                       is_login=True,
-                                                       image_size="1G",
-                                                       emulated_image=back_n)
-                emulated_iscsi.append(back_n)
-                cmd = "qemu-img create -f qcow2 %s 1G" % back_path
-                process.run(cmd, shell=True)
-                new_attrs.update({'dev': back_path})
+            new_attrs = disk_xml.source.attrs
+            if 'file' in disk_xml.source.attrs:
+                new_file = os.path.join(tmp_dir, "blockcopy_shallow_%s.snap" % count)
+                snapshot_external_disks.append(new_file)
+                new_attrs.update({'file': new_file})
                 hosts = None
+            elif ('dev' in disk_xml.source.attrs or
+                  'name' in disk_xml.source.attrs or
+                  'pool' in disk_xml.source.attrs):
+                if (disk_xml.type_name == 'block' or
+                        disk_source_protocol == 'iscsi'):
+                    disk_xml.type_name = 'block'
+                    if 'name' in new_attrs:
+                        del new_attrs['name']
+                        del new_attrs['protocol']
+                    elif 'pool' in new_attrs:
+                        del new_attrs['pool']
+                        del new_attrs['volume']
+                        del new_attrs['mode']
+                    back_path = utl.setup_or_cleanup_iscsi(is_setup=True,
+                                                           is_login=True,
+                                                           image_size="1G",
+                                                           emulated_image=back_n)
+                    emulated_iscsi.append(back_n)
+                    cmd = "qemu-img create -f qcow2 %s 1G" % back_path
+                    process.run(cmd, shell=True)
+                    new_attrs.update({'dev': back_path})
+                    hosts = None
 
-        new_src_dict = {"attrs": new_attrs}
-        if hosts:
-            new_src_dict.update({"hosts": hosts})
-        disk_xml.source = disk_xml.new_disk_source(**new_src_dict)
+            new_src_dict = {"attrs": new_attrs}
+            if hosts:
+                new_src_dict.update({"hosts": hosts})
+            disk_xml.source = disk_xml.new_disk_source(**new_src_dict)
 
-        new_disks.append(disk_xml)
+            new_disks.append(disk_xml)
 
-        snap_xml.set_disks(new_disks)
-        snapshot_xml_path = snap_xml.xml
-        logging.debug("The snapshot xml is: %s" % snap_xml.xmltreefile)
+            snap_xml.set_disks(new_disks)
+            snapshot_xml_path = snap_xml.xml
+            logging.debug("The snapshot xml is: %s" % snap_xml.xmltreefile)
 
-        options = "--disk-only --xmlfile %s " % snapshot_xml_path
+            options = "--disk-only --xmlfile %s " % snapshot_xml_path
 
-        snapshot_result = virsh.snapshot_create(
-            vm_name, options, debug=True)
+            snapshot_result = virsh.snapshot_create(
+                vm_name, options, debug=True)
 
-        if snapshot_result.exit_status != 0:
-            raise exceptions.TestFail(snapshot_result.stderr)
+            if snapshot_result.exit_status != 0:
+                raise exceptions.TestFail(snapshot_result.stderr)
 
     snap_path = ''
     save_path = ''
@@ -504,8 +507,8 @@ def run(test, params, env):
             utl.set_vm_disk(vm, params, tmp_dir, test)
             new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
-        if with_shallow:
-            _make_snapshot()
+        if with_shallow or external_disk_only_snapshot:
+            _make_snapshot(snapshots_take)
 
         # Prepare transient/persistent vm
         if persistent_vm == "no" and vm.is_persistent():

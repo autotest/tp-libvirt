@@ -11,6 +11,7 @@ from virttest import virt_vm
 from virttest import virsh
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.vm_xml import VMXML
+from virttest.libvirt_xml.vm_xml import VMCPUXML
 from virttest.libvirt_xml.devices.controller import Controller
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices.interface import Interface
@@ -475,8 +476,16 @@ def run(test, params, env):
                 virsh.destroy(vm_name)
         spe_device = False
         if numa:
-            vmcpuxml = vm_xml.xmltreefile.find('/cpu')
-            vmcpuxml.numa_cell = [{'id': '0', 'cpus': '0', 'memory': '1048576'}, {'id': '1', 'cpus': '1', 'memory': '1048576'}]
+            if vm_xml.xmltreefile.find('/cpu'):
+                vmcpuxml = vm_xml.cpu
+                if not vmcpuxml.xmltreefile.find('numa'):
+                    vmcpuxml.xmltreefile.create_by_xpath('numa')
+            else:
+                vmcpuxml = VMCPUXML()
+                vmcpuxml.xml = '<cpu><numa/></cpu>'
+            vmcpuxml.numa_cell = vmcpuxml.dicts_to_cells(
+                [{'id': '0', 'cpus': '0', 'memory': '1048576'},
+                 {'id': '1', 'cpus': '1', 'memory': '1048576'}])
             vm_xml.xmltreefile.write()
         if with_define:
             if addr_str:

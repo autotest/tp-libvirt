@@ -1,13 +1,13 @@
 import logging
 import time
 
-from avocado.utils import process
 
 from virttest.libvirt_xml.devices import interface
 from virttest import virsh
 from virttest.utils_test import libvirt as utlv
 from virttest import libvirt_xml
 from virttest.libvirt_xml import nwfilter_binding
+from virttest import utils_libvirtd
 
 
 def run(test, params, env):
@@ -24,7 +24,6 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     check_cmd = params.get("check_cmd")
     expected_match = params.get("expected_match")
-    cmd_restart = params.get("cmd_restart")
     status_error = "yes" == params.get("status_error")
     filter_name = params.get("filter_name", "clean-traffic")
     wait_time = params.get("wait_time", 1)
@@ -36,6 +35,7 @@ def run(test, params, env):
     param_dict = {}
     logging.debug("wait_time is : %s" % wait_time)
     wait_time = float(wait_time)
+    libvirtd = utils_libvirtd.Libvirtd()
 
     def prepare_env():
         vmxml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -48,7 +48,7 @@ def run(test, params, env):
         new_iface.source = {'network': "default", 'bridge': "virbr0"}
         alias_dict = {'name': "net0"}
         new_iface.alias = alias_dict
-        target_dict = {'dev': "vnet0"}
+        target_dict = {'dev': "tar"}
         new_iface.target = target_dict
         logging.debug("new interface xml is : %s" % new_iface)
         vmxml.add_device(new_iface)
@@ -60,7 +60,7 @@ def run(test, params, env):
         binding = nwfilter_binding.NwfilterBinding()
         binding.owner = binding.new_owner(vm_name, vmxml.uuid)
         binding.mac_address = new_iface.mac_address
-        portdev = "vnet0"
+        portdev = "tar"
         binding.portdev = portdev
         param_dict['name'] = "MAC"
         param_dict['value'] = new_iface.mac_address
@@ -89,18 +89,22 @@ def run(test, params, env):
 
         utlv.check_cmd_output(check_cmd, expected_match, True)
 
-        cmd_res = process.run(cmd_restart, shell=True)
-        if cmd_res.exit_status:
+        if not libvirtd.restart():
             virsh.nwfilter_binding_list(debug=True)
             test.fail("fail to restart libvirtd")
 
         ret = virsh.nwfilter_binding_list(debug=True)
         utlv.check_exit_status(ret, status_error)
 
-        ret = virsh.nwfilter_binding_dumpxml("vnet0", debug=True)
+        ret = virsh.nwfilter_binding_dumpxml("tar", debug=True)
         utlv.check_exit_status(ret, status_error)
 
     finally:
         if vm.is_alive():
             vm.destroy(gracefully=False)
         vmxml_backup.sync()
+        # delete the created binding
+        ret = virsh.nwfilter_binding_list(debug=True)
+        if "tar" in ret.stdout_text:
+            re = virsh.nwfilter_binding_delete("tar", debug=True)
+            utlv.check_exit_status(re, status_error)

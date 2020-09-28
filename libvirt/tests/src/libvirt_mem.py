@@ -352,7 +352,7 @@ def run(test, params, env):
                 cpu_xml.mode = cpu_mode
             if model_fallback:
                 cpu_xml.fallback = model_fallback
-            cpu_xml.numa_cell = cells
+            cpu_xml.numa_cell = cpu_xml.dicts_to_cells(cells)
             vmxml.cpu = cpu_xml
             # Delete memory and currentMemory tag,
             # libvirt will fill it automatically
@@ -444,8 +444,10 @@ def run(test, params, env):
         cpu_arch = cpu_util.get_cpu_arch()
         if cpu_arch == 'power8':
             pg_size = '16384'
+            huge_page_num = 200
         elif cpu_arch == 'power9':
             pg_size = '2048'
+            huge_page_num = 2000
         [x.update({'size': pg_size}) for x in huge_pages]
         setup_hugepages(int(pg_size), shp_num=huge_page_num)
 
@@ -474,6 +476,8 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
         modify_domain_xml()
+        numa_info = utils_misc.NumaInfo()
+        logging.debug(numa_info.get_all_node_meminfo())
 
         # Start the domain any way if attach memory device
         old_mem_total = None

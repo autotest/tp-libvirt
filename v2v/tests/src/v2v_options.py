@@ -597,7 +597,7 @@ def run(test, params, env):
     backup_xml = None
     vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir = ("", "", "")
     try:
-        if version_requried and not utils_v2v.compare_version(
+        if version_requried and not utils_v2v.multiple_versions_compare(
                 version_requried):
             test.cancel("Testing requries version: %s" % version_requried)
 

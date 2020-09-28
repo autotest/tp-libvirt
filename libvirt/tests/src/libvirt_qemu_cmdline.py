@@ -140,8 +140,8 @@ def run(test, params, env):
     virsh_dargs = {'debug': True, 'ignore_status': False}
 
     if 'ppc64le' in platform.machine().lower() and test_feature == 'pv_eoi':
-        if not libvirt_version.version_compare(6, 2, 0):
-            test.cancel('Feature %s is supported since version 6.2.0' % test_feature)
+        if not libvirt_version.version_compare(6, 0, 0):
+            test.cancel('Feature %s is supported since version 6.0.0' % test_feature)
     try:
         # Run test case
         qemu_flags = testcase(test, vmxml, **test_dargs)

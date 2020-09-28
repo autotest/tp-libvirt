@@ -180,7 +180,6 @@ def run(test, params, env):
         Check interface offloads by ethtool output
         """
         offloads = {"csum": "tx-checksumming",
-                    "gso": "generic-segmentation-offload",
                     "tso4": "tcp-segmentation-offload",
                     "tso6": "tx-tcp6-segmentation",
                     "ecn": "tx-tcp-ecn-segmentation",
@@ -248,10 +247,9 @@ def run(test, params, env):
         # 3. Other scenarios, the target dev should be set successfully.
         if test_target:
             if target_dev != iface.target["dev"]:
-                if target_dev.startswith("vnet") or \
-                        (iface_type == "direct" and
-                         (target_dev.startswith("macvtap") or
-                          target_dev.startswith("macvlan"))):
+                if target_dev.startswith("vnet")\
+                        or target_dev.startswith("macvtap")\
+                        or target_dev.startswith("macvlan"):
                     logging.debug("target dev %s is override" % target_dev)
                 else:
                     test.fail("Failed to set target dev to %s", target_dev)
@@ -687,7 +685,7 @@ def run(test, params, env):
                 vmxml.vcpu = int(vcpu_num)
                 cpu_xml = vm_xml.VMCPUXML()
                 cpu_xml.xml = "<cpu><numa/></cpu>"
-                cpu_xml.numa_cell = [numa_cell]
+                cpu_xml.numa_cell = cpu_xml.dicts_to_cells([numa_cell])
                 cpu_xml.mode = cpu_mode
                 if cpu_mode == "custom":
                     vm_capability = capability_xml.CapabilityXML()

@@ -258,7 +258,7 @@ def run(test, params, env):
         # Unplug disk.
         if hotplug_disk:
             result = virsh.detach_device(vm_name, disk_xml.xml,
-                                         ignore_status=True, debug=True)
+                                         ignore_status=True, debug=True, wait_remove_event=True)
             libvirt.check_exit_status(result, status_error)
     finally:
         # Clean up backend storage and TLS

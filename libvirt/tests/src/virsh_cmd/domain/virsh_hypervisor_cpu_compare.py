@@ -37,7 +37,8 @@ def get_cpu_definition(source_type, vm_name, test):
         cpu_xml = dom_xml.xmltreefile.get_element_string('/cpu')
     elif source_type == "domcapa_xml":
         domcapa_xml = domcapability_xml.DomCapabilityXML()
-        cpu_xml = domcapa_xml.xmltreefile.get_element_string('/cpu')
+        cpu_tmp = vm_xml.VMCPUXML.from_domcapabilities(domcapa_xml)
+        cpu_xml = cpu_tmp.xmltreefile.get_element_string('/')
     elif source_type == "capa_xml":
         capa_xml = capability_xml.CapabilityXML()
         cpu_xml = capa_xml.xmltreefile.get_element_string('/host/cpu')
@@ -80,6 +81,7 @@ def run(test, params, env):
     if not vm.is_alive():
         vm.start()
 
+    baseline_provider = params.get("baseline_provider", "libvirt")
     dom_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     backup_xml = dom_xml.copy()
     compare_file = os.path.join(data_dir.get_tmp_dir(), "cpu.xml")
@@ -95,7 +97,7 @@ def run(test, params, env):
         try:
             cpuxml = dom_xml.cpu
             if not action_mode and cpuxml.mode == cpu_mode:
-                return dom_xml.xmltreefile.get_element_string("/")
+                return dom_xml.xmltreefile.get_element_string("/cpu")
             else:
                 del dom_xml["cpu"]
         except LibvirtXMLNotFoundError:
@@ -109,9 +111,12 @@ def run(test, params, env):
             domcapa_output = get_domcapa_output(test)
             with open(domcapa_file, "w+") as tmp_f:
                 tmp_f.write(domcapa_output)
-            ret = virsh.cpu_baseline(domcapa_file)
+            if "hypervisor" in baseline_provider:
+                ret = virsh.hypervisor_cpu_baseline(domcapa_file)
+            else:
+                ret = virsh.cpu_baseline(domcapa_file)
             if ret.exit_status:
-                test.fail("Fail to run virsh cpu-baseline: %s"
+                test.fail("Fail to run virsh (hypervisor-)cpu-baseline: %s"
                           % ret.stderr.strip())
             cpuxml.xml = ret.stdout.strip()
 
@@ -123,7 +128,7 @@ def run(test, params, env):
         vm.start()
         # VM start will change domxml content
         v_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        return v_xml.xmltreefile.get_element_string("/")
+        return v_xml.xmltreefile.get_element_string("/cpu")
 
     def get_options(option_str):
         """

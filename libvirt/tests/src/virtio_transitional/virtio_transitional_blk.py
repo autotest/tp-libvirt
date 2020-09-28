@@ -3,12 +3,12 @@ import re
 import logging
 
 from avocado.utils import download
-from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_misc
 from virttest import libvirt_version
+from virttest import utils_libvirtd
 
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import devices
@@ -197,7 +197,8 @@ def run(test, params, env):
         for i in range(1, 4):
             ret = virsh.snapshot_create_as(vm_name, "sn%s --disk-only" % i)
             libvirt.check_exit_status(ret)
-        process.system("systemctl restart libvirtd")
+        libvirtd_obj = utils_libvirtd.Libvirtd()
+        libvirtd_obj.restart()
         save_path = os.path.join(tmp_dir, "test.save")
         ret = virsh.save(vm_name, save_path)
         libvirt.check_exit_status(ret)

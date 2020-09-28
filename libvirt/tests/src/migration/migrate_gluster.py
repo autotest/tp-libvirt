@@ -12,6 +12,7 @@ from virttest import migration
 
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -83,6 +84,9 @@ def run(test, params, env):
     test_dict = dict(params)
     test_dict["local_boolean_varible"] = "virt_use_fusefs"
     test_dict["remote_boolean_varible"] = "virt_use_fusefs"
+    remote_dargs = {'server_ip': server_ip, 'server_user': server_user,
+                    'server_pwd': server_pwd,
+                    'file_path': "/etc/libvirt/libvirt.conf"}
 
     func_name = None
     remove_pkg = False
@@ -90,6 +94,9 @@ def run(test, params, env):
     seLinuxfusefs = None
     gluster_uri = None
     mig_result = None
+    remove_dict = {}
+    remote_libvirt_file = None
+    src_libvirt_file = None
 
     # Make sure all of parameters are assigned a valid value
     migrate_test = migration.MigrationTest()
@@ -176,6 +183,11 @@ def run(test, params, env):
 
         vm.wait_for_login().close()
         migrate_test.ping_vm(vm, params)
+
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
+        src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
+
         vms = [vm]
         migrate_test.do_migration(vms, None, dest_uri, 'orderly',
                                   options, thread_timeout=900,
@@ -199,6 +211,10 @@ def run(test, params, env):
 
             # Pre migration setup for local machine
             migrate_test.migrate_pre_setup(src_uri, params)
+            remove_dict = {"do_search": ('{"%s": "ssh:/"}' % src_uri)}
+            remote_libvirt_file = libvirt_config\
+                .remove_key_for_modular_daemon(remove_dict, remote_dargs)
+
             cmd = "virsh migrate %s %s %s %s" % (vm_name, options,
                                                  virsh_options, src_uri)
             logging.debug("Start migrating: %s", cmd)
@@ -218,6 +234,11 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
         orig_config_xml.sync()
+
+        if src_libvirt_file:
+            src_libvirt_file.restore()
+        if remote_libvirt_file:
+            del remote_libvirt_file
 
         # Clean up of pre migration setup for local machine
         if migr_vm_back:

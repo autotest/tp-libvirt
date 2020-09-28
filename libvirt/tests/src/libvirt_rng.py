@@ -13,12 +13,11 @@ from avocado.utils import process
 from virttest import virt_vm, virsh
 from virttest import utils_package
 from virttest import utils_misc
+from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.devices import rng
-
-from virttest import libvirt_version
 
 
 def run(test, params, env):
@@ -199,6 +198,7 @@ def run(test, params, env):
         rng_model = dparams.get("rng_model", "virtio")
         rng_rate = dparams.get("rng_rate")
         backend_type = dparams.get("backend_type")
+        backend_model = dparams.get("backend_model")
         backend_source_list = dparams.get("backend_source",
                                           "").split()
         cmd = ("ps -ef | grep %s | grep -v grep" % vm_name)
@@ -213,6 +213,8 @@ def run(test, params, env):
                 src_host = source['host']
                 src_port = source['service']
 
+        if backend_model == "builtin":
+            cmd += (" | grep rng-builtin")
         if chardev and src_host and src_port:
             cmd += (" | grep 'chardev %s,.*host=%s,port=%s'"
                     % (chardev, src_host, src_port))
@@ -287,7 +289,7 @@ def run(test, params, env):
                                        % snapshot_name2, debug=True)
         if ret.exit_status:
             if ret.stderr.count(err_msgs):
-                test.skip(err_msgs)
+                test.cancel(err_msgs)
             else:
                 test.fail("Failed to create external snapshot")
         snap_lists = virsh.snapshot_list(vm_name, debug=True)
@@ -307,7 +309,7 @@ def run(test, params, env):
         """
         check_cmd = "hexdump /dev/hwrng"
         try:
-            status = session.cmd_status(check_cmd, 5)
+            status = session.cmd_status(check_cmd, 3)
 
             if status != 0 and exists:
                 test.fail("Fail to check hexdump in guest")
@@ -426,9 +428,12 @@ def run(test, params, env):
     timeout = int(params.get("timeout", 600))
     wait_timeout = int(params.get("wait_timeout", 60))
 
+    if params.get("backend_model") == "builtin" and not libvirt_version.version_compare(6, 2, 0):
+        test.cancel("Builtin backend is not supported on this libvirt version")
+
     if device_num > 1 and not libvirt_version.version_compare(1, 2, 7):
-        test.skip("Multiple virtio-rng devices not "
-                  "supported on this libvirt version")
+        test.cancel("Multiple virtio-rng devices not "
+                    "supported on this libvirt version")
 
     guest_arch = params.get("vm_arch_name", "x86_64")
 

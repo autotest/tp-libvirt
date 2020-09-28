@@ -15,6 +15,8 @@ from avocado.utils import download
 from aexpect.exceptions import ShellProcessTerminatedError
 
 from provider.v2v_vmcheck_helper import VMChecker
+from provider.v2v_vmcheck_helper import check_json_output
+from provider.v2v_vmcheck_helper import check_local_output
 
 
 def run(test, params, env):
@@ -39,7 +41,8 @@ def run(test, params, env):
     pvt = libvirt.PoolVolumeTest(test, params)
     v2v_timeout = int(params.get('v2v_timeout', 1200))
     v2v_cmd_timeout = int(params.get('v2v_cmd_timeout', 18000))
-    v2v_opts = '-v -x' if params.get('v2v_debug', 'on') == 'on' else ''
+    v2v_opts = '-v -x' if params.get('v2v_debug',
+                                     'on') in ['on', 'force_on'] else ''
     if params.get("v2v_opts"):
         # Add a blank by force
         v2v_opts += ' ' + params.get("v2v_opts")
@@ -58,10 +61,12 @@ def run(test, params, env):
     vddk_thumbprint = params.get('vddk_thumbprint')
     src_uri_type = params.get('src_uri_type')
     esxi_password = params.get('esxi_password')
+    json_disk_pattern = params.get('json_disk_pattern')
     # For construct rhv-upload option in v2v cmd
     output_method = params.get("output_method")
     rhv_upload_opts = params.get("rhv_upload_opts")
     storage_name = params.get('storage_name')
+    os_pool = os_storage = params.get('output_storage', 'default')
     # for get ca.crt file from ovirt engine
     rhv_passwd = params.get("rhv_upload_passwd")
     rhv_passwd_file = params.get("rhv_upload_passwd_file")
@@ -81,6 +86,8 @@ def run(test, params, env):
     # default values for v2v_cmd
     auto_clean = True
     cmd_only = False
+    cmd_has_ip = 'yes' == params.get('cmd_has_ip', 'yes')
+    interaction_run = 'yes' == params.get('interaction_run', 'no')
 
     def log_fail(msg):
         """
@@ -295,21 +302,6 @@ def run(test, params, env):
         vm_pkg_ver = get_pkg_version_vm()
         logging.debug('qemu-guest-agent verion in vm: %s' % vm_pkg_ver)
 
-        # If qemu-guest-agent version in VM is higher than the pkg in qemu-guest-agent-iso,
-        # v2v will not update the qemu-guest-agent version and report a warning.
-        #
-        # e.g.
-        # virt-v2v: warning: failed to install QEMU Guest Agent: command:         package
-        # qemu-guest-agent-10:2.12.0-3.el7.x86_64 (which is newer than
-        # qemu-guest-agent-10:2.12.0-2.el7.x86_64) is already installed
-        if not any([vm_pkg_ver in pkg for pkg in all_pkgs]):
-            logging.debug(
-                'Wrong qemu-guest-agent version, maybe it is higher than package version in ISO')
-            logging.info(
-                'Unexpected qemu-guest-agent version, set v2v log checking')
-            expect_msg_ptn = r'virt-v2v: warning: failed to install QEMU Guest Agent.*?is newer than.*? is already installed'
-            params.update({'msg_content': expect_msg_ptn, 'expect_msg': 'yes'})
-
         # Check the service status of qemu-guest-agent in VM
         status_ptn = r'Active: active \(running\)|qemu-ga \(pid +[0-9]+\) is running'
         cmd = 'service qemu-ga status;systemctl status qemu-guest-agent'
@@ -354,17 +346,6 @@ def run(test, params, env):
         Cleanup global rhv server ca
         """
         process.run('update-ca-trust extract', shell=True)
-
-    def cmd_remove_option(cmd, opt_pattern):
-        """
-        Remove an option from cmd
-
-        :param cmd: the cmd
-        :param opt_pattern: a pattern stands for the option
-        """
-        for item in re.findall(opt_pattern, cmd):
-            cmd = cmd.replace(item, '').strip()
-        return cmd
 
     def find_net(bridge_name):
         """
@@ -412,41 +393,53 @@ def run(test, params, env):
         """
         Check virt-v2v command result
         """
-        libvirt.check_exit_status(result, status_error)
-        output = result.stdout_text + result.stderr_text
-        if checkpoint == 'empty_cdrom':
+        def vm_check(status_error):
+            """
+            Checking the VM
+            """
             if status_error:
-                log_fail('Virsh dumpxml failed for empty cdrom image')
-        elif not status_error:
+                return
+
+            if output_mode == 'json' and not check_json_output(params):
+                test.fail('check json output failed')
+            if output_mode == 'local' and not check_local_output(params):
+                test.fail('check local output failed')
+            if output_mode in ['null', 'json', 'local']:
+                return
+
+            # vmchecker must be put before skip_vm_check in order to clean up
+            # the VM.
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
+            if skip_vm_check == 'yes':
+                logging.info(
+                    'Skip checking vm after conversion: %s' %
+                    skip_reason)
+                return
+
             if output_mode == 'rhev':
                 if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                                     timeout=v2v_timeout):
                     test.fail('Import VM failed')
             elif output_mode == 'libvirt':
                 virsh.start(vm_name, debug=True)
+
             # Check guest following the checkpoint document after convertion
             logging.info('Checking common checkpoints for v2v')
-            if skip_vm_check != 'yes':
-                if checkpoint == 'ogac':
-                    # windows guests will reboot at any time after qemu-ga is
-                    # installed. The process cannot be controled. In order to
-                    # don't break vmchecker.run() process, It's better to put
-                    # check_windows_ogac before vmchecker.run(). Because in
-                    # check_windows_ogac, it waits until rebooting completes.
-                    vmchecker.checker.create_session()
-                    if os_type == 'windows':
-                        check_windows_ogac(vmchecker.checker)
-                    else:
-                        check_linux_ogac(vmchecker.checker)
-                ret = vmchecker.run()
-                if len(ret) == 0:
-                    logging.info("All common checkpoints passed")
-            else:
-                logging.info(
-                    'Skip checking vm after conversion: %s' %
-                    skip_reason)
+            if checkpoint == 'ogac':
+                # windows guests will reboot at any time after qemu-ga is
+                # installed. The process cannot be controled. In order to
+                # don't break vmchecker.run() process, It's better to put
+                # check_windows_ogac before vmchecker.run(). Because in
+                # check_windows_ogac, it waits until rebooting completes.
+                vmchecker.checker.create_session()
+                if os_type == 'windows':
+                    check_windows_ogac(vmchecker.checker)
+                else:
+                    check_linux_ogac(vmchecker.checker)
+            ret = vmchecker.run()
+            if len(ret) == 0:
+                logging.info("All common checkpoints passed")
             # Check specific checkpoints
             if checkpoint == 'cdrom':
                 virsh_session = utils_sasl.VirshSessionSASL(params)
@@ -472,6 +465,17 @@ def run(test, params, env):
                     log_fail("Bridge virbr0 already started during conversion")
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
+
+        utils_v2v.check_exit_status(result, status_error)
+        output = result.stdout_text + result.stderr_text
+        # VM or local output checking
+        vm_check(status_error)
+        # Check log size decrease option
+        if checkpoint == 'log decrease':
+            nbdkit_option = r'nbdkit\.backend\.datapath=0'
+            if not re.search(nbdkit_option, output):
+                test.fail("checkpoint '%s' failed" % checkpoint)
+        # Log checking
         log_check = utils_v2v.check_log(params, output)
         if log_check:
             log_fail(log_check)
@@ -480,7 +484,7 @@ def run(test, params, env):
                       (len(error_list), error_list))
 
     try:
-        if version_requried and not utils_v2v.compare_version(
+        if version_requried and not utils_v2v.multiple_versions_compare(
                 version_requried):
             test.cancel("Testing requries version: %s" % version_requried)
 
@@ -489,7 +493,8 @@ def run(test, params, env):
             'vpx_dc': vpx_dc, 'esx_ip': esx_ip,
             'new_name': vm_name + utils_misc.generate_random_string(4),
             'v2v_opts': v2v_opts, 'input_mode': 'libvirt',
-            'storage': params.get('output_storage', 'default'),
+            'os_storage': os_storage,
+            'os_pool': os_pool,
             'network': params.get('network'),
             'bridge': params.get('bridge'),
             'target': params.get('target'),
@@ -504,8 +509,10 @@ def run(test, params, env):
             'esxi_password': esxi_password,
             'esxi_host': esxi_host,
             'output_method': output_method,
-            'storage_name': storage_name,
+            'os_storage_name': storage_name,
             'rhv_upload_opts': rhv_upload_opts,
+            'oo_json_disk_pattern': json_disk_pattern,
+            'cmd_has_ip': cmd_has_ip,
             'params': params
         }
 
@@ -523,7 +530,7 @@ def run(test, params, env):
         v2v_params['v2v_opts'] += " -ip %s" % vpx_passwd_file
 
         if params.get('output_format'):
-            v2v_params.update({'output_format': params['output_format']})
+            v2v_params.update({'of_format': params['output_format']})
         # Rename guest with special name while converting to rhev
         if '#' in vm_name and output_mode == 'rhev':
             v2v_params['new_name'] = v2v_params['new_name'].replace('#', '_')
@@ -636,7 +643,8 @@ def run(test, params, env):
                     'system_rhv_pem_unset']:
                 cmd_only = True
                 auto_clean = False
-            v2v_result = utils_v2v.v2v_cmd(v2v_params, auto_clean, cmd_only)
+            v2v_result = utils_v2v.v2v_cmd(
+                v2v_params, auto_clean, cmd_only, interaction_run)
         if 'new_name' in v2v_params:
             vm_name = params['main_vm'] = v2v_params['new_name']
 
@@ -644,14 +652,14 @@ def run(test, params, env):
             if checkpoint == 'system_rhv_pem_set':
                 global_pem_setup(local_ca_file_path)
             rhv_cafile = r'-oo rhv-cafile=\S+\s*'
-            new_cmd = cmd_remove_option(v2v_result, rhv_cafile)
+            new_cmd = utils_v2v.cmd_remove_option(v2v_result, rhv_cafile)
             logging.debug('New v2v command:\n%s', new_cmd)
         if checkpoint == 'mismatched_uuid':
             # append more uuid
             new_cmd = v2v_result + ' -oo rhv-disk-uuid=%s' % str(uuid.uuid4())
         if checkpoint == 'no_uuid':
             rhv_disk_uuid = r'-oo rhv-disk-uuid=\S+\s*'
-            new_cmd = cmd_remove_option(v2v_result, rhv_disk_uuid)
+            new_cmd = utils_v2v.cmd_remove_option(v2v_result, rhv_disk_uuid)
             logging.debug('New v2v command:\n%s', new_cmd)
         if checkpoint == 'exist_uuid':
             new_vm_name = v2v_params['new_name'] + '_exist_uuid'

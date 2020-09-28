@@ -68,7 +68,7 @@ def run(test, params, env):
             cpu = vm_xml.VMCPUXML()
         if 'numa_cell' in attrs:
             cpu.xmltreefile.create_by_xpath('/numa')
-            cpu.numa_cell = attrs['numa_cell']
+            attrs['numa_cell'] = cpu.dicts_to_cells(attrs['numa_cell'])
         for key in attrs:
             setattr(cpu, key, attrs[key])
         vmxml.cpu = cpu

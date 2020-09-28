@@ -215,7 +215,7 @@ def run(test, params, env):
                 logging.debug("disk source is:%s", disk['source'])
             elif disk_device_type == "network":
                 if auth_usage:
-                    global secret_uuid
+                    global secret_uuid, iscsi_target, lun_num
                     secret_uuid = create_auth_secret()
                     # Setup iscsi target
                     try:
@@ -263,11 +263,35 @@ def run(test, params, env):
             disk.update({"format": 'lvm',
                          "source": device_source})
         elif disk_format in ["raw", "qcow2", "vhdx", "qed"]:
-            disk_size = params.get("virt_disk_device_size", "1")
-            device_source = libvirt.create_local_disk(
-                "file", path, disk_size, disk_format=disk_format)
-            disk.update({"format": disk_format,
-                         "source": device_source})
+            if network_iscsi_baseimg:
+                if auth_usage:
+                    secret_uuid = create_auth_secret()
+                # Setup iscsi target
+                image_size = params.get("image_size", "2G")
+                try:
+                    iscsi_target, lun_num = libvirt.setup_or_cleanup_iscsi(
+                        is_setup=True, is_login=False, image_size=image_size,
+                        chap_user=chap_user, chap_passwd=chap_passwd)
+                except Exception as iscsi_ex:
+                    logging.debug("Failed to create iscsi lun: %s", str(iscsi_ex))
+                    libvirt.setup_or_cleanup_iscsi(is_setup=False)
+                json_str = ('json:{"driver":"raw", "file":{"lun":"%s",'
+                            '"portal":"127.0.0.1","driver":"iscsi", "transport":"tcp",'
+                            '"target":"%s", "user":"%s", "password-secret":"sec"}}'
+                            % (lun_num, iscsi_target, chap_user))
+                cmd = ("qemu-img create --object secret,data='%s',id=sec,format=raw "
+                       "-f qcow2 -b '%s' -o backing_fmt=raw %s"
+                       % (chap_passwd, json_str, path))
+                ret = process.run(cmd, shell=True)
+                libvirt.check_exit_status(ret)
+                disk.update({"format": disk_format,
+                             "source": path})
+            else:
+                disk_size = params.get("virt_disk_device_size", "1")
+                device_source = libvirt.create_local_disk(
+                    "file", path, disk_size, disk_format=disk_format)
+                disk.update({"format": disk_format,
+                             "source": device_source})
             if file_mount_point_type:
                 for cmd in ("touch %s" % tmp_demo_img, "mount --bind %s %s" % (path, tmp_demo_img)):
                     try:
@@ -907,6 +931,11 @@ def run(test, params, env):
     secret_usage_target = params.get("secret_usage_target")
     secret_usage_type = params.get("secret_usage_type")
 
+    # backing Store parameters
+    network_iscsi_baseimg = "yes" == params.get("network_iscsi_baseimg", "no")
+    bs_device_types = params.get("virt_disk_device_type_bs", "file").split()
+    bs_device_formats = params.get("virt_disk_device_format_bs", "qcow2").split()
+
     # Storage pool and disk related parameters.S
     pool_name = params.get("pool_name", "iscsi_pool")
     pool_type = params.get("pool_type")
@@ -1145,13 +1174,21 @@ def run(test, params, env):
                 source_dict = {dev_attrs: disk_source}
                 if len(startup_policy) > i:
                     source_dict.update({"startupPolicy": startup_policy[i]})
-                if auth_usage or pool_type == "iscsi":
+                if auth_usage and not network_iscsi_baseimg:
+                    auth_dict = {"auth_user": chap_user,
+                                 "secret_type": secret_usage_type,
+                                 "secret_usage": secret_usage_target}
+                    disk_source = disk_xml.new_disk_source(
+                                **disk_source)
+                    disk_auth = disk_xml.new_auth(**auth_dict)
+                    disk_source.auth = disk_auth
+                    disk_xml.source = disk_source
+                elif pool_type == "iscsi":
                     disk_xml.source = disk_xml.new_disk_source(
                         **disk_source)
                 else:
                     disk_xml.source = disk_xml.new_disk_source(
                         **{"attrs": source_dict})
-
             if len(device_bootorder) > i:
                 disk_xml.boot = device_bootorder[i]
 
@@ -1173,6 +1210,8 @@ def run(test, params, env):
                 disk_xml.readonly = "yes" == device_readonly[i]
 
             if disk_transient:
+                if libvirt_version.version_compare(6, 5, 0):
+                    test.cancel("unsupported configuration: transient disks not supported")
                 disk_xml.transient = "yes"
 
             # Add driver options from parameters
@@ -1184,12 +1223,32 @@ def run(test, params, env):
                         driver_dict.update({d[0].strip(): d[1].strip()})
             disk_xml.driver = driver_dict
 
-            # Add iSCSI authentication information.
-            if auth_usage:
-                auth_dict = {"auth_user": chap_user,
-                             "secret_type": secret_usage_type,
-                             "secret_usage": secret_usage_target}
-                disk_xml.auth = disk_xml.new_auth(**auth_dict)
+            def add_backingstore_element_to_disk_xml(disk_xml):
+                """
+                Add backingstore subelement of source element.
+                :param disk_xml: the xml of disk
+                """
+                disk_xml.source = disk_xml.new_disk_source(
+                        **{"attrs": source_dict})
+                bs_source = {"protocol": "iscsi",
+                             "name": "%s/%s" % (iscsi_target, lun_num),
+                             "host": {"name": '127.0.0.1', "port": '3260'}}
+                bs_dict = {"type": bs_device_types[i],
+                           "format": {'type': bs_device_formats[i]}}
+                new_bs = disk_xml.new_backingstore(**bs_dict)
+                new_bs.source = disk_xml.BackingStore().new_source(**bs_source)
+                if auth_usage:
+                    auth_dict = {"auth_user": chap_user,
+                                 "secret_type": secret_usage_type,
+                                 "secret_usage": secret_usage_target}
+                    disk_auth = disk_xml.new_auth(**auth_dict)
+                    new_bs_source = new_bs.source
+                    new_bs_source.auth = disk_auth
+                    new_bs.source = new_bs_source
+                disk_xml.backingstore = new_bs
+
+            if network_iscsi_baseimg:
+                add_backingstore_element_to_disk_xml(disk_xml)
 
             # Add disk address from parameters.
             if len(device_address) > i:
@@ -1825,7 +1884,8 @@ def run(test, params, env):
                 if devices[i] == "cdrom":
                     dt_options = "--config"
                 ret = virsh.detach_disk(vm_name, device_targets[i],
-                                        dt_options, **virsh_dargs)
+                                        dt_options, wait_remove_event=True,
+                                        **virsh_dargs)
                 disk_detach_error = False
                 if len(device_attach_error) > i:
                     disk_detach_error = "yes" == device_attach_error[i]
@@ -1874,7 +1934,7 @@ def run(test, params, env):
                 for counter in range(0, iteration_times):
                     logging.info("Begin to execute attach or detach %d operations", counter)
                     ret = virsh.detach_device(vm_name, disks_xml[0].xml,
-                                              flagstr=attach_option, debug=True)
+                                              flagstr=attach_option, debug=True, wait_remove_event=True)
                     libvirt.check_exit_status(ret)
                     # Sleep 10 seconds to let VM really cleanup devices.
                     time.sleep(10)
@@ -1893,7 +1953,7 @@ def run(test, params, env):
                     if device_attach_error[i] == "yes":
                         continue
                 ret = virsh.detach_device(vm_name, disks_xml[i].xml,
-                                          flagstr=attach_option, **virsh_dargs)
+                                          flagstr=attach_option, wait_remove_event=True, **virsh_dargs)
                 os.remove(disks_xml[i].xml)
                 libvirt.check_exit_status(ret)
 
@@ -1945,8 +2005,9 @@ def run(test, params, env):
                 del img["disk_dev"]
             else:
                 if img["format"] == "scsi":
-                    libvirt.delete_scsi_disk()
-                elif img["format"] == "iscsi":
+                    utils_misc.wait_for(libvirt.delete_scsi_disk,
+                                        120, ignore_errors=True)
+                elif img["format"] == "iscsi" or network_iscsi_baseimg:
                     libvirt.setup_or_cleanup_iscsi(is_setup=False)
                     # Clean up secret
                     if auth_usage and secret_uuid:

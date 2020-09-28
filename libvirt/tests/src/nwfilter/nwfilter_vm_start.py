@@ -13,7 +13,6 @@ from virttest import utils_misc
 from virttest import utils_package
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices import interface
-
 from virttest import libvirt_version
 
 
@@ -60,9 +59,31 @@ def run(test, params, env):
     # backup vm xml
     vmxml_backup = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
-    libvirtd = utils_libvirtd.Libvirtd()
+    libvirtd = utils_libvirtd.Libvirtd("virtqemud")
     device_name = None
+
+    def clean_up_dirty_nwfilter_binding():
+        cmd_result = virsh.nwfilter_binding_list(debug=True)
+        binding_list = cmd_result.stdout_text.strip().splitlines()
+        binding_list = binding_list[2:]
+        result = []
+        # If binding list is not empty.
+        if binding_list:
+            for line in binding_list:
+                # Split on whitespace, assume 1 column
+                linesplit = line.split(None, 1)
+                result.append(linesplit[0])
+        logging.info("nwfilter binding list is: %s", result)
+        for binding_uuid in result:
+            try:
+                virsh.nwfilter_binding_delete(binding_uuid)
+            except Exception as e:
+                logging.error("Exception thrown while undefining nwfilter-binding: %s", str(e))
+                raise
+
     try:
+        # Clean up dirty nwfilter binding if there are.
+        clean_up_dirty_nwfilter_binding()
         rule = params.get("rule")
         if rule:
             # Create new filter xml
@@ -143,7 +164,9 @@ def run(test, params, env):
                           " %s\n%s" % (e, bug_url))
 
         if kill_libvirtd:
-            cmd = "kill -s TERM `pidof libvirtd`"
+            daemon_name = libvirtd.service_name
+            pid = process.run('pidof %s' % daemon_name, shell=True).stdout_text.strip()
+            cmd = "kill -s TERM %s" % pid
             process.run(cmd, shell=True)
             ret = utils_misc.wait_for(lambda: not libvirtd.is_running(),
                                       timeout=30)

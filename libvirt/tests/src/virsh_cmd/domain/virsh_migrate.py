@@ -23,6 +23,7 @@ from virttest import cpu
 from virttest import libvirt_version
 from virttest.qemu_storage import QemuImg
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_config
 from virttest import test_setup
 from virttest.staging import utils_memory
 from virttest.libvirt_xml.xcepts import LibvirtXMLNotFoundError
@@ -623,6 +624,9 @@ def run(test, params, env):
                                                   "no")
     compat_guest_migrate = get_compat_guest_migrate(params)
     compat_mode = "yes" == params.get("compat_mode", "no")
+    remote_dargs = {'server_ip': server_ip, 'server_user': server_user,
+                    'server_pwd': server_pwd,
+                    'file_path': "/etc/libvirt/libvirt.conf"}
 
     # Configurations for cpu compat guest to boot
     if compat_mode:
@@ -794,6 +798,9 @@ def run(test, params, env):
     check_unsafe_result = True
     migrate_setup = None
     mem_xml = None
+    remove_dict = {}
+    remote_libvirt_file = None
+    src_libvirt_file = None
 
     try:
         # Change the disk of the vm to shared disk
@@ -832,7 +839,7 @@ def run(test, params, env):
             vmxml_cpu = vm_xml.VMCPUXML()
             vmxml_cpu.xml = "<cpu><numa/></cpu>"
             logging.debug(vmxml_cpu.numa_cell)
-            vmxml_cpu.numa_cell = numa_dict_list
+            vmxml_cpu.numa_cell = vmxml_cpu.dicts_to_cells(numa_dict_list)
             logging.debug(vmxml_cpu.numa_cell)
             vmxml.cpu = vmxml_cpu
             if enable_numa_pin:
@@ -971,7 +978,7 @@ def run(test, params, env):
             vmxml.vm_name = extra.split()[1].strip()
             del vmxml.uuid
             # Define a new vm on destination for --dname
-            virsh.define(vmxml.xml, uri=dest_uri)
+            virsh.define(vmxml.xml, uri=dest_uri, ignore_status=False)
 
         # Prepare for --xml.
         xml_option = params.get("xml_option", "no")
@@ -1034,6 +1041,9 @@ def run(test, params, env):
             logging.debug("PID for process '%s': %s",
                           remote_viewer_executable, remote_viewer_pid)
 
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
+        src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
         # Case for option '--timeout --timeout-suspend'
         # 1. Start the guest
         # 2. Set migration speed to a small value. Ensure the migration
@@ -1093,10 +1103,9 @@ def run(test, params, env):
             except Exception as info:
                 test.fail(info)
             if obj_migration.RET_MIGRATION:
-                utils_test.check_dest_vm_network(vm, vm.get_address(),
-                                                 server_ip, server_user,
-                                                 server_pwd,
-                                                 shell_prompt=r"[\#\$]\s*$")
+                params.update({'vm_ip': vm_ip,
+                               'vm_pwd': params.get("password")})
+                remote.VMManager(params).check_network()
                 ret_migrate = True
             else:
                 ret_migrate = False
@@ -1136,6 +1145,10 @@ def run(test, params, env):
                 logging.debug("Migrating back to source from %s to %s" %
                               (dest_uri, src_uri))
                 params["connect_uri"] = dest_uri
+                remove_dict = {"do_search": ('{"%s": "ssh:/"}' % src_uri)}
+                remote_libvirt_file = libvirt_config\
+                    .remove_key_for_modular_daemon(remove_dict, remote_dargs)
+
                 if not asynch_migration:
                     ret_migrate = do_migration(delay, vm, src_uri, options,
                                                extra)
@@ -1323,6 +1336,11 @@ def run(test, params, env):
         vm.destroy()
         vm.undefine()
         orig_config_xml.define()
+
+        if src_libvirt_file:
+            src_libvirt_file.restore()
+        if remote_libvirt_file:
+            del remote_libvirt_file
 
         # cleanup xml created during memory hotplug test
         if mem_hotplug:

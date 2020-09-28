@@ -16,7 +16,6 @@ from avocado.utils import cpu as cpuutil
 from avocado.core import exceptions
 
 from virttest import libvirt_vm
-from virttest import utils_test
 from virttest import utils_misc
 from virttest import defaults
 from virttest import data_dir
@@ -34,6 +33,7 @@ from virttest.utils_iptables import Iptables
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_conn import TLSConnection
+from virttest.utils_libvirt import libvirt_config
 from virttest.libvirt_xml.devices.controller import Controller
 
 
@@ -566,7 +566,8 @@ def run(test, params, env):
 
         if use_firewall_cmd:
             firewall_cmd.add_direct_rule(firewall_rule)
-            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
+            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True,
+                                            zone=None)
             cmdRes = re.findall(firewall_rule, direct_rules)
             if len(cmdRes) == 0:
                 test.error("Rule '%s' is not added" % firewall_rule)
@@ -578,7 +579,8 @@ def run(test, params, env):
 
         if use_firewall_cmd:
             firewall_cmd.remove_direct_rule(firewall_rule)
-            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True)
+            direct_rules = firewall_cmd.get(key="all-rules", is_direct=True,
+                                            zone=None)
             cmdRes = re.findall(firewall_rule, direct_rules)
             if len(cmdRes):
                 test.error("Rule '%s' is not removed correctly" % firewall_rule)
@@ -678,6 +680,14 @@ def run(test, params, env):
                 if not libvirt.check_vm_state(vm_name, state="running",
                                               uri=dest_uri):
                     test.fail("Can't get the expected vm state 'running'")
+            elif action == "checkdomstate":
+                ret = remote_virsh_session.domstate(vm_name, debug=True)\
+                    .stdout_text.strip()
+                exp_state = "running" if not pause_vm_before_mig else "paused"
+                if ret != exp_state:
+                    test.fail("The vm state on target host should "
+                              "be '%s', but '%s' found" % (exp_state, ret))
+
             time.sleep(3)
         remote_virsh_session.close_session()
 
@@ -696,7 +706,7 @@ def run(test, params, env):
                   'target_type': target_type,
                   'target_name': target_name}
         channel_xml = libvirt.create_channel_xml(params)
-        virsh.attach_device(domain_opt=vm_name, file_opt=channel_xml.xml,
+        virsh.attach_device(vm_name, channel_xml.xml,
                             flagstr="--config", ignore_status=False)
         logging.debug("New VMXML with channel:\n%s", virsh.dumpxml(vm_name))
 
@@ -913,6 +923,7 @@ def run(test, params, env):
     update_tpm_secret = "yes" == params.get("update_tpm_secret", "no")
     break_network_connection = "yes" == params.get("break_network_connection",
                                                    "no")
+    pause_vm_before_mig = "yes" == params.get("pause_vm_before_migration", "no")
 
     # For pty channel test
     add_channel = "yes" == params.get("add_channel", "no")
@@ -925,6 +936,9 @@ def run(test, params, env):
     cmd_run_in_remote_host_1 = params.get("cmd_run_in_remote_host_1", None)
     cmd_run_in_remote_host_2 = params.get("cmd_run_in_remote_host_2", None)
     cmd_in_vm_after_migration = params.get("cmd_in_vm_after_migration")
+    remote_dargs = {'server_ip': server_ip, 'server_user': server_user,
+                    'server_pwd': server_pwd,
+                    'file_path': "/etc/libvirt/libvirt.conf"}
 
     # For qemu command line checking
     qemu_check = params.get("qemu_check", None)
@@ -968,6 +982,9 @@ def run(test, params, env):
     expConnNum = 0
     tpm_sec_uuid = None
     dest_tmp_sec_uuid = None
+    remove_dict = {}
+    remote_libvirt_file = None
+    src_libvirt_file = None
 
     # Local variables
     vm_name = params.get("migrate_main_vm")
@@ -1237,6 +1254,13 @@ def run(test, params, env):
             control_migrate_speed(int(low_speed))
             if postcopy_options and libvirt_version.version_compare(5, 0, 0):
                 control_migrate_speed(int(low_speed), opts=postcopy_options)
+        if pause_vm_before_mig:
+            suspend_vm(vm)
+
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
+        src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
+
         # Execute migration process
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
@@ -1289,12 +1313,17 @@ def run(test, params, env):
                                                runner_on_target)
 
             # Send message from remote guest to the channel file
-            remote_vm_obj = utils_test.RemoteVMManager(cmd_parms)
-            vm_ip = vm.get_address()
+            remote_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                   server_user, server_pwd,
+                                                   r"[\#\$]\s*$")
+            vm_ip = vm.get_address(session=remote_session, timeout=480)
+            remote_session.close()
             vm_pwd = params.get("password")
-            remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd, timeout=60)
-            cmd_result = remote_vm_obj.run_command(vm_ip, cmd_run_in_remote_guest_1)
-            remote_vm_obj.run_command(vm_ip, cmd_run_in_remote_guest % cmd_result.stdout_text.strip())
+            cmd_parms.update({'vm_ip': vm_ip, 'vm_pwd': vm_pwd})
+            remote_vm_obj = remote.VMManager(cmd_parms)
+            remote_vm_obj.setup_ssh_auth()
+            cmd_result = remote_vm_obj.run_command(cmd_run_in_remote_guest_1)
+            remote_vm_obj.run_command(cmd_run_in_remote_guest % cmd_result.stdout_text.strip())
             logging.debug("Sending message is done")
 
             # Check message on remote host from the channel
@@ -1407,17 +1436,16 @@ def run(test, params, env):
             migration_test.ping_vm(vm, params, dest_uri)
 
             if cmd_in_vm_after_migration:
-                vm_after_mig = utils_test.RemoteVMManager(cmd_parms)
                 remote_session = remote.wait_for_login('ssh', server_ip, '22',
                                                        server_user, server_pwd,
                                                        r"[\#\$]\s*$")
                 vm_ip = vm.get_address(session=remote_session)
                 remote_session.close()
-                vm_after_mig.setup_ssh_auth(vm_ip,
-                                            params.get("password"),
-                                            timeout=60)
-                cmd_result = vm_after_mig.run_command(vm_ip,
-                                                      cmd_in_vm_after_migration)
+
+                cmd_parms.update({'vm_ip': vm_ip, 'vm_pwd': params.get("password")})
+                vm_after_mig = remote.VMManager(cmd_parms)
+                vm_after_mig.setup_ssh_auth()
+                cmd_result = vm_after_mig.run_command(cmd_in_vm_after_migration)
                 logging.debug("cmd_result is %s", cmd_result)
                 if cmd_result.exit_status:
                     test.fail("Failed to run '{}' in vm. Result: {}"
@@ -1446,8 +1474,12 @@ def run(test, params, env):
             src_full_uri = libvirt_vm.complete_uri(
                         params.get("migrate_source_host"))
             migration_test.migrate_pre_setup(src_full_uri, params)
+            remove_dict = {"do_search": ('{"%s": "ssh:/"}' % src_full_uri)}
+            remote_libvirt_file = libvirt_config\
+                .remove_key_for_modular_daemon(remove_dict, remote_dargs)
+
             cmd = "virsh migrate %s %s %s" % (vm_name,
-                                              virsh_opt, src_full_uri)
+                                              options, src_full_uri)
             logging.debug("Start migration: %s", cmd)
             cmd_result = remote.run_remote_cmd(cmd, params, runner_on_target)
             logging.info(cmd_result)
@@ -1477,7 +1509,8 @@ def run(test, params, env):
                 if use_firewall_cmd:
                     logging.debug("cleanup firewall rule via firewall-cmd.")
                     direct_rules = firewall_cmd.get(key="all-rules",
-                                                    is_direct=True)
+                                                    is_direct=True,
+                                                    zone=None)
                     cmdRes = re.findall(firewall_rule, direct_rules)
                     if len(cmdRes):
                         firewall_cmd.remove_direct_rule(firewall_rule)
@@ -1547,6 +1580,10 @@ def run(test, params, env):
                                                      extra_params=params,
                                                      is_recover=True,
                                                      config_object=update_conf)
+            if src_libvirt_file:
+                src_libvirt_file.restore()
+            if remote_libvirt_file:
+                del remote_libvirt_file
 
             logging.info("Remove local NFS image")
             source_file = params.get("source_file")

@@ -296,7 +296,7 @@ def run(test, params, env):
                     session.cmd("echo 1 > /proc/sys/kernel/sysrq")
                     try:
                         # Crash the guest
-                        session.cmd("echo c > /proc/sysrq-trigger", timeout=60)
+                        session.cmd("echo c > /proc/sysrq-trigger", timeout=90)
                     except (ShellTimeoutError, ShellProcessTerminatedError) as details:
                         logging.info(details)
                     session.close()

@@ -1,5 +1,6 @@
 import logging
 import os
+import os.path
 import re
 import base64
 import locale
@@ -12,11 +13,8 @@ from virttest import remote
 from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_disk
-from virttest import libvirt_storage
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
-from virttest.libvirt_xml import vol_xml
-from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml.devices.disk import Disk
 
@@ -28,7 +26,7 @@ def run(test, params, env):
     Test disk encryption option.
 
     1.Prepare test environment,destroy or suspend a VM.
-    2.Prepare pool, volume.
+    2.Prepare test image.
     3.Edit disks xml and start the domain.
     4.Perform test operation.
     5.Recover test environment.
@@ -39,63 +37,18 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     virsh_dargs = {'debug': True, 'ignore_status': True}
 
-    def create_pool(p_name, p_type, p_target):
-        """
-        Define and start a pool.
-
-        :param p_name. Pool name.
-        :param p_type. Pool type.
-        :param p_target. Pool target path.
-        """
-        p_xml = pool_xml.PoolXML(pool_type=p_type)
-        p_xml.name = p_name
-        p_xml.target_path = p_target
-
-        if not os.path.exists(p_target):
-            os.mkdir(p_target)
-        p_xml.xmltreefile.write()
-        ret = virsh.pool_define(p_xml.xml, **virsh_dargs)
-        libvirt.check_exit_status(ret)
-        ret = virsh.pool_build(p_name, **virsh_dargs)
-        libvirt.check_exit_status(ret)
-        ret = virsh.pool_start(p_name, **virsh_dargs)
-        libvirt.check_exit_status(ret)
-
-    def create_vol(p_name, target_encrypt_params, vol_params):
-        """
-        Create volume.
-
-        :param p_name. Pool name.
-        :param target_encrypt_params encrypt parameters in dict.
-        :param vol_params. Volume parameters dict.
-        :return: True if create successfully.
-        """
-        # Clean up dirty volumes if pool has.
-        pv = libvirt_storage.PoolVolume(p_name)
-        vol_name_list = pv.list_volumes()
-        for vol_name in vol_name_list:
-            pv.delete_volume(vol_name)
-
-        volxml = vol_xml.VolXML()
-        v_xml = volxml.new_vol(**vol_params)
-        v_xml.encryption = volxml.new_encryption(**target_encrypt_params)
-        v_xml.xmltreefile.write()
-
-        ret = virsh.vol_create(p_name, v_xml.xml, **virsh_dargs)
-        libvirt.check_exit_status(ret)
-
-    def create_secret(vol_path):
+    def create_secret(image_path):
         """
         Create secret.
 
-        :param vol_path. volume path.
+        :param image_path. Image path.
         :return: secret id if create successfully.
         """
         sec_xml = secret_xml.SecretXML("no", "yes")
-        sec_xml.description = "volume secret"
+        sec_xml.description = "image secret"
 
         sec_xml.usage = 'volume'
-        sec_xml.volume = vol_path
+        sec_xml.volume = image_path
         sec_xml.xmltreefile.write()
 
         ret = virsh.secret_define(sec_xml.xml)
@@ -203,24 +156,18 @@ def run(test, params, env):
     if encryption_in_source and not libvirt_version.version_compare(3, 9, 0):
         test.cancel("Cannot put <encryption> inside disk <source> in "
                     "this libvirt version.")
-    # Pool/Volume options.
-    pool_name = params.get("pool_name")
-    pool_type = params.get("pool_type")
-    pool_target = params.get("pool_target")
-    volume_name = params.get("vol_name")
-    volume_alloc = params.get("vol_alloc")
-    volume_cap_unit = params.get("vol_cap_unit")
-    volume_cap = params.get("vol_cap")
-    volume_target_path = params.get("target_path")
-    volume_target_format = params.get("target_format")
-    volume_target_encypt = params.get("target_encypt", "")
-    volume_target_label = params.get("target_label")
+    # Image options.
+    image_cap = params.get("image_cap")
+    image_target_path = params.get("target_path")
+    image_target_format = params.get("target_format")
+    image_target_encypt = params.get("target_encypt", "")
 
     hotplug = "yes" == params.get("virt_disk_device_hotplug")
     status_error = "yes" == params.get("status_error")
     secret_type = params.get("secret_type", "passphrase")
     secret_password_no_encoded = params.get("secret_password_no_encoded", "redhat")
-    virt_disk_qcow2_format = "yes" == params.get("virt_disk_qcow2_format")
+    extra_parameter_qcow2 = params.get("extra_parameter_qcow2")
+    extra_parameter_raw = params.get("extra_parameter_raw")
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -244,32 +191,20 @@ def run(test, params, env):
         if dirty_secret_list:
             for dirty_secret_uuid in dirty_secret_list:
                 virsh.secret_undefine(dirty_secret_uuid)
-        create_pool(pool_name, pool_type, pool_target)
-        vol_params = {"name": volume_name, "capacity": int(volume_cap),
-                      "allocation": int(volume_alloc), "format":
-                      volume_target_format, "path": volume_target_path,
-                      "label": volume_target_label,
-                      "capacity_unit": volume_cap_unit}
-        vol_encryption_params = {}
-        vol_encryption_params.update({"format": volume_target_encypt})
-        # For any disk format other than qcow2, it need create secret firstly.
-        if not virt_disk_qcow2_format:
-            # create secret.
-            sec_encryption_uuid = create_secret(volume_target_path)
-            sec_uuids.append(sec_encryption_uuid)
-            vol_encryption_params.update({"secret": {"type": secret_type, "uuid": sec_encryption_uuid}})
-        try:
-            # If Libvirt version is lower than 2.5.0
-            # Creating luks encryption volume is not supported,so skip it.
-            create_vol(pool_name, vol_encryption_params, vol_params)
-        except AssertionError as info:
-            err_msgs = ("create: invalid option")
-            if str(info).count(err_msgs):
-                test.error("Creating luks encryption volume "
-                           "is not supported on this libvirt version")
-            else:
-                test.error("Failed to create volume."
-                           "Error: %s" % str(info))
+        image_encryption_params = {}
+        image_encryption_params.update({"format": image_target_encypt})
+        # create secret.
+        sec_encryption_uuid = create_secret(image_target_path)
+        sec_uuids.append(sec_encryption_uuid)
+        image_encryption_params.update({"secret": {"type": secret_type, "uuid": sec_encryption_uuid}})
+        #Prepare test image
+        if image_target_format == "raw":
+            image_target_format_raw = "luks"
+            libvirt.create_local_disk(disk_type="file", extra=extra_parameter_raw,
+                                      path=image_target_path, size=int(image_cap), disk_format=image_target_format_raw)
+        else:
+            libvirt.create_local_disk(disk_type="file", extra=extra_parameter_qcow2,
+                                      path=image_target_path, size=int(image_cap), disk_format=image_target_format)
         # Add disk xml.
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
 
@@ -282,26 +217,18 @@ def run(test, params, env):
         else:
             dev_attrs = "dev"
         disk_source = disk_xml.new_disk_source(
-                **{"attrs": {dev_attrs: volume_target_path}})
-        disk_xml.driver = {"name": "qemu", "type": volume_target_format,
+                **{"attrs": {dev_attrs: image_target_path}})
+        disk_xml.driver = {"name": "qemu", "type": image_target_format,
                            "cache": "none"}
         disk_xml.target = {"dev": device_target, "bus": device_bus}
-        v_xml = vol_xml.VolXML.new_from_vol_dumpxml(volume_name, pool_name)
-        sec_uuids.append(v_xml.encryption.secret["uuid"])
         if not status_error:
-            logging.debug("vol info -- format: %s, type: %s, uuid: %s",
-                          v_xml.encryption.format,
-                          v_xml.encryption.secret["type"],
-                          v_xml.encryption.secret["uuid"])
-            encryption_dict = {"encryption": v_xml.encryption.format,
-                               "secret": {"type": v_xml.encryption.secret["type"],
-                                          "uuid": v_xml.encryption.secret["uuid"]}}
-            if encryption_in_source:
-                disk_source.encryption = disk_xml.new_encryption(
-                        **encryption_dict)
-            if encryption_out_source:
-                disk_xml.encryption = disk_xml.new_encryption(
-                        **encryption_dict)
+            encryption_dict = {"encryption": 'luks',
+                               "secret": {"type": secret_type,
+                                          "uuid": sec_encryption_uuid}}
+        if encryption_in_source:
+            disk_source.encryption = disk_xml.new_encryption(**encryption_dict)
+        if encryption_out_source:
+            disk_xml.encryption = disk_xml.new_encryption(**encryption_dict)
         disk_xml.source = disk_source
         logging.debug("disk xml is:\n%s" % disk_xml)
         if not hotplug:
@@ -332,7 +259,7 @@ def run(test, params, env):
                     if not check_in_vm(vm, device_target, old_parts):
                         test.fail("Check encryption disk in VM failed")
                     result = virsh.detach_device(vm_name, disk_xml.xml,
-                                                 debug=True)
+                                                 debug=True, wait_remove_event=True)
                     libvirt.check_exit_status(result)
                 else:
                     if not check_in_vm(vm, device_target, old_parts):
@@ -363,10 +290,8 @@ def run(test, params, env):
         logging.info("Restoring vm...")
         vmxml_backup.sync()
 
-        # Clean up pool, vol
+        # Clean up image
         for sec_uuid in set(sec_uuids):
             virsh.secret_undefine(sec_uuid, **virsh_dargs)
-            virsh.vol_delete(volume_name, pool_name, **virsh_dargs)
-        if pool_name in virsh.pool_state_dict():
-            virsh.pool_destroy(pool_name, **virsh_dargs)
-            virsh.pool_undefine(pool_name, **virsh_dargs)
+        if os.path.exists(image_target_path):
+            os.remove(image_target_path)

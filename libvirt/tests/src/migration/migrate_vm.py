@@ -46,7 +46,7 @@ from virttest.utils_net import IPv6Manager
 from virttest.utils_net import block_specific_ip_by_time
 from virttest.utils_net import check_listening_port_remote_by_service
 from virttest.utils_test import libvirt
-
+from virttest.utils_libvirt import libvirt_config
 from virttest import libvirt_version
 
 MIGRATE_RET = False
@@ -869,16 +869,23 @@ def check_vm_disk_after_migration(test, vm, params):
     :raise: test.fail if command execution fails
     """
     cmd = "fdisk -l|grep '^Disk /dev'|cut -d: -f1|cut -d' ' -f2"
-    vm_ip = vm.get_address()
-    vm_pwd = params.get("password", "redhat")
+    server_ip = params.get("server_ip")
+    server_user = params.get("server_user")
+    server_pwd = params.get("server_pwd")
+    remote_session = remote.wait_for_login('ssh', server_ip, '22',
+                                           server_user, server_pwd,
+                                           r"[\#\$]\s*$")
+    vm_ip = vm.get_address(session=remote_session, timeout=480)
+    remote_session.close()
     tmp_file = "/tmp/fdisk_test_file"
     mnt_dir = "/tmp/fdisk_test_dir"
     dd_cmd = "dd if=/dev/zero"
     dd_cmd = "%s of=%s/test_file bs=1024 count=512 && sync" % (dd_cmd, mnt_dir)
-    remote_vm_obj = utils_test.RemoteVMManager(params)
-    remote_vm_obj.check_network(vm_ip)
-    remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd, timeout=60)
-    cmdres = remote_vm_obj.run_command(vm_ip, cmd, ignore_status=True)
+    params.update({'vm_ip': vm_ip, 'vm_pwd': params.get("password")})
+    remote_vm_obj = remote.VMManager(params)
+    remote_vm_obj.check_network()
+    remote_vm_obj.setup_ssh_auth()
+    cmdres = remote_vm_obj.run_command(cmd, ignore_status=True)
     if cmdres.exit_status:
         test.fail("Command '%s' result: %s\n" % (cmd, cmdres))
     disks = cmdres.stdout.strip().split("\n")
@@ -896,7 +903,7 @@ def check_vm_disk_after_migration(test, vm, params):
             # create partition and file system
             # mount disk and write file in it
             logging.debug("Execute command on remote VM: %s", cmd)
-            cmdres = remote_vm_obj.run_command(vm_ip, cmd, ignore_status=True)
+            cmdres = remote_vm_obj.run_command(cmd, ignore_status=True)
             if cmdres.exit_status:
                 test.fail("Command '%s' result: %s\n" % (cmd, cmdres))
 
@@ -1146,6 +1153,22 @@ def run(test, params, env):
     """
     Test remote access with TCP, TLS connection
     """
+
+    def get_target_hugepage_num(params):
+        """
+        Get the number of hugepage on target host
+
+        :param params: The parameters used
+        :return: the number of hugepage to be allocated on target host
+        """
+        hugepage_file = params.get("kernel_hp_file", "/proc/sys/vm/nr_hugepages")
+        with open(hugepage_file, 'r') as fp:
+            hugepage_num = int(fp.readline().strip())
+        more_less_hp = int(params.get("remote_target_hugepages", "0"))
+        logging.debug("Number of huge pages on target host to be allocated:%d",
+                      hugepage_num + more_less_hp)
+        return (hugepage_num + more_less_hp)
+
     test_dict = dict(params)
     vm_name = test_dict.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -1211,7 +1234,7 @@ def run(test, params, env):
     mb_enable = "yes" == test_dict.get("mb_enable", "no")
     config_remote_hugepages = "yes" == test_dict.get("config_remote_hugepages",
                                                      "no")
-    remote_tgt_hugepages = test_dict.get("remote_target_hugepages")
+    remote_tgt_hugepages = get_target_hugepage_num(test_dict)
     remote_hugetlbfs_path = test_dict.get("remote_hugetlbfs_path")
     delay = int(params.get("delay_time", 10))
 
@@ -1249,6 +1272,9 @@ def run(test, params, env):
     libvirtd_conf_dict = {"log_level": log_level,
                           "log_filters": log_filters,
                           "log_outputs": '"%s:file:%s"' % (log_level, log_file)}
+    remote_dargs = {'server_ip': server_ip, 'server_user': server_user,
+                    'server_pwd': server_pwd,
+                    'file_path': "/etc/libvirt/libvirt.conf"}
 
     remote_port = test_dict.get("open_remote_listening_port")
 
@@ -1419,6 +1445,9 @@ def run(test, params, env):
     support_precreation = False
     pool_created = False
     remote_virsh_session = None
+    remove_dict = {}
+    remote_libvirt_file = None
+    src_libvirt_file = None
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
                           'ssh_remote_auth': True}
@@ -1750,18 +1779,12 @@ def run(test, params, env):
                 test.fail("Failed to run '%s' on the remote: %s"
                           % (cmd, output))
 
-            libvirtd_conf = config_libvirt(libvirtd_conf_dict)
-
-            if libvirtd_conf:
-                local_path = libvirtd_conf.conf_path
-                remote.scp_to_remote(server_ip, '22', server_user,
-                                     server_pwd, local_path, remote_path,
-                                     limit="", log_filename=None,
-                                     timeout=600, interface=None)
-
-                libvirt.remotely_control_libvirtd(server_ip, server_user,
-                                                  server_pwd, action='restart',
-                                                  status_error='no')
+            server_params = {'server_ip': server_ip,
+                             'server_user': server_user,
+                             'server_pwd': server_pwd}
+            libvirtd_conf = libvirt.customize_libvirt_config(libvirtd_conf_dict,
+                                                             remote_host=True,
+                                                             extra_params=server_params)
 
         # need to remotely stop libvirt service for negative testing
         if stop_libvirtd_remotely:
@@ -1789,7 +1812,7 @@ def run(test, params, env):
         if config_remote_hugepages:
             cmds = ["mkdir -p %s" % remote_hugetlbfs_path,
                     "mount -t hugetlbfs none %s" % remote_hugetlbfs_path,
-                    "sysctl vm.nr_hugepages=%s" % int(remote_tgt_hugepages)]
+                    "sysctl vm.nr_hugepages=%s" % remote_tgt_hugepages]
             for cmd in cmds:
                 status, output = run_remote_cmd(cmd, server_ip, server_user,
                                                 server_pwd)
@@ -2244,6 +2267,10 @@ def run(test, params, env):
                 vm.start()
                 vm.wait_for_login()
 
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
+        src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
+
         if run_migr_back:
             command = "virsh migrate %s %s %s" % (vm_name, virsh_options, uri)
             logging.debug("Start migrating: %s", command)
@@ -2255,7 +2282,7 @@ def run(test, params, env):
             if ctrl_c:
                 if p.pid:
                     logging.info("Send SIGINT signal to cancel migration.")
-                    if utils_misc.safe_kill(p.pid, signal.SIGINT):
+                    if utils_misc.safe_kill(p.pid, signal.SIGKILL):
                         logging.info("Succeed to cancel migration:"
                                      " [%s].", p.pid)
                         time.sleep(delay)
@@ -2401,10 +2428,14 @@ def run(test, params, env):
                                         func=check_migration_disk_port,
                                         func_params=func_dict)
             if migration_test.RET_MIGRATION:
-                utils_test.check_dest_vm_network(vm, vm.get_address(),
+                remote_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                       server_user, server_pwd,
+                                                       r"[\#\$]\s*$")
+                utils_test.check_dest_vm_network(vm, vm.get_address(session=remote_session),
                                                  server_ip, server_user,
                                                  server_pwd,
                                                  shell_prompt=r"[\#\$]\s*$")
+                remote_session.close()
             else:
                 check_output(test, str(migration_test.ret), test_dict)
                 test.fail("The migration with disks port failed")
@@ -2599,16 +2630,18 @@ def run(test, params, env):
 
         run_cmd_in_vm = test_dict.get("run_cmd_in_vm_after_migration")
         if run_cmd_in_vm:
-            vm_ip = vm.get_address()
+            remote_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                   server_user, server_pwd,
+                                                   r"[\#\$]\s*$")
+            vm_ip = vm.get_address(session=remote_session, timeout=480)
+            remote_session.close()
             vm_pwd = test_dict.get("password")
             logging.debug("The VM IP: <%s> password: <%s>", vm_ip, vm_pwd)
             logging.info("Execute command <%s> in the VM after migration",
                          run_cmd_in_vm)
-
-            remote_vm_obj = utils_test.RemoteVMManager(test_dict)
-            remote_vm_obj.check_network(vm_ip)
-#            remote_vm_obj.setup_ssh_auth(vm_ip, vm_pwd, timeout=60)
-#            remote_vm_obj.run_command(vm_ip, run_cmd_in_vm)
+            test_dict.update({'vm_ip': vm_ip, 'vm_pwd': vm_pwd})
+            remote_vm_obj = remote.VMManager(test_dict)
+            remote_vm_obj.check_network()
 
         cmd = test_dict.get("check_disk_size_cmd")
         if (virsh_options.find("copy-storage-all") >= 0 and
@@ -2673,6 +2706,12 @@ def run(test, params, env):
             check_iothread_after_migration(test, vm_name, remote_virsh_dargs, driver_iothread)
 
         grep_str_local = test_dict.get("grep_str_from_local_libvirt_log")
+        if grep_str_local == "migrate_set_downtime":
+            if not libvirt_version.version_compare(6, 5, 0):
+                grep_str_local = "migrate_set_downtime.*%s" % max_down_time
+            else:
+                grep_str_local = "migrate-set-parameters.*downtime-limit\":%s" % max_down_time
+
         if config_libvirtd == "yes" and grep_str_local:
             cmd = "grep -E '%s' %s" % (grep_str_local, log_file)
             logging.debug("Execute command %s: %s", cmd, process.run(cmd, shell=True).stdout_text)
@@ -2729,6 +2768,9 @@ def run(test, params, env):
         if migr_vm_back:
             # Pre migration setup for local machine
             migrate_setup.migrate_pre_setup(src_uri, params)
+            remove_dict = {"do_search": ('{"%s": "ssh:/"}' % src_uri)}
+            remote_libvirt_file = libvirt_config\
+                .remove_key_for_modular_daemon(remove_dict, remote_dargs)
             cmd = "virsh migrate %s %s %s" % (vm_name,
                                               virsh_options, src_uri)
             logging.debug("Start migrating: %s", cmd)
@@ -2748,7 +2790,10 @@ def run(test, params, env):
 
         logging.debug("Removing vm on remote if it exists.")
         virsh.remove_domain(vm.name, uri=uri)
-
+        if src_libvirt_file:
+            src_libvirt_file.restore()
+        if remote_libvirt_file:
+            del remote_libvirt_file
         # Clean up of pre migration setup for local machine
         if migr_vm_back:
             migrate_setup.migrate_pre_setup(src_uri, params,
@@ -2787,17 +2832,15 @@ def run(test, params, env):
 
         # Restore libvirtd conf and restart libvirtd
         if libvirtd_conf:
-            libvirtd_conf.restore()
-            libvirtd = utils_libvirtd.Libvirtd()
-            libvirtd.restart()
-            local_path = libvirtd_conf.conf_path
-            remote.scp_to_remote(server_ip, '22', server_user, server_pwd,
-                                 local_path, remote_path, limit="",
-                                 log_filename=None, timeout=600, interface=None)
-
-            libvirt.remotely_control_libvirtd(server_ip, server_user,
-                                              server_pwd, action='restart',
-                                              status_error='no')
+            logging.debug("Recover the configurations")
+            server_params = {'server_ip': server_ip,
+                             'server_user': server_user,
+                             'server_pwd': server_pwd}
+            libvirt.customize_libvirt_config(None,
+                                             remote_host=True,
+                                             extra_params=server_params,
+                                             is_recover=True,
+                                             config_object=libvirtd_conf)
 
         if deluser_cmd:
             process.run(deluser_cmd, ignore_status=True, shell=True)

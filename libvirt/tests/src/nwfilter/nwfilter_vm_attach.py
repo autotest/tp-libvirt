@@ -42,8 +42,7 @@ def run(test, params, env):
 
     # backup vm xml
     vmxml_backup = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    libvirtd = utils_libvirtd.Libvirtd()
-
+    daemon_serv = utils_libvirtd.Libvirtd("virtqemud")
     try:
         # Prepare interface xml for attach
         new_iface = interface.Interface(type_name=iface_type)
@@ -68,8 +67,8 @@ def run(test, params, env):
                                       ignore_status=True)
             utlv.check_exit_status(ret, status_error)
 
-        if not libvirtd.is_running():
-            test.fail("libvirtd not running after attach "
+        if not daemon_serv.is_running():
+            test.fail("daemon not running after attach "
                       "interface.")
 
         # Check iptables or ebtables on host
@@ -90,7 +89,7 @@ def run(test, params, env):
 
     finally:
         if attach_twice_invalid:
-            libvirtd.restart()
+            daemon_serv.restart()
         # Clean env
         if vm.is_alive():
             vm.destroy(gracefully=False)

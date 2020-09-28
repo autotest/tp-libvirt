@@ -5,8 +5,10 @@ import platform
 
 from avocado.utils import process
 
+from virttest import libvirt_version
 from virttest import virsh
 from virttest import utils_hotplug
+from virttest import utils_package
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import memory
 from virttest.utils_test import libvirt
@@ -20,7 +22,10 @@ def run(test, params, env):
 
     nvdimm_file = params.get('nvdimm_file')
     check = params.get('check', '')
+    status_error = "yes" == params.get('status_error', 'no')
+    error_msg = params.get('error_msg', '')
     qemu_checks = params.get('qemu_checks', '').split('`')
+    wait_sec = int(params.get('wait_sec', 5))
     test_str = 'This is a test'
 
     def check_boot_config(session):
@@ -66,6 +71,9 @@ def run(test, params, env):
         logging.debug(cpu_params)
         cpu_xml = vm_xml.VMCPUXML()
         cpu_xml.xml = "<cpu><numa/></cpu>"
+        if 'cpuxml_numa_cell' in cpu_params:
+            cpu_params['cpuxml_numa_cell'] = cpu_xml.dicts_to_cells(
+                eval(cpu_params['cpuxml_numa_cell']))
         for attr_key in cpu_params:
             val = cpu_params[attr_key]
             logging.debug('Set cpu params')
@@ -83,10 +91,12 @@ def run(test, params, env):
             mem_addr={'slot': mem_param['address_slot']},
             tg_sizeunit=mem_param['target_size_unit'],
             tg_node=mem_param['target_node'],
+            mem_discard=mem_param.get('discard'),
             mem_model="nvdimm",
             lb_size=mem_param.get('label_size'),
             lb_sizeunit=mem_param.get('label_size_unit'),
-            mem_access=mem_param['mem_access']
+            mem_access=mem_param['mem_access'],
+            uuid=mem_param.get('uuid')
         )
 
         source_xml = memory.Memory.Source()
@@ -108,6 +118,12 @@ def run(test, params, env):
 
     bkxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
+    IS_PPC_TEST = 'ppc64le' in platform.machine().lower()
+    if IS_PPC_TEST:
+        if not libvirt_version.version_compare(6, 2, 0):
+            test.cancel('Libvirt version should be > 6.2.0'
+                        ' to support nvdimm on pseries')
+
     try:
         vm = env.get_vm(vm_name)
         # Create nvdimm file on the host
@@ -126,27 +142,56 @@ def run(test, params, env):
             attr = key.replace('setvm_', '')
             logging.debug('Set %s = %s', attr, value)
             setattr(vmxml, attr, int(value) if value.isdigit() else value)
-        logging.debug(virsh.dumpxml(vm_name))
+        logging.debug(virsh.dumpxml(vm_name).stdout_text)
 
         # Add an nvdimm mem device to vm xml
         nvdimm_params = {k.replace('nvdimmxml_', ''): v
                          for k, v in params.items() if k.startswith('nvdimmxml_')}
         nvdimm_xml = create_nvdimm_xml(**nvdimm_params)
         vmxml.add_device(nvdimm_xml)
+        if check in ['ppc_no_label', 'discard']:
+            result = virsh.define(vmxml.xml, debug=True)
+            libvirt.check_result(result, expected_fails=[error_msg])
+            return
         vmxml.sync()
-        logging.debug(virsh.dumpxml(vm_name))
+        logging.debug(virsh.dumpxml(vm_name).stdout_text)
+
+        if IS_PPC_TEST:
+            # Check whether uuid is automatically created
+            new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            if not new_xml.xml.find('/devices/memory/uuid'):
+                test.fail('uuid should be generated automatically.')
+            vm_nvdimm_xml = new_xml.get_devices('memory')[0]
+            qemu_checks.append('uuid=%s' % vm_nvdimm_xml.uuid)
+
+            # Check memory target size
+            target_size = vm_nvdimm_xml.target.size
+            logging.debug('Target size: %s', target_size)
+
+            if check == 'less_than_256':
+                result = virsh.start(vm_name, debug=True)
+                libvirt.check_exit_status(result, status_error)
+                libvirt.check_result(result, error_msg)
+                return
 
         virsh.start(vm_name, debug=True, ignore_status=False)
 
         # Check qemu command line one by one
-        map(libvirt.check_qemu_cmd_line, qemu_checks)
+        list(map(libvirt.check_qemu_cmd_line, qemu_checks))
 
         alive_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
 
         # Check if the guest support NVDIMM:
         # check /boot/config-$KVER file
         vm_session = vm.wait_for_login()
-        check_boot_config(vm_session)
+        if not IS_PPC_TEST:
+            check_boot_config(vm_session)
+
+        # ppc test requires ndctl
+        if IS_PPC_TEST:
+            utils_package.package_install('ndctl', session=vm_session)
+            logging.debug(vm_session.cmd_output(
+                'ndctl create-namespace --mode=fsdax --region=region0'))
 
         # check /dev/pmem0 existed inside guest
         check_file_in_vm(vm_session, '/dev/pmem0')
@@ -282,7 +327,12 @@ def run(test, params, env):
                 test.fail('Number of memory devices after attach is %d, should be %d'
                           % (len(devices_after_attach), len(ori_devices) + 1))
 
-            time.sleep(5)
+            # Create namespace for ppc tests
+            if IS_PPC_TEST:
+                logging.debug(vm_session.cmd_output(
+                    'ndctl create-namespace --mode=fsdax --region=region1'))
+
+            time.sleep(wait_sec)
             check_file_in_vm(vm_session, '/dev/pmem1')
 
             nvdimm_detach = alive_vmxml.get_devices('memory')[-1]
@@ -295,7 +345,7 @@ def run(test, params, env):
             vm_session.close()
             vm_session = vm.wait_for_login()
 
-            virsh.dumpxml(vm_name, debug=True)
+            logging.debug(virsh.dumpxml(vm_name).stdout_text)
 
             left_devices = vm_xml.VMXML.new_from_dumpxml(vm_name).get_devices('memory')
             logging.debug(left_devices)
@@ -311,3 +361,5 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
         bkxml.sync()
         os.remove(nvdimm_file)
+        if 'nvdimm_file_2' in locals():
+            os.remove(nvdimm_file_2)

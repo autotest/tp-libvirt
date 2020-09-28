@@ -191,8 +191,7 @@ def run(test, params, env):
             # Restart libvirtd and check pool status
             logging.info("Try to restart libvirtd")
             # Remove the autostart management file
-            cmd = ("rm -rf /var/run/libvirt/storage/autostarted")
-            process.run(cmd, ignore_status=True, shell=True)
+            utils_libvirtd.unmark_storage_autostarted()
             libvirtd = utils_libvirtd.Libvirtd()
             libvirtd.restart()
             check_pool(pool_name, pool_type, checkpoint="State",

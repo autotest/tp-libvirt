@@ -88,6 +88,7 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     pci_addr = params.get("pci")
     check_mac = "yes" == params.get("check_mac", "no")
+    vnet_mac = params.get("vnet_mac", None)
 
     # stree_test require detach operation
     stress_test_detach_device = False
@@ -151,7 +152,10 @@ def run(test, params, env):
                                               debug=True)
                 elif attach_iface:
                     logging.info("Try to attach interface loop %s" % i)
-                    mac = utils_net.generate_mac_address_simple()
+                    if iface_mac:
+                        mac = iface_mac
+                    else:
+                        mac = utils_net.generate_mac_address_simple()
                     options = ("%s %s --model %s --mac %s %s" %
                                (iface_type, iface_source['network'],
                                 iface_model, mac, attach_option))
@@ -310,7 +314,16 @@ def run(test, params, env):
                         else:
                             test.fail("should find interface "
                                       "but no seen in next state in vm")
-
+                    if vnet_mac:
+                        # get the name of the backend tap device
+                        iface_params = vm_xml.VMXML.get_iface_by_mac(vm_name, mac)
+                        target_name = iface_params['target']['dev']
+                        # check the tap device mac on host
+                        tap_info = process.run("ip l show %s" % target_name, shell=True, ignore_status=True).stdout_text
+                        logging.debug("vnet_mac should be %s" % vnet_mac)
+                        logging.debug("check on host for the details of tap device %s: %s" % (target_name, tap_info))
+                        if vnet_mac not in tap_info:
+                            test.fail("The mac address of the tap device do not match!")
             # Detach hot/cold-plugged interface at last
             if detach_device:
                 logging.debug("detach interface here:")
