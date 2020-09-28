@@ -30,9 +30,23 @@ def run(test, params, env):
         gdb.send_signal(signal_name)
         gdb.cont()
 
+    def get_service(send_signal_at):
+        """
+        Get the name of the service
+
+        :param send_signal_at: The function to set breakpoint
+        :return: Service name
+        """
+        return {
+            'netcfStateInitialize': 'virtinterfaced',
+            'networkStateInitialize': 'virtnetworkd',
+            'nwfilterStateInitialize': 'virtnwfilterd'
+        }.get(send_signal_at)
+
+    serv_name = get_service(send_signal_at)
     bundle = {'recieved': False}
 
-    libvirtd = LibvirtdSession(gdb=True)
+    libvirtd = LibvirtdSession(service_name=serv_name, gdb=True)
     try:
         libvirtd.set_callback('break', _break_callback)
         libvirtd.set_callback('signal', _signal_callback, bundle)
