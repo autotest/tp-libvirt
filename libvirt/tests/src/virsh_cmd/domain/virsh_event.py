@@ -20,6 +20,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices.interface import Interface
 from virttest.libvirt_xml.devices.panic import Panic
+from virttest.libvirt_xml.devices.watchdog import Watchdog
 
 from xml.dom.minidom import parseString
 
@@ -181,7 +182,8 @@ def run(test, params, env):
             for event in events_list:
                 logging.debug("Current event is: %s", event)
                 if event in ['start', 'restore', 'create', 'edit', 'define',
-                             'undefine', 'crash', 'device-removal-failed']:
+                             'undefine', 'crash', 'device-removal-failed',
+                             'watchdog']:
                     if dom.is_alive():
                         dom.destroy()
                         if event in ['create', 'define']:
@@ -445,6 +447,31 @@ def run(test, params, env):
                     vmxml_live = vm_xml.VMXML.new_from_dumpxml(dom.name)
                     logging.debug("Current vmxml after hot-unplug dimm is %s\n" % vmxml_live)
                     expected_events_list.append("'device-removal-failed' for %s: dimm0")
+                elif event == "watchdog":
+                    vmxml.remove_all_device_by_type('watchdog')
+                    watchdog_dev = Watchdog()
+                    watchdog_dev.model_type = params.get("watchdog_model")
+                    action = params.get("action")
+                    watchdog_dev.action = action
+                    vmxml.add_device(watchdog_dev)
+                    vmxml.sync()
+                    logging.debug("Current vmxml with watchdog dev is %s\n" % vmxml)
+                    virsh.start(dom.name, **virsh_dargs)
+                    session = dom.wait_for_login()
+                    try:
+                        session.cmd("echo 0 > /dev/watchdog")
+                    except (ShellTimeoutError, ShellProcessTerminatedError) as details:
+                        test.fail("Failed to trigger watchdog: %s" % details)
+                    session.close()
+                    # watchdog acts slowly, waiting for it.
+                    time.sleep(30)
+                    expected_events_list.append("'watchdog' for %s: " + "%s" % action)
+                    if action == 'pause':
+                        expected_events_list.append("'lifecycle' for %s: Suspended Watchdog")
+                        virsh.resume(dom.name, **virsh_dargs)
+                    else:
+                        # action == 'reset'
+                        expected_events_list.append("'reboot' for %s")
                 else:
                     test.error("Unsupported event: %s" % event)
                 # Event may not received immediately
