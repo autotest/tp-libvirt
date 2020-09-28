@@ -15,6 +15,7 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import remote
 from virttest import utils_misc
+from virttest import utils_hotplug
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices.interface import Interface
@@ -112,6 +113,7 @@ def run(test, params, env):
     def wait_for_shutoff(vm):
         """
         Wait for the vm to reach state shutoff
+
         :param vm: VM instance
         """
 
@@ -121,6 +123,47 @@ def run(test, params, env):
             return "shut off" in state
         utils_misc.wait_for(is_shutoff, timeout=90, first=1,
                             step=1, text="Waiting for vm state to be shut off")
+
+    def prepare_vmxml_mem(vmxml):
+        """
+        Prepare memory and numa settings in vmxml before hotplug dimm
+
+        param vmxml: guest current xml
+        """
+        # Prepare memory settings
+        vmxml.max_mem_rt = int(params.get("max_mem"))
+        vmxml.max_mem_rt_slots = int(params.get("maxmem_slots"))
+        mem_unit = params.get("mem_unit")
+        vmxml.max_mem_rt_unit = mem_unit
+        current_mem = int(params.get("current_mem"))
+        vmxml.current_mem = current_mem
+        vmxml.current_mem_unit = mem_unit
+        vmxml.memory = int(params.get("memory"))
+        vmxml.sync()
+        # Prepare numa settings in <cpu>
+        host_numa_node = utils_misc.NumaInfo()
+        host_numa_node_list = host_numa_node.online_nodes
+        numa_nodes = len(host_numa_node_list)
+        if numa_nodes == 0:
+            test.cancel("No host numa node available")
+        numa_dict = {}
+        numa_dict_list = []
+        cpu_idx = 0
+        for each_node in host_numa_node_list:
+            numa_dict['id'] = str(each_node)
+            numa_dict['memory'] = str(current_mem // numa_nodes)
+            numa_dict['unit'] = mem_unit
+            numa_dict['cpus'] = "%s-%s" % (str(cpu_idx), str(cpu_idx + 1))
+            cpu_idx += 2
+            numa_dict_list.append(numa_dict)
+            numa_dict = {}
+        vmxml.vcpu = numa_nodes * 2
+        vmxml_cpu = vm_xml.VMCPUXML()
+        vmxml_cpu.xml = "<cpu><numa/></cpu>"
+        vmxml_cpu.numa_cell = numa_dict_list
+        logging.debug(vmxml_cpu.numa_cell)
+        vmxml.cpu = vmxml_cpu
+        vmxml.sync()
 
     def trigger_events(dom, events_list=[]):
         """
@@ -137,7 +180,8 @@ def run(test, params, env):
         try:
             for event in events_list:
                 logging.debug("Current event is: %s", event)
-                if event in ['start', 'restore', 'create', 'edit', 'define', 'undefine', 'crash']:
+                if event in ['start', 'restore', 'create', 'edit', 'define',
+                             'undefine', 'crash', 'device-removal-failed']:
                     if dom.is_alive():
                         dom.destroy()
                         if event in ['create', 'define']:
@@ -384,6 +428,23 @@ def run(test, params, env):
                                    **virsh_dargs)
                     expected_events_list.append("'metadata-change' for %s: "
                                                 "element http://app.org/")
+                elif event == "detach-dimm":
+                    prepare_vmxml_mem(vmxml)
+                    tg_size = params.get("dimm_size")
+                    tg_sizeunit = params.get("dimm_unit")
+                    dimm_xml = utils_hotplug.create_mem_xml(tg_size, None, None, tg_sizeunit)
+                    virsh.attach_device(dom.name, dimm_xml.xml,
+                                        flagstr="--config", **virsh_dargs)
+                    vmxml_dimm = vm_xml.VMXML.new_from_dumpxml(dom.name)
+                    logging.debug("Current vmxml with plugged dimm dev is %s\n" % vmxml_dimm)
+                    virsh.start(dom.name, **virsh_dargs)
+                    dom.wait_for_login().close()
+                    result = virsh.detach_device(dom.name, dimm_xml.xml, debug=True, ignore_status=True)
+                    expected_fails = params.get("expected_fails")
+                    utlv.check_result(result, expected_fails)
+                    vmxml_live = vm_xml.VMXML.new_from_dumpxml(dom.name)
+                    logging.debug("Current vmxml after hot-unplug dimm is %s\n" % vmxml_live)
+                    expected_events_list.append("'device-removal-failed' for %s: dimm0")
                 else:
                     test.error("Unsupported event: %s" % event)
                 # Event may not received immediately
