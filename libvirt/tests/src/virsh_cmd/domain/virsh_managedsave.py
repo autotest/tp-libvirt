@@ -326,6 +326,8 @@ def run(test, params, env):
     pre_vm_state = params.get("pre_vm_state", "")
     move_saved_file = "yes" == params.get("move_saved_file", "no")
     test_loop_cmd = "yes" == params.get("test_loop_cmd", "no")
+    remove_test = 'yes' == params.get('remove_test', 'no')
+    case = params.get('case', '')
     if option:
         if not virsh.has_command_help_match('managedsave', option):
             # Older libvirt does not have this option
@@ -447,6 +449,10 @@ def run(test, params, env):
 
             if check_flags:
                 check_guest_flags(bash_cmd, flags)
+        elif remove_test:
+            if case == 'not_saved_with_file':
+                process.run('touch %s' % managed_save_file, shell=True, verbose=True)
+            vm_msave_remove_check(vm_name)
 
         else:
             # Ensure VM is running
