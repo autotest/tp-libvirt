@@ -238,9 +238,10 @@ def run(test, params, env):
         """
         Check managed save remove command.
         """
-        if not os.path.exists(managed_save_file):
+        if not os.path.exists(managed_save_file) and case not in ['not_saved_without_file', 'saved_without_file']:
             test.fail("Can't find managed save image")
-        virsh.managedsave_remove(vm_name, debug=True)
+        ret = virsh.managedsave_remove(vm_name, debug=True)
+        libvirt.check_exit_status(ret, msave_rm_error)
         if os.path.exists(managed_save_file):
             test.fail("Managed save image still exists")
         virsh.start(vm_name, debug=True)
@@ -328,6 +329,7 @@ def run(test, params, env):
     test_loop_cmd = "yes" == params.get("test_loop_cmd", "no")
     remove_test = 'yes' == params.get('remove_test', 'no')
     case = params.get('case', '')
+    msave_rm_error = "yes" == params.get("msave_rm_error", "no")
     if option:
         if not virsh.has_command_help_match('managedsave', option):
             # Older libvirt does not have this option
@@ -465,6 +467,8 @@ def run(test, params, env):
             if move_saved_file:
                 cmd = "echo > %s" % managed_save_file
                 process.run(cmd, shell=True)
+            if case == 'saved_without_file':
+                os.remove(managed_save_file)
 
             # recover libvirtd service start
             if libvirtd_state == "off":
@@ -483,7 +487,7 @@ def run(test, params, env):
                 if progress:
                     if not error_msg.count("Managedsave:"):
                         test.fail("Got invalid progress output")
-                if remove_after_cmd:
+                if remove_after_cmd or case == 'saved_without_file':
                     vm_msave_remove_check(vm_name)
                 elif test_undefine:
                     vm_undefine_check(vm_name)
