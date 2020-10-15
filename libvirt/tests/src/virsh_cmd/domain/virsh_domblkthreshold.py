@@ -111,6 +111,67 @@ def run(test, params, env):
         ret = virsh.vol_create(p_name, v_xml.xml, **virsh_dargs)
         libvirt.check_exit_status(ret)
 
+    def trigger_block_commit(vm_name, target, blockcommit_options, **virsh_dargs):
+        """
+        Trigger blockcommit.
+
+        :param vm_name: VM name
+        :param target: Disk dev in VM.
+        :param blockcommit_options: blockcommit option
+        :param virsh_dargs: additional parameters
+        """
+        result = virsh.blockcommit(vm_name, target,
+                                   blockcommit_options, ignore_status=False, **virsh_dargs)
+
+    def trigger_block_copy(vm_name, target, dest_path, blockcopy_options, **virsh_dargs):
+        """
+        Trigger blockcopy
+
+        :param vm_name: string, VM name
+        :param target: string, target disk
+        :param dest_path: string, the path of copied disk
+        :param blockcopy_options: string, some options applied
+        :param virsh_dargs: additional options
+        """
+        result = virsh.blockcopy(vm_name, target, dest_path, blockcopy_options, **virsh_dargs)
+        libvirt.check_exit_status(result)
+
+    def trigger_mirror_threshold_event(vm_domain, target):
+        """
+        Trigger mirror mode block threshold event.
+
+        :param vm_domain: VM name
+        :param target: Disk target in VM.
+        """
+        try:
+            session = vm_domain.wait_for_login()
+            # Sleep 10 seconds to let wait for events thread start first in main thread
+            time.sleep(10)
+            cmd = ("dd if=/dev/urandom of=file bs=1G count=3")
+            status, output = session.cmd_status_output(cmd)
+            if status:
+                test.error("Failed to fill data in VM target: %s with %s" % (target, output))
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
+            logging.error(str(e))
+            raise
+        except Exception as ex:
+            raise
+
+    def get_mirror_source_index(vm_name, dev_index=0):
+        """
+        Get mirror source index
+
+        :param vm_name: VM name
+        :param dev_index: Disk device index.
+        :return mirror source index in integer
+        """
+        disk_list = vm_xml.VMXML.get_disk_source(vm_name)
+        disk_mirror = disk_list[dev_index].find('mirror')
+        if disk_mirror is None:
+            test.fail("Failed to get disk mirror")
+        disk_mirror_source = disk_mirror.find('source')
+        return int(disk_mirror_source.get('index'))
+
     # Disk specific attributes.
     device = params.get("virt_disk_device", "disk")
     device_target = params.get("virt_disk_device_target", "vdd")
@@ -132,6 +193,14 @@ def run(test, params, env):
 
     status_error = "yes" == params.get("status_error")
     define_error = "yes" == params.get("define_error")
+
+    mirror_mode_blockcommit = "yes" == params.get("mirror_mode_blockcommit", "no")
+    mirror_mode_blockcopy = "yes" == params.get("mirror_mode_blockcopy", "no")
+    default_snapshot_test = "yes" == params.get("default_snapshot_test", "no")
+    block_threshold_value = params.get("block_threshold_value", "100M")
+    snapshot_external_disks = []
+    tmp_dir = data_dir.get_tmp_dir()
+    dest_path = params.get("dest_path", "/var/lib/libvirt/images/newclone")
 
     pvt = None
     # Initialize one NbdExport object
@@ -414,8 +483,9 @@ def run(test, params, env):
             disk_xml.encryption = disk_encryption
         disk_xml.source = disk_source
         logging.debug("new disk xml is: %s", disk_xml)
-        # Sync VM xml
-        vmxml.add_device(disk_xml)
+        # Sync VM xml except mirror_mode_blockcommit or mirror_mode_blockcopy
+        if (not mirror_mode_blockcommit and not mirror_mode_blockcopy):
+            vmxml.add_device(disk_xml)
         try:
             vmxml.sync()
             vm.start()
@@ -430,16 +500,52 @@ def run(test, params, env):
                 logging.info("VM failed to start as expected: %s", str(details))
             else:
                 test.fail("VM should start but failed: %s" % str(details))
+        func_name = trigger_block_threshold_event
         # Additional operations before set block threshold
         if backend_storage_type == "file":
             logging.info("Create snapshot...")
-            snapshot1 = "s1"
-            snapshot2 = "s2"
-            for index in range(1, 5):
-                virsh.snapshot_create_as(vm_name, "snapshot_%s --disk-only" % index,
+            snap_opt = " %s --disk-only "
+            snap_opt += "%s,snapshot=external,file=%s"
+            if default_snapshot_test:
+                for index in range(1, 5):
+                    snapshot_name = "snapshot_%s" % index
+                    snap_path = "%s/%s_%s.snap" % (tmp_dir, vm_name, index)
+                    snapshot_external_disks.append(snap_path)
+                    snap_option = snap_opt % (snapshot_name, device_target, snap_path)
+                    virsh.snapshot_create_as(vm_name, snap_option,
+                                             ignore_status=False, debug=True)
+
+            if mirror_mode_blockcommit:
+                if not libvirt_version.version_compare(6, 6, 0):
+                    test.cancel("Set threshold for disk mirroring feature is not supported on current version")
+                vmxml.del_device(disk_xml)
+                virsh.snapshot_create_as(vm_name, "--disk-only --no-metadata",
                                          ignore_status=False, debug=True)
-        set_vm_block_domblkthreshold(vm_name, device_target, "100M", **{"debug": True})
-        cli_thread = threading.Thread(target=trigger_block_threshold_event,
+                # Do active blockcommit in background.
+                blockcommit_options = "--active"
+                mirror_blockcommit_thread = threading.Thread(target=trigger_block_commit,
+                                                             args=(vm_name, 'vda', blockcommit_options,),
+                                                             kwargs={'debug': True})
+                mirror_blockcommit_thread.start()
+                device_target = "vda[1]"
+                func_name = trigger_mirror_threshold_event
+            if mirror_mode_blockcopy:
+                if not libvirt_version.version_compare(6, 6, 0):
+                    test.cancel("Set threshold for disk mirroring feature is not supported on current version")
+                # Do transient blockcopy in backgroud.
+                blockcopy_options = "--transient-job "
+                # Do cleanup
+                if os.path.exists(dest_path):
+                    libvirt.delete_local_disk("file", dest_path)
+                mirror_blockcopy_thread = threading.Thread(target=trigger_block_copy,
+                                                           args=(vm_name, 'vda', dest_path, blockcopy_options,),
+                                                           kwargs={'debug': True})
+                mirror_blockcopy_thread.start()
+                mirror_blockcopy_thread.join(10)
+                device_target = "vda[%d]" % get_mirror_source_index(vm_name)
+                func_name = trigger_mirror_threshold_event
+        set_vm_block_domblkthreshold(vm_name, device_target, block_threshold_value, **{"debug": True})
+        cli_thread = threading.Thread(target=func_name,
                                       args=(vm, device_target))
         cli_thread.start()
         check_threshold_event(vm_name, event_type, block_threshold_timeout, block_threshold_option, **{"debug": True})
@@ -458,6 +564,13 @@ def run(test, params, env):
         for img in disks_img:
             if os.path.exists(img["path"]):
                 libvirt.delete_local_disk("file", img["path"])
+
+        for disk in snapshot_external_disks:
+            libvirt.delete_local_disk('file', disk)
+
+        if os.path.exists(dest_path):
+            libvirt.delete_local_disk("file", dest_path)
+
         # Clean up backend storage
         if backend_storage_type == "iscsi":
             libvirt.setup_or_cleanup_iscsi(is_setup=False)
