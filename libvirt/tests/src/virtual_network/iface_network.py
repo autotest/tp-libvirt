@@ -596,6 +596,7 @@ TIMEOUT 3"""
     test_ipv6_address = "yes" == params.get("test_ipv6_address", "no")
     test_guest_libvirt = "yes" == params.get("test_guest_libvirt", "no")
     test_dns_forwarders = "yes" == params.get("test_dns_forwarders", "no")
+    test_vm_clone = "yes" == params.get("test_vm_clone", "no")
     net_no_bridge = "yes" == params.get("no_bridge", "no")
     net_no_mac = "yes" == params.get("no_mac", "no")
     net_no_ip = "yes" == params.get("no_ip", "no")
@@ -884,7 +885,7 @@ TIMEOUT 3"""
 
         try:
             # Start the VM.
-            if not update_device:
+            if not update_device and not test_vm_clone:
                 vm.start()
             if start_error:
                 test.fail("VM started unexpectedly")
@@ -908,6 +909,14 @@ TIMEOUT 3"""
                         logging.info("Fail to boot from pxe as expected")
                     else:
                         test.fail("Fail to boot from pxe")
+            elif test_vm_clone:
+                logging.debug(virsh.dumpxml(vm_name).stdout_text)
+                vm_clone = vm_name + utils_misc.generate_random_string(3)
+                utils_libguestfs.virt_clone_cmd(vm_name, vm_clone, True,
+                                                debug=True, timeout=300)
+                vms_list.append(vm.clone(vm_clone))
+                start_clone_vm = virsh.start(vm_clone, debug=True)
+                libvirt.check_exit_status(start_clone_vm)
             else:
                 if serial_login:
                     session = vm.wait_for_serial_login(username=username,
