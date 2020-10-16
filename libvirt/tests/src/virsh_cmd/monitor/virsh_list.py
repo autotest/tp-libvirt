@@ -8,8 +8,9 @@ from virttest import virsh
 from virttest import libvirt_vm
 from virttest import remote
 from virttest import utils_libvirtd
-from virttest.libvirt_xml import vm_xml
 from virttest import ssh_key
+from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -47,6 +48,17 @@ def run(test, params, env):
                                          user2=local_user,
                                          password2=local_pwd,
                                          config_options=config_opt)
+
+            # If in modular daemon mode, remove the config of direct remote_mode
+            # in /etc/libvirt/libvirt.conf
+            remote_dargs = {'server_ip': remote_ip, 'server_user': remote_user,
+                            'server_pwd': remote_passwd,
+                            'file_path': "/etc/libvirt/libvirt.conf"}
+
+            remove_dict = {"do_search": '{"%s": "ssh:/"}' % complete_uri}
+            client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+                remove_dict, remote_dargs)
+
             session = remote.remote_login("ssh", remote_ip, "22", remote_user,
                                           remote_passwd, "#")
             time.sleep(5)
@@ -79,6 +91,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     domuuid = vm.get_uuid()
     domid = vm.get_id()
+    client_libvirt_file = None
 
     # Some parameters are not supported on old libvirt, skip them.
     help_info = virsh.help("list").stdout.strip()
@@ -177,6 +190,9 @@ def run(test, params, env):
             # Recover saved guest.
             virsh.managedsave_remove(vm_name, ignore_status=True,
                                      print_info=True)
+
+        if client_libvirt_file:
+            del client_libvirt_file
 
         # Check result
         status_error = (status_error == "no") and \

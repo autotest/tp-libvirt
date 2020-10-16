@@ -18,6 +18,7 @@ from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import utils_config
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_config
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
 
@@ -94,6 +95,7 @@ def run(test, params, env):
     check_libvirtd_log = params.get("check_libvirtd_log", "no")
     err_msg = params.get("err_msg", "")
     remote_uri = params.get("remote_uri")
+    client_libvirt_file = None
 
     domid = vm.get_id()
     domuuid = vm.get_uuid()
@@ -247,6 +249,11 @@ def run(test, params, env):
             if remote_ip.count("EXAMPLE.COM"):
                 test.cancel("Test 'remote' parameters not setup")
             ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
+            # If in modular daemon mode, remove the config of direct remote_mode
+            # in /etc/libvirt/libvirt.conf
+            remove_dict = {"do_search": '{"%s": "ssh:/"}' % remote_uri}
+            client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+                remove_dict)
 
         result = virsh.domstate(vm_ref, extra, ignore_status=True,
                                 debug=True, uri=remote_uri)
@@ -353,3 +360,5 @@ def run(test, params, env):
         backup_xml.sync()
         if os.path.exists(dump_path):
             shutil.rmtree(dump_path)
+        if client_libvirt_file:
+            client_libvirt_file.restore()

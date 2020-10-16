@@ -1,6 +1,7 @@
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import ssh_key
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -24,6 +25,7 @@ def run(test, params, env):
     vm_ref = params.get("dommemstat_vm_ref", "name")
     libvirtd = params.get("libvirtd", "on")
     extra = params.get("dommemstat_extra", "")
+    client_libvirt_file = None
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()
 
@@ -55,12 +57,22 @@ def run(test, params, env):
                 test.cancel("remote ip parameters not set.")
             ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
             remote_uri = "qemu+ssh://%s/system" % remote_ip
+
+            # If in modular daemon mode, remove the config of direct remote_mode
+            # in /etc/libvirt/libvirt.conf
+            remove_dict = {"do_search": '{"%s": "ssh:/"}' % remote_uri}
+            client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+                remove_dict)
+
             virsh.start(vm_name, ignore_status=False, debug=True, uri=remote_uri)
             status = virsh.dommemstat(vm_name, ignore_status=True,
                                       debug=True, uri=remote_uri).exit_status
     finally:
         if vm_ref == "remote":
             virsh.destroy(vm_name, ignore_status=False, debug=True, uri=remote_uri)
+
+        if client_libvirt_file:
+            client_libvirt_file.restore()
 
     # recover libvirtd service start
     if libvirtd == "off":
