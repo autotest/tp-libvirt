@@ -5,9 +5,10 @@ import logging
 from virttest import ssh_key
 from virttest import data_dir
 from virttest import virsh
+from virttest import cpu
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.vm_xml import VMCPUXML
-from virttest import cpu
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -63,6 +64,7 @@ def run(test, params, env):
     vm_reboot = "yes" == params.get("vm_reboot", "no")
     hot_unplug = "yes" == params.get('hot_unplug', "no")
     hotplugin_count = params.get("hotplugin_count")
+    client_libvirt_file = None
     result = True
 
     # Early death 1.1
@@ -70,6 +72,11 @@ def run(test, params, env):
         if remote_ip.count("EXAMPLE.COM"):
             test.cancel("remote ip parameters not set.")
         ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
+        # If in modular daemon mode, remove the config of direct remote_mode
+        # in /etc/libvirt/libvirt.conf
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % remote_uri}
+        client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
 
     # Early death 1.2
     option_list = options.split(" ")
@@ -260,6 +267,9 @@ def run(test, params, env):
         orig_config_xml.sync()
         if os.path.exists(tmpxml):
             os.remove(tmpxml)
+
+        if client_libvirt_file:
+            client_libvirt_file.restore()
 
     # check status_error
     if status_error:

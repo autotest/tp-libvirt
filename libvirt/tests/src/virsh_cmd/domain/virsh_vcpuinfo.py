@@ -6,6 +6,7 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import ssh_key
 from virttest import libvirt_version
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -24,6 +25,7 @@ def run(test, params, env):
 
     status_error = params.get("status_error", "no")
     libvirtd = params.get("libvirtd", "on")
+    client_libvirt_file = None
     if libvirtd == "off":
         utils_libvirtd.libvirtd_stop()
 
@@ -54,6 +56,17 @@ def run(test, params, env):
         try:
             ssh_key.setup_remote_ssh_key(remote_ip, "root", remote_pwd,
                                          local_ip, "root", local_pwd)
+
+            # If in modular daemon mode, remove the config of direct remote_mode
+            # in /etc/libvirt/libvirt.conf
+            remote_dargs = {'server_ip': remote_ip, 'server_user': "root",
+                            'server_pwd': remote_pwd,
+                            'file_path': "/etc/libvirt/libvirt.conf"}
+
+            remove_dict = {"do_search": '{"%s": "ssh:/"}' % connect_uri}
+            client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+                remove_dict, remote_dargs)
+
             vcback = virsh.VirshConnectBack(remote_ip=remote_ip,
                                             remote_pwd=remote_pwd,
                                             uri=connect_uri,
@@ -95,6 +108,9 @@ def run(test, params, env):
     # recover libvirtd service start
     if libvirtd == "off":
         utils_libvirtd.libvirtd_start()
+
+    if client_libvirt_file:
+        del client_libvirt_file
 
     # check status_error
     if status_error == "yes":

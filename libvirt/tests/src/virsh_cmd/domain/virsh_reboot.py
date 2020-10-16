@@ -14,6 +14,7 @@ from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -66,6 +67,7 @@ def run(test, params, env):
     pre_domian_status = params.get("reboot_pre_domian_status", "running")
     reboot_readonly = "yes" == params.get("reboot_readonly", "no")
     wait_time = int(params.get('wait_time', 5))
+    client_libvirt_file = None
     xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     try:
         # Add or remove qemu-agent from guest before test
@@ -98,6 +100,15 @@ def run(test, params, env):
                 test.cancel("remote_ip and/or local_ip parameters"
                             " not changed from default values")
             complete_uri = libvirt_vm.complete_uri(local_ip)
+            # If in modular daemon mode, remove the config of direct remote_mode
+            # in /etc/libvirt/libvirt.conf
+            remote_dargs = {'server_ip': remote_ip, 'server_user': "root",
+                            'server_pwd': remote_pwd,
+                            'file_path': "/etc/libvirt/libvirt.conf"}
+
+            remove_dict = {"do_search": '{"%s": "ssh:/"}' % complete_uri}
+            client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+                remove_dict, remote_dargs)
 
             # Setup ssh connection
             ssh_connection = utils_conn.SSHConnection(server_ip=local_ip,
@@ -189,3 +200,6 @@ def run(test, params, env):
 
         if 'ssh_connection' in locals():
             ssh_connection.auto_recover = True
+
+        if client_libvirt_file:
+            del client_libvirt_file

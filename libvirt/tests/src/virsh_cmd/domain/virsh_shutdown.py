@@ -11,6 +11,7 @@ from virttest import utils_misc
 from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -38,6 +39,7 @@ def run(test, params, env):
     timeout = eval(params.get("shutdown_timeout", "60"))
     readonly = "yes" == params.get("shutdown_readonly", "no")
     expect_msg = params.get("shutdown_err_msg")
+    client_libvirt_file = None
 
     # Libvirt acl test related params
     uri = params.get("virsh_uri")
@@ -93,6 +95,17 @@ def run(test, params, env):
             status = 0
             try:
                 remote_uri = libvirt_vm.complete_uri(local_ip)
+
+                # If in modular daemon mode, remove the config of direct remote_mode
+                # in /etc/libvirt/libvirt.conf
+                remote_dargs = {'server_ip': remote_ip, 'server_user': remote_user,
+                                'server_pwd': remote_pwd,
+                                'file_path': "/etc/libvirt/libvirt.conf"}
+
+                remove_dict = {"do_search": '{"%s": "ssh:/"}' % remote_uri}
+                client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+                    remove_dict, remote_dargs)
+
                 # set up auto ssh login from remote machine to
                 # execute commands
                 config_opt = ["StrictHostKeyChecking=no"]
@@ -133,3 +146,5 @@ def run(test, params, env):
     finally:
         if utils_misc.wait_for(utils_libvirtd.libvirtd_is_running, 60):
             xml_backup.sync()
+        if client_libvirt_file:
+            del client_libvirt_file

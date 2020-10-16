@@ -8,6 +8,7 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import ssh_key
 from virttest import libvirt_version
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -35,6 +36,7 @@ def run(test, params, env):
     local_pwd = params.get("local_pwd", "LOCAL.EXAMPLE.COM")
     paused_after_start_vm = "yes" == params.get("paused_after_start_vm", "no")
     destroy_readonly = "yes" == params.get("destroy_readonly", "no")
+    client_libvirt_file = None
     if vm_ref == "remote" and (remote_ip.count("EXAMPLE.COM") or
                                local_ip.count("EXAMPLE.COM")):
         test.cancel(
@@ -78,6 +80,17 @@ def run(test, params, env):
         status = 0
         try:
             remote_uri = libvirt_vm.complete_uri(local_ip)
+
+            # If in modular daemon mode, remove the config of direct remote_mode
+            # in /etc/libvirt/libvirt.conf
+            remote_dargs = {'server_ip': remote_ip, 'server_user': "root",
+                            'server_pwd': remote_pwd,
+                            'file_path': "/etc/libvirt/libvirt.conf"}
+
+            remove_dict = {"do_search": '{"%s": "ssh:/"}' % remote_uri}
+            client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+                remove_dict, remote_dargs)
+
             session = remote.remote_login("ssh", remote_ip, "22",
                                           "root", remote_pwd, "#")
             session.cmd_output('LANG=C')
@@ -102,6 +115,9 @@ def run(test, params, env):
         libvirt.check_exit_status(result, expect_error=True)
         # This is for status_error check
         status = result.exit_status
+
+    if client_libvirt_file:
+        del client_libvirt_file
 
     # check status_error
     if status_error == "yes":

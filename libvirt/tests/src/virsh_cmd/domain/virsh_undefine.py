@@ -19,6 +19,7 @@ from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.xcepts import LibvirtXMLError
 from virttest.utils_test import libvirt as utlv
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -97,6 +98,7 @@ def run(test, params, env):
     volume = None
     pvtest = None
     status3 = None
+    client_libvirt_file = None
 
     elems = backup_xml.xmltreefile.findall('/devices/disk/source')
     existing_images = [elem.get('file') for elem in elems]
@@ -172,6 +174,16 @@ def run(test, params, env):
             try:
                 local_user = params.get("username", "root")
                 uri = libvirt_vm.complete_uri(local_ip)
+                # If in modular daemon mode, remove the config of direct remote_mode
+                # in /etc/libvirt/libvirt.conf
+                remote_dargs = {'server_ip': remote_ip, 'server_user': remote_user,
+                                'server_pwd': remote_pwd,
+                                'file_path': "/etc/libvirt/libvirt.conf"}
+
+                remove_dict = {"do_search": '{"%s": "ssh:/"}' % uri}
+                client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+                    remove_dict, remote_dargs)
+
                 # setup ssh auto login from remote machine to test machine
                 # for the command to execute remotely
                 ssh_key.setup_remote_ssh_key(remote_ip, remote_user,
@@ -258,6 +270,9 @@ def run(test, params, env):
             logging.debug("Recover snapshots for domain!")
             for file_item in snp_file_list:
                 virsh.snapshot_create(vm_name, file_item)
+
+        if client_libvirt_file:
+            del client_libvirt_file
 
     # Check results.
     if status_error:

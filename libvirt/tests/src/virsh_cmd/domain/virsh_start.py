@@ -6,6 +6,7 @@ from virttest import libvirt_xml
 from virttest import utils_libvirtd
 from virttest import ssh_key
 from virttest import libvirt_version
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -35,6 +36,7 @@ def run(test, params, env):
     libvirtd_state = params.get("libvirtd", "on")
     pre_operation = params.get("vs_pre_operation", "")
     status_error = params.get("status_error", "no")
+    client_libvirt_file = None
 
     try:
         # prepare before start vm
@@ -63,6 +65,13 @@ def run(test, params, env):
 
                 ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
                 remote_uri = "qemu+ssh://%s/system" % remote_ip
+
+                # If in modular daemon mode, remove the config of direct remote_mode
+                # in /etc/libvirt/libvirt.conf
+                remove_dict = {"do_search": '{"%s": "ssh:/"}' % remote_uri}
+                client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+                    remove_dict)
+
                 cmd_result = virsh.start(vm_ref, ignore_status=True, debug=True,
                                          uri=remote_uri)
                 if cmd_result.exit_status:
@@ -160,6 +169,9 @@ def run(test, params, env):
 
         if vm and vm.is_paused():
             vm.resume()
+
+        if client_libvirt_file:
+            client_libvirt_file.restore()
 
         # Restore VM
         vmxml_backup.sync()

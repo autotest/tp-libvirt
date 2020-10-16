@@ -4,6 +4,7 @@ import subprocess
 from virttest import virsh
 from virttest import data_dir
 from virttest import ssh_key
+from virttest.utils_libvirt import libvirt_config
 
 
 def get_subprocess(action, vm_name, filepath):
@@ -53,6 +54,7 @@ def run(test, params, env):
     remote_ip = params.get("remote_ip")
     remote_pwd = params.get("remote_pwd")
     remote_user = params.get("remote_user", "root")
+    client_libvirt_file = None
     if start_vm == "no" and vm.is_alive():
         vm.destroy()
 
@@ -60,6 +62,11 @@ def run(test, params, env):
         if remote_ip.count("EXAMPLE"):
             test.cancel("The remote ip is Sample one, pls configure it first")
         ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
+        # If in modular daemon mode, remove the config of direct remote_mode
+        # in /etc/libvirt/libvirt.conf
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % remote_uri}
+        client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
 
     # Instead of "paused_after_start_vm", use "pre_vm_state".
     # After start the VM, wait for some time to make sure the job
@@ -142,3 +149,5 @@ def run(test, params, env):
     if process:
         if process.poll() is None:
             process.kill()
+    if client_libvirt_file:
+        client_libvirt_file.restore()

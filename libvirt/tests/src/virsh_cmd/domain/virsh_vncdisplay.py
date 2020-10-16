@@ -5,6 +5,7 @@ from virttest import virsh
 from virttest import remote
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
+from virttest.utils_libvirt import libvirt_config
 from virttest import ssh_key
 
 
@@ -27,6 +28,7 @@ def run(test, params, env):
     vm_ref = params.get("vncdisplay_vm_ref")
     status_error = params.get("status_error", "no")
     extra = params.get("vncdisplay_extra", "")
+    client_libvirt_file = None
 
     def remote_case(params, vm_name):
         """
@@ -45,6 +47,17 @@ def run(test, params, env):
                 test.cancel("remote_ip and/or local_ip parameters "
                             "not changed from default values.")
             uri = libvirt_vm.complete_uri(local_ip)
+
+            # If in modular daemon mode, remove the config of direct remote_mode
+            # in /etc/libvirt/libvirt.conf
+            remote_dargs = {'server_ip': remote_ip, 'server_user': remote_user,
+                            'server_pwd': remote_pwd,
+                            'file_path': "/etc/libvirt/libvirt.conf"}
+
+            remove_dict = {"do_search": '{"%s": "ssh:/"}' % uri}
+            client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+                remove_dict, remote_dargs)
+
             # setup ssh auto login
             ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
             ssh_key.setup_remote_ssh_key(remote_ip, remote_user, remote_pwd,
@@ -100,6 +113,9 @@ def run(test, params, env):
         if libvirtd == "off":
             utils_libvirtd.libvirtd_start()
         xml_bak.sync()
+
+        if client_libvirt_file:
+            del client_libvirt_file
 
     # check status_error
     if status_error == "yes":
