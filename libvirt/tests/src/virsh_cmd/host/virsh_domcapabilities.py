@@ -5,6 +5,7 @@ from virttest import libvirt_vm
 from virttest import virsh
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml import capability_xml
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -14,6 +15,7 @@ def run(test, params, env):
     connect_uri = libvirt_vm.normalize_connect_uri(params.get("connect_uri",
                                                               "default"))
     remote_ref = params.get("remote_ref", "")
+    client_libvirt_file = None
 
     if remote_ref == "remote":
         remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
@@ -24,6 +26,11 @@ def run(test, params, env):
 
         ssh_key.setup_ssh_key(remote_ip, "root", remote_pwd)
         connect_uri = libvirt_vm.complete_uri(remote_ip)
+        # If in modular daemon mode, remove the config of direct remote_mode
+        # in /etc/libvirt/libvirt.conf
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % connect_uri}
+        client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
 
     virsh_options = params.get("virsh_options", "")
     virttype = params.get("virttype_value", "")
@@ -73,3 +80,5 @@ def run(test, params, env):
     # Check status_error
     status_error = "yes" == params.get("status_error", "no")
     utlv.check_exit_status(result, status_error)
+    if client_libvirt_file:
+        client_libvirt_file.restore()

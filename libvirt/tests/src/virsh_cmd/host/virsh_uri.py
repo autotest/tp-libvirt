@@ -8,6 +8,7 @@ from virttest import utils_libvirtd
 from virttest import ssh_key
 
 from virttest import libvirt_version
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -29,6 +30,7 @@ def run(test, params, env):
     remote_ip = params.get("remote_ip", "REMOTE.EXAMPLE.COM")
     remote_pwd = params.get("remote_pwd", None)
     remote_user = params.get("remote_user", "root")
+    client_libvirt_file = None
 
     # Forming the uri using the api
     target_uri = params.get("target_uri")
@@ -56,6 +58,11 @@ def run(test, params, env):
     # setup autologin for ssh to remote machine to execute commands
     if remote_ref:
         ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
+        # If in modular daemon mode, remove the config of direct remote_mode
+        # in /etc/libvirt/libvirt.conf
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % target_uri}
+        client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
 
     if unprivileged_user:
         if process.run("id %s" % unprivileged_user, ignore_status=True).exit_status != 0:
@@ -78,6 +85,9 @@ def run(test, params, env):
     # Recover libvirtd service start
     if libvirtd == "off":
         utils_libvirtd.libvirtd_start()
+
+    if client_libvirt_file:
+        client_libvirt_file.restore()
 
     # Check status_error
     status_error = params.get("status_error", "no")

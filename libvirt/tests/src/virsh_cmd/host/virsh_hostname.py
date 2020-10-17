@@ -9,6 +9,7 @@ from virttest import utils_libvirtd
 from virttest import remote
 
 from virttest import libvirt_version
+from virttest.utils_libvirt import libvirt_config
 
 
 def run(test, params, env):
@@ -23,6 +24,7 @@ def run(test, params, env):
     remote_pwd = params.get("remote_pwd", None)
     remote_user = params.get("remote_user", "root")
     remote_uri = params.get("remote_uri", None)
+    client_libvirt_file = None
 
     if remote_uri and remote_ip.count("EXAMPLE"):
         test.cancel("Pls configure rempte_ip first")
@@ -54,6 +56,12 @@ def run(test, params, env):
     # Run test case
     if remote_uri:
         ssh_key.setup_ssh_key(remote_ip, remote_user, remote_pwd)
+        # If in modular daemon mode, remove the config of direct remote_mode
+        # in /etc/libvirt/libvirt.conf
+        remove_dict = {"do_search": '{"%s": "ssh:/"}' % remote_uri}
+        client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+            remove_dict)
+
     option = params.get("virsh_hostname_options")
     hostname_test = virsh.hostname(option, uri=remote_uri,
                                    ignore_status=True,
@@ -66,6 +74,9 @@ def run(test, params, env):
     # Recover libvirtd service start
     if libvirtd == "off":
         utils_libvirtd.libvirtd_start()
+
+    if client_libvirt_file:
+        client_libvirt_file.restore()
 
     # Close session
     if session:

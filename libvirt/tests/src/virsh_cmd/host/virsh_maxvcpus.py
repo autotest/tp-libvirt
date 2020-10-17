@@ -7,6 +7,7 @@ from virttest import virsh
 from virttest import utils_conn
 from virttest.libvirt_xml import domcapability_xml as domcap
 from virttest.libvirt_xml import capability_xml
+from virttest.utils_libvirt import libvirt_config
 from virttest import libvirt_version
 import platform
 
@@ -34,6 +35,7 @@ def run(test, params, env):
     transport_type = params.get("connect_transport_type", "local")
     transport = params.get("connect_transport", "ssh")
     connect_uri = None
+    client_libvirt_file = None
     # check the config
     if (connect_arg == "transport" and
             transport_type == "remote" and
@@ -63,6 +65,16 @@ def run(test, params, env):
             connect_uri = libvirt_vm.get_uri_with_transport(
                 uri_type=canonical_uri_type,
                 transport=transport, dest_ip=server_ip)
+            # If in modular daemon mode, remove the config of direct remote_mode
+            # in /etc/libvirt/libvirt.conf
+            remote_dargs = {'server_ip': server_ip, 'server_user': 'root',
+                            'server_pwd': server_pwd,
+                            'file_path': "/etc/libvirt/libvirt.conf"}
+
+            remove_dict = {"do_search": '{"%s": "ssh:/"}' % connect_uri}
+            client_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
+                remove_dict, remote_dargs)
+
             virsh_dargs = {'remote_ip': server_ip, 'remote_user': 'root',
                            'remote_pwd': server_pwd,
                            'ssh_remote_auth': True}
@@ -151,3 +163,6 @@ def run(test, params, env):
                     pass
         else:
             raise exceptions.TestFail("Run command failed")
+
+    if client_libvirt_file:
+        del client_libvirt_file
