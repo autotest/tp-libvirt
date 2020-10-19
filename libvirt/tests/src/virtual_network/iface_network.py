@@ -4,6 +4,7 @@ import sys
 import ast
 import logging
 import platform
+import time
 
 from avocado.utils import process
 from avocado.utils import stacktrace
@@ -21,6 +22,7 @@ from virttest.utils_test import libvirt
 from virttest.utils_test.__init__ import ping
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.network_xml import NetworkXML
+from virttest.libvirt_xml.devices.interface import Interface
 from virttest import libvirt_version
 
 
@@ -468,6 +470,17 @@ TIMEOUT 3"""
                          ("%s -s %s -i %s%s -j ACCEPT"
                           % (forward_out, net_ipv6, br_name, net_dev_out))]
                 ipv6_rules.extend(rules)
+            if "mode" in net_forward and net_forward["mode"] == "nat":
+                v6_nat_rules = [
+                    "MASQUERADE\s+tcp\s+{0}\s+!{0}".format(net_ipv6),
+                    "MASQUERADE\s+udp\s+{0}\s+!{0}".format(net_ipv6),
+                    "MASQUERADE\s+all\s+{0}\s+!{0}".format(net_ipv6),
+                ]
+                v6_output = process.run('ip6tables -t nat -L', shell=True).stdout_text
+                for rule in v6_nat_rules:
+                    if not re.search(rule, v6_output):
+                        test.fail('Rule %s missing from ip6tables output.' % rule)
+                return ipv6_rules
             output = process.run("ip6tables-save", shell=True).stdout_text
             logging.debug("ip6tables: %s", output)
             if "mode" in net_forward and net_forward["mode"] == "open":
@@ -602,6 +615,7 @@ TIMEOUT 3"""
     net_with_dev = "yes" == params.get("with_dev", "no")
     update_device = 'yes' == params.get('update_device', 'no')
     remove_bandwidth = 'yes' == params.get('remove_bandwidth', 'no')
+    with_2net = 'yes' == params.get('with_2net', 'no')
     loop = int(params.get('loop', 0))
     username = params.get("username")
     password = params.get("password")
@@ -698,6 +712,15 @@ TIMEOUT 3"""
                     net_forward.update({"dev": net_ifs[0]})
                     netxml.forward = net_forward
             logging.info("netxml before define is %s", netxml)
+            if with_2net:
+                net2_net_name = params.get('net2_net_name', 'net2')
+                net2_params = {k.replace('net2_', ''): v for k, v in params.items()
+                               if k.startswith('net2_')}
+                logging.debug('net2 params are: %s', net2_params)
+                net2_xml = libvirt.create_net_xml(net2_net_name, net2_params)
+                logging.debug('Second network: %s', net2_xml)
+                virsh.net_define(net2_xml.xml, debug=True, ignore_status=False)
+                virsh.net_start(net2_net_name, ignore_status=False)
             try:
                 netxml.sync()
             except xcepts.LibvirtXMLError as details:
@@ -729,6 +752,15 @@ TIMEOUT 3"""
                                         ignore_status=False, debug=True)
                 else:
                     modify_iface_xml()
+                    if with_2net:
+                        # Create another interface attaching with 2rd network
+                        new_iface = Interface('network')
+                        new_iface.source = eval(net2_params['iface_source'])
+                        new_iface.model = net2_params['iface_model']
+                        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+                        vmxml.add_device(new_iface)
+                        vmxml.sync()
+                        logging.debug(virsh.dumpxml(vm_name).stdout_text)
             except xcepts.LibvirtXMLError as details:
                 logging.info(str(details))
                 if define_error:
@@ -750,6 +782,32 @@ TIMEOUT 3"""
                     logging.error("Command output %s" %
                                   ret.stdout.strip())
                     test.fail("Failed to attach-interface")
+
+        # Test Starting vm with 2 interfaces connected to 2 different
+        # nat network and check net-dhcp-leases
+        if with_2net:
+            net1_br = NetworkXML.new_from_net_dumpxml(net_name).bridge['name']
+            net2_br = NetworkXML.new_from_net_dumpxml(net2_net_name).bridge['name']
+            status_path = '/var/lib/libvirt/dnsmasq/%s.status'
+            args = {'ignore_status': False, 'debug': True}
+            # Test several rounds to make sure no error
+            test_rounds = int(params.get('test_rounds', 20))
+            for i in range(test_rounds):
+                logging.debug('Test round %d', i + 1)
+                os.remove(status_path % net1_br)
+                os.remove(status_path % net2_br)
+                virsh.net_destroy(net_name, **args)
+                virsh.net_destroy(net2_net_name, **args)
+                virsh.net_start(net_name, **args)
+                virsh.net_start(net2_net_name, **args)
+                virsh.start(vm_name, **args)
+                time.sleep(5)
+                out1 = virsh.net_dhcp_leases(net_name, **args).stdout_text
+                out2 = virsh.net_dhcp_leases(net2_net_name, **args).stdout_text
+                vm.destroy()
+                if any(['ipv' not in x for x in [out1, out2]]):
+                    test.fail('DHCP lease not found')
+            return
 
         if multiple_guests:
             # Clone more vms for testing
@@ -1061,6 +1119,9 @@ TIMEOUT 3"""
             # Destroy and undefine new created network
             virsh.net_destroy(net_name)
             virsh.net_undefine(net_name)
+        if 'net2_net_name' in locals():
+            virsh.net_destroy(net2_net_name)
+            virsh.net_undefine(net2_net_name)
         vmxml_backup.sync()
 
         if test_ipv6_address and original_accept_ra != '2':
