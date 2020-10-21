@@ -54,8 +54,11 @@ def run(test, params, env):
     addr_type = params.get("addr_type")
     addr_iobase = params.get("addr_iobase")
     disk_format = params.get("disk_format", "")
+    disk_prealloc = "yes" == params.get("disk_prealloc", "yes")
     event_cmd = "event"
     dump_path = '/var/lib/libvirt/qemu/dump'
+    part_format = params.get("part_format")
+    strict_order = "yes" == params.get("strict_order", "no")
     if qemu_monitor_test:
         event_cmd = "qemu-monitor-event"
     events_list = params.get("events_list")
@@ -73,9 +76,9 @@ def run(test, params, env):
     for dom in vms:
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(dom.name)
         vmxml_backup.append(vmxml.copy())
-
     tmpdir = data_dir.get_tmp_dir()
-    new_disk = os.path.join(tmpdir, "%s_new_disk.img" % dom.name)
+    mount_point = tmpdir
+    small_part = os.path.join(tmpdir, params.get("part_name", "io-error_part"))
 
     def create_iface_xml():
         """
@@ -97,19 +100,25 @@ def run(test, params, env):
         :param extra_param: additional arguments to command
         :param format: init_source format(qcow2 or raw)
         """
-        if not os.path.exists(new_disk):
+        if not os.path.exists(init_source):
+            disk_size = params.get("disk_size", "1G")
             if format == "qcow2":
-                process.run('qemu-img create -f qcow2 %s %s -o preallocation=full' % (new_disk, '1G'),
+                create_option = "" if not disk_prealloc else "-o preallocation=full"
+                process.run('qemu-img create -f qcow2 %s %s %s' % (init_source, disk_size, create_option),
                             shell=True, verbose=True)
             elif format == "raw":
-                process.run('qemu-img create -f raw %s %s' % (new_disk, '1G'),
+                process.run('qemu-img create -f raw %s %s' % (init_source, disk_size),
                             shell=True, verbose=True)
             else:
-                open(new_disk, 'a').close()
+                open(init_source, 'a').close()
         if virsh.is_alive(vm_name) and 'cdrom' in extra_param:
             virsh.destroy(vm_name)
+        if 'cdrom' in extra_param:
+            init_source = "''"
         virsh.attach_disk(vm_name, init_source, target_device,
                           extra_param, **virsh_dargs)
+        vmxml_disk = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        logging.debug("Current vmxml after adding disk is %s\n" % vmxml_disk)
 
     def wait_for_shutoff(vm):
         """
@@ -177,13 +186,14 @@ def run(test, params, env):
         save_path = os.path.join(tmpdir, "%s_event.save" % dom.name)
         print(dom.name)
         xmlfile = dom.backup_xml()
+        new_disk = os.path.join(tmpdir, "%s_new_disk.img" % dom.name)
 
         try:
             for event in events_list:
                 logging.debug("Current event is: %s", event)
                 if event in ['start', 'restore', 'create', 'edit', 'define',
                              'undefine', 'crash', 'device-removal-failed',
-                             'watchdog']:
+                             'watchdog', 'io-error']:
                     if dom.is_alive():
                         dom.destroy()
                         if event in ['create', 'define']:
@@ -358,7 +368,7 @@ def run(test, params, env):
                         logging.info("Adding cdrom to guest")
                         if dom.is_alive():
                             dom.destroy()
-                        add_disk(dom.name, "''", target_device,
+                        add_disk(dom.name, new_disk, target_device,
                                  ("--type cdrom --sourcetype file --driver qemu " +
                                   "--config --targetbus %s" % device_target_bus))
                         dom.start()
@@ -472,6 +482,33 @@ def run(test, params, env):
                     else:
                         # action == 'reset'
                         expected_events_list.append("'reboot' for %s")
+                elif event == "io-error":
+                    part_size = params.get("part_size")
+                    resume_event = params.get("resume_event")
+                    suspend_event = params.get("suspend_event")
+                    process.run("truncate -s %s %s" % (part_size, small_part), shell=True)
+                    utlv.mkfs(small_part, part_format)
+                    utils_misc.mount(small_part, mount_point, None)
+                    add_disk(dom.name, new_disk, 'vdb', '--subdriver qcow2 --config', 'qcow2')
+                    dom.start()
+                    session = dom.wait_for_login()
+                    session.cmd("mkfs.ext4 /dev/vdb && mount /dev/vdb /mnt && ls /mnt && "
+                                "dd if=/dev/zero of=/mnt/test.img bs=1M count=50", ignore_all_errors=True)
+                    time.sleep(5)
+                    session.close()
+                    expected_events_list.append("'io-error' for %s: " + "%s" % new_disk + r" \(virtio-disk1\) pause")
+                    expected_events_list.append("'io-error-reason' for %s: " + "%s" % new_disk + r" \(virtio-disk1\) pause due to enospc")
+                    expected_events_list.append(suspend_event)
+                    process.run("df -hT")
+                    virsh.resume(dom.name, **virsh_dargs)
+                    time.sleep(5)
+                    expected_events_list.append(resume_event)
+                    expected_events_list.append("'io-error' for %s: " + "%s" % new_disk + r" \(virtio-disk1\) pause")
+                    expected_events_list.append("'io-error-reason' for %s: " + "%s" % new_disk + r" \(virtio-disk1\) pause due to enospc")
+                    expected_events_list.append(suspend_event)
+                    ret = virsh.domstate(dom.name, "--reason", **virsh_dargs)
+                    if ret.stdout.strip() != "paused (I/O error)":
+                        test.fail("Domain state should still be paused due to I/O error!")
                 else:
                     test.error("Unsupported event: %s" % event)
                 # Event may not received immediately
@@ -502,7 +539,7 @@ def run(test, params, env):
         logging.debug("Actual events: %s", output)
         event_idx = 0
         for dom_name, event in expected_events_list:
-            if event in expected_events_list[0]:
+            if event in expected_events_list[0] and not strict_order:
                 event_idx = 0
             if re.search("block-threshold", event):
                 event_str = "block-threshold"
@@ -517,6 +554,11 @@ def run(test, params, env):
                 test.fail("Not find expected event:%s. Is your "
                           "guest too slow to get started in %ss?" %
                           (event_str, event_timeout))
+        # Extra event check for io-error resume
+        if events_list == ['io-error']:
+            event_str = "event 'lifecycle' for domain " + vm_name + ": Resumed Unpaused"
+            if re.search(event_str, output[event_idx:]):
+                test.fail("Extra 'resume' occurred after I/O error!")
 
     try:
         # Set vcpu placement to static to avoid emulatorpin fail
@@ -581,3 +623,7 @@ def run(test, params, env):
         if os.path.exists(dump_path):
             shutil.rmtree(dump_path)
             os.mkdir(dump_path)
+        if utils_misc.is_mounted("/dev/loop0", mount_point, part_format):
+            utils_misc.umount("/dev/loop0", mount_point, part_format)
+        if os.path.exists(small_part):
+            os.unlink(small_part)
