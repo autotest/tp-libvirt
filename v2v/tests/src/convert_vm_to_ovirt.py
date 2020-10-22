@@ -58,6 +58,7 @@ def run(test, params, env):
     ovirt_hostname = params.get("ovirt_engine_url").split('/')[2]
     ovirt_ca_file_path = params.get("ovirt_ca_file_path")
     local_ca_file_path = params.get("local_ca_file_path")
+    skip_vm_check = params.get('skip_vm_check', 'no')
 
     # create different sasl_user name for different job
     params.update({'sasl_user': params.get("sasl_user") +
@@ -186,6 +187,12 @@ def run(test, params, env):
         if not utils_v2v.import_vm_to_ovirt(params, address_cache,
                                             timeout=v2v_timeout):
             test.error("Import VM failed")
+
+        # When VM is on OSP, it can't obtain IP address, therefore
+        # skipping the VM checking.
+        if skip_vm_check == 'yes':
+            logging.debug("skip vm checking")
+            return
 
         ret = vmchecker.run()
 
