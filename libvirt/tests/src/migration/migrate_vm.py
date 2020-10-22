@@ -214,6 +214,41 @@ def check_output(test, output_msg, params):
                             % (key, value, output_msg))
 
 
+def setup_selinux_local(selinux_state):
+    """
+    Set up selinux on local host
+
+    :param selinux_state: Enforcing, or Permissive
+    """
+
+    logging.debug("Set selinux to %s on local host before migration",
+                  selinux_state)
+    utils_selinux.set_status(selinux_state)
+
+
+def setup_selinux_remote(test, selinux_state, server_ip, server_user,
+                         server_pwd):
+    """
+    Set up selinux on remote host
+
+    :param test: the test object
+    :param selinux_state: Enforcing, or Permissive
+    :param server_ip: remote host ip
+    :param server_user: remote host user to login with
+    :param server_pwd: remote host pwd
+    """
+
+    logging.debug("Set selinux to %s on remote host before migration",
+                  selinux_state)
+
+    cmd = "setenforce %s" % selinux_state
+    status, output = run_remote_cmd(cmd, server_ip, server_user,
+                                    server_pwd)
+    if status:
+        test.error("Failed to set SELinux to %s mode on remote host" %
+                   selinux_state)
+
+
 def migrate_vm(test, params):
     """
     Connect libvirt daemon
@@ -239,6 +274,18 @@ def migrate_vm(test, params):
     for option in options.split():
         if option.startswith("--"):
             check_virsh_command_and_option(test, "migrate", option)
+
+    # Setup seliux before migration
+    logging.debug("Set selinux mode before migration")
+    selinux_state = params.get("selinux_state", "enforcing")
+    # On local:
+    setup_selinux_local(selinux_state)
+    # On remote:
+    server_ip = params.get("server_ip")
+    server_user = params.get("server_user")
+    server_pwd = params.get("server_pwd")
+    setup_selinux_remote(test, selinux_state,
+                         server_ip, server_user, server_pwd)
 
     logging.info("Prepare migrate %s", vm_name)
     global MIGRATE_RET
