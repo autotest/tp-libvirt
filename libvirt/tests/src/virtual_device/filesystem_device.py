@@ -102,6 +102,7 @@ def run(test, params, env):
     suspend_resume = params.get("suspend_resume", "no") == "yes"
     managedsave = params.get("managedsave", "no") == "yes"
     coldplug = params.get("coldplug", "no") == "yes"
+    extra_hugepages = params.get_numeric("extra_hugepages")
 
     fs_devs = []
     vms = []
@@ -146,7 +147,7 @@ def run(test, params, env):
             vmxml_backups.append(vmxml_backup)
             if vmxml.max_mem < 1024000:
                 vmxml.max_mem = 1024000
-            huge_pages_num += vmxml.max_mem // host_hp_size + 128
+            huge_pages_num += vmxml.max_mem // host_hp_size + extra_hugepages
             utils_memory.set_num_huge_pages(huge_pages_num)
             vmxml.remove_all_device_by_type('filesystem')
             vmxml.sync()
