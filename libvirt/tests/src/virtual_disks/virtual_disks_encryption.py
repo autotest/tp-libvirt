@@ -168,6 +168,8 @@ def run(test, params, env):
     secret_password_no_encoded = params.get("secret_password_no_encoded", "redhat")
     extra_parameter_qcow2 = params.get("extra_parameter_qcow2")
     extra_parameter_raw = params.get("extra_parameter_raw")
+    extra_luks_parameter = params.get("extra_parameter")
+    slice_test = params.get("slice_test", "yes")
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
@@ -198,7 +200,10 @@ def run(test, params, env):
         sec_uuids.append(sec_encryption_uuid)
         image_encryption_params.update({"secret": {"type": secret_type, "uuid": sec_encryption_uuid}})
         #Prepare test image
-        if image_target_format == "raw":
+        if slice_test == "yes" and image_target_format == "qcow2":
+            libvirt.create_local_disk(disk_type="file", extra=extra_luks_parameter,
+                                      path=image_target_path, size=int(image_cap), disk_format=image_target_format)
+        elif image_target_format == "raw":
             image_target_format_raw = "luks"
             libvirt.create_local_disk(disk_type="file", extra=extra_parameter_raw,
                                       path=image_target_path, size=int(image_cap), disk_format=image_target_format_raw)
@@ -218,6 +223,12 @@ def run(test, params, env):
             dev_attrs = "dev"
         disk_source = disk_xml.new_disk_source(
                 **{"attrs": {dev_attrs: image_target_path}})
+        if slice_test == "yes":
+            slice_size_param = process.run("du -b %s" % image_target_path).stdout_text
+            slice_size = re.findall(r'[0-9]+', slice_size_param)
+            slice_size = ''.join(slice_size)
+            disk_source.slices = disk_xml.new_slices(
+                    **{"slice_type": "storage", "slice_offset": "0", "slice_size": slice_size})
         disk_xml.driver = {"name": "qemu", "type": image_target_format,
                            "cache": "none"}
         disk_xml.target = {"dev": device_target, "bus": device_bus}
