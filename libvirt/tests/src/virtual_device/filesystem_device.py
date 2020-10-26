@@ -6,7 +6,6 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_test
-from virttest import test_setup
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import utils_memory
 from virttest.utils_test import libvirt_device_utils
@@ -108,6 +107,8 @@ def run(test, params, env):
     vms = []
     vmxml_backups = []
     expected_results = ""
+    host_hp_size = utils_memory.get_huge_page_size()
+    backup_huge_pages_num = utils_memory.get_num_huge_pages()
     huge_pages_num = 0
 
     if len(vm_names) != guest_num:
@@ -145,8 +146,6 @@ def run(test, params, env):
             vmxml_backups.append(vmxml_backup)
             if vmxml.max_mem < 1024000:
                 vmxml.max_mem = 1024000
-            hp_obj = test_setup.HugePageConfig(params)
-            host_hp_size = hp_obj.get_hugepage_size()
             huge_pages_num += vmxml.max_mem // host_hp_size + 128
             utils_memory.set_num_huge_pages(huge_pages_num)
             vmxml.remove_all_device_by_type('filesystem')
@@ -216,3 +215,4 @@ def run(test, params, env):
             process.run('rm -rf %s' % source_dir_prefix + str(index), ignore_status=False)
         for vmxml_backup in vmxml_backups:
             vmxml_backup.sync()
+        utils_memory.set_num_huge_pages(backup_huge_pages_num)
