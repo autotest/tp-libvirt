@@ -161,7 +161,7 @@ def run(test, params, env):
         vmxml.vcpu = numa_nodes * 2
         vmxml_cpu = vm_xml.VMCPUXML()
         vmxml_cpu.xml = "<cpu><numa/></cpu>"
-        vmxml_cpu.numa_cell = numa_dict_list
+        vmxml_cpu.numa_cell = vmxml_cpu.dicts_to_cells(numa_dict_list)
         logging.debug(vmxml_cpu.numa_cell)
         vmxml.cpu = vmxml_cpu
         vmxml.sync()
