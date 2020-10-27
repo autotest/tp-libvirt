@@ -75,16 +75,19 @@ def run(test, params, env):
         else:
             output = output.strip().splitlines()[5:-2]
         output = [o.replace("virsh #", "").strip() for o in output]
+        # for reattach, the device will be named 'eth0' and renamed to the actual name. nodedev-event will catch
+        # the "eth0" created and deleted as well. Delete the event for device name here:
+        output_new = [event for event in output if device_name in event]
         # Both order and content should match
-        if len(output) < len(expected_event_list):
+        if len(output_new) < len(expected_event_list):
             test.fail("Event did not have enough output. Expected: {} Actual: {}"
-                      .format(expected_event_list, output))
+                      .format(expected_event_list, output_new))
         index = 0
         for event_str in expected_event_list:
             match_str = event_match_str % (device_name, event_str)
             logging.debug("Expected output: %s", match_str)
-            logging.debug("Actual output: %s", output[index])
-            if not output[index].count(match_str):
+            logging.debug("Actual output: %s", output_new[index])
+            if not output_new[index].count(match_str):
                 test.fail("Event received not match")
             index += 1
 
