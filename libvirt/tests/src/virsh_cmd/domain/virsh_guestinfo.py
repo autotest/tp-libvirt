@@ -94,9 +94,10 @@ def run(test, params, env):
                     login_time_key = "user." + str(count) + ".login-time"
                     user_info[user_key] = user
                     user_info[login_time_key] = login_time
+            user_info["user.count"] = str(len(users_list))
         finally:
             session.close()
-        return len(users_list), user_info
+        return user_info
 
     def check_disk_size(ses, disk):
         disk_size = ses.cmd_output('df %s' % disk).strip().splitlines()[-1]
@@ -173,27 +174,31 @@ def run(test, params, env):
         logging.debug("info from the guest is %s", info_from_agent_cmd)
 
         func_name = "check_guest_%s_info" % option[2:]
-        if "user" not in option:
-            info_from_guest = locals()[func_name]()
-            logging.debug('%s_info_from_guest is %s', option[2:], info_from_guest)
+        info_from_guest = locals()[func_name]()
+        logging.debug('%s_info_from_guest is %s', option[2:], info_from_guest)
+
+        if ("user" not in option) and ("filesystem" not in option):
             if info_from_guest != info_from_agent_cmd:
                 test.fail("The %s info get from guestinfo cmd is not correct." % option[2:])
         else:
-            user_count, user_info_from_guest = check_guest_user_info()
-            if user_count != int(info_from_agent_cmd["user.count"]):
-                test.fail("The num of active users returned from guestinfo "
-                          "is not correct.")
-            for key, value in user_info_from_guest.items():
-                # login time returned from guestinfo cmd is with milliseconds,
-                # so it may cause at most 1 second deviation
-                if "name" in key:
-                    if value != info_from_agent_cmd[key]:
-                        test.fail("The active users get from guestinfo "
-                                  "are not correct.")
-                if "login-time" in key:
+            for key, value in info_from_guest.items():
+                if "used-bytes" in key:
+                    # The guest block size may change by about 16000Kib after
+                    # getting info via guestinfo cmd. We just need make sure
+                    # the size difference will not exceed then 17000KiB.
+                    if abs(int(value) - int(info_from_agent_cmd[key])) > 17408000:
+                        test.fail("The block size returned from guest agent "
+                                  "is not correct.")
+                elif "login-time" in key:
+                    # login time returned from guestinfo cmd is with milliseconds,
+                    # so it may cause at most 1 second deviation
                     if abs(float(value) - int(info_from_agent_cmd[key])/1000) > 1.0:
                         test.fail("The login time of active users get from guestinfo "
                                   "is not correct.")
+                else:
+                    if value != info_from_agent_cmd[key]:
+                        test.fail("The %s info get from guestinfo cmd"
+                                  "is not correct." % option[2:])
     finally:
         if "user" in option:
             added_user_session.close()
