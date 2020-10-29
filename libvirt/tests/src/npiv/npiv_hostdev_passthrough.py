@@ -159,6 +159,8 @@ def run(test, params, env):
         result = virsh.detach_device(vm_name, new_hostdev_xml.xml)
         libvirt.check_exit_status(result, status_error)
         # login vm and check disk actually removed
+        if not vm.session:
+            session = vm.wait_for_login()
         parts_after_detach = utils_disk.get_parts_list(session)
         old_parts.sort()
         parts_after_detach.sort()
