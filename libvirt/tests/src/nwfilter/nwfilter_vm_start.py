@@ -13,6 +13,8 @@ from virttest import utils_misc
 from virttest import utils_package
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices import interface
+from virttest import utils_libguestfs
+from virttest import utils_net
 from virttest import libvirt_version
 
 
@@ -39,6 +41,11 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     username = params.get("username")
     password = params.get("password")
+    need_vm2 = "yes" == params.get("need_vm2", "no")
+    add_vm_name = params.get("add_vm_name", "vm2")
+    vms = [vm]
+    dst_outside = params.get("dst_outside", "www.google.com")
+    ping_timeout = int(params.get("ping_timeout", "10"))
 
     # Prepare vm filterref parameters dict list
     filter_param_list = []
@@ -51,6 +58,12 @@ def run(test, params, env):
         params_dict = {}
         params_dict['name'] = params[params_key[i]]
         params_dict['value'] = params['parameter_value_%s' % i]
+        if params_dict['value'] == "MAC_of_virbr0":
+            virbr0_info = process.run("ip a | grep virbr0: -A1", shell=True).stdout_text.strip()
+            virbr0_mac = re.search(r'link/ether\s+(\w{2}:\w{2}:\w{2}:\w{2}:\w{2}:\w{2})',
+                                   virbr0_info, re.M | re.I).group(1)
+            params_dict['value'] = virbr0_mac
+            logging.debug("params_dict['value'] is %s " % params_dict['value'])
         filter_param_list.append(params_dict)
     filterref_dict = {}
     filterref_dict['name'] = filter_name
@@ -157,6 +170,49 @@ def run(test, params, env):
                     test.fail("'%s' not found in output: %s"
                               % (expect_match, out))
 
+            if need_vm2:
+                # Clone more vm for testing
+                result = virsh.dom_list('--inactive').stdout_text
+                if add_vm_name in result:
+                    logging.debug("%s is already exists!" % add_vm_name)
+                    vms.append(env.get_vm(add_vm_name))
+                else:
+                    vm.destroy()
+                    ret_clone = utils_libguestfs.virt_clone_cmd(vm_name, add_vm_name,
+                                                                True, timeout=360)
+                    if ret_clone.exit_status:
+                        test.fail("Error when clone a second vm!")
+                    vms.append(vm.clone(add_vm_name))
+                    vm.start()
+                vm2 = vms[1]
+                logging.debug("Now the vms is: %s", [dom.name for dom in vms])
+                # update the vm2 interface with the nwfilter
+                logging.debug("filter_params_list is %s" % filter_param_list)
+                iface_dict = {"filter": filter_name, "filter_parameters": filter_param_list, "del_mac": "yes"}
+                if vm2.is_alive():
+                    vm2.destroy()
+                utlv.modify_vm_iface(vm2.name, "update_iface", iface_dict)
+                vmxml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm2.name)
+                iface_xml = vmxml.get_devices('interface')[0]
+                logging.debug("iface_xml for vm2 is %s" % iface_xml)
+                vm2.start()
+                vm2_session = vm2.wait_for_serial_login()
+                vm2_mac = vm2.get_mac_address()
+                vm2_ip = utils_net.get_guest_ip_addr(vm2_session, vm2_mac)
+                vm.session = vm.wait_for_serial_login()
+                # test network functions, the 2 vms can not access to each other
+                gateway_ip = utils_net.get_ip_address_by_interface("virbr0")
+                status1, output1 = utils_net.ping(dest=vm2_ip, count='3', timeout=ping_timeout, session=vm.session,
+                                                  force_ipv4=True)
+                status2, output2 = utils_net.ping(dest=gateway_ip, count='3', timeout=ping_timeout, session=vm.session,
+                                                  force_ipv4=True)
+                status3, output3 = utils_net.ping(dest=dst_outside, count='3', timeout=ping_timeout, session=vm.session,
+                                                  force_ipv4=True)
+                if not status1:
+                    test.fail("vm with clean-traffic-gateway ping succeed to %s %s, but it is not expected!" %
+                              (vm2.name, vm2_ip))
+                if status2 or status3:
+                    test.fail("vm ping failed! check %s \n %s" % (output2, output3))
         except virt_vm.VMStartError as e:
             # Starting VM failed.
             if not status_error:
@@ -191,3 +247,8 @@ def run(test, params, env):
             utlv.setup_or_cleanup_iscsi(is_setup=False)
         if ipset_command:
             process.run("ipset destroy blacklist", shell=True)
+        # Remove additional vms
+        if need_vm2:
+            result = virsh.dom_list("--all").stdout_text
+            if add_vm_name in result:
+                virsh.remove_domain(add_vm_name, "--remove-all-storage")
