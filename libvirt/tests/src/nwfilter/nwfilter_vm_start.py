@@ -30,8 +30,6 @@ def run(test, params, env):
     # Prepare parameters
     filter_name = params.get("filter_name", "testcase")
     exist_filter = params.get("exist_filter", "no-mac-spoofing")
-    check_cmd = params.get("check_cmd")
-    expect_match = params.get("expect_match")
     status_error = "yes" == params.get("status_error", "no")
     mount_noexec_tmp = "yes" == params.get("mount_noexec_tmp", "no")
     kill_libvirtd = "yes" == params.get("kill_libvirtd", "no")
@@ -68,12 +66,48 @@ def run(test, params, env):
     filterref_dict = {}
     filterref_dict['name'] = filter_name
     filterref_dict['parameters'] = filter_param_list
+    params['filter_uuid'] = process.run("uuidgen", ignore_status=True, shell=True).stdout_text.strip()
 
+    # get all the check commands and corresponding expected results form config file and make a dictionary
+    cmd_list_ = params.get('check_cmd', '')
+    if cmd_list_:
+        cmd_list = cmd_list_.split(',')
+        expect_res = params.get('expect_match', '').split(',')
+        logging.debug("cmd_list is %s" % cmd_list)
+        logging.debug("expect_res is %s" % expect_res)
+        cmd_result_dict = dict(zip(cmd_list, expect_res))
+        logging.debug("the check dict is %s" % cmd_result_dict)
     # backup vm xml
     vmxml_backup = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     libvirtd = utils_libvirtd.Libvirtd("virtqemud")
     device_name = None
+
+    def check_nwfilter_rules(check_cmd, expect_match):
+        """"check the nwfilter corresponding rule is added by iptables commands"""
+        ret = utils_misc.wait_for(lambda: not process.system(check_cmd, ignore_status=True, shell=True), timeout=30)
+        if not ret:
+            test.fail("Rum command '%s' failed" % check_cmd)
+        # This change anchors nwfilter_vm_start.possitive_test.new_filter.variable_notation case
+        # The matched destination could be ip address or hostname
+        if "iptables -L" in check_cmd and expect_match and 'ACCEPT' in expect_match:
+            # ip address that need to be replaced
+            replace_param = params.get("parameter_value_2")
+            # Get hostname by ip address.
+            hostname_info = None
+            try:
+                hostname_info = socket.gethostbyaddr(replace_param)
+            except socket.error as e:
+                logging.info("Failed to get hostname from ip address with error: %s", str(e))
+            if hostname_info:
+                # String is used to replace ip address
+                replace_with = "%s|%s" % (replace_param, hostname_info[0])
+                expect_match = r"%s" % expect_match.replace(replace_param, replace_with)
+                logging.debug("final iptables match string:%s", expect_match)
+        out = astring.to_text(process.system_output(check_cmd, ignore_status=False, shell=True))
+        if expect_match and not re.search(expect_match, out):
+            test.fail("'%s' not found in output: %s"
+                      % (expect_match, out))
 
     def clean_up_dirty_nwfilter_binding():
         cmd_result = virsh.nwfilter_binding_list(debug=True)
@@ -100,6 +134,10 @@ def run(test, params, env):
         rule = params.get("rule")
         if rule:
             # Create new filter xml
+            cmd_result = virsh.nwfilter_list(options="",
+                                             ignore_status=True, debug=True).stdout_text
+            if filter_name in cmd_result:
+                virsh.nwfilter_undefine(filter_name, debug=True)
             filterxml = utlv.create_nwfilter_xml(params)
             # Define filter xml
             virsh.nwfilter_define(filterxml.xml, debug=True)
@@ -136,40 +174,10 @@ def run(test, params, env):
             vmxml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
             iface_xml = vmxml.get_devices('interface')[0]
             iface_target = iface_xml.target['dev']
+            iface_mac = iface_xml.mac_address
             logging.debug("iface target dev name is %s", iface_target)
 
             # Check iptables or ebtables on host
-            if check_cmd:
-                if "DEVNAME" in check_cmd:
-                    check_cmd = check_cmd.replace("DEVNAME", iface_target)
-                ret = utils_misc.wait_for(lambda: not
-                                          process.system(check_cmd,
-                                                         ignore_status=True,
-                                                         shell=True),
-                                          timeout=30)
-                if not ret:
-                    test.fail("Rum command '%s' failed" % check_cmd)
-                # This change anchors nwfilter_vm_start.possitive_test.new_filter.variable_notation case
-                # The matched destination could be ip address or hostname
-                if "iptables -L" in check_cmd and expect_match and 'ACCEPT' in expect_match:
-                    # ip address that need to be replaced
-                    replace_param = params.get("parameter_value_2")
-                    #Get hostname by ip address.
-                    hostname_info = None
-                    try:
-                        hostname_info = socket.gethostbyaddr(replace_param)
-                    except socket.error as e:
-                        logging.info("Failed to get hostname from ip address with error: %s", str(e))
-                    if hostname_info:
-                        # String is used to replace ip address
-                        replace_with = "%s|%s" % (replace_param, hostname_info[0])
-                        expect_match = r"%s" % expect_match.replace(replace_param, replace_with)
-                        logging.debug("final iptables match string:%s", expect_match)
-                out = astring.to_text(process.system_output(check_cmd, ignore_status=False, shell=True))
-                if expect_match and not re.search(expect_match, out):
-                    test.fail("'%s' not found in output: %s"
-                              % (expect_match, out))
-
             if need_vm2:
                 # Clone more vm for testing
                 result = virsh.dom_list('--inactive').stdout_text
@@ -213,6 +221,18 @@ def run(test, params, env):
                               (vm2.name, vm2_ip))
                 if status2 or status3:
                     test.fail("vm ping failed! check %s \n %s" % (output2, output3))
+            if cmd_list_:
+                loop = 0
+                for check_cmd_, expect_match_ in cmd_result_dict.items():
+                    check_cmd = check_cmd_.strip()
+                    expect_match = expect_match_.strip()
+                    if "DEVNAME" in check_cmd:
+                        check_cmd = check_cmd.replace("DEVNAME", iface_target)
+                    if "VMMAC" in expect_match:
+                        expect_match = expect_match.replace("VMMAC", iface_mac)
+                    logging.debug("the check_cmd is %s, and expected result is %s" % (check_cmd, expect_match))
+                    check_nwfilter_rules(check_cmd, expect_match)
+                    loop += 1
         except virt_vm.VMStartError as e:
             # Starting VM failed.
             if not status_error:
@@ -238,8 +258,8 @@ def run(test, params, env):
             vm.destroy(gracefully=False)
         # Recover xml of vm.
         vmxml_backup.sync()
-        # Undefine created filter
-        if filter_name != exist_filter:
+        # Undefine created filter except clean-traffic as it is built-in nwfilter
+        if filter_name != exist_filter and filter_name != 'clean-traffic':
             virsh.nwfilter_undefine(filter_name, debug=True)
         if mount_noexec_tmp:
             if device_name:
