@@ -9,6 +9,7 @@ from virttest import data_dir
 from virttest import utils_misc
 
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_pcicontr
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.vm_xml import VMCPUXML
 from virttest.libvirt_xml.devices.controller import Controller
@@ -570,6 +571,9 @@ def run(test, params, env):
         attach_count = params.get("attach_count", '1')
         attach_dev_type = params.get("attach_dev_type", 'disk')
         attach_option = params.get("attach_option")
+        if attach_option.count('--address '):
+            index_str = "%02x" % int(auto_indexes_dict['pcie-root-port'][0])
+            attach_option = attach_option % index_str
         for count in range(0, int(attach_count)):
             if attach_dev_type == 'disk':
                 file_path = tempfile.mktemp(dir=data_dir.get_tmp_dir())
@@ -710,6 +714,7 @@ def run(test, params, env):
     no_pci_controller = params.get("no_pci_controller", "no")
     pci_bus_number = params.get("pci_bus_number", "0")
     remove_address = params.get("remove_address", "yes")
+    remove_contr = "yes" == params.get("remove_contr", "yes")
     setup_controller = params.get("setup_controller", "yes")
     index_second = params.get("controller_index_second", None)
     cntlr_bus = params.get('controller_bus')
@@ -739,6 +744,8 @@ def run(test, params, env):
     check_dev_bus = "yes" == params.get("check_dev_bus", "no")
     cpu_numa_cells = params.get("cpu_numa_cells")
     virsh_dargs = {'ignore_status': False, 'debug': True}
+    auto_indexes_dict = {}
+    auto_index = params.get('auto_index', 'no') == 'yes'
 
     if index and index_second:
         if int(index) > int(index_second):
@@ -749,7 +756,8 @@ def run(test, params, env):
     vm_xml_backup = vm_xml.copy()
 
     try:
-        vm_xml.remove_all_device_by_type('controller')
+        if remove_contr:
+            vm_xml.remove_all_device_by_type('controller')
         if remove_address == "yes":
             remove_devices(vm_xml, 'address')
         remove_devices(vm_xml, 'usb')
@@ -812,6 +820,13 @@ def run(test, params, env):
             return
         vm_xml = VMXML.new_from_dumpxml(vm_name)
         logging.debug("Test VM XML after define is %s" % vm_xml)
+        if auto_index:
+            contrls = eval(add_contrl_list)
+            for one_contrl in contrls:
+                ret_indexes = libvirt_pcicontr.get_max_contr_indexes(vm_xml,
+                                                                     one_contrl.get('type', 'pci'),
+                                                                     one_contrl.get('model'))
+                auto_indexes_dict.update({one_contrl['model']: ret_indexes})
         if check_contr_addr:
             check_controller_addr(cntlr_bus)
         if new_pcie_root_port_model and old_pcie_root_port_model:
@@ -819,7 +834,7 @@ def run(test, params, env):
                 expect_model = new_pcie_root_port_model
             else:
                 expect_model = old_pcie_root_port_model
-            logging.debug("Expect the model for pcie-root-port: "
+            logging.debug("Expect the model for 'pcie-root-port': "
                           "%s" % expect_model)
             check_dict = {'modelname': expect_model}
             check_cntrl(vm_xml, 'pci', 'pcie-root-port',
@@ -872,6 +887,10 @@ def run(test, params, env):
 
         if check_qemu:
             if qemu_patterns:
+                if auto_index:
+                    index_str = "%x" % int(auto_indexes_dict['pcie-root-port'][0])
+                    qemu_patterns = qemu_patterns % index_str
+                    logging.debug("qemu_patterns=%s", qemu_patterns)
                 search_qemu_cmd = eval(qemu_patterns)
                 logging.debug(search_qemu_cmd)
             else:
