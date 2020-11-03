@@ -4,6 +4,7 @@ import ast
 import time
 import logging
 import platform
+import shutil
 
 import aexpect
 
@@ -49,12 +50,14 @@ def run(test, params, env):
         test.cancel("Failed to install dependency package lsof"
                     " on host")
 
-    def create_iface_xml(iface_mac):
+    def create_iface_xml(iface_mac, source):
         """
         Create interface xml file
+
+        :param iface_mac: mac of interface
+        :param source: source of interface
         """
         iface = Interface(type_name=iface_type)
-        source = ast.literal_eval(iface_source)
         if source:
             iface.source = source
         iface.model = iface_model if iface_model else "virtio"
@@ -92,7 +95,7 @@ def run(test, params, env):
         if iface_type:
             iface.type_name = iface_type
         del iface.source
-        source = ast.literal_eval(iface_source)
+        source = iface_source
         if source:
             net_ifs = utils_net.get_net_if(state="UP")
             # Check source device is valid or not,
@@ -252,7 +255,7 @@ def run(test, params, env):
                         or target_dev.startswith("macvlan"):
                     logging.debug("target dev %s is override" % target_dev)
                 else:
-                    test.fail("Failed to set target dev to %s", target_dev)
+                    test.fail("Failed to set target dev to %s" % target_dev)
             else:
                 logging.debug("target dev set successfully to %s", iface.target["dev"])
 
@@ -385,7 +388,7 @@ def run(test, params, env):
         :param session: vm session
         :param add_session: additional vm session
         """
-        src_addr = ast.literal_eval(iface_source)['address']
+        src_addr = iface_source['address']
         vms_sess_dict = {vm_name: session,
                          additional_vm.name: add_session}
 
@@ -451,7 +454,7 @@ def run(test, params, env):
         Check the vhostuser interface in guests
 
         param session1: Session of original guest
-        param session2: Session of original additional guest
+        param session2: Session of additional guest
         """
         logging.debug("iface details is %s" % libvirt.get_interface_details(vm_name))
         vm1_mac = str(libvirt.get_interface_details(vm_name)[0]['mac'])
@@ -493,6 +496,39 @@ def run(test, params, env):
                     break
         return ovs_statis_dict
 
+    def check_libvirt_log(libvirtd_log_path, log_pattern_list):
+        """
+        Check if the log patterns exist in libvirtd
+
+        :param libvirtd_log_path: path of libvirtd log
+        :param log_pattern_list: checking log pattern list
+        """
+        with open(libvirtd_log_path) as f:
+            lines = "".join(f.readlines())
+            for log_pattern in log_pattern_list:
+                if re.search(log_pattern, lines):
+                    logging.info("Finding msg<%s> in libvirtd log", log_pattern)
+                else:
+                    test.fail("Can not find msg:<%s> in libvirtd.log" % log_pattern)
+
+    def get_domstats_runtime():
+        """
+        get domstats runtime dict
+
+        :return: runtime_dict
+        """
+        runtime_str = process.run("time virsh domstats", shell=True).stderr_text
+        it = iter(runtime_str.split())
+        runtime_dict = dict(zip(it, it))
+        for key in runtime_dict.keys():
+            value_list = re.findall(r"\d+\.?\d*", runtime_dict[key])
+            if value_list is not None:
+                runtime_dict[key] = float(value_list[0]) * 60 + float(value_list[1])
+            else:
+                test.error("Can not get correct time for command execution")
+        logging.info("The runtime dict is %s", runtime_dict)
+        return runtime_dict
+
     status_error = "yes" == params.get("status_error", "no")
     start_error = "yes" == params.get("start_error", "no")
     define_error = "yes" == params.get("define_error", "no")
@@ -500,7 +536,7 @@ def run(test, params, env):
 
     # Interface specific attributes.
     iface_type = params.get("iface_type", "network")
-    iface_source = params.get("iface_source", "{}")
+    iface_source = ast.literal_eval(params.get("iface_source", "{}"))
     iface_driver = params.get("iface_driver")
     iface_model = get_iface_model(params.get("iface_model", "virtio"), host_arch)
     iface_target = params.get("iface_target")
@@ -513,6 +549,7 @@ def run(test, params, env):
     expect_tx_size = params.get("expect_tx_size")
     guest1_ip = params.get("vhostuser_guest1_ip", "192.168.100.1")
     guest2_ip = params.get("vhostuser_guest2_ip", "192.168.100.2")
+    test_type = params.get("test_type")
     change_option = "yes" == params.get("change_iface_options", "no")
     update_device = "yes" == params.get("update_iface_device", "no")
     additional_guest = "yes" == params.get("additional_guest", "no")
@@ -551,7 +588,9 @@ def run(test, params, env):
     vcpu_num = params.get("vcpu_num")
     cpu_mode = params.get("cpu_mode")
     hugepage_num = params.get("hugepage_num")
-    log_pattern = params.get("log_pattern")
+    log_pattern_list = ast.literal_eval(params.get("log_pattern_list", "[]"))
+    log_level = params.get("log_level")
+    limit_nofile = params.get("limit_nofile")
 
     # judgement params for vhostuer test
     need_vhostuser_env = "yes" == params.get("need_vhostuser_env", "no")
@@ -603,8 +642,12 @@ def run(test, params, env):
     libvirtd_log_path = None
     libvirtd_conf = None
     if check_libvirtd_log:
-        libvirtd_log_path = os.path.join(test.tmpdir, "libvirtd.log")
+        libvirtd_log_path = os.path.join(data_dir.get_tmp_dir(), "libvirtd.log")
+        logging.debug("libvirtd_log_path is %s", libvirtd_log_path)
         libvirtd_conf = utils_config.LibvirtdConfig()
+        if log_level:
+            libvirtd_conf["log_level"] = log_level
+            libvirtd_conf["log_filters"] = '"1:json 1:libvirt 1:qemu 1:monitor 3:remote 4:event"'
         libvirtd_conf["log_outputs"] = '"1:file:%s"' % libvirtd_log_path
         libvirtd.restart()
 
@@ -664,7 +707,8 @@ def run(test, params, env):
             # Attach a interface when vm is shutoff
             if attach_device == 'config':
                 iface_mac = utils_net.generate_mac_address_simple()
-                iface_xml_obj = create_iface_xml(iface_mac)
+                att_source = additional_iface_source if test_type == "check_performance" else iface_source
+                iface_xml_obj = create_iface_xml(iface_mac, att_source)
                 iface_xml_obj.xmltreefile.write()
                 ret = virsh.attach_device(vm_name, iface_xml_obj.xml,
                                           flagstr="--config",
@@ -748,7 +792,7 @@ def run(test, params, env):
             # Attach a interface when vm is running
             if attach_device == 'live':
                 iface_mac = utils_net.generate_mac_address_simple()
-                iface_xml_obj = create_iface_xml(iface_mac)
+                iface_xml_obj = create_iface_xml(iface_mac, iface_source)
                 iface_xml_obj.xmltreefile.write()
                 ret = virsh.attach_device(vm_name, iface_xml_obj.xml,
                                           flagstr="--live",
@@ -819,18 +863,44 @@ def run(test, params, env):
                 run_xml_test(iface_mac)
 
             # Check vhostuser guest
-            if additional_iface_source:
+            if test_type == "multi_guests":
                 check_vhostuser_guests(session, add_session)
+
+            if test_type == "check_performance":
+                # get runtime of domstats
+                runtime_dict1 = get_domstats_runtime()
 
             # Check libvirtd log
             if check_libvirtd_log:
-                find = 0
-                with open(libvirtd_log_path) as f:
-                    lines = "".join(f.readlines())
-                    if log_pattern in lines:
-                        logging.info("Finding msg<%s> in libvirtd log", log_pattern)
-                    else:
-                        test.fail("Can not find msg:<%s> in libvirtd.log" % log_pattern)
+                check_libvirt_log(libvirtd_log_path, log_pattern_list)
+
+            # change libvirtd.service
+            if test_type == "check_performance":
+                # Get the NOFILE limit value
+                process.run("prlimit -p `pidof libvirtd` |grep NOFILE", shell=True)
+                # Let libvirtd run with a big NOFILE limit, check runtime
+                libvirtd_service_file = "/usr/lib/systemd/system/libvirtd.service"
+                backup_file = os.path.join(data_dir.get_tmp_dir(), "libvirtd.service-bak")
+                shutil.copy(libvirtd_service_file, backup_file)
+                ori_value = process.getoutput("cat %s |grep LimitNOFILE" % libvirtd_service_file, shell=True)
+                with open(libvirtd_service_file, 'r') as fr:
+                    alllines = fr.readlines()
+                with open(libvirtd_service_file, 'w+') as fw:
+                    for line in alllines:
+                        newline = re.sub(ori_value, limit_nofile, line)
+                        fw.writelines(newline)
+                process.run("systemctl daemon-reload")
+                libvirtd.restart()
+                process.run("prlimit -p `pidof libvirtd` |grep NOFILE", shell=True)
+
+                # get runtime of domstats again and compare
+                runtime_dict2 = get_domstats_runtime()
+                for key in runtime_dict1.keys():
+                    if abs(runtime_dict1[key] - runtime_dict2[key]) > 0.1:
+                        test.fail("The difference of 2 runtime is larger than 0.1s")
+
+                # check the libvirtd log again with big NOFILE limit
+                check_libvirt_log(libvirtd_log_path, log_pattern_list)
 
             # Check statistics
             if check_statistics:
@@ -942,3 +1012,8 @@ def run(test, params, env):
 
         if libvirtd_log_path and os.path.exists(libvirtd_log_path):
             os.unlink(libvirtd_log_path)
+
+        if test_type == "check_performance":
+            shutil.copy(backup_file, libvirtd_service_file)
+            process.run("systemctl daemon-reload")
+            libvirtd.restart()
