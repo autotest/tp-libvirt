@@ -10,9 +10,12 @@ from virttest import data_dir
 from virttest import gluster
 from virttest import utils_disk
 from virttest import utils_backup
+from virttest import utils_libvirtd
 from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+from virttest.utils_config import LibvirtQemuConfig
+from virttest.utils_conn import TLSConnection
 
 
 def run(test, params, env):
@@ -29,29 +32,50 @@ def run(test, params, env):
     7. check the full/incremental backup file data
     """
 
-    # Cancel the test if libvirt version is too low
-    if not libvirt_version.version_compare(6, 0, 0):
-        test.cancel("Current libvirt version doesn't support "
-                    "incremental backup.")
-
+    # Basic case config
     hotplug_disk = "yes" == params.get("hotplug_disk", "no")
     original_disk_size = params.get("original_disk_size", "100M")
     original_disk_type = params.get("original_disk_type", "local")
     original_disk_target = params.get("original_disk_target", "vdb")
+    local_hostname = params.get("loal_hostname", "localhost")
+    local_ip = params.get("local_ip", "127.0.0.1")
+    local_user_name = params.get("local_user_name", "root")
+    local_user_password = params.get("local_user_password", "redhat")
+    tmp_dir = data_dir.get_tmp_dir()
+    # Backup config
     scratch_type = params.get("scratch_type", "file")
     reuse_scratch_file = "yes" == params.get("reuse_scratch_file")
     prepare_scratch_file = "yes" == params.get("prepare_scratch_file")
     scratch_blkdev_path = params.get("scratch_blkdev_path")
     scratch_blkdev_size = params.get("scratch_blkdev_size", original_disk_size)
     prepare_scratch_blkdev = "yes" == params.get("prepare_scratch_blkdev")
+    backup_rounds = int(params.get("backup_rounds", 3))
+    backup_error = "yes" == params.get("backup_error")
+    # NBD service config
     nbd_protocol = params.get("nbd_protocol", "unix")
     nbd_socket = params.get("nbd_socket", "/tmp/pull_backup.socket")
     nbd_tcp_port = params.get("nbd_tcp_port", "10809")
+    nbd_hostname = local_hostname
     set_exportname = "yes" == params.get("set_exportname")
     set_exportbitmap = "yes" == params.get("set_exportbitmap")
-    backup_rounds = int(params.get("backup_rounds", 3))
-    backup_error = "yes" == params.get("backup_error")
-    tmp_dir = data_dir.get_tmp_dir()
+    # TLS service config
+    tls_enabled = "yes" == params.get("tls_enabled")
+    tls_x509_verify = "yes" == params.get("tls_x509_verify")
+    custom_pki_path = "yes" == params.get("custom_pki_path")
+    tls_client_ip = tls_server_ip = local_ip
+    tls_client_cn = tls_server_cn = local_hostname
+    tls_client_user = tls_server_user = local_user_name
+    tls_client_pwd = tls_server_pwd = local_user_password
+    tls_provide_client_cert = "yes" == params.get("tls_provide_client_cert")
+    tls_error = "yes" == params.get("tls_error")
+
+    # Cancel the test if libvirt support related functions
+    if not libvirt_version.version_compare(6, 0, 0):
+        test.cancel("Current libvirt version doesn't support "
+                    "incremental backup.")
+    if tls_enabled and not libvirt_version.version_compare(6, 6, 0):
+        test.cancel("Current libvirt version doesn't support pull mode "
+                    "backup with tls nbd.")
 
     try:
         vm_name = params.get("main_vm")
@@ -82,6 +106,40 @@ def run(test, params, env):
         logging.debug("Script insert xml elements to make sure vm can support "
                       "incremental backup. This should be removded when "
                       "bz 1799015 fixed.")
+
+        # Prepare tls env
+        if tls_enabled:
+            # Prepare pki
+            tls_config = {"qemu_tls": "yes",
+                          "auto_recover": "yes",
+                          "client_ip": tls_client_ip,
+                          "server_ip": tls_server_ip,
+                          "client_cn": tls_client_cn,
+                          "server_cn": tls_server_cn,
+                          "client_user": tls_client_user,
+                          "server_user": tls_server_user,
+                          "client_pwd": tls_client_pwd,
+                          "server_pwd": tls_server_pwd,
+                          }
+            if custom_pki_path:
+                pki_path = os.path.join(tmp_dir, "inc_bkup_pki")
+            else:
+                pki_path = "/etc/pki/libvirt-backup/"
+            if tls_x509_verify:
+                tls_config["client_ip"] = tls_client_ip
+            tls_config["custom_pki_path"] = pki_path
+            tls_obj = TLSConnection(tls_config)
+            tls_obj.conn_setup(True, tls_provide_client_cert)
+            logging.debug("TLS certs in: %s" % pki_path)
+            # Set qemu.conf
+            qemu_config = LibvirtQemuConfig()
+            if tls_x509_verify:
+                qemu_config.backup_tls_x509_verify = True
+            else:
+                qemu_config.backup_tls_x509_verify = False
+            if custom_pki_path:
+                qemu_config.backup_tls_x509_cert_dir = pki_path
+            utils_libvirtd.Libvirtd().restart()
 
         # Prepare the disk to be backuped.
         disk_params = {}
@@ -183,8 +241,10 @@ def run(test, params, env):
                 backup_server_dict["transport"] = "unix"
                 backup_server_dict["socket"] = nbd_socket
             else:
-                backup_server_dict["name"] = "localhost"
+                backup_server_dict["name"] = nbd_hostname
                 backup_server_dict["port"] = nbd_tcp_port
+                if tls_enabled:
+                    backup_server_dict["tls"] = "yes"
             backup_params["backup_server"] = backup_server_dict
             backup_disk_xmls = []
             for vm_disk in vm_disks:
@@ -254,9 +314,6 @@ def run(test, params, env):
             logging.debug("ROUND_%s Checkpoint Xml: %s",
                           backup_index, checkpoint_xml)
 
-            # Start backup
-            backup_options = backup_xml.xml + " " + checkpoint_xml.xml
-
             # Create some data in vdb
             dd_count = "1"
             dd_seek = str(backup_index * 10 + 10)
@@ -265,36 +322,41 @@ def run(test, params, env):
             utils_disk.dd_data_to_vm_disk(session, test_disk_in_vm, dd_bs,
                                           dd_seek, dd_count)
             session.close()
-
+            # Start backup
+            backup_options = backup_xml.xml + " " + checkpoint_xml.xml
             if reuse_scratch_file:
                 backup_options += " --reuse-external"
             backup_result = virsh.backup_begin(vm_name, backup_options,
-                                               debug=True)
+                                               ignore_status=True, debug=True)
             if backup_result.exit_status:
                 raise utils_backup.BackupBeginError(backup_result.stderr.strip())
 
             backup_file_path = os.path.join(
                     tmp_dir, "backup_file_%s.qcow2" % str(backup_index))
             backup_file_list.append(backup_file_path)
+            nbd_params = {"nbd_protocol": nbd_protocol,
+                          "nbd_export": nbd_export_name}
+            if nbd_protocol == "unix":
+                nbd_params["nbd_socket"] = nbd_socket
+            elif nbd_protocol == "tcp":
+                nbd_params["nbd_hostname"] = nbd_hostname
+                nbd_params["nbd_tcp_port"] = nbd_tcp_port
+                if tls_enabled:
+                    nbd_params["tls_dir"] = pki_path
+                    nbd_params["tls_server_ip"] = tls_server_ip
             if not is_incremental:
                 # Do full backup
-                if nbd_protocol == "unix":
-                    nbd_export = ("nbd+unix:///%s?socket=%s" %
-                                  (nbd_export_name, nbd_socket))
-                elif nbd_protocol == "tcp":
-                    nbd_export = ("nbd://localhost:%s/%s" %
-                                  (nbd_tcp_port, nbd_export_name))
-                utils_backup.pull_full_backup_to_file(nbd_export,
-                                                      backup_file_path)
+                try:
+                    utils_backup.pull_full_backup_to_file(nbd_params,
+                                                          backup_file_path)
+                except Exception as details:
+                    if tls_enabled and tls_error:
+                        raise utils_backup.BackupTLSError(details)
+                    else:
+                        test.fail("Fail to get full backup data: %s" % details)
                 logging.debug("Full backup to: %s", backup_file_path)
             else:
                 # Do incremental backup
-                nbd_params = {"nbd_protocol": nbd_protocol,
-                              "nbd_export": nbd_export_name}
-                if nbd_protocol == "tcp":
-                    nbd_params["nbd_tcp_port"] = nbd_tcp_port
-                elif nbd_protocol == "unix":
-                    nbd_params["nbd_socket"] = nbd_socket
                 utils_backup.pull_incremental_backup_to_file(
                         nbd_params, backup_file_path, nbd_bitmap_name,
                         original_disk_size)
@@ -315,9 +377,11 @@ def run(test, params, env):
                           "'%s' and '%s'" % (disk_path, backup_file))
             else:
                 logging.debug("'%s' contains correct backup data", backup_file)
-    except utils_backup.BackupBeginError as details:
+    except (utils_backup.BackupBeginError, utils_backup.BackupTLSError) as details:
         if backup_error:
             logging.debug("Backup failed as expected.")
+        elif tls_error:
+            logging.debug("Failed to get backup data as expected.")
         else:
             test.fail(details)
     finally:
@@ -343,3 +407,11 @@ def run(test, params, env):
                     vol_name=gluster_vol_name,
                     pool_name=gluster_pool_name,
                     **params)
+
+        # Recover qemu.conf
+        if "qemu_config" in locals():
+            qemu_config.restore()
+
+        # Remove tls object
+        if "tls_obj" in locals():
+            del tls_obj
