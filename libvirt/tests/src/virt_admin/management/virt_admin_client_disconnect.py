@@ -1,7 +1,7 @@
-from avocado.core import exceptions
 from virttest import virt_admin
 from virttest import virsh
 from virttest import utils_libvirtd
+from virttest import ssh_key
 
 
 def run(test, params, env):
@@ -18,12 +18,18 @@ def run(test, params, env):
     num_clients = params.get("num_clients")
     server_name = params.get("server_name")
     vp = virt_admin.VirtadminPersistent()
-    libvirtd = utils_libvirtd.Libvirtd()
+    daemon = utils_libvirtd.Libvirtd()
+    local_pwd = params.get("local_pwd")
+
+    if not server_name:
+        server_name = virt_admin.check_server_name()
+    ssh_key.setup_remote_ssh_key("localhost", "root", local_pwd)
 
     try:
         virsh_instant = []
         for _ in range(int(num_clients)):
-            virsh_instant.append(virsh.VirshPersistent(uri="qemu:///system"))
+            virsh_instant.append(virsh.VirshPersistent(
+                uri="qemu+ssh://localhost/system"))
 
         out = vp.srv_clients_list(server_name,
                                   ignore_status=True, debug=True)
@@ -32,10 +38,10 @@ def run(test, params, env):
                                       ignore_status=True, debug=True)
 
         if result.exit_status:
-            raise exceptions.TestFail("This operation should "
-                                      "success but failed. output: \n %s" % result)
+            test.fail("This operation should "
+                      "success but failed. output: \n %s" % result)
         elif result.stdout.strip().split()[1][1:-1] != client_id:
-            raise exceptions.TestFail("virt-admin did not "
-                                      "disconnect the correct client.")
+            test.fail("virt-admin did not "
+                      "disconnect the correct client.")
     finally:
-        libvirtd.restart()
+        daemon.restart()
