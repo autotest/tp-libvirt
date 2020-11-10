@@ -297,7 +297,15 @@ def run(test, params, env):
             vm.start()
             # Generate attached xml
             new_iface = Interface(type_name=iface_type)
-            xml_file_tmp = libvirt.modify_vm_iface(vm_name, "get_xml", iface_format)
+            if 'multiqueue' in params['name']:
+                tmp_iface_format = iface_format.copy()
+                tmp_iface_format.update(
+                    {'source': "{'%s': '%s'}" % (
+                        iface_type, iface_format['source'])}
+                )
+                xml_file_tmp = libvirt.modify_vm_iface(vm_name, "get_xml", tmp_iface_format)
+            else:
+                xml_file_tmp = libvirt.modify_vm_iface(vm_name, "get_xml", iface_format)
             new_iface.xml = xml_file_tmp
             new_iface.del_address()
             xml_file = new_iface.xml
