@@ -194,6 +194,7 @@ def run(test, params, env):
                             "support in current libvirt version.")
         at_options += (" --cache %s" % cache_options)
 
+    machine_type = params.get('machine_type')
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 
@@ -240,19 +241,20 @@ def run(test, params, env):
         else:
             device_source = device_source_name
 
-    # Add more pci controllers to avoid error: No more available PCI slots
-    if test_twice and params.get("add_more_pci_controllers", "yes") == "yes":
-        vm_dump_xml.remove_all_device_by_type('controller')
-        machine_list = vm_dump_xml.os.machine.split("-")
-        vm_dump_xml.set_os_attrs(**{"machine": machine_list[0] + "-q35-" + machine_list[2]})
-        q35_pcie_dict0 = {'controller_model': 'pcie-root', 'controller_type': 'pci', 'controller_index': 0}
-        q35_pcie_dict1 = {'controller_model': 'pcie-root-port', 'controller_type': 'pci'}
-        vm_dump_xml.add_device(libvirt.create_controller_xml(q35_pcie_dict0))
-        # Add enough controllers to match multiple times disk attaching requirements
-        for i in list(range(1, 15)):
-            q35_pcie_dict1.update({'controller_index': "%d" % i})
-            vm_dump_xml.add_device(libvirt.create_controller_xml(q35_pcie_dict1))
-        vm_dump_xml.sync()
+    if machine_type == 'q35':
+        # Add more pci controllers to avoid error: No more available PCI slots
+        if test_twice and params.get("add_more_pci_controllers", "yes") == "yes":
+            vm_dump_xml.remove_all_device_by_type('controller')
+            machine_list = vm_dump_xml.os.machine.split("-")
+            vm_dump_xml.set_os_attrs(**{"machine": machine_list[0] + "-q35-" + machine_list[2]})
+            q35_pcie_dict0 = {'controller_model': 'pcie-root', 'controller_type': 'pci', 'controller_index': 0}
+            q35_pcie_dict1 = {'controller_model': 'pcie-root-port', 'controller_type': 'pci'}
+            vm_dump_xml.add_device(libvirt.create_controller_xml(q35_pcie_dict0))
+            # Add enough controllers to match multiple times disk attaching requirements
+            for i in list(range(1, 15)):
+                q35_pcie_dict1.update({'controller_index': "%d" % i})
+                vm_dump_xml.add_device(libvirt.create_controller_xml(q35_pcie_dict1))
+            vm_dump_xml.sync()
 
     # if we are testing audit, we need to start audit servcie first.
     if test_audit:
