@@ -9,6 +9,7 @@ from virttest import data_dir
 from virttest.utils_libvirtd import Libvirtd
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml.vm_xml import VMXML
+from virttest.utils_libvirt import libvirt_pcicontr
 
 
 def run(test, params, env):
@@ -167,7 +168,6 @@ def run(test, params, env):
     check_cntl_xml = params.get("check_cntl_xml", 'no') == 'yes'
     contr_model = params.get("controller_model", 'pcie-root-port')
     contr_target = params.get("controller_target")
-    contr_index = params.get("contr_index")
     hotplug_option = params.get("hotplug_option")
     hotplug = params.get("hotplug", 'yes') == 'yes'
     define_option = params.get("define_option")
@@ -178,6 +178,7 @@ def run(test, params, env):
     restart_daemon = params.get("restart_daemon", "no") == 'yes'
     save_restore = params.get("save_restore", "no") == 'yes'
     hotplug_counts = params.get("hotplug_counts")
+    contr_index = None
 
     virsh_options = {'debug': True, 'ignore_status': False}
 
@@ -193,17 +194,28 @@ def run(test, params, env):
             logging.debug("The original disk number in vm is %d", ori_disk_num)
             virsh.destroy(vm_name)
 
-        vm_xml_obj.remove_all_device_by_type('controller')
         if setup_controller:
             contr_dict = {'controller_type': 'pci',
                           'controller_model': contr_model,
-                          'controller_index': contr_index,
                           'controller_target': contr_target}
             contr_obj = libvirt.create_controller_xml(contr_dict)
             vm_xml_obj.add_device(contr_obj)
             logging.debug("Add a controller: %s" % contr_obj)
 
         virsh.define(vm_xml_obj.xml, options=define_option, **virsh_options)
+        vm_xml = VMXML.new_from_dumpxml(vm_name)
+        ret_indexes = libvirt_pcicontr.get_max_contr_indexes(vm_xml,
+                                                             'pci',
+                                                             contr_model)
+        if not ret_indexes or len(ret_indexes) < 1:
+            test.error("Can't find the controller index for model "
+                       "'{}'".format(contr_model))
+        contr_index = ret_indexes[0]
+        if attach_extra and attach_extra.count('--address '):
+            attach_extra = attach_extra % ("%02x" % int(contr_index))
+        if err_msg and err_msg.count('%s'):
+            err_msg = err_msg % contr_index
+
         if not save_restore:
             disk_max = int(hotplug_counts) if hotplug_counts else 1
             for disk_inx in range(0, disk_max):
