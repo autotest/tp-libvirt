@@ -10,6 +10,7 @@ from virttest import utils_v2v
 from virttest import virsh
 from virttest import remote
 from virttest.utils_test import libvirt
+from virttest.utils_v2v import params_get
 from avocado.utils import process
 from avocado.utils import download
 from aexpect.exceptions import ShellProcessTerminatedError
@@ -624,6 +625,12 @@ def run(test, params, env):
             net_name = find_net('virbr0')
             if net_name:
                 destroy_net(net_name)
+
+        if checkpoint == 'bandwidth':
+            dynamic_speeds = params_get(params, 'dynamic_speeds')
+            bandwidth_file = params_get(params, 'bandwidth_file')
+            with open(bandwidth_file, 'w') as fd:
+                fd.write(dynamic_speeds)
 
         if checkpoint == 'empty_cdrom':
             virsh_dargs = {'uri': remote_uri, 'remote_ip': remote_host,
