@@ -23,10 +23,13 @@ def run(test, params, env):
     expect_err_msg = params.get("expect_err_msg")
 
     iface_driver = params.get("iface_driver")
+    iface_driver_host = params.get("iface_driver_host")
+    iface_driver_guest = params.get("iface_driver_guest")
     iface_model = params.get("iface_model")
     iface_mtu = params.get("iface_mtu")
     iface_rom = params.get("iface_rom")
     iface_filter = params.get("iface_filter")
+    iface_boot = params.get('iface_boot')
 
     new_iface_driver = params.get("new_iface_driver")
     new_iface_driver_host = params.get("new_iface_driver_host")
@@ -71,7 +74,8 @@ def run(test, params, env):
         names = locals()
         # Collect need update items in 2 dicts for both start vm before and after
         update_list_bef = [
-            "driver", "model", "mtu", "rom", "filter"
+            "driver", 'driver_host', 'driver_guest', "model", "mtu", "rom",
+            "filter", 'boot',
             ]
         for update_item_bef in update_list_bef:
             if names['iface_'+update_item_bef]:
@@ -91,6 +95,22 @@ def run(test, params, env):
         for del_item in del_list:
             if names[del_item]:
                 iface_dict_aft.update({del_item: "True"})
+
+        # Operations before updating vm's iface xml
+        if iface_boot:
+            disk_boot = params.get('disk_book', 1)
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+            # Remove os boot config
+            vm_os = vmxml.os
+            vm_os.del_boots()
+            vmxml.os = vm_os
+            # Add boot config to disk
+            disk = vmxml.get_devices('disk')[0]
+            target_dev = disk.target.get('dev', '')
+            logging.debug('Will set boot order %s to device %s',
+                          disk_boot, target_dev)
+            vmxml.set_boot_order_by_target_dev(target_dev, disk_boot)
+            vmxml.sync()
 
         # Update vm interface with items in iface_dict_bef and start it
         if iface_dict_bef:
