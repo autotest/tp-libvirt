@@ -632,6 +632,19 @@ def run(test, params, env):
             with open(bandwidth_file, 'w') as fd:
                 fd.write(dynamic_speeds)
 
+        if checkpoint.startswith('luks_dev_keys'):
+            luks_password = params_get(params, 'luks_password', '')
+            luks_keys = params_get(params, 'luks_keys', '')
+            keys_options = ' ' .join(
+                list(map(lambda i: '--key %s' % i if i else '', luks_keys.split(';'))))
+
+            if checkpoint == 'luks_dev_keys':
+                is_file_key = r'--key \S+:file:(\S+)'
+                for file_key in re.findall(is_file_key, keys_options):
+                    with open(file_key, 'w') as fd:
+                        fd.write(luks_password)
+            v2v_params['v2v_opts'] += ' ' + keys_options
+
         if checkpoint == 'empty_cdrom':
             virsh_dargs = {'uri': remote_uri, 'remote_ip': remote_host,
                            'remote_user': 'root', 'remote_pwd': vpx_passwd,
