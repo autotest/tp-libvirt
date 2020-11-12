@@ -3,7 +3,6 @@ import os
 import re
 import signal
 import time
-import aexpect
 import platform
 
 from subprocess import PIPE
@@ -2560,25 +2559,8 @@ def run(test, params, env):
             migrate_vm(test, test_dict)
 
         if target_vm_name:
-            # Check the libvirtd service is running on both hosts.
-            logging.debug("Local libvirtd service should still be running. "
-                          "Check it...")
-            libvirtd = utils_libvirtd.Libvirtd()
-            if not libvirtd.is_running():
-                test.fail("Local libvirtd service is crashed unexpectedly.")
-            session = None
             remote_session = None
             try:
-                logging.debug("Remote libvirtd service should still be running."
-                              "Check it...")
-                session = remote.wait_for_login('ssh', server_ip, '22',
-                                                server_user, server_pwd,
-                                                r"[\#\$]\s*$")
-                libvirtd = utils_libvirtd.Libvirtd(session=session)
-                if not libvirtd.is_running():
-                    test.fail("Remote libvirtd service is"
-                              " crashed unexpectedly.")
-
                 logging.debug("Guest '%s' should not exist locally. "
                               "Check it...",
                               target_vm_name)
@@ -2597,13 +2579,7 @@ def run(test, params, env):
                     test.fail("Guest '%s' on remote host is not running."
                               % target_vm_name)
 
-            except (remote.LoginError, aexpect.ShellError) as detail:
-                test.error(detail)
-            except (process.CmdError, remote.SCPError) as detail:
-                test.error(detail)
             finally:
-                if session:
-                    session.close()
                 if remote_session:
                     remote_session.close_session()
 
