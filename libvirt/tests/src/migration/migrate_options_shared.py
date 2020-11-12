@@ -1490,17 +1490,6 @@ def run(test, params, env):
                 test.fail("Failed to run '%s' on remote: %s"
                           % (cmd, cmd_result))
 
-    except exceptions.TestFail as details:
-        is_TestFail = True
-        test_exception = details
-    except exceptions.TestCancel as details:
-        is_TestCancel = True
-        test_exception = details
-    except exceptions.TestError as details:
-        is_TestError = True
-        test_exception = details
-    except Exception as details:
-        test_exception = details
     finally:
         logging.debug("Recover test environment")
         try:
@@ -1602,14 +1591,3 @@ def run(test, params, env):
                 # if any of above exceptions has been raised, only print
                 # error log here to avoid of hiding the original issue
                 logging.error(exception_detail)
-    # Check result
-    if is_TestFail:
-        test.fail(test_exception)
-    if is_TestCancel:
-        test.cancel(test_exception)
-    if is_TestError:
-        test.error(test_exception)
-    if not test_exception:
-        logging.info("Case execution is done.")
-    else:
-        test.error(test_exception)
