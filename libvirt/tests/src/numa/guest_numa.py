@@ -69,9 +69,13 @@ def run(test, params, env):
             # 'node,nodeid=1,cpus=2-3,memdev=ram-node1'
             for cmd in cmdline_list:
                 line = cmd['cmdline']
-                node = line.split(',')[1][-1]
-                cmd['cmdline'] = line.replace('mem=512',
-                                              'memdev=ram-node{}'.format(node))
+                try:
+                    node = line.split(',')[1][-1]
+                    cmd['cmdline'] = line.replace('mem=512',
+                                                  'memdev=ram-node{}'.format(node))
+                # We can skip replacing, when the cmdline parameter is empty.
+                except IndexError:
+                    pass
 
         return cmdline_list
 
