@@ -8,6 +8,7 @@ from avocado.utils import process
 from virttest import remote
 from virttest import utils_iptables
 from virttest import utils_libvirtd
+from virttest import utils_split_daemons
 
 from virttest.utils_sasl import SASL
 from virttest.utils_conn import SSHConnection
@@ -194,6 +195,11 @@ def run(test, params, env):
     sasl_allowed_username_list = test_dict.get("sasl_allowed_username_list")
     auth_unix_rw = test_dict.get("auth_unix_rw")
     kinit_pwd = test_dict.get("kinit_pwd")
+
+    if driver == "test":
+        if utils_split_daemons.is_modular_daemon():
+            test.cancel("test driver connection will fail under split daemon "
+                        "mode because of bug 1828121")
 
     port = ""
     # extra URI arguments
