@@ -34,7 +34,7 @@ def run(test, params, env):
 
         cur_vm_xml = VMXML.new_from_dumpxml(vm_name)
         disk_dev_list = cur_vm_xml.get_disk_blk(vm_name)
-        if disk_dev not in disk_dev_list:
+        if disk_dev and disk_dev not in disk_dev_list:
             return disk_bus_list
         for disk_index in range(0, len(disk_dev_list)):
             disk_target = disk_dev if disk_dev else disk_dev_list[disk_index]
@@ -42,6 +42,7 @@ def run(test, params, env):
             disk_bus_list.append(disk_bus)
             if disk_dev:
                 break
+        logging.debug("Return disk bus list: {}".format(disk_bus_list))
         return disk_bus_list
 
     def check_guest_disks(ishotplug):
@@ -161,6 +162,32 @@ def run(test, params, env):
         if not cntl:
             test.fail("The controller with index {} is not found".format(contr_index))
 
+    def check_multi_attach(bus_list):
+        """
+        Check the result of multiple attach devices to the VM
+
+        :param bus_list: List which includes the buses of vm disks
+        :raise: test.fail if the result is unexpected
+        """
+        msg_pattern = "The disk is {} expected to be attached to " \
+                      "the controller with index '{}'"
+        is_found = False
+        if hotplug_option == 'on':
+            for one_bus in bus_list:
+                is_found = is_found | (one_bus == '0x%02x' % int(contr_index))
+            if not is_found:
+                test.fail(msg_pattern.format('', contr_index))
+            else:
+                logging.debug("Found a disk attached to the controller "
+                              "with index '{}".format(contr_index))
+        else:
+            for one_bus in bus_list:
+                is_found = one_bus == '0x%02x' % int(contr_index)
+                if is_found:
+                    test.fail(msg_pattern.format('not', contr_index))
+            logging.debug("No disk is found to attach to the "
+                          "controller with index '{}'".format(contr_index))
+
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     setup_controller = params.get("setup_controller", 'yes') == 'yes'
     check_within_guest = params.get("check_within_guest", 'yes') == 'yes'
@@ -225,7 +252,7 @@ def run(test, params, env):
                 libvirt.create_local_disk("file", image_path, '10M',
                                           disk_format='qcow2')
         if not hotplug and not save_restore:
-            # Do coldplug before hotunplug to prepare the interface device
+            # Do coldplug before hotunplug to prepare the virtual device
             virsh.attach_disk(vm_name, image_path, target_dev,
                               extra=attach_extra,
                               **virsh_options)
@@ -244,7 +271,7 @@ def run(test, params, env):
             virsh.save(vm_name, save_path, **virsh_options)
             time.sleep(10)
             virsh.restore(save_path, **virsh_options)
-        # Create interface device xml
+        # Create virtual device xml
         if hotplug:
             virsh_options.update({'ignore_status': True})
             attach_times = 1 if not hotplug_counts else int(hotplug_counts)
@@ -267,20 +294,14 @@ def run(test, params, env):
             virsh_options.update({'ignore_status': True})
             ret = virsh.detach_disk(vm_name, target_dev, **virsh_options)
             libvirt.check_result(ret, expected_fails=err_msg)
+        logging.debug(VMXML.new_from_dumpxml(vm_name))
         if check_disk_xml:
             time.sleep(5)
             check_guest_disks(hotplug)
         if check_cntl_xml:
             check_guest_contr()
         if hotplug_counts:
-            bus_list = get_disk_bus()
-            for one_bus in bus_list:
-                if one_bus == '0x%02x' % int(contr_index):
-                    test.fail("The disk should not be attached "
-                              "to the controller with "
-                              "index '{}'".format(contr_index))
-            logging.debug("No disk is found to attach to the "
-                          "controller with index '{}'".format(contr_index))
+            check_multi_attach(get_disk_bus())
         if check_within_guest:
             check_inside_guest(hotplug)
 
