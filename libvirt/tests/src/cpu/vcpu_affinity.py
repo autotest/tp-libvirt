@@ -122,8 +122,9 @@ def run(test, params, env):
             test.cancel("The host should have at least 8 CPUs for this test.")
 
         # online all host cpus
+        online_cpus = cpuutil.cpu_online_list()
         for x in range(1, hostcpu_num):
-            if cpuutil.online(x):
+            if x not in online_cpus and cpuutil.online(x):
                 test.fail("fail to online cpu{}".format(x))
 
         # use vcpu cpuset or/and cputune cpuset to define xml
