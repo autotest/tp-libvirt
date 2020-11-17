@@ -822,8 +822,8 @@ def run(test, params, env):
                     if "ip-dhcp" in net_section:
                         dhclient_cmd = "(if pgrep dhclient;" \
                                        "then pkill dhclient; sleep 3; fi) " \
-                                       "&& dhclient -%s" % ip_version[-1]
-                        session.cmd(dhclient_cmd)
+                                       "&& dhclient -%s -lf /dev/stdout" % ip_version[-1]
+                        leases = session.cmd_output(dhclient_cmd)
                         iface_ip = utils_net.get_guest_ip_addr(session, mac,
                                                                ip_version=ip_version,
                                                                timeout=10)
@@ -841,8 +841,10 @@ def run(test, params, env):
                             test.fail("getting ip %s is not same with setting %s"
                                       % (iface_ip, new_dhcp_host_ip))
                         hostname = session.cmd_output("hostname -s").strip('\n')
-                        if hostname == new_dhcp_host_name.split('.')[0]:
-                            logging.info("getting hostname same with setting: %s", hostname)
+                        # option host-name "redhatipv4-2"
+                        dhcp_hostname = "option host-name \"%s\"" % new_dhcp_host_name.split('.')[0]
+                        if hostname == new_dhcp_host_name.split('.')[0] or dhcp_hostname in leases:
+                            logging.info("getting hostname same with setting: %s", new_dhcp_host_name.split('.')[0])
                         else:
                             test.fail("getting hostname %s is not same with "
                                       "setting: %s" % (hostname, new_dhcp_host_name))
