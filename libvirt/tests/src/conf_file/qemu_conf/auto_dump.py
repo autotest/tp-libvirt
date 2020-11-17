@@ -128,7 +128,7 @@ def run(test, params, env):
 
         child_process.join(10)
         if child_process.is_alive():
-            child_process.kill()
+            child_process.terminate()
         flags = result_dict['flags']
         iohelper_pid = result_dict['pid']
 
