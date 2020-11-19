@@ -134,10 +134,6 @@ def run(test, params, env):
         rule = params.get("rule")
         if rule:
             # Create new filter xml
-            cmd_result = virsh.nwfilter_list(options="",
-                                             ignore_status=True, debug=True).stdout_text
-            if filter_name in cmd_result:
-                virsh.nwfilter_undefine(filter_name, debug=True)
             filterxml = utlv.create_nwfilter_xml(params)
             # Define filter xml
             virsh.nwfilter_define(filterxml.xml, debug=True)
