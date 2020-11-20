@@ -655,10 +655,9 @@ def run(test, params, env):
         pci_bridge_controllers = []
         for device in controller_devices:
             logging.debug(device)
-            if device.type == 'pci' and device.model in (
-                    "pci-bridge", "pcie-root-port"):
+            if device.type == 'pci' and device.model == "pci-bridge":
                 pci_bridge_controllers.append(device)
-        if not pci_bridge_controllers:
+        if not pci_bridge_controllers and machine_type != 'q35':
             pci_bridge_controller = Controller("controller")
             pci_bridge_controller.type = "pci"
             pci_bridge_controller.index = "1"
@@ -750,6 +749,26 @@ def run(test, params, env):
                     count += 1
                 if max_vfs_attached:
                     interface_list = []
+                    # Get max index of all pcie-root-port
+                    pcie_ctls = vmxml.get_controllers('pci', 'pcie-root-port')
+                    pcie_indexes = [int(port.get('index')) for port in pcie_ctls]
+
+                    def _add_pcie_root_port(index):
+                        """
+                        Add pcie root port with given index
+                        :param index: index of port that is going to be added
+                        :return:
+                        """
+                        pcie_root_port = Controller("controller")
+                        pcie_root_port.type = "pci"
+                        pcie_root_port.index = index
+                        pcie_root_port.model = "pcie-root-port"
+                        vmxml.add_device(pcie_root_port)
+                        vmxml.sync()
+
+                    for i in range(len(vf_list)):
+                        _add_pcie_root_port(max(pcie_indexes) + 1 + i)
+                    vm.start()
                     for vf_addr in vf_list:
                         new_iface = create_interface()
                         mac_addr = new_iface.mac_address
