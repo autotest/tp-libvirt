@@ -382,18 +382,17 @@ def run(test, params, env):
             backup_file_path = os.path.join(
                     tmp_dir, "backup_file_%s.qcow2" % str(backup_index))
             backup_file_list.append(backup_file_path)
+            nbd_params = {"nbd_protocol": nbd_protocol,
+                          "nbd_hostname": "localhost",
+                          "nbd_export": nbd_export_name,
+                          "nbd_tcp_port": nbd_tcp_port}
             if not is_incremental:
                 # Do full backup
-                nbd_export = ("nbd://localhost:%s/%s" %
-                              (nbd_tcp_port, nbd_export_name))
-                utils_backup.pull_full_backup_to_file(nbd_export,
+                utils_backup.pull_full_backup_to_file(nbd_params,
                                                       backup_file_path)
                 logging.debug("Full backup to: %s", backup_file_path)
             else:
                 # Do incremental backup
-                nbd_params = {"nbd_protocol": nbd_protocol,
-                              "nbd_export": nbd_export_name,
-                              "nbd_tcp_port": nbd_tcp_port}
                 utils_backup.pull_incremental_backup_to_file(
                         nbd_params, backup_file_path, nbd_bitmap_name,
                         original_disk_size)
