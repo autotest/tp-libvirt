@@ -104,6 +104,7 @@ def run(test, params, env):
                                       "%s\n Details: %s" % (connect_uri, details))
 
     is_arm = "aarch" in platform.machine()
+    gic_version = ''
     if is_arm:
         for gic_enum in domcap.DomCapabilityXML()['features']['gic_enums']:
             if gic_enum['name'] == "version":
