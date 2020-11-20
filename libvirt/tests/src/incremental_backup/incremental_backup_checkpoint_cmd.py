@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 from virttest import virsh
 from virttest import data_dir
 from virttest import libvirt_version
+from virttest import utils_disk
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import checkpoint_xml
 from virttest.utils_test import libvirt
@@ -96,7 +97,9 @@ def run(test, params, env):
         virsh.attach_device(vm.name, disk_xml,
                             flagstr="--config", **virsh_dargs)
         vm.start()
-        session = vm.wait_for_login().close()
+        session = vm.wait_for_login()
+        new_disks_in_vm = list(utils_disk.get_linux_disks(session).keys())
+        session.close()
         if required_checkpoints > 0:
             prepare_checkpoints(test_disk_target, required_checkpoints)
         if checkpoint_cmd == "checkpoint-create":
@@ -229,7 +232,33 @@ def run(test, params, env):
                           % cmd_flag)
         elif checkpoint_cmd == "checkpoint-dumpxml":
             if "--size" in cmd_flag:
-                test.cancel("'--size' not supported yet(bz1814573)")
+                if not libvirt_version.version_compare(6, 6, 0):
+                    test.cancel("Current libvirt version doesn't support "
+                                "'--size' for 'checkpoint-dumpxml'.")
+                test_disk = new_disks_in_vm[-1]
+                test_disk_path = "/dev/" + test_disk
+                test_checkpoint = current_checkpoints[-1]
+                dd_count = 1
+                dd_bs = "1M"
+                dd_seek = "10"
+                dd_size = dd_count * 1024 * 1024
+                session = vm.wait_for_login()
+                utils_disk.dd_data_to_vm_disk(session, test_disk_path,
+                                              bs=dd_bs, seek=dd_seek,
+                                              count=str(dd_count))
+                session.close()
+                stdout = virsh.checkpoint_dumpxml(vm_name,
+                                                  test_checkpoint + " --size",
+                                                  **virsh_dargs).stdout_text.strip()
+                re_pattern = ".*%s.*%s.*size.*" % (test_disk, test_checkpoint)
+                size_info_line = re.search(re_pattern, stdout)
+                if not size_info_line:
+                    test.fail("There is no size info for disk:%s checkpoint:%s"
+                              % (test_disk, test_checkpoint))
+                if str(dd_size) not in size_info_line.group(0):
+                    test.fail("Size info incorrect in checkpoint xml, "
+                              "'dd_size' is %s, size info in xml is:%s"
+                              % (dd_size, size_info_line.group(0)))
             elif "--security-info" in cmd_flag:
                 if vm.is_alive():
                     vm.destroy(gracefully=False)
