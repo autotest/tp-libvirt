@@ -2,6 +2,8 @@ import os
 import logging
 import aexpect
 
+from avocado.utils import process
+
 from virttest import utils_selinux
 from virttest import data_dir
 from virttest import virt_vm
@@ -265,7 +267,14 @@ def run(test, params, env):
                             s, o = session0.cmd_status_output(cmd)
                             logging.debug("session in vm0 exit %s; output: %s", s, o)
                             if error_policy == "report":
-                                if s:
+                                process.run("rm -rf %s" % disk_source, ignore_status=False, shell=True)
+                                vms_list[0]['vm'].destroy(gracefully=False)
+
+                                def _check_error():
+                                    cmd_result = virsh.domblkerror(vms_list[0]['name'])
+                                    return 'Segmentation fault' in cmd_result.stdout_text.strip()
+                                status = utils_misc.wait_for(lambda: _check_error, timeout=90)
+                                if not status:
                                     test.fail("Test error_policy %s: cann't report"
                                               " error" % error_policy)
                             elif error_policy == "ignore":
