@@ -1597,18 +1597,6 @@ def run(test, params, env):
             test_dict['brick_path'] = os.path.join(test.virtdir, pool_name)
 
         if gluster_disk:
-            logging.info("Put local SELinux in permissive mode")
-            utils_selinux.set_status("permissive")
-            LOCAL_SELINUX_ENFORCING = False
-
-            logging.info("Put remote SELinux in permissive mode")
-            cmd = "setenforce permissive"
-            status, output = run_remote_cmd(cmd, server_ip, server_user, server_pwd)
-            if status:
-                test.cancel("Failed to set SELinux in permissive mode")
-
-            REMOTE_SELINUX_ENFORCING = False
-
             # Setup glusterfs and disk xml.
             disk_img = "gluster.%s" % disk_format
             test_dict['disk_img'] = disk_img
