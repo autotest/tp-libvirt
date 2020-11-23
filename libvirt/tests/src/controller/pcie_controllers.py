@@ -205,6 +205,7 @@ def run(test, params, env):
     restart_daemon = params.get("restart_daemon", "no") == 'yes'
     save_restore = params.get("save_restore", "no") == 'yes'
     hotplug_counts = params.get("hotplug_counts")
+    addr_twice = params.get("addr_twice", 'no') == 'yes'
     contr_index = None
 
     virsh_options = {'debug': True, 'ignore_status': False}
@@ -242,7 +243,6 @@ def run(test, params, env):
             attach_extra = attach_extra % ("%02x" % int(contr_index))
         if err_msg and err_msg.count('%s'):
             err_msg = err_msg % contr_index
-
         if not save_restore:
             disk_max = int(hotplug_counts) if hotplug_counts else 1
             for disk_inx in range(0, disk_max):
@@ -287,7 +287,7 @@ def run(test, params, env):
                     ret = virsh.attach_disk(vm_name, image_path_list[attach_inx], disk_dev,
                                             extra=attach_extra,
                                             **virsh_options)
-                    if ret.exit_status:
+                    if ret.exit_status and not addr_twice:
                         break
                 libvirt.check_result(ret, expected_fails=err_msg)
         if not hotplug and check_within_guest:
@@ -300,7 +300,7 @@ def run(test, params, env):
             check_guest_disks(hotplug)
         if check_cntl_xml:
             check_guest_contr()
-        if hotplug_counts:
+        if hotplug_counts and not addr_twice:
             check_multi_attach(get_disk_bus())
         if check_within_guest:
             check_inside_guest(hotplug)
