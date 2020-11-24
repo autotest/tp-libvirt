@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 import aexpect
 import platform
@@ -49,9 +50,13 @@ def run(test, params, env):
         """
         password = params.get("luks_encrypt_passwd", "password")
         size = params.get("luks_size", "500M")
+        preallocation = params.get("preallocation")
         cmd = ("qemu-img create -f luks "
                "--object secret,id=sec0,data=`printf '%s' | base64`,format=base64 "
                "-o key-secret=sec0 %s %s" % (password, device, size))
+        # Add preallocation if it is given in params
+        if preallocation:
+            cmd = cmd.replace("key-secret=sec0", "key-secret=sec0,preallocation=%s" % preallocation)
         if process.system(cmd, shell=True):
             test.fail("Can't create a luks encrypted img by qemu-img")
 
@@ -195,6 +200,7 @@ def run(test, params, env):
     disk_encryption_dict = {}
     pvt = None
     duplicated_encryption = "yes" == params.get("duplicated_encryption", "no")
+    slice_support_enable = "yes" == params.get("slice_support_enable", "no")
 
     if ((encryption_in_source or auth_in_source) and
             not libvirt_version.version_compare(3, 9, 0)):
@@ -397,8 +403,13 @@ def run(test, params, env):
                                "Error: %s" % str(info))
             disk_src_dict = {'attrs': {'file': volume_target_path}}
             device_source = volume_target_path
+        elif backend_storage_type == "file":
+            tmp_dir = data_dir.get_tmp_dir()
+            image_name = params.get("file_image_name", "slice.img")
+            device_source = os.path.join(tmp_dir, image_name)
+            disk_src_dict = {'attrs': {'file': device_source}}
         else:
-            test.cancel("Only iscsi/gluster/rbd/nfs can be tested for now.")
+            test.cancel("Only iscsi/gluster/rbd/nfs/file can be tested for now.")
         logging.debug("device source is: %s", device_source)
         if backend_storage_type != "dir":
             encrypt_dev(device_source, params)
@@ -427,6 +438,15 @@ def run(test, params, env):
             disk_xml.encryption = disk_encryption
         if duplicated_encryption:
             disk_xml.encryption = disk_encryption
+        if slice_support_enable:
+            if not libvirt_version.version_compare(6, 0, 0):
+                test.cancel("Cannot put <slice> inside disk <source> "
+                            "in this libvirt version.")
+            else:
+                check_du_output = process.run("du -b %s" % device_source, shell=True).stdout_text
+                slice_size = re.findall(r'[0-9]+', check_du_output)
+                disk_source.slices = disk_xml.new_slices(
+                        **{"slice_type": "storage", "slice_offset": "0", "slice_size": slice_size[0]})
         disk_xml.source = disk_source
         logging.debug("new disk xml is: %s", disk_xml)
         # Sync VM xml
