@@ -297,7 +297,7 @@ def run(test, params, env):
             vm.start()
             # Generate attached xml
             new_iface = Interface(type_name=iface_type)
-            if 'multiqueue' in params['name']:
+            if any(x in params['name'] for x in ('multiqueue', 'multi_options')):
                 tmp_iface_format = iface_format.copy()
                 tmp_iface_format.update(
                     {'source': "{'%s': '%s'}" % (
@@ -378,12 +378,14 @@ def run(test, params, env):
         if "print-xml" in options_suffix:
             iface_obj = Interface(type_name=iface_type)
             iface_obj.xml = attach_result.stdout.strip()
+            source_type = iface_type if iface_type == 'bridge' else 'dev'
             if (iface_obj.type_name == iface_type
-                    and iface_obj.source['dev'] == iface_source
-                    and iface_obj.target['dev'] == iface_target
+                    and iface_obj.source.get(source_type) == iface_source
+                    and iface_obj.target.get('dev') == iface_target
                     and iface_obj.model == iface_model
                     and iface_obj.bandwidth.inbound == eval(iface_format['inbound'])
-                    and iface_obj.bandwidth.outbound == eval(iface_format['outbound'])):
+                    and iface_obj.bandwidth.outbound == eval(iface_format['outbound'])
+                    and iface_obj.mac_address == iface_mac):
                 logging.info("Print ml all element check pass")
             else:
                 test.fail("Print xml do not show as expected")
