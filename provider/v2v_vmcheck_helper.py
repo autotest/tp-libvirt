@@ -61,12 +61,19 @@ class VMChecker(object):
         self.vm_name = params.get('main_vm')
         self.v2v_cmd = params.get('v2v_command', '')
         self.original_vm_name = params.get('original_vm_name')
+        self.hypervisor = params.get("hypervisor")
+        self.target = params.get('target')
         # The expected boottype of guest, default 0 is 'i440fx+bios'
         # Other values are 1 for q35+bios, 2 for q35+uefi, 3 for
         # q35+secure_uefi
         self.boottype = int(params.get("boottype", 0))
-        self.hypervisor = params.get("hypervisor")
-        self.target = params.get('target')
+        if self.target == 'ovirt':
+            from virttest.ovirt import connect
+            _, self.ovirt_server_version = connect(params)
+            logging.info("rhv server version is: %s", self.ovirt_server_version.full_version)
+            if self.ovirt_server_version.major >= 4 and self.ovirt_server_version.minor >= 4:
+                self.boottype = int(params.get("boottype", 1))
+
         self.os_type = params.get('os_type')
         self.os_version = params.get('os_version', 'OS_VERSION_V2V_EXAMPLE')
         self.original_vmxml = params.get('original_vmxml')
