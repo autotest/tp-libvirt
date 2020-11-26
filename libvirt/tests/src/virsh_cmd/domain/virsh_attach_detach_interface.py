@@ -445,7 +445,8 @@ def run(test, params, env):
         # Start detach-interface test
         if save_restore == "yes" and vm_ref == dom_id:
             vm_ref = vm_name
-        detach_result = virsh.detach_interface(vm_ref, options, **virsh_dargs)
+        detach_result = virsh.detach_interface(
+            vm_ref, options, wait_remove_event=True, **virsh_dargs)
         detach_status = detach_result.exit_status
         detach_msg = detach_result.stderr.strip()
 
