@@ -1,5 +1,4 @@
 import re
-from avocado.core import exceptions
 from virttest import virt_admin
 
 
@@ -11,14 +10,17 @@ def run(test, params, env):
     2) check whether the server names printed by the
        above execution are correct
     """
-    server_name = params.get("server_name", "")
+    server_name = params.get("server_name")
+    if not server_name:
+        server_name = virt_admin.check_server_name()
+
     vp = virt_admin.VirtadminPersistent()
     result = vp.srv_list(ignore_status=True, debug=True)
     output = result.stdout.strip()
 
     if result.exit_status:
-        raise exceptions.TestFail("This operation should success "
-                                  "but failed! output:\n%s " % result)
+        test.fail("This operation should success "
+                  "but failed! output:\n%s " % result)
     else:
         if not re.search(server_name, output):
-            raise exceptions.TestFail("server %s is not listed! " % server_name)
+            test.fail("server %s is not listed! " % server_name)
