@@ -251,14 +251,15 @@ def run(test, params, env):
         a. "bus:slot.function" for pci address type
         b. "cssid:ssid.devno" for ccw address type
 
-        :param cntlr_type: controller type
-        :param model: controller model
-        :param index: controller index
+        :param cntlr_type: controller type, e.g. pci
+        :param model: controller model, e.g. pcie-root-port
+        :param index: controller index, e.g. '0'
         :param cntlr_bus: controller bus type, e.g. pci, ccw
-        :return: an address string of the specified controller
+        :return: a tuple including an address string, bus, slot,
+                        function, multifunction
         """
         if model in ['pci-root', 'pcie-root']:
-            return None
+            return (None, None, None, None, None)
 
         addr_str = None
         cur_vm_xml = VMXML.new_from_dumpxml(vm_name)
@@ -272,7 +273,7 @@ def run(test, params, env):
                 if addr_elem is None:
                     test.error("Can not find 'Address' "
                                "element for the controller")
-
+                p4 = None
                 if 'ccw' == cntlr_bus:
                     p1 = int(addr_elem.attrs.get('cssid'), 0)
                     p2 = int(addr_elem.attrs.get('ssid'), 0)
@@ -281,11 +282,12 @@ def run(test, params, env):
                     p1 = int(addr_elem.attrs.get('bus'), 0)
                     p2 = int(addr_elem.attrs.get('slot'), 0)
                     p3 = int(addr_elem.attrs.get('function'), 0)
+                    p4 = addr_elem.attrs.get('multifunction')
                 addr_str = '%02d:%02x.%1d' % (p1, p2, p3)
                 logging.debug("Controller address is %s", addr_str)
-                break
+                return (addr_str, p1, p2, p3, p4)
 
-        return addr_str
+        return (None, None, None, None, None)
 
     def check_controller_addr(cntlr_bus=None):
         """
@@ -293,8 +295,7 @@ def run(test, params, env):
 
         :param cntlr_bus: controller bus type, e.g. pci, ccw
         """
-        addr_str = get_controller_addr(cntlr_type, model, index, cntlr_bus)
-
+        (addr_str, _, _, _, _) = get_controller_addr(cntlr_type, model, index, cntlr_bus)
         if model in ['pci-root', 'pcie-root']:
             if addr_str is None:
                 return
@@ -405,10 +406,10 @@ def run(test, params, env):
         if model == 'pci-root' or model == 'pcie-root':
             return
 
-        addr_str = get_controller_addr(cntlr_type=cntlr_type,
-                                       model=cntlr_model,
-                                       index=cntlr_index,
-                                       cntlr_bus=cntlr_bus)
+        (addr_str, _, _, _, _) = get_controller_addr(cntlr_type=cntlr_type,
+                                                     model=cntlr_model,
+                                                     index=cntlr_index,
+                                                     cntlr_bus=cntlr_bus)
 
         if 'ccw' == cntlr_bus:
             check_ccw_bus_type(addr_str)
@@ -699,6 +700,18 @@ def run(test, params, env):
                                'slot': dev_cfg.get("slot", "0x00")}
         vm_xml.add_device(dev_obj)
 
+    def check_multifunction():
+        """
+        Check if multifunction is found in vm xml for specified controller
+
+        :raise: test.fail if multifunction is not as expected
+        """
+        (_, _, _, _, multi_func) = get_controller_addr(cntlr_type, model, '0')
+        if not multi_func or multi_func != 'on':
+            test.fail("Can't find multifunction=on in certain "
+                      "controller(type:{}, model:{}, "
+                      "index:{})".format(cntlr_type, model, 0))
+
     os_machine = params.get('machine_type', None)
     libvirt.check_machine_type_arch(os_machine)
     cntlr_type = params.get('controller_type', None)
@@ -731,6 +744,7 @@ def run(test, params, env):
     new_pcie_root_port_model = params.get("new_model")
     old_pcie_root_port_model = params.get("old_model")
     add_contrl_list = params.get("add_contrl_list")
+    update_cntl_bus = params.get("update_cntl_bus", 'no') == 'yes'
     check_cntrls_list = params.get("check_cntrls_list")
     sound_dict = params.get("sound_dict")
     balloon_dict = params.get("balloon_dict")
@@ -763,6 +777,13 @@ def run(test, params, env):
         remove_devices(vm_xml, 'usb')
         if remove_nic:
             remove_devices(vm_xml, 'interface')
+        # Get the max controller index in current vm xml
+        if update_cntl_bus and add_contrl_list:
+            ret_indexes = libvirt_pcicontr.get_max_contr_indexes(vm_xml, 'pci', 'pcie-root-port')
+            if ret_indexes and len(ret_indexes) > 0:
+                new_index = "0x%02x" % (int(ret_indexes[0]) + 1)
+                add_contrl_list = add_contrl_list % (new_index, new_index)
+
         if setup_controller == "yes":
             if add_contrl_list:
                 contrls = eval(add_contrl_list)
@@ -783,8 +804,15 @@ def run(test, params, env):
                         contr_dict.update({'controller_node': one_contrl['node']})
                     if 'index' in one_contrl:
                         contr_dict.update({'controller_index': one_contrl['index']})
-                    if 'bus' in one_contrl and 'slot' in one_contrl:
-                        addr = '{"bus": %s, "slot": %s}' % (one_contrl['bus'], one_contrl['slot'])
+                    addr = None
+                    if 'bus' in one_contrl:
+                        addr = '{"bus": %s' % one_contrl['bus']
+                        if 'slot' in one_contrl:
+                            addr = addr + ', "slot": %s' % one_contrl['slot']
+                            if 'func' in one_contrl:
+                                addr = addr + ', "function": %s' % one_contrl['func']
+                        addr = addr + '}'
+                    if addr:
                         contr_dict.update({'controller_addr': addr})
                     logging.debug(contr_dict)
                     controller_add = libvirt.create_controller_xml(contr_dict)
@@ -884,13 +912,14 @@ def run(test, params, env):
                 if str(int(bus, 16)) not in cntl_index_list:
                     test.fail("The attached NIC with bus '{}' is not attached "
                               "to any pcie-root-port by default".format(bus))
-
         if check_qemu:
             if qemu_patterns:
                 if auto_index:
                     index_str = "%x" % int(auto_indexes_dict['pcie-root-port'][0])
                     qemu_patterns = qemu_patterns % index_str
                     logging.debug("qemu_patterns=%s", qemu_patterns)
+                if qemu_patterns.count('multifunction=on'):
+                    check_multifunction()
                 search_qemu_cmd = eval(qemu_patterns)
                 logging.debug(search_qemu_cmd)
             else:
