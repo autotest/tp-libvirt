@@ -1576,7 +1576,8 @@ def run(test, params, env):
 
             logging.info("Remove local NFS image")
             source_file = params.get("source_file")
-            libvirt.delete_local_disk("file", path=source_file)
+            if source_file:
+                libvirt.delete_local_disk("file", path=source_file)
 
             if objs_list:
                 for obj in objs_list:
