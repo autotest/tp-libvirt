@@ -224,7 +224,6 @@ def run(test, params, env):
         for hub in hubs:
             if hub.type_name == "usb":
                 vmxml.del_device(hub)
-
         # assemble the xml of pci/pcie bus
         for model in bus_controller.split(','):
             pci_bridge = Controller('pci')
@@ -235,33 +234,35 @@ def run(test, params, env):
         pci_endpoint = bus_controller.split(",")[-1]
         # find the pci's index that usb controller will attach
         pci_index_for_usb_controller = len(bus_controller.split(",")) - 1
-
-        device_alias = {}
-        random_id = process.run("uuidgen").stdout_text.strip()
-        # assemble the xml of usb controller
-        for i, model in enumerate(usb_model.split(',')):
-            controller = Controller("controller")
-            controller.type = "usb"
-            controller.index = usb_index
-            controller.model = model
-            if usb_alias:
-                alias_str = "ua-usb" + str(i) + random_id
-                device_alias[model] = alias_str
-                alias = {"name": alias_str}
-                if "ich9" not in model:
-                    controller.index = i
-                controller.alias = alias
-            # for 'usb_all' case, will not set addr
-            if set_addr == "yes":
-                ctrl_addr_dict = {'type': 'pci', 'domain': ctrl_addr_domain, 'bus': '0x0'+str(pci_index_for_usb_controller), 'slot': ctrl_addr_slot, 'function': ctrl_addr_function}
-                if "uhci" in controller.model:
-                    ctrl_addr_dict['function'] = "0x0"+str(i)
-                # pcie-switch-downstream-port only supports slot 0
-                if pci_endpoint == "pcie-switch-downstream-port":
-                    ctrl_addr_dict['slot'] = "0x00"
-                controller.address = controller.new_controller_address(attrs=ctrl_addr_dict)
-            vmxml.add_device(controller)
-
+        if usb_model != "none":
+            logging.debug("usb_model is not none")
+            device_alias = {}
+            random_id = process.run("uuidgen").stdout_text.strip()
+            # assemble the xml of usb controller
+            for i, model in enumerate(usb_model.split(',')):
+                controller = Controller("controller")
+                controller.type = "usb"
+                controller.index = usb_index
+                controller.model = model
+                if usb_alias:
+                    alias_str = "ua-usb" + str(i) + random_id
+                    device_alias[model] = alias_str
+                    alias = {"name": alias_str}
+                    if "ich9" not in model:
+                        controller.index = i
+                    controller.alias = alias
+                # for 'usb_all' case, will not set addr
+                if set_addr == "yes":
+                    ctrl_addr_dict = {'type': 'pci', 'domain': ctrl_addr_domain, 'bus': '0x0'+str(pci_index_for_usb_controller), 'slot': ctrl_addr_slot, 'function': ctrl_addr_function}
+                    if "uhci" in controller.model:
+                        ctrl_addr_dict['function'] = "0x0"+str(i)
+                    # pcie-switch-downstream-port only supports slot 0
+                    if pci_endpoint == "pcie-switch-downstream-port":
+                        ctrl_addr_dict['slot'] = "0x00"
+                    controller.address = controller.new_controller_address(attrs=ctrl_addr_dict)
+                vmxml.add_device(controller)
+        else:
+            logging.debug("usb_model is none")
         if usb_hub:
             hub = Hub("usb")
             vmxml.add_device(hub)
@@ -337,7 +338,9 @@ def run(test, params, env):
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
         logging.debug("vm xml after starting up {}".format(vmxml))
 
-        # check usb controller in guest
+        # Check usb controller in guest. By default, usb3(xhci) controller will be added into q35 guest.
+        if usb_model == "none" and "q35" in vmxml.os.machine:
+            usb_model = "xhci"
         for model_type in usb_model.split(','):
             model_type = model_type.split('-')[-1].rstrip("1,2,3")
             logging.debug("check usb controller {} in guest".format(model_type))
