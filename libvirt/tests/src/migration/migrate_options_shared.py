@@ -8,6 +8,7 @@ import platform
 import tempfile
 import copy
 import datetime
+import subprocess
 
 from avocado.utils import process
 from avocado.utils import memory
@@ -653,6 +654,8 @@ def run(test, params, env):
                 drop_network_connection(block_time)
             elif action == 'suspendvm':
                 suspend_vm(vm)
+            elif action == 'cancel_concurrent_migration':
+                cancel_bg_migration()
             time.sleep(3)
 
     def do_actions_after_migrate(params):
@@ -851,6 +854,23 @@ def run(test, params, env):
         logging.debug("Time difference between source host and vm is %s", time_diff)
         return time_diff
 
+    def cancel_bg_migration():
+        """
+        Cancel one of the simultaneous migration processes
+        """
+        cmd = "virsh migrate %s %s %s %s" % (vm_name, dest_uri, options, extra)
+        logging.debug("Start migrating from background: %s", cmd)
+        p = subprocess.Popen(cmd, shell=True, universal_newlines=True,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # Sleep 10s to wait for migration to start
+        time.sleep(10)
+
+        logging.debug("Stopping migration process: %s", p.pid)
+        p.terminate()
+        stdout, stderr = p.communicate()
+        logging.debug("status:[%d], stdout:[%s], stderr:[%s]",
+                      p.returncode, stdout, stderr)
+
     migration_test = migration.MigrationTest()
     migration_test.check_parameters(params)
 
@@ -906,6 +926,7 @@ def run(test, params, env):
     low_speed = params.get("low_speed", None)
     migr_vm_back = "yes" == params.get("migr_vm_back", "no")
     timer_migration = "yes" == params.get("timer_migration", "no")
+    concurrent_migration = "yes" == params.get("concurrent_migration", "no")
 
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
@@ -1011,6 +1032,9 @@ def run(test, params, env):
             if not utils_misc.compare_qemu_version(4, 0, 0, is_rhev=False):
                 test.cancel("This qemu version doesn't support "
                             "vtpm emulator backend.")
+        if concurrent_migration and not libvirt_version.version_compare(6, 0, 0):
+            test.cancel("This libvirt version doesn't support "
+                        "concurrent migration.")
 
         # Create a remote runner for later use
         runner_on_target = remote.RemoteRunner(host=server_ip,
