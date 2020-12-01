@@ -23,7 +23,10 @@ def run(test, params, env):
     max_workers_gt_nworkers = params.get("max_workers_gt_nworkers") == "yes"
     options_test_together = params.get("options_test_together") == "yes"
 
-    libvirtd = utils_libvirtd.Libvirtd()
+    if not server_name:
+        server_name = virt_admin.check_server_name()
+
+    daemon = utils_libvirtd.Libvirtd()
     vp = virt_admin.VirtadminPersistent()
 
     def threadpool_info(server):
@@ -50,7 +53,7 @@ def run(test, params, env):
                 if not max_workers_gt_nworkers:
                     vp.srv_threadpool_set(server_name, min_workers=min_workers,
                                           ignore_status=True, debug=True)
-                logging.debug("The current workers state of the libvirtd server is %s",
+                logging.debug("The current workers state of the daemon server is %s",
                               threadpool_info(server_name))
                 result = vp.srv_threadpool_set(server_name, max_workers=max_workers,
                                                ignore_status=True, debug=True)
@@ -102,4 +105,4 @@ def run(test, params, env):
             else:
                 test.fail("This operation should fail but succeeded!")
     finally:
-        libvirtd.restart()
+        daemon.restart()

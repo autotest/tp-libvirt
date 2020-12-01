@@ -2,7 +2,7 @@ import logging
 from virttest import virt_admin
 from virttest import virsh
 from virttest import utils_libvirtd
-from virttest import utils_config
+from virttest import ssh_key
 
 
 def run(test, params, env):
@@ -23,9 +23,14 @@ def run(test, params, env):
     nclients_unauth_max = params.get("nclients_unauth_maxi")
     connect_able = params.get("connect_able")
     options_test_together = params.get("options_test_together")
+    local_pwd = params.get("local_pwd")
 
-    config = utils_config.LibvirtdConfig()
-    libvirtd = utils_libvirtd.Libvirtd()
+    if not server_name:
+        server_name = virt_admin.check_server_name()
+
+    config = virt_admin.managed_daemon_config()
+    daemon = utils_libvirtd.Libvirtd()
+    ssh_key.setup_remote_ssh_key("localhost", "root", local_pwd)
     vp = virt_admin.VirtadminPersistent()
     virsh_instance = []
 
@@ -44,21 +49,21 @@ def run(test, params, env):
         out_dict = dict([[item[0].strip(), item[1].strip()] for item in out_split])
         return out_dict
 
-    def chk_connect_to_libvirtd(connect_able):
+    def chk_connect_to_daemon(connect_able):
         try:
-            virsh_instance.append(virsh.VirshPersistent(uri='qemu:///system'))
+            virsh_instance.append(virsh.VirshPersistent(uri='qemu+ssh://localhost/system'))
         except Exception as info:
             if connect_able == "yes":
-                test.fail("Connection to libvirtd is not success, error:\n %s" % info)
+                test.fail("Connection to daemon is not success, error:\n %s" % info)
             else:
-                logging.info("Connections to libvirtd should not success, "
+                logging.info("Connections to daemon should not success, "
                              "this is a correct test result!")
         else:
             if connect_able == "yes":
-                logging.info("Connections to libvirtd is successful, "
+                logging.info("Connections to daemon is successful, "
                              "this is a correct test result!")
             else:
-                test.fail("error: Connection to libvirtd should not success! "
+                test.fail("error: Connection to daemon should not success! "
                           "Check the attributes.")
 
     try:
@@ -68,14 +73,16 @@ def run(test, params, env):
                     if int(nclients_max) > int(nclients):
                         config.max_clients = nclients
                         config.max_anonymous_clients = nclients_unauth_max
-                        libvirtd.restart()
+                        daemon.restart()
                         for _ in range(int(nclients)):
-                            virsh_instance.append(virsh.VirshPersistent(uri='qemu:///system'))
+                            virsh_instance.append(virsh.VirshPersistent(
+                                uri='qemu+ssh://localhost/system'))
                         result = vp.srv_clients_set(server_name, max_clients=nclients_max,
                                                     ignore_status=True, debug=True)
                     elif int(nclients_max) <= int(nclients):
                         for _ in range(int(nclients)):
-                            virsh_instance.append(virsh.VirshPersistent(uri='qemu:///system'))
+                            virsh_instance.append(virsh.VirshPersistent(
+                                uri='qemu+ssh://localhost/system'))
                         result = vp.srv_clients_set(server_name, max_clients=nclients_max,
                                                     max_unauth_clients=nclients_unauth_max,
                                                     ignore_status=True, debug=True)
@@ -107,7 +114,7 @@ def run(test, params, env):
                             test.fail("attributes set by server-clients-set "
                                       "is not correct!")
                         if nclients:
-                            chk_connect_to_libvirtd(connect_able)
+                            chk_connect_to_daemon(connect_able)
                     elif "max_unauth_clients" in options_ref:
                         if outdict["nclients_unauth_max"] != nclients_unauth_max:
                             test.fail("attributes set by server-clients-set "
@@ -123,4 +130,4 @@ def run(test, params, env):
         for session in virsh_instance:
             session.close_session()
         config.restore()
-        libvirtd.restart()
+        daemon.restart()
