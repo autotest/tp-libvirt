@@ -179,6 +179,22 @@ def set_numa_parameter(test, params, cgstop):
                           " inconsistent with numatune XML")
 
 
+def dynamic_node_replacement(params, numa_info, test_obj):
+    """
+    Replace numa node parameters dynamically per current system configuration, but only in required tests
+
+    :param numa_info: available numa node info from avocado-vt/utils_misc
+    :param params: all params passed to test
+    :param test_obj: test object - for cancel case
+    """
+    node_list = numa_info.get_online_nodes_withmem()
+    dynamic_nodeset = params.get('dynamic_nodeset', 'no') == 'yes'
+    if dynamic_nodeset and 'numa_nodeset' in params:
+        params['numa_nodeset'] = ','.join([str(elem) for elem in node_list])
+        logging.debug('The parameter "numa_nodeset" from config file is going to be replaced by: {} '
+                      'available on this system'.format(params['numa_nodeset']))
+
+
 def run(test, params, env):
     """
     Test numa tuning
@@ -211,6 +227,8 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     original_vm_xml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    host_numa_node = utils_misc.NumaInfo()
+    dynamic_node_replacement(params, host_numa_node, test)
     cg = utils_cgroup.CgconfigService()
     status_error = params.get("status_error", "no")
     libvirtd = params.get("libvirtd", "on")
