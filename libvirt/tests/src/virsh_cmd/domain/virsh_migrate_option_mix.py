@@ -280,8 +280,7 @@ def run(test, params, env):
         logging.debug("Clean up vm on dest host before migration")
         if dname:
             cleanup_vm(vm, dname, dest_uri)
-        else:
-            cleanup_vm(vm, vm.name, dest_uri)
+        cleanup_vm(vm, vm.name, dest_uri)
 
         # Prepare host env: set selinux state before migration
         logging.debug("Set selinux to enforcing before migration")
