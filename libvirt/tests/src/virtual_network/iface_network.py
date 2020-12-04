@@ -4,7 +4,6 @@ import sys
 import ast
 import logging
 import platform
-import time
 
 from avocado.utils import process
 from avocado.utils import stacktrace
@@ -384,6 +383,7 @@ TIMEOUT 3"""
         """
         br_name = ast.literal_eval(net_bridge)["name"]
         net_forward = ast.literal_eval(params.get("net_forward", "{}"))
+        nat_attrs = ast.literal_eval(params.get("nat_attrs", "{}"))
         net_ipv4 = params.get("net_ipv4")
         net_ipv6 = params.get("net_ipv6")
         net_dev_in = ""
@@ -470,7 +470,8 @@ TIMEOUT 3"""
                          ("%s -s %s -i %s%s -j ACCEPT"
                           % (forward_out, net_ipv6, br_name, net_dev_out))]
                 ipv6_rules.extend(rules)
-            if "mode" in net_forward and net_forward["mode"] == "nat":
+            if "mode" in net_forward and net_forward["mode"] == "nat" \
+                    and nat_attrs.get('ipv6') == 'yes':
                 v6_nat_rules = [
                     "MASQUERADE\s+tcp\s+{0}\s+!{0}".format(net_ipv6),
                     "MASQUERADE\s+udp\s+{0}\s+!{0}".format(net_ipv6),
@@ -642,6 +643,10 @@ TIMEOUT 3"""
         if not libvirt_version.version_compare(1, 0, 1):
             test.cancel("Not supported Qos options 'floor'")
 
+    if 'nat_ipv6' in params['name']:
+        if not libvirt_version.version_compare(6, 5, 0):
+            test.cancel('NAT ipv6 is not supported until 6.5.0')
+
     # Enabling IPv6 forwarding with RA routes without accept_ra set to 2
     # is likely to cause routes loss
     sysctl_cmd = 'sysctl net.ipv6.conf.all.accept_ra'
@@ -802,12 +807,16 @@ TIMEOUT 3"""
                 virsh.net_start(net_name, **args)
                 virsh.net_start(net2_net_name, **args)
                 virsh.start(vm_name, **args)
-                time.sleep(5)
-                out1 = virsh.net_dhcp_leases(net_name, **args).stdout_text
-                out2 = virsh.net_dhcp_leases(net2_net_name, **args).stdout_text
+
+                def _check_lease(loop):
+                    out1 = virsh.net_dhcp_leases(net_name, **args).stdout_text
+                    out2 = virsh.net_dhcp_leases(net2_net_name, **args).stdout_text
+                    if all(['ipv' in x for x in [out1, out2]]):
+                        logging.debug('Found DHCP lease of round %d.', loop + 1)
+                        return True
+                if not utils_misc.wait_for(lambda: _check_lease(i), 60):
+                    test.fail('DHCP lease not found of round %d' % (i + 1))
                 vm.destroy()
-                if any(['ipv' not in x for x in [out1, out2]]):
-                    test.fail('DHCP lease not found')
             return
 
         if multiple_guests:
