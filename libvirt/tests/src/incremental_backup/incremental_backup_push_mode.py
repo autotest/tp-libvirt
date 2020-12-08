@@ -109,15 +109,15 @@ def run(test, params, env):
             if original_disk_target:
                 disk_params["target_dev"] = original_disk_target
         elif original_disk_type == "ceph":
-            ceph_mon_ip = params.get("ceph_mon_ip", "libvirtauthceph.usersys.redhat.com")
-            ceph_host_port = params.get("ceph_host_port", "6789")
-            ceph_disk_name = params.get("ceph_disk_name", "avocado-vt-pool/inc_bkup.qcow2")
-            ceph_pool_name = ceph_disk_name.split('/')[0]
-            ceph_file_name = ceph_disk_name.split('/')[1]
-            ceph_client_name = params.get("ceph_client_name", "client.admin")
-            ceph_client_key = params.get("ceph_client_key", "AQDkY/xd2pqyLhAAPQ2Yrla/nGe1PazR4/n+IQ==")
-            ceph_auth_user = params.get("ceph_auth_user", "admin")
-            ceph_auth_key = params.get("ceph_auth_key", "AQDkY/xd2pqyLhAAPQ2Yrla/nGe1PazR4/n+IQ==")
+            ceph_mon_host = params.get("ceph_mon_host", "EXAMPLE_MON_HOST_AUTHX")
+            ceph_host_port = params.get("ceph_host_port", "EXAMPLE_PORT")
+            ceph_pool_name = params.get("ceph_pool_name", "EXAMPLE_POOL")
+            ceph_file_name = params.get("ceph_file_name", "EXAMPLE_FILE")
+            ceph_disk_name = ceph_pool_name + "/" + ceph_file_name
+            ceph_client_name = params.get("ceph_client_name", "EXAMPLE_CLIENT_NAME")
+            ceph_client_key = params.get("ceph_client_key", "EXAMPLE_CLIENT_KEY")
+            ceph_auth_user = params.get("ceph_auth_user", "EXAMPLE_AUTH_USER")
+            ceph_auth_key = params.get("ceph_auth_key", "EXAMPLE_AUTH_KEY")
             auth_sec_usage_type = "ceph"
 
             enable_auth = "yes" == params.get("enable_auth", "yes")
@@ -128,7 +128,7 @@ def run(test, params, env):
             if not utils_package.package_install(["ceph-common"]):
                 test.error("Failed to install ceph-common")
             # Create config file if it doesn't exist
-            ceph_cfg = ceph.create_config_file(ceph_mon_ip)
+            ceph_cfg = ceph.create_config_file(ceph_mon_host)
             if enable_auth:
                 # If enable auth, prepare a local file to save key
                 if ceph_client_name and ceph_client_key:
@@ -148,9 +148,9 @@ def run(test, params, env):
                 else:
                     test.error("No ceph client name/key provided.")
                 disk_path = "rbd:%s:mon_host=%s:keyring=%s" % (ceph_disk_name,
-                                                               ceph_mon_ip,
+                                                               ceph_mon_host,
                                                                key_file)
-            ceph.rbd_image_rm(ceph_mon_ip, ceph_pool_name,
+            ceph.rbd_image_rm(ceph_mon_host, ceph_pool_name,
                               ceph_file_name, ceph_cfg, key_file)
             process.run("qemu-img create -f qcow2 %s %s" % (disk_path, original_disk_size),
                         shell=True, verbose=True)
@@ -160,7 +160,7 @@ def run(test, params, env):
                            'target_dev': original_disk_target}
             disk_params_src = {'source_protocol': 'rbd',
                                'source_name': ceph_disk_name,
-                               'source_host_name': ceph_mon_ip,
+                               'source_host_name': ceph_mon_host,
                                'source_host_port': ceph_host_port}
             disk_params.update(disk_params_src)
             disk_params.update(disk_params_auth)
@@ -325,7 +325,7 @@ def run(test, params, env):
 
         # Remove ceph related data
         if original_disk_type == "ceph":
-            ceph.rbd_image_rm(ceph_mon_ip, ceph_pool_name,
+            ceph.rbd_image_rm(ceph_mon_host, ceph_pool_name,
                               ceph_file_name, ceph_cfg, key_file)
             if "auth_sec_uuid" in locals() and auth_sec_uuid:
                 virsh.secret_undefine(auth_sec_uuid)
