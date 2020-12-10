@@ -19,6 +19,7 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import pool_xml
 from virttest.libvirt_xml.secret_xml import SecretXML
+from virttest.libvirt_xml.devices.controller import Controller
 from virttest.staging import lv_utils
 
 from virttest import libvirt_version
@@ -76,6 +77,10 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     vg_name = params.get("virt_disk_vg_name", "vg_test_0")
     lv_name = params.get("virt_disk_lv_name", "lv_test_0")
+    driver_packed = params.get("driver_packed", "on")
+    disk_packed = "yes" == params.get("disk_packed", "no")
+    scsi_packed = "yes" == params.get("scsi_packed", "no")
+
     # Indicate the PPC platform
     on_ppc = False
     if platform.platform().count('ppc64'):
@@ -93,6 +98,9 @@ def run(test, params, env):
         if not libvirt_version.version_compare(4, 7, 0):
             test.cancel("iscsi-direct pool is not supported in"
                         " current libvirt version.")
+    if disk_packed and not libvirt_version.version_compare(6, 3, 0):
+        test.cancel("The virtio packed attribute is not supported in"
+                    " current libvirt version.")
     # Back VM XML
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
@@ -266,6 +274,17 @@ def run(test, params, env):
         elif disk_type == "block":
             disk_params_src = {'source_file': device_source,
                                'driver_type': 'raw'}
+            # Start guest with packed attribute in disk
+            if disk_packed:
+                disk_params_src['driver_packed'] = driver_packed
+            # Start guest with packed attribute in scsi controller
+            if scsi_packed:
+                scsi_controller = Controller("controller")
+                scsi_controller.type = "scsi"
+                scsi_controller.model = "virtio-scsi"
+                scsi_controller.driver = {'packed': driver_packed}
+                vm_dump_xml.add_device(scsi_controller)
+                vm_dump_xml.sync()
         else:
             test.cancel("Unsupport disk type in this test")
         disk_params.update(disk_params_src)
@@ -336,6 +355,11 @@ def run(test, params, env):
             cmd_result = virsh.snapshot_list(vm_name, **virsh_dargs)
             if snapshot_name2 not in cmd_result:
                 test.error("Snapshot %s not found" % snapshot_name2)
+        elif domain_operation == "start_with_packed":
+            expect_xml_line = "packed=\"%s\"" % driver_packed
+            libvirt.check_dumpxml(vm, expect_xml_line)
+            expect_qemu_line = "packed=%s" % driver_packed
+            libvirt.check_qemu_cmd_line(expect_qemu_line)
         elif domain_operation == "":
             logging.debug("No domain operation provided, so skip it")
         else:
