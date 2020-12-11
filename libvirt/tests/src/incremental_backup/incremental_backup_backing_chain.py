@@ -326,10 +326,10 @@ def run(test, params, env):
                     backup_disk_params["disk_type"] = scratch_type
 
                     # Prepare nbd scratch file/dev params
-                    scratch_params = {}
+                    scratch_params = {"attrs": {}}
                     scratch_file_name = "scratch_file_%s" % backup_index
                     scratch_file_path = os.path.join(tmp_dir, scratch_file_name)
-                    scratch_params["file"] = scratch_file_path
+                    scratch_params["attrs"]["file"] = scratch_file_path
                     logging.debug("scratch_params: %s", scratch_params)
                     backup_disk_params["backup_scratch"] = scratch_params
                 backup_disk_xml = utils_backup.create_backup_disk_xml(
