@@ -28,18 +28,21 @@ def run(test, params, env):
         else:
             kw = VMKeywrapXML()
             kw.set_cipher(name, state)
-            vm.set_keywrap(kw)
+            vmxml.set_keywrap(kw)
 
-        vm.sync()
+        vmxml.sync()
         vm.start()
         session = vm.wait_for_login()
 
         pkey_helper = ProtectedKeyHelper(session)
         pkey_helper.load_module()
 
-        if expect_token:
-            if pkey_helper.get_some_aes_key_token() is None:
-                test.fail("Didn't receive expected key token."
-                          " Please check debug log.")
+        token = pkey_helper.get_some_aes_key_token()
+        if expect_token and token is None:
+            test.fail("Didn't receive expected key token."
+                      " Please check debug log.")
+        elif not expect_token and token is not None:
+            test.fail("Received key token though none expected."
+                      " Please check debug log.")
     finally:
         vmxml_backup.sync()
