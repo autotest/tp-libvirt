@@ -643,9 +643,13 @@ TIMEOUT 3"""
         if not libvirt_version.version_compare(1, 0, 1):
             test.cancel("Not supported Qos options 'floor'")
 
-    if 'nat_ipv6' in params['name']:
-        if not libvirt_version.version_compare(6, 5, 0):
+    if not libvirt_version.version_compare(6, 5, 0):
+        if 'nat_ipv6' in params['name']:
             test.cancel('NAT ipv6 is not supported until 6.5.0')
+        if 'with_2net' in params['name']:
+            test.cancel('Test case might fail before 6.5.0 where it was'
+                        ' fixed with libvirt commit'
+                        ' 876211ef4a192df1603b45715044ec14567d7e9f')
 
     # Enabling IPv6 forwarding with RA routes without accept_ra set to 2
     # is likely to cause routes loss
