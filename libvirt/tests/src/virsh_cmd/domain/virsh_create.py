@@ -1,9 +1,7 @@
 import logging
-
 import aexpect
 
 from avocado.utils import process
-
 from virttest import utils_test
 from virttest import virsh
 from virttest import utils_misc
@@ -32,6 +30,14 @@ def run(test, params, env):
         xml_file = xml.xmltreefile.name
         return xml_file
 
+    def change_xml_name(xml, name):
+        """
+            Change name attribute in the xml with <name> and return updated xml
+        """
+        xml.vm_name = name
+        xml_file = xml.xmltreefile.name
+        return xml_file
+
     vm_name = params.get("main_vm")
     options = params.get("create_options", "")
     status_error = ("yes" == params.get("status_error", "no"))
@@ -41,22 +47,31 @@ def run(test, params, env):
         c_passwd = params.get("password")
     else:
         c_passwd = params.get("create_login_password_nonroot")
-
     vm = env.get_vm(vm_name)
+
     if vm.exists():
         if vm.is_alive():
             vm.destroy()
         xmlfile = vm.backup_xml()
         if not options or "--validate" in options:
             xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-            xmlfile = xmlfile_with_extra_attibute(xml_backup)
-        vm.undefine()
+            vm.undefine()
+            if "new_name" in params:
+                # Take existing VM XML and change a name there to one from config file
+                new_name = params.get("new_name")
+                xmlfile = change_xml_name(xml_backup, new_name)
+                vm.name = new_name
+            else:
+                xmlfile = xmlfile_with_extra_attibute(xml_backup)
+        else:
+            vm.undefine()
+
     else:
         xmlfile = params.get("create_domain_xmlfile")
         if xmlfile is None:
             test.fail("Please provide domain xml file for create or"
                       " existing domain name with main_vm = xx")
-        #get vm name from xml file
+        # get vm name from xml file
         xml_cut = process.getoutput("grep '<name>.*</name>' %s" % xmlfile, shell=True)
         vm_name = xml_cut.strip(' <>').strip("name").strip("<>/")
         logging.debug("vm_name is %s", vm_name)
@@ -162,5 +177,10 @@ def run(test, params, env):
             test.fail("Verify create failed:\n%s\n%s" %
                       (detail, log))
     finally:
-        #Guest recovery
+        if "new_name" in params:
+            # Destroy vm with new name and replace name back
+            vm.destroy()
+            xmlfile = change_xml_name(xml_backup, vm_name)
+            vm.name = vm_name
+        # Guest recovery
         vm.define(xmlfile)

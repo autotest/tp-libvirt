@@ -50,6 +50,9 @@ def run(test, params, env):
     if new_name == "vm2_name":
         vm2_name = ("%s" % vm_name[:-1])+"2"
         new_name = vm2_name
+    elif new_name == "vm_dot":
+        vm2_name = vm_name + "."
+        new_name = vm2_name
 
     # Build input params
     dom_param = ' '.join([domain_option, vm_ref])
