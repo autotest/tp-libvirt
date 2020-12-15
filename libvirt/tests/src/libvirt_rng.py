@@ -307,9 +307,9 @@ def run(test, params, env):
         :param session: ssh session to guest
         :param exists: check rng device exists/not exists
         """
-        check_cmd = "hexdump /dev/hwrng"
+        check_cmd = "hexdump /dev/hwrng -n 100"
         try:
-            status = session.cmd_status(check_cmd, 3)
+            status = session.cmd_status(check_cmd, 60)
 
             if status != 0 and exists:
                 test.fail("Fail to check hexdump in guest")
