@@ -292,12 +292,6 @@ def run(test, params, env):
             test.fail("Can't see %s with mac %s in command"
                       " line" % (model_option, iface_mac))
 
-        cmd_opt = {}
-        for opt in iface_cmdline[0].split(','):
-            tmp = opt.rsplit("=")
-            cmd_opt[tmp[0]] = tmp[1]
-        logging.debug("Command line options %s", cmd_opt)
-
         driver_dict = {}
         # Test <driver> xml options.
         if iface_driver:
@@ -323,6 +317,17 @@ def run(test, params, env):
         # Test <driver><guest/><driver> xml options.
         if iface_driver_guest:
             driver_dict.update(ast.literal_eval(iface_driver_guest))
+
+        # Only check packed attribute in qemu command line
+        if iface_driver and "packed" in ast.literal_eval(iface_driver):
+            iface_cmdline = re.findall(r"%s=%s" %
+                                       (driver_opt, driver_dict[driver_opt]), ret.stdout_text)
+
+        cmd_opt = {}
+        for opt in iface_cmdline[0].split(','):
+            tmp = opt.rsplit("=")
+            cmd_opt[tmp[0]] = tmp[1]
+        logging.debug("Command line options %s", cmd_opt)
 
         for driver_opt in list(driver_dict.keys()):
             if (driver_opt not in cmd_opt or
@@ -612,6 +617,10 @@ def run(test, params, env):
     if iface_driver and "queues" in ast.literal_eval(iface_driver):
         if not libvirt_version.version_compare(1, 0, 6):
             test.cancel("Queues options not supported"
+                        " in this libvirt version")
+    if iface_driver and "packed" in ast.literal_eval(iface_driver):
+        if not libvirt_version.version_compare(6, 3, 0):
+            test.cancel("Packed options not supported"
                         " in this libvirt version")
 
     if unprivileged_user:
