@@ -659,6 +659,7 @@ def run(test, params, env):
             if checkpoint in [
                 'mismatched_uuid',
                 'no_uuid',
+                'mac_ip',
                 'invalid_source',
                 'system_rhv_pem_set',
                     'system_rhv_pem_unset']:
@@ -697,10 +698,15 @@ def run(test, params, env):
             if params.get('invalid_esx_hostname'):
                 new_cmd = v2v_result.replace(
                     esxi_host, params.get('invalid_esx_hostname'))
+        if checkpoint == 'mac_ip':
+            mac_repl = r'(?<=--mac ).*?(?= )'
+            mac_value = params_get(params, 'mac_value')
+            new_cmd = re.sub(mac_repl, mac_value, v2v_result)
 
         if checkpoint in [
             'mismatched_uuid',
             'no_uuid',
+            'mac_ip',
             'invalid_source',
             'exist_uuid',
             'system_rhv_pem_set',
