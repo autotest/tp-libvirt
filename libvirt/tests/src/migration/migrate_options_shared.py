@@ -26,6 +26,7 @@ from virttest import libvirt_remote
 from virttest import remote
 from virttest import utils_package
 from virttest import utils_iptables
+from virttest import utils_secret
 from virttest import utils_conn
 from virttest import xml_utils
 from virttest import migration
@@ -1123,6 +1124,7 @@ def run(test, params, env):
                                  "sec_desc": "sample vTPM secret",
                                  "sec_usage": "vtpm",
                                  "sec_name": "VTPM_example"}
+                utils_secret.clean_up_secrets()
                 tpm_sec_uuid = libvirt.create_secret(auth_sec_dict)
                 logging.debug("tpm sec uuid on source: %s", tpm_sec_uuid)
                 tpm_args.update({"encryption_secret": tpm_sec_uuid})
@@ -1130,7 +1132,9 @@ def run(test, params, env):
                 if src_secret_value:
                     virsh.secret_set_value(tpm_sec_uuid, src_secret_value,
                                            encode=True, debug=True)
-
+                if not remote_virsh_session:
+                    remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
+                utils_secret.clean_up_secrets(remote_virsh_session)
                 logging.debug("create secret on target")
                 auth_sec_dict.update({"sec_uuid": tpm_sec_uuid})
                 dest_tmp_sec_uuid = libvirt.create_secret(auth_sec_dict,
