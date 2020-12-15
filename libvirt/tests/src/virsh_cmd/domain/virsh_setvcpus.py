@@ -163,8 +163,10 @@ def run(test, params, env):
             vmxml['cpu'] = vmcpu_xml
             vmxml.sync()
 
-        # Remove topology if test does not requires
-        if topology and not with_topology:
+        # Remove topology if not required by test
+        has_cpu_definition = vmxml.xmltreefile.find('cpu') is not None
+        should_remove_topology = topology and not with_topology
+        if has_cpu_definition and should_remove_topology:
             cpu_xml = vmxml.cpu
             cpu_xml.del_topology()
             vmxml.cpu = cpu_xml
