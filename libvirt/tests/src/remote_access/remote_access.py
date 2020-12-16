@@ -8,6 +8,7 @@ from avocado.utils import process
 from virttest import remote
 from virttest import utils_iptables
 from virttest import utils_libvirtd
+from virttest import utils_package
 
 from virttest.utils_sasl import SASL
 from virttest.utils_conn import SSHConnection
@@ -290,6 +291,19 @@ def run(test, params, env):
         session.close()
 
     try:
+        # Install digest-md5 on local and remote
+        if sasl_type == "digest-md5":
+            server_session = remote.wait_for_login('ssh', server_ip, '22',
+                                                   server_user, server_pwd,
+                                                   r"[\#\$]\s*$")
+            for loc in ['local', 'remote']:
+                session = None
+                if loc == 'remote':
+                    session = server_session
+                if not utils_package.package_install("cyrus-sasl-md5", session):
+                    test.error("Failed to install swtpm packages on {} host."
+                               .format(loc))
+            server_session.close()
         # setup IPv6
         if config_ipv6 == "yes":
             ipv6_obj = IPv6Manager(test_dict)
