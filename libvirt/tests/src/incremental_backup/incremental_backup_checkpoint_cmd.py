@@ -110,6 +110,10 @@ def run(test, params, env):
                 cp_dumpxml_options = ""
                 if no_domain:
                     cp_dumpxml_options = "--no-domain"
+                    if libvirt_version.version_compare(6, 6, 0):
+                        # libvirt-6.6.0-9.el8 starts to allow redefine VM
+                        # backup checkpoint without the domain XML (bz1901830)
+                        status_error = False
                 checkpoint_redef = current_checkpoints[0]
                 cp_xml = checkpoint_xml.CheckpointXML.new_from_checkpoint_dumpxml(
                         vm_name, checkpoint_redef, cp_dumpxml_options)
