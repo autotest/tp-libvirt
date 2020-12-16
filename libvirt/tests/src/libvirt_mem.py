@@ -23,6 +23,7 @@ from virttest import virt_vm
 from virttest import data_dir
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import xcepts
 from virttest.staging import utils_memory
 from virttest.staging.utils_memory import drop_caches
 from virttest.staging.utils_memory import read_from_numastat
@@ -386,6 +387,7 @@ def run(test, params, env):
     detach_alias_options = params.get("detach_alias_options")
     attach_error = "yes" == params.get("attach_error", "no")
     start_error = "yes" == params.get("start_error", "no")
+    define_error = "yes" == params.get("define_error", "no")
     detach_error = "yes" == params.get("detach_error", "no")
     maxmem_error = "yes" == params.get("maxmem_error", "no")
     attach_option = params.get("attach_option", "")
@@ -718,7 +720,9 @@ def run(test, params, env):
                 # Remove dmesg temp file
                 if os.path.exists(dmesg_file):
                     os.remove(dmesg_file)
-
+    except xcepts.LibvirtXMLError:
+        if define_error:
+            pass
     finally:
         # Delete snapshots.
         snapshot_lists = virsh.snapshot_list(vm_name)
