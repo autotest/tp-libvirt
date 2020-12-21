@@ -1,9 +1,9 @@
 import os
 import logging
 import platform
+import random
 
 from avocado.utils import process
-from avocado.core import exceptions
 from avocado.utils import path
 
 from virttest import virt_vm
@@ -176,20 +176,44 @@ def run(test, params, env):
             tmp_list += host_node.cpus
         cpu_list = [int(i) for i in tmp_list]
 
+        dynamic_parameters = params.get('can_be_dynamic', 'no') == 'yes'
+
         if numa_memory.get('nodeset'):
             used_node = cpu.cpus_parser(numa_memory['nodeset'])
             logging.debug("set node list is %s", used_node)
             if not status_error:
                 if not set(used_node).issubset(node_list):
-                    raise exceptions.TestSkipError("nodeset %s out of range" %
-                                                   numa_memory['nodeset'])
+                    if not dynamic_parameters:
+                        test.cancel("nodeset %s out of range" % numa_memory['nodeset'])
+                    else:
+                        if '-' in numa_memory['nodeset']:
+                            nodes_size = len(numa_memory['nodeset'].split('-'))
+                        else:
+                            nodes_size = len(numa_memory['nodeset'].split(','))
+                        if nodes_size > len(node_list):
+                            test.cancel("nodeset %s out of range" % numa_memory['nodeset'])
+                        else:
+                            numa_memory['nodeset'] = node_list[:nodes_size]
 
         if vcpu_cpuset:
             pre_cpuset = cpu.cpus_parser(vcpu_cpuset)
             logging.debug("Parsed cpuset list is %s", pre_cpuset)
             if not set(pre_cpuset).issubset(cpu_list):
-                raise exceptions.TestSkipError("cpuset %s out of range" %
-                                               vcpu_cpuset)
+                if not dynamic_parameters:
+                    test.cancel("cpuset %s out of range" % vcpu_cpuset)
+                else:
+                    random_cpus = []
+                    # Choose the random cpus from the list of available CPUs on the system and make sure no cpu is
+                    # added twice or the list of selected CPUs is not long enough
+                    for i in range(len([int(i) for i in vcpu_cpuset.split(',')])):
+                        rand_cpu = random.randint(min(cpu_list), max(cpu_list))
+                        while rand_cpu in random_cpus:
+                            rand_cpu = random.randint(min(cpu_list), max(cpu_list))
+                        random_cpus.append(rand_cpu)
+                    random_cpus.sort()
+                    vcpu_cpuset = (','.join([str(cpu_num) for cpu_num in random_cpus]))
+                    pre_cpuset = cpu.cpus_parser(vcpu_cpuset)
+
         vmxml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
         vmxml.numa_memory = numa_memory
         vcpu_num = vmxml.vcpu
