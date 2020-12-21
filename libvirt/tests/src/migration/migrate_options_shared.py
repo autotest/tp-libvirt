@@ -1461,6 +1461,9 @@ def run(test, params, env):
             remote_virsh_session.close_session()
 
         if int(mig_result.exit_status) == 0:
+            if not remote_virsh_session:
+                remote_virsh_session = virsh.VirshPersistent(**remote_virsh_dargs)
+                remote_virsh_session.reboot(vm_name)
             migration_test.ping_vm(vm, params, dest_uri)
 
             if cmd_in_vm_after_migration:
