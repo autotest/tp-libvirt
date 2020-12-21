@@ -35,7 +35,7 @@ def run(test, params, env):
         if check_stat:
             raise_if_only_zero_entries(session)
     except Exception as e:
-        test.fail("Test failed: %s" % e.message)
+        test.fail("Test failed: %s" % e)
     finally:
         vmxml_backup.sync()
 
