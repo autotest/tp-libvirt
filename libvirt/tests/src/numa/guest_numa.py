@@ -3,7 +3,6 @@ import logging
 import platform
 
 from avocado.utils import process
-
 from virttest import virt_vm
 from virttest import libvirt_xml
 from virttest import utils_misc
@@ -12,7 +11,6 @@ from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import test_setup
 from virttest import utils_params
-
 from virttest import libvirt_version
 
 
@@ -44,6 +42,50 @@ def handle_param(param_tuple, params):
         param_dict = {}
     logging.debug("param list is %s", param_list)
     return param_list
+
+
+def dynamic_node_replacement(params, numa_info, test_obj):
+    """
+    Replace numa node parameters dynamically per current system configuration
+
+    :param numa_info: available numa node info from avocado-vt/utils_misc
+    :param params: all params passed to test
+    :param test_obj: test object - for cancel case
+    """
+    node_list = numa_info.get_online_nodes_withmem()
+    key_names = ['memnode_nodeset_', 'page_nodenum_']
+    for param in params:
+        if 'numa_cells_with_memory_required' in param:
+            if int(params['numa_cells_with_memory_required']) > len(node_list):
+                test_obj.cancel("There is no enough NUMA nodes available on this system to perform the test.")
+        if 'memory_nodeset' in param:
+            params['memory_nodeset'] = ','.join([str(elem) for elem in node_list])
+            logging.debug('The parameter "memory_nodeset" from config file is going to be replaced by: {} available '
+                          'on this system'.format(params['memory_nodeset']))
+            continue
+        if 'kernel_hp_file' == param:
+            cfg_param = params['kernel_hp_file']
+            node_name = re.search('node\d', cfg_param)
+            node_index = re.search('\d', node_name.group(0)).group(0)
+            if int(node_index) not in node_list:
+                try:
+                    replacement = re.sub('node' + node_index, 'node' + str(node_list[int(node_index)]), cfg_param)
+                    logging.debug('The parameter "kernel_hp_file" is going to be changed from {} in config file to {} '
+                                  'available on this system.'.format(cfg_param, replacement))
+                    params[param] = replacement
+                except IndexError:
+                    test_obj.fail('Unexpected value {} for parameter {} in config file'.format(cfg_param, param))
+            continue
+        for name in key_names:
+            if name in param:
+                index = int(params[param])
+                if index not in node_list:
+                    try:
+                        logging.debug('The parameter {} from config file is going to be replaced by: {}'.
+                                      format(param, node_list[index]))
+                        params[param] = str(node_list[index])
+                    except IndexError:
+                        test_obj.fail('Unexpected value {} for parameter {} in config file'.format(index, param))
 
 
 def run(test, params, env):
@@ -82,6 +124,7 @@ def run(test, params, env):
     host_numa_node = utils_misc.NumaInfo()
     node_list = host_numa_node.online_nodes
     arch = platform.machine()
+    dynamic_node_replacement(params, host_numa_node, test)
     if 'ppc64' in arch:
         try:
             ppc_memory_nodeset = ""
