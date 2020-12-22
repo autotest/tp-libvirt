@@ -103,10 +103,12 @@ def run(test, params, env):
     managedsave = params.get("managedsave", "no") == "yes"
     coldplug = params.get("coldplug", "no") == "yes"
     extra_hugepages = params.get_numeric("extra_hugepages")
+    edit_start = params.get("edit_start", "no") == "yes"
 
     fs_devs = []
     vms = []
     vmxml_backups = []
+    expected_fails_msg = []
     expected_results = ""
     host_hp_size = utils_memory.get_huge_page_size()
     backup_huge_pages_num = utils_memory.get_num_huge_pages()
@@ -186,6 +188,23 @@ def run(test, params, env):
                 virsh.suspend(vm_names[0], debug=True, ignore_status=False)
                 time.sleep(30)
                 virsh.resume(vm_names[0], debug=True, ignore_statue=False)
+            elif edit_start:
+                vmxml_virtio_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[0])
+                if vm.is_alive():
+                    virsh.destroy(vm_names[0])
+                    cmd = "virt-xml %s --edit --qemu-commandline  '\-foo'" % vm_names[0]
+                    cmd_result = process.run(cmd, ignore_status=True, shell=True)
+                    logging.debug(virsh.dumpxml(vm_names[0]))
+                    if cmd_result.exit_status:
+                        test.error("virt-xml edit guest failed: %s" % cmd_result)
+                    result = virsh.start(vm_names[0], ignore_status=True, debug=True)
+                    if error_msg_start:
+                        expected_fails_msg.append(error_msg_start)
+                    utils_test.libvirt.check_result(result, expected_fails=expected_fails_msg)
+                    if not vm.is_alive():
+                        # Restoring vm and check if vm can start successfully
+                        vmxml_virtio_backup.sync()
+                        virsh.start(vm_names[0], ignore_status=False, shell=True)
             elif socket_file_checking:
                 result = virsh.domid(vm_names[0])
                 domid = result.stdout.strip()
