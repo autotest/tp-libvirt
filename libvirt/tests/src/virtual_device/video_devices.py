@@ -4,6 +4,7 @@ import re
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.video import Video
 from virttest import virsh
+from virttest import libvirt_version
 
 from six import iteritems
 
@@ -104,6 +105,8 @@ def run(test, params, env):
                 pattern = r"-device\sqxl,"
             elif model_type == "virtio":
                 pattern = r"-device\svirtio-gpu-pci"
+                if with_packed:
+                    pattern = r"-device\svirtio-gpu-pci.*packed=%s" % driver_packed
             if guest_arch == 's390x':
                 pattern = s390x_pattern
             if not re.search(pattern, cmdline):
@@ -188,11 +191,17 @@ def run(test, params, env):
     zero_size_test = params.get("zero_size_test", None) == "yes"
     non_power_of_2_test = params.get("non_power_of_2_test", None) == "yes"
     guest_arch = params.get("vm_arch_name")
+    with_packed = params.get("with_packed", "no") == "yes"
+    driver_packed = params.get("driver_packed", "on")
 
     vm_xml = VMXML.new_from_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
     if vm.is_alive():
         vm.destroy()
+
+    if with_packed and not libvirt_version.version_compare(6, 3, 0):
+        test.cancel("The virtio packed attribute is not supported in"
+                    " current libvirt version.")
 
     try:
         vm_xml.remove_all_device_by_type('video')
@@ -212,6 +221,8 @@ def run(test, params, env):
             is_primary = False
             if heads_test and not default_secondary_heads:
                 kwargs["model_heads"] = secondary_heads
+            if with_packed:
+                kwargs["driver_packed"] = driver_packed
             add_video_device(model_type, vm_xml, is_primary, status_error, **kwargs)
 
         if not status_error:
