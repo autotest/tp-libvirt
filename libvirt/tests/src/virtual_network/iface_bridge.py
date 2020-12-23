@@ -13,6 +13,7 @@ from virttest.staging import service
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import interface
 from virttest import utils_package
+from virttest.libvirt_xml import network_xml
 
 NETWORK_SCRIPT = "/etc/sysconfig/network-scripts/ifcfg-"
 
@@ -51,6 +52,19 @@ def run(test, params, env):
               ' ip link set {1} master {0}; ip link set {0} up;' \
               ' pkill dhclient; sleep 6; dhclient {0}; ifconfig {1} 0"'.format(br_name, iface_name)
         process.run(cmd, shell=True, verbose=True)
+
+    def create_bridge_network(br_name, net_name):
+        """
+        Define and start the bridge type network
+        """
+        # check if network with the same name already exists
+        output_all = virsh.net_list("--all").stdout.strip()
+        if re.search(net_name, output_all):
+            test.cancel("Network with the same name already exists!")
+        test_xml = network_xml.NetworkXML(network_name="%s" % net_name)
+        test_xml.forward = {"mode": "bridge"}
+        test_xml.bridge = {"name": br_name}
+        test_xml.create()
 
     def define_nwfilter(filter_name):
         """
@@ -123,6 +137,8 @@ def run(test, params, env):
     hotplug = "yes" == params.get("hotplug", "no")
     iface_driver = params.get("iface_driver", None)
     start_vm2 = "yes" == params.get("start_vm2", "no")
+    create_network = "yes" == params.get("create_network", "no")
+    update_device = "yes" == params.get("update_with_diff_type", "no")
 
     vms = params.get("vms").split()
     if len(vms) <= 1:
@@ -173,10 +189,12 @@ def run(test, params, env):
                                              ignore_status=True)
             else:
                 logging.info("Try to hot-plug device")
+                if create_network:
+                    create_bridge_network(bridge_name, iface_source["network"])
                 target = str({'dev': iface_target})
                 iface_alias = str({'name': iface_alias})
                 vm_iface_source = str(iface_source)
-                iface_params = {"type": "bridge", "source": vm_iface_source, "filter": filter_name, "mac": mac,
+                iface_params = {"type": iface_type, "source": vm_iface_source, "filter": filter_name, "mac": mac,
                                 'alias': iface_alias, 'target': target, 'model': iface_model,
                                 'driver': iface_driver}
                 attach_xml = interface.Interface(iface_params['type'])
@@ -189,6 +207,15 @@ def run(test, params, env):
                     test.fail("Failed to attach-interface: %s" % ret.stderr.strip())
             else:
                 logging.debug("Hot-plug interface or device pass")
+                if update_device:
+                    # As the interface type will change to actual type "bridge" in live xml, we need to ensure
+                    # the update with original "network" type will not fail.
+                    # Try to delete the nwfilter with original type in iface_params
+                    update_xml = interface.Interface(iface_type)
+                    iface_params_update = {"del_filter": "yes", "type": "network", "source": vm_iface_source}
+                    update_xml.xml = libvirt.modify_vm_iface(vm1_name, 'get_xml', iface_params_update)
+                    ret = virsh.update_device(vm1_name, update_xml.xml, ignore_status=True, debug=True)
+                    libvirt.check_exit_status(ret)
 
         else:
             vm_iface_source = str(iface_source)
@@ -323,3 +350,5 @@ def run(test, params, env):
         # recover NetworkManager
         if NM_status is True:
             NM_service.start()
+        if iface_source["network"] in virsh.net_state_dict():
+            virsh.net_destroy(iface_source["network"], ignore_status=False)
