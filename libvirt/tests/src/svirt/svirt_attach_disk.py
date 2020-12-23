@@ -19,6 +19,7 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.disk import Disk
 from virttest.libvirt_xml.devices import seclabel
+from virttest.libvirt_xml.devices.controller import Controller
 
 
 def run(test, params, env):
@@ -180,6 +181,17 @@ def run(test, params, env):
 
         disk_xml.source = disk_source
         logging.debug(disk_xml)
+
+        # Replace old scsi controller with virtio-scsi controller to support hotplug/unplug
+        if params.get('machine_type') == 'pseries' and device_bus == 'scsi':
+            if not vmxml.get_controllers(device_bus, 'virtio-scsi'):
+                vmxml.del_controller(device_bus)
+                ppc_controller = Controller('controller')
+                ppc_controller.type = device_bus
+                ppc_controller.index = '0'
+                ppc_controller.model = 'virtio-scsi'
+                vmxml.add_device(ppc_controller)
+                vmxml.sync()
 
         # Do the attach action.
         cmd_result = virsh.attach_device(domainarg=vm_name, filearg=disk_xml.xml, flagstr='--persistent')
