@@ -145,7 +145,7 @@ def run(test, params, env):
 
         # Test on ppc64le hosts
         if arch.lower() == 'ppc64le':
-            cpu_arch = cpu.get_cpu_arch()
+            cpu_arch = cpu.get_family() if hasattr(cpu, 'get_family') else cpu.get_cpu_arch()
             logging.debug('cpu_arch is: %s', cpu_arch)
             if skip_p8 and cpu_arch == 'power8':
                 test.cancel('This case is not for POWER8')
