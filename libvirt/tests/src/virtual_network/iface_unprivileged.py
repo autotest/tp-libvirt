@@ -201,7 +201,7 @@ def run(test, params, env):
             session = aexpect.ShellSession(cmd)
             session.sendline()
             remote.handle_prompts(session, params.get("username"),
-                                  params.get("password"), r"[\#\$]\s*$", 30)
+                                  params.get("password"), r"[\#\$]\s*$", 60)
             logging.debug(session.cmd_output('ifconfig'))
             check_ping(remote_ip, 5, 10, session=session)
             session.close()
