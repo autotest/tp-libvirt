@@ -7,6 +7,7 @@ from virttest import virsh
 from virttest import utils_libvirtd
 from virttest import data_dir
 from virttest import utils_misc
+from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 
@@ -235,11 +236,19 @@ def run(test, params, env):
     manipulate_action = params.get("manipulate_action", "")
     readonly = "yes" == params.get("setmem_readonly", "no")
     expect_msg = params.get("setmem_err_msg")
+    driver_packed = params.get("driver_packed", "on")
+    with_packed = "yes" == params.get("with_packed", "no")
+    expect_xml_line = params.get("expect_xml_line")
+    expect_qemu_line = params.get("expect_qemu_line")
 
     vm = env.get_vm(vm_name)
     # Back up domain XML
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
+
+    if with_packed and not libvirt_version.version_compare(6, 3, 0):
+        test.cancel("The virtio packed attribute is not supported in"
+                    " current libvirt version.")
 
     vmosxml = vmxml.os
     need_mkswap = False
@@ -266,10 +275,18 @@ def run(test, params, env):
         vmxml.del_device('memballoon', by_tag=True)
         memballoon_xml = vmxml.get_device_class('memballoon')()
         memballoon_xml.model = memballoon_model
+        if with_packed:
+            memballoon_xml.driver_packed = driver_packed
         vmxml.add_device(memballoon_xml)
         logging.info(memballoon_xml)
         vmxml.sync()
         vm.start()
+    # Check guest dumpxml and qemu command in with_packed attribute
+    if with_packed:
+        expect_xml_line = expect_xml_line % driver_packed
+        expect_qemu_line = expect_qemu_line % driver_packed
+        libvirt.check_dumpxml(vm, expect_xml_line)
+        libvirt.check_qemu_cmd_line(expect_qemu_line)
 
     remove_balloon_driver = "yes" == params.get("remove_balloon_driver", "no")
     if remove_balloon_driver:
