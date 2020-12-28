@@ -258,7 +258,7 @@ def run(test, params, env):
             logging.info("The first boot time is %s\n", first_boot_time)
         if action == "inject-nmi":
             virsh_session = virsh.VirshSession(virsh_exec=virsh.VIRSH_EXEC, auto_close=True)
-            event_cmd = "event --event watchdog --all --loop"
+            event_cmd = "event --all --loop"
             virsh_session.sendline(event_cmd)
         trigger_watchdog(model)
         confirm_guest_status()
