@@ -47,10 +47,10 @@ def run(test, params, env):
     # Check result
     if status_error == "yes":
         if status == 0:
-            test.fail("Run successfully with wrong command!")
+            test.fail("Run successfully with wrong command!\nThe output:%s" % output)
     elif status_error == "no":
         if status != 0:
-            test.fail("Run failed with right command.")
+            test.fail("Run failed with right command.\nThe output:%s" % output)
         else:
             dmidecode_version = get_processor_version()
             if dmidecode_version:
@@ -74,5 +74,6 @@ def run(test, params, env):
                               "%s" % processor_version)
 
                 if processor_version != dmidecode_version:
-                    test.fail("Processor version from sysinfo not"
-                              " equal to dmidecode output")
+                    test.fail("Processor version from sysinfo (%s) not "
+                              "equal to dmidecode output "
+                              "(%s)" % (processor_version, dmidecode_version))
