@@ -151,11 +151,11 @@ def run(test, params, env):
         Check pipe used by QEMU is closed gracefully after VM shutdown.
         """
         # Check pipe node can not be listed after VM shutdown.
-        cmd = ("lsof  -w |grep pipe|grep virtlogd|grep %s" % pipe_node)
+        cmd = ("lsof +c0 -w |grep pipe|grep virtlogd|grep %s" % pipe_node)
         if not process.run(cmd, timeout=90, ignore_status=True, shell=True).exit_status:
             test.fail("pipe node: %s is not closed in virtlogd gracefully." % pipe_node)
 
-        cmd = ("lsof  -w |grep pipe|grep qemu-kvm|grep %s" % pipe_node)
+        cmd = ("lsof +c0 -w |grep pipe|grep qemu-kvm|grep %s" % pipe_node)
         if not process.run(cmd, timeout=90, ignore_status=True, shell=True).exit_status:
             test.fail("pipe node: %s is not closed in qemu gracefully." % pipe_node)
 
@@ -343,7 +343,7 @@ def run(test, params, env):
             # On latest release,No.8 field in lsof returning is pipe node number.
             if libvirt_version.version_compare(4, 3, 0):
                 pipe_node_field = "$8"
-            cmd = ("lsof  -w |grep pipe|grep virtlogd|tail -n 1|awk '{print %s}'" % pipe_node_field)
+            cmd = ("lsof +c0 -w |grep pipe|grep virtlogd|tail -n 1|awk '{print %s}'" % pipe_node_field)
             pipe_node = configure(cmd)
 
             if restart_libvirtd or stop_libvirtd:
@@ -371,7 +371,7 @@ def run(test, params, env):
                 reload_and_check_virtlogd()
 
             # Check if qemu-kvm use pipe node provided by virtlogd.
-            cmd = ("lsof  -w |grep pipe|grep qemu-kvm|grep %s" % pipe_node)
+            cmd = ("lsof +c0 -w |grep pipe|grep qemu-kvm|grep %s" % pipe_node)
             errorMessage = ("Can not find matched pipe node: %s "
                             "from pipe list used by qemu-kvm." % pipe_node)
             configure(cmd, errorMsg=errorMessage)
