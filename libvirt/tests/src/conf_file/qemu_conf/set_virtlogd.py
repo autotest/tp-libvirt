@@ -4,6 +4,7 @@ import stat
 import time
 
 from pwd import getpwuid
+from xml.etree.ElementTree import parse
 
 from avocado.utils import process
 
@@ -155,7 +156,7 @@ def run(test, params, env):
         if not process.run(cmd, timeout=90, ignore_status=True, shell=True).exit_status:
             test.fail("pipe node: %s is not closed in virtlogd gracefully." % pipe_node)
 
-        cmd = ("lsof +c0 -w |grep pipe|grep qemu-kvm|grep %s" % pipe_node)
+        cmd = ("lsof +c0 -w |grep pipe|grep %s|grep %s" % (emulator[0:15], pipe_node))
         if not process.run(cmd, timeout=90, ignore_status=True, shell=True).exit_status:
             test.fail("pipe node: %s is not closed in qemu gracefully." % pipe_node)
 
@@ -227,6 +228,8 @@ def run(test, params, env):
 
     vm = env.get_vm(vm_name)
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
+    emulator_path = parse(vm_xml.get_devices(device_type='emulator')[0]['xml']).getroot().text
+    emulator = os.path.basename(emulator_path)
     vm_xml_backup = vm_xml.copy()
     if with_console_log:
         guest_log_file = os.path.join(QEMU_LOG_PATH, "%s-console.log" % vm_name)
@@ -370,10 +373,10 @@ def run(test, params, env):
             if with_spice or with_console_log:
                 reload_and_check_virtlogd()
 
-            # Check if qemu-kvm use pipe node provided by virtlogd.
-            cmd = ("lsof +c0 -w |grep pipe|grep qemu-kvm|grep %s" % pipe_node)
+            # Check if qemu use pipe node provided by virtlogd.
+            cmd = ("lsof +c0 -w |grep pipe|grep %s|grep %s" % (emulator[0:15], pipe_node))
             errorMessage = ("Can not find matched pipe node: %s "
-                            "from pipe list used by qemu-kvm." % pipe_node)
+                            "from pipe list used by %s." % (emulator, pipe_node))
             configure(cmd, errorMsg=errorMessage)
 
             # Shutdown VM.
@@ -383,7 +386,7 @@ def run(test, params, env):
             # Check qemu log works well
             if with_spice:
                 check_info_in_vm_log_file(vm_name, guest_log_file,
-                                          matchedMsg="qemu-kvm: terminating on signal 15 from pid")
+                                          matchedMsg="qemu: terminating on signal 15 from pid")
 
             # Check VM shutdown log is written into log file correctly.
             if with_console_log:
