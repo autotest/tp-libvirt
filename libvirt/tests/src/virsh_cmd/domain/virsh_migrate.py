@@ -628,6 +628,22 @@ def run(test, params, env):
                     'server_pwd': server_pwd,
                     'file_path': "/etc/libvirt/libvirt.conf"}
 
+    # Cold plug one pcie-to-pci-bridge controller in case
+    # device hotplugging is needed during test
+    machine_type = params.get("machine_type")
+    if machine_type == 'q35':
+        contr_dict_1 = {
+                'controller_type': 'pci',
+                'controller_model': 'pcie-root-port'
+                }
+        contr_dict_2 = {
+                'controller_type': 'pci',
+                'controller_model': 'pcie-to-pci-bridge'
+                }
+        for contr in [contr_dict_1, contr_dict_2]:
+            contr_xml = libvirt.create_controller_xml(contr)
+            libvirt.add_controller(vm.name, contr_xml)
+
     # Configurations for cpu compat guest to boot
     if compat_mode:
         if compat_guest_migrate:
