@@ -1454,6 +1454,18 @@ def run(test, params, env):
     dest_uri = libvirt_vm.complete_uri(server_ip)
     migrate_setup.cleanup_dest_vm(vm, vm.connect_uri, dest_uri)
     try:
+        # Cold plug two pcie-root-port controllers for q35 vm in case
+        # device hotplugging is needed during test
+        machine_type = params.get("machine_type")
+        if machine_type == 'q35':
+            contr_dict = {
+                    'controller_type': 'pci',
+                    'controller_model': 'pcie-root-port'
+                    }
+            for i in range(0, 2):
+                contr_xml = libvirt.create_controller_xml(contr_dict)
+                libvirt.add_controller(vm.name, contr_xml)
+
         if iscsi_setup:
             fileio_name = "emulated-iscsi"
             img_vsize = get_virtual_size(test, disk_source)
