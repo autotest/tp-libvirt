@@ -60,7 +60,7 @@ def run(test, params, env):
     source_path = params.get("pool_source_path", "/")
     new_pool_name = params.get("new_pool_name", "")
     build_option = params.get("build_option", "")
-    iscsi_initiator = params.get("iscsi_initiator", "")
+    source_initiator = params.get("source_initiator", "")
     same_source_test = "yes" == params.get("same_source_test", "no")
     customize_initiator_iqn = "yes" == params.get("customize_initiator_iqn", "no")
     # The file for dumped pool xml
@@ -82,6 +82,9 @@ def run(test, params, env):
         if pool_type == "iscsi-direct":
             test.cancel("iSCSI-direct pool is not supported in current"
                         "libvirt version.")
+    if source_initiator and not libvirt_version.version_compare(6, 10, 0):
+        test.cancel("Source_initiator option is not supported in current"
+                    " libvirt_version.")
     if source_protocol_ver == "yes" and not libvirt_version.version_compare(4, 5, 0):
         test.cancel("source-protocol-ver is not supported on current version.")
 
@@ -184,7 +187,8 @@ def run(test, params, env):
               'source_name': source_name, 'source_path': source_path,
               'source_format': source_format, 'persistent': True,
               'ip_protocal': ip_protocal, 'emulated_image': "emulated-image",
-              'pool_target': pool_target, 'iscsi_initiator': iscsi_initiator, 'source_protocol_ver': source_protocol_ver}
+              'pool_target': pool_target, 'source_initiator': source_initiator,
+              'source_protocol_ver': source_protocol_ver}
     params.update(kwargs)
 
     try:
