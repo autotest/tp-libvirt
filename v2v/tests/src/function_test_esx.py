@@ -13,7 +13,7 @@ from virttest.utils_test import libvirt
 from virttest.utils_v2v import params_get
 from avocado.utils import process
 from avocado.utils import download
-from aexpect.exceptions import ShellProcessTerminatedError
+from aexpect.exceptions import ShellProcessTerminatedError, ShellTimeoutError
 
 from provider.v2v_vmcheck_helper import VMChecker
 from provider.v2v_vmcheck_helper import check_json_output
@@ -390,6 +390,75 @@ def run(test, params, env):
         output = virsh.net_list("--all").stdout.strip()
         logging.info(output)
 
+    def check_static_ip_conf(vmcheck):
+        """
+        Check static IP configuration in VM
+
+        :param vmcheck: VMCheck object for vm checking
+        """
+        def _static_ip_check():
+            cmd = 'ipconfig /all'
+            _, output = vmcheck.run_cmd(cmd, debug=False)
+            v2v_cmd = params_get(params, 'v2v_command')
+            # --mac 00:50:56:ac:7a:4d:ip:192.168.1.2,192.168.1.1,22,192.168.1.100,10.73.2.108,10.66.127.10'
+            mac_ip_pattern = '--mac (([0-9a-zA-Z]{2}:){6})ip:([0-9,.]+)'
+            ip_config_list = re.search(mac_ip_pattern, v2v_cmd).group(3)
+            mac_addr = re.search(mac_ip_pattern, v2v_cmd).group(1)[
+                0:-1].upper().replace(':', '-')
+            eth_adapter_ptn = r'Ethernet adapter Ethernet.*?NetBIOS over Tcpip'
+            ipconfig = [
+                v for v in re.findall(
+                    eth_adapter_ptn,
+                    output,
+                    re.S) if mac_addr in v][0]
+            for i, value in enumerate(ip_config_list.split(',')):
+                if not value:
+                    continue
+                # IP address
+                if i == 0:
+                    ip_addr = r'IPv4 Address.*?: %s' % value
+                    if not re.search(ip_addr, ipconfig, re.S):
+                        logging.debug('Found IP addr failed')
+                        return False
+                # Default gateway
+                if i == 1:
+                    ip_gw = r'Default Gateway.*?: .*?%s' % value
+                    if not re.search(ip_gw, ipconfig, re.S):
+                        logging.debug('Found Gateway failed')
+                        return False
+                # Subnet mask
+                if i == 2:
+                    # convert subnet mask to cidr
+                    bin_mask = '1' * int(value) + '0' * (32 - int(value))
+                    cidr = '.'.join(
+                        [str(int(bin_mask[i * 8:i * 8 + 8], 2)) for i in range(4)])
+                    sub_mask = r'Subnet Mask.*?: %s' % cidr
+                    if not re.search(sub_mask, ipconfig, re.S):
+                        logging.debug('Found subnet mask failed')
+                        return False
+                # DNS server list
+                if i >= 3:
+                    dns_server = r'DNS Servers.*?:.*?%s' % value
+                    if not re.search(dns_server, ipconfig, re.S):
+                        logging.debug('Found DNS Server failed')
+                        return False
+            return True
+
+        try:
+            vmcheck.create_session()
+            res = utils_misc.wait_for(_static_ip_check, 1800, step=300)
+        except (ShellTimeoutError, ShellProcessTerminatedError):
+            logging.debug(
+                'Lost connection to windows guest, the static IP may take effect')
+            if vmcheck.session:
+                vmcheck.session.close()
+                vmcheck.session = None
+            vmcheck.create_session()
+            res = utils_misc.wait_for(_static_ip_check, 300, step=30)
+        vmcheck.run_cmd('ipconfig /all')  # debug msg
+        if not res:
+            test.fail('Checking static IP configuration failed')
+
     def check_result(result, status_error):
         """
         Check virt-v2v command result
@@ -438,6 +507,8 @@ def run(test, params, env):
                     check_windows_ogac(vmchecker.checker)
                 else:
                     check_linux_ogac(vmchecker.checker)
+            if checkpoint == 'mac_ip':
+                check_static_ip_conf(vmchecker.checker)
             ret = vmchecker.run()
             if len(ret) == 0:
                 logging.info("All common checkpoints passed")
@@ -659,7 +730,6 @@ def run(test, params, env):
             if checkpoint in [
                 'mismatched_uuid',
                 'no_uuid',
-                'mac_ip',
                 'invalid_source',
                 'system_rhv_pem_set',
                     'system_rhv_pem_unset']:
@@ -698,15 +768,10 @@ def run(test, params, env):
             if params.get('invalid_esx_hostname'):
                 new_cmd = v2v_result.replace(
                     esxi_host, params.get('invalid_esx_hostname'))
-        if checkpoint == 'mac_ip':
-            mac_repl = r'(?<=--mac ).*?(?= )'
-            mac_value = params_get(params, 'mac_value')
-            new_cmd = re.sub(mac_repl, mac_value, v2v_result)
 
         if checkpoint in [
             'mismatched_uuid',
             'no_uuid',
-            'mac_ip',
             'invalid_source',
             'exist_uuid',
             'system_rhv_pem_set',
