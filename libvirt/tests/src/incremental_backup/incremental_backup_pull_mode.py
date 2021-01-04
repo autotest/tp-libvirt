@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 
 import xml.etree.ElementTree as ET
@@ -11,6 +12,7 @@ from virttest import gluster
 from virttest import utils_disk
 from virttest import utils_backup
 from virttest import utils_libvirtd
+from virttest import utils_secret
 from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
@@ -68,6 +70,9 @@ def run(test, params, env):
     tls_client_pwd = tls_server_pwd = local_user_password
     tls_provide_client_cert = "yes" == params.get("tls_provide_client_cert")
     tls_error = "yes" == params.get("tls_error")
+    # LUKS config
+    scratch_luks_encrypted = "yes" == params.get("scratch_luks_encrypted")
+    luks_passphrase = params.get("luks_passphrase", "password")
 
     # Cancel the test if libvirt support related functions
     if not libvirt_version.version_compare(6, 0, 0):
@@ -140,6 +145,13 @@ def run(test, params, env):
             if custom_pki_path:
                 qemu_config.backup_tls_x509_cert_dir = pki_path
             utils_libvirtd.Libvirtd().restart()
+
+        # Prepare libvirt secret
+        if scratch_luks_encrypted:
+            utils_secret.clean_up_secrets()
+            luks_secret_uuid = libvirt.create_secret(params)
+            virsh.secret_set_value(luks_secret_uuid, luks_passphrase,
+                                   encode=True, debug=True)
 
         # Prepare the disk to be backuped.
         disk_params = {}
@@ -264,24 +276,29 @@ def run(test, params, env):
                         backup_disk_params["exportbitmap"] = nbd_bitmap_name
 
                     # Prepare nbd scratch file/dev params
-                    scratch_params = {}
+                    scratch_params = {"attrs": {}}
+                    scratch_path = None
                     if scratch_type == "file":
                         scratch_file_name = "scratch_file_%s" % backup_index
-                        scratch_file_path = os.path.join(tmp_dir, scratch_file_name)
+                        scratch_path = os.path.join(tmp_dir, scratch_file_name)
                         if prepare_scratch_file:
-                            libvirt.create_local_disk("file", scratch_file_path,
+                            libvirt.create_local_disk("file", scratch_path,
                                                       original_disk_size, "qcow2")
-                        scratch_params["file"] = scratch_file_path
-                        logging.debug("scratch_params: %s", scratch_params)
+                        scratch_params["attrs"]["file"] = scratch_path
                     elif scratch_type == "block":
                         if prepare_scratch_blkdev:
-                            scratch_blkdev_path = libvirt.setup_or_cleanup_iscsi(
+                            scratch_path = libvirt.setup_or_cleanup_iscsi(
                                     is_setup=True, image_size=scratch_blkdev_size)
-                        logging.debug("abcd scratch_blkdev_path:%s", scratch_blkdev_path)
-                        scratch_params["dev"] = scratch_blkdev_path
+                        scratch_params["attrs"]["dev"] = scratch_path
                     else:
                         test.fail("We do not support backup scratch type: '%s'"
                                   % scratch_type)
+                    if scratch_luks_encrypted:
+                        encryption_dict = {"encryption": "luks",
+                                           "secret": {"type": "passphrase",
+                                                      "uuid": luks_secret_uuid}}
+                        scratch_params["encryption"] = encryption_dict
+                    logging.debug("scratch params: %s", scratch_params)
                     backup_disk_params["backup_scratch"] = scratch_params
 
                 backup_disk_xml = utils_backup.create_backup_disk_xml(
@@ -360,6 +377,13 @@ def run(test, params, env):
                 utils_backup.pull_incremental_backup_to_file(
                         nbd_params, backup_file_path, nbd_bitmap_name,
                         original_disk_size)
+            # Check if scratch file encrypted
+            if scratch_luks_encrypted and scratch_path:
+                cmd = "qemu-img info -U %s" % scratch_path
+                result = process.run(cmd, shell=True, verbose=True).stdout_text.strip()
+                if (not re.search("format.*luks", result, re.IGNORECASE) or
+                        not re.search("encrypted.*yes", result, re.IGNORECASE)):
+                    test.fail("scratch file/dev is not encrypted by LUKS")
             virsh.domjobabort(vm_name, debug=True)
 
         for checkpoint_name in checkpoint_list:
@@ -415,3 +439,7 @@ def run(test, params, env):
         # Remove tls object
         if "tls_obj" in locals():
             del tls_obj
+
+        # Remove libvirt secret
+        if "luks_secret_uuid" in locals():
+            virsh.secret_undefine(luks_secret_uuid, ignore_status=True)
