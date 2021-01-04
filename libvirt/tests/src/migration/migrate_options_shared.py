@@ -18,6 +18,7 @@ from avocado.core import exceptions
 
 from virttest import libvirt_vm
 from virttest import utils_misc
+from virttest import utils_split_daemons
 from virttest import defaults
 from virttest import data_dir
 from virttest import virsh
@@ -28,6 +29,7 @@ from virttest import utils_package
 from virttest import utils_iptables
 from virttest import utils_secret
 from virttest import utils_conn
+from virttest import utils_config
 from virttest import xml_utils
 from virttest import migration
 
@@ -816,24 +818,134 @@ def run(test, params, env):
                       "is power of 2", item, pagesize)
         return item
 
-    def update_config_file(config_type, new_conf, remote_host=True,
-                           params=None):
+    def update_qemu_conf_on_local_and_remote():
+        """
+        Update qemu.conf on both local and remote hosts
+        """
+
+        conf_dict = eval(params.get("qemu_conf_dict", '{}'))
+        conf_dest_dict = params.get("qemu_conf_dest_dict", '{}')
+
+        update_conf_on_local_and_remote("qemu", "qemu",
+                                        conf_dict, conf_dest_dict)
+
+    def update_libvirtd_conf_on_local_and_remote():
+        """
+        Update libvirtd conf file on both local and remote hosts
+        """
+
+        conf_dict = eval(params.get("libvirtd_conf_dict", '{}'))
+        conf_dest_dict = params.get("libvirtd_conf_dest_dict", '{}')
+        conf_type = params.get("libvirtd_conf_type")
+        conf_type_dest = params.get("libvirtd_conf_type_dest")
+
+        update_conf_on_local_and_remote(conf_type, conf_type_dest,
+                                        conf_dict, conf_dest_dict)
+
+    def update_log_conf_on_local_and_remote():
+        """
+        Update log conf file on both local and remote hosts
+        """
+
+        conf_dict = eval(params.get("log_conf_dict", '{}'))
+        conf_dest_dict = params.get("log_conf_dest_dict", '{}')
+        conf_type = params.get("log_conf_type")
+        conf_type_dest = params.get("log_conf_type_dest")
+
+        update_conf_on_local_and_remote(conf_type, conf_type_dest,
+                                        conf_dict, conf_dest_dict)
+
+    def update_conf_on_local_and_remote(conf_type, conf_type_dest,
+                                        conf_dict, conf_dest_dict):
+        """
+        Update libvirt related conf files on both local and remote hosts
+
+        :param conf_type: String type, conf type on local host
+        :param conf_dict: Dict of parameters to set on local host
+        :param conf_type_dest: String type, conf type on remote host
+        :param conf_dest_dict: String type that contains dict of parameters
+                               to be set on remote host
+        """
+
+        if conf_dict:
+            logging.info("Update conf on local host")
+            updated_conf_local = update_config_file(
+                conf_type, conf_dict, remote=False, remote_params=None
+                )
+            local_conf_obj_list.append(updated_conf_local)
+
+        if eval(conf_dest_dict):
+            logging.info("Update conf on remote host")
+            updated_conf_remote = update_config_file(
+                conf_type_dest, conf_dest_dict, remote=True,
+                remote_params=params
+                )
+            remote_conf_obj_list.append(updated_conf_remote)
+
+    def get_conf_type(conf_type):
+        """
+        Convert the configred conf_type to the actual conf_type\
+        according to test env.
+        Note: The conf_type configured in <test>.cfg is always set to the value
+              in modular daemon mode. Need to convert it to the actual value
+              according to the test env.
+
+        :param conf_type: Configured conf_type, String type
+                          like virtlogd, virtproxyd, etc
+        :return conf_type: Actual conf_type, String type,
+                           like virtlogd, virtproxyd, etc
+        """
+
+        if (not utils_split_daemons.is_modular_daemon() and
+            conf_type in ["virtqemud", "virtproxyd", "virtnetworkd",
+                          "virtstoraged", "virtinterfaced", "virtnodedevd",
+                          "virtnwfilterd", "virtsecretd"]):
+            return "libvirtd"
+        else:
+            return conf_type
+
+    def get_conf_file_path(conf_type):
+        """
+        Get conf file path by the conf type
+
+        :param conf_type: conf type, like libvirtd, qemu, virtproxyd, etc
+        :return conf file path
+        """
+
+        return utils_config.get_conf_obj(conf_type).conf_path
+
+    def update_config_file(conf_type, conf_dict, remote=False,
+                           remote_params=None):
         """
         Update the specified configuration file with dict
 
-        :param config_type: Like libvirtd, qemu
-        :param new_conf: The str including new configuration
-        :param remote_host: True to also update in remote host
-        :param params: The dict including parameters to connect remote host
-        :return: utils_config.LibvirtConfigCommon object
+        :param conf_type: String type, conf type
+        :param conf_dict: Dict of parameters to set
+        :param remote: True to update only remote
+                       False to update only local
+        :param remote_params: Dict of remote host parameters, which should
+                              include: server_ip, server_user, server_pwd
+        :return: utils_config.LibvirtConfigCommon object if remote is False, or
+                 remote.RemoteFile objects if remote is True
         """
-        logging.debug("Update configuration file")
-        cleanup_libvirtd_log(log_file)
-        config_dict = eval(new_conf)
-        updated_conf = libvirt.customize_libvirt_config(config_dict,
-                                                        config_type=config_type,
-                                                        remote_host=remote_host,
-                                                        extra_params=params)
+
+        updated_conf = None
+
+        if not remote:
+            logging.debug("Update local conf, conf type is %s, dict is %s",
+                          conf_type, conf_dict)
+            updated_conf = libvirt.customize_libvirt_config(
+                conf_dict, config_type=conf_type,
+                remote_host=False, extra_params=None
+                )
+        else:
+            logging.debug("Update remote conf, conf type is %s, dict is %s",
+                          conf_type, conf_dict)
+            actual_conf_type = get_conf_type(conf_type)
+            file_path = get_conf_file_path(actual_conf_type)
+            updated_conf = libvirt_remote.update_remote_file(
+                remote_params, conf_dict, file_path)
+
         return updated_conf
 
     def time_diff_between_vm_host(localvm=True):
@@ -998,6 +1110,8 @@ def run(test, params, env):
     is_TestCancel = False
 
     # Objects to be cleaned up in the end
+    local_conf_obj_list = []
+    remote_conf_obj_list = []
     objs_list = []
     tls_obj = None
 
@@ -1064,33 +1178,13 @@ def run(test, params, env):
                 tls_obj.auto_recover = True
                 tls_obj.conn_setup()
 
-        # Setup qemu.conf
-        qemu_conf_dict = params.get("qemu_conf_dict")
-        qemu_conf_dest_dict = params.get("qemu_conf_dest_dict")
-        update_remote = not bool(qemu_conf_dest_dict)
-        if qemu_conf_dict:
-            qemu_conf = update_config_file('qemu',
-                                           qemu_conf_dict,
-                                           remote_host=update_remote,
-                                           params=params)
-            # Setup qemu.conf on target only
-            if qemu_conf_dest_dict:
-                qemuDestConf = libvirt_remote.update_remote_file(params,
-                                                                 qemu_conf_dest_dict,
-                                                                 '/etc/libvirt/qemu.conf')
-        # Setup libvirtd
-        libvirtd_conf_dict = params.get("libvirtd_conf_dict")
-        libvirtd_conf_dest_dict = params.get("libvirtd_conf_dest_dict")
-        update_remote = not bool(libvirtd_conf_dest_dict)
-        if libvirtd_conf_dict:
-            libvirtd_conf = update_config_file('libvirtd',
-                                               libvirtd_conf_dict,
-                                               remote_host=update_remote,
-                                               params=params)
-            # Setup libvirtd on dest
-            if libvirtd_conf_dest_dict:
-                libvirtDestConf = libvirt_remote.update_remote_file(params,
-                                                                    libvirtd_conf_dest_dict)
+        # Clean up existing libvirtd log
+        cleanup_libvirtd_log(log_file)
+
+        # Setup libvirt related conf files
+        update_qemu_conf_on_local_and_remote()
+        update_libvirtd_conf_on_local_and_remote()
+        update_log_conf_on_local_and_remote()
 
         # Prepare required guest xml before starting guest
         if contrl_index:
@@ -1589,14 +1683,19 @@ def run(test, params, env):
                                                  is_recover=True,
                                                  config_object=qemu_conf)
 
-            for update_conf in [libvirtd_conf, qemu_conf]:
-                if update_conf:
-                    logging.debug("Recover the configurations")
-                    libvirt.customize_libvirt_config(None,
-                                                     remote_host=True,
-                                                     extra_params=params,
-                                                     is_recover=True,
-                                                     config_object=update_conf)
+            local_conf_obj_list.reverse()
+            for conf in local_conf_obj_list:
+                logging.info("Recover the conf files on local host")
+                libvirt.customize_libvirt_config(None,
+                                                 remote_host=False,
+                                                 is_recover=True,
+                                                 config_object=conf)
+
+            remote_conf_obj_list.reverse()
+            for conf in remote_conf_obj_list:
+                logging.info("Recover the conf files on remote host")
+                del conf
+
             if src_libvirt_file:
                 src_libvirt_file.restore()
             if remote_libvirt_file:
