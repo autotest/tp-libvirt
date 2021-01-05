@@ -153,7 +153,7 @@ def check_output(test, output_msg, params):
     err_msg = params.get("err_msg", None)
     status_error = "yes" == params.get("status_error", "no")
     if status_error and err_msg:
-        if err_msg in output_msg:
+        if re.search(err_msg, output_msg):
             logging.debug("Expected error '%s' was found", err_msg)
             return
         else:
@@ -2703,8 +2703,8 @@ def run(test, params, env):
         # Check points for --migrate-disk cases.
         if migrate_disks and status_error == "no":
             # Check the libvirtd.log
-            grep_from_remote = ".*nbd-server-add.*drive-virtio-disk.*writable.*"
-            cmd = "grep %s %s" % (grep_from_remote, log_file)
+            grep_from_remote = ".*(nbd-server-add.*drive-virtio-disk|block-export-add).*writable.*"
+            cmd = "grep -E '%s' %s" % (grep_from_remote, log_file)
             status, output = run_remote_cmd(cmd, server_ip, server_user,
                                             server_pwd)
             if status:
