@@ -189,7 +189,8 @@ def run(test, params, env):
 
         # ppc test requires ndctl
         if IS_PPC_TEST:
-            utils_package.package_install('ndctl', session=vm_session)
+            if not utils_package.package_install('ndctl', session=vm_session):
+                test.error('Cannot install ndctl to vm')
             logging.debug(vm_session.cmd_output(
                 'ndctl create-namespace --mode=fsdax --region=region0'))
 
