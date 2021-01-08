@@ -818,7 +818,7 @@ def run(test, params, env):
                     # Start guest and check ip/mac/hostname...
                     vm.start()
                     logging.debug("vm xml is %s", vm.get_xml())
-                    session = vm.wait_for_serial_login()
+                    session = vm.wait_for_serial_login(internal_timeout=60)
                     if "ip-dhcp" in net_section:
                         dhclient_cmd = "(if pgrep dhclient;" \
                                        "then pkill dhclient; sleep 3; fi) " \
