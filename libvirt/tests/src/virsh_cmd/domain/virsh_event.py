@@ -159,8 +159,8 @@ def run(test, params, env):
         numa_dict = {}
         numa_dict_list = []
         cpu_idx = 0
-        for each_node in host_numa_node_list:
-            numa_dict['id'] = str(each_node)
+        for index in range(numa_nodes):
+            numa_dict['id'] = str(index)
             numa_dict['memory'] = str(current_mem // numa_nodes)
             numa_dict['unit'] = mem_unit
             numa_dict['cpus'] = "%s-%s" % (str(cpu_idx), str(cpu_idx + 1))
