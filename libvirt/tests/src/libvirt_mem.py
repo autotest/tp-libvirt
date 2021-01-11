@@ -443,7 +443,8 @@ def run(test, params, env):
     config = utils_config.LibvirtQemuConfig()
     setup_hugepages_flag = params.get("setup_hugepages")
     if (setup_hugepages_flag == "yes"):
-        cpu_arch = cpu_util.get_cpu_arch()
+        cpu_arch = cpu_util.get_family() if hasattr(cpu_util, 'get_family')\
+            else cpu_util.get_cpu_arch()
         if cpu_arch == 'power8':
             pg_size = '16384'
             huge_page_num = 200
