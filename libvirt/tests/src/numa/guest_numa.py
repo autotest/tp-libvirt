@@ -177,12 +177,18 @@ def run(test, params, env):
     max_mem_unit = params.get("max_mem_unit", 'KiB')
     vcpu_placement = params.get("vcpu_placement", 'static')
     bug_url = params.get("bug_url", "")
+    expect_cpus = params.get('expect_cpus')
     status_error = "yes" == params.get("status_error", "no")
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     backup_xml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
     mode_dict = {'strict': 'bind', 'preferred': 'prefer',
                  'interleave': 'interleave'}
+
+    cpu_num = cpu.get_cpu_info().get('CPU(s)')
+    if vcpu_num > int(cpu_num):
+        test.cancel('Number of vcpus(%s) is larger than number of '
+                    'cpus on host(%s).' % (vcpu_num, cpu_num))
 
     # Prepare numatune memory parameter dict and list
     mem_tuple = ('memory_mode', 'memory_placement', 'memory_nodeset')
@@ -443,6 +449,8 @@ def run(test, params, env):
             cpu_str = vm_cpu_info["NUMA node%s CPU(s)" % i]
             vm_cpu_list = cpu.cpus_parser(cpu_str)
             cpu_list = cpu.cpus_parser(numa_cell[i]["cpus"])
+            if i == 0 and expect_cpus:
+                cpu_list = cpu.cpus_parser(expect_cpus)
             if vm_cpu_list != cpu_list:
                 test.fail("vm node %s cpu list %s not expected"
                           % (i, vm_cpu_list))
