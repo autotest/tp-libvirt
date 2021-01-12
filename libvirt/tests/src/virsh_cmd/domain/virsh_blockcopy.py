@@ -606,7 +606,7 @@ def run(test, params, env):
 
         # Prepare transient/persistent vm
         if persistent_vm == "no" and vm.is_persistent():
-            vm.undefine("--nvram")
+            vm.undefine()
         elif persistent_vm == "yes" and not vm.is_persistent():
             new_xml.define()
 
