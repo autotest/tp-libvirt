@@ -1,5 +1,4 @@
 import logging
-import platform
 
 import aexpect
 
@@ -51,10 +50,7 @@ def run(test, params, env):
         if not options or "--validate" in options:
             xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
             xmlfile = xmlfile_with_extra_attibute(xml_backup)
-        nvram_o = None
-        if platform.machine() == 'aarch64':
-            nvram_o = " --nvram"
-        vm.undefine(nvram_o)
+        vm.undefine()
     else:
         xmlfile = params.get("create_domain_xmlfile")
         if xmlfile is None:
