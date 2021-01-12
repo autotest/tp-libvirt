@@ -4,6 +4,8 @@ import time
 import re
 import signal
 
+from random import randint
+
 import aexpect
 
 from multiprocessing.pool import ThreadPool
@@ -17,9 +19,12 @@ from virttest import virsh
 from virttest import qemu_storage
 from virttest import data_dir
 from virttest import utils_misc
+from virttest import utils_secret
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import snapshot_xml
 from virttest.utils_test import libvirt as utl
+
+from virttest.libvirt_xml.devices.disk import Disk
 
 from provider import libvirt_version
 
@@ -217,6 +222,90 @@ def blockcopy_thread(vm_name, target, dest_path, options):
     virsh.blockcopy(vm_name, target, dest_path, options)
 
 
+def setup_auth_enabled_iscsi_disk(vm, params):
+    """
+    Create one separate thread to do blockcopy
+
+    :param vm: VM
+    :param params: config params
+    """
+    disk_type = params.get("disk_type", "file")
+    disk_target = params.get("disk_target", 'vda')
+    disk_target_bus = params.get("disk_target_bus", "virtio")
+    disk_format = params.get("disk_format", "qcow2")
+    disk_device = params.get("disk_device", "lun")
+    first_disk = vm.get_first_disk_devices()
+    logging.debug("first disk is %s", first_disk)
+    blk_source = first_disk['source']
+    if vm.is_alive():
+        vm.destroy(gracefully=False)
+    image_size = params.get("image_size", "5G")
+    chap_user = params.get("chap_user", "redhat")
+    chap_passwd = params.get("chap_passwd", "password")
+    auth_sec_usage = params.get("auth_sec_usage",
+                                "libvirtiscsi")
+    auth_sec_dict = {"sec_usage": "iscsi",
+                     "sec_target": auth_sec_usage}
+    auth_sec_uuid = utl.create_secret(auth_sec_dict)
+    # Set password of auth secret
+    virsh.secret_set_value(auth_sec_uuid, chap_passwd,
+                           encode=True, debug=True)
+    emu_image = params.get("emulated_image", "emulated-iscsi")
+    utl.setup_or_cleanup_iscsi(is_setup=False)
+    iscsi_target, lun_num = utl.setup_or_cleanup_iscsi(
+        is_setup=True, is_login=False, image_size=image_size,
+        chap_user=chap_user, chap_passwd=chap_passwd)
+    # Copy first disk to emulated backing store path
+    tmp_dir = data_dir.get_tmp_dir()
+    emulated_path = os.path.join(tmp_dir, emu_image)
+    cmd = "qemu-img convert -f %s -O %s %s %s" % ('qcow2',
+                                                  disk_format,
+                                                  blk_source,
+                                                  emulated_path)
+    process.run(cmd, ignore_status=False, shell=True)
+
+    # ISCSI auth attributes for disk xml
+    auth_sec_usage_type = params.get("auth_sec_usage_type", "iscsi")
+    auth_sec_usage_target = params.get("auth_sec_usage_target", "libvirtiscsi")
+    disk_auth_dict = {"auth_user": chap_user,
+                      "secret_type": auth_sec_usage_type,
+                      "secret_usage": auth_sec_usage_target}
+    disk_src_dict = {"attrs": {"protocol": "iscsi",
+                               "name": "%s/%s" % (iscsi_target, lun_num)},
+                     "hosts": [{"name": '127.0.0.1', "port": '3260'}]}
+    # Add disk xml.
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
+    # Delete disk elements
+    disk_deleted = False
+    disks = vmxml.get_devices(device_type="disk")
+    for disk_ in disks:
+        if disk_.target['dev'] == disk_target:
+            vmxml.del_device(disk_)
+            disk_deleted = True
+    if disk_deleted:
+        vmxml.sync()
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
+
+    disk_xml = Disk(type_name=disk_type)
+    disk_xml.device = disk_device
+    disk_xml.target = {"dev": disk_target, "bus": disk_target_bus}
+    driver_dict = {"name": "qemu", "type": disk_format}
+    disk_xml.driver = driver_dict
+    disk_source = disk_xml.new_disk_source(**disk_src_dict)
+    if disk_auth_dict:
+        logging.debug("disk auth dict is: %s" % disk_auth_dict)
+        auth_in_source = randint(0, 50) % 2 == 0
+        if auth_in_source:
+            disk_source.auth = disk_xml.new_auth(**disk_auth_dict)
+        else:
+            disk_xml.auth = disk_xml.new_auth(**disk_auth_dict)
+    disk_xml.source = disk_source
+    logging.debug("new disk xml is: %s", disk_xml)
+    vmxml.add_device(disk_xml)
+    vmxml.sync()
+    vm.start()
+
+
 def run(test, params, env):
     """
     Test command: virsh blockcopy.
@@ -266,6 +355,7 @@ def run(test, params, env):
     snapshot_external_disks = []
     snapshots_take = int(params.get("snapshots_take", '0'))
     external_disk_only_snapshot = "yes" == params.get("external_disk_only_snapshot", "no")
+    enable_iscsi_auth = "yes" == params.get("enable_iscsi_auth", "no")
 
     # Skip/Fail early
     if with_blockdev and not libvirt_version.version_compare(1, 2, 13):
@@ -481,7 +571,11 @@ def run(test, params, env):
         tmp_file = time.strftime("%Y-%m-%d-%H.%M.%S.img")
         tmp_file += dest_extension
         if not dest_path:
-            if with_blockdev:
+            if enable_iscsi_auth:
+                utils_secret.clean_up_secrets()
+                setup_auth_enabled_iscsi_disk(vm, params)
+                dest_path = os.path.join(tmp_dir, tmp_file)
+            elif with_blockdev:
                 blkdev_n = 'blockdev-iscsi'
                 dest_path = utl.setup_or_cleanup_iscsi(is_setup=True,
                                                        is_login=True,
@@ -507,7 +601,7 @@ def run(test, params, env):
             utl.set_vm_disk(vm, params, tmp_dir, test)
             new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
-        if with_shallow or external_disk_only_snapshot:
+        if with_shallow or external_disk_only_snapshot or enable_iscsi_auth:
             _make_snapshot(snapshots_take)
 
         # Prepare transient/persistent vm
