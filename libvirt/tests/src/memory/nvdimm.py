@@ -149,7 +149,10 @@ def run(test, params, env):
                          for k, v in params.items() if k.startswith('nvdimmxml_')}
         nvdimm_xml = create_nvdimm_xml(**nvdimm_params)
         vmxml.add_device(nvdimm_xml)
-        if check in ['ppc_no_label', 'discard']:
+        check_define_list = ['ppc_no_label', 'discard']
+        if libvirt_version.version_compare(7, 0, 0):
+            check_define_list.append('less_than_256')
+        if check in check_define_list:
             result = virsh.define(vmxml.xml, debug=True)
             libvirt.check_result(result, expected_fails=[error_msg])
             return
@@ -169,10 +172,11 @@ def run(test, params, env):
             logging.debug('Target size: %s', target_size)
 
             if check == 'less_than_256':
-                result = virsh.start(vm_name, debug=True)
-                libvirt.check_exit_status(result, status_error)
-                libvirt.check_result(result, error_msg)
-                return
+                if not libvirt_version.version_compare(7, 0, 0):
+                    result = virsh.start(vm_name, debug=True)
+                    libvirt.check_exit_status(result, status_error)
+                    libvirt.check_result(result, error_msg)
+                    return
 
         virsh.start(vm_name, debug=True, ignore_status=False)
 
