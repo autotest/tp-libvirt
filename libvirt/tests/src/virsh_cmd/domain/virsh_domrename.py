@@ -36,6 +36,11 @@ def run(test, params, env):
     new_name_option = params.get("newname_opt", "")
     add_vm = "yes" == params.get("add_vm", "no")
 
+    # rename a guest with snapshot is not supported before libvirt-6.10.0
+    if pre_vm_state == "with_snapshot":
+        if not libvirt_version.version_compare(6, 10, 0):
+            status_error = True
+
     # Replace the varaiables
     if vm_ref == "name":
         vm_ref = vm_name
@@ -137,11 +142,13 @@ def run(test, params, env):
         if new_vm.exists():
             if new_vm.is_alive():
                 new_vm.destroy(gracefully=False)
+            if pre_vm_state == "with_snapshot":
+                libvirt.clean_up_snapshots(new_name)
             new_vm.undefine()
 
         # Recover domain state
         if pre_vm_state != "shutoff":
-            if pre_vm_state == "with_snapshot":
+            if pre_vm_state == "with_snapshot" and status_error:
                 libvirt.clean_up_snapshots(vm_name)
             else:
                 if pre_vm_state == "managed_saved":
