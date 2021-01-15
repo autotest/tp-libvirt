@@ -104,6 +104,7 @@ def run(test, params, env):
     coldplug = params.get("coldplug", "no") == "yes"
     extra_hugepages = params.get_numeric("extra_hugepages")
     edit_start = params.get("edit_start", "no") == "yes"
+    with_hugepages = params.get("with_hugepages", "yes") == "yes"
 
     fs_devs = []
     vms = []
@@ -149,13 +150,15 @@ def run(test, params, env):
             vmxml_backups.append(vmxml_backup)
             if vmxml.max_mem < 1024000:
                 vmxml.max_mem = 1024000
-            huge_pages_num += vmxml.max_mem // host_hp_size + extra_hugepages
-            utils_memory.set_num_huge_pages(huge_pages_num)
+            if with_hugepages:
+                huge_pages_num += vmxml.max_mem // host_hp_size + extra_hugepages
+                utils_memory.set_num_huge_pages(huge_pages_num)
             vmxml.remove_all_device_by_type('filesystem')
             vmxml.sync()
             numa_no = vmxml.vcpu // vcpus_per_cell if vmxml.vcpu != 1 else 1
             vm_xml.VMXML.set_vm_vcpus(vmxml.vm_name, vmxml.vcpu, numa_number=numa_no)
-            vm_xml.VMXML.set_memoryBacking_tag(vmxml.vm_name, access_mode="shared")
+            vm_xml.VMXML.set_memoryBacking_tag(vmxml.vm_name, access_mode="shared",
+                                               hpgs=with_hugepages)
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[index])
             logging.debug(vmxml)
             if coldplug:
