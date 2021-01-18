@@ -161,6 +161,29 @@ def run(test, params, env):
                 result.append(linesplit[0])
         return result
 
+    def check_top_image_in_xml(expected_top_image):
+        """
+        check top image in src file
+
+        :param expected_top_image: expect top image
+        """
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        disks = vmxml.devices.by_device_tag('disk')
+        disk_xml = None
+        for disk in disks:
+            if disk.target['dev'] != device_target:
+                continue
+            else:
+                disk_xml = disk.xmltreefile
+                break
+        logging.debug("disk xml in top: %s\n", disk_xml)
+        src_file = disk_xml.find('source').get('file')
+        if src_file is None:
+            src_file = disk_xml.find('source').get('name')
+        if src_file != expected_top_image:
+            test.fail("Current top img %s is not the same with %s"
+                      % (src_file, expected_top_image))
+
     # Disk specific attributes.
     device = params.get("virt_disk_device", "disk")
     device_target = params.get("virt_disk_device_target", "vdd")
@@ -201,6 +224,7 @@ def run(test, params, env):
     pvt = None
     duplicated_encryption = "yes" == params.get("duplicated_encryption", "no")
     slice_support_enable = "yes" == params.get("slice_support_enable", "no")
+    block_copy_test = "yes" == params.get("block_copy_test", "no")
 
     if ((encryption_in_source or auth_in_source) and
             not libvirt_version.version_compare(3, 9, 0)):
@@ -477,6 +501,28 @@ def run(test, params, env):
             check_dev_format(device_source, fmt="qcow2")
         else:
             check_dev_format(device_source)
+        if block_copy_test:
+            # Create a transient VM
+            transient_vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
+            virsh.undefine(vm_name, debug=True, ignore_status=False)
+            virsh.create(transient_vmxml.xml, ignore_status=False, debug=True)
+            expected_top_image = vm.get_blk_devices()[device_target].get('source')
+            options = params.get("blockcopy_options")
+            tmp_dir = data_dir.get_tmp_dir()
+            tmp_file = time.strftime("%Y-%m-%d-%H.%M.%S.img")
+            dest_path = os.path.join(tmp_dir, tmp_file)
+
+            # Need cover a few scenarios:single blockcopy, blockcopy and abort combined
+            virsh.blockcopy(vm_name, device_target, dest_path,
+                            options, ignore_status=False, debug=True)
+            if encryption_in_source:
+                virsh.blockjob(vm_name, device_target, " --pivot", ignore_status=False)
+                expected_top_image = dest_path
+            else:
+                virsh.blockjob(vm_name, device_target, " --abort", ignore_status=False)
+            check_top_image_in_xml(expected_top_image)
     finally:
         # Recover VM.
         if vm.is_alive():
