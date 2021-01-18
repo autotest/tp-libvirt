@@ -540,7 +540,7 @@ def run(test, params, env):
         ret = virsh.define(vm_xml.xml, ignore_status=True, debug=True)
         expected_match = ""
         if not err_msg:
-            expected_match = "Domain %s defined from %s" % (vm_name, vm_xml.xml)
+            expected_match = "Domain '%s' defined from %s" % (vm_name, vm_xml.xml)
         libvirt.check_result(ret, err_msg, "", False, expected_match)
         if err_msg:
             # Stop test when get expected failure
