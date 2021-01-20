@@ -107,6 +107,8 @@ def run(test, params, env):
                 test.fail("No existing checkpoints prepared.")
             if "--redefine" in cmd_flag:
                 no_domain = "yes" == params.get("no_domain")
+                extra_flag = params.get("extra_flag")
+                image_with_bitmap = "yes" == params.get("image_with_bitmap")
                 cp_dumpxml_options = ""
                 if no_domain:
                     cp_dumpxml_options = "--no-domain"
@@ -122,6 +124,21 @@ def run(test, params, env):
                 virsh.checkpoint_delete(vm_name, checkpoint_redef,
                                         "--metadata", **virsh_dargs)
                 cmd_options = xml_file + " " + cmd_flag
+                if extra_flag:
+                    cmd_options += " " + extra_flag
+                    if "--redefine-validate" in extra_flag:
+                        if not libvirt_version.version_compare(6, 6, 0):
+                            test.cancel("--redefine-validate not supported in "
+                                        "current libvirt versoin.")
+                        if not image_with_bitmap:
+                            status_error = True
+                            # replace vdb's image with a new qcow2 file to make sure
+                            # the image has no block dirty bitmap anymore
+                            vm.destroy(gracefully=False)
+                            libvirt.create_local_disk("file", disk_path,
+                                                      test_disk_size, "qcow2")
+                            vm.start()
+                            vm.wait_for_login().close()
                 result = virsh.checkpoint_create(vm_name, cmd_options, debug=True)
                 libvirt.check_exit_status(result, status_error)
         elif checkpoint_cmd == "checkpoint-create-as":
@@ -301,3 +318,8 @@ def run(test, params, env):
 
         # Restoring vm
         vmxml_backup.sync()
+
+        # Remove test image
+        if "disk_path" in locals():
+            if os.path.exists(disk_path):
+                os.remove(disk_path)
