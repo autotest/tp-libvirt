@@ -80,7 +80,7 @@ def run(test, params, env):
                                   "msa2": "force",
                                   "edat": "disable",
                                   "vmx": "forbid"}
-        else:
+        elif arch == "x86_64":
             return "Penryn", {"xtpr": "optional",
                               "tm2": "disable",
                               "est": "force",
@@ -88,6 +88,9 @@ def run(test, params, env):
                               # Unsupported feature 'ia64'
                               "ia64": "optional",
                               "vme": "optional"}
+        else:
+            test.cancel("This test currently only supports s390x and x86_64, "
+                        "%s requires special customization" % arch)
 
     def is_supported_on_host_func(host_capa):
         """
