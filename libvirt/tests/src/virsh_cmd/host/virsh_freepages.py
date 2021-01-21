@@ -164,7 +164,7 @@ def run(test, params, env):
     pagesize = params.get("freepages_pagesize")
 
     host_numa_node = utils_misc.NumaInfo()
-    node_list = host_numa_node.online_nodes
+    node_list = host_numa_node.get_online_nodes_withmem()
     oth_node = []
 
     hp_cl = test_setup.HugePageConfig(params)
