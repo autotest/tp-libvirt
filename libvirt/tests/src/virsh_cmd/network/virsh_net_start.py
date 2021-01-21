@@ -71,7 +71,9 @@ def run(test, params, env):
             test_xml.forward = {'mode': 'nat'}
             test_xml.routes = [{'address': '192.168.122.0', 'prefix': '24', 'gateway': '192.168.100.1'}]
             ipxml = IPXML(address='192.168.100.1', netmask='255.255.255.0')
-            ipxml.dhcp_ranges = {'start': '192.168.100.2', 'end': '192.168.100.254'}
+            range_4 = network_xml.RangeXML()
+            range_4.attrs = {'start': '192.168.100.2', 'end': '192.168.100.254'}
+            ipxml.dhcp_ranges = range_4
             test_xml.ip = ipxml
             test_xml.define()
             virsh.net_start("def")

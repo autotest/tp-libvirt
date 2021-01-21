@@ -48,7 +48,9 @@ def set_ip_section(testnet_xml, addr, ipv6=False, **dargs):
     if "dhcp_ranges_start" in dargs and dargs["dhcp_ranges_start"] is not None:
         dhcp_ranges_start = dargs["dhcp_ranges_start"]
         dhcp_ranges_end = dargs["dhcp_ranges_end"]
-        ipxml.dhcp_ranges = {"start": dhcp_ranges_start, "end": dhcp_ranges_end}
+        ran = network_xml.RangeXML()
+        ran.attrs = {"start": dhcp_ranges_start, "end": dhcp_ranges_end}
+        ipxml.dhcp_ranges = ran
     testnet_xml.set_ip(ipxml)
 
 
@@ -173,7 +175,9 @@ def run(test, params, env):
             ipxml_v4 = network_xml.IPXML()
             ipxml_v4.address = address_v4
             ipxml_v4.netmask = netmask
-            ipxml_v4.dhcp_ranges = {"start": dhcp_ranges_start, "end": dhcp_ranges_end}
+            range_4 = network_xml.RangeXML()
+            range_4.attrs = {"start": dhcp_ranges_start, "end": dhcp_ranges_end}
+            ipxml_v4.dhcp_ranges = range_4
             testnet_xml.del_ip()
             testnet_xml.set_ip(ipxml_v4)
             if test_port:
