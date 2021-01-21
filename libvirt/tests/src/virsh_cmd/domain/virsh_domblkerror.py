@@ -153,6 +153,12 @@ def run(test, params, env):
             """
             Create large image in guest
             """
+            # install dependent packages
+            pkg_list = ["parted", "e2fsprogs"]
+            for pkg in pkg_list:
+                if not utils_package.package_install(pkg, session):
+                    test.error("Failed to install dependent package %s" % pkg)
+
             # create partition and file system
             session.cmd("parted -s %s mklabel msdos" % new_disk)
             session.cmd("parted -s %s mkpart primary ext3 '0%%' '100%%'" %
