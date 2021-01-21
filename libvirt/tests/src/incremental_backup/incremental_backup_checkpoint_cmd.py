@@ -8,6 +8,7 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import libvirt_version
 from virttest import utils_disk
+from virttest import utils_backup
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import checkpoint_xml
 from virttest.utils_test import libvirt
@@ -53,6 +54,9 @@ def run(test, params, env):
     try:
         vm_name = params.get("main_vm")
         vm = env.get_vm(vm_name)
+
+        # Make sure there is no checkpoint metadata before test
+        utils_backup.clean_checkpoints(vm_name)
 
         # Backup vm xml
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)

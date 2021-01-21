@@ -59,6 +59,9 @@ def run(test, params, env):
         vm_name = params.get("main_vm")
         vm = env.get_vm(vm_name)
 
+        # Make sure there is no checkpoint metadata before test
+        utils_backup.clean_checkpoints(vm_name)
+
         # Backup vm xml
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         vmxml_backup = vmxml.copy()
