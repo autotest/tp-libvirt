@@ -21,6 +21,7 @@ def run(test, params, env):
     net_name = params.get("net_autostart_net_name", "autotest")
     net_transient = "yes" == params.get("net_transient", "no")
     readonly = ("yes" == params.get("readonly", "no"))
+    sim_reboot = "yes" == params.get("sim_reboot", "no")
 
     # Prepare environment and record current net_state_dict
     backup = network_xml.NetworkXML.new_all_networks_dict()
@@ -115,15 +116,17 @@ def run(test, params, env):
         # TODO: Since autostart is designed for host reboot,
         #       we'd better check it with host reboot.
         autostart_file = '/var/run/libvirt/network/autostarted'
-        if (libvirt_version.version_compare(5, 6, 0) and
-                os.path.exists(autostart_file)):
-            os.unlink(autostart_file)
+        check_version = libvirt_version.version_compare(5, 6, 0)
+        if check_version and os.path.exists(autostart_file):
+            logging.debug("the sim_reboot is %s" % sim_reboot)
+            if sim_reboot:
+                os.unlink(autostart_file)
         utils_libvirtd.libvirtd_restart()
 
         # Reopen testbr_xml
         currents = network_xml.NetworkXML.new_all_networks_dict()
         current_state = virsh.net_state_dict()
-        logging.debug("Current network(s): %s", current_state)
+        logging.debug("After libvirtd reboot, current network(s): %s", current_state)
         testbr_xml = currents[net_name]
         is_active = testbr_xml['active']
         # undefine the persistent&autostart network,
@@ -137,6 +140,8 @@ def run(test, params, env):
                 current_state = virsh.net_state_dict()[net_name]
                 logging.debug("Current network(s): %s", current_state)
                 net_autostart_now = current_state['autostart']
+                if not status_error and not disable and net_autostart_now:
+                    test.fail("transient network can not be autostart")
 
     finally:
         persistent_net = virsh.net_list("--persistent --all").stdout.strip()
@@ -155,7 +160,14 @@ def run(test, params, env):
             if status or is_active:
                 test.fail("Disable autostart failed.")
         else:
-            if status or (not is_active):
-                test.fail("Set network autostart failed.")
-            if net_autostart_now:
-                test.fail("transient network can not be autostart")
+            if status:
+                test.fail("The virsh cmd return eror when enable autostart!")
+            # If host reboot(sim_reboot=True), the network should be active
+            # If host do not reboot, restart libvirtd will not start inactive
+            # autostart network after libvirt 5.6.0
+            if sim_reboot:
+                if not is_active:
+                    test.fail("Set network autostart failed.")
+            else:
+                if check_version and is_active:
+                    test.fail("net turn active with libvirtd restart without host reboot!")
