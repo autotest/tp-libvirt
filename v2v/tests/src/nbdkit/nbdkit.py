@@ -1,10 +1,13 @@
 import re
 import os
 import logging
+import tempfile
 
 from avocado.utils import process
 from virttest import data_dir
+from virttest import utils_misc
 from virttest.utils_v2v import multiple_versions_compare
+from virttest.utils_v2v import params_get
 
 
 def run(test, params, env):
@@ -45,10 +48,71 @@ EOF
         if count > 0:
             test.fail('nbdkit-stats-filter leaks %d fd' % count)
 
+    def test_has_run_againt_vddk7_0():
+        """
+        check if nbdkit --run + vddk + esx7.0 works.
+        """
+        from virttest.utils_pyvmomi import VSphereConnection, vim
+
+        vm_name = params_get(params, "main_vm")
+        if not vm_name:
+            test.error('No VM specified')
+        # vsphere server's host name or IP address
+        vsphere_host = params_get(params, "vsphere_host")
+        vsphere_user = params_get(params, "vsphere_user", 'root')
+        # vsphere password
+        vsphere_pwd = params_get(params, "vsphere_pwd")
+        vsphere_passwd_file = params_get(
+            params, "vpx_passwd_file", '/tmp/v2v_vpx_passwd')
+        with open(vsphere_passwd_file, 'w') as fd:
+            fd.write(vsphere_pwd)
+
+        # get vm and file's value
+        connect_args = {
+            'host': vsphere_host,
+            'user': vsphere_user,
+            'pwd': vsphere_pwd}
+        with VSphereConnection(**connect_args) as conn:
+            conn.target_vm = vm_name
+            nbdkit_vm_name = 'moref=' + \
+                str(conn.target_vm).strip('\'').split(':')[1]
+            nbdkit_file = conn.get_hardware_devices(
+                dev_type=vim.vm.device.VirtualDisk)[0].backing.fileName
+
+        # vddk_libdir
+        vddk_libdir_src = params_get(params, "vddk_libdir_src")
+        with tempfile.TemporaryDirectory(prefix='vddklib_') as vddk_libdir:
+            utils_misc.mount(vddk_libdir_src, vddk_libdir, 'nfs')
+            vddk_thumbprint = '11'
+            nbdkit_cmd = """
+nbdkit -rfv -U - --exportname / \
+  --filter=cacheextents --filter=retry vddk server=%s user=%s password=+%s vm=%s \
+  file='%s' libdir=%s --run 'qemu-img info $nbd' thumbprint=%s
+""" % (vsphere_host, vsphere_user, vsphere_passwd_file, nbdkit_vm_name, nbdkit_file, vddk_libdir, vddk_thumbprint)
+            # get thumbprint by a trick
+            cmd_result = process.run(
+                nbdkit_cmd, shell=True, ignore_status=True)
+            output = cmd_result.stdout_text + cmd_result.stderr_text
+            vddk_thumbprint = re.search(
+                r'PeerThumbprint:\s+(.*)', output).group(1)
+
+            # replace thumbprint with correct value
+            nbdkit_cmd = nbdkit_cmd.strip()[:-2] + vddk_thumbprint
+            logging.info('nbdkit command:\n%s', nbdkit_cmd)
+
+            # Run the finnal nbdkit command
+            output = process.run(nbdkit_cmd, shell=True).stdout_text
+            utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
+            if not re.search(r'virtual size', output):
+                test.fail('failed to test has_run_againt_vddk7_0')
+
     if version_requried and not multiple_versions_compare(
             version_requried):
         test.cancel("Testing requries version: %s" % version_requried)
+
     if checkpoint == 'filter_stats_fd_leak':
         test_filter_stats_fd_leak()
+    elif checkpoint == 'has_run_againt_vddk7_0':
+        test_has_run_againt_vddk7_0()
     else:
         test.error('Not found testcase: %s' % checkpoint)
