@@ -157,10 +157,13 @@ def run(test, params, env):
         libvirt_vol = libvirt_storage.PoolVolume(pool_name)
         # Create a new volume
         if vol_format in ['raw', 'qcow2', 'qed', 'vmdk']:
-            if (b_luks_encrypted and vol_format in ['raw']):
+            if (b_luks_encrypted and vol_format in ['raw', 'qcow2']):
                 if not libvirt_version.version_compare(2, 0, 0):
                     test.cancel("LUKS is not supported in current"
                                 " libvirt version")
+                if vol_format == "qcow2" and not libvirt_version.version_compare(6, 10, 0):
+                    test.cancel("Qcow2 format with luks encryption is not"
+                                " supported in current libvirt version")
                 luks_sec_uuid = create_luks_secret(os.path.join(pool_target,
                                                                 vol_name),
                                                    encryption_password, test)
@@ -169,6 +172,7 @@ def run(test, params, env):
                 vol_arg['name'] = vol_name
                 vol_arg['capacity'] = int(vol_capability)
                 vol_arg['allocation'] = int(vol_allocation)
+                vol_arg['format'] = vol_format
                 create_luks_vol(pool_name, vol_name, luks_sec_uuid, vol_arg)
             else:
                 libvirt_pvt.pre_vol(vol_name=vol_name,

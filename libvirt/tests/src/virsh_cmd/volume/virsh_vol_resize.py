@@ -139,12 +139,13 @@ def set_secret_value(password, encryption_uuid):
     libvirt.check_exit_status(ret)
 
 
-def create_luks_vol(vol_name, sec_uuid, params):
+def create_luks_vol(vol_name, sec_uuid, params, test):
     """
     Create a luks volume
     :param vol_name: the name of the volume
     :param sec_uuid: secret's uuid to be used for luks encryption
     :param params: detailed params to create volume
+    :param test: test object
     """
     pool_name = params.get("pool_name")
     extra_option = params.get("extra_option", "")
@@ -160,6 +161,9 @@ def create_luks_vol(vol_name, sec_uuid, params):
                 vol_arg[key[4:]] = int(params[key])
             else:
                 vol_arg[key[4:]] = params[key]
+                if vol_arg[key[4:]] == "qcow2" and not libvirt_version.version_compare(6, 10, 0):
+                    test.cancel("Qcow2 format with luks encryption is not"
+                                " supported in current libvirt version")
     vol_arg['name'] = vol_name
     volxml = libvirt_xml.VolXML()
     newvol = volxml.new_vol(**vol_arg)
@@ -290,7 +294,7 @@ def run(test, params, env):
                                                test)
             secret_uuids.append(luks_sec_uuid)
             set_secret_value(encryption_password, luks_sec_uuid)
-            create_luks_vol(vol_name, luks_sec_uuid, params)
+            create_luks_vol(vol_name, luks_sec_uuid, params, test)
         else:
             libv_pvt.pre_vol(vol_name=vol_name, vol_format=vol_format,
                              capacity=vol_capacity, allocation=None,
