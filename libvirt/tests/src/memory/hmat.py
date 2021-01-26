@@ -54,10 +54,10 @@ def run(test, params, env):
 
     chk_case = params.get('chk')
     try:
+        vm = env.get_vm(vm_name)
         if not libvirt_version.version_compare(6, 6, 0):
             test.cancel("Current version doesn't support the function")
 
-        vm = env.get_vm(vm_name)
         vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
         # Set cpu according to params
