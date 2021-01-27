@@ -173,11 +173,11 @@ def run(test, params, env):
                         nbd_bitmap_name = vm_disk + "_custom_bitmap"
                         backup_disk_params["exportbitmap"] = nbd_bitmap_name
                     # Prepare nbd scratch file params
-                    scratch_params = {}
+                    scratch_params = {"attrs": {}}
                     if scratch_type == "file":
                         scratch_file_name = "scratch_file_%s" % vm_disk
                         scratch_file_path = os.path.join(tmp_dir, scratch_file_name)
-                        scratch_params["file"] = scratch_file_path
+                        scratch_params["attrs"]["file"] = scratch_file_path
                         logging.debug("scratch_params: %s", scratch_params)
                     else:
                         test.cancel("We only use local file scratch for now.")

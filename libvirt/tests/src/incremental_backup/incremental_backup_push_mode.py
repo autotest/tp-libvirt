@@ -209,25 +209,25 @@ def run(test, params, env):
                 else:
                     backup_disk_params["enable_backup"] = "yes"
                     backup_disk_params["disk_type"] = target_type
-                    target_params = {}
+                    target_params = {"attrs": {}}
                     if target_type == "file":
                         target_file_name = "target_file_%s" % backup_index
                         target_file_path = os.path.join(tmp_dir, target_file_name)
                         if prepare_target_file:
                             libvirt.create_local_disk("file", target_file_path,
                                                       original_disk_size, target_driver)
-                        target_params["file"] = target_file_path
-                        logging.debug("target_params: %s", target_params)
+                        target_params["attrs"]["file"] = target_file_path
                         backup_path_list.append(target_file_path)
                     elif target_type == "block":
                         if prepare_target_blkdev:
                             target_blkdev_path = libvirt.setup_or_cleanup_iscsi(
                                     is_setup=True, image_size=target_blkdev_size)
-                        target_params["dev"] = target_blkdev_path
+                        target_params["attrs"]["dev"] = target_blkdev_path
                         backup_path_list.append(target_blkdev_path)
                     else:
                         test.fail("We do not support backup target type: '%s'"
                                   % target_type)
+                    logging.debug("target params: %s", target_params)
                     backup_disk_params["backup_target"] = target_params
                     driver_params = {"type": target_driver}
                     backup_disk_params["backup_driver"] = driver_params
