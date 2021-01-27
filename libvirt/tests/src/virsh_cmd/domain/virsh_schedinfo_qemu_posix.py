@@ -3,6 +3,7 @@ import logging
 import os
 
 from virttest import virsh
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
 
@@ -107,12 +108,20 @@ def run(test, params, env):
     set_value = params.get("schedinfo_set_value", "")
     set_method = params.get("schedinfo_set_method", "cmd")
     set_value_expected = params.get("schedinfo_set_value_expected", "")
+    # Libvirt version where function begins to change
+    libvirt_ver_function_changed = eval(params.get(
+        "libvirt_ver_function_changed", '[]'))
     # The default scheduler on qemu/kvm is posix
     scheduler_value = "posix"
     status_error = params.get("status_error", "no")
     start_vm = ("yes" == params.get("start_vm"))
     readonly = ("yes" == params.get("schedinfo_readonly", "no"))
     expect_msg = params.get("schedinfo_err_msg", "")
+
+    if libvirt_ver_function_changed:
+        if not libvirt_version.version_compare(*libvirt_ver_function_changed):
+            set_value = params.get("schedinfo_set_value_bk")
+            set_value_expected = params.get("schedinfo_set_value_expected_bk")
 
     # Prepare vm test environment
     vm_name = params.get("main_vm")
