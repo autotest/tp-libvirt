@@ -20,6 +20,9 @@ def run(test, params, env):
     hyperv_attr = eval(params.get('hyperv_attr', '{}'))
     pmu_attr = eval(params.get('pmu_attr', '{}'))
     pvspinlock_attr = eval(params.get('pvspinlock_attr', '{}'))
+    kvm_poll_control_attr = eval(params.get('kvm_poll_control_attr', '{}'))
+    qemu_include = params.get('qemu_include', '')
+    qemu_exclude = params.get('qemu_exclude', '')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
@@ -42,17 +45,16 @@ def run(test, params, env):
                 **{'hyperv_%s_state' % key: value
                    for key, value in hyperv_attr.items()}
             )
-        if pmu_attr:
-            vm_xml.VMXML.set_vm_features(
-                vm_name,
-                **{'pmu': pmu_attr['pmu']}
-            )
 
-        if pvspinlock_attr:
-            vm_xml.VMXML.set_vm_features(
-                vm_name,
-                **{'pvspinlock_state': pvspinlock_attr['pvspinlock_state']}
-            )
+        if kvm_poll_control_attr:
+            if not libvirt_version.version_compare(6, 10, 0):
+                test.cancel('This version of libvirt does not support'
+                            ' kvm poll-control')
+
+        # Set feature attrs
+        test_attrs = [pmu_attr, pvspinlock_attr, kvm_poll_control_attr]
+        [vm_xml.VMXML.set_vm_features(vm_name, **fea_attr)
+         for fea_attr in test_attrs if fea_attr]
 
         # Test vm start
         try:
@@ -93,6 +95,12 @@ def run(test, params, env):
                 exp_str = 'kvm-pv-unhalt=' + pvspinlock_attr['pvspinlock_state']
 
             libvirt.check_qemu_cmd_line(exp_str)
+        if qemu_include:
+            libvirt.check_qemu_cmd_line(qemu_include)
+        if qemu_exclude:
+            if libvirt.check_qemu_cmd_line(qemu_exclude, err_ignore=True):
+                test.fail('Unexpected "%s" was found '
+                          'in qemu command line' % qemu_exclude)
 
     finally:
         bkxml.sync()
