@@ -12,9 +12,11 @@ from virttest import virsh
 from virttest import libvirt_storage
 from virttest import libvirt_xml
 from virttest import test_setup
+from virttest import virt_vm
 from virttest.utils_test import libvirt as utlv
 from virttest.staging import service
 from virttest.libvirt_xml import secret_xml
+from virttest.libvirt_xml import vm_xml
 
 from virttest import libvirt_version
 
@@ -60,6 +62,12 @@ def run(test, params, env):
     luks_encrypted = "luks" == params.get("encryption_method")
     encryption_secret_type = params.get("encryption_secret_type", "passphrase")
     virsh_readonly_mode = 'yes' == params.get("virsh_readonly", "no")
+    vm_name = params.get("main_vm")
+
+    if vm_name:
+        vm = env.get_vm(vm_name)
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        params["orig_config_xml"] = vmxml.copy()
 
     if not libvirt_version.version_compare(1, 0, 0):
         if "--prealloc-metadata" in extra_option:
@@ -103,6 +111,43 @@ def run(test, params, env):
             else:
                 vol_arg[key[4:]] = params[key]
     vol_arg['lazy_refcounts'] = lazy_refcounts
+
+    def attach_disk_encryption(vol_path, uuid, params):
+        """
+        Attach a disk with luks encryption
+
+        :vol_path: the volume path used in disk XML
+        :uuid: the secret uuid of the volume
+        :params: the parameter dictionary
+        :raise: test.fail when disk cannot be attached
+
+        """
+        target_dev = params.get("target_dev", "vdb")
+        vol_format = params.get("vol_format", "qcow2")
+        disk_path = vol_path
+        new_disk_dict = {}
+        new_disk_dict.update(
+                {"driver_type": vol_format,
+                 "source_encryption_dict": {"encryption": 'luks',
+                                            "secret": {"type": "passphrase",
+                                                       "uuid": uuid}}})
+        result = utlv.attach_additional_device(vm_name, target_dev,
+                                               disk_path, new_disk_dict)
+        if result.exit_status:
+            raise test.fail("Attach device %s failed." % target_dev)
+
+    def check_vm_start():
+        """
+        Start a guest
+
+        :params: the parameter dictionary
+        :raise: test.fail when VM cannot be started
+        """
+        if not vm.is_alive():
+            try:
+                vm.start()
+            except virt_vm.VMStartError as err:
+                test.fail("Failed to start VM: %s" % err)
 
     def create_luks_secret(vol_path):
         """
@@ -267,6 +312,9 @@ def run(test, params, env):
                 volxml = libvirt_xml.VolXML()
                 newvol = volxml.new_vol(**vol_arg)
                 if luks_encrypted:
+                    if vol_format == "qcow2" and not libvirt_version.version_compare(6, 10, 0):
+                        test.cancel("Qcow2 format with luks encryption"
+                                    " is not supported in current libvirt")
                     # For luks encrypted disk, add related xml in newvol
                     luks_encryption_params = {}
                     luks_encryption_params.update({"format": "luks"})
@@ -306,6 +354,14 @@ def run(test, params, env):
                     src_pool_name, vol_xml, extra_option,
                     unprivileged_user=unprivileged_user, uri=uri,
                     ignore_status=True, debug=True)
+
+                if luks_encrypted and vol_format == "qcow2":
+                    vol_path = virsh.vol_path(vol_name,
+                                              src_pool_name).stdout.strip()
+                    uuid = luks_secret_uuid
+                    attach_disk_encryption(vol_path, uuid, params)
+                    check_vm_start()
+
             else:
                 # Run virsh_vol_create_as to create_vol
                 pool_name = src_pool_name
@@ -360,6 +416,10 @@ def run(test, params, env):
         # For old version lvm2(2.02.106 or early), deactivate volume group
         # (destroy libvirt logical pool) will fail if which has deactivated
         # lv snapshot, so before destroy the pool, we need activate it manually
+        if vm_name:
+            virsh.destroy(vm_name, debug=True, ignore_status=True)
+        if params.get("orig_config_xml"):
+            params.get("orig_config_xml").sync()
         if src_pool_type == 'logical' and vol_path_list:
             vg_name = vol_path_list[0].split('/')[2]
             process.run("lvchange -ay %s" % vg_name, shell=True)
