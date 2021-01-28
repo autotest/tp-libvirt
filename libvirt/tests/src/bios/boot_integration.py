@@ -166,21 +166,21 @@ def run(test, params, env):
         else:
             # Start test and check result
             ret = virsh.define(vmxml.xml, **virsh_dargs)
-            stdout_patt = "Domain %s defined from %s" % (vm_name, vmxml.xml)
+            stdout_patt = "Domain .*%s.* defined from %s" % (vm_name, vmxml.xml)
             utlv.check_result(ret, expected_match=[stdout_patt])
 
             ret = virsh.start(vm_name, **virsh_dargs)
-            stdout_patt = "Domain %s started" % vm_name
+            stdout_patt = "Domain .*%s.* started" % vm_name
             utlv.check_result(ret, expected_match=[stdout_patt])
             vm.wait_for_login()
 
             ret = virsh.destroy(vm_name, **virsh_dargs)
-            stdout_patt = "Domain %s destroyed" % vm_name
+            stdout_patt = "Domain .*%s.* destroyed" % vm_name
             utlv.check_result(ret, expected_match=[stdout_patt])
 
             vm.start()
             ret = virsh.save(vm_name, save_file, **virsh_dargs)
-            stdout_patt = "Domain %s saved to %s" % (vm_name, save_file)
+            stdout_patt = "Domain .*%s.* saved to %s" % (vm_name, save_file)
             utlv.check_result(ret, expected_match=[stdout_patt])
 
             ret = virsh.restore(save_file, **virsh_dargs)
@@ -188,7 +188,7 @@ def run(test, params, env):
             utlv.check_result(ret, expected_match=[stdout_patt])
 
             ret = virsh.undefine(vm_name, options="--nvram", **virsh_dargs)
-            stdout_patt = "Domain %s has been undefined" % vm_name
+            stdout_patt = "Domain .*%s.* has been undefined" % vm_name
             utlv.check_result(ret, expected_match=[stdout_patt])
             if boot_type == "ovmf":
                 if os.path.exists(nvram_file):
