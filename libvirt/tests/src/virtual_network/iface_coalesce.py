@@ -375,9 +375,9 @@ def run(test, params, env):
             out = process.run('ethtool -c %s' % newinterface, ignore_status=True)
             if network_type == 'macvtap':
                 # Currently, output coalesce for macvtap is not supported
-                err_msg = "Cannot get device coalesce settings: Operation not supported"
-                std_msg = "Coalesce parameters for %s:" % newinterface
-                if err_msg not in out.stderr_text or std_msg not in out.stdout_text:
+                err_msg = "Operation not supported"
+                logging.info("err_msg is %s, out.stderr_text is %s" % (err_msg, out.stderr_text))
+                if err_msg not in out.stderr_text:
                     test.fail("coalesce setting on %s failed." % network_type)
             else:
                 # Get coalesce value and check it is true
