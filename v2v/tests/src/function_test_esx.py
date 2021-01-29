@@ -3,6 +3,7 @@ import logging
 import re
 import uuid
 import shutil
+import time
 
 from virttest import utils_misc
 from virttest import utils_sasl
@@ -49,7 +50,7 @@ def run(test, params, env):
         v2v_opts += ' ' + params.get("v2v_opts")
     status_error = 'yes' == params.get('status_error', 'no')
     address_cache = env.get('address_cache')
-    checkpoint = params.get('checkpoint', '')
+    checkpoint = params.get('checkpoint', '').split(',')
     skip_vm_check = params.get('skip_vm_check', 'no')
     skip_reason = params.get('skip_reason')
     error_list = []
@@ -115,7 +116,7 @@ def run(test, params, env):
         :param check: Checkpoint of different cases
         :return: None
         """
-        if check == 'vmtools':
+        if "service" not in check:
             logging.info('Check if packages been removed')
             pkgs = vmcheck.session.cmd('rpm -qa').strip()
             removed_pkgs = params.get('removed_pkgs').strip().split(',')
@@ -124,7 +125,7 @@ def run(test, params, env):
             for pkg in removed_pkgs:
                 if pkg in pkgs:
                     log_fail('Package "%s" not removed' % pkg)
-        elif check == 'vmtools_service':
+        else:
             logging.info('Check if service stopped')
             vmtools_service = params.get('service_name')
             status = utils_misc.get_guest_service_status(
@@ -221,19 +222,46 @@ def run(test, params, env):
                 'file /lib/modules/%s/fileaccess/fileaccess_mod.ko is not owned by any package' %
                 content)
 
-    def check_windows_ogac(vmcheck):
+    def check_windows_signature(vmcheck, full_name):
         """
-        Check qemu-guest-agent service in VM
+        Check signature of a file in windows VM
 
         :param vmcheck: VMCheck object for vm checking
+        :param full_name: a file's full path name
+        """
+        logging.info(
+            'powershell or signtool needs to be installed in guest first')
+
+        cmds = [('powershell "Get-AuthenticodeSignature %s | format-list"' % full_name, r'SignerCertificate.*?Not After](.*?)\[Thumbprint', '%m/%d/%Y %I:%M:%S %p'),
+                ('signtool verify /v %s' % full_name, r'Issued to: Red Hat.*?Expires:(.*?)SHA1 hash', '')]
+        for cmd, ptn, fmt in cmds:
+            _, output = vmcheck.run_cmd(cmd)
+            if re.search(ptn, output, re.S):
+                expire_time = re.search(ptn, output, re.S).group(1).strip()
+                if fmt:
+                    expire_time = time.strptime(expire_time, fmt)
+                else:
+                    expire_time = time.strptime(expire_time)
+                if time.time() > time.mktime(expire_time):
+                    test.fail("Signature of '%s' has expired" % full_name)
+                return
+        # Get here means the guest doesn't have powershell or signtool
+        test.error("Powershell or Signtool must be installed in guest")
+
+    def check_windows_service(vmcheck, service_name):
+        """
+        Check service in VM
+
+        :param vmcheck: VMCheck object for vm checking
+        :param service_name: a service's name
         """
         try:
             res = utils_misc.wait_for(
                 lambda: re.search(
                     'running',
-                    vmcheck.get_service_info('qemu-ga'),
+                    vmcheck.get_service_info(service_name),
                     re.I),
-                300,
+                600,
                 step=30)
         except ShellProcessTerminatedError:
             # Windows guest may reboot after installing qemu-ga service
@@ -241,17 +269,19 @@ def run(test, params, env):
             if vmcheck.session:
                 vmcheck.session.close()
                 vmcheck.session = None
-            vmcheck.create_session()
+            # VM boots up is extremly slow when all testing in running on
+            # rhv server simultaneously, so set timeout to 1200.
+            vmcheck.create_session(timeout=1200)
             res = utils_misc.wait_for(
                 lambda: re.search(
                     'running',
-                    vmcheck.get_service_info('qemu-ga'),
+                    vmcheck.get_service_info(service_name),
                     re.I),
-                300,
+                600,
                 step=30)
 
         if not res:
-            test.fail('Not found running qemu-ga service')
+            test.fail('Not found running %s service' % service_name)
 
     def check_linux_ogac(vmcheck):
         """
@@ -496,7 +526,7 @@ def run(test, params, env):
 
             # Check guest following the checkpoint document after convertion
             logging.info('Checking common checkpoints for v2v')
-            if checkpoint == 'ogac':
+            if 'ogac' in checkpoint:
                 # windows guests will reboot at any time after qemu-ga is
                 # installed. The process cannot be controled. In order to
                 # don't break vmchecker.run() process, It's better to put
@@ -504,35 +534,45 @@ def run(test, params, env):
                 # check_windows_ogac, it waits until rebooting completes.
                 vmchecker.checker.create_session()
                 if os_type == 'windows':
-                    check_windows_ogac(vmchecker.checker)
+                    # check signature before services to avoid guest rebooting
+                    # failure
+                    if 'signature' in checkpoint:
+                        check_windows_signature(
+                            vmchecker.checker, r'c:\rhev-apt.exe')
+
+                    services = ['qemu-ga', 'rhev-apt']
+                    if 'rhv-guest-tools' in os.getenv('VIRTIO_WIN'):
+                        services.append('spice-ga')
+                    for ser in services:
+                        check_windows_service(vmchecker.checker, ser)
                 else:
                     check_linux_ogac(vmchecker.checker)
-            if checkpoint == 'mac_ip':
+            if 'mac_ip' in checkpoint:
                 check_static_ip_conf(vmchecker.checker)
             ret = vmchecker.run()
             if len(ret) == 0:
                 logging.info("All common checkpoints passed")
             # Check specific checkpoints
-            if checkpoint == 'cdrom':
+            if 'cdrom' in checkpoint:
                 virsh_session = utils_sasl.VirshSessionSASL(params)
                 virsh_session_id = virsh_session.get_id()
                 check_device_exist('cdrom', virsh_session_id)
                 virsh_session.close()
-            if checkpoint.startswith('vmtools'):
+            if 'vmtools' in checkpoint:
                 check_vmtools(vmchecker.checker, checkpoint)
-            if checkpoint == 'modprobe':
+            if 'modprobe' in checkpoint:
                 check_modprobe(vmchecker.checker)
-            if checkpoint == 'device_map':
+            if 'device_map' in checkpoint:
                 check_device_map(vmchecker.checker)
-            if checkpoint == 'resume_swap':
+            if 'resume_swap' in checkpoint:
                 check_resume_swap(vmchecker.checker)
-            if checkpoint == 'rhev_file':
+            if 'rhev_file' in checkpoint:
                 check_rhev_file_exist(vmchecker.checker)
-            if checkpoint == 'file_architecture':
+            if 'file_architecture' in checkpoint:
                 check_file_architecture(vmchecker.checker)
-            if checkpoint == 'ubuntu_tools':
+            if 'ubuntu_tools' in checkpoint:
                 check_ubuntools(vmchecker.checker)
-            if checkpoint == 'without_default_net':
+            if 'without_default_net' in checkpoint:
                 if virsh.net_state_dict()[net_name]['active']:
                     log_fail("Bridge virbr0 already started during conversion")
             # Merge 2 error lists
@@ -543,7 +583,7 @@ def run(test, params, env):
         # VM or local output checking
         vm_check(status_error)
         # Check log size decrease option
-        if checkpoint == 'log decrease':
+        if 'log decrease' in checkpoint:
             nbdkit_option = r'nbdkit\.backend\.datapath=0'
             if not re.search(nbdkit_option, output):
                 test.fail("checkpoint '%s' failed" % checkpoint)
@@ -636,13 +676,13 @@ def run(test, params, env):
         if output_mode == 'libvirt':
             pvt.pre_pool(pool_name, pool_type, pool_target, '')
 
-        if checkpoint == 'root_ask':
+        if 'root' in checkpoint and 'ask' in checkpoint:
             v2v_params['v2v_opts'] += ' --root ask'
             v2v_params['custom_inputs'] = params.get('choice', '2')
-        if checkpoint.startswith('root_') and checkpoint != 'root_ask':
+        if 'root' in checkpoint and 'ask' not in checkpoint:
             root_option = params.get('root_option')
             v2v_params['v2v_opts'] += ' --root %s' % root_option
-        if checkpoint == 'with_proxy':
+        if 'with_proxy' in checkpoint:
             http_proxy = params.get('esx_http_proxy')
             https_proxy = params.get('esx_https_proxy')
             logging.info('Set http_proxy=%s, https_proxy=%s',
@@ -650,7 +690,7 @@ def run(test, params, env):
             os.environ['http_proxy'] = http_proxy
             os.environ['https_proxy'] = https_proxy
 
-        if checkpoint == 'ogac':
+        if 'ogac' in checkpoint:
             os.environ['VIRTIO_WIN'] = virtio_win_path
             if not os.path.exists(os.getenv('VIRTIO_WIN')):
                 test.fail('%s does not exist' % os.getenv('VIRTIO_WIN'))
@@ -670,7 +710,7 @@ def run(test, params, env):
                         qa_url, os.path.join(
                             qemu_guest_agent_dir, rpm_name))
 
-        if checkpoint == 'virtio_iso_blk':
+        if 'virtio_iso_blk' in checkpoint:
             if not os.path.exists(virtio_win_path):
                 test.fail('%s does not exist' % virtio_win_path)
 
@@ -682,7 +722,7 @@ def run(test, params, env):
             process.run(cmd, shell=True)
             os.environ['VIRTIO_WIN'] = free_loop_dev
 
-        if checkpoint == 'invalid_pem':
+        if 'invalid_pem' in checkpoint:
             # simply change the 2nd line to lowercase to get an invalid pem
             with open(local_ca_file_path, 'r+') as fd:
                 for i in range(2):
@@ -692,31 +732,31 @@ def run(test, params, env):
                 fd.write(res.lower())
                 fd.flush()
 
-        if checkpoint == 'without_default_net':
+        if 'without_default_net' in checkpoint:
             net_name = find_net('virbr0')
             if net_name:
                 destroy_net(net_name)
 
-        if checkpoint == 'bandwidth':
+        if 'bandwidth' in checkpoint:
             dynamic_speeds = params_get(params, 'dynamic_speeds')
             bandwidth_file = params_get(params, 'bandwidth_file')
             with open(bandwidth_file, 'w') as fd:
                 fd.write(dynamic_speeds)
 
-        if checkpoint.startswith('luks_dev_keys'):
+        if 'luks_dev_keys' in checkpoint:
             luks_password = params_get(params, 'luks_password', '')
             luks_keys = params_get(params, 'luks_keys', '')
             keys_options = ' ' .join(
                 list(map(lambda i: '--key %s' % i if i else '', luks_keys.split(';'))))
 
-            if checkpoint == 'luks_dev_keys':
+            if 'invalid_pwd_file' not in checkpoint:
                 is_file_key = r'--key \S+:file:(\S+)'
                 for file_key in re.findall(is_file_key, keys_options):
                     with open(file_key, 'w') as fd:
                         fd.write(luks_password)
             v2v_params['v2v_opts'] += ' ' + keys_options
 
-        if checkpoint == 'empty_cdrom':
+        if 'empty_cdrom' in checkpoint:
             virsh_dargs = {'uri': remote_uri, 'remote_ip': remote_host,
                            'remote_user': 'root', 'remote_pwd': vpx_passwd,
                            'auto_close': True,
@@ -725,14 +765,13 @@ def run(test, params, env):
             v2v_result = remote_virsh.dumpxml(vm_name)
             remote_virsh.close_session()
         else:
-            if checkpoint == 'exist_uuid':
+            if 'exist_uuid' in checkpoint:
                 auto_clean = False
-            if checkpoint in [
+            if checkpoint[0] in [
                 'mismatched_uuid',
                 'no_uuid',
                 'invalid_source',
-                'system_rhv_pem_set',
-                    'system_rhv_pem_unset']:
+                    'system_rhv_pem']:
                 cmd_only = True
                 auto_clean = False
             v2v_result = utils_v2v.v2v_cmd(
@@ -740,20 +779,20 @@ def run(test, params, env):
         if 'new_name' in v2v_params:
             vm_name = params['main_vm'] = v2v_params['new_name']
 
-        if checkpoint.startswith('system_rhv_pem'):
-            if checkpoint == 'system_rhv_pem_set':
+        if 'system_rhv_pem' in checkpoint:
+            if 'set' in checkpoint:
                 global_pem_setup(local_ca_file_path)
             rhv_cafile = r'-oo rhv-cafile=\S+\s*'
             new_cmd = utils_v2v.cmd_remove_option(v2v_result, rhv_cafile)
             logging.debug('New v2v command:\n%s', new_cmd)
-        if checkpoint == 'mismatched_uuid':
+        if 'mismatched_uuid' in checkpoint:
             # append more uuid
             new_cmd = v2v_result + ' -oo rhv-disk-uuid=%s' % str(uuid.uuid4())
-        if checkpoint == 'no_uuid':
+        if 'no_uuid' in checkpoint:
             rhv_disk_uuid = r'-oo rhv-disk-uuid=\S+\s*'
             new_cmd = utils_v2v.cmd_remove_option(v2v_result, rhv_disk_uuid)
             logging.debug('New v2v command:\n%s', new_cmd)
-        if checkpoint == 'exist_uuid':
+        if 'exist_uuid' in checkpoint:
             new_vm_name = v2v_params['new_name'] + '_exist_uuid'
             new_cmd = v2v_result.command.replace(
                 '-on %s' %
@@ -761,7 +800,7 @@ def run(test, params, env):
                 '-on %s' %
                 new_vm_name)
             logging.debug('re-run v2v command:\n%s', new_cmd)
-        if checkpoint == 'invalid_source':
+        if 'invalid_source' in checkpoint:
             if params.get('invalid_vpx_hostname'):
                 new_cmd = v2v_result.replace(
                     vpx_hostname, params.get('invalid_vpx_hostname'))
@@ -769,32 +808,31 @@ def run(test, params, env):
                 new_cmd = v2v_result.replace(
                     esxi_host, params.get('invalid_esx_hostname'))
 
-        if checkpoint in [
+        if checkpoint[0] in [
             'mismatched_uuid',
             'no_uuid',
             'invalid_source',
             'exist_uuid',
-            'system_rhv_pem_set',
-                'system_rhv_pem_unset']:
+                'system_rhv_pem']:
             v2v_result = utils_v2v.cmd_run(
                 new_cmd, params.get('v2v_dirty_resources'))
 
         check_result(v2v_result, status_error)
 
     finally:
-        if checkpoint == 'ogac' and params.get('tmp_mount_point'):
+        if 'ogac' in checkpoint and params.get('tmp_mount_point'):
             if os.path.exists(params.get('tmp_mount_point')):
                 utils_misc.umount(
                     os.getenv('VIRTIO_WIN'),
                     params['tmp_mount_point'],
                     'iso9660')
             os.environ.pop('VIRTIO_WIN')
-        if checkpoint == 'virtio_iso_blk':
+        if 'virtio_iso_blk' in checkpoint:
             process.run('losetup -d %s' % free_loop_dev, shell=True)
             os.environ.pop('VIRTIO_WIN')
-        if checkpoint == 'system_rhv_pem_set':
+        if 'system_rhv_pem' in checkpoint and 'set' in checkpoint:
             global_pem_cleanup()
-        if checkpoint == 'without_default_net':
+        if 'without_default_net' in checkpoint:
             if net_name:
                 start_net(net_name)
         if params.get('vmchecker'):
@@ -805,7 +843,7 @@ def run(test, params, env):
             v2v_sasl.close_session()
         if output_mode == 'libvirt':
             pvt.cleanup_pool(pool_name, pool_type, pool_target, '')
-        if checkpoint == 'with_proxy':
+        if 'with_proxy' in checkpoint:
             logging.info('Unset http_proxy&https_proxy')
             os.environ.pop('http_proxy')
             os.environ.pop('https_proxy')
