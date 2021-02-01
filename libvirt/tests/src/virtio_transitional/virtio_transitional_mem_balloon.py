@@ -68,6 +68,14 @@ def run(test, params, env):
             vm.start()
         is_windows_guest = (params['os_type'] == 'Windows')
         session = vm.wait_for_login()
+        # Check memory statistic
+        if libvirt_version.version_compare(6, 6, 0):
+            if (os_variant != 'rhel6' or
+                    'rhel6' not in params.get("shortname")):
+                rs = virsh.dommemstat(vm_name, ignore_status=True,
+                                      debug=True).stdout_text
+                if "available" not in rs:
+                    test.fail("Can't get memory stats in %s model" % virtio_model)
         # Finish test for Windows guest
         if is_windows_guest:
             return
