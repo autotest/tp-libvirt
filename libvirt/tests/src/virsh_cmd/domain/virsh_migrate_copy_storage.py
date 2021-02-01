@@ -88,7 +88,7 @@ def check_output(test, output_msg, params):
                    "this feature or command is not currently supported"}
 
     for (key, value) in list(ERR_MSGDICT.items()):
-        logging.debug("%s: %s", key, value)
+        logging.debug("Checking expected errors - %s: %s", key, value)
         if output_msg.find(value) >= 0:
             if (key == "ERROR 1" and
                     params.get("support_precreation") is True):
@@ -152,7 +152,8 @@ def run(test, params, env):
     if disk_type == "file":
         params['added_disk_type'] = "file"
     else:
-        params['added_disk_type'] = "block"
+        params['added_disk_type'] = "lvm"
+    cp_mig = None
     primary_target = vm.get_first_disk_devices()["target"]
     file_path, file_size = vm.get_device_size(primary_target)
     # Convert to Gib
@@ -246,11 +247,12 @@ def run(test, params, env):
                         rdm.create_image("file", disk, size, None,
                                          None, img_frmt='qcow2')
                 else:
+                    sparse = False if disk_type == 'lvm' else True
                     rdm.create_image(disk_type, disk, size, vgname,
-                                     os.path.basename(disk))
+                                     os.path.basename(disk),
+                                     sparse=sparse, timeout=120)
 
         fail_flag = False
-        cp_mig = None
         remove_dict = {
             "do_search": '{"%s": "ssh:/"}' % params.get("migrate_dest_uri")}
         src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
@@ -305,7 +307,11 @@ def run(test, params, env):
         if disks_count and vm.name == new_vm_name:
             vm.undefine()
         for disk in added_disks_list:
-            utlv.delete_local_disk(disk_type, disk)
+            if disk_type == 'file':
+                utlv.delete_local_disk(disk_type, disk)
+            else:
+                lvname = os.path.basename(disk)
+                utlv.delete_local_disk(disk_type, disk, vgname, lvname)
             rdm.remove_path(disk_type, disk)
         rdm.remove_path("file", file_path)
         if pool_created:
