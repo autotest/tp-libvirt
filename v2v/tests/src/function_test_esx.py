@@ -665,6 +665,19 @@ def run(test, params, env):
                         ' Try to prepare it manually. This is not a permanant step, once'
                         ' the official build includes it, this step should be removed.')
                     os.makedirs(qemu_guest_agent_dir)
+                    if 'debian' in qa_path or 'lp151' in qa_path:
+                        # Find an avaiable pkg name dynamically, because upstream
+                        # builds update very fast.
+                        from urllib.request import urlopen
+                        res = urlopen(qa_url)
+                        if res.status != 200:
+                            test.error('Failed to open url:%s' % qa_url)
+                        cont = res.read().decode()
+                        pkgs = set(re.findall(r'(qemu-guest-agent.*?(x86_64|amd64)\.(rpm|deb))', cont))
+                        if not pkgs:
+                            test.error('Not found qemu-guest-agent pkg')
+                        pkg, _, _ = list(pkgs)[0]
+                        qa_url = qa_url.rstrip('/') + '/' + pkg
                     rpm_name = os.path.basename(qa_url)
                     download.get_file(
                         qa_url, os.path.join(
