@@ -50,6 +50,7 @@ def run(test, params, env):
     message_dest_file = '/tmp/messages_tmp'
     signal_name = params.get("signal", "SIGTERM")
     should_restart = params.get("expect_restart", "yes") == "yes"
+    timeout = int(params.get("restart_timeout", 1))
     pid_should_change = params.get("expect_pid_change", "yes") == "yes"
     sysconfig = params.get("sysconfig", None)
     check_dmesg = params.get("check_dmesg", None)
@@ -72,7 +73,7 @@ def run(test, params, env):
         send_signal(pid, signal_name)
 
         # Wait for libvirtd to restart or reload
-        time.sleep(1)
+        time.sleep(timeout)
 
         if libvirtd.is_running():
             if not should_restart:
