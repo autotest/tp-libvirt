@@ -214,14 +214,17 @@ def run(test, params, env):
             kwargs["model_heads"] = primary_heads
         if mem_test and not default_mem_size:
             kwargs["model_"+mem_type] = mem_size
+        if model_type == "virtio" and with_packed:
+            kwargs["driver_packed"] = driver_packed
         add_video_device(model_type, vm_xml, is_primary, status_error, **kwargs)
 
         if secondary_video_model:
+            kwargs = {}
             model_type = secondary_video_model
             is_primary = False
             if heads_test and not default_secondary_heads:
                 kwargs["model_heads"] = secondary_heads
-            if with_packed:
+            if model_type == "virtio" and with_packed:
                 kwargs["driver_packed"] = driver_packed
             add_video_device(model_type, vm_xml, is_primary, status_error, **kwargs)
 
