@@ -6,7 +6,6 @@ from virttest import virsh
 from virttest import cpu
 from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
-from virttest.libvirt_xml import capability_xml
 from virttest.libvirt_xml import domcapability_xml
 from virttest.utils_test import libvirt as utlv
 
@@ -92,11 +91,11 @@ def run(test, params, env):
             test.cancel("This test currently only supports s390x and x86_64, "
                         "%s requires special customization" % arch)
 
-    def is_supported_on_host_func(host_capa):
+    def is_supported_on_hypervisor_func(dom_capa):
         """
-        Create function to determine if feature is supported on host
+        Create function to determine if feature is supported for domain
 
-        :param host_capa: previously loaded host capability xml
+        :param dom_capa: previously loaded domain capability xml
         :return: func to determine if supported on host
         """
         # Check if feature is supported on the host
@@ -110,7 +109,7 @@ def run(test, params, env):
         else:
 
             def is_supported_on_host(f_name):
-                return host_capa.check_feature_name(f_name)
+                return dom_capa.check_feature_name(f_name)
         return is_supported_on_host
 
     def check_cpu(xml, cpu_match, arch, model, policies):
@@ -137,8 +136,8 @@ def run(test, params, env):
         require_count = 0
         expect_require_features = 0
         cpu_feature_list = vmcpu_xml.get_feature_list()
-        host_capa = capability_xml.CapabilityXML()
-        is_supported_on_host = is_supported_on_host_func(host_capa)
+        dom_capa = domcapability_xml.DomCapabilityXML()
+        is_supported_on_hypervisor = is_supported_on_hypervisor_func(dom_capa)
         for i in range(len(cpu_feature_list)):
             f_name = vmcpu_xml.get_feature_name(i)
             f_policy = vmcpu_xml.get_feature_policy(i)
@@ -146,7 +145,7 @@ def run(test, params, env):
             expect_policy = "disable"
             if f_name in policies:
                 if policies[f_name] == "optional" and arch != "s390x":
-                    if is_supported_on_host(f_name):
+                    if is_supported_on_hypervisor(f_name):
                         expect_policy = "require"
                 else:
                     expect_policy = policies[f_name]
@@ -167,7 +166,7 @@ def run(test, params, env):
             # libvirt commit 3b6be3c0 change the behavior of update-cpu
             # Check model is changed to host cpu-model given in domcapabilities
             if libvirt_version.version_compare(3, 0, 0):
-                expect_model = host_capa.model
+                expect_model = dom_capa.get_hostmodel_name()
             expect_match = "exact"
             # For different host, the support require features are different,
             # so just check the actual require features greater than the
