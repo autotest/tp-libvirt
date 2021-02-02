@@ -305,7 +305,7 @@ def run(test, params, env):
 
         # Check the service status of qemu-guest-agent in VM
         status_ptn = r'Active: active \(running\)|qemu-ga \(pid +[0-9]+\) is running'
-        cmd = 'service qemu-ga status;systemctl status qemu-guest-agent'
+        cmd = 'service qemu-ga* status;systemctl status qemu-guest-agent;systemctl status qemu-ga*'
         _, output = vmcheck.run_cmd(cmd)
 
         if not re.search(status_ptn, output):
