@@ -16,6 +16,7 @@ from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 
 from virttest.libvirt_xml.devices import hostdev
+from virttest.libvirt_xml.devices.controller import Controller
 
 
 def run(test, params, env):
@@ -243,6 +244,22 @@ def run(test, params, env):
                           str(err))
             return False
 
+    def ppc_controller_update(vmxml):
+        """
+        Update controller of ppc vm to 'virtio-scsi' to support 'scsi' type
+        :return:
+        """
+        device_bus = 'scsi'
+        if params.get('machine_type') == 'pseries':
+            if not vmxml.get_controllers(device_bus, 'virtio-scsi'):
+                vmxml.del_controller(device_bus)
+                ppc_controller = Controller('controller')
+                ppc_controller.type = device_bus
+                ppc_controller.index = '0'
+                ppc_controller.model = 'virtio-scsi'
+                vmxml.add_device(ppc_controller)
+                vmxml.sync()
+
     coldplug = "cold_plug" == params.get("attach_method")
     hotplug = "hot_plug" == params.get("attach_method")
     status_error = "yes" == params.get("status_error")
@@ -271,6 +288,7 @@ def run(test, params, env):
         # Backup vms' xml
         vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         vmxml = vmxml_backup.copy()
+        ppc_controller_update(vmxml)
         if test_shareable:
             vm_names = params.get("vms").split()
             if len(vm_names) < 2:
@@ -280,6 +298,7 @@ def run(test, params, env):
             vm2 = env.get_vm(vm2_name)
             vm2_xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm2_name)
             vm2_xml = vm2_xml_backup.copy()
+            ppc_controller_update(vm2_xml)
             if vm2.is_dead():
                 vm2.start()
                 session = vm2.wait_for_login()
