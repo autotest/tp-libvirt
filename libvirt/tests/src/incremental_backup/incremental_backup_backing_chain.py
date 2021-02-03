@@ -4,8 +4,6 @@ import json
 import logging
 import shutil
 
-import xml.etree.ElementTree as ET
-
 from avocado.utils import process
 
 from virttest import virsh
@@ -202,28 +200,7 @@ def run(test, params, env):
         vmxml_backup = vmxml.copy()
         disks_not_tested = list(vmxml.get_disk_all().keys())
         logging.debug("Not tested disks are: %s", disks_not_tested)
-
-        # Enable vm incremental backup capability. This is only a workaround
-        # to make sure incremental backup can work for the vm. Code needs to
-        # be removded immediately when the function enabled by default, which
-        # is tracked by bz1799015
-        tree = ET.parse(vmxml.xml)
-        root = tree.getroot()
-        for elem in root.iter('domain'):
-            elem.set('xmlns:qemu', 'http://libvirt.org/schemas/domain/qemu/1.0')
-            qemu_cap = ET.Element("qemu:capabilities")
-            elem.insert(-1, qemu_cap)
-            incbackup_cap = ET.Element("qemu:add")
-            incbackup_cap.set('capability', 'incremental-backup')
-            qemu_cap.insert(1, incbackup_cap)
-        vmxml.undefine()
-        tmp_vm_xml = os.path.join(tmp_dir, "tmp_vm.xml")
-        tree.write(tmp_vm_xml)
-        virsh.define(tmp_vm_xml)
-        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-        logging.debug("Script insert xml elements to make sure vm can support "
-                      "incremental backup. This should be removded when "
-                      "bz 1799015 fixed.")
+        utils_backup.enable_inc_backup_for_vm(vm)
 
         # Destroy vm before test
         if vm.is_alive():
