@@ -406,11 +406,16 @@ def run(test, params, env):
             mac_addr = re.search(mac_ip_pattern, v2v_cmd).group(1)[
                 0:-1].upper().replace(':', '-')
             eth_adapter_ptn = r'Ethernet adapter Ethernet.*?NetBIOS over Tcpip'
-            ipconfig = [
-                v for v in re.findall(
-                    eth_adapter_ptn,
-                    output,
-                    re.S) if mac_addr in v][0]
+
+            try:
+                ipconfig = [
+                    v for v in re.findall(
+                        eth_adapter_ptn,
+                        output,
+                        re.S) if mac_addr in v][0]
+            except IndexError:
+                return False
+
             for i, value in enumerate(ip_config_list.split(',')):
                 if not value:
                     continue
