@@ -1,6 +1,7 @@
 import re
 import logging
 import tempfile
+import platform
 
 from virttest import virt_vm
 from virttest import virsh
@@ -61,6 +62,11 @@ def run(test, params, env):
         """
         osxml = vm_xml.os
         orig_machine = osxml.machine
+        # avocado-vt only use virt machine type on aarch64
+        if platform.machine() == 'aarch64':
+            osxml.machine = 'virt'
+            return
+
         if os_machine:
             osxml.machine = os_machine
             vm_xml.os = osxml
