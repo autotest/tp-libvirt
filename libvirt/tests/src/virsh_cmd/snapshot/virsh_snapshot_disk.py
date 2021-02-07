@@ -297,8 +297,9 @@ def run(test, params, env):
                         if re.search("internal snapshot of a running VM" +
                                      " must include the memory state",
                                      out_err):
-                            test.cancel("Check Bug #1083345, %s" %
-                                        out_err)
+                            logging.warning("Got expected error. Please check "
+                                            "Bug #1083345, %s" % out_err)
+                            return
 
                     test.fail("Failed to create snapshot. Error:%s."
                               % out_err)
