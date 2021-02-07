@@ -6,6 +6,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_test
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import utils_memory
 from virttest.utils_test import libvirt_device_utils
@@ -207,6 +208,11 @@ def run(test, params, env):
                     if error_msg_start:
                         expected_fails_msg.append(error_msg_start)
                     utils_test.libvirt.check_result(result, expected_fails=expected_fails_msg)
+                    if not libvirt_version.version_compare(6, 10, 0):
+                        # Because of bug #1897105, it was fixed in libvirt-6.10.0,
+                        # before this version, need to recover the env manually.
+                        cmd = "pkill virtiofsd"
+                        process.run(cmd, shell=True)
                     if not vm.is_alive():
                         # Restoring vm and check if vm can start successfully
                         vmxml_virtio_backup.sync()
