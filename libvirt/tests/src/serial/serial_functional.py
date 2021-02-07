@@ -646,6 +646,8 @@ def run(test, params, env):
                 dev_type = target_model
             exp_ser_devs = [dev_type, 'chardev=charserial0',
                             'id=serial0']
+        elif "aarch64" in arch:
+            exp_ser_devs = ['chardev:charserial0']
         else:
             logging.debug('target_type: %s', target_type)
             if target_type == 'pci-serial':
