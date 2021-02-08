@@ -149,7 +149,6 @@ def run(test, params, env):
         vmxml.current_mem = current_mem
         vmxml.current_mem_unit = mem_unit
         vmxml.memory = int(params.get("memory"))
-        vmxml.sync()
         # Prepare numa settings in <cpu>
         host_numa_node = utils_misc.NumaInfo()
         host_numa_node_list = host_numa_node.online_nodes
@@ -544,7 +543,7 @@ def run(test, params, env):
             if re.search("block-threshold", event):
                 event_str = "block-threshold"
             else:
-                event_str = "event " + event % ("domain %s" % dom_name)
+                event_str = "event " + event % ("domain '%s'" % dom_name)
             logging.info("Expected event: %s", event_str)
             match = re.search(event_str, output[event_idx:])
             if match:
