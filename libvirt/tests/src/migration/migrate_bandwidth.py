@@ -129,6 +129,7 @@ def run(test, params, env):
     set_postcopy_speed_before_mig = params.get("set_postcopy_speed_before_mig")
     set_precopy_speed_before_mig = params.get("set_precopy_speed_before_mig")
     set_precopy_speed_before_vm_start = params.get("set_precopy_speed_before_vm_start")
+    stress_package = params.get("stress_package")
     exp_migrate_speed = eval(params.get('exp_migrate_speed', '{}'))
     func_params_exists = "yes" == params.get("func_params_exists", "yes")
     log_file = params.get("log_outputs", "/var/log/libvirt/libvirt_daemons.log")
@@ -211,6 +212,9 @@ def run(test, params, env):
                 virsh.migrate_setspeed(vm_name, set_postcopy_speed_before_mig,
                                        "--postcopy", **virsh_args)
             get_speed(exp_migrate_speed)
+
+        if stress_package:
+            migration_test.run_stress_in_vm(vm, params)
 
         # Execute migration process
         vms = [vm]
