@@ -59,6 +59,8 @@ def run(test, params, env):
     ovirt_ca_file_path = params.get("ovirt_ca_file_path")
     local_ca_file_path = params.get("local_ca_file_path")
     skip_vm_check = params.get('skip_vm_check', 'no')
+    os_version = params.get('os_version')
+    os_type = params.get('os_type')
 
     # create different sasl_user name for different job
     params.update({'sasl_user': params.get("sasl_user") +
@@ -196,45 +198,26 @@ def run(test, params, env):
 
         ret = vmchecker.run()
 
-        # Other checks
         err_list = []
-        os_list = [
-            'win8',
-            'win8.1',
-            'win10',
-            'win2012',
-            'win2012r2',
-            'win2008',
-            'win2016',
-            'win2019']
-        win_version = [
-            '6.2',
-            '6.3',
-            '10.0',
-            '6.2',
-            '6.3',
-            '6.0',
-            '10.0',
-            '10.0']
-        os_map = dict(list(zip(os_list, win_version)))
-        vm_arch = params.get('vm_arch')
-        os_ver = params.get('os_version')
+        virtio_win_ver = "[virtio-win-1.9.16-1,)"
+        virtio_win_qxl_os = ['win2008r2', 'win7']
+        virtio_win_qxldod_os = ['win10', 'win2016', 'win2019']
 
-        if os_ver in os_list:
-            vga_log = 'The guest will be configured to use a basic VGA ' \
-                      'display driver'
-            if re.search(vga_log, v2v_ret.stdout_text):
-                logging.debug('Found vga log')
+        if os_type == 'windows':
+            virtio_win_support_qxldod = utils_v2v.multiple_versions_compare(
+                virtio_win_ver)
+            qxl_warning = "there is no QXL driver for this version of Windows"
+            if virtio_win_support_qxldod and os_version in virtio_win_qxldod_os:
+                has_qxl_warning = False
+            elif os_version in virtio_win_qxl_os:
+                has_qxl_warning = False
             else:
-                err_list.append('Not find vga log')
-            if os_ver != 'win2008':
-                qxl_warn = 'virt-v2v: warning: there is no QXL driver for ' \
-                           'this version of Windows \(%s[.\s]*?%s\)' %\
-                           (os_map[os_ver], vm_arch)
-                if re.search(qxl_warn, v2v_ret.stdout_text):
-                    logging.debug('Found QXL warning')
-                else:
-                    err_list.append('Not find QXL warning')
+                has_qxl_warning = True
+
+            if has_qxl_warning and not re.search(qxl_warning, v2v_ret.stdout_text):
+                err_list.append('Not find QXL warning')
+            if not has_qxl_warning and re.search(qxl_warning, v2v_ret.stdout_text):
+                err_list.append('Unexpected QXL warning')
 
         ret.extend(err_list)
 
