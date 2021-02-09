@@ -7,6 +7,7 @@ from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
 from virttest.utils_test import libvirt
+from virttest.libvirt_version import version_compare
 
 
 def run(test, params, env):
@@ -43,8 +44,11 @@ def run(test, params, env):
             panic_dev.addr_iobase = '0x505'
             logging.debug(panic_dev)
             vmxml.add_device(panic_dev)
-            vmxml.sync()
-            cmd_result = virsh.start(vm_name, debug=True, ignore_status=True)
+            if version_compare(7, 0, 0):
+                cmd_result = virsh.define(vmxml.xml, debug=True)
+            else:
+                vmxml.sync()
+                cmd_result = virsh.start(vm_name, debug=True, ignore_status=True)
 
         # Get Ethernet pci devices
         if case == 'unavail_pci_device':
