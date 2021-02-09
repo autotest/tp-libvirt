@@ -199,6 +199,11 @@ def run(test, params, env):
         sec_encryption_uuid = create_secret(image_target_path)
         sec_uuids.append(sec_encryption_uuid)
         image_encryption_params.update({"secret": {"type": secret_type, "uuid": sec_encryption_uuid}})
+
+        # slice attribute need libvirt 6.1.0 forward version
+        if slice_test == "yes" and not libvirt_version.version_compare(6, 1, 0):
+            test.cancel("slice attribute not supported for this libvirt version")
+
         #Prepare test image
         if slice_test == "yes" and image_target_format == "qcow2":
             libvirt.create_local_disk(disk_type="file", extra=extra_luks_parameter,
