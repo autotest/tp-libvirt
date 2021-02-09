@@ -533,6 +533,55 @@ def run(test, params, env):
         #Passed all test.
         os.remove(save_file)
 
+    def check_transient_disk_keyword():
+        """
+        Check VM disk with TRANSIENT keyword.
+
+        """
+        logging.info("Checking disk with transient keyword...")
+
+        ret = virsh.dumpxml(vm_name, ignore_status=False)
+
+        cmd = ("echo \"%s\" | grep '<source file=.*TRANSIENT.*/>'" % ret.stdout_text)
+        if process.system(cmd, ignore_status=False, shell=True):
+            test.fail("Check transident disk failed")
+
+    def check_restart_transient_vm(target_name):
+        """
+        Check VM transient feature.
+
+        :param target_name. Device target name.
+        """
+        logging.info("Checking VM transident...")
+        try:
+            session = vm.wait_for_login()
+            cmd = ("fdisk -l  /dev/{0} && mkfs.ext4 -F /dev/{0} && "
+                   "mkdir -p /test && mount /dev/{0} /test && "
+                   "dd if=/dev/zero of=/test/transient.txt bs=1M count=300 && sync"
+                   .format(target_name))
+            status, output = session.cmd_status_output(cmd)
+            if status != 0:
+                session.close()
+                test.fail("Failed due to: %s" % output.strip())
+            session.close()
+            # Destroy VM.
+            if vm.is_alive():
+                vm.destroy(gracefully=False)
+            vm.start()
+            session = vm.wait_for_login()
+
+            cmd = ("mkdir -p /test && mount /dev/{0} /test &&  ls -l /test/ && ls -l /test/transient.txt"
+                   .format(target_name))
+            status, output = session.cmd_status_output(cmd)
+            logging.info("check /test/transient.txt file output in VM: %s", output.strip())
+            if status == 0:
+                session.close()
+                test.fail("Still find file in transient disk after VM restart due to: %s" % output.strip())
+            session.close()
+        except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
+            logging.error(str(e))
+            test.error("Check Vm disk transient feature failed")
+
     def check_boot_console(bootorders):
         """
         Get console output and check bootorder.
@@ -1210,7 +1259,8 @@ def run(test, params, env):
                 disk_xml.readonly = "yes" == device_readonly[i]
 
             if disk_transient:
-                if libvirt_version.version_compare(6, 5, 0):
+                # After libvirt 6.9.0, transient disk feature is brought back on file based backend
+                if libvirt_version.version_compare(6, 5, 0) and not libvirt_version.version_compare(6, 9, 0):
                     test.cancel("unsupported configuration: transient disks not supported")
                 disk_xml.transient = "yes"
 
@@ -1882,6 +1932,9 @@ def run(test, params, env):
             if not utils_libvirtd.libvirtd_restart():
                 test.fail('Libvirtd is expected to be started')
             vm.wait_for_login()
+        if disk_transient:
+            check_transient_disk_keyword()
+            check_restart_transient_vm(device_targets[0])
         # If we testing hotplug, detach the disk at last.
         if device_at_dt_disk:
             for i in list(range(len(disks))):
