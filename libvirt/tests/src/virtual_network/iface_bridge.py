@@ -350,5 +350,5 @@ def run(test, params, env):
         # recover NetworkManager
         if NM_status is True:
             NM_service.start()
-        if iface_source["network"] in virsh.net_state_dict():
+        if 'network' in iface_source and iface_source["network"] in virsh.net_state_dict():
             virsh.net_destroy(iface_source["network"], ignore_status=False)
