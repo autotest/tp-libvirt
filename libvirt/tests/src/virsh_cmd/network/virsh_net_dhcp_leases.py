@@ -10,6 +10,7 @@ from virttest.libvirt_xml import network_xml
 from virttest.utils_test import libvirt as utlv
 from avocado.utils import process
 from datetime import datetime, timedelta
+from virttest.libvirt_xml import LibvirtXMLError
 
 from virttest import libvirt_version
 
@@ -37,6 +38,8 @@ def run(test, params, env):
     host_lease = eval(params.get("host_lease", "None"))
     host = eval(params.get("host", "None"))
     invalid_lease = "yes" == params.get("invalid_lease", "no")
+    if (host_lease or range_lease) and not libvirt_version.version_compare(6, 2, 0):
+        test.cancel("Don't support: libvirt support lease setting since 6.2.0!")
     # Generate a random string as the MAC address
     nic_mac = None
     if invalid_mac:
@@ -272,7 +275,7 @@ def run(test, params, env):
         else:
             if expect_msg:
                 utlv.check_result(result, expect_msg.split(';'))
-    except Exception as e:
+    except LibvirtXMLError as e:
         if status_error and invalid_lease:
             if expect_msg not in e.details:
                 test.fail("Network create fail unexpected: %s", e.details)
