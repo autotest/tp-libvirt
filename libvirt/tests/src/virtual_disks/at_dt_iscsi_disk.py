@@ -98,7 +98,7 @@ def run(test, params, env):
         if not libvirt_version.version_compare(4, 7, 0):
             test.cancel("iscsi-direct pool is not supported in"
                         " current libvirt version.")
-    if disk_packed and not libvirt_version.version_compare(6, 3, 0):
+    if ((disk_packed or scsi_packed) and not libvirt_version.version_compare(6, 3, 0)):
         test.cancel("The virtio packed attribute is not supported in"
                     " current libvirt version.")
     # Back VM XML
