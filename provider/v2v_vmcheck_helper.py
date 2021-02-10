@@ -70,7 +70,9 @@ class VMChecker(object):
         if self.target == 'ovirt':
             from virttest.ovirt import connect
             _, self.ovirt_server_version = connect(params)
-            logging.info("rhv server version is: %s", self.ovirt_server_version.full_version)
+            logging.info(
+                "rhv server version is: %s",
+                self.ovirt_server_version.full_version)
             if self.ovirt_server_version.major >= 4 and self.ovirt_server_version.minor >= 4:
                 self.boottype = int(params.get("boottype", 1))
 
@@ -502,7 +504,8 @@ class VMChecker(object):
             self.log_err(err_msg)
 
         logging.info("Checking cache='none' not existing in VM XML")
-        if self.target == 'libvirt' and compare_version(FEATURE_SUPPORT['cache_none']):
+        if self.target == 'libvirt' and compare_version(
+                FEATURE_SUPPORT['cache_none']):
             root = ET.fromstring(self.vmxml)
             err_msg = "Checking cache='none' not existing failed"
             for disk in root.findall("./devices/disk/driver[@cache]"):
@@ -637,23 +640,19 @@ class VMChecker(object):
         logging.info("Checking VirtIO drivers and display adapter")
         expect_drivers = ["Red Hat VirtIO SCSI",
                           "Red Hat VirtIO Ethernet Adapte"]
-        # Windows display adapter is different for each release
-        # Default value
-        expect_adapter = 'Basic Display Driver'
-        if self.os_version in ['win7', 'win2008r2']:
-            expect_adapter = 'QXL'
-        if self.os_version in ['win2003', 'win2008']:
-            expect_adapter = 'Standard VGA Graphics Adapter'
-        bdd_list = [
-            'win8',
-            'win8.1',
-            'win10',
-            'win2012',
-            'win2012r2',
-            'win2016',
-            'win2019']
-        if self.os_version in bdd_list:
-            expect_adapter = 'Basic Display Driver'
+        # see bz1902635
+        virtio_win_ver = "[virtio-win-1.9.16-1,)"
+        virtio_win_qxl_os = ['win2008r2', 'win7']
+        virtio_win_qxldod_os = ['win10', 'win2016', 'win2019']
+        virtio_win_support_qxldod = utils_v2v.multiple_versions_compare(
+            virtio_win_ver)
+        if virtio_win_support_qxldod and self.os_version in virtio_win_qxldod_os:
+            expect_adapter = 'Red Hat QXL controller'
+        elif self.os_version in virtio_win_qxl_os:
+            expect_adapter = 'Red Hat QXL GPU'
+        else:
+            expect_adapter = 'Microsoft Basic Display Driver'
+
         expect_drivers.append(expect_adapter)
         check_drivers = expect_drivers[:]
         for check_times in range(5):
