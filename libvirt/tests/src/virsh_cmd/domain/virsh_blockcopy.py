@@ -166,11 +166,19 @@ def finish_job(vm_name, target, timeout):
     :param timeout: Timeout value of this function
     """
     job_time = 0
+    progress = 0
     while job_time < timeout:
         # As BZ#1359679, blockjob may disappear during the process,
         # so we need check it all the time
         if utl.check_blockjob(vm_name, target, 'none', '0'):
-            raise exceptions.TestFail("No blockjob find for '%s'" % target)
+            if progress == 99:
+                logging.debug("Blockjob finished without 100% progress show")
+                break
+            else:
+                raise exceptions.TestFail("No blockjob find for '%s'" % target)
+
+        if utl.check_blockjob(vm_name, target, "progress", "99"):
+            progress = 99
 
         if utl.check_blockjob(vm_name, target, "progress", "100"):
             logging.debug("Block job progress up to 100%")
