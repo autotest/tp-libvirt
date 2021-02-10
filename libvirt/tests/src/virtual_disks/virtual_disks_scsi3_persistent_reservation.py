@@ -4,7 +4,6 @@ import logging
 import base64
 import time
 import shutil
-import os
 
 from avocado.utils import service
 
@@ -89,15 +88,6 @@ def run(test, params, env):
     if not libvirt_version.version_compare(4, 4, 0):
         test.cancel("The <reservations> tag supported by libvirt from version "
                     "4.4.0")
-
-    # This part is a temporary workaround for bz 1658988, should be removed
-    # when that bug fixed.
-    #===== BEGIN =====
-    target_pr_dir = "/etc/target/pr"
-    if not os.path.isdir(target_pr_dir):
-        os.mkdir(target_pr_dir)
-    #===== END =====
-
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     virsh_dargs = {'debug': True, 'ignore_status': True}
@@ -224,6 +214,7 @@ def run(test, params, env):
             vmxml.sync()
             vm.start()
             vm.wait_for_login().close()
+            time.sleep(5)
             if hotplug_disk:
                 result = virsh.attach_device(vm_name, disk_xml.xml,
                                              ignore_status=True, debug=True)
