@@ -89,6 +89,8 @@ def run(test, params, env):
         logging.debug("the cmdline is: %s" % cmdline)
         # s390x only supports virtio
         s390x_pattern = r"-device\svirtio-gpu-ccw"
+        # aarch64 only supports virtio
+        aarch64_pattern = r"-device\svirtio-gpu-pci"
 
         if is_primary or is_primary is None:
             if model_type == "vga":
@@ -97,6 +99,8 @@ def run(test, params, env):
                 pattern = r"-device\s%s-vga" % model_type
             if guest_arch == 's390x':
                 pattern = s390x_pattern
+            elif guest_arch == 'aarch64':
+                pattern = aarch64_pattern
             if not re.search(pattern, cmdline):
                 test.fail("Can not find the primary %s video device "
                           "in qemu cmd line." % model_type)
