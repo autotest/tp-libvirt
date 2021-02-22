@@ -655,8 +655,13 @@ class VMChecker(object):
 
         expect_drivers.append(expect_adapter)
         check_drivers = expect_drivers[:]
-        for check_times in range(5):
+        for check_times in range(10):
             logging.info('Check drivers for the %dth time', check_times + 1)
+            # Windows VM may reboot after drivers are installed, a fresh
+            # session should be created to avoid using inavlid session.
+            self.checker.session.close()
+            self.checker.session = None
+            self.checker.create_session(timeout=900)
             win_dirvers = self.checker.get_driver_info()
             for driver in expect_drivers:
                 if driver in win_dirvers:
