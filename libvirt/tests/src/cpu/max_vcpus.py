@@ -72,6 +72,7 @@ def run(test, params, env):
             report_num_q35_73 = params.get('report_num_q35_73', '')
             report_num_q35_7_8 = params.get('report_num_q35_7_8', '')
             report_num_q35_8_3 = params.get('report_num_q35_8_3', '')
+            report_num_q35_8_4 = params.get('report_num_q35_8_4', '')
             logging.info('Check the output of virsh capabilities')
             xmltreefile = capability_xml.CapabilityXML().xmltreefile
             machtype_vcpunum_dict = {}
@@ -101,7 +102,9 @@ def run(test, params, env):
                                               machtype_vcpunum_dict[key]))
                     else:
                         exp_val = report_num_q35_7_8
-                        if libvirt_version.version_compare(6, 6, 0):
+                        if libvirt_version.version_compare(7, 0, 0):
+                            exp_val = report_num_q35_8_4
+                        elif libvirt_version.version_compare(6, 6, 0):
                             exp_val = report_num_q35_8_3
                         if machtype_vcpunum_dict[key] != exp_val:
                             test.fail('Test failed as the q35_max_vcpus_num in '
