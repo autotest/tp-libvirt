@@ -126,6 +126,8 @@ def run(test, params, env):
         logging.debug("the cmdline is: %s" % cmdline)
         # s390x only supports virtio
         s390x_pattern = r"-device\svirtio-gpu-ccw\S+max_outputs=%s"
+        # aarch64 only supports virtio
+        aarch64_pattern = r"-device\svirtio-gpu-pci\S+max_outputs=%s"
 
         if is_primary or is_primary is None:
             model_heads = kwargs.get("model_heads", default_primary_heads)
@@ -133,6 +135,8 @@ def run(test, params, env):
                 pattern = r"-device\s%s-vga\S+max_outputs=%s" % (model_type, model_heads)
                 if guest_arch == 's390x':
                     pattern = s390x_pattern % model_heads
+                elif guest_arch == 'aarch64':
+                    pattern = aarch64_pattern % model_heads
                 if not re.search(pattern, cmdline):
                     test.fail("The heads number of the primary %s video device "
                               "in not correct." % model_type)
