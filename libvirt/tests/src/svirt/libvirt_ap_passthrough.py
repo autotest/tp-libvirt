@@ -16,7 +16,7 @@ import logging
 
 from virttest import virsh
 from virttest.utils_zcrypt import CryptoDeviceInfoBuilder, \
-    APMaskHelper, MatrixDevice, load_vfio_ap
+    APMaskHelper, MatrixDevice, load_vfio_ap, unload_vfio_ap
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices import hostdev
 from virttest.utils_misc import wait_for
@@ -97,3 +97,4 @@ def run(test, params, env):
             matrix_dev.unassign_all()
         if mask_helper:
             mask_helper.return_to_host_all()
+        unload_vfio_ap()
