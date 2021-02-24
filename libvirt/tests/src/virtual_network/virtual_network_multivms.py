@@ -13,7 +13,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import interface
 
 
-def create_bridge(br_name, iface_name):
+def create_bridge(test, br_name, iface_name):
     """
     Create bridge attached to physical interface
 
@@ -26,7 +26,9 @@ def create_bridge(br_name, iface_name):
         return
 
     # Create bridge using commands
-    utils_package.package_install('tmux')
+    if not utils_package.package_install(["tmux", "iproute",
+                                          "dhclient", "net-tools"]):
+        test.fail("Failed to install specified pkgs in host OS.")
     cmd = 'tmux -c "ip link add name {0} type bridge; ip link set {1} up;' \
           ' ip link set {1} master {0}; ip link set {0} up; pkill dhclient; ' \
           'sleep 6; dhclient {0}; ifconfig {1} 0"'.format(br_name, iface_name)
@@ -120,7 +122,7 @@ def run(test, params, env):
                             ' > 6.2.0 to support port isolated')
 
             if case.startswith('set_iface'):
-                create_bridge(bridge_name, iface_name)
+                create_bridge(test, bridge_name, iface_name)
                 bridge_created = True
                 iface_type = case.split('_')[-1]
                 if iface_type == 'network':
