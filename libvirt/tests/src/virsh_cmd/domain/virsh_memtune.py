@@ -166,7 +166,7 @@ def run(test, params, env):
             test.cancel("%s option not available in memtune "
                         "cmd in this libvirt version" % option)
     # Get common parameters
-    acceptable_minus = int(params.get("acceptable_minus", 8))
+    acceptable_minus = int(utils_memory.getpagesize() - 1)
     step_mem = params.get("mt_step_mem", "no") == "yes"
     expect_error = params.get("expect_error", "no") == "yes"
     restart_libvirtd = params.get("restart_libvirtd", "no") == "yes"
