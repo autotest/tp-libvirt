@@ -420,12 +420,11 @@ def run(test, params, env):
             xml = vm_xml.VMXML.new_from_inactive_dumpxml(
                 vm_name, virsh_instance=virsh_instance)
             logging.debug(xml.xmltreefile)
-            disks = xml.get_disk_all()
+            disks = xml.get_disk_all_by_attr(device='cdrom')
             logging.debug('Disks: %r', disks)
             for disk in list(disks.values()):
                 # Check if vm has cdrom attached
-                if disk.get('device') == 'cdrom' and disk.find(
-                        'source') is None:
+                if disk.find('source') is None:
                     test.error('No CDROM image attached')
         if checkpoint == 'vdsm':
             extra_pkg = params.get('extra_pkg')

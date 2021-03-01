@@ -280,7 +280,7 @@ def run(test, params, env):
         dev_table = dict(list(zip(bus_list, dev_prefix)))
         logging.info('Change disk bus to %s' % dest)
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-        disks = vmxml.get_disk_all()
+        disks = vmxml.get_disk_all_by_attr(device='disk')
         index = 0
         for disk in list(disks.values()):
             if disk.get('device') != 'disk':
@@ -736,10 +736,7 @@ def run(test, params, env):
         if checkpoint == 'multi_disks':
             new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(
                 vm_name, virsh_instance=v2v_virsh)
-            disk_count = 0
-            for disk in list(new_xml.get_disk_all().values()):
-                if disk.get('device') == 'disk':
-                    disk_count += 1
+            disk_count = len(new_xml.get_disk_all_by_attr(device='disk'))
             if disk_count <= 1:
                 test.error('Not enough disk devices')
             params['ori_disks'] = disk_count
