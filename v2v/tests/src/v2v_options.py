@@ -333,7 +333,7 @@ def run(test, params, env):
                 fail.append(key)
 
         # Check disk info
-        disk = list(xml.get_disk_all().values())[0]
+        disk = list(xml.get_disk_all_by_attr(device='disk').values())[0]
 
         def _get_disk_subelement_attr_value(obj, attr, subattr):
             if obj.find(attr) is not None:
