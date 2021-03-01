@@ -26,7 +26,7 @@ def run(test, params, env):
     :param params: Dictionary with the test parameters
     :param env: Dictionary with test environment.
     """
-    migr_vm_back = "yes" == params.get("migr_vm_back", "no")
+    migrate_vm_back = "yes" == params.get("migrate_vm_back", "no")
     remote_ip = params.get("remote_ip")
     remote_user = params.get("remote_user")
     remote_pwd = params.get("remote_pwd")
@@ -191,7 +191,7 @@ def run(test, params, env):
                 libvirt.check_qemu_cmd_line(qemu_check, False, params,
                                             runner_on_target)
 
-        if migr_vm_back:
+        if migrate_vm_back:
             ssh_connection = utils_conn.SSHConnection(server_ip=remote_ip,
                                                       server_pwd=remote_pwd,
                                                       client_ip=local_ip,

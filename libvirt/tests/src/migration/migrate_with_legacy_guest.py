@@ -72,7 +72,7 @@ def run(test, params, env):
     check_rng = "yes" == params.get("check_rng")
     rng_model = params.get("rng_model")
 
-    migr_vm_back = "yes" == params.get("migrate_vm_back", "no")
+    migrate_vm_back = "yes" == params.get("migrate_vm_back", "no")
     status_error = "yes" == params.get("status_error", "no")
     remote_virsh_dargs = {'remote_ip': server_ip, 'remote_user': server_user,
                           'remote_pwd': server_pwd, 'unprivileged_user': None,
@@ -196,7 +196,7 @@ def run(test, params, env):
             remote_virsh_session.close_session()
 
         # Execute migration from remote
-        if migr_vm_back:
+        if migrate_vm_back:
             ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
                                                       server_pwd=client_pwd,
                                                       client_ip=server_ip,
@@ -239,7 +239,7 @@ def run(test, params, env):
             del remote_libvirt_file
 
         # Clean up of pre migration setup for local machine
-        if migr_vm_back:
+        if migrate_vm_back:
             if 'ssh_connection' in locals():
                 ssh_connection.auto_recover = True
             migration_test.migrate_pre_setup(src_uri, params,

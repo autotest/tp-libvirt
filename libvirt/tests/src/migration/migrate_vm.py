@@ -1368,9 +1368,9 @@ def run(test, params, env):
 
     # Set up remote ssh key and remote /etc/hosts file for
     # bi-direction migration
-    migr_vm_back = "yes" == test_dict.get("migrate_vm_back", "no")
+    migrate_vm_back = "yes" == test_dict.get("migrate_vm_back", "no")
     remote_known_hosts_obj = None
-    if migr_vm_back:
+    if migrate_vm_back:
         ssh_key.setup_remote_ssh_key(server_ip, server_user, server_pwd)
         remote_known_hosts_obj = ssh_key.setup_remote_known_hosts_file(client_ip,
                                                                        server_ip,
@@ -2741,7 +2741,7 @@ def run(test, params, env):
             # Check the disks on VM can work correctly.
             check_vm_disk_after_migration(test, vm, test_dict)
 
-        if migr_vm_back:
+        if migrate_vm_back:
             # Pre migration setup for local machine
             migrate_setup.migrate_pre_setup(src_uri, params)
             remove_dict = {"do_search": ('{"%s": "ssh:/"}' % src_uri)}
@@ -2771,7 +2771,7 @@ def run(test, params, env):
         if remote_libvirt_file:
             del remote_libvirt_file
         # Clean up of pre migration setup for local machine
-        if migr_vm_back:
+        if migrate_vm_back:
             migrate_setup.migrate_pre_setup(src_uri, params,
                                             cleanup=True)
 

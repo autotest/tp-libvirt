@@ -75,7 +75,7 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     err_msg = params.get("err_msg")
     host_ip = params.get("gluster_server_ip", "")
-    migr_vm_back = params.get("migrate_vm_back", "no") == "yes"
+    migrate_vm_back = params.get("migrate_vm_back", "no") == "yes"
 
     selinux_local = params.get('set_sebool_local', 'yes') == "yes"
     selinux_remote = params.get('set_sebool_remote', 'no') == "yes"
@@ -198,7 +198,7 @@ def run(test, params, env):
         migrate_test.check_result(mig_result, params)
         migrate_test.ping_vm(vm, params, dest_uri)
 
-        if migr_vm_back:
+        if migrate_vm_back:
             ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
                                                       server_pwd=client_pwd,
                                                       client_ip=server_ip,
@@ -241,7 +241,7 @@ def run(test, params, env):
             del remote_libvirt_file
 
         # Clean up of pre migration setup for local machine
-        if migr_vm_back:
+        if migrate_vm_back:
             if 'ssh_connection' in locals():
                 ssh_connection.auto_recover = True
             migrate_test.migrate_pre_setup(src_uri, params,
