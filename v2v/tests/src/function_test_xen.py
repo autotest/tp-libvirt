@@ -420,7 +420,7 @@ def run(test, params, env):
             xml = vm_xml.VMXML.new_from_inactive_dumpxml(
                 vm_name, virsh_instance=virsh_instance)
             logging.debug(xml.xmltreefile)
-            disks = xml.get_disk_all_by_attr(device='cdrom')
+            disks = xml.get_disk_all_by_expr('device==cdrom')
             logging.debug('Disks: %r', disks)
             for disk in list(disks.values()):
                 # Check if vm has cdrom attached
