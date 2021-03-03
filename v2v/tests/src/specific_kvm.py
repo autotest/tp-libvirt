@@ -569,7 +569,7 @@ def run(test, params, env):
             vm.shutdown()
             logging.info('%s is down' % vm_name)
         except Exception as e:
-            test.error('Bootup guest and login failed: %s', str(e))
+            test.error('Bootup guest and login failed: %s' % str(e))
 
     def check_result(result, status_error):
         """

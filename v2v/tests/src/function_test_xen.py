@@ -303,7 +303,7 @@ def run(test, params, env):
         virsh_instance = utils_v2v.wait_for(virsh.VirshPersistent, **virsh_dargs)
         logging.debug('A new virsh session %s was created', virsh_instance)
         if not utils_v2v.wait_for(virsh_instance.domain_exists, name=vm_name):
-            test.error('VM %s not exists', vm_name)
+            test.error('VM %s not exists' % vm_name)
 
         if checkpoint in bk_list:
             bk_xml = vm_xml.VMXML.new_from_inactive_dumpxml(
