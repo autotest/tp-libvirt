@@ -539,12 +539,6 @@ def run(test, params, env):
                 # check_windows_ogac, it waits until rebooting completes.
                 vmchecker.checker.create_session()
                 if os_type == 'windows':
-                    # check signature before services to avoid guest rebooting
-                    # failure
-                    if 'signature' in checkpoint:
-                        check_windows_signature(
-                            vmchecker.checker, r'c:\rhev-apt.exe')
-
                     services = ['qemu-ga', 'rhev-apt']
                     if 'rhv-guest-tools' in os.getenv('VIRTIO_WIN'):
                         services.append('spice-ga')
@@ -558,6 +552,8 @@ def run(test, params, env):
             if len(ret) == 0:
                 logging.info("All common checkpoints passed")
             # Check specific checkpoints
+            if 'ogac' in checkpoint and 'signature' in checkpoint:
+                check_windows_signature(vmchecker.checker, r'c:\rhev-apt.exe')
             if 'cdrom' in checkpoint:
                 virsh_session = utils_sasl.VirshSessionSASL(params)
                 virsh_session_id = virsh_session.get_id()
