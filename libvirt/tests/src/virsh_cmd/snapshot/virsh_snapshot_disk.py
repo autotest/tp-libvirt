@@ -35,6 +35,7 @@ def run(test, params, env):
     vm_state = params.get("vm_state", "running")
     image_format = params.get("snapshot_image_format", "qcow2")
     snapshot_del_test = "yes" == params.get("snapshot_del_test", "no")
+    disk_cluster_size_set = "yes" == params.get("disk_cluster_size_set", "no")
     status_error = ("yes" == params.get("status_error", "no"))
     snapshot_from_xml = ("yes" == params.get("snapshot_from_xml", "no"))
     snapshot_current = ("yes" == params.get("snapshot_current", "no"))
@@ -104,6 +105,10 @@ def run(test, params, env):
     # This is brought by new feature:block-dev
     if libvirt_version.version_compare(6, 0, 0) and transport == "rdma":
         test.cancel("transport protocol 'rdma' is not yet supported")
+
+    if disk_cluster_size_set and not libvirt_version.version_compare(6, 10, 0):
+        test.cancel("current libvirt version doesn't support the feature that "
+                    "snapshot and backing file share the cluster size ")
 
     # Init snapshot_name
     snapshot_name = None
@@ -303,6 +308,12 @@ def run(test, params, env):
 
                     test.fail("Failed to create snapshot. Error:%s."
                               % out_err)
+            if disk_cluster_size_set:
+                disk_path, _ = vm.get_device_size('vdf')
+                img_info = process.run("qemu-img info -U %s" % img_path, verbose=True, shell=True).stdout_text.strip()
+                match_cluster_size = "cluster_size: %s" % params.get("image_cluster_size")
+                if match_cluster_size not in img_info:
+                    test.fail("%s snapshot image doesn't have the same cluster size with backing file" % disk_path)
         else:
             snapshot_result = virsh.snapshot_create(vm_name, options,
                                                     debug=True)
