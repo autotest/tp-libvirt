@@ -8,6 +8,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import data_dir
 from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest import utils_package
 from virttest import libvirt_storage
 from virttest import ceph
@@ -299,6 +300,17 @@ def run(test, params, env):
                 ceph_cfg = ceph.create_config_file(mon_host)
                 if src_host.count("EXAMPLE") or mon_host.count("EXAMPLE"):
                     test.cancel("Please provide ceph host first.")
+
+                params.update(
+                   {"disk_source_name": os.path.join(
+                      pool_name,
+                      'rbd_blockpull_' + utils_misc.generate_random_string(4) +
+                      '.img')})
+                if utils_package.package_install(["ceph-common"]):
+                    ceph.rbd_image_rm(
+                        mon_host, *params.get("disk_source_name").split('/'))
+                else:
+                    test.error('Failed to install ceph-common package.')
             if backing_file_relative_path:
                 if vm.is_alive():
                     vm.destroy(gracefully=False)
