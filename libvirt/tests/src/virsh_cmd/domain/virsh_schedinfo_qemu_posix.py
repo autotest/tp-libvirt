@@ -37,15 +37,21 @@ def run(test, params, env):
         """
         cgroup_path = \
             utils_cgroup.resolve_task_cgroup_path(vm.get_pid(), "cpu")
-
+        logging.debug("cgroup_path=%s", cgroup_path)
         if not cgroup_type == "emulator":
             # When a VM has an 'emulator' child cgroup present, we must
             # strip off that suffix when detecting the cgroup for a machine
             if os.path.basename(cgroup_path) == "emulator":
                 cgroup_path = os.path.dirname(cgroup_path)
-            cgroup_file = os.path.join(cgroup_path, parameter)
-        else:
-            cgroup_file = os.path.join(cgroup_path, parameter)
+            if cgroup_type == 'iothread':
+                parameter = 'iothread1/%s' % parameter
+            if cgroup_type == 'vcpu' and parameter != 'cpu.shares':
+                parameter = 'vcpu0/%s' % parameter
+            if parameter == 'cpu.shares' and libvirt_version.version_compare(7, 0, 0):
+                cgroup_path = os.path.dirname(cgroup_path)
+            logging.debug("cgroup_path is updated to '%s'", cgroup_path)
+        cgroup_file = os.path.join(cgroup_path, parameter)
+        logging.debug("cgroup_file=%s", cgroup_file)
 
         cg_file = None
         try:
@@ -126,10 +132,18 @@ def run(test, params, env):
     # Prepare vm test environment
     vm_name = params.get("main_vm")
 
+    # For safety reasons, we'd better back up  xmlfile.
+    orig_config_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    if not orig_config_xml:
+        test.error("Backing up xmlfile failed.")
+
     if set_ref == "none":
         options_ref = "--set"
         set_ref = None
     elif set_ref:
+        # Prepare vm xml for iothread test
+        if schedinfo_param == 'iothread':
+            virsh.iothreadadd(vm_name, '1', ignore_status=False, debug=True)
         if set_method == 'cmd':
             if set_value:
                 set_ref_list = set_ref.split(",")
@@ -153,10 +167,15 @@ def run(test, params, env):
                 'vcpu_quota': 'quota',
                 'emulator_period': 'emulator_period',
                 'emulator_quota': 'emulator_quota',
+                'global_period': 'global_period',
+                'global_quota': 'global_quota',
+                'iothread_period': 'iothread_period',
+                'iothread_quota': 'iothread_quota'
             }
             cputune[name_map[set_ref]] = int(set_value)
             xml.cputune = cputune
             xml.sync()
+            logging.debug("After setting xml, VM XML:\n%s", vm_xml.VMXML.new_from_dumpxml(vm_name))
 
     vm = env.get_vm(vm_name)
     if vm.is_dead() and start_vm:
@@ -179,7 +198,7 @@ def run(test, params, env):
     options_ref += " %s " % options_suffix
 
     # Get schedinfo with --current parameter
-    if set_ref:
+    if set_ref and options_ref.count("config") and start_vm:
         bef_current_value = get_current_value()
 
     try:
@@ -257,7 +276,4 @@ def run(test, params, env):
                               "Expected: {} Actual: {}"
                               .foramt(expect_msg, result.stderr.strip()))
     finally:
-        if set_ref and bef_current_value:
-            for j in range(0, len(set_ref.split(','))):
-                virsh.schedinfo(vm_ref, "--set %s=%s" % (set_ref.split(',')[j], bef_current_value[j]),
-                                ignore_status=True, debug=True)
+        orig_config_xml.sync()
