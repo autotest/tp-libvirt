@@ -6,6 +6,8 @@ from virttest import data_dir
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
+from multiprocessing import Process
+
 
 def run(test, params, env):
     """
@@ -160,6 +162,20 @@ def run(test, params, env):
                               "when --current options used for "
                               "detachment")
 
+    def check_event_thread(vm_name, event_type, timeout=7):
+        """
+        Create one separate thread to check events
+
+        :param vm_name: string, VM name
+        :param event_type: event_type
+        :param timeout: timeout value
+        """
+        try:
+            cmd_result = virsh.event(
+                vm_name, event_type, timeout, debug=True, ignore_status=True)
+        except Exception as e:
+            logging.error("Error occurred: %s", e)
+
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     vm_ref = params.get("change_media_vm_ref")
@@ -294,8 +310,16 @@ def run(test, params, env):
                 source = device_source
             all_options = action_twice + options_twice + " " + source
             time.sleep(5)
+            wait_change_event = False
+            if options in ["--force", "--current", "--config"] and pre_vm_state == "paused" and action_twice in ["--update "]:
+                wait_change_event = True
+            if wait_change_event:
+                p = Process(target=check_event_thread, args=(vm_name, 'tray-change', '7',))
+                p.start()
             ret = virsh.change_media(vm_ref, target_device, all_options,
                                      ignore_status=True, debug=True)
+            if wait_change_event:
+                p.join()
             status_error = False
             if pre_vm_state == "shutoff":
                 if options_twice.count("live"):
@@ -328,8 +352,13 @@ def run(test, params, env):
                 # For paused vm, change_media for eject/update operation
                 # should be executed again for it takes effect
                 if ret.exit_status and not action_twice.count("insert"):
+                    if wait_change_event:
+                        p = Process(target=check_event_thread, args=(vm_name, 'tray-change', '7',))
+                        p.start()
                     ret = virsh.change_media(vm_ref, target_device, all_options,
                                              ignore_status=True, debug=True)
+                    if wait_change_event:
+                        p.join()
             if not status_error and ret.exit_status:
                 test.fail("Change media failed: %s" % ret.stderr.strip())
             libvirt.check_exit_status(ret, status_error)
