@@ -1260,7 +1260,7 @@ def run(test, params, env):
 
             if disk_transient:
                 # After libvirt 6.9.0, transient disk feature is brought back on file based backend
-                if libvirt_version.version_compare(6, 5, 0) and not libvirt_version.version_compare(6, 9, 0):
+                if libvirt_version.version_compare(6, 0, 0) and not libvirt_version.version_compare(6, 9, 0):
                     test.cancel("unsupported configuration: transient disks not supported")
                 disk_xml.transient = "yes"
 
