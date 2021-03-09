@@ -37,6 +37,10 @@ def run(test, params, env):
         """
         cgroup_path = \
             utils_cgroup.resolve_task_cgroup_path(vm.get_pid(), "cpu")
+        # The path of cpu.shares has changed since libvirt 7.0.
+        if (libvirt_version.version_compare(7, 0, 0) and
+           parameter == "cpu.shares" and 'libvirt' in cgroup_path):
+            cgroup_path = cgroup_path.split('libvirt')[0]
 
         if not cgroup_type == "emulator":
             # When a VM has an 'emulator' child cgroup present, we must
