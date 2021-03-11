@@ -22,6 +22,8 @@ def run(test, params, env):
     TLS encryption - NBD transport
     2) Cancel storage migration with TLS encryption
     3) Copy only the top image for storage migration with backing chain
+    4) Migrate vm with copy storage - Native TLS(--tls) - inconsistent CN and
+        server hostname
 
     :param test: test object
     :param params: Dictionary with the test parameters
