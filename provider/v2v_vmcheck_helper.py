@@ -24,7 +24,8 @@ FEATURE_SUPPORT = {
     'genid': 'virt-v2v-1.40.1-1.el7',
     'libosinfo': 'virt-v2v-1.40.2-2.el7',
     'virtio_rng': '2.6.26',
-    'cache_none': 'virt-v2v-1.42.0-4'}
+    'cache_none': 'virt-v2v-1.42.0-4',
+    'q35': 'virt-v2v-1.43.3-2'}
 
 
 def compare_version(compare_version, real_version=None, cmd=None):
@@ -67,6 +68,12 @@ class VMChecker(object):
         # Other values are 1 for q35+bios, 2 for q35+uefi, 3 for
         # q35+secure_uefi
         self.boottype = int(params.get("boottype", 0))
+        # Due to changes in v2v and rhv, the current logic is:
+        # 1) boottype value set by users takes the hignest precedence.
+        # 2) if bootype is not set, first check ovirt version, the default
+        # boottype value on rhv is 1 from rhv4.4.
+        # 3) if v2v version is newer enough to support q35 by default, then all latest
+        # guests will be converted to q35 by default.
         if self.target == 'ovirt':
             from virttest.ovirt import connect
             _, self.ovirt_server_version = connect(params)
@@ -75,6 +82,8 @@ class VMChecker(object):
                 self.ovirt_server_version.full_version)
             if self.ovirt_server_version.major >= 4 and self.ovirt_server_version.minor >= 4:
                 self.boottype = int(params.get("boottype", 1))
+        if compare_version(FEATURE_SUPPORT['q35']):
+            self.boottype = int(params.get("boottype", 1))
 
         self.os_type = params.get('os_type')
         self.os_version = params.get('os_version', 'OS_VERSION_V2V_EXAMPLE')
