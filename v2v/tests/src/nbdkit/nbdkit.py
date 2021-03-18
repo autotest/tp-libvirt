@@ -106,6 +106,22 @@ nbdkit -rfv -U - --exportname / \
             if not re.search(r'virtual size', output):
                 test.fail('failed to test has_run_againt_vddk7_0')
 
+    def test_memory_max_disk_size():
+        """
+        check case for bz1913740
+        """
+
+        cmd = 'nbdkit memory $((2**63 - 512)) --run \'qemu-img info "$uri"\''
+        cmd_result = process.run(cmd, shell=True, ignore_status=True)
+        if cmd_result.exit_status != 0:
+            test.fail('failed to test memory_max_disk_size')
+
+        cmd = 'nbdkit memory $((2**63 - 512 + 1)) --run \'qemu-img info "$uri"\''
+        expected_msg = 'File too large'
+        cmd_result = process.run(cmd, shell=True, ignore_status=True)
+        if cmd_result.exit_status == 0 or expected_msg in cmd_result.stdout_text:
+            test.fail('failed to test memory_max_disk_size')
+
     if version_requried and not multiple_versions_compare(
             version_requried):
         test.cancel("Testing requries version: %s" % version_requried)
@@ -114,5 +130,7 @@ nbdkit -rfv -U - --exportname / \
         test_filter_stats_fd_leak()
     elif checkpoint == 'has_run_againt_vddk7_0':
         test_has_run_againt_vddk7_0()
+    elif checkpoint == 'memory_max_disk_size':
+        test_memory_max_disk_size()
     else:
         test.error('Not found testcase: %s' % checkpoint)
