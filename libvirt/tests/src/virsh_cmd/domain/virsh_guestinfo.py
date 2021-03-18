@@ -154,6 +154,9 @@ def run(test, params, env):
         test.cancel("Guestinfo command is not supported before version libvirt-6.0.0 ")
     import dateutil.parser
 
+    added_user_session = None
+    root_session = None
+
     try:
         vm = env.get_vm(vm_name)
         if start_ga and prepare_channel:
@@ -201,7 +204,9 @@ def run(test, params, env):
                                   "is not correct." % option[2:])
     finally:
         if "user" in option:
-            added_user_session.close()
-            root_session.cmd('userdel -f %s' % added_user_name)
-            root_session.close()
+            if added_user_session:
+                added_user_session.close()
+            if root_session:
+                root_session.cmd('userdel -f %s' % added_user_name)
+                root_session.close()
         vm.destroy()
