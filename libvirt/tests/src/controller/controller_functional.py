@@ -732,7 +732,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     no_pci_controller = params.get("no_pci_controller", "no")
     pci_bus_number = params.get("pci_bus_number", "0")
-    remove_address = params.get("remove_address", "yes")
+    remove_address = "yes" == params.get("remove_address", "yes")
     remove_contr = "yes" == params.get("remove_contr", "yes")
     setup_controller = params.get("setup_controller", "yes")
     index_second = params.get("controller_index_second", None)
@@ -750,7 +750,7 @@ def run(test, params, env):
     new_pcie_root_port_model = params.get("new_model")
     old_pcie_root_port_model = params.get("old_model")
     add_contrl_list = params.get("add_contrl_list")
-    update_cntl_bus = params.get("update_cntl_bus", 'no') == 'yes'
+    auto_bus = "yes" == params.get("auto_bus", "no")
     check_cntrls_list = params.get("check_cntrls_list")
     sound_dict = params.get("sound_dict")
     balloon_dict = params.get("balloon_dict")
@@ -766,6 +766,7 @@ def run(test, params, env):
     virsh_dargs = {'ignore_status': False, 'debug': True}
     auto_indexes_dict = {}
     auto_index = params.get('auto_index', 'no') == 'yes'
+    auto_slot = params.get('auto_slot', 'no') == 'yes'
 
     if index and index_second:
         if int(index) > int(index_second):
@@ -778,28 +779,43 @@ def run(test, params, env):
     try:
         if remove_contr:
             vm_xml.remove_all_device_by_type('controller')
-        if remove_address == "yes":
+        if remove_address:
             remove_devices(vm_xml, 'address')
         remove_devices(vm_xml, 'usb')
         if remove_nic:
             remove_devices(vm_xml, 'interface')
         # Get the max controller index in current vm xml
-        if update_cntl_bus and add_contrl_list:
+        if add_contrl_list:
             ret_indexes = libvirt_pcicontr.get_max_contr_indexes(vm_xml, 'pci', 'pcie-root-port')
             if ret_indexes and len(ret_indexes) > 0:
-                new_index = "0x%02x" % (int(ret_indexes[0]) + 1)
-                add_contrl_list = add_contrl_list % (new_index, new_index)
+                if auto_bus:
+                    new_index = "0x%02x" % (int(ret_indexes[0]) + 1)
+                    add_contrl_list = re.sub(r"'bus': '%s'", "'bus': '%s'" % new_index, add_contrl_list, count=5)
+                    logging.debug("bus is set automatically with %s", new_index)
+                if auto_slot:
+                    available_slot = libvirt_pcicontr.get_free_pci_slot(vm_xml)
+                    if not available_slot:
+                        test.error("No pci slot is available any more. Please check your vm xml.")
+                    add_contrl_list = re.sub(r"'slot': '%s'", "'slot': '%s'" % available_slot, add_contrl_list, count=5)
+                    logging.debug("slot is set automatically with %s", available_slot)
+                if auto_index:
+                    new_index = int(ret_indexes[0]) + 1
+                    add_contrl_list = re.sub(r"'index': '%s'", "'index': '%s'" % new_index, add_contrl_list, count=5)
+                    logging.debug("index is set automatically with %s", new_index)
+        logging.debug("Now add_contrl_list=%s", add_contrl_list)
 
         if setup_controller == "yes":
             if add_contrl_list:
                 contrls = eval(add_contrl_list)
                 for one_contrl in contrls:
                     contr_dict = {}
+                    cntl_target = ''
                     if 'model' in one_contrl:
                         contr_dict.update({'controller_model': one_contrl['model']})
                     if 'busNr' in one_contrl:
                         cntl_target = "{'busNr': %s}" % one_contrl['busNr']
-                        contr_dict.update({'controller_target': cntl_target})
+                    if 'chassisNr' in one_contrl:
+                        cntl_target += "{'chassisNr': '%s'}" % one_contrl['chassisNr']
                     if 'alias' in one_contrl:
                         contr_dict.update({'contr_alias': one_contrl['alias']})
                     if 'type' in one_contrl:
@@ -810,6 +826,7 @@ def run(test, params, env):
                         contr_dict.update({'controller_node': one_contrl['node']})
                     if 'index' in one_contrl:
                         contr_dict.update({'controller_index': one_contrl['index']})
+                    contr_dict.update({'controller_target': cntl_target})
                     addr = None
                     if 'bus' in one_contrl:
                         addr = '{"bus": %s' % one_contrl['bus']
