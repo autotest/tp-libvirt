@@ -12,6 +12,30 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
 
+def check_iface_link(session, mac, stat):
+    """
+    Check link state of interface inside a vm
+
+    :param session: vm's session
+    :param mac: mac address of iface
+    :param stat: link state, could be 'up' or 'down'
+    :return: True if check passed, False if failed
+    """
+    stat_map = {'up': 'yes',
+                'down': 'no'}
+    expect_str = 'Link detected: %s' % stat_map[stat]
+    iface_in_vm = utils_net.get_linux_iface_info(mac, session)
+    iface_name = iface_in_vm.get('ifname')
+    ethtool_cmd = 'ethtool %s' % iface_name
+    ethtool_output = session.cmd_output(ethtool_cmd)
+    if expect_str in ethtool_output:
+        logging.info('link state check PASSED.')
+        return True
+    else:
+        logging.error('link state check FAILED.')
+        return False
+
+
 def run(test, params, env):
     """
     Test interface devices update
@@ -185,6 +209,8 @@ def run(test, params, env):
                     session = vm.wait_for_serial_login()
                     logging.info("ip link output:%s", session.cmd_output("ip link"))
                     if_name = utils_net.get_net_if(runner=session.cmd_output, state=state_map)[0]
+                    if not check_iface_link(session, mac_addr, new_iface_link):
+                        test.fail('iface link check inside vm failed.')
                     session.close()
                     if if_name:
                         logging.info("Find iface state %s for %s", iface_link_value, mac_addr)
