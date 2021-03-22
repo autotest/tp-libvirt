@@ -15,6 +15,7 @@ from virttest.utils_test import libvirt
 
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml import secret_xml
+from virttest.libvirt_xml.devices.controller import Controller
 
 from virttest.libvirt_xml.devices.disk import Disk
 
@@ -82,6 +83,22 @@ def run(test, params, env):
             shutil.chown(path_to_sock, "qemu", "qemu")
         else:
             service_mgr.stop('qemu-pr-helper')
+
+    def ppc_controller_update():
+        """
+        Update controller of ppc vm to 'virtio-scsi' to support 'scsi' type
+
+        :return:
+        """
+        if params.get('machine_type') == 'pseries' and device_bus == 'scsi':
+            if not vmxml.get_controllers(device_bus, 'virtio-scsi'):
+                vmxml.del_controller(device_bus)
+                ppc_controller = Controller('controller')
+                ppc_controller.type = device_bus
+                ppc_controller.index = '0'
+                ppc_controller.model = 'virtio-scsi'
+                vmxml.add_device(ppc_controller)
+                vmxml.sync()
 
     # Check if SCSI3 Persistent Reservations supported by
     # current libvirt versions.
@@ -206,6 +223,9 @@ def run(test, params, env):
                                  "reservations_source_mode": reservations_source_mode}
         disk_source.reservations = disk_xml.new_reservations(**reservations_dict)
         disk_xml.source = disk_source
+
+        # Update controller of ppc vms
+        ppc_controller_update()
 
         if not hotplug_disk:
             vmxml.add_device(disk_xml)
