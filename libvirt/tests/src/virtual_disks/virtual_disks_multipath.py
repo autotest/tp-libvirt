@@ -91,9 +91,13 @@ def run(test, params, env):
                    " teststring > test/testfile && umount test"
                    .format(added_part))
             status, output = session.cmd_status_output(cmd)
-            session.close()
             if status:
-                test.fail("Disk operation in VM failed:%s" % output)
+                test.fail("Disk write operation in VM failed:%s" % output)
+            cmd = ("mount /dev/{0} test && cat test/testfile".format(added_part))
+            status, output = session.cmd_status_output(cmd)
+            if status or "teststring" not in output:
+                test.fail("Disk read operation in VM failed:%s" % output)
+            session.close()
         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as err:
             test.fail("Error happens when check disk in vm: %s" % err)
 
