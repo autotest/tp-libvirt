@@ -10,6 +10,7 @@ from avocado.utils import service
 from virttest import virt_vm
 from virttest import virsh
 from virttest import utils_disk
+from virttest import utils_package
 
 from virttest.utils_test import libvirt
 
@@ -199,6 +200,9 @@ def run(test, params, env):
         if reservations_managed:
             reservations_dict = {"reservations_managed": "yes"}
         else:
+            # Install qemu-kvm-docs which provides qemu-pr-helper in host
+            if not utils_package.package_install("qemu-kvm-docs"):
+                test.fail("Failed to install qemu-kvm-docs in host")
             start_or_stop_qemu_pr_helper(path_to_sock=reservations_source_path)
             reservations_dict = {"reservations_managed": "no",
                                  "reservations_source_type": reservations_source_type,
@@ -223,6 +227,11 @@ def run(test, params, env):
             if len(new_parts) != 1:
                 logging.error("Expected 1 dev added but has %s" % len(new_parts))
             new_part = new_parts[0]
+            # Install sg3_utils in guest
+            session = vm.wait_for_login()
+            if not utils_package.package_install("sg3_utils", session):
+                test.fail("Failed to install sg3_utils in guest")
+            session.close
             check_pr_cmds(vm, new_part)
             result = virsh.detach_device(vm_name, disk_xml.xml,
                                          ignore_status=True, debug=True, wait_remove_event=True)
