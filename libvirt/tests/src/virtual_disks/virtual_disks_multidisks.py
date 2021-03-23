@@ -1333,6 +1333,14 @@ def run(test, params, env):
                     osxml.bios_useserial = "yes"
                     if utils_misc.compare_qemu_version(4, 0, 0, False):
                         osxml.bios_reboot_timeout = "-1"
+
+                if vmxml.xmltreefile.find('features'):
+                    vmxml_feature = vmxml.features
+                    if vmxml_feature.has_feature('acpi') and 'aarch64' in arch:
+                        osxml.loader = vmxml.os.loader
+                        osxml.loader_readonly = vmxml.os.loader_readonly
+                        osxml.loader_type = vmxml.os.loader_type
+
                 del vmxml.os
                 vmxml.os = osxml
             driver_dict = {"name": disk.driver["name"],
