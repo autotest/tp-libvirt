@@ -31,6 +31,7 @@ def run(test, params, env):
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
     version_requried = params.get("version_requried")
+    unprivileged_user = params_get(params, 'unprivileged_user')
     vpx_hostname = params.get('vpx_hostname')
     vpx_passwd = params.get("vpx_password")
     esxi_host = esx_ip = params.get('esx_hostname')
@@ -848,5 +849,7 @@ def run(test, params, env):
             logging.info('Unset http_proxy&https_proxy')
             os.environ.pop('http_proxy')
             os.environ.pop('https_proxy')
+        if unprivileged_user:
+            process.system("userdel -fr %s" % unprivileged_user)
         # Cleanup constant files
         utils_v2v.cleanup_constant_files(params)
