@@ -173,8 +173,8 @@ def run(test, params, env):
         bk_netxml = NetworkXML.new_from_net_dumpxml(DEFAULT_NET)
         if add_pkg:
             add_pkg = add_pkg.split()
+            new_pkg = add_pkg.copy()
             if 'openvswitch' in add_pkg and shutil.which('ovs-vsctl'):
-                new_pkg = add_pkg.copy()
                 new_pkg.remove('openvswitch')
             utils_package.package_install(new_pkg)
         if 'openvswitch' in add_pkg:
