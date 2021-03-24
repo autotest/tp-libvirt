@@ -10,6 +10,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import utils_net
 from virttest import utils_misc
+from virttest import utils_package
 from virttest import utils_test
 from virttest import utils_libvirtd
 from virttest.libvirt_xml.nodedev_xml import NodedevXML
@@ -692,6 +693,9 @@ def run(test, params, env):
         pci_id = pci_address.split("/")[-1]
         pf_name = os.listdir('%s/net' % pci_address)[0]
         bus_slot = ':'.join(pci_address.split(':')[1:])
+        if not utils_package.package_install('pciutils'):
+            test.error('Failed to install "pciutils" which provides '
+                       'command "lspci"')
         pci_info = process.run("lspci -s %s -vv" % bus_slot).stdout_text
         logging.debug("The pci info of the sriov card is:\n %s", pci_info)
         max_vfs = int(re.findall(r"Total VFs: (.+?),", pci_info)[0]) - 1
