@@ -34,6 +34,7 @@ from virttest.libvirt_xml.devices.address import Address
 from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml import pool_xml
 from virttest.staging import lv_utils
+from virttest.libvirt_xml.devices.interface import Interface
 
 from virttest import libvirt_version
 
@@ -865,6 +866,17 @@ def run(test, params, env):
         cmd = ("grep -nr '%s' %s" % (matchedMsg, libvirtd_log_file))
         return process.run(cmd, ignore_status=True, shell=True).exit_status == 0
 
+    def prepare_iface_xml(iface_bus, iface_slot):
+        """
+        Create interface xml file
+        """
+        iface_xml = Interface(type_name='bridge')
+        iface_xml.source = {'bridge': 'virbr0'}
+        iface_xml.model = "virtio"
+        addr_dict = {'bus': iface_bus, 'slot': iface_slot, 'domain': '0x0000', 'function': '0x0'}
+        iface_xml.address = iface_xml.new_iface_address(type_name='pci', **{"attrs": addr_dict})
+        return iface_xml
+
     status_error = "yes" == params.get("status_error", "no")
     define_error = "yes" == params.get("define_error", "no")
     validate_error = "yes" == params.get("validate_error", "no")
@@ -971,6 +983,7 @@ def run(test, params, env):
     test_attach_device_iteration = "yes" == params.get("test_attach_device_iteration", "no")
     attach_device_as_scsi_lun = "yes" == params.get("attach_device_as_scsi_lun", "no")
     attach_ccw_address_at_dt_disk = "yes" == params.get("disk_attach_ccw_address_at_dt_disk", "no")
+    new_iface_addr = "yes" == params.get("new_iface_addr", "no")
 
     # Chap auth parameters.
     chap_user = params.get("iscsi_user", "")
@@ -1515,6 +1528,14 @@ def run(test, params, env):
             del vmxml.cputune
             del vmxml.iothreadids
             vmxml.iothreads = int(dom_iothreads)
+
+        if new_iface_addr:
+            # Delete default iface and add new one
+            # The old slot may have conflict with pci-bridge
+            iface_xml = vmxml.get_devices('interface')[0]
+            vmxml.del_device(iface_xml)
+            new_iface_xml = prepare_iface_xml(iface_bus='0x01', iface_slot='0x02')
+            vmxml.add_device(new_iface_xml)
         vmxml.sync()
         # Test snapshot before vm start.
         if test_disk_snapshot:
