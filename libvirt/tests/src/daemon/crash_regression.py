@@ -54,9 +54,15 @@ def run_restart_save_restore(params, libvirtd, vm):
     Save and restore a domain after restart daemon.
     """
     libvirtd.restart()
+    ori_libvirtd_pid1 = process.run("pidof libvirtd").stdout_text
     save_path = os.path.join(data_dir.get_tmp_dir(), 'tmp.save')
     virsh.save(vm.name, save_path)
     virsh.restore(save_path)
+    if libvirtd.was_running:
+        aft_libvirtd_pid1 = process.run("pidof libvirtd").stdout_text
+        if ori_libvirtd_pid1 != aft_libvirtd_pid1:
+            logging.debug("libvirtd crash after vm save and restore!")
+            return 1
 
 
 def post_restart_save_restore(params, libvirtd, vm):
@@ -236,6 +242,7 @@ def run(test, params, env):
     """
     Run various regression tests and check whether libvirt daemon crashes.
     """
+    global re
     func_name = 'run_' + params.get("func_name", "default")
     post_func_name = 'post_' + params.get("func_name", "default")
     repeat = int(params.get("repeat", "1"))
@@ -255,10 +262,13 @@ def run(test, params, env):
                 shell=True, ignore_status=True)
     try:
         libvirtd.start()
+        ori_pid_libvirtd = process.run("pidof libvirtd").stdout_text
 
         run_func = globals()[func_name]
         for i in xrange(repeat):
-            run_func(params, libvirtd, vm)
+            re = run_func(params, libvirtd, vm)
+            if re:
+                test.fail("libvirtd crashed when execute the function %s" % func_name)
 
         stopped = libvirtd.wait_for_stop(timeout=5)
         if stopped:
@@ -270,7 +280,13 @@ def run(test, params, env):
                 logging.error("You might met a regression bug. Please reference %s" % bug_url)
 
             test.fail("Libvirtd stops with %s" % libvirtd.bundle['stop-info'])
+        else:
+            logging.debug("libvirtd do not stop but we need to check if it restarted after crash")
+            aft_pid_libvirtd = process.run("pidof libvirtd").stdout_text
 
+            if func_name not in ["run_restart_firewalld", "run_restart_save_restore"]:
+                if ori_pid_libvirtd != aft_pid_libvirtd:
+                    test.fail("Libvirtd crash, you might met a regression bug %s" % bug_url)
         if post_func_name in globals():
             post_func = globals()[post_func_name]
             post_func(params, libvirtd, vm)
