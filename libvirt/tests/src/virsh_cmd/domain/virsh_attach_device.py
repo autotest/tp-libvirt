@@ -964,6 +964,31 @@ def run(test, params, env):
             if previous_state_running:
                 test_params.main_vm.start()
 
+    # Fix No more pci slots issue on aarch64 for some tests
+    if platform.machine() == 'aarch64' and params.get("add_more_pci_controllers", "no") == "yes":
+        if not status_error \
+            and vadu_domain_positional and vadu_file_positional \
+                and 'name' in vadu_dom_ref:
+            previous_state_running = test_params.main_vm.is_alive()
+            if previous_state_running:
+                test_params.main_vm.destroy(gracefully=True)
+            # Remove all controllers include default usb controller
+            vmxml.remove_all_device_by_type('controller')
+            pcie_dict0 = {'controller_model': 'pcie-root', 'controller_type': 'pci', 'controller_index': 0}
+            pcie_dict1 = {'controller_model': 'pcie-root-port', 'controller_type': 'pci'}
+            # Guest xml has usb device but default usb controller was removed before
+            # Add usb controller to fix define error
+            usb_dict = {'controller_model': 'qemu-xhci', 'controller_type': 'usb', 'controller_index': 0}
+            vmxml.add_device(libvirt.create_controller_xml(usb_dict))
+            vmxml.add_device(libvirt.create_controller_xml(pcie_dict0))
+            for i in list(range(1, 24)):
+                pcie_dict1.update({'controller_index': "%d" % i})
+                vmxml.add_device(libvirt.create_controller_xml(pcie_dict1))
+            vmxml.sync()
+            logging.debug("Guest XMl with adding many controllers: %s", test_params.main_vm.get_xml())
+            if previous_state_running:
+                test_params.main_vm.start()
+
     remove_non_disks(vm_name, vmxml)
     update_controllers_ppc(vm_name, vmxml)
 
