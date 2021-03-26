@@ -1,6 +1,7 @@
 import os
 import time
 import logging
+import platform
 
 import aexpect
 
@@ -255,6 +256,22 @@ def run(test, params, env):
                 q35_pcie_dict1.update({'controller_index': "%d" % i})
                 vm_dump_xml.add_device(libvirt.create_controller_xml(q35_pcie_dict1))
             vm_dump_xml.sync()
+
+    # Add more pci controllers to avoid error: No more available PCI slots on aarch64
+    if platform.machine() == 'aarch64' and params.get("add_more_pci_controllers", "no") == "yes" and 'attach-disk' in test_cmd:
+        # Remove all controllers include default usb controller
+        vm_dump_xml.remove_all_device_by_type('controller')
+        pcie_dict0 = {'controller_model': 'pcie-root', 'controller_type': 'pci', 'controller_index': 0}
+        pcie_dict1 = {'controller_model': 'pcie-root-port', 'controller_type': 'pci'}
+        # Guest xml has usb device but default usb controller was removed before
+        # Add usb controller to fix define error
+        usb_dict = {'controller_model': 'qemu-xhci', 'controller_type': 'usb', 'controller_index': 0}
+        vm_dump_xml.add_device(libvirt.create_controller_xml(usb_dict))
+        vm_dump_xml.add_device(libvirt.create_controller_xml(pcie_dict0))
+        for i in list(range(1, 15)):
+            pcie_dict1.update({'controller_index': "%d" % i})
+            vm_dump_xml.add_device(libvirt.create_controller_xml(pcie_dict1))
+        vm_dump_xml.sync()
 
     # if we are testing audit, we need to start audit servcie first.
     if test_audit:
