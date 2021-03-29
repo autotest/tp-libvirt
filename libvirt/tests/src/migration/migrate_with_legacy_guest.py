@@ -104,6 +104,8 @@ def run(test, params, env):
     src_uri = params.get("virsh_migrate_connect_uri")
     dest_uri = params.get("virsh_migrate_desturi")
 
+    extra_args = migration_test.update_virsh_migrate_extra_args(params)
+
     vm_name = params.get("migrate_main_vm")
     vm = env.get_vm(vm_name)
     vm.verify_alive()
@@ -165,10 +167,8 @@ def run(test, params, env):
         migration_test.do_migration(vms, None, dest_uri, 'orderly',
                                     options, thread_timeout=900,
                                     ignore_status=True, virsh_opt=virsh_options,
-                                    extra_opts=extra)
+                                    extra_opts=extra, **extra_args)
         mig_result = migration_test.ret
-
-        migration_test.check_result(mig_result, params)
 
         if int(mig_result.exit_status) == 0:
             migration_test.ping_vm(vm, params, dest_uri)
@@ -225,11 +225,9 @@ def run(test, params, env):
     finally:
         logging.debug("Recover test environment")
         # Clean VM on destination
-        migration_test.cleanup_dest_vm(vm, vm.connect_uri, dest_uri)
-        if vm.is_alive():
-            vm.destroy(gracefully=False)
+        migration_test.cleanup_vm(vm, dest_uri)
 
-        logging.info("Recovery VM XML configration")
+        logging.info("Recover VM XML configration")
         orig_config_xml.sync()
         logging.debug("The current VM XML:\n%s", orig_config_xml.xmltreefile)
 

@@ -154,7 +154,8 @@ def run(test, params, env):
     options = params.get("virsh_migrate_options", "--live --p2p --verbose")
     restart_dhclient = params.get("restart_dhclient", "dhclient -r; dhclient")
     ping_dest = params.get("ping_dest", "www.baidu.com")
-    func_params_exists = "yes" == params.get("func_params_exists", "no")
+    extra_args = migration_test.update_virsh_migrate_extra_args(params)
+
     migrate_vm_back = "yes" == params.get("migrate_vm_back", "no")
 
     target_vm_name = params.get("target_vm_name")
@@ -172,7 +173,6 @@ def run(test, params, env):
                  'server_pwd': server_pwd}
 
     virsh_session_remote = None
-    func_name = None
     libvirtd_conf = None
     mig_result = None
     target_org_xml = None
@@ -193,13 +193,11 @@ def run(test, params, env):
     vm.verify_alive()
     bk_uri = vm.connect_uri
 
-    extra_args = {}
-    if func_params_exists:
-        extra_args.update({'func_params': params})
     postcopy_options = params.get("postcopy_options")
+    action_during_mig = None
     if postcopy_options:
         extra = "%s %s" % (extra, postcopy_options)
-        func_name = virsh.migrate_postcopy
+        action_during_mig = virsh.migrate_postcopy
 
     # For safety reasons, we'd better back up  xmlfile.
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -312,11 +310,11 @@ def run(test, params, env):
         migration_test.do_migration(vms, None, dest_uri, 'orderly',
                                     options, thread_timeout=900,
                                     ignore_status=True, virsh_opt=virsh_options,
-                                    func=func_name, extra_opts=extra,
+                                    func=action_during_mig,
+                                    extra_opts=extra,
                                     **extra_args)
 
         mig_result = migration_test.ret
-        migration_test.check_result(mig_result, params)
 
         # Check network accessibility after migration
         if int(mig_result.exit_status) == 0:
@@ -374,13 +372,7 @@ def run(test, params, env):
     finally:
         logging.debug("Recover test environment")
         vm.connect_uri = bk_uri
-        # Clean VM on destination and source
-        try:
-            migration_test.cleanup_dest_vm(vm, vm.connect_uri, dest_uri)
-        except Exception as err:
-            logging.error(err)
-        if vm.is_alive():
-            vm.destroy(gracefully=False)
+        migration_test.cleanup_vm(vm, dest_uri)
 
         logging.info("Recovery VM XML configration")
         orig_config_xml.sync()

@@ -258,8 +258,7 @@ def run(test, params, env):
     vm_session = None
     vm = None
     mig_result = None
-    func_name = None
-    extra_args = {}
+    action_during_mig = None
     default_src_vf = 0
     default_dest_vf = 0
     default_src_rp_filter = 1
@@ -283,6 +282,8 @@ def run(test, params, env):
     vm_name = params.get("migrate_main_vm")
     vm = env.get_vm(vm_name)
     vm.verify_alive()
+
+    extra_args = migration_test.update_virsh_migrate_extra_args(params)
 
     # For safety reasons, we'd better back up  xmlfile.
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -387,10 +388,9 @@ def run(test, params, env):
                     test.fail("Failed to run %s in vm." % cmd_during_mig)
 
         if extra.count("--postcopy"):
-            func_name = virsh.migrate_postcopy
-            extra_args.update({'func_params': params})
+            action_during_mig = virsh.migrate_postcopy
         if cancel_migration:
-            func_name = migration_test.do_cancel
+            action_during_mig = migration_test.do_cancel
 
         remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
         src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
@@ -402,11 +402,9 @@ def run(test, params, env):
         migration_test.do_migration(vms, None, dest_uri, 'orderly',
                                     options, thread_timeout=900,
                                     ignore_status=True, virsh_opt=virsh_options,
-                                    func=func_name, extra_opts=extra,
+                                    func=action_during_mig, extra_opts=extra,
                                     **extra_args)
         mig_result = migration_test.ret
-
-        migration_test.check_result(mig_result, params)
 
         if int(mig_result.exit_status) == 0:
             server_session = remote.wait_for_login('ssh', server_ip, '22',
@@ -486,12 +484,9 @@ def run(test, params, env):
     finally:
         logging.debug("Recover test environment")
         # Clean VM on destination
-        migration_test.cleanup_dest_vm(vm, vm.connect_uri, dest_uri)
+        migration_test.cleanup_vm(vm, dest_uri)
 
-        if vm.is_alive():
-            vm.destroy(gracefully=False)
-
-        logging.info("Recovery VM XML configration")
+        logging.info("Recover VM XML configration")
         orig_config_xml.sync()
         logging.debug("The current VM XML:\n%s", orig_config_xml.xmltreefile)
 
