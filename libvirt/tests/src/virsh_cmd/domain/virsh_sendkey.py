@@ -191,13 +191,13 @@ def run(test, params, env):
             timeout = 60
             while timeout >= 0:
                 if "KEY_H" in keystrokes:
-                    cmd = "cat %s | grep 'SysRq.*HELP'" % LOG_FILE
+                    cmd = "cat %s | grep -i 'SysRq.*HELP'" % LOG_FILE
                     get_status = session.cmd_status(cmd)
                 elif "KEY_M" in keystrokes:
-                    cmd = "cat %s | grep 'SysRq.*Show Memory'" % LOG_FILE
+                    cmd = "cat %s | grep -i 'SysRq.*Show Memory'" % LOG_FILE
                     get_status = session.cmd_status(cmd)
                 elif "KEY_T" in keystrokes:
-                    cmd = "cat %s | grep 'SysRq.*Show State'" % LOG_FILE
+                    cmd = "cat %s | grep -i 'SysRq.*Show State'" % LOG_FILE
                     get_status = session.cmd_status(cmd)
                     # Sometimes SysRq.*Show State string missed in LOG_FILE
                     # as a fall back check for runnable tasks logged
