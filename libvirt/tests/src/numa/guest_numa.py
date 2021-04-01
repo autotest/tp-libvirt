@@ -344,7 +344,7 @@ def run(test, params, env):
 
         # guest numa cpu setting
         vmcpuxml = libvirt_xml.vm_xml.VMCPUXML()
-        vmcpuxml.xml = "<cpu><numa/></cpu>"
+        vmcpuxml.xml = "<cpu mode='host-model'><numa/></cpu>"
         if topology:
             vmcpuxml.topology = topology
         logging.debug(vmcpuxml.numa_cell)
