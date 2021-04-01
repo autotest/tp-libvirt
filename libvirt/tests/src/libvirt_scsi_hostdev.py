@@ -14,6 +14,7 @@ from virttest import utils_disk
 from virttest import utils_misc
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
+from virttest import libvirt_version
 
 from virttest.libvirt_xml.devices import hostdev
 from virttest.libvirt_xml.devices.controller import Controller
@@ -58,6 +59,7 @@ def run(test, params, env):
             source_args['secret_type'] = kwargs.get("secret_type")
             source_args['secret_uuid'] = kwargs.get("secret_uuid")
             source_args['secret_usage'] = kwargs.get("secret_usage")
+            source_args['iqn_id'] = kwargs.get("iqn_id")
         elif source_protocol:
             test.cancel("We do not support source protocol = %s yet" %
                         source_protocol)
@@ -283,7 +285,9 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     virsh_dargs = {'debug': True, 'ignore_status': True}
-
+    enable_initiator_set = "yes" == params.get("enable_initiator_set", "no")
+    if enable_initiator_set and not libvirt_version.version_compare(6, 7, 0):
+        test.cancel("current version doesn't support iscsi initiator hostdev feature")
     try:
         # Backup vms' xml
         vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -340,6 +344,8 @@ def run(test, params, env):
                 params['secret_type'] = "iscsi"
                 params['secret_uuid'] = auth_sec_uuid
 
+            if enable_initiator_set:
+                params['iqn_id'] = iscsi_target
             hostdev_xml = prepare_hostdev_xml(**params)
             hostdev_xmls.append(hostdev_xml)
 
