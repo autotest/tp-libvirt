@@ -51,7 +51,7 @@ def run(test, params, env):
             return result.stdout_text.rstrip(':')
         else:
             test.error("Can not get usb hub info for testing")
-
+q
     # backup xml
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
@@ -72,7 +72,7 @@ def run(test, params, env):
             device_xml = libvirt.create_hostdev_xml(pci_id=pci_id,
                                                     dev_type=hostdev_type,
                                                     managed=hostdev_managed,
-                                                    alias=device_alias)
+                                                    alias=device_alias).xml
         else:
             test.error("Hostdev type %s not handled by test."
                        " Please check code." % hostdev_type)
