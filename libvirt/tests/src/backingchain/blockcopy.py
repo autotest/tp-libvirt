@@ -13,6 +13,7 @@ def run(test, params, env):
     Test vm backingchain, blockcopy
     """
     vm_name = params.get('main_vm')
+    vm = env.get_vm(vm_name)
     case = params.get('case', '')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -24,7 +25,7 @@ def run(test, params, env):
         if case:
             if case == 'reuse_external':
                 # Create a transient vm for test
-                virsh.undefine(vm_name, debug=True, ignore_status=False)
+                vm.undefine()
                 virsh.create(vmxml.xml)
 
                 all_disks = vmxml.get_disk_source(vm_name)
