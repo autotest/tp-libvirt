@@ -1233,6 +1233,8 @@ def run(test, params, env):
     mb_enable = "yes" == test_dict.get("mb_enable", "no")
     config_remote_hugepages = "yes" == test_dict.get("config_remote_hugepages",
                                                      "no")
+    enable_kvm_hugepages = "yes" == test_dict.get("enable_kvm_hugepages", "no")
+    enable_remote_kvm_hugepages = "yes" == test_dict.get("enable_remote_kvm_hugepages", "no")
     remote_tgt_hugepages = get_target_hugepage_num(test_dict)
     remote_hugetlbfs_path = test_dict.get("remote_hugetlbfs_path")
     delay = int(params.get("delay_time", 10))
@@ -1382,6 +1384,13 @@ def run(test, params, env):
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+
+    # Enable hugepages if necessary.
+    if enable_kvm_hugepages:
+        cmds = ["modprobe -r kvm",
+                "modprobe kvm hpage=1"]
+        for cmd in cmds:
+            process.run(cmd)
 
     # Get current VM's memory
     current_mem = vmxml_backup.current_mem
@@ -1812,6 +1821,9 @@ def run(test, params, env):
             cmds = ["mkdir -p %s" % remote_hugetlbfs_path,
                     "mount -t hugetlbfs none %s" % remote_hugetlbfs_path,
                     "sysctl vm.nr_hugepages=%s" % remote_tgt_hugepages]
+            if enable_remote_kvm_hugepages:
+                cmds.append("modprobe -r kvm")
+                cmds.append("modprobe kvm hpage=1")
             for cmd in cmds:
                 status, output = run_remote_cmd(cmd, server_ip, server_user,
                                                 server_pwd)
@@ -2973,3 +2985,14 @@ def run(test, params, env):
             port = disk_port if disk_port else uri_port[1:]
             migrate_setup.migrate_pre_setup("//%s/" % server_ip, test_dict,
                                             cleanup=True, ports=port)
+
+        cmds = ["modprobe -r kvm",
+                "modprobe kvm"]
+        if enable_kvm_hugepages:
+            for cmd in cmds:
+                process.run(cmd)
+        if enable_remote_kvm_hugepages:
+            status, output = run_remote_cmd(cmd, server_ip, server_user,
+                                            server_pwd)
+            if status:
+                logging.debug("Failed to reload kvm module. %s", output)
