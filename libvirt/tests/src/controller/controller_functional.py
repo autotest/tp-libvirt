@@ -855,8 +855,15 @@ def run(test, params, env):
             address_params = {'bus': "%0#4x" % int(pci_bus_number), 'slot': "%0#4x" % int(pci_bus_number)}
             libvirt.set_disk_attr(vm_xml, 'vda', 'address', address_params)
         if cpu_numa_cells:
-            vmxml_cpu = VMCPUXML()
-            vmxml_cpu.xml = "<cpu><numa/></cpu>"
+            if not vm_xml.cpu:
+                vmxml_cpu = VMCPUXML()
+                vmxml_cpu.xml = "<cpu mode='host-model'><numa/></cpu>"
+            else:
+                vmxml_cpu = vm_xml.cpu
+                logging.debug("Existing cpu configuration in guest xml:\n%s", vmxml_cpu)
+                vmxml_cpu.mode = 'host-model'
+                vmxml_cpu.remove_elem_by_xpath('/model')
+                vmxml_cpu.remove_elem_by_xpath('/numa')
             vmxml_cpu.numa_cell = VMCPUXML.dicts_to_cells(eval(cpu_numa_cells))
             vm_xml.cpu = vmxml_cpu
             vm_xml.vcpu = int(params.get('vcpu_count', 4))
