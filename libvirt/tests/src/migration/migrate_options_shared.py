@@ -1037,7 +1037,7 @@ def run(test, params, env):
     status_error = "yes" == params.get("status_error", "no")
     stress_in_vm = "yes" == params.get("stress_in_vm", "no")
     low_speed = params.get("low_speed", None)
-    migr_vm_back = "yes" == params.get("migr_vm_back", "no")
+    migrate_vm_back = "yes" == params.get("migrate_vm_back", "no")
     timer_migration = "yes" == params.get("timer_migration", "no")
     concurrent_migration = "yes" == params.get("concurrent_migration", "no")
 
@@ -1581,7 +1581,7 @@ def run(test, params, env):
         if params.get("actions_after_migration"):
             do_actions_after_migrate(params)
 
-        if migr_vm_back:
+        if migrate_vm_back:
             ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
                                                       server_pwd=client_pwd,
                                                       client_ip=server_ip,
@@ -1655,7 +1655,7 @@ def run(test, params, env):
                 remote_session.close()
 
             # Clean up of pre migration setup for local machine
-            if migr_vm_back:
+            if migrate_vm_back:
                 if 'ssh_connection' in locals():
                     ssh_connection.auto_recover = True
                 if 'src_full_uri' in locals():

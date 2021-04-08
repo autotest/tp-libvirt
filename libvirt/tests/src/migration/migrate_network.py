@@ -154,7 +154,7 @@ def run(test, params, env):
     restart_dhclient = params.get("restart_dhclient", "dhclient -r; dhclient")
     ping_dest = params.get("ping_dest", "www.baidu.com")
     func_params_exists = "yes" == params.get("func_params_exists", "no")
-    migr_vm_back = "yes" == params.get("migr_vm_back", "no")
+    migrate_vm_back = "yes" == params.get("migrate_vm_back", "no")
 
     target_vm_name = params.get("target_vm_name")
     direct_mode = "yes" == params.get("direct_mode", "no")
@@ -339,7 +339,7 @@ def run(test, params, env):
                           " Actual: %s, Expected: %s. "
                           % (act_macvtap, exp_macvtap))
         # Execute migration from remote
-        if migr_vm_back:
+        if migrate_vm_back:
             ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
                                                       server_pwd=client_pwd,
                                                       client_ip=server_ip,
@@ -409,7 +409,7 @@ def run(test, params, env):
         if virsh_session_remote:
             virsh_session_remote.close_session()
 
-        if migr_vm_back:
+        if migrate_vm_back:
             if 'ssh_connection' in locals():
                 ssh_connection.auto_recover = True
             migration_test.migrate_pre_setup(src_uri, params,

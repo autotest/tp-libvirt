@@ -481,8 +481,8 @@ def run(test, params, env):
     #ssh_key.setup_ssh_key(server_ip, server_user, server_pwd, port=22)
 
     # Set up remote ssh key and remote /etc/hosts file for bi-direction migration
-    migr_vm_back = "yes" == test_dict.get("migrate_vm_back", "no")
-    if migr_vm_back:
+    migrate_vm_back = "yes" == test_dict.get("migrate_vm_back", "no")
+    if migrate_vm_back:
         ssh_key.setup_remote_ssh_key(server_ip, server_user, server_pwd)
         ssh_key.setup_remote_known_hosts_file(client_ip,
                                               server_ip,
@@ -561,7 +561,7 @@ def run(test, params, env):
         # Trigger migration
         migrate_vm(test, test_dict)
 
-        if migr_vm_back:
+        if migrate_vm_back:
             ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
                                                       server_pwd=client_pwd,
                                                       client_ip=server_ip,
@@ -587,7 +587,7 @@ def run(test, params, env):
     finally:
         logging.info("Recovery test environment")
         # Clean up of pre migration setup for local machine
-        if migr_vm_back:
+        if migrate_vm_back:
             migrate_setup.migrate_pre_setup(src_uri, params,
                                             cleanup=True)
         # Ensure VM can be cleaned up on remote host even migrating fail.
