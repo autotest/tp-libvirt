@@ -54,6 +54,7 @@ def run(test, params, env):
     iface_rom = params.get("iface_rom")
     iface_filter = params.get("iface_filter")
     iface_boot = params.get('iface_boot')
+    iface_coalesce = params.get('iface_coalesce')
 
     new_iface_driver = params.get("new_iface_driver")
     new_iface_driver_host = params.get("new_iface_driver_host")
@@ -71,6 +72,7 @@ def run(test, params, env):
     new_iface_type = params.get("new_iface_type")
     create_new_net = "yes" == params.get("create_new_net")
     new_iface_alias = params.get("new_iface_alias")
+    new_iface_coalesce = params.get('new_iface_coalesce')
     cold_update = "yes" == params.get("cold_update", "no")
     del_addr = "yes" == params.get("del_address")
     del_rom = "yes" == params.get("del_rom")
@@ -79,6 +81,7 @@ def run(test, params, env):
     new_iface_filter_parameters = eval(params.get("new_iface_filter_parameters", "{}"))
     rules = eval(params.get("rules", "{}"))
     del_mac = "yes" == params.get("del_mac", "no")
+    del_coalesce = 'yes' == params.get('del_coalesce', 'no')
 
     # Backup the vm xml for recover at last
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -99,7 +102,7 @@ def run(test, params, env):
         # Collect need update items in 2 dicts for both start vm before and after
         update_list_bef = [
             "driver", 'driver_host', 'driver_guest', "model", "mtu", "rom",
-            "filter", 'boot',
+            "filter", 'boot', 'coalesce'
             ]
         for update_item_bef in update_list_bef:
             if names['iface_'+update_item_bef]:
@@ -108,17 +111,18 @@ def run(test, params, env):
         update_list_aft = [
             "driver", "driver_host", "driver_guest", "model", "rom", "inbound",
             "outbound", "link", "source", "target", "addr", "filter", "mtu", "type",
-            "alias", "filter_parameters"]
+            "alias", "filter_parameters", "coalesce"
+        ]
         for update_item_aft in update_list_aft:
             if names["new_iface_"+update_item_aft]:
                 iface_dict_aft.update({update_item_aft: names["new_iface_"+update_item_aft]})
         logging.info("iface_dict_bef is %s, iface_dict_aft is %s",
                      iface_dict_bef, iface_dict_aft)
 
-        del_list = ["del_addr", "del_rom", "del_filter", "del_mac"]
+        del_list = ["del_addr", "del_rom", "del_filter", "del_mac", "del_coalesce"]
         for del_item in del_list:
             if names[del_item]:
-                iface_dict_aft.update({del_item: "True"})
+                iface_dict_aft.update({del_item: names[del_item]})
 
         # Operations before updating vm's iface xml
         if iface_boot:
@@ -167,6 +171,7 @@ def run(test, params, env):
             new_net_xml.sync()
 
         # Do update for iface_driver
+        logging.info('Creating new iface xml.')
         new_iface_xml = libvirt.modify_vm_iface(vm_name, "get_xml", iface_dict_aft)
         bef_pid = process.getoutput("pidof -s libvirtd")
         ret = virsh.update_device(vm_name, new_iface_xml, ignore_status=True, debug=True)
@@ -258,6 +263,18 @@ def run(test, params, env):
                 else:
                     test.fail("Get alias %s is not equal to set %s"
                               % (iface_alias_value, new_iface_alias))
+            if 'update_coalesce' in params['name'] or new_iface_coalesce:
+                iface_coalesce_val = iface_aft.find('coalesce').find('rx').find('frames').get('max')
+                if iface_coalesce_val == str(eval(new_iface_coalesce)['max']):
+                    logging.info('coalesce update check PASS.')
+                else:
+                    test.fail('coalesce value not updated.')
+            if del_coalesce:
+                if iface_aft.find('coalesce') is None:
+                    logging.info('coalesce delete check PASS.')
+                else:
+                    test.fail('coalesce not deleted.')
+
     finally:
         vmxml_backup.sync()
         if create_new_net:
