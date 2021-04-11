@@ -30,6 +30,7 @@ def run(test, params, env):
             test.cancel("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
+    enable_legacy_cp = params.get("enable_legacy_crypto_policies", 'no') == 'yes'
     version_requried = params.get("version_requried")
     vpx_hostname = params.get('vpx_hostname')
     vpx_passwd = params.get("vpx_password")
@@ -601,6 +602,14 @@ def run(test, params, env):
                 version_requried):
             test.cancel("Testing requries version: %s" % version_requried)
 
+        # See man virt-v2v-input-xen(1)
+        if enable_legacy_cp:
+            process.run(
+                'update-crypto-policies --set LEGACY',
+                verbose=True,
+                ignore_status=True,
+                shell=True)
+
         v2v_params = {
             'hostname': remote_host, 'hypervisor': 'esx', 'main_vm': vm_name,
             'vpx_dc': vpx_dc, 'esx_ip': esx_ip,
@@ -821,6 +830,12 @@ def run(test, params, env):
         check_result(v2v_result, status_error)
 
     finally:
+        if enable_legacy_cp:
+            process.run(
+                'update-crypto-policies --set DEFAULT',
+                verbose=True,
+                ignore_status=True,
+                shell=True)
         if 'ogac' in checkpoint and params.get('tmp_mount_point'):
             if os.path.exists(params.get('tmp_mount_point')):
                 utils_misc.umount(
