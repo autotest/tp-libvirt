@@ -539,7 +539,10 @@ def run(test, params, env):
                 # check_windows_ogac, it waits until rebooting completes.
                 vmchecker.checker.create_session()
                 if os_type == 'windows':
-                    services = ['qemu-ga', 'rhev-apt']
+                    services = ['qemu-ga']
+                    V2V_UNSUPPORT_RHEV_APT_VER = "[virt-v2v-1.43.3-4.el9,)"
+                    if not utils_v2v.multiple_versions_compare(V2V_UNSUPPORT_RHEV_APT_VER):
+                        services.append('rhev-apt')
                     if 'rhv-guest-tools' in os.getenv('VIRTIO_WIN'):
                         services.append('spice-ga')
                     for ser in services:
