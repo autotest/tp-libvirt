@@ -4,6 +4,7 @@ import time
 
 from avocado.utils import process
 
+from virttest import libvirt_version
 from virttest import libvirt_vm
 from virttest import utils_misc
 from virttest import migration
@@ -13,6 +14,7 @@ from virttest.utils_conn import TLSConnection
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_config
+from virttest.utils_libvirt import libvirt_network
 
 
 def run(test, params, env):
@@ -24,6 +26,9 @@ def run(test, params, env):
     3) Copy only the top image for storage migration with backing chain
     4) Migrate vm with copy storage - Native TLS(--tls) - inconsistent CN and
         server hostname
+    5) Migrate vm with copy storage over TCP transport - Specified IP
+    6) Migrate vm with copy storage over TCP transport - Specified IP+Port
+    7) Migrate vm with copy storage over TCP transport - Specified disks_uri
 
     :param test: test object
     :param params: Dictionary with the test parameters
@@ -107,6 +112,7 @@ def run(test, params, env):
     log_file = params.get("log_outputs", "/var/log/libvirt/libvirtd.log")
     daemon_conf_dict = eval(params.get("daemon_conf_dict", '{}'))
     cancel_migration = "yes" == params.get("cancel_migration", "no")
+    check_disks_port = "yes" == params.get("check_disks_port", "no")
     migrate_again = "yes" == params.get("migrate_again", "no")
     precreation = "yes" == params.get("precreation", "yes")
     tls_recovery = "yes" == params.get("tls_auto_recovery", "yes")
@@ -125,6 +131,8 @@ def run(test, params, env):
     remove_dict = {}
     src_libvirt_file = None
 
+    libvirt_version.is_libvirt_feature_supported(params)
+
     # params for migration connection
     params["virsh_migrate_desturi"] = libvirt_vm.complete_uri(
                                        params.get("migrate_dest_host"))
@@ -141,6 +149,8 @@ def run(test, params, env):
         extra_args.update({'func_params': params})
     if cancel_migration:
         func_name = migration_test.do_cancel
+    elif check_disks_port:
+        func_name = libvirt_network.check_established
 
     # For safety reasons, we'd better back up  xmlfile.
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -150,7 +160,6 @@ def run(test, params, env):
         if backingfile_type:
             if backingfile_type == "nfs":
                 prepare_nfs_backingfile(vm, params)
-
         if extra.count("copy-storage-all") and precreation:
             blk_source = vm.get_first_disk_devices()['source']
             vsize = utils_misc.get_image_info(blk_source).get("vsize")
@@ -204,7 +213,7 @@ def run(test, params, env):
         migration_test.check_result(mig_result, params)
 
         if migrate_again and status_error:
-            logging.debug("Sleeping 10 seconds before rerun migration")
+            logging.debug("Sleeping 10 seconds before rerunning the migration.")
             time.sleep(10)
             if cancel_migration:
                 func_name = None
@@ -229,12 +238,10 @@ def run(test, params, env):
         # Clean VM on destination and source
         try:
             migration_test.cleanup_dest_vm(vm, vm.connect_uri, dest_uri)
-            if vm.is_alive():
-                vm.destroy(gracefully=False)
         except Exception as err:
             logging.error(err)
-
-        logging.info("Recovery VM XML configration")
+        if vm.is_alive():
+            vm.destroy(gracefully=False)
         orig_config_xml.sync()
 
         if daemon_conf:
