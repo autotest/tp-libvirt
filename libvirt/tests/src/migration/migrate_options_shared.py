@@ -1126,6 +1126,7 @@ def run(test, params, env):
     vm_name = params.get("migrate_main_vm")
     vm = env.get_vm(vm_name)
     vm.verify_alive()
+    bk_uri = vm.connect_uri
 
     # For safety reasons, we'd better back up  xmlfile.
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -1555,23 +1556,13 @@ def run(test, params, env):
             remote_virsh_session.close_session()
 
         if int(mig_result.exit_status) == 0:
-            migration_test.ping_vm(vm, params, dest_uri)
-
             if cmd_in_vm_after_migration:
-                remote_session = remote.wait_for_login('ssh', server_ip, '22',
-                                                       server_user, server_pwd,
-                                                       r"[\#\$]\s*$")
-                vm_ip = vm.get_address(session=remote_session)
-                remote_session.close()
+                vm.connect_uri = dest_uri
+                vm_session_after_mig = vm.wait_for_serial_login(timeout=240)
+                vm_session_after_mig.cmd(cmd_in_vm_after_migration)
+                vm_session_after_mig.close()
+                vm.connect_uri = bk_uri
 
-                cmd_parms.update({'vm_ip': vm_ip, 'vm_pwd': params.get("password")})
-                vm_after_mig = remote.VMManager(cmd_parms)
-                vm_after_mig.setup_ssh_auth()
-                cmd_result = vm_after_mig.run_command(cmd_in_vm_after_migration)
-                logging.debug("cmd_result is %s", cmd_result)
-                if cmd_result.exit_status:
-                    test.fail("Failed to run '{}' in vm. Result: {}"
-                              .format(cmd_in_vm_after_migration, cmd_result))
         if timer_migration:
             target_vm_host_time_diff = time_diff_between_vm_host(localvm=False)
             if abs(target_vm_host_time_diff - source_vm_host_time_diff) > 1:
@@ -1614,6 +1605,7 @@ def run(test, params, env):
 
     finally:
         logging.debug("Recover test environment")
+        vm.connect_uri = bk_uri
         try:
             # Remove firewall rule if needed
             if break_network_connection and 'firewall_rule' in locals():
