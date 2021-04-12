@@ -8,6 +8,7 @@ from virttest import migration
 from virttest import remote
 from virttest import utils_net
 from virttest import utils_conn
+from virttest import utils_package
 from virttest import virt_vm
 
 from virttest.libvirt_xml import vm_xml
@@ -294,6 +295,8 @@ def run(test, params, env):
             vm.cleanup_serial_console()
         vm.create_serial_console()
         vm_session = vm.wait_for_serial_login(timeout=240)
+        if not utils_package.package_install('dhcp-client', session=vm_session):
+            test.error("Failed to install dhcp-client on guest.")
         utils_net.restart_guest_network(vm_session)
         vm_ip = utils_net.get_guest_ip_addr(vm_session, mac)
         logging.debug("VM IP Addr: %s", vm_ip)
