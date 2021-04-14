@@ -83,6 +83,7 @@ def run(test, params, env):
     invalid_disk = params.get("invalid_disk")
     persistent_vm = "yes" == params.get("persistent_vm", "no")
     status_error = "yes" == params.get("status_error", "no")
+    blockcopy_options = params.get("blockjob_under_test_options", "")
 
     target = get_disk(vm_name, test)
     if not target:
@@ -99,7 +100,7 @@ def run(test, params, env):
     tmp_file = time.strftime("%Y-%m-%d-%H.%M.%S.img")
     dest_path = os.path.join(data_dir.get_tmp_dir(), tmp_file)
     if not no_blockjob:
-        cmd_result = virsh.blockcopy(vm_name, target, dest_path, "",
+        cmd_result = virsh.blockcopy(vm_name, target, dest_path, blockcopy_options,
                                      ignore_status=True, debug=True)
         status = cmd_result.exit_status
         if status != 0:
