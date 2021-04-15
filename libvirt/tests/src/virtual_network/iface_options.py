@@ -5,6 +5,7 @@ import time
 import logging
 import platform
 import shutil
+import aexpect
 
 import aexpect
 
@@ -534,6 +535,57 @@ def run(test, params, env):
         logging.info("The runtime dict is %s", runtime_dict)
         return runtime_dict
 
+    def check_domstats(names):
+        """
+        Check if have keywards in domstats
+
+        params names: The check name list for domstats output
+        """
+        output = virsh.domstats().stdout.strip()
+        logging.debug("domstats output is %s", output)
+        for name in names:
+            if not re.search('name=%s' % name, output):
+                test.fail("Can not find name=%s in domstats output" % name)
+        logging.info("Find all vhost-user in domstats")
+
+    def check_tardev_xml(vm_name, set_tar_devs, set_sources, find=True):
+        """
+        Check if the xml involve the xml with given dev
+
+        param vm_name: name of vm
+        param set_tar_devs: setting target dev list of interface
+        param set_sources: setting source list of interface
+        param find: check if find devs is pass
+        """
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        iface_devices = vmxml.get_devices(device_type="interface")
+        get_tar_devs = []
+        get_sources = []
+
+        # Check if setting source exists in guest xml
+        for iface_dev in iface_devices:
+            if iface_dev.type_name == 'vhostuser':
+                get_sources.append(iface_dev.source)
+                get_tar_devs.append(iface_dev.target["dev"])
+        logging.debug("set iface sources are %s, get iface sources are %s", set_sources, get_sources)
+        logging.debug("set target devs are %s, get target devs are %s", set_tar_devs, get_tar_devs)
+        for source in set_sources:
+            if source not in get_sources:
+                test.fail("Cannot find interface source %s in xml" % source)
+        logging.info("Find all interface vhostuser by source")
+
+        # Check if tartget dev exist in guest xml
+        if find:
+            # Expect to find target dev in xml
+            if not set(set_tar_devs).issubset(set(get_tar_devs)):
+                test.fail("Cannot find all target dev in xml")
+            logging.info("Find all vhost-user in xml target dev")
+            # Expect not to find target dev in xml
+        else:
+            if not set(set_tar_devs).isdisjoint(set(get_tar_devs)):
+                test.fail("Still can find the not expected target dev in xml")
+            logging.info("Cannot find not expected target in xml")
+
     status_error = "yes" == params.get("status_error", "no")
     start_error = "yes" == params.get("start_error", "no")
     define_error = "yes" == params.get("define_error", "no")
@@ -550,6 +602,10 @@ def run(test, params, env):
     iface_driver_guest = params.get("iface_driver_guest")
     ovs_br_name = params.get("ovs_br_name")
     vhostuser_names = params.get("vhostuser_names")
+    vhost_client_name = params.get("vhost_client_name")
+    vhost_client_type = params.get("vhost_client_type")
+    vhost_client_options = params.get("vhost_client_options")
+    vhost_client_path = params.get("vhost_client_path")
     attach_device = params.get("attach_iface_device")
     expect_tx_size = params.get("expect_tx_size")
     guest1_ip = params.get("vhostuser_guest1_ip", "192.168.100.1")
@@ -585,6 +641,7 @@ def run(test, params, env):
     expect_ns = params.get("expect_ns")
     test_target = "yes" == params.get("test_target", "no")
     target_dev = params.get("target_dev", None)
+    expect_target_devs = ast.literal_eval(params.get("expect_target_devs", "[]"))
 
     # test params for vhostuser test
     huge_page = ast.literal_eval(params.get("huge_page", "{}"))
@@ -596,6 +653,7 @@ def run(test, params, env):
     log_pattern_list = ast.literal_eval(params.get("log_pattern_list", "[]"))
     log_level = params.get("log_level")
     limit_nofile = params.get("limit_nofile")
+    testpmd_cmd = params.get("testpmd_cmd")
 
     # judgement params for vhostuer test
     need_vhostuser_env = "yes" == params.get("need_vhostuser_env", "no")
@@ -671,6 +729,9 @@ def run(test, params, env):
         ovs = utils_net.setup_ovs_vhostuser(hugepage_num, ovs_dir,
                                             ovs_br_name, vhostuser_names,
                                             queue_size)
+    if vhost_client_type == "dpdkvhostuserclient":
+        ovs.add_ports(ovs_br_name, vhost_client_name, vhost_client_type,
+                      vhost_client_options)
 
     try:
         # Build the xml and run test.
@@ -715,14 +776,16 @@ def run(test, params, env):
 
             # Attach a interface when vm is shutoff
             if attach_device == 'config':
-                iface_mac = utils_net.generate_mac_address_simple()
-                att_source = additional_iface_source if test_type == "check_performance" else iface_source
-                iface_xml_obj = create_iface_xml(iface_mac, att_source)
-                iface_xml_obj.xmltreefile.write()
-                ret = virsh.attach_device(vm_name, iface_xml_obj.xml,
-                                          flagstr="--config",
-                                          ignore_status=True)
-                libvirt.check_exit_status(ret)
+                iface_source_list = iface_source if isinstance(iface_source, list) else [iface_source]
+                for source in iface_source_list:
+                    iface_mac = utils_net.generate_mac_address_simple()
+                    att_source = additional_iface_source if test_type == "check_performance" else source
+                    iface_xml_obj = create_iface_xml(iface_mac, att_source)
+                    iface_xml_obj.xmltreefile.write()
+                    ret = virsh.attach_device(vm_name, iface_xml_obj.xml,
+                                              flagstr="--config",
+                                              ignore_status=True)
+                    libvirt.check_exit_status(ret)
 
             # Add hugepage and update cpu for vhostuser testing
             if huge_page:
@@ -775,6 +838,11 @@ def run(test, params, env):
                 password = params.get("password")
                 add_session = additional_vm.wait_for_serial_login(username=username,
                                                                   password=password)
+
+            if testpmd_cmd:
+                if not shutil.which('dpdk-testpmd') and not utils_package.package_install('dpdk-tools'):
+                    test.error("Cannot find cmd dpdk-testpmd and failed to install dpdk-tools package")
+                testpmd_session = aexpect.ShellSession(testpmd_cmd)
 
             # Start the VM.
             if unprivileged_user:
@@ -960,6 +1028,15 @@ def run(test, params, env):
                     else:
                         test.error("ethtool list fail: %s" % outp)
 
+            # Check dpdkvhostuserclient test
+            if vhost_client_type == "dpdkvhostuserclient":
+                check_domstats(expect_target_devs)
+                check_tardev_xml(vm_name, expect_target_devs, iface_source)
+
+            if testpmd_cmd:
+                check_tardev_xml(vm_name, expect_target_devs, iface_source, find=False)
+                testpmd_session.close()
+
             session.close()
             if additional_guest:
                 add_session.close()
@@ -1026,3 +1103,6 @@ def run(test, params, env):
             shutil.copy(backup_file, libvirtd_service_file)
             process.run("systemctl daemon-reload")
             libvirtd.restart()
+
+        if testpmd_cmd:
+            process.system("killall dpdk-testpmd", ignore_status=True, shell=True)
