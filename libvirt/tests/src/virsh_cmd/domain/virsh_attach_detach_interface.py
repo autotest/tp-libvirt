@@ -192,6 +192,32 @@ def add_pcie_controller(vm_name):
         libvirt.add_controller(vm_name, cntl_add)
 
 
+def check_coalesce(vm_name, mac, coalesce):
+    """
+    Check coalesce info of given interface
+
+    :param vm_name: name of vm the interface is attached to
+    :param mac: mac address of the interface
+    :param coalesce: coalesce info to be checked
+    :return:
+    """
+    iface_features = vm_xml.VMXML.get_iface_by_mac(vm_name, mac)
+    target = iface_features.get('target', {}).get('dev')
+
+    frames = eval(coalesce).get('max')
+
+    ethtool_cmd = 'ethtool -c %s' % target
+    ethtool_output = process.run(
+        ethtool_cmd, verbose=True, ignore_status=True).stdout_text
+
+    expected_str = 'rx-frames: %s' % frames
+    if expected_str not in ethtool_output:
+        return 1, '%s not found in ethtool output' % expected_str
+
+    logging.info('Coalesce check PASS.')
+    return 0, ''
+
+
 def run(test, params, env):
     """
     Test virsh {at|de}tach-interface command.
@@ -239,6 +265,7 @@ def run(test, params, env):
     iface_driver_host = params.get("at_detach_driver_host")
     iface_driver_guest = params.get("at_detach_driver_guest")
     iface_backend = params.get("at_detach_iface_backend")
+    iface_coalesce = params.get('at_detach_iface_coalesce')
 
     save_restore = params.get("save_restore", "no")
     restart_libvirtd = params.get("restart_libvirtd", "no")
@@ -297,7 +324,7 @@ def run(test, params, env):
             vm.start()
             # Generate attached xml
             new_iface = Interface(type_name=iface_type)
-            if any(x in params['name'] for x in ('multiqueue', 'multi_options')):
+            if any(x in params['name'] for x in ('multiqueue', 'multi_options', 'with_coalesce')):
                 tmp_iface_format = iface_format.copy()
                 tmp_iface_format.update(
                     {'source': "{'%s': '%s'}" % (
@@ -423,6 +450,16 @@ def run(test, params, env):
             fail_flag = 1
             result_info.append(ret)
 
+        def _check_coalesce(fail_flag):
+            if iface_coalesce:
+                stat, ret = check_coalesce(vm_name, iface_mac, iface_coalesce)
+                fail_flag = fail_flag | stat
+                result_info.append(ret)
+                return fail_flag
+
+        # Check coalesce info if needed
+        fail_flag = _check_coalesce(fail_flag)
+
         # Check on host for direct type
         if iface_type == 'direct':
             cmd_result = process.run("ip -d link show test").stdout_text.strip()
@@ -442,6 +479,9 @@ def run(test, params, env):
 
         if save_restore == "yes":
             check_save_restore(vm_name)
+
+        # Check coalesce info if needed after save/restore
+        fail_flag = _check_coalesce(fail_flag)
 
         status, ret = check_dumpxml_iface(vm_name, iface_format)
         if status:
@@ -509,7 +549,7 @@ def get_formatted_iface_dict(names, vm_arch_name):
     update_list = [
         "driver", "driver_host", "driver_guest", "model",
         "inbound", "outbound", "link", "target", "mac", "source",
-        "boot", "backend", "type", "mode"
+        "boot", "backend", "type", "mode", "coalesce"
     ]
     # For s390-virtio interface addresses are of type ccw
     # rom tuning is only allowed for type pci
