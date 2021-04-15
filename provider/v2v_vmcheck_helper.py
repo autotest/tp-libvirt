@@ -64,17 +64,18 @@ class VMChecker(object):
         self.original_vm_name = params.get('original_vm_name')
         self.hypervisor = params.get("hypervisor")
         self.target = params.get('target')
+        self.output_method = params.get('output_method')
         # The expected boottype of guest, default 0 is 'i440fx+bios'
         # Other values are 1 for q35+bios, 2 for q35+uefi, 3 for
         # q35+secure_uefi
         self.boottype = int(params.get("boottype", 0))
         # Due to changes in v2v and rhv, the current logic is:
         # 1) boottype value set by users takes the hignest precedence.
-        # 2) if bootype is not set, first check ovirt version, the default
-        # boottype value on rhv is 1 from rhv4.4.
+        # 2) if bootype is not set and '-o rhv_upload' is used, if ovirt
+        # is >= 4.4, then set boottype to 1, else keep the default 0.
         # 3) if v2v version is newer enough to support q35 by default, then all latest
         # guests will be converted to q35 by default.
-        if self.target == 'ovirt':
+        if self.target == 'ovirt' and self.output_method == 'rhv_upload':
             from virttest.ovirt import connect
             _, self.ovirt_server_version = connect(params)
             logging.info(
