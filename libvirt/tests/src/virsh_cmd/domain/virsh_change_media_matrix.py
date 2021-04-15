@@ -294,7 +294,12 @@ def run(test, params, env):
                 source = device_source
             all_options = action_twice + options_twice + " " + source
             time.sleep(5)
+            if options_twice == "--config" or pre_vm_state == "shutoff":
+                wait_for_event = False
+            else:
+                wait_for_event = True
             ret = virsh.change_media(vm_ref, target_device, all_options,
+                                     wait_for_event=wait_for_event,
                                      ignore_status=True, debug=True)
             status_error = False
             if pre_vm_state == "shutoff":
@@ -329,6 +334,7 @@ def run(test, params, env):
                 # should be executed again for it takes effect
                 if ret.exit_status and not action_twice.count("insert"):
                     ret = virsh.change_media(vm_ref, target_device, all_options,
+                                             wait_for_event=wait_for_event,
                                              ignore_status=True, debug=True)
             if not status_error and ret.exit_status:
                 test.fail("Change media failed: %s" % ret.stderr.strip())
