@@ -5,7 +5,9 @@ import json
 import datetime
 
 from virttest import virsh
+from virttest import data_dir
 from virttest import libvirt_version
+from virttest import utils_misc
 from virttest.utils_test import libvirt
 
 
@@ -13,7 +15,50 @@ def run(test, params, env):
     """
     Test guestinfo command, make sure that all supported options work well
     """
+    def hotplug_disk(disk_name):
+        """
+        hotplug a disk to guest
+
+        :param disk_name: the name of the disk be hotplugged
+        """
+        device_source = os.path.join(data_dir.get_tmp_dir(), disk_name)
+        libvirt.create_local_disk("file", device_source, size='1')
+        try:
+            res = virsh.attach_disk(vm_name, device_source,
+                                    disk_target_name, debug=True)
+            utils_misc.wait_for(lambda: (res.stdout ==
+                                "Disk attached successfully"), 10)
+        except Exception:
+            test.error("Can not attach %s to the guest" % disk_target_name)
+
+    def check_attached_disk_info(disk_info, target_name):
+        """
+        Check the info of the attached disk
+
+        :param disk_info: the disk info returned from virsh guestinfo --disk
+        :param target_name: the target name for the attached disk
+        :return: the attached disk info returned from virsh guestinfo --disk
+        """
+        attached_disk_info_reported = False
+        disk_logical_name = '/dev/%s' % target_name
+        for i in range(int(disk_info['disk.count'])):
+            prefix = 'disk.' + str(i) + '.'
+            try:
+                if disk_info[prefix + 'alias'] == target_name:
+                    if (disk_info[prefix + 'name'] == disk_logical_name and
+                            disk_info[prefix + 'partition'] == 'no'):
+                        attached_disk_info_reported = True
+                        break
+            except KeyError:
+                logging.error("Num %i is not the attached disk", i)
+        return attached_disk_info_reported
+
     def check_guest_os_info():
+        """
+        Check the info of guest os from guest side
+
+        :return: the guest os info from guest side
+        """
         os_info = {}
         session = vm.wait_for_login()
         try:
@@ -32,6 +77,11 @@ def run(test, params, env):
         return os_info
 
     def parse_timezone_info():
+        """
+        Parse the info returned from timedatectl cmd
+
+        :return: the guest timezone name and offset to UTC time
+        """
         session = vm.wait_for_login()
         try:
             output = session.cmd_output('timedatectl').strip().splitlines()
@@ -44,6 +94,11 @@ def run(test, params, env):
         return name, offset
 
     def check_guest_timezone_info():
+        """
+        Check the info of guest timezone from guest side
+
+        :return: the guest timezone info from guest side
+        """
         timezone_info = {}
         timezone_name, hour_offset = parse_timezone_info()
         timezone_info["timezone.name"] = timezone_name
@@ -53,15 +108,29 @@ def run(test, params, env):
         return timezone_info
 
     def check_guest_hostname_info():
+        """
+        Check the info of guest hostname from guest side
+
+        :return: the guest hostname info from guest side
+        """
         hostname_info = {}
         session = vm.wait_for_login()
         try:
-            hostname_info['hostname'] = session.cmd_output('hostname').strip()
+            output = session.cmd_output('hostnamectl --static').strip()
+            if not output:
+                output = session.cmd_output('hostnamectl --transient').strip()
         finally:
             session.close()
+        hostname_info['hostname'] = output
         return hostname_info
 
     def add_user(name, passwd):
+        """
+        Added a user account
+
+        :param name: user name
+        :param passwd: password of user account
+        """
         session = vm.wait_for_login()
         try:
             session.cmd_output('useradd %s' % name)
@@ -76,6 +145,11 @@ def run(test, params, env):
         return timestamp
 
     def check_guest_user_info():
+        """
+        check the info of guest user from guest side
+
+        :return: the guest user info from guest side
+        """
         user_info = {}
         session = vm.wait_for_login()
         try:
@@ -100,12 +174,22 @@ def run(test, params, env):
         return user_info
 
     def check_disk_size(ses, disk):
+        """
+        check the disk size from guest side
+
+        :return: total size and used size of the disk
+        """
         disk_size = ses.cmd_output('df %s' % disk).strip().splitlines()[-1]
         total_size = disk_size.split()[1]
         used_size = disk_size.split()[2]
         return total_size, used_size
 
     def check_guest_filesystem_info():
+        """
+        check the info of filesystem from guest side
+
+        :return: the filesystem info from guest side
+        """
         fs_info = {}
         count = -1
         session = vm.wait_for_login()
@@ -143,12 +227,15 @@ def run(test, params, env):
         return fs_info
 
     vm_name = params.get("main_vm")
-    option = params.get("option")
+    option = params.get("option", " ")
     added_user_name = params.get("added_user_name")
     added_user_passwd = params.get("added_user_passwd")
     status_error = ("yes" == params.get("status_error", "no"))
     start_ga = ("yes" == params.get("start_ga", "yes"))
     prepare_channel = ("yes" == params.get("prepare_channel", "yes"))
+    disk_target_name = params.get("disk_target_name")
+    disk_name = params.get("disk_name")
+    readonly_mode = ("yes" == params.get("readonly_mode"))
 
     if not libvirt_version.version_compare(6, 0, 0):
         test.cancel("Guestinfo command is not supported before version libvirt-6.0.0 ")
@@ -159,6 +246,10 @@ def run(test, params, env):
 
     try:
         vm = env.get_vm(vm_name)
+        virsh_dargs = {}
+        if readonly_mode:
+            virsh_dargs["readonly"] = True
+
         if start_ga and prepare_channel:
             vm.prepare_guest_agent(start=True, channel=True)
 
@@ -168,17 +259,36 @@ def run(test, params, env):
                                                    password=added_user_passwd)
             root_session = vm.wait_for_login()
 
-        result = virsh.guestinfo(vm_name, option, ignore_status=True, debug=True)
-        libvirt.check_exit_status(result, status_error)
+        if "disk" in option:
+            hotplug_disk(disk_name)
+
+        result = virsh.guestinfo(vm_name, option, **virsh_dargs,
+                                 ignore_status=True, debug=True)
+        error_msg = []
+        if not prepare_channel:
+            error_msg.append("QEMU guest agent is not configured")
+        if readonly_mode:
+            error_msg.append("read only access prevents virDomainGetGuestInfo")
+        libvirt.check_result(result, expected_fails=error_msg,
+                             any_error=status_error)
+
+        if status_error:
+            return
 
         out = result.stdout.strip().splitlines()
-        out_dict = dict(item.split(" : ") for item in out)
+        out_dict = dict(item.split(": ") for item in out)
         info_from_agent_cmd = dict((x.strip(), y.strip()) for x, y in out_dict.items())
         logging.debug("info from the guest is %s", info_from_agent_cmd)
 
-        func_name = "check_guest_%s_info" % option[2:]
-        info_from_guest = locals()[func_name]()
-        logging.debug('%s_info_from_guest is %s', option[2:], info_from_guest)
+        if "disk" in option:
+            if not check_attached_disk_info(info_from_agent_cmd, disk_target_name):
+                test.fail("The disk info reported by agent cmd is not correct. "
+                          "result: %s" % info_from_agent_cmd)
+            return
+        else:
+            func_name = "check_guest_%s_info" % option[2:]
+            info_from_guest = locals()[func_name]()
+            logging.debug('%s_info_from_guest is %s', option[2:], info_from_guest)
 
         if ("user" not in option) and ("filesystem" not in option):
             if info_from_guest != info_from_agent_cmd:
@@ -209,4 +319,7 @@ def run(test, params, env):
             if root_session:
                 root_session.cmd('userdel -f %s' % added_user_name)
                 root_session.close()
+        if "disk" in option:
+            virsh.detach_disk(vm_name, disk_target_name, ignore_status=False,
+                              debug=True)
         vm.destroy()
