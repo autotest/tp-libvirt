@@ -106,21 +106,22 @@ def thread_func_jobabort(vm):
 
 def multi_migration(vm, src_uri, dest_uri, options, migrate_type,
                     migrate_thread_timeout, jobabort=False,
-                    lrunner=None, rrunner=None):
+                    lrunner=None, rrunner=None, status_error=None):
     """
     Migrate multiple vms simultaneously or not.
 
     :param vm: list of all vm instances
     :param src_uri: source ip address for migration
     :param dest_uri: destination ipaddress for migration
-    :options: options to be passed in migration command
-    :migrate_type: orderly or simultaneous migration type
-    :migrate_thread_timeout: thread timeout for migrating vms
-    :jobabort: If jobabort is True, run "virsh domjobabort vm_name"
+    :param options: options to be passed in migration command
+    :param migrate_type: orderly or simultaneous migration type
+    :param migrate_thread_timeout: thread timeout for migrating vms
+    :param jobabort: If jobabort is True, run "virsh domjobabort vm_name"
                during migration.
-    :param timeout: thread's timeout
-    :lrunner: local session instance
-    :rrunner: remote session instance
+    :param param timeout: thread's timeout
+    :param lrunner: local session instance
+    :param rrunner: remote session instance
+    :param status_error: Whether expect error status
     """
 
     obj_migration = migration.MigrationTest()
@@ -132,7 +133,8 @@ def multi_migration(vm, src_uri, dest_uri, options, migrate_type,
                                        migration_type="simultaneous",
                                        options=options,
                                        thread_timeout=migrate_thread_timeout,
-                                       ignore_status=False)
+                                       ignore_status=False,
+                                       status_error=status_error)
             if jobabort:
                 # To ensure Migration has been started.
                 time.sleep(5)
@@ -159,7 +161,8 @@ def multi_migration(vm, src_uri, dest_uri, options, migrate_type,
                                        migration_type="orderly",
                                        options=options,
                                        thread_timeout=migrate_thread_timeout,
-                                       ignore_status=False)
+                                       ignore_status=False,
+                                       status_error=status_error)
             for each_vm in vm:
                 ping_thread = threading.Thread(target=thread_func_ping,
                                                args=(lrunner, rrunner,
@@ -278,7 +281,7 @@ def run(test, params, env):
                 vm.wait_for_login()
         multi_migration(vms, srcuri, desturi, option, migration_type,
                         migrate_timeout, jobabort, lrunner=localrunner,
-                        rrunner=remoterunner)
+                        rrunner=remoterunner, status_error=status_error)
     except Exception as info:
         logging.error("Test failed: %s" % info)
         flag_migration = False

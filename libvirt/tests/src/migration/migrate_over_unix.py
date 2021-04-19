@@ -128,10 +128,11 @@ def run(test, params, env):
     migrateuri_port = params.get("migrateuri_port", "33333")
     disks_uri_port = params.get("disks_uri_port", "44444")
     migrate_again = "yes" == params.get("migrate_again", "no")
-    func_params_exists = "yes" == params.get("func_params_exists", "no")
-    func_name = params.get("action_during_mig")
-    if func_name:
-        func_name = eval(func_name)
+    action_during_mig = params.get("action_during_mig")
+    if action_during_mig:
+        action_during_mig = eval(action_during_mig)
+
+    extra_args = migration_test.update_virsh_migrate_extra_args(params)
 
     mig_result = None
     local_image_list = []
@@ -171,12 +172,6 @@ def run(test, params, env):
     vm.verify_alive()
     bk_uri = vm.connect_uri
 
-    extra_args = {}
-    if func_params_exists:
-        if params.get("func_params"):
-            extra_args.update({'func_params': eval(params.get("func_params"))})
-        else:
-            extra_args.update({'func_params': params})
     postcopy_options = params.get("postcopy_options")
     if postcopy_options:
         extra = "%s %s" % (extra, postcopy_options)
@@ -209,28 +204,28 @@ def run(test, params, env):
         migration_test.do_migration(vms, None, dest_uri, 'orderly',
                                     options, thread_timeout=600,
                                     ignore_status=True, virsh_opt=virsh_options,
-                                    func=func_name, extra_opts=extra,
+                                    func=action_during_mig,
+                                    extra_opts=extra,
                                     **extra_args)
 
         mig_result = migration_test.ret
-        migration_test.check_result(mig_result, params)
 
         if migrate_again:
             logging.debug("Sleeping 10 seconds before rerunning the migration.")
             time.sleep(10)
             if params.get("migrate_again_clear_func", "yes") == "yes":
-                func_name = None
-            params["status_error"] = params.get(
+                action_during_mig = None
+            extra_args["status_error"] = params.get(
                 "migrate_again_status_error", "no")
             migration_test.do_migration(vms, None, dest_uri, 'orderly',
                                         options, thread_timeout=900,
                                         ignore_status=True,
                                         virsh_opt=virsh_options,
-                                        extra_opts=extra, func=func_name,
+                                        extra_opts=extra,
+                                        func=action_during_mig,
                                         **extra_args)
 
             mig_result = migration_test.ret
-            migration_test.check_result(mig_result, params)
 
         if int(mig_result.exit_status) == 0:
             vm.connect_uri = dest_uri_ssh
@@ -247,12 +242,7 @@ def run(test, params, env):
         logging.info("Recover test environment")
         vm.connect_uri = bk_uri
         # Clean VM on destination and source
-        try:
-            migration_test.cleanup_dest_vm(vm, bk_uri, dest_uri_ssh)
-        except Exception as err:
-            logging.error(err)
-        if vm.is_alive():
-            vm.destroy(gracefully=False)
+        migration_test.cleanup_vm(vm, dest_uri)
 
         orig_config_xml.sync()
 

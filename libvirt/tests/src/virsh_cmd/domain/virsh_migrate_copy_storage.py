@@ -117,11 +117,12 @@ def copied_migration(test, vms, vms_ip, params):
     username = params.get("migrate_dest_user", "root")
     password = params.get("migrate_dest_pwd")
     timeout = int(params.get("thread_timeout", 1200))
+    status_error = params.get("status_error", "no")
     options = "--live %s" % copy_option
 
     cp_mig = migration.MigrationTest()
     cp_mig.do_migration(vms, None, dest_uri, "orderly", options, timeout,
-                        ignore_status=True)
+                        ignore_status=True, status_error=status_error)
     check_ip_failures = []
 
     if cp_mig.RET_MIGRATION:
@@ -293,6 +294,7 @@ def run(test, params, env):
                 raise
 
             # Migrate it again to confirm failed reason
+            params["status_error"] = "no"
             cp_mig = copied_migration(test, vms, vms_ip, params)
     finally:
         # Recover created vm

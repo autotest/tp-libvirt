@@ -131,12 +131,13 @@ def run(test, params, env):
     set_precopy_speed_before_vm_start = params.get("set_precopy_speed_before_vm_start")
     stress_package = params.get("stress_package")
     exp_migrate_speed = eval(params.get('exp_migrate_speed', '{}'))
-    func_params_exists = "yes" == params.get("func_params_exists", "yes")
     log_file = params.get("log_outputs", "/var/log/libvirt/libvirt_daemons.log")
     check_str_local_log = params.get("check_str_local_log", "")
     libvirtd_conf_dict = eval(params.get("libvirtd_conf_dict", '{}'))
+    action_during_mig = check_bandwidth
+    params.update({"action_during_mig_params_exists": "yes"})
+    extra_args = migration_test.update_virsh_migrate_extra_args(params)
 
-    func_name = None
     libvirtd_conf = None
     mig_result = None
     remove_dict = {}
@@ -155,10 +156,6 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     vm.verify_alive()
 
-    extra_args = {}
-    if func_params_exists:
-        extra_args.update({'func_params': params})
-    func_name = check_bandwidth
     postcopy_options = params.get("postcopy_options")
     if postcopy_options:
         extra = "%s %s" % (extra, postcopy_options)
@@ -222,13 +219,11 @@ def run(test, params, env):
         migration_test.do_migration(vms, None, dest_uri, 'orderly',
                                     options, thread_timeout=900,
                                     ignore_status=True, virsh_opt=virsh_options,
-                                    func=func_name, extra_opts=extra,
+                                    func=action_during_mig,
+                                    extra_opts=extra,
                                     **extra_args)
 
-        mig_result = migration_test.ret
-        migration_test.check_result(mig_result, params)
-
-        if int(mig_result.exit_status) == 0:
+        if int(migration_test.ret.exit_status) == 0:
             migration_test.ping_vm(vm, params, uri=dest_uri)
 
         if check_str_local_log:
@@ -237,14 +232,9 @@ def run(test, params, env):
     finally:
         logging.debug("Recover test environment")
         # Clean VM on destination and source
-        try:
-            migration_test.cleanup_dest_vm(vm, vm.connect_uri, dest_uri)
-            if vm.is_alive():
-                vm.destroy(gracefully=False)
-        except Exception as err:
-            logging.error(err)
+        migration_test.cleanup_vm(vm, dest_uri)
 
-        logging.info("Recovery VM XML configration")
+        logging.info("Recover VM XML configration")
         orig_config_xml.sync()
 
         if libvirtd_conf:

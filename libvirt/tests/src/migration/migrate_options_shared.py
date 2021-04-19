@@ -1083,7 +1083,9 @@ def run(test, params, env):
     cache = params.get("cache")
     remove_cache = "yes" == params.get("remove_cache", "no")
     err_msg = params.get("err_msg")
-
+    extra_args = {'func_params': params,
+                  'status_error': params.get("status_error", "no"),
+                  'err_msg': err_msg}
     arch = platform.machine()
     if any([hpt_resize, contrl_index, htm_state]) and 'ppc64' not in arch:
         test.cancel("The case is PPC only.")
@@ -1339,9 +1341,9 @@ def run(test, params, env):
             source_vm_host_time_diff = time_diff_between_vm_host(localvm=True)
 
         if extra.count("timeout-postcopy"):
-            func_name = check_timeout_postcopy
+            action_during_mig = check_timeout_postcopy
         if params.get("actions_during_migration"):
-            func_name = do_actions_during_migrate
+            action_during_mig = do_actions_during_migrate
         if extra.count("comp-xbzrle-cache"):
             cache = get_usable_compress_cache(memory.get_page_size())
             extra = "%s %s" % (extra, cache)
@@ -1395,8 +1397,8 @@ def run(test, params, env):
                 migration_test.do_migration(vms, None, dest_uri, 'orderly',
                                             options, thread_timeout=900,
                                             ignore_status=True, virsh_opt=virsh_opt,
-                                            func=func_name, extra_opts=extra,
-                                            func_params=params)
+                                            func=action_during_mig, extra_opts=extra,
+                                            **extra_args)
                 mig_result = migration_test.ret
             except exceptions.TestFail as fail_detail:
                 test.fail(fail_detail)
@@ -1407,8 +1409,6 @@ def run(test, params, env):
             except Exception as details:
                 mig_result = migration_test.ret
                 logging.error(details)
-
-        migration_test.check_result(mig_result, params)
 
         if add_channel:
             # Get the channel device source path of remote guest
@@ -1622,12 +1622,9 @@ def run(test, params, env):
                                                              cleanup=True)
 
             # Clean VM on destination
-            migration_test.cleanup_dest_vm(vm, vm.connect_uri, dest_uri)
+            migration_test.cleanup_vm(vm, dest_uri)
 
-            if vm.is_alive():
-                vm.destroy(gracefully=False)
-
-            logging.info("Recovery VM XML configration")
+            logging.info("Recover VM XML configration")
             orig_config_xml.sync()
             logging.debug("The current VM XML:\n%s", orig_config_xml.xmltreefile)
 

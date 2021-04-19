@@ -116,14 +116,13 @@ def run(test, params, env):
     migrate_again = "yes" == params.get("migrate_again", "no")
     precreation = "yes" == params.get("precreation", "yes")
     tls_recovery = "yes" == params.get("tls_auto_recovery", "yes")
-    func_params_exists = "yes" == params.get("func_params_exists", "no")
     status_error = "yes" == params.get("status_error", "no")
 
     local_image_list = []
     remote_image_list = []
     tls_obj = None
 
-    func_name = None
+    action_during_mig = None
     daemon_conf = None
     mig_result = None
     remote_session = None
@@ -143,14 +142,11 @@ def run(test, params, env):
     vm.verify_alive()
 
     extra = "{} {}".format(extra, copy_storage_option)
-
-    extra_args = {}
-    if func_params_exists:
-        extra_args.update({'func_params': params})
+    extra_args = migration_test.update_virsh_migrate_extra_args(params)
     if cancel_migration:
-        func_name = migration_test.do_cancel
+        action_during_mig = migration_test.do_cancel
     elif check_disks_port:
-        func_name = libvirt_network.check_established
+        action_during_mig = libvirt_network.check_established
 
     # For safety reasons, we'd better back up  xmlfile.
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -206,27 +202,26 @@ def run(test, params, env):
         migration_test.do_migration(vms, None, dest_uri, 'orderly',
                                     options, thread_timeout=900,
                                     ignore_status=True, virsh_opt=virsh_options,
-                                    extra_opts=extra, func=func_name,
+                                    extra_opts=extra, func=action_during_mig,
                                     **extra_args)
 
         mig_result = migration_test.ret
-        migration_test.check_result(mig_result, params)
 
         if migrate_again and status_error:
             logging.debug("Sleeping 10 seconds before rerunning the migration.")
             time.sleep(10)
             if cancel_migration:
-                func_name = None
-            params["status_error"] = "no"
+                action_during_mig = None
+            extra_args["status_error"] = "no"
             migration_test.do_migration(vms, None, dest_uri, 'orderly',
                                         options, thread_timeout=900,
                                         ignore_status=True,
                                         virsh_opt=virsh_options,
-                                        extra_opts=extra, func=func_name,
+                                        extra_opts=extra,
+                                        func=action_during_mig,
                                         **extra_args)
 
             mig_result = migration_test.ret
-            migration_test.check_result(mig_result, params)
         if int(mig_result.exit_status) == 0:
             migration_test.ping_vm(vm, params, uri=dest_uri)
 
@@ -236,12 +231,7 @@ def run(test, params, env):
     finally:
         logging.debug("Recover test environment")
         # Clean VM on destination and source
-        try:
-            migration_test.cleanup_dest_vm(vm, vm.connect_uri, dest_uri)
-        except Exception as err:
-            logging.error(err)
-        if vm.is_alive():
-            vm.destroy(gracefully=False)
+        migration_test.cleanup_vm(vm, dest_uri)
         orig_config_xml.sync()
 
         if daemon_conf:

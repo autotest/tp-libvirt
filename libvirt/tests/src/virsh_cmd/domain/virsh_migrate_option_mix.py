@@ -344,8 +344,6 @@ def run(test, params, env):
                                        options="",
                                        ignore_status=True,
                                        extra_opts=extra_options)
-            # Check migration result
-            obj_migration.check_result(obj_migration.ret, params)
 
         """
         # Check src vm after migration

@@ -88,7 +88,6 @@ def run(test, params, env):
                     'server_pwd': server_pwd,
                     'file_path': "/etc/libvirt/libvirt.conf"}
 
-    func_name = None
     remove_pkg = False
     seLinuxBool = None
     seLinuxfusefs = None
@@ -101,6 +100,7 @@ def run(test, params, env):
     # Make sure all of parameters are assigned a valid value
     migrate_test = migration.MigrationTest()
     migrate_test.check_parameters(params)
+    extra_args = migrate_test.update_virsh_migrate_extra_args(params)
 
     # params for migration connection
     params["virsh_migrate_desturi"] = libvirt_vm.complete_uri(
@@ -192,10 +192,7 @@ def run(test, params, env):
         migrate_test.do_migration(vms, None, dest_uri, 'orderly',
                                   options, thread_timeout=900,
                                   ignore_status=True, virsh_opt=virsh_options,
-                                  func=func_name, extra_opts=extra,
-                                  func_params=params)
-        mig_result = migrate_test.ret
-        migrate_test.check_result(mig_result, params)
+                                  extra_opts=extra, **extra_args)
         migrate_test.ping_vm(vm, params, dest_uri)
 
         if migrate_vm_back:
@@ -229,10 +226,9 @@ def run(test, params, env):
                           % (cmd, cmd_result))
 
     finally:
-        logging.info("Recovery test environment")
-        migrate_test.cleanup_dest_vm(vm, vm.connect_uri, dest_uri)
-        if vm.is_alive():
-            vm.destroy(gracefully=False)
+        logging.info("Recover test environment")
+        migrate_test.cleanup_vm(vm, dest_uri)
+
         orig_config_xml.sync()
 
         if src_libvirt_file:
