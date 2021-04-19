@@ -464,6 +464,27 @@ class SerialPipe(SerialFile):
         return super(SerialPipe, self).init_device(index)  # stub for now
 
 
+class SerialPty(AttachDeviceBase):
+
+    """
+    Simple console pty device
+    """
+
+    type_name = "pty"
+
+    def init_device(self, index):
+        serialclass = self.test_params.vmxml.get_device_class('serial')
+        serial_device = serialclass(type_name=self.type_name,
+                                    virsh_instance=self.test_params.virsh)
+        # Assume default domain serial device on port 0 and index starts at 0
+        if hasattr(self, 'alias') and libvirt_version.version_compare(3, 9, 0):
+            serial_device.alias = {'name': self.alias + str(index)}
+        return serial_device
+
+    def function(self, index):
+        return not self.test_params.status_error
+
+
 class Console(AttachDeviceBase):
 
     """
@@ -505,6 +526,7 @@ class ConsoleFile(Console, SerialFile):
     """
     Simplistic pipe-backed console
     """
+
     def init_device(self, index):
         return _init_device_Serial2Console(self, index)
 
@@ -513,6 +535,7 @@ class ConsolePipe(Console, SerialPipe):
     """
     Simplistic file-backed console
     """
+
     def init_device(self, index):
         return _init_device_Serial2Console(self, index)
 
