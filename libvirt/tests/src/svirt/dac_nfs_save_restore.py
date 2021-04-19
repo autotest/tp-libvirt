@@ -134,7 +134,7 @@ def run(test, params, env):
             test.cancel("Failed to set virt_use_nfs value")
 
         # Create a file on nfs server dir.
-        tmp_dir = data_dir.get_tmp_dir()
+        tmp_dir = data_dir.get_data_dir()
         nfs_path = os.path.join(tmp_dir, nfs_server_dir)
         server_file_path = os.path.join(nfs_path, pre_file_name)
         if pre_file and not os.path.exists(server_file_path):
