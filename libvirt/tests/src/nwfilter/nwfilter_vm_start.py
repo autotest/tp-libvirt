@@ -192,7 +192,7 @@ def run(test, params, env):
                 logging.debug("Now the vms is: %s", [dom.name for dom in vms])
                 # update the vm2 interface with the nwfilter
                 logging.debug("filter_params_list is %s" % filter_param_list)
-                iface_dict = {"filter": filter_name, "filter_parameters": filter_param_list, "del_mac": "yes"}
+                iface_dict = {"filter": filter_name, "filter_parameters": filter_param_list, "del_mac": True}
                 if vm2.is_alive():
                     vm2.destroy()
                 utlv.modify_vm_iface(vm2.name, "update_iface", iface_dict)
