@@ -118,7 +118,7 @@ def run(test, params, env):
         del_list = ["del_addr", "del_rom", "del_filter", "del_mac"]
         for del_item in del_list:
             if names[del_item]:
-                iface_dict_aft.update({del_item: "True"})
+                iface_dict_aft.update({del_item: names[del_item]})
 
         # Operations before updating vm's iface xml
         if iface_boot:
