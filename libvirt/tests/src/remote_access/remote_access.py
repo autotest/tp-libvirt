@@ -40,6 +40,7 @@ def remote_access(params, test):
     virsh_patterns = params.get("patterns_virsh_cmd", r".*Id\s*Name\s*State\s*.*")
     patterns_extra_dict = params.get("patterns_extra_dict", None)
     log_level = params.get("log_level", "LIBVIRT_DEBUG=3")
+    error_pattern = params.get("error_pattern", "")
 
     status_error = params.get("status_error", "no")
     ret, output = connect_libvirtd(uri, read_only, virsh_cmd, auth_user,
@@ -61,7 +62,15 @@ def remote_access(params, test):
                       .format(output))
     else:
         if not ret:
-            logging.info("It's an expected error!!")
+            if error_pattern:
+                if error_pattern in output:
+                    logging.info("It's an expected error!!")
+                else:
+                    test.fail("Unexpected error: {}, when trying to connect to "
+                              "libvirt daemon. Looking for: {} pattern".
+                              format(output, error_pattern))
+            else:
+                logging.info("It's an expected error!!")
         else:
             test.fail("Unexpected return result: {}".format(output))
 
@@ -394,6 +403,13 @@ def run(test, params, env):
             firewall_cmd = utils_iptables.Firewall_cmd(server_session)
             firewall_cmd.add_port(firewalld_port, 'tcp', permanent=True)
             server_session.close()
+
+        if 'inv_transport' in test_dict:
+            transport = test_dict['inv_transport']
+            uri = "%s%s%s://%s%s%s%s%s" % (driver, plus, transport, uri_user,
+                                           remote_ip, port, uri_path,
+                                           extra_params)
+            test_dict["uri"] = uri
 
         # remove client certifications if exist, only for TLS negative testing
         if rm_client_key_cmd:
