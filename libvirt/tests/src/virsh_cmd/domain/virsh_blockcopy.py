@@ -385,7 +385,7 @@ def run(test, params, env):
                                                                   vm_name))
 
     original_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    tmp_dir = data_dir.get_tmp_dir()
+    tmp_dir = data_dir.get_data_dir()
 
     # Prepare dest path params
     dest_path = params.get("dest_path", "")
