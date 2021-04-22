@@ -8,6 +8,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import utils_net
 from virttest import utils_libvirtd
+from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
@@ -42,6 +43,7 @@ def run(test, params, env):
     """
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
+    network_name = params.get('network_name', 'default')
     new_network_name = params.get("net_name")
     expect_error = "yes" == params.get("status_error", "no")
     expect_err_msg = params.get("expect_err_msg")
@@ -83,10 +85,20 @@ def run(test, params, env):
     del_mac = "yes" == params.get("del_mac", "no")
     del_coalesce = 'yes' == params.get('del_coalesce', 'no')
 
+    del_net_bandwidth = 'yes' == params.get('del_net_bandwidth', 'no')
+
     # Backup the vm xml for recover at last
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    netxml_backup = network_xml.NetworkXML.new_from_net_dumpxml(network_name)
 
     try:
+        # Prepare network
+        netxml = network_xml.NetworkXML.new_from_net_dumpxml(network_name)
+        logging.debug('Network xml before update:\n%s', netxml)
+        if del_net_bandwidth:
+            netxml.del_element('/bandwidth')
+        logging.debug('Network xml after update:\n%s', netxml)
+
         # According to the different os find different file for rom
         if (iface_rom and "file" in eval(iface_rom)
                 and "%s" in eval(iface_rom)['file']):
@@ -277,5 +289,6 @@ def run(test, params, env):
 
     finally:
         vmxml_backup.sync()
+        netxml_backup.sync()
         if create_new_net:
             new_net_xml.undefine()
