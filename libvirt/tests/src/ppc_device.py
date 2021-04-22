@@ -65,7 +65,7 @@ def run(test, params, env):
                 if max_id > 7:
                     break
                 new_pci_id = '.'.join([prefix, str(max_id)])
-                new_pci_xml = libvirt.create_hostdev_xml(new_pci_id, xmlfile=False)
+                new_pci_xml = libvirt.create_hostdev_xml(new_pci_id)
                 vmxml.add_device(new_pci_xml)
             vmxml.sync()
             logging.debug('Vm xml after adding unavailable pci devices: \n%s', vmxml)

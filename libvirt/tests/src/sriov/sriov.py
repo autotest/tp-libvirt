@@ -725,8 +725,7 @@ def run(test, params, env):
             if dev_type:
                 mac_addr = vf_mac_list[0]
                 new_iface = utils_test.libvirt.create_hostdev_xml(vf_addr,
-                                                                  managed=managed,
-                                                                  xmlfile=False)
+                                                                  managed=managed)
             else:
                 new_iface = create_interface()
                 mac_addr = new_iface.mac_address

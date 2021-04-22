@@ -55,6 +55,7 @@ def run(test, params, env):
     # backup xml
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
+    device_xml = None
 
     if not vm.is_alive():
         vm.start()
@@ -83,7 +84,7 @@ def run(test, params, env):
                       "controller_model": contr_model,
                       "controller_index": contr_index,
                       "contr_alias": device_alias}
-        device_xml = libvirt.create_controller_xml(contr_dict).xml
+        device_xml = libvirt.create_controller_xml(contr_dict)
         detach_check_xml = detach_check_xml % contr_index
 
     if redir_type:
@@ -92,7 +93,7 @@ def run(test, params, env):
     if channel_type:
         channel_params = {'channel_type_name': channel_type}
         channel_params.update(channel_target)
-        device_xml = libvirt.create_channel_xml(channel_params, device_alias).xml
+        device_xml = libvirt.create_channel_xml(channel_params, device_alias)
 
     try:
         dump_option = ""
@@ -100,8 +101,8 @@ def run(test, params, env):
             dump_option = "--inactive"
 
         # Attach xml to domain
-        logging.info("Attach xml is %s" % process.run("cat %s" % device_xml).stdout_text)
-        virsh.attach_device(vm_name, device_xml, flagstr=detach_options,
+        logging.info("Attach xml is %s" % process.run("cat %s" % device_xml.xml).stdout_text)
+        virsh.attach_device(vm_name, device_xml.xml, flagstr=detach_options,
                             debug=True, ignore_status=False)
         domxml_at = virsh.dumpxml(vm_name, dump_option, debug=True).stdout.strip()
         if detach_check_xml not in domxml_at:
