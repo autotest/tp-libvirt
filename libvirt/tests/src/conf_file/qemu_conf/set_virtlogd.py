@@ -386,7 +386,7 @@ def run(test, params, env):
             # Check qemu log works well
             if with_spice:
                 check_info_in_vm_log_file(vm_name, guest_log_file,
-                                          matchedMsg="qemu: terminating on signal 15 from pid")
+                                          matchedMsg="%s: terminating on signal 15 from pid" % emulator)
 
             # Check VM shutdown log is written into log file correctly.
             if with_console_log:
