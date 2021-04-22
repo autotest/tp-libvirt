@@ -4,19 +4,22 @@ import random
 
 from avocado.utils import cpu
 
-from virttest.libvirt_xml import vm_xml
 from virttest import utils_libvirtd, virsh
+from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.cpu import cpus_parser
 from virttest.staging import utils_cgroup
 from virttest.virt_vm import VMStartError
+from virttest.utils_test import libvirt
 
 
 def get_emulatorpin_from_cgroup(params, test):
     """
     Get a list of domain-specific per block stats from cgroup blkio controller.
-    :params: the parameter dictionary
-    """
 
+    :param params: the parameter dictionary
+    :param test: the test object
+    :raises: test.error if an error happens
+    """
     vm = params.get("vm")
 
     cpuset_path = \
@@ -36,7 +39,10 @@ def get_emulatorpin_from_cgroup(params, test):
 def check_emulatorpin(params, test):
     """
     Check emulator affinity
-    :params: the parameter dictionary
+
+    :param params: the parameter dictionary
+    :param test: the test object
+    :return: boolean, True if check pass, otherwise, False
     """
     dicts = {}
     vm = params.get("vm")
@@ -49,8 +55,8 @@ def check_emulatorpin(params, test):
     cmd_output = result.stdout.strip().splitlines()
     logging.debug(cmd_output)
     # Parsing command output and putting them into python dictionary.
-    for l in cmd_output[2:]:
-        k, v = l.split(':')
+    for one_item in cmd_output[2:]:
+        k, v = one_item.split(':')
         dicts[k.strip()] = v.strip()
 
     logging.debug(dicts)
@@ -96,7 +102,10 @@ def check_emulatorpin(params, test):
 def get_emulatorpin_parameter(params, test):
     """
     Get the emulatorpin parameters
-    :params: the parameter dictionary
+
+    :param params: the parameter dictionary
+    :param test: the test object
+    :raises: test.fail if error returned
     """
     vm_name = params.get("main_vm")
     vm = params.get("vm")
@@ -128,7 +137,10 @@ def get_emulatorpin_parameter(params, test):
 def set_emulatorpin_parameter(params, test):
     """
     Set the emulatorpin parameters
+
     :params: the parameter dictionary
+    :param test: the test object
+    :raises: test.fail if command fails
     """
     vm_name = params.get("main_vm")
     vm = params.get("vm")
@@ -144,9 +156,12 @@ def set_emulatorpin_parameter(params, test):
 
     # Check status_error
     status_error = params.get("status_error")
+    err_msg = params.get("err_msg")
 
     if status_error == "yes":
-        if status or not check_emulatorpin(params, test):
+        if err_msg:
+            libvirt.check_result(result, expected_fails=[err_msg])
+        elif status or not check_emulatorpin(params, test):
             logging.info("It's an expected : %s", result.stderr)
         else:
             test.fail("%d not a expected command "
@@ -162,6 +177,29 @@ def set_emulatorpin_parameter(params, test):
                           " 'cpulist' emulatorpin XML or/and is"
                           " different from emulator/cpuset.cpus"
                           " value from cgroup cpuset controller")
+
+
+def add_emulatorpin_xml(params, cpulist, test):
+    """
+    Add emulatorpin configuration to the guest xml
+
+    :param params: the parameter dictionary
+    :param cpulist: host cpu list to be set for emulatorpin
+    :param test: the test object
+    :return: None
+    """
+    vm_name = params.get("main_vm")
+    guest_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    try:
+        cputune = guest_xml.cputune
+    except xcepts.LibvirtXMLNotFoundError:
+        cputune = vm_xml.VMCPUTuneXML()
+
+    cputune.emulatorpin = int(cpulist)
+    guest_xml.cputune = cputune
+    guest_xml.sync()
+    logging.debug("After adding emulatorpin, "
+                  "vm xml is:%s\n", vm_xml.VMXML.new_from_dumpxml(vm_name))
 
 
 def run(test, params, env):
@@ -181,9 +219,15 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     cgconfig = params.get("cgconfig", "on")
     cpulist = params.get("emulatorpin_cpulist")
+    all_cpuset = params.get("all_cpuset", "no") == "yes"
     status_error = params.get("status_error", "no")
     change_parameters = params.get("change_parameters", "no")
+    err_msg = params.get("err_msg", "")
 
+    host_cpus = cpu.online_cpus_count()
+    if all_cpuset and int(host_cpus) % 8 != 0:
+        test.cancel("Host cpu number is expected to be multiple of 8, "
+                    "but found %s" % host_cpus)
     # Backup original vm
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vmxml_backup = vmxml.copy()
@@ -203,9 +247,8 @@ def run(test, params, env):
 
     test_dicts = dict(params)
     test_dicts['vm'] = vm
-
-    host_cpus = cpu.online_cpus_count()
     test_dicts['host_cpus'] = host_cpus
+    logging.debug("online cpu: %s", host_cpus)
     cpu_max = int(host_cpus) - 1
 
     cpu_list = None
@@ -239,6 +282,10 @@ def run(test, params, env):
         else:
             test.cancel("CPU-list=%s is not recognized."
                         % cpulist)
+
+    if cpulist == "noexist":
+        cpulist = "%s" % (cpu_max + 1)
+
     test_dicts['emulatorpin_cpulist'] = cpulist
     if cpulist:
         cpu_list = cpus_parser(cpulist)
@@ -258,12 +305,25 @@ def run(test, params, env):
                 get_emulatorpin_parameter(test_dicts, test)
             else:
                 set_emulatorpin_parameter(test_dicts, test)
-
+                if all_cpuset:
+                    logging.debug("Test emulatorpin to all host cpus")
+                    cpulist = "0-%s" % cpu_max
+                    test_dicts['emulatorpin_cpulist'] = cpulist
+                    test_dicts['cpu_list'] = cpus_parser(cpulist)
+                    set_emulatorpin_parameter(test_dicts, test)
         if status_error == "yes":
             if change_parameters == "no":
                 get_emulatorpin_parameter(test_dicts, test)
             else:
-                set_emulatorpin_parameter(test_dicts, test)
+                by_xml = test_dicts.get("set_emulatorpin_by_xml")
+                if not by_xml:
+                    set_emulatorpin_parameter(test_dicts, test)
+                else:
+                    vm.destroy()
+                    add_emulatorpin_xml(test_dicts, cpulist, test)
+                    result = virsh.start(vm_name, debug=True)
+                    if err_msg:
+                        libvirt.check_result(result, expected_fails=[err_msg])
     finally:
         # Recover cgconfig and libvirtd service
         if not cg.cgconfig_is_running():
