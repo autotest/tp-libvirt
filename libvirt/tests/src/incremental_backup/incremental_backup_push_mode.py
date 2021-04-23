@@ -1,16 +1,17 @@
-import os
 import logging
+import os
+import signal
 
 from avocado.utils import process
 
-from virttest import virsh
 from virttest import ceph
 from virttest import data_dir
-from virttest import utils_disk
-from virttest import utils_backup
-from virttest import utils_package
-from virttest import utils_misc
 from virttest import libvirt_version
+from virttest import utils_backup
+from virttest import utils_disk
+from virttest import utils_misc
+from virttest import utils_package
+from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
@@ -59,6 +60,7 @@ def run(test, params, env):
     prepare_target_blkdev = "yes" == params.get("prepare_target_blkdev")
     backup_rounds = int(params.get("backup_rounds", 3))
     backup_error = "yes" == params.get("backup_error")
+    expect_backup_canceled = "yes" == params.get("expect_backup_canceled")
     tmp_dir = data_dir.get_data_dir()
     virsh_dargs = {'debug': True, 'ignore_status': True}
 
@@ -243,6 +245,9 @@ def run(test, params, env):
 
             # Create some data in vdb
             dd_count = "1"
+            if expect_backup_canceled:
+                # Generate more data to extend the backup job duration
+                dd_count = "100"
             dd_seek = str(backup_index * 10 + 10)
             dd_bs = "1M"
             session = vm.wait_for_login()
@@ -256,6 +261,18 @@ def run(test, params, env):
                                                debug=True)
             if backup_result.exit_status:
                 raise utils_backup.BackupBeginError(backup_result.stderr.strip())
+            # If required, do some error operations during backup job
+            error_operation = params.get("error_operation")
+            if error_operation:
+                if "destroy_vm" in error_operation:
+                    vm.destroy(gracefully=False)
+                if "kill_qemu" in error_operation:
+                    utils_misc.safe_kill(vm.get_pid(), signal.SIGKILL)
+                if utils_misc.wait_for(lambda: utils_backup.is_backup_canceled(vm_name),
+                                       timeout=5):
+                    raise utils_backup.BackupCanceledError()
+                elif expect_backup_canceled:
+                    test.fail("Backup job should be canceled but not.")
 
             # Wait for the backup job actually finished
             if not utils_misc.wait_for(
@@ -289,11 +306,20 @@ def run(test, params, env):
             logging.debug("Backup failed as expected.")
         else:
             test.fail(details)
+    except utils_backup.BackupCanceledError as detail:
+        if expect_backup_canceled:
+            logging.debug("Backup canceled as expected.")
+            if not vm.is_alive():
+                logging.debug("Check if vm can be started again when backup "
+                              "canceled.")
+                vm.start()
+                vm.wait_for_login().close()
+        else:
+            test.fail("Backup job canceled: %s" % detail)
     finally:
         # Remove checkpoints
-        if "checkpoint_list" in locals() and checkpoint_list:
-            for checkpoint_name in checkpoint_list:
-                virsh.checkpoint_delete(vm_name, checkpoint_name)
+        utils_backup.clean_checkpoints(vm_name,
+                                       clean_metadata=not vm.is_alive())
 
         if vm.is_alive():
             vm.destroy(gracefully=False)
