@@ -475,6 +475,12 @@ def run(test, params, env):
         logging.info("Cleaning Environment")
         # Cleanup constant files
         utils_v2v.cleanup_constant_files(params)
+        if checkpoint == 'ssh_banner':
+            logging.info('Remove ssh_banner file')
+            session = remote.remote_login("ssh", xen_host, "22", "root",
+                                          xen_host_passwd, "#")
+            session.cmd('rm -f /etc/ssh/ssh_banner')
+            session.cmd('service sshd restart')
         # Restore crypto-policies to DEFAULT, the setting is impossible to be
         # other values by default in testing envrionment.
         process.run(
@@ -512,12 +518,6 @@ def run(test, params, env):
             virsh.undefine(vm_name)
         if output_mode == 'libvirt':
             pvt.cleanup_pool(pool_name, pool_type, pool_target, '')
-        if checkpoint == 'ssh_banner':
-            logging.info('Remove ssh_banner file')
-            session = remote.remote_login("ssh", xen_host, "22", "root",
-                                          xen_host_passwd, "#")
-            session.cmd('rm -f /etc/ssh/ssh_banner')
-            session.cmd('service sshd restart')
         if checkpoint.startswith('virtio_win'):
             utils_package.package_install(['virtio-win'])
         utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
