@@ -4,6 +4,7 @@ import random
 
 from avocado.utils import cpu
 
+from virttest import libvirt_cgroup
 from virttest import utils_libvirtd, virsh
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.cpu import cpus_parser
@@ -22,10 +23,13 @@ def get_emulatorpin_from_cgroup(params, test):
     """
     vm = params.get("vm")
 
-    cpuset_path = \
-        utils_cgroup.resolve_task_cgroup_path(vm.get_pid(), "cpuset")
-
-    cpuset_file = os.path.join(cpuset_path, "cpuset.cpus")
+    cg_obj = libvirt_cgroup.CgroupTest(vm.get_pid())
+    cpuset_path = cg_obj.get_cgroup_path("cpuset")
+    if cg_obj.is_cgroup_v2_enabled():
+        cpuset_file = os.path.join(cpuset_path,
+                                   "emulator/cpuset.cpus.effective")
+    else:
+        cpuset_file = os.path.join(cpuset_path, "cpuset.cpus")
 
     try:
         with open(cpuset_file, "rU") as f_emulatorpin_params:
