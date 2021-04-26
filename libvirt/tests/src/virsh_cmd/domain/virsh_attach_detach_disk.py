@@ -14,6 +14,7 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.staging.service import Factory
 from virttest.staging import lv_utils
+from virttest.utils_libvirt import libvirt_pcicontr
 from virttest import utils_disk
 from virttest import utils_misc
 from virttest import data_dir
@@ -255,6 +256,10 @@ def run(test, params, env):
                 q35_pcie_dict1.update({'controller_index': "%d" % i})
                 vm_dump_xml.add_device(libvirt.create_controller_xml(q35_pcie_dict1))
             vm_dump_xml.sync()
+
+    if params.get("reset_pci_controllers_nums", "no") == "yes" \
+            and 'attach-disk' in test_cmd:
+        libvirt_pcicontr.reset_pci_num(vm_name, 15)
 
     # if we are testing audit, we need to start audit servcie first.
     if test_audit:
