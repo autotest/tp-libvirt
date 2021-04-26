@@ -289,12 +289,16 @@ def run(test, params, env):
             if ((vm_name in stdout and cmd_flag == "--without-checkpoint") or
                     (vm_name not in stdout and cmd_flag == "--with-checkpoint")):
                 test.fail("virsh list with '%s' contains wrong data" % cmd_flag)
+        # Make sure vm is running and check checkpoints can be normally deleted
+        if not vm.is_alive():
+            vm.start()
+            vm.wait_for_login().close()
+        utils_backup.clean_checkpoints(vm_name, clean_metadata=False,
+                                       ignore_status=False)
     finally:
         # Remove checkpoints
-        if "current_checkpoints" in locals() and current_checkpoints:
-            for checkpoint_name in current_checkpoints:
-                virsh.checkpoint_delete(vm_name, checkpoint_name,
-                                        ignore_status=True, debug=True)
+        utils_backup.clean_checkpoints(vm_name,
+                                       clean_metadata=not vm.is_alive())
 
         if vm.is_alive():
             vm.destroy(gracefully=False)
