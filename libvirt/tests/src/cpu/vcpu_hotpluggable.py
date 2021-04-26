@@ -8,6 +8,7 @@ from avocado.utils import process
 from avocado.utils import distro
 from avocado.utils.software_manager import SoftwareManager
 
+from virttest import libvirt_cgroup
 from virttest import virsh
 from virttest import utils_config
 from virttest import utils_libvirtd
@@ -223,12 +224,15 @@ def run(test, params, env):
             en_vcpu_list = re.findall(r"vcpu.*enabled=.yes.*", re_dump_xml)
             for vcpu_sn in range(len(en_vcpu_list)):
                 vcpu_id = en_vcpu_list[vcpu_sn].split("=")[1].split()[0].strip('\'')
-                cmd = ("lscgroup| grep cpuset| grep %s| grep vcpu%s" %
-                       (vm_name[-3:], vcpu_id))
-                ret = process.run(cmd, ignore_status=False, shell=True)
-                if ret.exit_status != 0:
-                    test.fail("Failed to find lines about enabled vcpu%s"
-                              "in lscgroup info." % vcpu_id)
+                cg_obj = libvirt_cgroup.CgroupTest(vm.get_pid())
+                cg_path = cg_obj.get_cgroup_path("cpuset")
+                if cg_obj.is_cgroup_v2_enabled():
+                    vcpu_path = os.path.join(cg_path, "vcpu%s" % vcpu_id)
+                else:
+                    vcpu_path = os.path.join(cg_path, "../vcpu%s" % vcpu_id)
+                if not os.path.exists(vcpu_path):
+                    test.fail("Failed to find the enabled vcpu{} in {}."
+                              .format(vcpu_id, cg_path))
     finally:
         # Recover libvirtd configration
         if config_libvirtd:
