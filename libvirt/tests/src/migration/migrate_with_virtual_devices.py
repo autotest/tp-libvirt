@@ -197,6 +197,9 @@ class MigrationWithRng(MigrationVirtualDevicesBase):
             self._create_tcp_rng_source(self.migrate_source_host,
                                         mode='server')
 
+        # Remove rng devices from vm xml defination
+        self._remove_rng_from_vmxml(self.main_vm)
+
     def _post_start_vm(self):
         # Hotplug device
         if self.hotplug == "yes":
@@ -343,6 +346,18 @@ class MigrationWithRng(MigrationVirtualDevicesBase):
     def func_kill_rng_source():
         cmd = 'pkill -9 nc'
         process.run(cmd, ignore_status=True)
+
+    def _remove_rng_from_vmxml(self, vm):
+        """
+        Remove rng device from domain xml defination
+
+        :param vm: vm object
+        """
+        logging.debug("Remove rng device from domain xml defination")
+
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+        vmxml.remove_all_device_by_type("rng")
+        vmxml.sync()
 
     def wait_for_check_rng_in_dumpxml(self, vm, xml_set, rng_present,
                                       timeout=120):
