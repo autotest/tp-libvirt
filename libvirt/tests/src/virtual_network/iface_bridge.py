@@ -34,9 +34,9 @@ def run(test, params, env):
 
     def create_bridge(br_name, iface_name):
         """
-        Create a linux bridge by virsh cmd:
-        1. Stop NetworkManager and Start network service
-        2. virsh iface-bridge <iface> <name> [--no-stp]
+        Create a linux bridge by ip cmd:
+        1. use tmux to avoid the network broken;
+        2. add a physical interface to the bridge, and set the bridge up;
 
         :param br_name: bridge name
         :param iface_name: physical interface name
@@ -151,8 +151,9 @@ def run(test, params, env):
     vm2 = env.get_vm(vm2_name)
 
     # Back up the interface script
-    process.run("cp %s %s" % (iface_script, iface_script_bk),
-                shell=True, verbose=True)
+    if os.path.exists(iface_script):
+        process.run("cp %s %s" % (iface_script, iface_script_bk),
+                    shell=True, verbose=True)
     # Back up vm xml
     vm1_xml_bak = vm_xml.VMXML.new_from_dumpxml(vm1_name)
     vm2_xml_bak = vm_xml.VMXML.new_from_dumpxml(vm2_name)
