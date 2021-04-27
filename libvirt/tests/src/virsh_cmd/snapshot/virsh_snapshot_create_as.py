@@ -393,10 +393,6 @@ def run(test, params, env):
                          "in this libvirt version. Not expecting a failure.")
             status_error = "no"
 
-    # This is brought by new feature:block-dev
-    if libvirt_version.version_compare(6, 0, 0) and transport == "rdma":
-        test.cancel("transport protocol 'rdma' is not yet supported")
-
     opt_names = locals()
     if memspec_opts is not None:
         mem_options = compose_disk_options(test, params, memspec_opts)

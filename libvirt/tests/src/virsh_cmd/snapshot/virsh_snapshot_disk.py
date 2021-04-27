@@ -102,10 +102,6 @@ def run(test, params, env):
                         "https://bugzilla.redhat.com/buglist.cgi?"
                         "bug_id=1017289,1032370")
 
-    # This is brought by new feature:block-dev
-    if libvirt_version.version_compare(6, 0, 0) and transport == "rdma":
-        test.cancel("transport protocol 'rdma' is not yet supported")
-
     if disk_cluster_size_set and not libvirt_version.version_compare(6, 10, 0):
         test.cancel("current libvirt version doesn't support the feature that "
                     "snapshot and backing file share the cluster size ")
