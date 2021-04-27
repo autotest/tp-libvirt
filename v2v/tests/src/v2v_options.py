@@ -15,6 +15,7 @@ from avocado.utils.astring import to_text
 
 from virttest import data_dir
 from virttest import utils_misc
+from virttest import utils_package
 from virttest import utils_v2v
 from virttest import utils_sasl
 from virttest import virsh
@@ -886,6 +887,8 @@ def run(test, params, env):
     finally:
         if hypervisor == "esx":
             process.run("rm -rf %s" % vpx_passwd_file)
+        if checkpoint == "weak_dendency":
+            utils_package.package_install('libguestfs-xfs')
         for vdsm_dir in [vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir]:
             if os.path.exists(vdsm_dir):
                 shutil.rmtree(vdsm_dir)
