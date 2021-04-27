@@ -34,6 +34,7 @@ from virttest.libvirt_xml.devices.address import Address
 from virttest.libvirt_xml import secret_xml
 from virttest.libvirt_xml import pool_xml
 from virttest.staging import lv_utils
+from virttest.utils_libvirt import libvirt_pcicontr
 
 from virttest import libvirt_version
 
@@ -1076,6 +1077,10 @@ def run(test, params, env):
 
     # Back up xml file.
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+
+    # Increase pci num to avoid error 'No more available PCI slots'
+    if params.get("reset_pci_controllers_nums", "no") == "yes":
+        libvirt_pcicontr.reset_pci_num(vm_name, 15)
 
     # For minimal VM xml,it need reconstruct one.
     if test_minimal_xml:
