@@ -3,7 +3,6 @@ import logging
 import re
 
 from avocado.utils import process
-
 from virttest import utils_net
 from virttest import utils_libvirtd
 from virttest import data_dir
@@ -12,7 +11,6 @@ from virttest.utils_test import libvirt
 from virttest.staging import service
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import interface
-from virttest import utils_package
 from virttest.libvirt_xml import network_xml
 
 NETWORK_SCRIPT = "/etc/sysconfig/network-scripts/ifcfg-"
@@ -31,27 +29,6 @@ def run(test, params, env):
     7) start another vm connected to the same bridge
     8) check if the 2 guests can ping each other
     """
-
-    def create_bridge(br_name, iface_name):
-        """
-        Create a linux bridge by ip cmd:
-        1. use tmux to avoid the network broken;
-        2. add a physical interface to the bridge, and set the bridge up;
-
-        :param br_name: bridge name
-        :param iface_name: physical interface name
-        :return: bridge created or raise exception
-        """
-        # Make sure the bridge not exist
-        if libvirt.check_iface(br_name, "exists", "--all"):
-            test.cancel("The bridge %s already exist" % br_name)
-
-        # Create bridge
-        utils_package.package_install('tmux')
-        cmd = 'tmux -c "ip link add name {0} type bridge; ip link set {1} up;' \
-              ' ip link set {1} master {0}; ip link set {0} up;' \
-              ' pkill dhclient; sleep 6; dhclient {0}; ifconfig {1} 0"'.format(br_name, iface_name)
-        process.run(cmd, shell=True, verbose=True)
 
     def create_bridge_network(br_name, net_name):
         """
@@ -166,7 +143,11 @@ def run(test, params, env):
     mac = utils_net.generate_mac_address_simple()
 
     try:
-        create_bridge(bridge_name, iface_name)
+        if libvirt.check_iface(bridge_name, "exists", "--all"):
+            test.cancel("The bridge %s already exist" % bridge_name)
+        s, o = utils_net.create_linux_bridge(bridge_name, iface_name)
+        if s:
+            test.fail("Failed to create linux bridge on the host. Status: %s Stdout: %s" % (s, o))
         define_nwfilter(filter_name)
         if hotplug:
             err_msgs = ("No more available PCI slots",
@@ -336,16 +317,14 @@ def run(test, params, env):
         vm1_xml_bak.sync()
         vm2_xml_bak.sync()
         virsh.nwfilter_undefine(filter_name, ignore_status=True)
-        if libvirt.check_iface(bridge_name, "exists", "--all"):
-            virsh.iface_unbridge(bridge_name, timeout=60, debug=True)
         if os.path.exists(iface_script_bk):
             process.run("mv %s %s" % (iface_script_bk, iface_script),
                         shell=True, verbose=True)
         if os.path.exists(bridge_script):
             process.run("rm -rf %s" % bridge_script, shell=True, verbose=True)
-        cmd = 'tmux -c "ip link set {1} nomaster;  ip link delete {0};' \
-              'pkill dhclient; sleep 6; dhclient {1}"'.format(bridge_name, iface_name)
-        process.run(cmd, shell=True, verbose=True)
+        br_path = "/sys/class/net/%s" % bridge_name
+        if os.path.exists(br_path):
+            utils_net.delete_linux_bridge(bridge_name, iface_name)
         # reload network configuration
         NM_service.restart()
         # recover NetworkManager
