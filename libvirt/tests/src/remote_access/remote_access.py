@@ -3,6 +3,7 @@ import os
 import logging
 import json
 
+from avocado.utils import distro
 from avocado.utils import process
 
 from virttest import remote
@@ -142,6 +143,14 @@ def run(test, params, env):
     """
 
     test_dict = dict(params)
+    pattern = test_dict.get("filter_pattern", "")
+    if ('@LIBVIRT' in pattern and
+            distro.detect().name == 'rhel' and
+            int(distro.detect().version) < 8):
+        test.cancel("The test {} is not supported on current OS({}{}<8.0) as "
+                    "the keyword @LIBVIRT is not supported by gnutls on this "
+                    "OS.".format(test.name, distro.detect().name,
+                                 distro.detect().version))
     vm_name = test_dict.get("main_vm")
     status_error = test_dict.get("status_error", "no")
     allowed_dn_str = params.get("tls_allowed_dn_list")
