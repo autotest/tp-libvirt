@@ -44,7 +44,7 @@ def run(test, params, env):
     replace_vm_disk = "yes" == params.get("replace_vm_disk", "no")
     disk_source_protocol = params.get("disk_source_protocol")
     vol_name = params.get("vol_name")
-    tmp_dir = data_dir.get_tmp_dir()
+    tmp_dir = data_dir.get_data_dir()
     pool_name = params.get("pool_name", "gluster-pool")
     brick_path = os.path.join(tmp_dir, pool_name)
     multi_gluster_disks = "yes" == params.get("multi_gluster_disks", "no")
