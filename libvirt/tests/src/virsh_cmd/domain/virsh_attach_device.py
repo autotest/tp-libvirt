@@ -16,9 +16,9 @@ from avocado.utils import astring
 
 from virttest import libvirt_version
 from virttest import virt_vm, virsh, remote, utils_misc, data_dir
-from virttest.utils_test import libvirt
 from virttest.libvirt_xml import xcepts
 from virttest.libvirt_xml.vm_xml import VMXML
+from virttest.utils_libvirt import libvirt_pcicontr
 
 
 # TODO: Move all these helper classes someplace else
@@ -959,12 +959,12 @@ def run(test, params, env):
     # Prepare test environment and its parameters
     test_params = TestParams(params, env, test)
 
-    xml_machine = vmxml.os.machine
-    # Only limited q35 with machine_type set correctly under block type condition
-    if 'q35' in xml_machine and machine_type == 'q35' and "VirtualDiskBasic" in dev_obj:
+    # Reset pci controllers num to fix error "No more available PCI slots"
+    if params.get("reset_pci_controllers_nums", "no") == "yes" and "VirtualDiskBasic" in dev_obj:
         # Only apply change on some cases with feature:
-        # block.multi_virtio_file..normal_test.hot_attach_hot_vm..name_ref.file_positional.domain_positional
-        # those cases often throw No more available PCI slots
+        # block.multi_virtio_file..hot_attach_hot_vm..name_ref.file_positional.domain_positional
+        # block.multi_virtio_file..hot_attach_hot_vm_current.name_ref.file_positional.domain_positional
+        # Those cases often fialed on aarch64 due to error "No more available PCI slots"
         if vadu_vdb == 16 and not status_error \
             and not vadu_preboot_error and 'name' in vadu_dom_ref \
                 and vadu_file_positional and vadu_domain_positional:
@@ -972,17 +972,7 @@ def run(test, params, env):
             previous_state_running = test_params.main_vm.is_alive()
             if previous_state_running:
                 test_params.main_vm.destroy(gracefully=True)
-            vmxml.remove_all_device_by_type('controller')
-            machine_list = vmxml.os.machine.split("-")
-            vmxml.set_os_attrs(**{"machine": machine_list[0] + "-q35-" + machine_list[2]})
-            q35_pcie_dict0 = {'controller_model': 'pcie-root', 'controller_type': 'pci', 'controller_index': 0}
-            q35_pcie_dict1 = {'controller_model': 'pcie-root-port', 'controller_type': 'pci'}
-            vmxml.add_device(libvirt.create_controller_xml(q35_pcie_dict0))
-            # Add enough controllers to match max times disk attaching requirements
-            for i in list(range(1, 24)):
-                q35_pcie_dict1.update({'controller_index': "%d" % i})
-                vmxml.add_device(libvirt.create_controller_xml(q35_pcie_dict1))
-            vmxml.sync()
+            libvirt_pcicontr.reset_pci_num(vm_name, 24)
             logging.debug("Guest XMl with adding many controllers: %s", test_params.main_vm.get_xml())
             if previous_state_running:
                 test_params.main_vm.start()
