@@ -70,6 +70,14 @@ def run(test, params, env):
     uefi_disk_url = params.get("uefi_disk_url", "")
     download_file_path = os.path.join(data_dir.get_tmp_dir(), "uefi_disk.qcow2")
 
+    # Tpm emulator tpm-tis_model for aarch64 supported since libvirt 7.1.0
+    if platform.machine() == 'aarch64' and tpm_model == 'tpm-tis' \
+        and backend_type == 'emulator' \
+            and not libvirt_version.version_compare(7, 1, 0):
+
+        test.cancel("Tpm emulator tpm-tis_model for aarch64 "
+                    "is not supported on current libvirt")
+
     # Check tpm chip on host for passthrough testing
     if backend_type == "passthrough":
         dmesg_info = process.getoutput("dmesg|grep tpm -wi", shell=True)
