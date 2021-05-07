@@ -59,7 +59,7 @@ def run(test, params, env):
     prepare_target_blkdev = "yes" == params.get("prepare_target_blkdev")
     backup_rounds = int(params.get("backup_rounds", 3))
     backup_error = "yes" == params.get("backup_error")
-    tmp_dir = data_dir.get_tmp_dir()
+    tmp_dir = data_dir.get_data_dir()
     virsh_dargs = {'debug': True, 'ignore_status': True}
 
     try:
@@ -106,8 +106,12 @@ def run(test, params, env):
             key_opt = ""
             # Prepare a blank params to confirm if delete the configure at the end of the test
             ceph_cfg = ""
-            if not utils_package.package_install(["ceph-common"]):
-                test.error("Failed to install ceph-common")
+            k_version = process.run('uname -r', ignore_status=True).stdout_text
+            if 'el9' in k_version:
+                process.run("dnf install -y http://download.eng.bos.redhat.com/brewroot/vol/rhel-9/packages/ceph/16.1.0/0.7.snapshot.el9/x86_64/ceph-common-16.1.0-0.7.snapshot.el9.x86_64.rpm", ignore_status=True, shell=True, verbose=True)
+            else:
+                if not utils_package.package_install(["ceph-common"]):
+                    test.error("Failed to install ceph-common")
             # Create config file if it doesn't exist
             ceph_cfg = ceph.create_config_file(ceph_mon_host)
             if enable_auth:
