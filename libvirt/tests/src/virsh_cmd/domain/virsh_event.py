@@ -186,6 +186,7 @@ def run(test, params, env):
         print(dom.name)
         xmlfile = dom.backup_xml()
         new_disk = os.path.join(tmpdir, "%s_new_disk.img" % dom.name)
+        dest_path = os.path.join(data_dir.get_data_dir(), "copy")
 
         try:
             for event in events_list:
@@ -439,6 +440,32 @@ def run(test, params, env):
                                    **virsh_dargs)
                     expected_events_list.append("'metadata-change' for %s: "
                                                 "element http://app.org/")
+                elif event == "blockcommit":
+                    disk_path = dom.get_blk_devices()['vda']['source']
+                    virsh.snapshot_create_as(dom.name, "s1 --disk-only --no-metadata", **virsh_dargs)
+                    snapshot_path = dom.get_blk_devices()['vda']['source']
+                    virsh.blockcommit(dom.name, "vda", "--active --pivot", **virsh_dargs)
+                    expected_events_list.append("'block-job' for %s: "
+                                                "Active Block Commit for " + "%s" % snapshot_path + " ready")
+                    expected_events_list.append("'block-job-2' for %s: "
+                                                "Active Block Commit for vda ready")
+                    expected_events_list.append("'block-job' for %s: "
+                                                "Active Block Commit for " + "%s" % disk_path + " completed")
+                    expected_events_list.append("'block-job-2' for %s: "
+                                                "Active Block Commit for vda completed")
+                    os.unlink(snapshot_path)
+                elif event == "blockcopy":
+                    disk_path = dom.get_blk_devices()['vda']['source']
+                    dom.undefine()
+                    virsh.blockcopy(dom.name, "vda", dest_path, "--pivot", **virsh_dargs)
+                    expected_events_list.append("'block-job' for %s: "
+                                                "Block Copy for " + "%s" % disk_path + " ready")
+                    expected_events_list.append("'block-job-2' for %s: "
+                                                "Block Copy for vda ready")
+                    expected_events_list.append("'block-job' for %s: "
+                                                "Block Copy for " + "%s" % dest_path + " completed")
+                    expected_events_list.append("'block-job-2' for %s: "
+                                                "Block Copy for vda completed")
                 elif event == "detach-dimm":
                     prepare_vmxml_mem(vmxml)
                     tg_size = params.get("dimm_size")
@@ -517,6 +544,8 @@ def run(test, params, env):
                 os.unlink(save_path)
             if os.path.exists(new_disk):
                 os.unlink(new_disk)
+            if os.path.exists(dest_path):
+                os.unlink(dest_path)
         return [(dom.name, event) for event in expected_events_list]
 
     def check_output(output, expected_events_list):
