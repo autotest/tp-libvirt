@@ -90,14 +90,17 @@ def run(test, params, env):
                     tpm_v = "1.2"
                 # If "1.2 TPM" or no version info in dmesg, try to test a tpm1.2 at first
                 if not utils_package.package_install("tpm-tools"):
-                    test.error("Failed to install tpm-tools on host")
+                    if tpm_v == "1.2":
+                        test.error("Failed to install tpm-tools on host")
+                    else:
+                        logging.debug("Failed to install tpm-tools on host")
     # Check host env for vtpm testing
     elif backend_type == "emulator":
         if not utils_misc.compare_qemu_version(4, 0, 0, is_rhev=False):
             test.cancel("vtpm(emulator backend) is not supported "
                         "on current qemu version.")
         # Install swtpm pkgs on host for vtpm emulation
-        if not utils_package.package_install("swtpm*"):
+        if not utils_package.package_install(["swtpm", "swtpm-tools"]):
             test.error("Failed to install swtpm swtpm-tools on host")
 
     def replace_os_disk(vm_xml, vm_name, nvram):
