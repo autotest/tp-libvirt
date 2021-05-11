@@ -542,7 +542,7 @@ def run(test, params, env):
                 numa_dict = {}
         # Add cpu device with numa node setting in domain xml
         vmxml_cpu = vm_xml.VMCPUXML()
-        vmxml_cpu.xml = "<cpu><numa/></cpu>"
+        vmxml_cpu.xml = "<cpu mode='host-model'><numa/></cpu>"
         vmxml_cpu.numa_cell = vmxml_cpu.dicts_to_cells(numa_dict_list)
         vmxml.cpu = vmxml_cpu
 
