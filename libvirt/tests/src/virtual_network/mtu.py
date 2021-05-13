@@ -108,6 +108,7 @@ def run(test, params, env):
         if 'mtu' in kwargs:
             m_net.mtu = kwargs['mtu']
         logging.debug(m_net)
+        libvirt.wait_for_file_over("</network>", m_net.xml)
         return m_net.xml
 
     def create_iface(iface_type, **kwargs):
