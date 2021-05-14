@@ -21,6 +21,8 @@ from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt as utlv
 
 from provider.v2v_vmcheck_helper import VMChecker
+from provider.v2v_vmcheck_helper import check_json_output
+from provider.v2v_vmcheck_helper import check_local_output
 
 
 def run(test, params, env):
@@ -578,6 +580,13 @@ def run(test, params, env):
         utlv.check_exit_status(result, status_error)
         output = result.stdout_text + result.stderr_text
         if not status_error:
+            if output_mode == 'json' and not check_json_output(params):
+                test.fail('check json output failed')
+            if output_mode == 'local' and not check_local_output(params):
+                test.fail('check local output failed')
+            if output_mode in ['null', 'json', 'local']:
+                return
+
             vmchecker = VMChecker(test, params, env)
             params['vmchecker'] = vmchecker
             if output_mode == 'rhev':

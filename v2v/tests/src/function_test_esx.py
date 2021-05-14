@@ -5,7 +5,9 @@ import uuid
 import shutil
 import time
 
+from virttest import data_dir
 from virttest import utils_misc
+from virttest import utils_package
 from virttest import utils_sasl
 from virttest import utils_v2v
 from virttest import virsh
@@ -30,7 +32,9 @@ def run(test, params, env):
             test.cancel("Please set real value for %s" % v)
     if utils_v2v.V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')
-    enable_legacy_cp = params.get("enable_legacy_crypto_policies", 'no') == 'yes'
+    enable_legacy_cp = params.get(
+        "enable_legacy_crypto_policies",
+        'no') == 'yes'
     version_requried = params.get("version_requried")
     unprivileged_user = params_get(params, 'unprivileged_user')
     vpx_hostname = params.get('vpx_hostname')
@@ -234,8 +238,15 @@ def run(test, params, env):
         logging.info(
             'powershell or signtool needs to be installed in guest first')
 
-        cmds = [('powershell "Get-AuthenticodeSignature %s | format-list"' % full_name, r'SignerCertificate.*?Not After](.*?)\[Thumbprint', '%m/%d/%Y %I:%M:%S %p'),
-                ('signtool verify /v %s' % full_name, r'Issued to: Red Hat.*?Expires:(.*?)SHA1 hash', '')]
+        cmds = [
+            ('powershell "Get-AuthenticodeSignature %s | format-list"' %
+             full_name,
+             r'SignerCertificate.*?Not After](.*?)\[Thumbprint',
+             '%m/%d/%Y %I:%M:%S %p'),
+            ('signtool verify /v %s' %
+             full_name,
+             r'Issued to: Red Hat.*?Expires:(.*?)SHA1 hash',
+             '')]
         for cmd, ptn, fmt in cmds:
             _, output = vmcheck.run_cmd(cmd)
             if re.search(ptn, output, re.S):
@@ -515,6 +526,48 @@ def run(test, params, env):
         if not res:
             test.fail('Checking static IP configuration failed')
 
+    def check_rhsrvany_checksums(vmcheck):
+        """
+        Check if MD5 and SHA1 of rhsrvany.exe are correct
+        """
+        def _get_expected_checksums(tool_exec, file):
+            val = process.run(
+                '%s %s' % (tool_exec, rhsrvany_path),
+                shell=True).stdout_text.split()[0]
+
+            if not val:
+                test.error('Get checksume failed')
+            logging.info('%s: Expect %s: %s', file, tool_exec, val)
+            return val
+
+        def _get_real_checksums(algorithm, file):
+            certutil_cmd = r'certutil -hashfile "%s"' % file
+            if algorithm == 'md5':
+                certutil_cmd += ' MD5'
+
+            res = vmcheck.session.cmd_output(certutil_cmd, safe=True)
+            logging.debug('%s output:\n%s', certutil_cmd, res)
+
+            val = res.strip().splitlines()[1].strip()
+            logging.info('%s: Real %s: %s', file, algorithm, val)
+            return val
+
+        logging.info('Check md5 and sha1 of rhsrvany.exe')
+
+        algorithms = {'md5': 'md5sum',
+                      'sha1': 'sha1sum'}
+
+        rhsrvany_path = r'/usr/share/virt-tools/rhsrvany.exe'
+        rhsrvany_path_windows = r"C:\Program Files\Guestfs\Firstboot\rhsrvany.exe"
+
+        for key, val in algorithms.items():
+            expect_val = _get_expected_checksums(val, rhsrvany_path)
+            real_val = _get_real_checksums(key, rhsrvany_path_windows)
+            if expect_val == real_val:
+                logging.info('%s are correct', key)
+            else:
+                test.fail('%s of rhsrvany.exe is not correct' % key)
+
     def check_result(result, status_error):
         """
         Check virt-v2v command result
@@ -562,7 +615,8 @@ def run(test, params, env):
                 if os_type == 'windows':
                     services = ['qemu-ga']
                     V2V_UNSUPPORT_RHEV_APT_VER = "[virt-v2v-1.43.3-4.el9,)"
-                    if not utils_v2v.multiple_versions_compare(V2V_UNSUPPORT_RHEV_APT_VER):
+                    if not utils_v2v.multiple_versions_compare(
+                            V2V_UNSUPPORT_RHEV_APT_VER):
                         services.append('rhev-apt')
                     if 'rhv-guest-tools' in os.getenv('VIRTIO_WIN'):
                         services.append('spice-ga')
@@ -602,8 +656,20 @@ def run(test, params, env):
             if 'without_default_net' in checkpoint:
                 if virsh.net_state_dict()[net_name]['active']:
                     log_fail("Bridge virbr0 already started during conversion")
+            if 'rhsrvany_checksum' in checkpoint:
+                check_rhsrvany_checksums(vmchecker.checker)
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
+            # Virtio drivers will not be installed without virtio-win setup
+            if 'virtio_win_unset' in checkpoint:
+                missing_list = params.get('missing').split(',')
+                expect_errors = ['Not find driver: ' + x for x in missing_list]
+                logging.debug('Expect errors: %s' % expect_errors)
+                logging.debug('Actual errors: %s' % error_list)
+                if set(error_list) == set(expect_errors):
+                    error_list[:] = []
+                else:
+                    logging.error('Virtio drivers not meet expectation')
 
         utils_v2v.check_exit_status(result, status_error)
         output = result.stdout_text + result.stderr_text
@@ -778,6 +844,33 @@ def run(test, params, env):
             with open(bandwidth_file, 'w') as fd:
                 fd.write(dynamic_speeds)
 
+        if checkpoint[0].startswith('virtio_win'):
+            cp = checkpoint[0]
+            src_dir = params.get('virtio_win_dir')
+            dest_dir = os.path.join(data_dir.get_tmp_dir(), 'virtio-win')
+            iso_path = os.path.join(dest_dir, 'virtio-win.iso')
+            if not os.path.exists(dest_dir):
+                shutil.copytree(src_dir, dest_dir)
+            virtio_win_env = params.get('virtio_win_env', 'VIRTIO_WIN')
+            process.run('rpm -e virtio-win')
+            if process.run(
+                'rpm -q virtio-win',
+                    ignore_status=True).exit_status == 0:
+                test.error('not removed')
+            if cp.endswith('unset'):
+                logging.info('Unset env %s' % virtio_win_env)
+                os.unsetenv(virtio_win_env)
+            if cp.endswith('custom'):
+                logging.info('Set env %s=%s' % (virtio_win_env, dest_dir))
+                os.environ[virtio_win_env] = dest_dir
+            if cp.endswith('iso_mount'):
+                logging.info('Mount iso to /opt')
+                process.run('mount %s /opt' % iso_path)
+                os.environ[virtio_win_env] = '/opt'
+            if cp.endswith('iso_file'):
+                logging.info('Set env %s=%s' % (virtio_win_env, iso_path))
+                os.environ[virtio_win_env] = iso_path
+
         if 'luks_dev_keys' in checkpoint:
             luks_password = params_get(params, 'luks_password', '')
             luks_keys = params_get(params, 'luks_keys', '')
@@ -861,6 +954,10 @@ def run(test, params, env):
                 verbose=True,
                 ignore_status=True,
                 shell=True)
+        if checkpoint[0].startswith('virtio_win'):
+            utils_package.package_install(['virtio-win'])
+        if 'virtio_win_iso_mount' in checkpoint:
+            process.run('umount /opt', ignore_status=True)
         if 'ogac' in checkpoint and params.get('tmp_mount_point'):
             if os.path.exists(params.get('tmp_mount_point')):
                 utils_misc.umount(

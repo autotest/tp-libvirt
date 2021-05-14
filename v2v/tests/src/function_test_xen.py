@@ -121,31 +121,6 @@ def run(test, params, env):
         if check == 'pcspk' and output_mode == 'libvirt' and "<sound model='pcspk'" not in xml:
             log_fail('Sound card should be "pcspk"')
 
-    def check_rhsrvany_md5(vmcheck):
-        """
-        Check if MD5 and SHA1 of rhsrvany.exe are correct
-        """
-        logging.info('Check md5 and sha1 of rhsrvany.exe')
-        val_md5, val_sha1 = params.get('val_md5'), params.get('val_sha1')
-        logging.info('Expect MD5=%s, SHA1=%s', val_md5, val_sha1)
-        if not val_md5 or not val_sha1:
-            test.error('No MD5 or SHA1 value provided')
-        cmd_sha1 = params.get('cmd_sha1')
-        cmd_md5 = cmd_sha1 + ' MD5'
-        sha1 = vmcheck.session.cmd_output(
-            cmd_sha1,
-            safe=True).strip().split('\n')[1].replace(
-            ' ',
-            '')
-        md5 = vmcheck.session.cmd_output(
-            cmd_md5, safe=True).strip().split('\n')[1].replace(
-            ' ', '')
-        logging.info('Actual MD5=%s, SHA1=%s', md5, sha1)
-        if sha1 == val_sha1 and md5 == val_md5:
-            logging.info('MD5 and SHA1 are correct')
-        else:
-            log_fail('MD5 or SHA1 of rhsrvany.exe not correct')
-
     def check_disk(vmcheck, count):
         """
         Check if number of disks meets expectation
@@ -198,8 +173,6 @@ def run(test, params, env):
                 check_kernel(vmchecker.checker)
             if checkpoint in ['sound', 'pcspk']:
                 check_sound_card(vmchecker.checker, checkpoint)
-            if checkpoint == 'rhsrvany_md5':
-                check_rhsrvany_md5(vmchecker.checker)
             if checkpoint == 'multidisk':
                 check_disk(vmchecker.checker, params['disk_count'])
         log_check = utils_v2v.check_log(params, output)
@@ -208,16 +181,6 @@ def run(test, params, env):
         # Merge 2 error lists
         if params.get('vmchecker'):
             error_list.extend(params['vmchecker'].errors)
-        # Virtio drivers will not be installed without virtio-win setup
-        if checkpoint == 'virtio_win_unset':
-            missing_list = params.get('missing').split(',')
-            expect_errors = ['Not find driver: ' + x for x in missing_list]
-            logging.debug('Expect errors: %s' % expect_errors)
-            logging.debug('Actual errors: %s' % error_list)
-            if set(error_list) == set(expect_errors):
-                error_list[:] = []
-            else:
-                logging.error('Virtio drivers not meet expectation')
         if len(error_list):
             test.fail(
                 '%d checkpoints failed: %s' %
@@ -391,31 +354,6 @@ def run(test, params, env):
             logging.info(session.cmd_output('cat /etc/ssh/ssh_banner'))
             logging.info('Restart sshd service on xen host')
             session.cmd('service sshd restart')
-        if checkpoint.startswith('virtio_win'):
-            src_dir = params.get('virtio_win_dir')
-            dest_dir = os.path.join(data_dir.get_tmp_dir(), 'virtio-win')
-            iso_path = os.path.join(dest_dir, 'virtio-win.iso')
-            if not os.path.exists(dest_dir):
-                shutil.copytree(src_dir, dest_dir)
-            virtio_win_env = params.get('virtio_win_env', 'VIRTIO_WIN')
-            process.run('rpm -e virtio-win')
-            if process.run(
-                'rpm -q virtio-win',
-                    ignore_status=True).exit_status == 0:
-                test.error('not removed')
-            if checkpoint.endswith('unset'):
-                logging.info('Unset env %s' % virtio_win_env)
-                os.unsetenv(virtio_win_env)
-            if checkpoint.endswith('custom'):
-                logging.info('Set env %s=%s' % (virtio_win_env, dest_dir))
-                os.environ[virtio_win_env] = dest_dir
-            if checkpoint.endswith('iso_mount'):
-                logging.info('Mount iso to /opt')
-                process.run('mount %s /opt' % iso_path)
-                os.environ[virtio_win_env] = '/opt'
-            if checkpoint.endswith('iso_file'):
-                logging.info('Set env %s=%s' % (virtio_win_env, iso_path))
-                os.environ[virtio_win_env] = iso_path
         if checkpoint == 'cdrom':
             xml = vm_xml.VMXML.new_from_inactive_dumpxml(
                 vm_name, virsh_instance=virsh_instance)
@@ -518,7 +456,5 @@ def run(test, params, env):
             virsh.undefine(vm_name)
         if output_mode == 'libvirt':
             pvt.cleanup_pool(pool_name, pool_type, pool_target, '')
-        if checkpoint.startswith('virtio_win'):
-            utils_package.package_install(['virtio-win'])
         utils_v2v.v2v_setup_ssh_key_cleanup(xen_session, xen_pubkey)
         process.run('ssh-agent -k')
