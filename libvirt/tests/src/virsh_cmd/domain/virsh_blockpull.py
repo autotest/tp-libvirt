@@ -259,12 +259,6 @@ def run(test, params, env):
     pool_name = params.get("pool_name", "gluster-pool")
     brick_path = os.path.join(tmp_dir, pool_name)
 
-    # This is brought by new feature:block-dev
-    if (libvirt_version.version_compare(6, 0, 0) and
-       params.get("transport", "") == "rdma"):
-        test.cancel("If blockdev is enabled, the transport protocol 'rdma' is "
-                    "not yet supported.")
-
     # A backup of original vm
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     logging.debug("original xml is %s", vmxml_backup)
