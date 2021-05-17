@@ -68,7 +68,7 @@ def run(test, params, env):
     loader = params.get("loader", "")
     nvram = params.get("nvram", "")
     uefi_disk_url = params.get("uefi_disk_url", "")
-    download_file_path = os.path.join(data_dir.get_tmp_dir(), "uefi_disk.qcow2")
+    download_file_path = os.path.join(data_dir.get_data_dir(), "uefi_disk.qcow2")
 
     # Check tpm chip on host for passthrough testing
     if backend_type == "passthrough":
