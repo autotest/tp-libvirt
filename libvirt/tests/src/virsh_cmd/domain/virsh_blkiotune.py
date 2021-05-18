@@ -1,10 +1,14 @@
-import os
 import logging
 import re
 
 from avocado.utils import process
 
-from virttest import libvirt_xml, utils_libvirtd, virsh
+from virttest import libvirt_cgroup
+from virttest import libvirt_xml
+from virttest import utils_disk
+from virttest import utils_libvirtd
+from virttest import virsh
+
 from virttest.staging import utils_cgroup
 from virttest.utils_misc import get_dev_major_minor
 
@@ -32,7 +36,7 @@ def check_blkiotune(test, params):
         k, v = l.split(':')
         dicts[k.strip()] = v.strip()
 
-    logging.debug(dicts)
+    logging.debug("The blkiotune result from virsh command is:\n%s", dicts)
 
     virt_xml_obj = libvirt_xml.vm_xml.VMXML(virsh_instance=virsh)
 
@@ -44,6 +48,8 @@ def check_blkiotune(test, params):
     else:
         blkio_params = virt_xml_obj.get_blkio_params(vm_name)
 
+    logging.debug("The blkiotune result from guest xml is:\n%s", blkio_params)
+
     device_weights_from_xml = ""
     weight_from_cgroup = ""
     device_weight_from_cgroup = ""
@@ -54,24 +60,29 @@ def check_blkiotune(test, params):
     weight_from_cmd_output = dicts['weight']
     device_weights_from_cmd_output = dicts['device_weight']
 
-    # To get guest corresponding blkio.weight and blkio.weight_device value
-    # from blkio controller of the cgroup.
-    if cgconfig == "on" and vm.is_alive():
-        blkio_params_from_cgroup = get_blkio_params_from_cgroup(test, params)
-        weight_from_cgroup = blkio_params_from_cgroup.get('weight')
-        device_weight_from_cgroup = \
-            blkio_params_from_cgroup.get('weight_device')
-
     # The device-weights is a single string listing, in the format
     # of /path/to/device,weight
     if device_weights_path_from_xml and device_weights_weight_from_xml:
         device_weights_from_xml = device_weights_path_from_xml + "," + \
                                   device_weights_weight_from_xml
 
+    dev_num = None
     if device_weights:
         dev = device_weights.split(',')[0]
         (major, minor) = get_dev_major_minor(dev)
-        device_weights_tmp = str(major) + ":" + str(minor) + "," + device_weights.split(',')[1]
+        dev_num = str(major) + ":" + str(minor)
+        device_weights_tmp = device_weights.split(',')[1]
+
+    # To get guest corresponding blkio.weight and blkio.weight_device value
+    # from blkio controller of the cgroup.
+    if cgconfig == "on" and vm.is_alive():
+        blkio_params_from_cgroup = get_blkio_params_from_cgroup(params)
+        weight_from_cgroup = blkio_params_from_cgroup.get('weight')
+        if weight_from_cgroup.count('default,'):
+            weight_from_cgroup = weight_from_cgroup.split(',')[1]
+            logging.debug("Changed weight_from_cgroup=%s\n", weight_from_cgroup)
+        if dev_num:
+            device_weight_from_cgroup = blkio_params_from_cgroup.get(dev_num).get('weight_device')
 
     # To check specified weight and device_weight value with virsh command
     # output and/or blkio.weight and blkio.weight_device value from blkio
@@ -102,59 +113,17 @@ def check_blkiotune(test, params):
     return True
 
 
-def get_blkio_params_from_cgroup(test, params):
+def get_blkio_params_from_cgroup(params):
     """
     Get a list of domain-specific per block stats from cgroup blkio controller.
-    :param domain: Domain name
 
-    :param test: the test handle
     :param params: the parameter dictionary
     """
-
-    vm_name = params.get("main_vm")
-    qemu_path = params.get("qemu_path")
     vm = params.get("vm")
-    domid = vm.get_id()
-
-    blkio_path = os.path.join(utils_cgroup.get_cgroup_mountpoint("blkio"), qemu_path, vm_name)
-    if not os.path.isdir(blkio_path):
-        # to convert "-" to "\x2d" for vm name on >=F19 and RHEL7.y
-        name = vm_name.replace("-", "\\x2d")
-        # qemu_path defaults as follows for >= F19 or RHEL7.y
-        # qemu_path = "machine.slice/machine-qemu\\x2d%s.scope" % name
-        # qemu_path defaults as follows for >= RHEL7.4
-        qemu_path = "machine.slice/machine-qemu\\x2d%s\\x2d%s.scope" % (domid, name)
-        blkio_path = os.path.join(utils_cgroup.get_cgroup_mountpoint("blkio"),
-                                  qemu_path)
-
-    bfq_scheduler = False
-    schedulerfd = params.get("schedulerfd")
-    with open(schedulerfd, 'r') as iosche:
-        if 'bfq' in iosche.readline():
-            bfq_scheduler = True
-    if bfq_scheduler:
-        blkio_weight_file = os.path.join(blkio_path, "blkio.bfq.weight")
-        blkio_device_weights_file = None
-    else:
-        blkio_weight_file = os.path.join(blkio_path, "blkio.weight")
-        blkio_device_weights_file = os.path.join(blkio_path, "blkio.weight_device")
-
-    blkio_params_from_cgroup = {}
-
-    for f in blkio_weight_file, blkio_device_weights_file:
-        if f:
-            try:
-                with open(f, 'rU') as f_blkio_params:
-                    val = f_blkio_params.readline().split()
-                    if len(val) > 1:
-                        blkio_params_from_cgroup[f.split('.')[-1]] = \
-                            val[0] + "," + val[1]
-                    elif len(val) == 1:
-                        blkio_params_from_cgroup[f.split('.')[-1]] = val[0]
-            except IOError:
-                test.fail("Failed to get blkio params from %s" % f)
-
-    logging.debug(blkio_params_from_cgroup)
+    vm_pid = vm.get_pid()
+    cgtest = libvirt_cgroup.CgroupTest(vm_pid)
+    blkio_params_from_cgroup = cgtest.get_standardized_cgroup_info(virsh_cmd='blkiotune')
+    logging.debug("The blkio values from cgroup is :'%s'", blkio_params_from_cgroup)
     return blkio_params_from_cgroup
 
 
@@ -203,7 +172,7 @@ def set_blkio_parameter(test, params, cgstop):
     device_weights = params.get("blkio_device_weights")
     options = params.get("options")
 
-    result = virsh.blkiotune(vm_name, weight, device_weights, options=options)
+    result = virsh.blkiotune(vm_name, weight, device_weights, options=options, debug=True)
     status = result.exit_status
 
     # Check status_error
@@ -247,8 +216,8 @@ def prepare_scheduler(params, test, vm):
     test_dict = dict(params)
     test_dict['vm'] = vm
 
-    schedulerfd = params.get("schedulerfd")
-    cmd = "cat " + schedulerfd
+    schedulerfd = params.get('schedulerfd')
+    cmd = "cat %s" % schedulerfd
     iosche = process.run(cmd, shell=True).stdout_text
     logging.debug("iosche value is:%s", iosche)
     test_dict['oldmode'] = re.findall(r"\[(.*?)\]", iosche)[0]
@@ -288,7 +257,12 @@ def run(test, params, env):
     status_error = params.get("status_error", "no")
     change_parameters = params.get("change_parameters", "no")
     original_vm_xml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    schedulerfd = params.get("schedulerfd")
+    first_disk = utils_disk.get_first_disk()
+    schedulerfd = params.get('schedulerfd') % first_disk
+    params['schedulerfd'] = schedulerfd
+    blkio_device_weights = params.get('blkio_device_weights')
+    if blkio_device_weights and blkio_device_weights.count('%s'):
+        params['blkio_device_weights'] = params.get('blkio_device_weights') % first_disk
 
     # Make sure vm is down if start not requested
     if start_vm == "no" and vm and vm.is_alive():
