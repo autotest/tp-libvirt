@@ -75,6 +75,7 @@ def run(test, params, env):
             new_host.lease_attrs = host_lease
             ipxml.hosts = [new_host]
         netxml.set_ip(ipxml)
+        logging.debug("The network xml is %s", netxml)
         netxml.create()
 
     def get_net_dhcp_leases(output):
@@ -120,7 +121,7 @@ def run(test, params, env):
 
             delta = get_ex_time - now_time
             logging.debug("The get_ex_time is %s, the now_time is %s, "
-                          "duration is %s" % (get_ex_time, now_time, duration))
+                          "duration is %s", get_ex_time, now_time, duration)
             if delta > timedelta(seconds=dur_sec):
                 test.fail("Get expiry time %s longer than the setting %s!!"
                           % (delta, timedelta(seconds=dur_sec)))
@@ -278,7 +279,7 @@ def run(test, params, env):
     except LibvirtXMLError as e:
         if status_error and invalid_lease:
             if expect_msg not in e.details:
-                test.fail("Network create fail unexpected: %s", e.details)
+                test.fail("Network create fail with unexpected error message %s" % e.details)
             else:
                 logging.debug("Network create fail expected: %s", e.details)
     finally:
