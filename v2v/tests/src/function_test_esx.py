@@ -250,6 +250,25 @@ def run(test, params, env):
         # Get here means the guest doesn't have powershell or signtool
         test.error("Powershell or Signtool must be installed in guest")
 
+    def check_windows_vmware_tools(vmcheck):
+        """
+        Check vmware tools is uninstalled in VM
+
+        :param vmcheck: VMCheck object for vm checking
+        """
+        def _get_vmware_info(cmd):
+            _, res = vmcheck.run_cmd(cmd)
+            if res and not re.search('vmtools', res, re.I):
+                return True
+            return False
+
+        cmds = ['tasklist', 'sc query vmtools']
+        for cmd in cmds:
+            res = utils_misc.wait_for(
+                lambda: _get_vmware_info(cmd), 600, step=30)
+            if not res:
+                test.fail("Failed to verification vmtools uninstallation")
+
     def check_windows_service(vmcheck, service_name):
         """
         Check service in VM
@@ -578,6 +597,8 @@ def run(test, params, env):
                 check_file_architecture(vmchecker.checker)
             if 'ubuntu_tools' in checkpoint:
                 check_ubuntools(vmchecker.checker)
+            if 'vmware_tools' in checkpoint:
+                check_windows_vmware_tools(vmchecker.checker)
             if 'without_default_net' in checkpoint:
                 if virsh.net_state_dict()[net_name]['active']:
                     log_fail("Bridge virbr0 already started during conversion")
