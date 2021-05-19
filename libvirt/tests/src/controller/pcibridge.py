@@ -1,4 +1,5 @@
 import logging
+import time
 
 from virttest import virsh
 from virttest import utils_misc
@@ -334,12 +335,12 @@ def run(test, params, env):
                 libvirt.check_exit_status(result_define_vm)
                 result_start_vm = virsh.start(vm_name, debug=True)
                 libvirt.check_exit_status(result_start_vm)
-
+                logging.debug(virsh.dumpxml(vm_name))
+                # Workaround for vm starting slower in certain environment
+                time.sleep(30)
                 # Login to make sure vm is actually started
                 vm.create_serial_console()
                 vm.wait_for_serial_login().close()
-
-                logging.debug(virsh.dumpxml(vm_name))
 
                 # Get all pcie-to-pci-bridge after test operations
                 new_vmxml = VMXML.new_from_inactive_dumpxml(vm_name)

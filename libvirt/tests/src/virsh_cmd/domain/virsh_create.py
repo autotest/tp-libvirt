@@ -1,4 +1,7 @@
+
 import logging
+import time
+
 import aexpect
 
 from avocado.utils import process
@@ -97,6 +100,7 @@ def run(test, params, env):
 
             # make sure guest is running
             ret = utils_misc.wait_for(lambda: vm.state() == "running", 30)
+            time.sleep(30)
             if ret:
                 logging.info("Guest is running now.")
             else:
