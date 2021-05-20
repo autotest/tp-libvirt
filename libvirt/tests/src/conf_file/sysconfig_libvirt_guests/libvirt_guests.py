@@ -37,7 +37,8 @@ def run(test, params, env):
         tailed_log_file = os.path.join(data_dir.get_tmp_dir(), 'tail_log')
         tailed_messages = aexpect.Tail(command='tail -f /var/log/messages',
                                        output_func=utils_misc.log_line,
-                                       output_params=(tailed_log_file))
+                                       output_params=(tailed_log_file),
+                                       auto_close=True)
         return tailed_messages
 
     def chk_on_shutdown(status_error, on_shutdown, parallel_shutdown, output):
