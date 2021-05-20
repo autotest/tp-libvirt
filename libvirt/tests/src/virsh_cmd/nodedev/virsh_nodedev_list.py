@@ -100,6 +100,28 @@ def get_net_devices():
     return devices
 
 
+def get_ccw_io_devices():
+    """
+    Retrieve only online ccw devices
+
+    :return: A list of ccw devices in the same format as nodedev-list
+    """
+    ccw_base_path = '/sys/bus/ccw/devices'
+    devices = []
+    if not os.path.exists(ccw_base_path):
+        return devices
+    for device in os.listdir(ccw_base_path):
+        online_attribute = os.path.join(ccw_base_path, device, "online")
+        online_value = process.run("cat %s" % online_attribute,
+                                   timeout=5, ignore_status=True,
+                                   shell=True).stdout_text
+        is_online = "1" == online_value.strip()
+        if is_online:
+            dev_name = re.sub(r'\W', '_', 'ccw_' + device)
+            devices.append(dev_name)
+    return devices
+
+
 def get_css_io_devices():
     """
     Retrieve css devices apt for I/O passthrough.
@@ -148,8 +170,7 @@ def get_devices_by_cap(cap):
                 r'\S+:\d+\.\d+'),
         'usb_device': ('/sys/bus/usb/devices', 'usb_',
                        # Match any string that does not have :X.X at the end
-                       r'^((?!\S+:\d+\.\d+).)*$'),
-        'ccw': ('/sys/bus/ccw/devices', 'ccw_', '.*')
+                       r'^((?!\S+:\d+\.\d+).)*$')
     }
     if cap in cap_map:
         devices = []
@@ -167,6 +188,8 @@ def get_devices_by_cap(cap):
         devices = get_storage_devices()
     elif cap == 'css':
         devices = get_css_io_devices()
+    elif cap == 'ccw':
+        devices = get_ccw_io_devices()
     else:
         devices = []
     return devices
