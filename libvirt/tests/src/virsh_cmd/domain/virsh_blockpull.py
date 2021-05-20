@@ -255,7 +255,7 @@ def run(test, params, env):
     disk_src_protocol = params.get("disk_source_protocol")
     restart_tgtd = params.get("restart_tgtd", "no")
     vol_name = params.get("vol_name")
-    tmp_dir = data_dir.get_tmp_dir()
+    tmp_dir = data_dir.get_data_dir()
     pool_name = params.get("pool_name", "gluster-pool")
     brick_path = os.path.join(tmp_dir, pool_name)
 
