@@ -19,6 +19,7 @@ from virttest import utils_misc
 from virttest import utils_config
 from virttest import utils_numeric
 from virttest import utils_hotplug
+from virttest import libvirt_version
 from virttest import virt_vm
 from virttest import data_dir
 from virttest.utils_test import libvirt
@@ -109,7 +110,10 @@ def run(test, params, env):
         """
         cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
         if discard:
-            cmd += " | grep 'discard-data=yes'"
+            if libvirt_version.version_compare(7, 3, 0):
+                cmd = cmd + " | grep " + '\\"discard-data\\":true'
+            else:
+                cmd += " | grep 'discard-data=yes'"
         elif max_mem_rt:
             cmd += (" | grep 'slots=%s,maxmem=%sk'"
                     % (max_mem_slots, max_mem_rt))
