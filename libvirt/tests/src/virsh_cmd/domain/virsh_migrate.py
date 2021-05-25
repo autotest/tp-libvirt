@@ -1112,7 +1112,7 @@ def run(test, params, env):
                 obj_migration.do_migration(vms, src_uri, dest_uri, "orderly",
                                            options=migrate_options,
                                            thread_timeout=postcopy_timeout,
-                                           ignore_status=False,
+                                           ignore_status=True,
                                            func=run_migration_cmd,
                                            func_params=cmd,
                                            shell=True)
