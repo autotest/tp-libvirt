@@ -826,6 +826,12 @@ def get_expected_vnc_options(params, networks, expected_result):
         'port': port,
     }
 
+    if libvirt_version.version_compare(7, 2, 0):
+        # libvirt auto-populate <audio> elements for vnc since 7.2.0
+        vmxml = VMXML.new_from_dumpxml(vm_name)
+        audio_id = vmxml.get_devices(device_type="audio")[0].id
+        expected_opts['audiodev'] = "audio" + audio_id
+
     if vnc_tls == '1':
         expected_opts['tls'] = 'yes'
         if tls_x509_verify == '1':
