@@ -2,6 +2,8 @@ import logging
 import types
 
 from virttest import virsh                           # pylint: disable=W0611
+
+from virttest.utils_conn import TLSConnection
 from virttest.utils_libvirt import libvirt_network   # pylint: disable=W0611
 
 
@@ -88,3 +90,38 @@ def do_migration(vm, mig_test, src_uri, dest_uri, options, virsh_options,
                               func=None,
                               multi_funcs=action_during_mig,
                               **extra_args)
+
+
+def setup_conn_obj(conn_type, params, test):
+    """
+    Setup connection object, like TLS
+
+    :param conn_type: str, 'tls' for now
+    :param params: dict, used to setup the connection
+    :param test: test object
+    :return: TLSConnection, the connection object
+    """
+    logging.debug("Begin to create new {} connection".format(conn_type.upper()))
+    conn_obj = None
+    if conn_type.upper() == 'TLS':
+        conn_obj = TLSConnection(params)
+        conn_obj.auto_recover = True
+        conn_obj.conn_setup()
+    else:
+        test.error("Invalid parameter, only support 'tls'")
+    return conn_obj
+
+
+def cleanup_conn_obj(obj_list, test):
+    """
+    Clean up TLS/SSH/TCP/UNIX connection objects
+
+    :param obj_list: list, object list
+    :param test: test object
+    """
+    if not obj_list:
+        test.error("No connection object needs to be cleaned up")
+    for one_conn in obj_list:
+        if one_conn:
+            logging.debug("Clean up one connection object")
+            del one_conn
