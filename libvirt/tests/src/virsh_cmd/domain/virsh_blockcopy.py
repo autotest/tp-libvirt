@@ -256,7 +256,7 @@ def setup_auth_enabled_iscsi_disk(vm, params):
         is_setup=True, is_login=False, image_size=image_size,
         chap_user=chap_user, chap_passwd=chap_passwd)
     # Copy first disk to emulated backing store path
-    tmp_dir = data_dir.get_tmp_dir()
+    tmp_dir = data_dir.get_data_dir()
     emulated_path = os.path.join(tmp_dir, emu_image)
     cmd = "qemu-img convert -f %s -O %s %s %s" % ('qcow2',
                                                   disk_format,
