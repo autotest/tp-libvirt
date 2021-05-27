@@ -1,9 +1,11 @@
+import glob
+import json
+import logging
 import os
 import re
-import time
-import json
 import string
-import logging
+import tempfile
+import time
 import xml.etree.ElementTree as ET
 from distutils.version import LooseVersion  # pylint: disable=E0611
 
@@ -651,17 +653,47 @@ class VMChecker(object):
         expect_drivers = ["Red Hat VirtIO SCSI",
                           "Red Hat VirtIO Ethernet Adapte"]
         # see bz1902635
-        virtio_win_ver = "[virtio-win-1.9.16-1,)"
+        virtio_win_ver = "[virtio-win-1.9.16,)"
         virtio_win_qxl_os = ['win2008r2', 'win7']
         virtio_win_qxldod_os = ['win10', 'win2016', 'win2019']
-        virtio_win_support_qxldod = utils_v2v.multiple_versions_compare(
-            virtio_win_ver)
-        if virtio_win_support_qxldod and self.os_version in virtio_win_qxldod_os:
-            expect_adapter = 'Red Hat QXL controller'
-        elif self.os_version in virtio_win_qxl_os:
-            expect_adapter = 'Red Hat QXL GPU'
+        virtio_win_installed = os.path.exists(
+            '/usr/share/virtio-win/virtio-win.iso')
+        # virtio-win is not installed, but VIRTIO_WIN is set
+        virtio_win_env = os.getenv('VIRTIO_WIN')
+
+        expect_adapter = 'Microsoft Basic Display Driver'
+        if not virtio_win_installed:
+            if virtio_win_env:
+                if os.path.isdir(virtio_win_env):
+                    virtio_win_iso_dir = virtio_win_env
+                    qxldods = glob.glob(
+                        "%s/**/qxldod.inf" %
+                        virtio_win_iso_dir, recursive=True)
+                else:
+                    with tempfile.TemporaryDirectory(prefix='v2v_helper_') as virtio_win_iso_dir:
+                        process.run(
+                            'mount %s %s' %
+                            (virtio_win_env, virtio_win_iso_dir), shell=True)
+                        qxldods = glob.glob(
+                            "%s/**/qxldod.inf" %
+                            virtio_win_iso_dir, recursive=True)
+                        process.run(
+                            'umount %s' %
+                            (virtio_win_iso_dir),
+                            shell=True)
+                logging.debug('Found qxldods: %s', qxldods)
+                if qxldods:
+                    virtio_win_support_qxldod = True
+                    virtio_win_installed = True
         else:
-            expect_adapter = 'Microsoft Basic Display Driver'
+            virtio_win_support_qxldod = utils_v2v.multiple_versions_compare(
+                virtio_win_ver)
+
+        if virtio_win_installed:
+            if virtio_win_support_qxldod and self.os_version in virtio_win_qxldod_os:
+                expect_adapter = 'Red Hat QXL controller'
+            elif self.os_version in virtio_win_qxl_os:
+                expect_adapter = 'Red Hat QXL GPU'
 
         expect_drivers.append(expect_adapter)
         check_drivers = expect_drivers[:]
