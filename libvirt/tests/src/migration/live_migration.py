@@ -18,8 +18,10 @@ def get_used_port(func_returns):
                                from MigrationTest
     :return: str or None
     """
+    logging.debug("Get the used port in migration")
     for func_ref, func_return in func_returns.items():
-        if func_ref.__name__ == 'libvirt_network.check_established':
+        if func_ref.__name__ == 'check_established':
+            logging.debug("Return port:%s", func_return)
             return func_return
 
     return None
@@ -118,6 +120,7 @@ def run(test, params, env):
 
         func_returns = dict(migration_test.func_ret)
         migration_test.func_ret.clear()
+        logging.debug("Migration returns function results:%s", func_returns)
         if return_port:
             port_used = get_used_port(func_returns)
 
@@ -136,11 +139,16 @@ def run(test, params, env):
                                         extra_args)
             if return_port:
                 func_returns = dict(migration_test.func_ret)
+                logging.debug("Migration returns function "
+                              "results:%s", func_returns)
                 port_second = get_used_port(func_returns)
                 if port_used != port_second:
                     test.fail("Expect same port '{}' is used as previous one, "
                               "but found new one '{}'".format(port_used,
                                                               port_second))
+                else:
+                    logging.debug("Same port '%s' was used as "
+                                  "expected", port_second)
         migration_test.post_migration_check([vm], params, uri=dest_uri)
     finally:
         logging.info("Recover test environment")
