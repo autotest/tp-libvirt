@@ -34,10 +34,13 @@ def run(test, params, env):
     filter_by_mac = "yes" == params.get("filter_by_mac", "no")
     invalid_mac = "yes" == params.get("invalid_mac", "no")
     expect_msg = params.get("leases_err_msg")
+    # upstream expect msg may change on new libvirt
+    new_expect_msg = params.get("new_leases_err_msg")
     range_lease = eval(params.get("range_lease", "None"))
     host_lease = eval(params.get("host_lease", "None"))
     host = eval(params.get("host", "None"))
     invalid_lease = "yes" == params.get("invalid_lease", "no")
+    blank_lease = "yes" == params.get("blank_lease", "no")
     if (host_lease or range_lease) and not libvirt_version.version_compare(6, 2, 0):
         test.cancel("Don't support: libvirt support lease setting since 6.2.0!")
     # Generate a random string as the MAC address
@@ -277,6 +280,8 @@ def run(test, params, env):
                 utlv.check_result(result, expect_msg.split(';'))
     except LibvirtXMLError as e:
         if status_error and invalid_lease:
+            if blank_lease and libvirt_version.version_compare(7, 1, 0):
+                expect_msg = new_expect_msg
             if expect_msg not in e.details:
                 test.fail("Network create fail unexpected: %s", e.details)
             else:
