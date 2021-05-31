@@ -43,7 +43,7 @@ def run(test, params, env):
 
     config = utils_config.LibvirtQemuConfig()
     libvirtd = utils_libvirtd.Libvirtd()
-    dump_path = os.path.join(data_dir.get_tmp_dir(), "dump")
+    dump_path = os.path.join(data_dir.get_data_dir(), "dump")
     try:
         if not vmxml.xmltreefile.find('devices').findall('panic'):
             # Set panic device
