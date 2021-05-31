@@ -249,3 +249,4 @@ def run(test, params, env):
     finally:
         # Restore guest
         original_vm_xml.sync()
+        libvirt.delete_local_disk('file', path=disk_source)
