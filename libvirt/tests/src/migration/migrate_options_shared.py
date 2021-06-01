@@ -1389,6 +1389,7 @@ def run(test, params, env):
         # Execute migration process
         if not asynch_migration:
             mig_result = do_migration(vm, dest_uri, options, extra)
+            migration_test.check_result(mig_result, params)
         else:
 
             logging.debug("vm.connect_uri=%s", vm.connect_uri)
