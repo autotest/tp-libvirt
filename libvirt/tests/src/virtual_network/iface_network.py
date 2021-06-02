@@ -575,7 +575,7 @@ TIMEOUT 3"""
         iface_features = vm_xml.VMXML.get_iface_by_mac(vm_name, mac)
         target_dev = iface_features.get('target', {}).get('dev')
         if not target_dev:
-            test.skip("Failed to get the target dev name for qdisc test!")
+            test.error("Failed to get the target dev name for qdisc test!")
         outputs = process.run("ip l show %s" % target_dev).stdout_text
         if not re.findall(expect_type, outputs):
             test.fail("The qdisc type should be %s, but it is not, check %s" % (expect_type, outputs))
