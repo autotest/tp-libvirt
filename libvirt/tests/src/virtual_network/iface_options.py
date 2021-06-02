@@ -22,7 +22,6 @@ from virttest import utils_libvirtd
 from virttest import utils_config
 from virttest import data_dir
 from virttest import utils_selinux
-from virttest import network
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import capability_xml
@@ -943,11 +942,11 @@ def run(test, params, env):
             if queue_size and not status_error:
                 logging.debug("The queue size set in the xml is %s" % queue_size)
                 ifname_guest = utils_net.get_linux_ifname(session, iface_mac)
-                max, cur = network.get_channel_info(session, ifname_guest)
+                max, cur = utils_net.get_channel_info(session, ifname_guest)
                 logging.debug("Get the channel info as: max %s  current %s" % (max, cur))
                 if int(max.get("Combined")) != queue_size:
                     test.fail("The multiqueue did not set correctly on the vm, refer to %s!" % max)
-                if not network.set_channel(session, ifname_guest, "combined", queue_size):
+                if not utils_net.set_channel(session, ifname_guest, "combined", queue_size):
                     test.fail("Setting Combined to %s on vm failed!" % queue_size)
             if test_target:
                 logging.debug("Check if the target dev is set")
