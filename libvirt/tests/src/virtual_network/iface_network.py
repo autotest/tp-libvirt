@@ -135,6 +135,9 @@ TIMEOUT 3"""
         if iface_boot:
             vmxml.remove_all_boots()
             iface.boot = iface_boot
+        if iface_driver:
+            driver_dict = ast.literal_eval(iface_driver)
+            iface.driver = iface.new_driver(driver_attr=driver_dict)
         logging.debug("New interface xml file: %s", iface)
         if sync:
             vmxml.devices = xml_devices
@@ -560,6 +563,23 @@ TIMEOUT 3"""
         if not utils_package.package_remove("libvirt*", session):
             test.error("Failed to remove libvirt packages on guest")
 
+    def check_qdisc(expect_type):
+        """
+        check the qdisc type of the tap device
+
+        :param expect_type: the expected qdisc type for the interface, for example, noqueue, mq, htb or others.
+        """
+        if not vm.is_alive():
+            vm.start()
+        mac = vm_xml.VMXML.get_iface_dev(vm_name)[0]
+        iface_features = vm_xml.VMXML.get_iface_by_mac(vm_name, mac)
+        target_dev = iface_features.get('target', {}).get('dev')
+        if not target_dev:
+            test.error("Failed to get the target dev name for qdisc test!")
+        outputs = process.run("ip l show %s" % target_dev).stdout_text
+        if not re.findall(expect_type, outputs):
+            test.fail("The qdisc type should be %s, but it is not, check %s" % (expect_type, outputs))
+
     start_error = "yes" == params.get("start_error", "no")
     define_error = "yes" == params.get("define_error", "no")
     restart_error = "yes" == params.get("restart_error", "no")
@@ -594,6 +614,7 @@ TIMEOUT 3"""
     iface_rom = params.get("iface_rom")
     iface_boot = params.get("iface_boot")
     iface_model = params.get("iface_model")
+    iface_driver = params.get("iface_driver")
     multiple_guests = params.get("multiple_guests")
     create_network = "yes" == params.get("create_network", "no")
     attach_iface = "yes" == params.get("attach_iface", "no")
@@ -758,8 +779,16 @@ TIMEOUT 3"""
             try:
                 if update_device:
                     updated_iface = modify_iface_xml(sync=False)
+                    if loop == 3:
+                        check_qdisc("noqueue")
+                    else:
+                        check_qdisc("htb")
                     virsh.update_device(vm_name, updated_iface.xml,
                                         ignore_status=False, debug=True)
+                    if loop in (2, 3):
+                        check_qdisc("htb")
+                    else:
+                        check_qdisc("noqueue")
                 else:
                     modify_iface_xml()
                     if with_2net:
@@ -945,18 +974,19 @@ TIMEOUT 3"""
         # If to remove bandwidth from iface,
         # update iface xml to the original one
         if remove_bandwidth:
-            ori_iface = params['original_iface']
-            logging.debug(ori_iface)
-            virsh.update_device(vm_name, ori_iface.xml,
-                                ignore_status=False, debug=True)
-
+            check_qdisc("htb")
+            inbound = outbound = '{"average":0}'
+            iface_dict = {"inbound": inbound, "outbound": outbound}
+            new_iface_xml = libvirt.modify_vm_iface(vm_name, "get_xml", iface_dict)
+            virsh.update_device(vm_name, new_iface_xml, ignore_status=False, debug=True)
+            check_qdisc("noqueue")
         # Check routes if needed
         if routes:
             check_host_routes()
 
         try:
             # Start the VM.
-            if not update_device and not test_vm_clone:
+            if not update_device and not test_vm_clone and not remove_bandwidth:
                 vm.start()
             if start_error:
                 test.fail("VM started unexpectedly")
@@ -1120,6 +1150,7 @@ TIMEOUT 3"""
         if update_device and loop:
             loop -= 1
             if loop:
+                logging.debug("Current loop is %s" % loop)
                 # Rerun this procedure again with updated params
                 # Reset params of the corresponding loop
                 loop_prefix = 'loop' + str(loop) + '_'
