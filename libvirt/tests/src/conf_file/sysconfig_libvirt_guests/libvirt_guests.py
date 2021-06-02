@@ -327,8 +327,8 @@ def run(test, params, env):
                 dom.destroy(gracefully=False)
             virsh.remove_domain(dom.name, "--remove-all-storage")
 
-        if not libvirt_guests_service.status():
-            libvirt_guests_service.start()
+        if libvirt_guests_service.status():
+            libvirt_guests_service.stop()
 
         if nfs_vol:
             cleanup_nfs_backend_guest(vmxml_backup)
