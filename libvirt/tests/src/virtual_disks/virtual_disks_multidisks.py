@@ -106,10 +106,11 @@ def run(test, params, env):
         :param is_disk: specified return value type
         :return: Disk if is_disk is True, otherwise return mount_dir.
         """
-        mount_src = os.path.join(data_dir.get_tmp_dir(), "nfs-export")
+        nfs_tmp_folder = data_dir.get_data_dir()
+        mount_src = os.path.join(nfs_tmp_folder, "nfs-export")
         if not os.path.exists(mount_src):
             os.mkdir(mount_src)
-        mount_dir = os.path.join(data_dir.get_tmp_dir(), "nfs-mount")
+        mount_dir = os.path.join(nfs_tmp_folder, "nfs-mount")
 
         if disk_type in ["file", "floppy", "iso"]:
             disk_path = "%s/%s" % (mount_src, disk_name)
@@ -489,7 +490,7 @@ def run(test, params, env):
         logging.info("Checking diskorder option with snapshot...")
         snapshot1 = "s1"
         snapshot2 = "s2"
-        snapshot2_file = os.path.join(data_dir.get_tmp_dir(), "s2")
+        snapshot2_file = os.path.join(data_dir.get_data_dir(), "s2")
         ret = virsh.snapshot_create(vm_name, "", **virsh_dargs)
         libvirt.check_exit_status(ret)
 
@@ -1046,7 +1047,7 @@ def run(test, params, env):
 
     # Configure libvirtd log level and path.
     log_file = params.get("log_file", "libvirtd.log")
-    log_config_path = os.path.join(data_dir.get_tmp_dir(), log_file)
+    log_config_path = os.path.join(data_dir.get_data_dir(), log_file)
     libvirtd_config = LibvirtdConfig()
 
     if virtio_disk_hot_unplug_event_watch:
@@ -1152,7 +1153,7 @@ def run(test, params, env):
     # Get device path.
     device_source_path = params.get("device_source_path", "")
     if source_path:
-        device_source_path = data_dir.get_tmp_dir()
+        device_source_path = data_dir.get_data_dir()
 
     # Prepare test environment.
     qemu_config = LibvirtQemuConfig()
