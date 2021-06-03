@@ -32,6 +32,8 @@ from virttest import data_dir
 
 from virttest import libvirt_version
 
+TMP_DATA_DIR = data_dir.get_data_dir()
+
 
 def run(test, params, env):
     """
@@ -46,7 +48,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
     virsh_dargs = {'debug': True, 'ignore_status': True}
-    additional_xml_file = os.path.join(data_dir.get_tmp_dir(), "additional_disk.xml")
+    additional_xml_file = os.path.join(TMP_DATA_DIR, "additional_disk.xml")
 
     def config_ceph():
         """
@@ -231,7 +233,7 @@ def run(test, params, env):
         """
         Test save and restore operation
         """
-        save_file = os.path.join(data_dir.get_tmp_dir(),
+        save_file = os.path.join(TMP_DATA_DIR,
                                  "%s.save" % vm_name)
         ret = virsh.save(vm_name, save_file, **virsh_dargs)
         libvirt.check_exit_status(ret)
@@ -247,8 +249,8 @@ def run(test, params, env):
         Test snapshot operation.
         """
         snap_name = "s1"
-        snap_mem = os.path.join(data_dir.get_tmp_dir(), "rbd.mem")
-        snap_disk = os.path.join(data_dir.get_tmp_dir(), "rbd.disk")
+        snap_mem = os.path.join(TMP_DATA_DIR, "rbd.mem")
+        snap_disk = os.path.join(TMP_DATA_DIR, "rbd.disk")
         xml_snap_exp = ["disk name='%s' snapshot='external' type='file'" % target_dev]
         xml_dom_exp = ["source file='%s'" % snap_disk,
                        "backingStore type='network' index='1'",
@@ -296,7 +298,7 @@ def run(test, params, env):
         """
         Block copy operation test.
         """
-        blk_file = os.path.join(data_dir.get_tmp_dir(), "blk.rbd")
+        blk_file = os.path.join(TMP_DATA_DIR, "blk.rbd")
         if os.path.exists(blk_file):
             os.remove(blk_file)
         blk_mirror = ("mirror type='file' file='%s' "
@@ -440,12 +442,12 @@ def run(test, params, env):
         logging.info("Making snapshot...")
         first_disk_source = vm.get_first_disk_devices()['source']
         snapshot_path_list = []
-        snapshot2_file = os.path.join(data_dir.get_tmp_dir(), "mem.s2")
-        snapshot3_file = os.path.join(data_dir.get_tmp_dir(), "mem.s3")
-        snapshot4_file = os.path.join(data_dir.get_tmp_dir(), "mem.s4")
-        snapshot4_disk_file = os.path.join(data_dir.get_tmp_dir(), "disk.s4")
-        snapshot5_file = os.path.join(data_dir.get_tmp_dir(), "mem.s5")
-        snapshot5_disk_file = os.path.join(data_dir.get_tmp_dir(), "disk.s5")
+        snapshot2_file = os.path.join(TMP_DATA_DIR, "mem.s2")
+        snapshot3_file = os.path.join(TMP_DATA_DIR, "mem.s3")
+        snapshot4_file = os.path.join(TMP_DATA_DIR, "mem.s4")
+        snapshot4_disk_file = os.path.join(TMP_DATA_DIR, "disk.s4")
+        snapshot5_file = os.path.join(TMP_DATA_DIR, "mem.s5")
+        snapshot5_disk_file = os.path.join(TMP_DATA_DIR, "disk.s5")
 
         # Attempt to take different types of snapshots.
         snapshots_param_dict = {"s1": "s1 --disk-only --no-metadata",
@@ -566,10 +568,10 @@ def run(test, params, env):
     key_opt = ""
     secret_uuid = None
     snapshot_path = None
-    key_file = os.path.join(data_dir.get_tmp_dir(), "ceph.key")
-    img_file = os.path.join(data_dir.get_tmp_dir(),
+    key_file = os.path.join(TMP_DATA_DIR, "ceph.key")
+    img_file = os.path.join(TMP_DATA_DIR,
                             "%s_test.img" % vm_name)
-    front_end_img_file = os.path.join(data_dir.get_tmp_dir(),
+    front_end_img_file = os.path.join(TMP_DATA_DIR,
                                       "%s_frontend_test.img" % vm_name)
     # Construct a unsupported error message list to skip these kind of tests
     unsupported_err = []

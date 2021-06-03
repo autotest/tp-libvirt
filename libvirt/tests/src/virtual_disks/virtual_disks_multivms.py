@@ -115,7 +115,7 @@ def run(test, params, env):
                                             "no")
     test_shareable = "yes" == params.get("virt_disk_test_shareable", "no")
     test_readonly = "yes" == params.get("virt_disk_test_readonly", "no")
-    disk_source_path = data_dir.get_tmp_dir()
+    disk_source_path = data_dir.get_data_dir()
     disk_path = ""
     tmp_filename = "cdrom_te.tmp"
     tmp_readonly_file = ""
