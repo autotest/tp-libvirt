@@ -3,9 +3,13 @@ import logging
 from virttest import libvirt_vm
 from virttest import migration
 from virttest import virsh
+from virttest import libvirt_remote
+from virttest import libvirt_version
 
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+from virttest.utils_conn import TLSConnection
+from virttest.utils_libvirt import libvirt_config
 
 from provider.migration import migration_base
 
@@ -91,12 +95,55 @@ def run(test, params, env):
     if action_during_mig:
         action_during_mig = migration_base.parse_funcs(action_during_mig,
                                                        test, params)
+    setup_tls = params.get("setup_tls", "no")
+    if setup_tls == "yes":
+        if not libvirt_version.version_compare(6, 9, 0):
+            test.cancel("Cannot support migrate_tls_force in this libvirt version.")
+
+    qemu_conf_src = eval(params.get("qemu_conf_src", "{}"))
+    qemu_conf_dest = params.get("qemu_conf_dest", "{}")
+    status_error = "yes" == params.get("status_error", "no")
+    migrate_tls_force_default = "yes" == params.get("migrate_tls_force_default", "no")
+    server_ip = params.get("server_ip")
+    server_user = params.get("server_user")
+    server_pwd = params.get("server_pwd")
+    server_params = {'server_ip': server_ip,
+                     'server_user': server_user,
+                     'server_pwd': server_pwd}
+    tls_obj = None
+    qemu_conf_local = None
+    qemu_conf_remote = None
+
     # For safety reasons, we'd better back up  xmlfile.
     new_xml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     orig_config_xml = new_xml.copy()
 
     try:
         libvirt.set_vm_disk(vm, params)
+
+        # Setup libvirtd remote connection TLS connection env
+        if setup_tls == "yes":
+            tls_obj = TLSConnection(params)
+            tls_obj.auto_recover = True
+            tls_obj.conn_setup()
+
+        # Setup default value for migrate_tls_force
+        if migrate_tls_force_default:
+            value_list = ["migrate_tls_force"]
+            # Setup migrate_tls_force default value on remote
+            server_params['file_path'] = "/etc/libvirt/qemu.conf"
+            libvirt_config.remove_key_in_conf(value_list, "qemu", remote_params=server_params)
+            # Setup migrate_tls_force default value on local
+            libvirt_config.remove_key_in_conf(value_list, "qemu")
+
+        # Update remote qemu conf
+        if qemu_conf_dest:
+            qemu_conf_remote = libvirt_remote.update_remote_file(
+                server_params, qemu_conf_dest, "/etc/libvirt/qemu.conf")
+        # Update local qemu conf
+        if qemu_conf_src:
+            qemu_conf_local = libvirt.customize_libvirt_config(qemu_conf_src, "qemu")
+
         if not vm.is_alive():
             vm.start()
 
@@ -133,6 +180,8 @@ def run(test, params, env):
                                                            test,
                                                            params)
             extra_args['status_error'] = params.get("migrate_again_status_error", "no")
+            if params.get("virsh_migrate_extra_mig_again"):
+                extra = params.get("virsh_migrate_extra_mig_again")
             migration_base.do_migration(vm, migration_test, None, dest_uri,
                                         options, virsh_options,
                                         extra, action_during_mig,
@@ -149,6 +198,7 @@ def run(test, params, env):
                 else:
                     logging.debug("Same port '%s' was used as "
                                   "expected", port_second)
+
         migration_test.post_migration_check([vm], params, uri=dest_uri)
     finally:
         logging.info("Recover test environment")
@@ -156,4 +206,23 @@ def run(test, params, env):
         # Clean VM on destination and source
         migration_test.cleanup_vm(vm, dest_uri)
 
+        # Clean up TLS test env:
+        if setup_tls and tls_obj:
+            logging.debug("Clean up TLS object")
+            del tls_obj
+
+        # Restore local qemu conf and restart libvirtd
+        if qemu_conf_local:
+            logging.debug("Recover local qemu configurations")
+            libvirt.customize_libvirt_config(None, config_type="qemu", is_recover=True,
+                                             config_object=qemu_conf_local)
+        # Restore remote qemu conf and restart libvirtd
+        if qemu_conf_remote:
+            logging.debug("Recover remote qemu configurations")
+            libvirt.customize_libvirt_config(None,
+                                             config_type="qemu",
+                                             remote_host=True,
+                                             extra_params=server_params,
+                                             is_recover=True,
+                                             config_object=None)
         orig_config_xml.sync()
