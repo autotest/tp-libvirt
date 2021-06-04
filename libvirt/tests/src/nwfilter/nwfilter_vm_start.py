@@ -12,6 +12,7 @@ from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import utils_package
 from virttest.utils_test import libvirt as utlv
+from virttest.utils_libvirt import libvirt_nwfilter
 from virttest.libvirt_xml.devices import interface
 from virttest import utils_libguestfs
 from virttest import utils_net
@@ -133,6 +134,11 @@ def run(test, params, env):
         clean_up_dirty_nwfilter_binding()
         rule = params.get("rule")
         if rule:
+            # Add pre-check whether nwfilter exists or not since
+            # utlv.create_nwfilter_xml will fail if there is no any nwfilter exists
+            nwfilter_list = libvirt_nwfilter.get_nwfilter_list()
+            if not nwfilter_list:
+                test.error("There is no any nwfilter existed on the host")
             # Create new filter xml
             filterxml = utlv.create_nwfilter_xml(params)
             # Define filter xml
