@@ -119,6 +119,10 @@ def run(test, params, env):
 
     if len(vm_names) != guest_num:
         test.cancel("This test needs exactly %d vms." % guest_num)
+
+    if not libvirt_version.version_compare(7, 0, 0) and not with_numa:
+        test.cancel("Not supported without NUMA before 7.0.0")
+
     try:
         # Define filesystem device xml
         for index in range(fs_num):
