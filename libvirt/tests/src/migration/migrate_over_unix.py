@@ -17,6 +17,7 @@ from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_disk
+from virttest.utils_libvirt import libvirt_pcicontr
 
 
 def run(test, params, env):
@@ -75,6 +76,11 @@ def run(test, params, env):
 
                 target_dev = 'vd' + chr(idx + ord('a') - 1)
                 new_disk_dict = {"driver_type": disk_format}
+                vm_was_running = vm.is_alive()
+                libvirt_pcicontr.reset_pci_num(vm_name)
+                if vm_was_running and not vm.is_alive():
+                    vm.start()
+                    vm.wait_for_login().close()
                 result = libvirt.attach_additional_device(vm_name, target_dev,
                                                           disk_path,
                                                           new_disk_dict, False)
