@@ -206,11 +206,6 @@ def run(test, params, env):
         # Clean VM on destination and source
         migration_test.cleanup_vm(vm, dest_uri)
 
-        # Clean up TLS test env:
-        if setup_tls and tls_obj:
-            logging.debug("Clean up TLS object")
-            del tls_obj
-
         # Restore local qemu conf and restart libvirtd
         if qemu_conf_local:
             logging.debug("Recover local qemu configurations")
@@ -219,10 +214,10 @@ def run(test, params, env):
         # Restore remote qemu conf and restart libvirtd
         if qemu_conf_remote:
             logging.debug("Recover remote qemu configurations")
-            libvirt.customize_libvirt_config(None,
-                                             config_type="qemu",
-                                             remote_host=True,
-                                             extra_params=server_params,
-                                             is_recover=True,
-                                             config_object=None)
+            del qemu_conf_remote
+
+        # Clean up TLS test env:
+        if setup_tls and tls_obj:
+            logging.debug("Clean up TLS object")
+            del tls_obj
         orig_config_xml.sync()
