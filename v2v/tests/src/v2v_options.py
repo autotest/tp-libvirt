@@ -888,7 +888,7 @@ def run(test, params, env):
         if hypervisor == "esx":
             process.run("rm -rf %s" % vpx_passwd_file)
         if checkpoint == "weak_dendency":
-            utils_package.package_install('libguestfs-xfs')
+            utils_package.package_install(['libguestfs-xfs', 'virt-v2v'])
         for vdsm_dir in [vdsm_domain_dir, vdsm_image_dir, vdsm_vm_dir]:
             if os.path.exists(vdsm_dir):
                 shutil.rmtree(vdsm_dir)
