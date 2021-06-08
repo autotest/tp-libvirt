@@ -5,22 +5,22 @@ import re
 
 from avocado.utils import process
 
-from virttest import libvirt_vm
-from virttest import utils_test
-from virttest import utils_misc
-from virttest import utils_net
 from virttest import defaults
+from virttest import libvirt_version
+from virttest import libvirt_vm
 from virttest import migration
-from virttest import virsh
-from virttest import utils_sriov
 from virttest import remote
 from virttest import utils_conn
-from virttest import libvirt_version
+from virttest import utils_misc
+from virttest import utils_net
+from virttest import utils_sriov
+from virttest import utils_test
+from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import interface
-from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_config
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):
@@ -28,7 +28,7 @@ def run(test, params, env):
     Test virsh migrate command.
     """
 
-    def check_vm_network_accessed(session=None, ping_dest="www.baidu.com"):
+    def check_vm_network_accessed(session=None, ping_dest="8.8.8.8"):
         """
         The operations to the VM need to be done before or after
         migration happens
@@ -83,22 +83,26 @@ def run(test, params, env):
         :param is_del: Whether the networks should be deleted
         :raise: test.fail when fails to define/start network
         """
-        net_hostdev_name = params.get("net_hostdev_name", "hostdev-net")
-        net_hostdev_fwd = params.get("net_hostdev_fwd",
-                                     '{"mode": "hostdev", "managed": "yes"}')
         net_bridge_name = params.get("net_bridge_name", "host-bridge")
         net_bridge_fwd = params.get("net_bridge_fwd", '{"mode": "bridge"}')
         bridge_name = params.get("bridge_name", "br0")
 
-        net_dict = {"net_name": net_hostdev_name,
-                    "net_forward": net_hostdev_fwd,
-                    "net_forward_pf": '{"dev": "%s"}' % pf_name}
         bridge_dict = {"net_name": net_bridge_name,
                        "net_forward": net_bridge_fwd,
                        "net_bridge": '{"name": "%s"}' % bridge_name}
+        net_list = [bridge_dict]
+        enable_hostdev_iface = "yes" == params.get("enable_hostdev_iface", "no")
+        if enable_hostdev_iface:
+            net_hostdev_name = params.get("net_hostdev_name", "hostdev-net")
+            net_hostdev_fwd = params.get("net_hostdev_fwd",
+                                         '{"mode": "hostdev", "managed": "yes"}')
+            net_dict = {"net_name": net_hostdev_name,
+                        "net_forward": net_hostdev_fwd,
+                        "net_forward_pf": '{"dev": "%s"}' % pf_name}
+            net_list.append(net_dict)
 
         if not is_del:
-            for net_params in (net_dict, bridge_dict):
+            for net_params in net_list:
                 net_dev = libvirt.create_net_xml(net_params.get("net_name"),
                                                  net_params)
                 if not remote_virsh_session:
@@ -119,7 +123,7 @@ def run(test, params, env):
             virsh_session = virsh
             if remote_virsh_session:
                 virsh_session = remote_virsh_session
-            for nname in (net_hostdev_name, net_bridge_name):
+            for nname in [n_dict.get("net_name") for n_dict in net_list]:
                 if nname not in virsh_session.net_state_dict():
                     continue
                 virsh_session.net_destroy(nname, debug=True, ignore_status=True)
@@ -172,30 +176,52 @@ def run(test, params, env):
             test.fail("Get incorrect dirver %s, it should%s be vfio-pci."
                       % (output, ' not' if status_error else ''))
 
-    def update_iface_xml(vmxml):
+    def update_iface_xml(vmxml, enable_hostdev_iface):
         """
         Update interfaces for guest
 
         :param vmxml: vm_xml.VMXML object
+
         """
         vmxml.remove_all_device_by_type('interface')
         vmxml.sync()
 
+        iface_list = []
         iface_dict = {"type": "network", "source": "{'network': 'host-bridge'}",
                       "mac": mac_addr, "model": "virtio",
                       "teaming": '{"type":"persistent"}',
                       "alias": '{"name": "ua-backup0"}',
                       "inbound": '{"average":"5"}',
                       "outbound": '{"average":"5"}'}
-
-        iface_dict2 = {"type": "network", "source": "{'network': 'hostdev-net'}",
-                       "mac": mac_addr, "model": "virtio",
-                       "teaming": '{"type":"transient", "persistent": "ua-backup0"}'}
+        iface_list.append(iface_dict)
+        if enable_hostdev_iface:
+            iface_dict2 = {"type": "network",
+                           "source": "{'network': 'hostdev-net'}",
+                           "mac": mac_addr, "model": "virtio",
+                           "teaming": '{"type":"transient", \
+                                "persistent": "ua-backup0"}'}
+            iface_list.append(iface_dict2)
 
         iface = interface.Interface('network')
-        for ifc in (iface_dict, iface_dict2):
+        for ifc in iface_list:
             iface.xml = libvirt.modify_vm_iface(vm.name, "get_xml", ifc)
             vmxml.add_device(iface)
+        vmxml.sync()
+
+    def add_hostdev_device(vm_name, pf_pci, params):
+        """
+        Add a hostdev device to the guest
+
+        :param vm_name: VM's name
+        :param pf_pci: The PF's pci
+        :param params: The parameters used
+        """
+        vf_pci = utils_sriov.get_vf_pci_id(pf_pci)
+        hostdev_teaming_dict = params.get("hostdev_device_teaming_dict", '{}')
+        vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+        hostdev_dev = libvirt.create_hostdev_xml(vf_pci,
+                                                 teaming=hostdev_teaming_dict)
+        vmxml.add_device(hostdev_dev)
         vmxml.sync()
 
     migration_test = migration.MigrationTest()
@@ -230,6 +256,8 @@ def run(test, params, env):
     bridge_name = params.get("bridge_name", "br0")
     net_hostdev_name = params.get("net_hostdev_name", "hostdev-net")
     net_bridge_name = params.get("net_bridge_name", "host-bridge")
+    enable_hostdev_iface = "yes" == params.get("enable_hostdev_iface", "no")
+    enable_hostdev_device = "yes" == params.get("enable_hostdev_device", "no")
     driver = params.get("driver", "ixgbe")
     vm_tmp_file = params.get("vm_tmp_file", "/tmp/test.txt")
     cmd_during_mig = params.get("cmd_during_mig")
@@ -267,9 +295,7 @@ def run(test, params, env):
     remote_libvirt_file = None
     src_libvirt_file = None
 
-    if not libvirt_version.version_compare(6, 0, 0):
-        test.cancel("This libvirt version doesn't support migration with "
-                    "net failover devices.")
+    libvirt_version.is_libvirt_feature_supported(params)
 
     # params for migration connection
     params["virsh_migrate_desturi"] = libvirt_vm.complete_uri(
@@ -282,6 +308,7 @@ def run(test, params, env):
     vm_name = params.get("migrate_main_vm")
     vm = env.get_vm(vm_name)
     vm.verify_alive()
+    bk_uri = vm.connect_uri
 
     extra_args = migration_test.update_virsh_migrate_extra_args(params)
 
@@ -340,6 +367,17 @@ def run(test, params, env):
             cmd = 'echo 0 >/proc/sys/net/ipv4/conf/all/rp_filter'
             process.run(cmd, shell=True, verbose=True)
             utils_misc.cmd_status_output(cmd, shell=True, session=server_session)
+            if enable_hostdev_device:
+                hostdev_pci_id = utils_sriov.get_vf_pci_id(src_pf_pci).strip()
+                dest_vf_pci_id = utils_sriov.get_vf_pci_id(
+                    dest_pf_pci, session=server_session).strip()
+                logging.debug("src_vf_pci_id:%s", hostdev_pci_id)
+                logging.debug("dest_vf_pci_id:%s", dest_vf_pci_id)
+                if dest_vf_pci_id != hostdev_pci_id:
+                    # TODO: Create migratable xml with the updated vf's pci address
+                    test.error("The pci address of vf is different on source "
+                               "host and target host.")
+
             utils_sriov.add_or_del_connection(params, is_del=False)
             utils_sriov.add_or_del_connection(destparams_dict, is_del=False,
                                               session=server_session)
@@ -352,7 +390,13 @@ def run(test, params, env):
             create_or_del_networks(src_pf, params)
             # Change network interface xml
             mac_addr = utils_net.generate_mac_address_simple()
-            update_iface_xml(new_xml)
+            if enable_hostdev_device:
+                utils_sriov.set_vf_mac(src_pf, mac_addr)
+                utils_sriov.set_vf_mac(dest_pf, mac_addr, session=server_session)
+
+            update_iface_xml(new_xml, enable_hostdev_iface)
+            if enable_hostdev_device:
+                add_hostdev_device(vm_name, src_pf_pci, params)
 
         # Change the disk of the vm
         libvirt.set_vm_disk(vm, params)
@@ -375,10 +419,12 @@ def run(test, params, env):
 
         if net_failover_test:
             check_vm_iface_num(iface_list)
-            check_vm_network_connection(net_hostdev_name, 1)
+            if enable_hostdev_iface:
+                check_vm_network_connection(net_hostdev_name, 1)
             check_vm_network_connection(net_bridge_name, 1)
 
-            hostdev_pci_id = get_hostdev_addr_from_xml()
+            if enable_hostdev_iface:
+                hostdev_pci_id = get_hostdev_addr_from_xml()
             vf_path = utils_misc.get_pci_path(hostdev_pci_id)
             check_vfio_pci(vf_path)
             if cmd_during_mig:
@@ -414,31 +460,28 @@ def run(test, params, env):
             server_session.close()
             if net_failover_test:
                 # Check network connection
-                check_vm_network_connection(net_hostdev_name)
+                if enable_hostdev_iface:
+                    check_vm_network_connection(net_hostdev_name)
                 check_vm_network_connection(net_bridge_name)
                 # VF driver should not be vfio-pci
                 check_vfio_pci(vf_path, True)
-
-                cmd_parms.update({'vm_ip': vm_ipv4,
-                                  'vm_pwd': params.get("password")})
-                vm_after_mig = remote.VMManager(cmd_parms)
-                vm_after_mig.setup_ssh_auth()
+                vm.connect_uri = dest_uri
+                vm_after_mig = vm.wait_for_serial_login(timeout=240)
                 cmd = "ip link"
-                cmd_result = vm_after_mig.run_command(cmd)
-                libvirt.check_result(cmd_result)
-                p_iface = re.findall(r"\d+:\s+(\w+):\s+.*", cmd_result.stdout_text)
+                cmd_result = vm_after_mig.cmd_output(cmd)
+                vm.connect_uri = bk_uri
+                p_iface = re.findall(r"\d+:\s+(\w+):\s+.*", cmd_result)
                 p_iface = [x for x in p_iface if x != 'lo']
                 check_vm_iface_num(p_iface)
 
                 # Check the output of ping command
                 cmd = 'cat %s' % vm_tmp_file
-                cmd_result = vm_after_mig.run_command(cmd)
-                libvirt.check_result(cmd_result)
+                cmd_result = vm_after_mig.cmd_output(cmd)
 
-                if re.findall('Destination Host Unreachable', cmd_result.stdout_text, re.M):
+                if re.findall('Destination Host Unreachable', cmd_result, re.M):
                     test.fail("The network does not work well during "
                               "the migration peirod. ping output: %s"
-                              % cmd_result.stdout_text)
+                              % cmd_result)
 
             # Execute migration from remote
             if migr_vm_back:
@@ -469,9 +512,9 @@ def run(test, params, env):
                 logging.debug("migration back done")
                 check_vm_network_accessed(ping_dest=vm_ipv4)
                 if net_failover_test:
-                    if vm_session:
-                        vm_session.close()
-                    vm_session = vm.wait_for_login()
+                    vm.cleanup_serial_console()
+                    vm.create_serial_console()
+                    vm_session = vm.wait_for_serial_login(timeout=240)
                     iface_list = get_vm_ifaces(vm_session)
                     check_vm_iface_num(iface_list)
 
@@ -483,6 +526,7 @@ def run(test, params, env):
 
     finally:
         logging.debug("Recover test environment")
+        vm.connect_uri = bk_uri
         # Clean VM on destination
         migration_test.cleanup_vm(vm, dest_uri)
 
