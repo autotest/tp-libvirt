@@ -23,6 +23,8 @@ from virttest.libvirt_xml.devices.disk import Disk
 
 from virttest import libvirt_version
 
+TMP_DATA_DIR = data_dir.get_data_dir()
+
 
 def run(test, params, env):
     """
@@ -321,7 +323,7 @@ def run(test, params, env):
             ceph_auth_user = params.get("ceph_auth_user")
             ceph_auth_key = params.get("ceph_auth_key")
             enable_auth = "yes" == params.get("enable_auth")
-            key_file = os.path.join(data_dir.get_tmp_dir(), "ceph.key")
+            key_file = os.path.join(TMP_DATA_DIR, "ceph.key")
             key_opt = ""
             # Prepare a blank params to confirm if delete the configure at the end of the test
             ceph_cfg = ""
@@ -366,7 +368,7 @@ def run(test, params, env):
             nfs_server_dir = params.get("nfs_server_dir", "nfs_server")
             emulated_image = params.get("emulated_image")
             image_name = params.get("nfs_image_name", "nfs.img")
-            tmp_dir = data_dir.get_tmp_dir()
+            tmp_dir = TMP_DATA_DIR
             pvt = libvirt.PoolVolumeTest(test, params)
             pvt.pre_pool(pool_name, pool_type, pool_target, emulated_image)
             nfs_mount_dir = os.path.join(tmp_dir, pool_target)
@@ -428,7 +430,7 @@ def run(test, params, env):
             disk_src_dict = {'attrs': {'file': volume_target_path}}
             device_source = volume_target_path
         elif backend_storage_type == "file":
-            tmp_dir = data_dir.get_tmp_dir()
+            tmp_dir = TMP_DATA_DIR
             image_name = params.get("file_image_name", "slice.img")
             device_source = os.path.join(tmp_dir, image_name)
             disk_src_dict = {'attrs': {'file': device_source}}
@@ -510,7 +512,7 @@ def run(test, params, env):
             virsh.create(transient_vmxml.xml, ignore_status=False, debug=True)
             expected_top_image = vm.get_blk_devices()[device_target].get('source')
             options = params.get("blockcopy_options")
-            tmp_dir = data_dir.get_tmp_dir()
+            tmp_dir = TMP_DATA_DIR
             tmp_file = time.strftime("%Y-%m-%d-%H.%M.%S.img")
             dest_path = os.path.join(tmp_dir, tmp_file)
 

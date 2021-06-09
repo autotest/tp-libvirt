@@ -144,7 +144,7 @@ def run(test, params, env):
         image_filename = params.get("image_filename", "raw.img")
         image_format = params.get("image_format", "raw")
         image_size = params.get("image_size", "1G")
-        image_path = os.path.join(data_dir.get_tmp_dir(), image_filename)
+        image_path = os.path.join(data_dir.get_data_dir(), image_filename)
         try:
             if image_format in ["raw", "qcow2"]:
                 image_path = libvirt.create_local_disk("file",
