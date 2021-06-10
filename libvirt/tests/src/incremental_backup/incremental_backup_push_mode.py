@@ -59,7 +59,7 @@ def run(test, params, env):
     prepare_target_blkdev = "yes" == params.get("prepare_target_blkdev")
     backup_rounds = int(params.get("backup_rounds", 3))
     backup_error = "yes" == params.get("backup_error")
-    tmp_dir = data_dir.get_tmp_dir()
+    tmp_dir = data_dir.get_data_dir()
     virsh_dargs = {'debug': True, 'ignore_status': True}
 
     try:
@@ -300,6 +300,11 @@ def run(test, params, env):
 
         # Restoring vm
         vmxml_backup.sync()
+
+        # Remove local backup file
+        if "target_file_path" in locals():
+            if os.path.exists(target_file_path):
+                os.remove(target_file_path)
 
         # Remove iscsi devices
         libvirt.setup_or_cleanup_iscsi(False)
