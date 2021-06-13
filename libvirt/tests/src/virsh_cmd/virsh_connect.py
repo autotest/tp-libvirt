@@ -11,6 +11,27 @@ from virttest import utils_libvirtd
 from virttest import virsh
 from virttest import utils_conn
 
+from virttest.utils_test import libvirt as utlv
+
+
+def check_virsh_connect_alive(test, params):
+    virsh_instance = virsh.VirshPersistent()
+    try:
+        virsh_instance.dom_list(debug=True)
+        ret = virsh_instance.connect("test", debug=True, ignore_status=True)
+        # Return value should be an error
+        if ret.exit_status:
+            # But, there is no output in stderr, all output is in stdout
+            if not ret.stderr:
+                # Therefore copy stdout to stderr to check by check_result
+                ret.stderr = ret.stdout
+        utlv.check_result(ret, expected_fails=[params['expected_result_patt']])
+        virsh_instance.dom_list(debug=True)
+        virsh_instance.connect(debug=True)
+        virsh_instance.dom_list(debug=True)
+    except Exception as e:
+        test.fail('Unexpected failure: {}'.format(e))
+
 
 def do_virsh_connect(uri, options):
     """
@@ -102,6 +123,13 @@ def run(test, params, env):
     # params special for unix transport.
     libvirtd_conf_path = '/etc/libvirt/libvirtd.conf'
     libvirtd_conf_bak_path = '%s/libvirtd.conf.bak' % data_dir.get_tmp_dir()
+
+    # special params for test connection alive
+    alive = params.get('alive', None)
+
+    if alive:
+        check_virsh_connect_alive(test, params)
+        return
 
     # check the config
     if (connect_arg == "transport" and
