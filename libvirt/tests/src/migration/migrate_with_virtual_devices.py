@@ -180,7 +180,7 @@ class MigrationWithRng(MigrationVirtualDevicesBase):
         # and qemu-kvm>=4.2.0
         if (self.backend_model == "builtin" and
                 (not libvirt_version.version_compare(6, 2, 0)
-                    or not utils_misc.compare_qemu_version(4, 2, 0))):
+                    or not utils_misc.compare_qemu_version(4, 2, 0, False))):
             self.test.cancel("backend model builtin is not supported"
                              "by this hypervisor version")
 
