@@ -236,6 +236,7 @@ def set_domiftune_parameter(params, test, libvirtd):
     vm_name = params.get("main_vm")
     inbound = params.get("inbound", "")
     outbound = params.get("outbound", "")
+    outbound_new = params.get("outbound_new")
     options = params.get("options", None)
     interface = params.get("iface_dev")
     check_clear = params.get("check_clear", "no")
@@ -270,7 +271,8 @@ def set_domiftune_parameter(params, test, libvirtd):
             # error on the following set, but a pass for
             # the test since the error is expected.
             status_error = "yes"
-
+    if libvirt_version.version_compare(7, 3, 0) and outbound_new:
+        outbound = outbound_new
     result = virsh.domiftune(vm_name, interface, options, inbound, outbound, debug=True)
     status = result.exit_status
 
