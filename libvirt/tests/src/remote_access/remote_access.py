@@ -6,10 +6,13 @@ import json
 from avocado.utils import distro
 from avocado.utils import process
 
+from virttest import virsh
 from virttest import remote
+from virttest import utils_config
+from virttest import utils_package
 from virttest import utils_iptables
 from virttest import utils_libvirtd
-from virttest import utils_package
+from virttest import libvirt_version
 
 from virttest.utils_sasl import SASL
 from virttest.utils_conn import SSHConnection
@@ -18,10 +21,9 @@ from virttest.utils_conn import TLSConnection
 from virttest.utils_conn import UNIXConnection
 from virttest.utils_net import IPv6Manager
 from virttest.utils_net import check_listening_port_remote_by_service
-from virttest.utils_test.libvirt import remotely_control_libvirtd
 from virttest.utils_test.libvirt import connect_libvirtd
-
-from virttest import libvirt_version
+from virttest.utils_test.libvirt import customize_libvirt_config
+from virttest.utils_test.libvirt import remotely_control_libvirtd
 
 
 def remote_access(params, test):
@@ -65,7 +67,7 @@ def remote_access(params, test):
         if not ret:
             if error_pattern:
                 if error_pattern in output:
-                    logging.info("It's an expected error!!")
+                    logging.info("Expected libvirt output!!")
                 else:
                     test.fail("Unexpected error: {}, when trying to connect to "
                               "libvirt daemon. Looking for: {} pattern".
@@ -121,8 +123,8 @@ def compare_virt_version(server_ip, server_user, server_pwd, test):
         test.error(output_remote)
     # compare libvirt version between local and remote host
     if output_local == output_remote.strip():
-        test.cancel("To expect different libvirt version "
-                    "<%s>:<%s>", output_local, output_remote)
+        test.cancel("To expect different libvirt version <%s>:<%s>"
+                    % (output_local, output_remote))
 
 
 def cleanup(objs_list):
@@ -135,6 +137,31 @@ def cleanup(objs_list):
         obj.auto_recover = True
         obj.__del__()
         obj.auto_recover = False
+
+
+def change_libvirtconf_on_client(params_to_change_dict):
+    """
+    Change required parameters based on params_to_change_dict in local
+    libvirt.conf file.
+
+    :param params_to_change_dict. Dictionary with name/replacement pairs
+    :return: config object.
+    """
+    config = customize_libvirt_config(params_to_change_dict,
+                                      config_type="libvirt",
+                                      remote_host=False,
+                                      extra_params=None,
+                                      is_recover=False,
+                                      config_object=None,
+                                      restart_libvirt=False)
+    process.system('cat {}'.format(utils_config.LibvirtConfig().conf_path),
+                   ignore_status=False, shell=True)
+    return config
+
+
+def restore_libvirtconf_on_client(config):
+    customize_libvirt_config({}, is_recover=True, config_type="libvirt",
+                             config_object=config)
 
 
 def run(test, params, env):
@@ -193,6 +220,8 @@ def run(test, params, env):
     virsh_cmd = params.get("virsh_cmd", "list")
     action = test_dict.get("libvirtd_action", "restart")
     uri_user = test_dict.get("uri_user", "")
+    uri_aliases = test_dict.get("uri_aliases", "")
+    uri_default = test_dict.get("uri_default", "")
     unix_sock_dir = test_dict.get("unix_sock_dir")
     mkdir_cmd = test_dict.get("mkdir_cmd")
     rmdir_cmd = test_dict.get("rmdir_cmd")
@@ -213,7 +242,9 @@ def run(test, params, env):
     sasl_allowed_username_list = test_dict.get("sasl_allowed_username_list")
     auth_unix_rw = test_dict.get("auth_unix_rw")
     kinit_pwd = test_dict.get("kinit_pwd")
+    test_alias = test_dict.get("test_alias")
 
+    config_list = []
     port = ""
     # extra URI arguments
     extra_params = ""
@@ -420,6 +451,27 @@ def run(test, params, env):
                                            extra_params)
             test_dict["uri"] = uri
 
+        config_list = []
+        if uri_aliases:
+            uri_config = change_libvirtconf_on_client(
+                {'uri_aliases': uri_aliases})
+            config_list.append(uri_config)
+            test_dict["uri"] = test_alias
+
+        if uri_default:
+            test_dict["uri"] = ""
+            # Delete the default URI environment variable to prevent overriding
+            del os.environ['LIBVIRT_DEFAULT_URI']
+            uri_config = change_libvirtconf_on_client(
+                {'uri_default': uri_default})
+            config_list.append(uri_config)
+            ret = virsh.command('uri', debug=True)
+            if uri_default.strip('"') in ret.stdout_text:
+                logging.debug("Virsh output as expected.")
+            else:
+                test.fail("Expected virsh output: {} not found in:{}".format(
+                    uri_default.strip('"'), ret.stdout_text))
+
         # remove client certifications if exist, only for TLS negative testing
         if rm_client_key_cmd:
             process.system(rm_client_key_cmd, ignore_status=True, shell=True)
@@ -477,11 +529,14 @@ def run(test, params, env):
                 test_dict["patterns_extra_dict"] = patterns_extra_dict
                 remote_access(test_dict, test)
         else:
-            remote_access(test_dict, test)
+            if not uri_default:
+                remote_access(test_dict, test)
 
     finally:
         # recovery test environment
         # Destroy the VM after all test are done
+        for config in config_list:
+            restore_libvirtconf_on_client(config)
         cleanup(objs_list)
 
         if vm_name:
