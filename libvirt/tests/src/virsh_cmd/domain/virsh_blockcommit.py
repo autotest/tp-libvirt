@@ -470,7 +470,7 @@ def run(test, params, env):
                                        % ("qcow2", first_src_file, "qcow2", block_type_backstore))
             process.run(backing_file_create_cmd, ignore_status=False, shell=True)
             meta_options = " --reuse-external --disk-only --no-metadata"
-            options = "%s --diskspec %s,file=%s" % (meta_options, 'vda', block_type_backstore)
+            options = "%s --diskspec %s,file=%s,stype=block" % (meta_options, 'vda', block_type_backstore)
             virsh.snapshot_create_as(vm_name, options,
                                      ignore_status=False,
                                      debug=True)

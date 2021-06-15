@@ -227,8 +227,9 @@ def run(test, params, env):
         for i in range(len(params['snapshot_list'])):
             virsh.snapshot_create_as(
                 vm_name,
-                '%s --disk-only --diskspec %s,file=%s' %
-                (params['snapshot_list'][i], new_dev, snapshot_image_list[i]),
+                '%s --disk-only --diskspec %s,file=%s,stype=%s' %
+                (params['snapshot_list'][i], new_dev, snapshot_image_list[i],
+                 disk_type),
                 **virsh_dargs
             )
 
