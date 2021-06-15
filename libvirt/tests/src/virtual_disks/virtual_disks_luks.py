@@ -291,8 +291,8 @@ def run(test, params, env):
                     iscsi_target, lun_num = libvirt.setup_or_cleanup_iscsi(
                         is_setup=True, is_login=False, image_size=storage_size,
                         portal_ip=iscsi_host)
-                device_source = "iscsi://%s:%s/%s/%s" % (iscsi_host, iscsi_port,
-                                                         iscsi_target, lun_num)
+                # hardcode
+                device_source = '/var/lib/avocado/data/avocado-vt/emulated-iscsi'
                 disk_src_dict = {"attrs": {"protocol": "iscsi",
                                            "name": "%s/%s" % (iscsi_target, lun_num)},
                                  "hosts": [{"name": iscsi_host, "port": iscsi_port}]}
