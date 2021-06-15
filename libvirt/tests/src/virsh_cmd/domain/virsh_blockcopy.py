@@ -64,6 +64,7 @@ def check_xml(vm_name, target, dest_path, blk_options):
     else:
         # find <mirror> element and dest_path in vm xml
         expect_re = 2
+    logging.debug('expect_re is %d', expect_re)
 
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
     logging.debug("Current vm xml is: %s" % vmxml.xmltreefile)
@@ -79,6 +80,7 @@ def check_xml(vm_name, target, dest_path, blk_options):
                 disk_src = disk_elem.find('source').get('dev')
             else:
                 disk_src = disk_elem.find('source').get('file')
+            logging.debug('disk_src is %s', disk_src)
 
             # check disk type
             disk_type = disk_elem.get('type')
@@ -98,6 +100,8 @@ def check_xml(vm_name, target, dest_path, blk_options):
             if disk_src == dest_path:
                 logging.debug("Disk source change to %s", dest_path)
                 re1 = 1
+            else:
+                logging.debug("Disk source didn't change to %s", dest_path)
             disk_mirror = disk_list[dev_index].find('mirror')
             if disk_mirror is not None:
                 # Prior to 1.2.6 - <mirror> was a subelement of the <disk>
@@ -149,6 +153,7 @@ def check_xml(vm_name, target, dest_path, blk_options):
             logging.error(detail)
             return False
     finally:
+        logging.debug('re1, re2 are: %d, %d', re1, re2)
         if re1 + re2 == expect_re:
             logging.debug("Domain XML check pass")
             return True
