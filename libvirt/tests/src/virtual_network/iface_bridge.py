@@ -145,7 +145,7 @@ def run(test, params, env):
     try:
         if libvirt.check_iface(bridge_name, "exists", "--all"):
             test.cancel("The bridge %s already exist" % bridge_name)
-        s, o = utils_net.create_linux_bridge(bridge_name, iface_name)
+        s, o = utils_net.create_linux_bridge_tmux(bridge_name, iface_name)
         if s:
             test.fail("Failed to create linux bridge on the host. Status: %s Stdout: %s" % (s, o))
         define_nwfilter(filter_name)
@@ -324,7 +324,7 @@ def run(test, params, env):
             process.run("rm -rf %s" % bridge_script, shell=True, verbose=True)
         br_path = "/sys/class/net/%s" % bridge_name
         if os.path.exists(br_path):
-            utils_net.delete_linux_bridge(bridge_name, iface_name)
+            utils_net.delete_linux_bridge_tmux(bridge_name, iface_name)
         # reload network configuration
         NM_service.restart()
         # recover NetworkManager
