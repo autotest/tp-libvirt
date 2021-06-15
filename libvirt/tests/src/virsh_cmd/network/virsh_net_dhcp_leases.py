@@ -123,7 +123,7 @@ def run(test, params, env):
 
             delta = get_ex_time - now_time
             logging.debug("The get_ex_time is %s, the now_time is %s, "
-                          "duration is %s" % (get_ex_time, now_time, duration))
+                          "duration is %s",  get_ex_time, now_time, duration)
             if delta > timedelta(seconds=dur_sec):
                 test.fail("Get expiry time %s longer than the setting %s!!"
                           % (delta, timedelta(seconds=dur_sec)))
@@ -283,7 +283,7 @@ def run(test, params, env):
             if blank_lease and libvirt_version.version_compare(7, 1, 0):
                 expect_msg = new_expect_msg
             if expect_msg not in e.details:
-                test.fail("Network create fail unexpected: %s", e.details)
+                test.fail("Network create fail unexpected: %s" % e.details)
             else:
                 logging.debug("Network create fail expected: %s", e.details)
     finally:
