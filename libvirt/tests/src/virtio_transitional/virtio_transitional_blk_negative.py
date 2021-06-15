@@ -6,6 +6,7 @@ from avocado.utils import download
 from virttest import data_dir
 from virttest import utils_misc
 from virttest import libvirt_version
+from virttest import remote
 
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import xcepts
@@ -53,7 +54,7 @@ def run(test, params, env):
             if not vm.is_alive():
                 vm.start()
             vm.wait_for_serial_login()
-        except aexpect.ExpectError:
+        except (remote.LoginTimeoutError, aexpect.ExpectError):
             pass
         else:
             test.fail("Vm is expected to fail on booting from disk"
