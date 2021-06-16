@@ -228,11 +228,16 @@ def run(test, params, env):
         if input_mode == 'ova':
             src_dir = params.get('ova_dir')
             dest_dir = params.get('ova_copy_dir')
-            logging.info('Copy ova from %s to %s', src_dir, dest_dir)
-            if not os.path.exists(dest_dir):
+            if os.path.isfile(src_dir) and not os.path.exists(dest_dir):
+                os.makedirs(dest_dir, exist_ok=True)
+            if os.path.isdir(src_dir) and os.path.exists(dest_dir):
+                shutil.rmtree(dest_dir)
+
+            if os.path.isdir(src_dir):
                 shutil.copytree(src_dir, dest_dir)
             else:
-                logging.debug('%s already exists, Skip copying' % dest_dir)
+                shutil.copy(src_dir, dest_dir)
+            logging.info('Copy ova from %s to %s', src_dir, dest_dir)
         if output_format:
             v2v_params.update({'of_format': output_format})
         # Create libvirt dir pool
