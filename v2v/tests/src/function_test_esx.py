@@ -4,6 +4,7 @@ import re
 import uuid
 import shutil
 import time
+import tempfile
 
 from virttest import data_dir
 from virttest import utils_misc
@@ -680,6 +681,9 @@ def run(test, params, env):
             nbdkit_option = r'nbdkit\.backend\.datapath=0'
             if not re.search(nbdkit_option, output):
                 test.fail("checkpoint '%s' failed" % checkpoint)
+        if 'block_dev' in checkpoint:
+            if not os.path.exists(blk_dev_link):
+                test.fail("checkpoint '%s' failed" % checkpoint)
         # Log checking
         log_check = utils_v2v.check_log(params, output)
         if log_check:
@@ -823,6 +827,31 @@ def run(test, params, env):
             process.run(cmd, shell=True)
             os.environ['VIRTIO_WIN'] = free_loop_dev
 
+        if 'block_dev' in checkpoint:
+            os_directory = params_get(params, 'os_directory')
+            block_count = params_get(params, 'block_count')
+            os_directory = tempfile.TemporaryDirectory(prefix='v2v_test_', dir=os_directory)
+            diskimage = '%s/diskimage' % os_directory.name
+            # Update 'os_directory' for '-os' option
+            params['os_directory'] = os_directory.name
+
+            # Create a 1G image
+            cmd = 'dd if=/dev/zero of=%s bs=10M count=%s' % (diskimage, block_count)
+            process.run(cmd, shell=True)
+            # Build filesystem
+            cmd = 'mkfs.ext4 %s' % diskimage
+            process.run(cmd, shell=True)
+            # Find a free loop device
+            free_loop_dev = process.run(
+                "losetup --find", shell=True).stdout_text.strip()
+            # Setup the image as a block device
+            cmd = 'losetup %s %s' % (free_loop_dev, diskimage)
+            process.run(cmd, shell=True)
+            # Create a soft link to the loop device
+            blk_dev_link = '%s/mydisk1' % os_directory.name
+            cmd = 'ln -s %s %s' % (free_loop_dev, blk_dev_link)
+            process.run(cmd, shell=True)
+
         if 'invalid_pem' in checkpoint:
             # simply change the 2nd line to lowercase to get an invalid pem
             with open(local_ca_file_path, 'r+') as fd:
@@ -965,6 +994,9 @@ def run(test, params, env):
                     params['tmp_mount_point'],
                     'iso9660')
             os.environ.pop('VIRTIO_WIN')
+        if 'block_dev' in checkpoint and hasattr(os_directory, 'name'):
+            process.run('losetup -d %s' % free_loop_dev, shell=True)
+            os_directory.cleanup()
         if 'virtio_iso_blk' in checkpoint:
             process.run('losetup -d %s' % free_loop_dev, shell=True)
             os.environ.pop('VIRTIO_WIN')

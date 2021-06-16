@@ -853,13 +853,13 @@ def check_local_output(params):
             break
         disk_file_name = "%s-%s" % (vm_name, 'sd%s' % c)
         disk_file = os.path.join(os_directory, disk_file_name)
-        if not os.path.isfile(disk_file):
+        if not os.path.exists(disk_file):
             logging.error('Not found %s' % disk_file)
             result = False
 
     # Check xml file
     xml_file = os.path.join(os_directory, '%s.xml' % vm_name)
-    if not os.path.isfile(xml_file):
+    if not os.path.exists(xml_file):
         logging.error('Not found %s' % xml_file)
         result = False
     elif compare_version(FEATURE_SUPPORT['cache_none']):
@@ -909,13 +909,13 @@ def check_json_output(params):
         if json_disk_pattern:
             disk_file_name = json_disk_pattern.format(**json_disk_dict)
         disk_file = os.path.join(os_directory, disk_file_name)
-        if not os.path.isfile(disk_file):
+        if not os.path.exists(disk_file):
             logging.error('Not found %s' % disk_file)
             result = False
 
     # Check json file
     json_file = os.path.join(os_directory, '%s.json' % vm_name)
-    if not os.path.isfile(json_file):
+    if not os.path.exists(json_file):
         logging.error('Not found %s' % json_file)
         result = False
 
