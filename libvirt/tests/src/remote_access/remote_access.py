@@ -9,21 +9,20 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import remote
 from virttest import utils_config
-from virttest import utils_package
 from virttest import utils_iptables
-from virttest import utils_libvirtd
-from virttest import libvirt_version
 
+from virttest import libvirt_version
 from virttest.utils_sasl import SASL
+from virttest.utils_net import IPv6Manager
+from virttest.utils_libvirtd import Libvirtd
 from virttest.utils_conn import SSHConnection
 from virttest.utils_conn import TCPConnection
 from virttest.utils_conn import TLSConnection
 from virttest.utils_conn import UNIXConnection
-from virttest.utils_net import IPv6Manager
-from virttest.utils_net import check_listening_port_remote_by_service
 from virttest.utils_test.libvirt import connect_libvirtd
 from virttest.utils_test.libvirt import customize_libvirt_config
 from virttest.utils_test.libvirt import remotely_control_libvirtd
+from virttest.utils_net import check_listening_port_remote_by_service
 
 
 def remote_access(params, test):
@@ -260,7 +259,7 @@ def run(test, params, env):
                                            server_user, server_pwd,
                                            r"[\#\$]\s*$")
 
-    remote_libvirtd = utils_libvirtd.Libvirtd(session=server_session)
+    remote_libvirtd = Libvirtd(session=server_session)
     if not remote_libvirtd.is_running():
         logging.debug("start libvirt on remote")
         res = remote_libvirtd.start()
@@ -340,19 +339,6 @@ def run(test, params, env):
         session.close()
 
     try:
-        # Install digest-md5 on local and remote
-        if sasl_type == "digest-md5":
-            server_session = remote.wait_for_login('ssh', server_ip, '22',
-                                                   server_user, server_pwd,
-                                                   r"[\#\$]\s*$")
-            for loc in ['local', 'remote']:
-                session = None
-                if loc == 'remote':
-                    session = server_session
-                if not utils_package.package_install("cyrus-sasl-md5", session):
-                    test.error("Failed to install swtpm packages on {} host."
-                               .format(loc))
-            server_session.close()
         # setup IPv6
         if config_ipv6 == "yes":
             ipv6_obj = IPv6Manager(test_dict)
@@ -364,7 +350,7 @@ def run(test, params, env):
             compare_virt_version(server_ip, server_user, server_pwd, test)
 
         # setup SSH
-        if transport == "ssh" or ssh_setup == "yes":
+        if (transport == "ssh" or ssh_setup == "yes") and sasl_type != "plain":
             if not test_dict.get("auth_pwd"):
                 ssh_obj = SSHConnection(test_dict)
                 if ssh_recovery == "yes":
@@ -412,7 +398,7 @@ def run(test, params, env):
             process.system(mkdir_cmd, ignore_status=True, shell=True)
 
         # setup UNIX
-        if transport == "unix" or unix_setup == "yes":
+        if transport == "unix" or unix_setup == "yes" or sasl_type == "plain":
             unix_obj = UNIXConnection(test_dict)
             if unix_recovery == "yes":
                 objs_list.append(unix_obj)
@@ -423,7 +409,6 @@ def run(test, params, env):
         if restart_libvirtd == "no":
             remotely_control_libvirtd(server_ip, server_user,
                                       server_pwd, action, status_error)
-
         # check TCP/IP listening by service
         if restart_libvirtd != "no" and transport != "unix":
             service = 'libvirtd'
@@ -504,7 +489,7 @@ def run(test, params, env):
         # From libvirt-3.2.0, the default sasl change from
         # DIGEST-MD5 to GSSAPI. "sasl_user" is discarded.
         # More details: https://libvirt.org/auth.html#ACL_server_kerberos
-        if sasl_user_pwd and sasl_type == 'digest-md5':
+        if sasl_user_pwd and sasl_type in ['digest-md5', 'plain']:
             # covert string tuple and list to python data type
             sasl_user_pwd = eval(sasl_user_pwd)
             if sasl_allowed_users:
@@ -518,14 +503,19 @@ def run(test, params, env):
             for sasl_user, sasl_pwd in sasl_user_pwd:
                 # need't authentication if the auth.conf is configured by user
                 if not auth_conf:
-                    test_dict["auth_user"] = sasl_user
-                    test_dict["auth_pwd"] = sasl_pwd
+                    if sasl_type == 'plain':
+                        test_dict["auth_pwd"] = server_pwd
+                        pass
+                    else:
+                        test_dict["auth_user"] = sasl_user
+                        test_dict["auth_pwd"] = sasl_pwd
                     logging.debug("sasl_user, sasl_pwd = "
                                   "(%s, %s)", sasl_user, sasl_pwd)
 
                 if sasl_allowed_users and sasl_user not in sasl_allowed_users:
                     test_dict["status_error"] = "yes"
-                patterns_extra_dict = {"authentication name": sasl_user}
+                patterns_extra_dict = {"authentication name": sasl_user,
+                                       "enter your password": sasl_pwd}
                 test_dict["patterns_extra_dict"] = patterns_extra_dict
                 remote_access(test_dict, test)
         else:
