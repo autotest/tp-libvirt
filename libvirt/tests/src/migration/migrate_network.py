@@ -1,14 +1,13 @@
-import os
 import logging
 
+from virttest import libvirt_version
 from virttest import libvirt_vm
-from virttest import defaults
-from virttest import virsh
 from virttest import migration
 from virttest import remote
 from virttest import utils_net
 from virttest import utils_conn
 from virttest import utils_package
+from virttest import virsh
 from virttest import virt_vm
 
 from virttest.libvirt_xml import vm_xml
@@ -125,17 +124,28 @@ def run(test, params, env):
             vm_mac = res[-1].split()[-1]
         return vm_mac
 
+    def create_fake_tap(remote_session):
+        """
+        Create a fake macvtap on destination host.
+
+        :param remote_session: The session to the destination host.
+        :return: The new tap device
+        """
+        tap_cmd = "ls /dev/tap* |awk -F 'tap' '{print $NF}'"
+        tap_idx = remote_session.cmd_output(tap_cmd).strip()
+        if not tap_idx:
+            test.fail("Unable to get tap index using %s."
+                      % tap_cmd)
+        fake_tap_dest = 'tap'+str(int(tap_idx)+1)
+        logging.debug("creating a fake tap %s...", fake_tap_dest)
+        cmd = "touch /dev/%s" % fake_tap_dest
+        remote_session.cmd(cmd)
+        return fake_tap_dest
+
     migration_test = migration.MigrationTest()
     migration_test.check_parameters(params)
 
-    # Params for NFS shared storage
-    shared_storage = params.get("migrate_shared_storage", "")
-    if shared_storage == "":
-        default_guest_asset = defaults.get_default_guest_os_info()['asset']
-        default_guest_asset = "%s.qcow2" % default_guest_asset
-        shared_storage = os.path.join(params.get("nfs_mount_dir"),
-                                      default_guest_asset)
-        logging.debug("shared_storage:%s", shared_storage)
+    libvirt_version.is_libvirt_feature_supported(params)
 
     # Params to update disk using shared storage
     params["disk_type"] = "file"
@@ -161,6 +171,7 @@ def run(test, params, env):
     target_vm_name = params.get("target_vm_name")
     direct_mode = "yes" == params.get("direct_mode", "no")
     check_macvtap_exists = "yes" == params.get("check_macvtap_exists", "no")
+    create_fake_tap_dest = "yes" == params.get("create_fake_tap_dest", "no")
     macvtap_cmd = params.get("macvtap_cmd")
     modify_target_vm = "yes" == params.get("modify_target_vm", "no")
     ovs_bridge_name = params.get("ovs_bridge_name")
@@ -179,6 +190,7 @@ def run(test, params, env):
     target_vm_session = None
     target_vm = None
     exp_macvtap = []
+    fake_tap_dest = None
 
     # params for migration connection
     params["virsh_migrate_desturi"] = libvirt_vm.complete_uri(
@@ -264,6 +276,8 @@ def run(test, params, env):
                               % macvtap_cmd)
                 # Generate the expected macvtap devices' index list
                 exp_macvtap = ['macvtap'+idx, 'macvtap'+str(int(idx)+1)]
+                if create_fake_tap_dest:
+                    fake_tap_dest = create_fake_tap(remote_session)
 
         remote_session.close()
         # Change domain network xml
@@ -325,20 +339,26 @@ def run(test, params, env):
             vm_session_after_mig = vm.wait_for_serial_login(timeout=240)
             vm_session_after_mig.cmd(restart_dhclient)
             check_vm_network_accessed(ping_dest, session=vm_session_after_mig)
-            if target_vm_session:
-                check_vm_network_accessed(ping_dest, session=target_vm_session)
 
-        if check_macvtap_exists and macvtap_cmd:
-            remote_session = remote.remote_login("ssh", server_ip, "22",
-                                                 server_user, server_pwd,
-                                                 r'[$#%]')
-            # Check macvtap devices' index after migration
-            idx = remote_session.cmd_output(macvtap_cmd)
-            act_macvtap = ['macvtap'+i for i in idx.strip().split("\n")]
-            if act_macvtap != exp_macvtap:
-                test.fail("macvtap devices after migration are incorrect!"
-                          " Actual: %s, Expected: %s. "
-                          % (act_macvtap, exp_macvtap))
+            if check_macvtap_exists and macvtap_cmd:
+                remote_session = remote.remote_login("ssh", server_ip, "22",
+                                                     server_user, server_pwd,
+                                                     r'[$#%]')
+                # Check macvtap devices' index after migration
+                idx = remote_session.cmd_output(macvtap_cmd)
+                act_macvtap = ['macvtap'+i for i in idx.strip().split("\n")]
+                if act_macvtap != exp_macvtap:
+                    test.fail("macvtap devices after migration are incorrect!"
+                              " Actual: %s, Expected: %s. "
+                              % (act_macvtap, exp_macvtap))
+        else:
+            if fake_tap_dest:
+                res = remote.run_remote_cmd("ls /dev/%s" % fake_tap_dest,
+                                            params, runner_on_target)
+                libvirt.check_exit_status(res)
+
+        if target_vm_session:
+            check_vm_network_accessed(ping_dest, session=target_vm_session)
         # Execute migration from remote
         if migrate_vm_back:
             ssh_connection = utils_conn.SSHConnection(server_ip=client_ip,
@@ -388,6 +408,9 @@ def run(test, params, env):
             vm_sync(target_org_xml, vm_name=target_vm_name,
                     virsh_instance=virsh_session_remote)
             virsh_session_remote.close_session()
+
+        if fake_tap_dest:
+            remote_session.cmd_output_safe("rm -rf /dev/%s" % fake_tap_dest)
 
         if network_dict:
             libvirt_network.create_or_del_network(
