@@ -231,7 +231,7 @@ def run(test, params, env):
 
         # recover the guest xml
         for xml_backup in vmxml_backup:
-            xml_backup.sync()
+            xml_backup.sync(options="--managed-save")
 
         nfs_server = libvirt.setup_or_cleanup_nfs(False)
 
@@ -327,8 +327,8 @@ def run(test, params, env):
                 dom.destroy(gracefully=False)
             virsh.remove_domain(dom.name, "--remove-all-storage")
 
-        if libvirt_guests_service.status():
-            libvirt_guests_service.stop()
-
         if nfs_vol:
             cleanup_nfs_backend_guest(vmxml_backup)
+
+        if libvirt_guests_service.status():
+            libvirt_guests_service.stop()
