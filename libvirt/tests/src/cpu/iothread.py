@@ -371,7 +371,10 @@ def run(test, params, env):
             libvirt.check_exit_status(result)
             if update_error:
                 items.update({"iothread_period": 100000})
-                items.update({"iothread_quota": -1})
+                if libvirt_version.version_compare(7, 4, 0):
+                    items.update({"iothread_quota": 17592186044415})
+                else:
+                    items.update({"iothread_quota": -1})
             for key, val in items.items():
                 if not re.findall(key+'\s*:\s+'+str(val), result.stdout):
                     test.fail("Unable to find expected value {}:{} from {}"
