@@ -162,7 +162,7 @@ def run(test, params, env):
             test.fail("VM failed to start."
                       "Error: %s" % str(e))
     except Exception as ex:
-        test.fail("unexpected exception happen: %s", str(ex))
+        test.fail("unexpected exception happen: %s" % str(ex))
     finally:
         # Recover VM.
         if vm.is_alive():
