@@ -6,6 +6,7 @@ import shutil
 from avocado.utils import process
 
 from virttest import data_dir
+from virttest import libvirt_version
 from virttest import utils_misc
 from virttest import utils_net
 from virttest import utils_package
@@ -39,6 +40,12 @@ def run(test, params, env):
     model = params.get('model', 'virtio')
     timeout = int(params.get('timeout', 240))
     wait_for_up = int(params.get('wait_for_up', 0))
+    create_tap = 'yes' == params.get('create_tap', 'no')
+    tap_mtu_size = int(params.get('tap_mtu_size', 2000))
+
+    if create_tap and 'managed_no' in params['name']:
+        if not libvirt_version.version_compare(7, 0, 0):
+            test.cancel('This test is not supported until libvirt-7.0.0')
 
     def set_network(size, net='default'):
         """
@@ -51,22 +58,27 @@ def run(test, params, env):
         logging.debug(virsh.net_dumpxml(net))
 
     def set_interface(mtu_size='', source_network='default',
-                      iface_type='network', iface_model='virtio'):
+                      iface_type='network', iface_model='virtio',
+                      iface_target=None):
         """
         Set mtu size to a certain interface
         """
         interface_type = 'bridge' if iface_type in ('bridge', 'openvswitch') else iface_type
         iface_dict = {
             'type': interface_type,
-            'source': "{'%s': '%s'}" % (interface_type, source_network),
             'model': iface_model
         }
+        if source_network:
+            iface_dict.update({'source': "{'%s': '%s'}" % (interface_type, source_network)})
 
         if iface_type == 'openvswitch':
             iface_dict.update({'virtualport_type': 'openvswitch'})
 
         if mtu_size:
             iface_dict.update({'mtu': "{'size': %s}" % mtu_size})
+
+        if iface_target:
+            iface_dict.update({'target': iface_target})
 
         libvirt.modify_vm_iface(vm_name, 'update_iface', iface_dict)
         logging.debug(virsh.dumpxml(vm_name).stdout)
@@ -184,7 +196,50 @@ def run(test, params, env):
             process.run('ovs-vsctl add-br %s' % br, shell=True, verbose=True)
             process.run('ovs-vsctl show', shell=True, verbose=True)
 
-        if not check or check in ['save', 'managedsave', 'hotplug_save']:
+        if create_tap:
+            tap_name = 'tap_' + utils_misc.generate_random_string(3)
+            tap_cmd = params.get('tap_cmd')
+            if tap_cmd is None:
+                test.error('No tap creating command provided.')
+            tap_cmd = tap_cmd.format(tap_name=tap_name)
+            logging.debug('Tap creating command: \n %s', tap_cmd)
+            # Create tap device
+            process.run(tap_cmd, verbose=True, shell=True)
+            # Check tap device's detail
+            ip_link_cmd = 'ip link show %s'
+            process.run(ip_link_cmd % tap_name, verbose=True)
+
+            if 'managed_no' in params['name']:
+                iface_target = params.get('iface_target') % tap_name
+                set_interface(mtu_size, source_network=None,
+                              iface_type='ethernet', iface_target=iface_target)
+                vm.start()
+                logging.debug(virsh.dumpxml(vm_name).stdout)
+
+                # Check mtu of tap on host
+                host_iface_info = process.run(ip_link_cmd % tap_name, verbose=True).stdout_text
+                if 'mtu %s' % tap_mtu_size in host_iface_info:
+                    logging.info('Host mtu size check PASS.')
+                else:
+                    test.fail('Host mtu size check FAIL.')
+
+                # Get iface mac address
+                vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+                iface = vmxml.devices.by_device_tag('interface')[0]
+                iface_mac = iface.mac_address
+
+                # Check mtu inside vm
+                session = vm.wait_for_serial_login()
+                iface_in_vm = utils_net.get_linux_ifname(session, mac_address=iface_mac)
+                vm_iface_info = session.cmd(ip_link_cmd % iface_in_vm)
+                session.close()
+                logging.debug(vm_iface_info)
+                if 'mtu %s' % mtu_size in vm_iface_info:
+                    logging.info('Inside-vm mtu size check PASS.')
+                else:
+                    test.fail('Inside-vm mtu size check FAIL.')
+
+        elif not check or check in ['save', 'managedsave', 'hotplug_save']:
             # Create bridge or network and set mtu
             iface_type = 'network'
             if net_type in ('bridge', 'openvswitch'):
@@ -323,3 +378,5 @@ def run(test, params, env):
         if add_pkg:
             process.run("ovs-vsctl del-br %s" % br, verbose=True)
             utils_package.package_remove(add_pkg)
+        if create_tap:
+            process.run('ip tuntap del mode tap {}'.format(tap_name), verbose=True, shell=True)
