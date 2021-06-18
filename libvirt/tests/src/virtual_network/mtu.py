@@ -175,8 +175,16 @@ def run(test, params, env):
         if add_pkg:
             add_pkg = add_pkg.split()
             new_pkg = add_pkg.copy()
-            if 'openvswitch' in add_pkg and shutil.which('ovs-vsctl'):
-                new_pkg.remove('openvswitch')
+            if 'openvswitch' in add_pkg:
+                # Install openvswitch
+                if process.system("yum info openvswitch", ignore_status=True) == 0:
+                    utils_package.package_install("openvswitch")
+                if process.system("yum info openvswitch2.11", ignore_status=True) == 0:
+                    utils_package.package_install("openvswitch2.11")
+                if process.system("yum info openvswitch2.15", ignore_status=True) == 0:
+                    utils_package.package_install("openvswitch2.15")
+                if shutil.which('ovs-vsctl'):
+                    new_pkg.remove('openvswitch')
             utils_package.package_install(new_pkg)
         if 'openvswitch' in add_pkg:
             br = 'ovsbr0' + utils_misc.generate_random_string(3)
