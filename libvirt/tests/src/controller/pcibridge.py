@@ -68,7 +68,7 @@ def run(test, params, env):
 
     vm_name = params.get('main_vm')
     status_error = 'yes' == params.get('status_error', 'no')
-    err_msg = params.get('err_msg', '').split(';')
+    err_msg = params.get('err_msg', '')
     case = params.get('case', '')
     hotplug = 'yes' == params.get('hotplug', 'no')
 

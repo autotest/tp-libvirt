@@ -821,7 +821,7 @@ def run(test, params, env):
         if res.exit_status:
             logging.debug("Can't start the VM, exiting.")
             return
-        check_qemu_cmdline()
+
         # Prepare console after start when console is client
         if console_type == 'client':
             console = prepare_serial_console()
