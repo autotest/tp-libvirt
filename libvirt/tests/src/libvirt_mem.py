@@ -323,6 +323,10 @@ def run(test, params, env):
             vmxml.max_mem_rt = int(max_mem_rt)
             vmxml.max_mem_rt_slots = max_mem_slots
             vmxml.max_mem_rt_unit = mem_unit
+        if max_mem:
+            vmxml.max_mem = int(max_mem)
+        if cur_mem:
+            vmxml.current_mem = int(cur_mem)
         if memory_val:
             vmxml.memory = int(memory_val)
         if vcpu:
