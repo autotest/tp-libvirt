@@ -85,6 +85,10 @@ class VMChecker(object):
                 self.ovirt_server_version.full_version)
             if self.ovirt_server_version.major >= 4 and self.ovirt_server_version.minor >= 4:
                 self.boottype = int(params.get("boottype", 1))
+            # A temporary workaround to bz1961945, once it's fixed, a
+            # nicer fix will be done.
+            if '4.4.6.8' in self.ovirt_server_version.full_version:
+                self.boottype = int(params.get("boottype", 0))
         if compare_version(FEATURE_SUPPORT['q35']):
             self.boottype = int(params.get("boottype", 1))
 
