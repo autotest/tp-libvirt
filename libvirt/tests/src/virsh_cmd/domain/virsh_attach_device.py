@@ -37,7 +37,7 @@ class TestParams(object):
         self.virsh = None  # Can't be known yet
         self._e = env
         self._p = params
-        self.serial_dir = params.get("serial_dir", "/var/log/libvirt")
+        self.serial_dir = params.get("serial_dir", "/var/lib/libvirt")
 
     @property
     def start_vm(self):
@@ -394,7 +394,7 @@ class SerialFile(AttachDeviceBase):
         # auto-cleaned at end of test
         if self.type_name == 'file':
             if libvirt_version.version_compare(3, 2, 0):
-                serial_dir = '/var/log/libvirt'
+                serial_dir = '/var/lib/libvirt'
             else:
                 serial_dir = self.test_params.serial_dir
         else:
