@@ -119,7 +119,7 @@ def cleanup_conn_obj(obj_list, test):
     :param obj_list: list, object list
     :param test: test object
     """
-    if not obj_list:
+    if obj_list is None:
         test.error("No connection object needs to be cleaned up")
     for one_conn in obj_list:
         if one_conn:
