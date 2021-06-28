@@ -110,13 +110,19 @@ nbdkit -rfv -U - --exportname / \
         """
         check case for bz1913740
         """
+        if multiple_versions_compare('[qemu-kvm-5.2.0-3,)'):
+            mem_size = "2**63 - 2**30"
+            invalid_mem_size = "2**63 - 2**30 + 1"
+        else:
+            mem_size = "2**63 - 512"
+            invalid_mem_size = "2**63 - 512 + 1"
 
-        cmd = 'nbdkit memory $((2**63 - 512)) --run \'qemu-img info "$uri"\''
+        cmd = 'nbdkit memory $((%s)) --run \'qemu-img info "$uri"\'' % mem_size
         cmd_result = process.run(cmd, shell=True, ignore_status=True)
         if cmd_result.exit_status != 0:
             test.fail('failed to test memory_max_disk_size')
 
-        cmd = 'nbdkit memory $((2**63 - 512 + 1)) --run \'qemu-img info "$uri"\''
+        cmd = 'nbdkit memory $((%s)) --run \'qemu-img info "$uri"\'' % invalid_mem_size
         expected_msg = 'File too large'
         cmd_result = process.run(cmd, shell=True, ignore_status=True)
         if cmd_result.exit_status == 0 or expected_msg in cmd_result.stdout_text:
