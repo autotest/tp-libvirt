@@ -159,7 +159,7 @@ def run(test, params, env):
         is_systemd = process.run("cat /proc/1/comm", shell=True).stdout_text.count("systemd")
         if is_systemd:
             libvirt_guests.restart()
-            pattern = r'(.+ \d\d:\d\d:\d\d).+: Resuming guest.+done'
+            pattern = r'(.+ \d\d:\d\d:\d\d).+: Resuming guest .*?[\n]*.*done'
         else:
             ret = process.run("service libvirt-guests restart | \
                               awk '{ print strftime(\"%b %y %H:%M:%S\"), \
