@@ -1331,6 +1331,8 @@ def run(test, params, env):
     disk_port = test_dict.get("disk_port")
 
     tc_cmd = test_dict.get("tc_cmd")
+    xml_path = test_dict.get("target_xml_path",
+                             "/tmp/avocado_vt_remote_vm1.xml")
 
     # It's used to clean up SSH, TLS and TCP objs later
     objs_list = []
@@ -2485,8 +2487,6 @@ def run(test, params, env):
 
                 # Replace the disk of the remote guest
                 logging.debug("Replace guest image with nfs image")
-                xml_path = test_dict.get("target_xml_path",
-                                         "/tmp/avocado_vt_remote_vm1.xml")
                 image_name = os.path.basename(disk_source)
 
                 # Dumpxml of remote guest to tempory file for updating
