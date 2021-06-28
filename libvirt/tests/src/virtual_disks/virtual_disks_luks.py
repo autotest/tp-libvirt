@@ -325,7 +325,7 @@ def run(test, params, env):
             enable_auth = "yes" == params.get("enable_auth")
             key_file = os.path.join(TMP_DATA_DIR, "ceph.key")
             key_opt = ""
-            # Prepare a blank params to confirm if delete the configure at the end of the test
+            # Prepare a blank params to confirm if delete the configure at the end of the test..
             ceph_cfg = ""
             if not utils_package.package_install(["ceph-common"]):
                 test.error("Failed to install ceph-common")

@@ -1,6 +1,15 @@
+os: linux
+dist: focal
 language: python
+cache: pip
+
+arch:
+  - s390x
+  - ppc64le
+  - arm64
+
 python:
-    - "3.6"
+    - "3.9"
 
 branches:
     only:
@@ -13,4 +22,4 @@ install:
     - pip install -r requirements-travis.txt
 
 script:
-    - inspekt checkall --disable-style E501,E265,W601,W605,E402,E722,E741 --no-license-check
+    - inspekt checkall --disable-style E501,E265,W601,W605,E402 --no-license-check
