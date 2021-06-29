@@ -14,7 +14,7 @@ from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.panic import Panic
 from virttest import data_dir
-
+from virttest import utils_package
 from virttest import libvirt_version
 
 
@@ -81,6 +81,10 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy()
         vm.start()
+
+        # Install lsof pkg if not installed
+        if not utils_package.package_install("lsof"):
+            test.cancel("Failed to install lsof in host\n")
 
         def get_flags(dump_path, result_dict):
             cmd = "lsof -w %s/* |awk '/libvirt_i/{print $2}'" % dump_path
