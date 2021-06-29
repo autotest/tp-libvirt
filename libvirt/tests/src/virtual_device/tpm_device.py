@@ -3,6 +3,7 @@ import re
 import logging
 import time
 import platform
+import shutil
 
 from virttest import data_dir
 from virttest import libvirt_version
@@ -12,6 +13,7 @@ from virttest import utils_package
 from virttest import utils_misc
 from virttest import utils_libguestfs
 from virttest import utils_libvirtd
+from virttest import libvirt_version
 
 from virttest.libvirt_xml.devices.tpm import Tpm
 from virttest.libvirt_xml.vm_xml import VMXML
@@ -69,6 +71,9 @@ def run(test, params, env):
     nvram = params.get("nvram", "")
     uefi_disk_url = params.get("uefi_disk_url", "")
     download_file_path = os.path.join(data_dir.get_data_dir(), "uefi_disk.qcow2")
+    persistent_state = ("yes" == params.get("persistent_state", "no"))
+
+    libvirt_version.is_libvirt_feature_supported(params)
 
     # Tpm emulator tpm-tis_model for aarch64 supported since libvirt 7.1.0
     if platform.machine() == 'aarch64' and tpm_model == 'tpm-tis' \
@@ -148,6 +153,7 @@ def run(test, params, env):
     vm_names = params.get("vms").split()
     vm_name = vm_names[0]
     vm = env.get_vm(vm_name)
+    domuuid = vm.get_uuid()
     vm_xml = VMXML.new_from_inactive_dumpxml(vm_name)
     vm_xml_backup = vm_xml.copy()
     os_xml = getattr(vm_xml, "os")
@@ -479,6 +485,24 @@ def run(test, params, env):
                 test.fail("test suite check failed.")
         logging.info("------PASS on kernel test suite check------")
 
+    def persistent_test(vm, vm_xml):
+        """
+        Test for vtpm with persistent_state.
+        """
+        vm.undefine("--nvram")
+        virsh.create(vm_xml.xml, **virsh_dargs)
+        domuuid = vm.get_uuid()
+        state_file = "/var/lib/libvirt/swtpm/%s/tpm2/tpm2-00.permall" % domuuid
+        process.run("ls -Z %s" % state_file)
+        session = vm.wait_for_login()
+        test_guest_tpm("2.0", session, False)
+        session.close()
+        virsh.dom_list("--transient", debug=True)
+        vm.destroy()
+        if not os.path.exists(state_file):
+            test.fail("Swtpm state file: %s does not exist after destroy vm'" % state_file)
+        process.run("ls -Z %s" % state_file)
+
     def reuse_by_vm2(tpm_dev):
         """
         Try to add same tpm to a second guest, when it's being used by one guest.
@@ -521,6 +545,8 @@ def run(test, params, env):
                 if backend_type == "emulator":
                     if backend_version != 'none':
                         backend.backend_version = backend_version
+                    if persistent_state:
+                        backend.persistent_state = "yes"
                     if prepare_secret:
                         auth_sec_dict = {"sec_ephemeral": "no",
                                          "sec_private": "yes",
@@ -548,7 +574,11 @@ def run(test, params, env):
         logging.debug("tpm dev xml to add is:\n %s", tpm_dev)
         for num in range(tpm_num):
             vm_xml.add_device(tpm_dev, True)
-        ret = virsh.define(vm_xml.xml, ignore_status=True, debug=True)
+        if persistent_state:
+            persistent_test(vm, vm_xml)
+            return
+        else:
+            ret = virsh.define(vm_xml.xml, ignore_status=True, debug=True)
         expected_match = ""
         if not err_msg:
             expected_match = "Domain .*%s.* defined from %s" % (vm_name, vm_xml.xml)
@@ -710,6 +740,8 @@ def run(test, params, env):
         # Remove swtpm log file in case of impact on later runs
         if os.path.exists("/var/log/swtpm/libvirt/qemu/%s-swtpm.log" % vm.name):
             os.remove("/var/log/swtpm/libvirt/qemu/%s-swtpm.log" % vm.name)
+        if os.path.exists("/var/lib/libvirt/swtpm/%s" % domuuid):
+            shutil.rmtree("/var/lib/libvirt/swtpm/%s" % domuuid)
         for sec_uuid in set(sec_uuids):
             virsh.secret_undefine(sec_uuid, ignore_status=True, debug=True)
         if vm2:
