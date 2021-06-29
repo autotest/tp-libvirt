@@ -684,6 +684,13 @@ def run(test, params, env):
         if 'block_dev' in checkpoint:
             if not os.path.exists(blk_dev_link):
                 test.fail("checkpoint '%s' failed" % checkpoint)
+        if 'fstrim_warning' in checkpoint:
+            # Actually, fstrim has no relationship with v2v, it may be related
+            # to kernel, this warning really doesn't matter and has no harm to
+            # the convertion.
+            V2V_FSTRIM_SUCESS_VER = "[virt-v2v-1.45.1-1.el9,)"
+            if utils_v2v.multiple_versions_compare(V2V_FSTRIM_SUCESS_VER):
+                params.update({'expect_msg': None})
         # Log checking
         log_check = utils_v2v.check_log(params, output)
         if log_check:
