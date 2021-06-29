@@ -86,6 +86,9 @@ def get_net_devices():
                 # Ignore bonding devices
                 if os.path.exists(os.path.join(dev_dir, 'bonding')):
                     continue
+                # Ignore vlan devices
+                if [x for x in os.listdir(dev_dir) if x.startswith('lower')]:
+                    continue
                 address_file = os.path.join(dev_dir, 'address')
                 mac = ''
                 with open(address_file, 'r') as f_addr:
