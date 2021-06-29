@@ -179,6 +179,9 @@ def run(test, params, env):
                                   (blkdev_major, blkdev_minor))
             chardev_unpriv_path = ("/sys/dev/char/%s:%s/device/unpriv_sgio" %
                                    (chardev_major, chardev_minor))
+            # unpriv_sgio feature change in centain kernel,e.g: /sys/dev/char/%s:%s/queue/unpriv_sgio may not exist
+            if os.path.exists(blkdev_unpriv_path) is False:
+                return
             with open(blkdev_unpriv_path, 'r') as f:
                 blkdev_unpriv_value = f.read().strip()
             with open(chardev_unpriv_path, 'r') as f:
@@ -289,6 +292,8 @@ def run(test, params, env):
     if enable_initiator_set and not libvirt_version.version_compare(6, 7, 0):
         test.cancel("current version doesn't support iscsi initiator hostdev feature")
     try:
+        # Load sg module if necessary
+        process.run("modprobe sg", shell=True, ignore_status=True, verbose=True)
         # Backup vms' xml
         vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         vmxml = vmxml_backup.copy()
