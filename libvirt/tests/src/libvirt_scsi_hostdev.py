@@ -206,6 +206,9 @@ def run(test, params, env):
         :param shareable_dev: If the device is a shareable one.
         """
         scsi_unpriv_sgio = get_unpriv_sgio(scsi_dev)
+        # On rhel9, previously skip check folder in get_unpriv_sgio(),so here return True directly
+        if scsi_unpriv_sgio is None:
+            return True
         if shareable_dev:
             # Only when <shareable/> set, the sgio takes effect.
             if ((unpriv_sgio and scsi_unpriv_sgio == '1') or
