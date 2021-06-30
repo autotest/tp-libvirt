@@ -17,7 +17,7 @@ from virttest.utils_test import libvirt
 from virttest.utils_v2v import params_get
 from avocado.utils import process
 from avocado.utils import download
-from aexpect.exceptions import ShellProcessTerminatedError, ShellTimeoutError
+from aexpect.exceptions import ShellProcessTerminatedError, ShellTimeoutError, ShellStatusError
 
 from provider.v2v_vmcheck_helper import VMChecker
 from provider.v2v_vmcheck_helper import check_json_output
@@ -301,7 +301,7 @@ def run(test, params, env):
                     re.I),
                 600,
                 step=30)
-        except ShellProcessTerminatedError:
+        except (ShellProcessTerminatedError, ShellStatusError):
             # Windows guest may reboot after installing qemu-ga service
             logging.debug('Windows guest is rebooting')
             if vmcheck.session:
