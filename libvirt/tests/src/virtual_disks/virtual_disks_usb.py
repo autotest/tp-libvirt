@@ -8,6 +8,7 @@ from virttest import virsh
 from virttest import utils_disk
 from virttest import utils_misc
 from virttest import virt_vm, remote
+from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.disk import Disk
@@ -198,6 +199,8 @@ def run(test, params, env):
     vmxml = vmxml_backup.copy()
 
     try:
+        if 'vt82c686b-uhci' in usb_models and libvirt_version.version_compare(7, 4, 0):
+            test.cancel("vt82c686b-usb-uhci not supported in this QEMU")
         remove_usbs(vmxml)
         prepare_usb_controller(vmxml, usb_models)
         vm.start()
