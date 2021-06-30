@@ -950,12 +950,17 @@ def run(test, params, env):
             new_cmd = utils_v2v.cmd_remove_option(v2v_result, rhv_disk_uuid)
             logging.debug('New v2v command:\n%s', new_cmd)
         if 'exist_uuid' in checkpoint:
+            # Use to cleanup the VM because it will not be run in check_result
+            vmchecker = VMChecker(test, params, env)
+            params['vmchecker'] = vmchecker
+            # Update name to avoid conflict
             new_vm_name = v2v_params['new_name'] + '_exist_uuid'
             new_cmd = v2v_result.command.replace(
                 '-on %s' %
                 vm_name,
                 '-on %s' %
                 new_vm_name)
+            new_cmd += ' --no-copy'
             logging.debug('re-run v2v command:\n%s', new_cmd)
         if 'invalid_source' in checkpoint:
             if params.get('invalid_vpx_hostname'):
