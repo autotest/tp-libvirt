@@ -28,6 +28,8 @@ def run(test, params, env):
     """
     Convert specific esx guest
     """
+    V2V_UNSUPPORT_RHEV_APT_VER = "[virt-v2v-1.43.3-4.el9,)"
+
     for v in list(params.values()):
         if "V2V_EXAMPLE" in v:
             test.cancel("Please set real value for %s" % v)
@@ -205,6 +207,9 @@ def run(test, params, env):
         file_path = {
             'rhev-apt.exe': r'C:\rhev-apt.exe',
             'rhsrvany.exe': r'"C:\Program Files\Guestfs\Firstboot\rhsrvany.exe"'}
+        # rhev-apt.ext is removed on rhel9
+        if utils_v2v.multiple_versions_compare(V2V_UNSUPPORT_RHEV_APT_VER):
+            file_path.pop('rhev-apt.exe')
         for key in file_path:
             status = vmcheck.session.cmd_status('dir %s' % file_path[key])
             if status == 0:
@@ -615,7 +620,6 @@ def run(test, params, env):
                 vmchecker.checker.create_session()
                 if os_type == 'windows':
                     services = ['qemu-ga']
-                    V2V_UNSUPPORT_RHEV_APT_VER = "[virt-v2v-1.43.3-4.el9,)"
                     if not utils_v2v.multiple_versions_compare(
                             V2V_UNSUPPORT_RHEV_APT_VER):
                         services.append('rhev-apt')
@@ -632,7 +636,9 @@ def run(test, params, env):
                 logging.info("All common checkpoints passed")
             # Check specific checkpoints
             if 'ogac' in checkpoint and 'signature' in checkpoint:
-                check_windows_signature(vmchecker.checker, r'c:\rhev-apt.exe')
+                if not utils_v2v.multiple_versions_compare(
+                        V2V_UNSUPPORT_RHEV_APT_VER):
+                    check_windows_signature(vmchecker.checker, r'c:\rhev-apt.exe')
             if 'cdrom' in checkpoint:
                 virsh_session = utils_sasl.VirshSessionSASL(params)
                 virsh_session_id = virsh_session.get_id()
