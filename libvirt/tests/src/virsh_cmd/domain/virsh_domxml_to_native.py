@@ -64,7 +64,7 @@ def run(test, params, env):
                 # turned into
                 # -blockdev {"driver":"file",...,"discard":"unmap"} in order to
                 # match the qemu command line format
-                if e == '-blockdev':
+                if e in ['-blockdev', '-object']:
                     enext = enext.strip("'")
                 # Append this and the next and set our skip flag
                 retlist.append(e + " " + enext)
@@ -101,6 +101,9 @@ def run(test, params, env):
                 continue
             elif re.search("-cpu", arg):
                 continue
+            # libvirt commit id 'd96fb5cb'
+            elif re.search("master-key.aes", arg):
+                continue
             retlist.append(arg)
 
         return retlist
@@ -116,9 +119,10 @@ def run(test, params, env):
         """
         expected_env_vars = [
             'LC_ALL',
-            'PATH',
-            'QEMU_AUDIO_DRV',
+            'PATH'
             ]
+        if not libvirt_version.version_compare(7, 3, 0):
+            expected_env_vars += ['QEMU_AUDIO_DRV']
         if libvirt_version.version_compare(5, 2, 0):
             expected_env_vars += [
                 'HOME',
