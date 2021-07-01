@@ -532,7 +532,7 @@ def run(test, params, env):
             service = 2445
             console = Console('udp', (host, service), is_server)
         elif serial_type == 'file':
-            socket_path = '/var/log/libvirt/virt-test'
+            socket_path = '/var/lib/libvirt/virt-test'
             console = Console('file', socket_path, is_server)
         elif serial_type == 'pipe':
             socket_path = '/tmp/virt-test'
@@ -710,8 +710,8 @@ def run(test, params, env):
         Clean up test environment
         """
         if serial_type == 'file':
-            if os.path.exists('/var/log/libvirt/virt-test'):
-                os.remove('/var/log/libvirt/virt-test')
+            if os.path.exists('/var/lib/libvirt/virt-test'):
+                os.remove('/var/lib/libvirt/virt-test')
 
         # recovery test environment
         for obj in objs_list:
