@@ -121,7 +121,7 @@ def run(test, params, env):
             session = vm.wait_for_serial_login(timeout=60)
             iface_in_vm = utils_net.get_linux_ifname(session, iface_mac)
 
-            session.cmd('ping www.redhat.com -c 20')
+            session.cmd('ping www.redhat.com -4 -c 20')
             host_iface_stat = get_host_iface_stat(vm_name, iface_target_dev)
             vm_iface_stat = get_vm_iface_stat(session, iface_in_vm)
             session.close()
