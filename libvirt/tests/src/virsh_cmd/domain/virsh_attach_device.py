@@ -37,7 +37,7 @@ class TestParams(object):
         self.virsh = None  # Can't be known yet
         self._e = env
         self._p = params
-        self.serial_dir = params.get("serial_dir", "/var/log/libvirt")
+        self.serial_dir = params.get("serial_dir", "/var/lib/libvirt")
 
     @property
     def start_vm(self):
