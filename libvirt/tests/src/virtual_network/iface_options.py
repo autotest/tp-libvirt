@@ -500,7 +500,7 @@ def run(test, params, env):
         # Dict of iface name and statistics
         for iface_name in vhostuser_names.split():
             for ovs_iface in ovs_iface_list:
-                if iface_name == eval(ovs_iface[0]):
+                if iface_name == ovs_iface[0].strip('\"'):
                     format_statis = dict(re.findall(r'(\S*?)=(\d*?),', ovs_iface[1]))
                     ovs_statis_dict[iface_name] = format_statis
                     break
