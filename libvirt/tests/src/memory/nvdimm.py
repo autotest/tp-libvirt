@@ -181,7 +181,8 @@ def run(test, params, env):
         virsh.start(vm_name, debug=True, ignore_status=False)
 
         # Check qemu command line one by one
-        list(map(libvirt.check_qemu_cmd_line, qemu_checks))
+        if IS_PPC_TEST:
+            list(map(libvirt.check_qemu_cmd_line, qemu_checks))
 
         alive_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
 
@@ -203,7 +204,7 @@ def run(test, params, env):
 
         if check == 'back_file':
             # Create a file system on /dev/pmem0
-            if platform.platform().count('el8'):
+            if any(platform.platform().find(ver) for ver in ('el8', 'el9')):
                 vm_session.cmd('mkfs.xfs -f /dev/pmem0 -m reflink=0')
             else:
                 vm_session.cmd('mkfs.xfs -f /dev/pmem0')
@@ -245,7 +246,8 @@ def run(test, params, env):
             vm.start()
             vm_session = vm.wait_for_login()
 
-            libvirt.check_qemu_cmd_line('mem-path=/tmp/nvdimm,share=no')
+            if IS_PPC_TEST:
+                libvirt.check_qemu_cmd_line('mem-path=/tmp/nvdimm,share=no')
 
             private_str = 'This is a test for foo-private'
             vm_session.cmd('mount -o dax /dev/pmem0 /mnt/')
@@ -269,7 +271,7 @@ def run(test, params, env):
 
         if check == 'label_back_file':
             # Create an xfs file system on /dev/pmem0
-            if platform.platform().count('el8'):
+            if any(platform.platform().find(ver) for ver in ('el8', 'el9')):
                 vm_session.cmd('mkfs.xfs -f -b size=4096 /dev/pmem0 -m reflink=0')
             else:
                 vm_session.cmd('mkfs.xfs -f -b size=4096 /dev/pmem0')
@@ -284,6 +286,7 @@ def run(test, params, env):
             if test_str not in vm_session.cmd('cat /mnt/foo-label '):
                 test.fail('"%s" should be in the output of cat cmd' % test_str)
 
+            vm_session.cmd('umount /mnt')
             # Reboot the guest, and remount the nvdimm device in the guest.
             # Check the file foo-label is exited
             vm_session.close()
