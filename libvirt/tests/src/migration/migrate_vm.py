@@ -1133,7 +1133,7 @@ def create_image_on_iscsi(test, vm, disk_source, disk_format, emulated_image):
     :param disk_format: image target format
     :param emulated_image: fileio backstore file target
     """
-    tmpdir = data_dir.get_tmp_dir()
+    tmpdir = data_dir.get_data_dir()
     emulated_path = os.path.join(tmpdir, emulated_image)
     if vm.is_alive():
         vm.destroy()
