@@ -148,7 +148,7 @@ def run(test, params, env):
                 try:
                     virsh.start(vm_name, debug=True, ignore_status=False)
                 except Exception as e:
-                    test.fail('Start vm failed: %s', str(e))
+                    test.fail('Start vm failed: %s' % str(e))
             # Check guest following the checkpoint document after convertion
             logging.info('Checking common checkpoints for v2v')
             if params.get('skip_vm_check') != 'yes':
