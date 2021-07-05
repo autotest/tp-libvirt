@@ -51,7 +51,7 @@ def run(test, params, env):
                 test.error("Failed to install util-linux")
             # Cancel test if host doesn't support SVE
             if not process.run(check_sve,
-                           ignore_status=True, shell=True).exit_status:
+                               ignore_status=True, shell=True).exit_status:
                 test.cancel("Host doesn't support SVE")
             # To enable SVE: Hardware support && enable kconfig
             # CONFIG_ARM64_SVE
