@@ -7,6 +7,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest import utils_config
 from virttest.utils_libvirtd import LibvirtdSession
+from virttest.utils_libvirtd import Libvirtd
 from virttest.libvirt_xml import capability_xml
 
 from virttest import libvirt_version
@@ -41,7 +42,7 @@ def run(test, params, env):
         Check whether the output is libvirtd version.
         """
         expected_version = params.get('expected_version', 'no') == 'yes'
-        is_version = log[0].startswith('libvirtd (libvirt)')
+        is_version = log[0].startswith('{} (libvirt)'.format(Libvirtd().service_list[0]))
         if expected_version != is_version:
             test.fail(
                 'Expected output version is %s, but get output:\n%s' %
@@ -75,8 +76,8 @@ def run(test, params, env):
 
         with open(pid_path) as pid_file:
             pid = int(pid_file.readline())
-
-        result = process.run('pgrep libvirtd', ignore_status=True, shell=True)
+        result = process.run('pgrep %s' % Libvirtd().service_list[0],
+                             ignore_status=True, shell=True)
         expected_pid = int(result.stdout_text.strip().split()[0])
 
         if pid != expected_pid:
@@ -122,7 +123,7 @@ def run(test, params, env):
     try:
         check_unix_socket_files()
 
-        process.system('systemctl stop libvirtd', ignore_status=True)
+        Libvirtd().stop()
         libvirtd.start(arg_str=arg_str, wait_for_working=False)
 
         start = time.time()
@@ -155,9 +156,9 @@ def run(test, params, env):
             check_pid_file()
     finally:
         libvirtd.exit()
-        process.system('systemctl stop libvirtd', ignore_status=True)
-        process.system('systemctl restart libvirtd.socket', ignore_status=True)
-        process.system('systemctl start libvirtd', ignore_status=True)
+        Libvirtd().stop()
+        Libvirtd("libvirtd.socket").restart()
+        Libvirtd().start()
 
         # Clean up config file
         if config_path:
