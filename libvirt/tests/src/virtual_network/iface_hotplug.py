@@ -81,14 +81,18 @@ def run(test, params, env):
     err_msgs1 = params.get("err_msgs1")
     err_msgs2 = params.get("err_msgs2")
     err_msg_rom = params.get("err_msg_rom")
-    del_pci = "yes" == params.get("add_pci", "no")
+    del_pci = "yes" == params.get("del_pci", "no")
     del_mac = "yes" == params.get("del_mac", "no")
+    del_alias = "yes" == params.get("del_alias", "no")
     set_pci = "yes" == params.get("set_pci", "no")
     set_mac = "yes" == params.get("set_mac", "no")
+    set_alias = "yes" == params.get("set_alias", "no")
     status_error = "yes" == params.get("status_error", "no")
     pci_addr = params.get("pci")
     check_mac = "yes" == params.get("check_mac", "no")
     vnet_mac = params.get("vnet_mac", None)
+    customer_alias = "yes" == params.get("customer_alias", "no")
+    detach_error = params.get("detach_error", None)
 
     # stree_test require detach operation
     stress_test_detach_device = False
@@ -143,6 +147,11 @@ def run(test, params, env):
                     else:
                         mac = utils_net.generate_mac_address_simple()
                         iface_xml_obj = create_iface_xml(mac)
+                    if customer_alias:
+                        random_id = process.run("uuidgen", ignore_status=True, shell=True).stdout_text.strip()
+                        alias_str = "ua-" + random_id
+                        iface_xml_obj.alias = {"name": alias_str}
+                        logging.debug("Update number %s interface xml: %s", i, iface_xml_obj)
                     iface_xml_obj.xmltreefile.write()
                     if check_mac:
                         mac_bef = get_all_mac_in_vm()
@@ -336,6 +345,8 @@ def run(test, params, env):
                             iface_xml_det.del_mac_address()
                         if del_pci:
                             iface_xml_det.del_address()
+                        if del_alias:
+                            iface_xml_det.del_alias()
                         if set_mac:
                             mac = utils_net.generate_mac_address_simple()
                             iface_xml_det.set_mac_address(mac)
@@ -343,12 +354,20 @@ def run(test, params, env):
                             pci_dict = ast.literal_eval(pci_addr)
                             addr = iface_xml_det.new_iface_address(**{"attrs": pci_dict})
                             iface_xml_det.set_address(addr)
+                        if set_alias:
+                            random_id = process.run("uuidgen", ignore_status=True, shell=True).stdout_text.strip()
+                            alias_str = "ua-" + random_id
+                            iface_xml_det.set_alias({"name": alias_str})
                         ori_pid_libvirtd = process.getoutput("pidof libvirtd")
+                        logging.debug("The xml of the interface to detach is %s", iface_xml_det)
                         ret = virsh.detach_device(vm_name,
                                                   iface_xml_det.xml,
                                                   flagstr="",
                                                   ignore_status=True)
                         libvirt.check_exit_status(ret, status_error)
+                        if detach_device and status_error and detach_error:
+                            if not ret.stderr.count(detach_error):
+                                test.error("Detach fail as expected, but the error msg %s can not match!" % ret.stderr)
                         aft_pid_libvirtd = process.getoutput("pidof libvirtd")
                         if not utils_libvirtd.Libvirtd.is_running or ori_pid_libvirtd != aft_pid_libvirtd:
                             test.fail("Libvirtd crash after detach non-exists interface")
