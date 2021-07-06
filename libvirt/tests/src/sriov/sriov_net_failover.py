@@ -256,10 +256,10 @@ def run(test, params, env):
                      devices.by_device_tag("interface")]
         ifaces_net = {iface.get_type_name() for iface in vm_ifaces}
         if expected_ifaces.issubset(ifaces_net) == status_error:
-            test.fail("Unable to get the expected interfaces %s, "
-                      "it should%s be %s."
-                      % (expected_ifaces,  ' not' if status_error else '',
-                         ifaces_net))
+            test.fail("Unable to get expected interface. The interface %s "
+                      "should%s be %s."
+                      % (ifaces_net,  ' not' if status_error else '',
+                         expected_ifaces))
         else:
             logging.debug("{}Found iface(s) as expected: {}."
                           .format('Not ' if status_error else '',
