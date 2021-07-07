@@ -647,6 +647,11 @@ def run(test, params, env):
     vlan_id = eval(params.get("vlan_id", "None"))
     trunk = params.get("trunk", "no") == "yes"
 
+    driver_dir = "/sys/bus/pci/drivers/%s" % driver
+    pci_dirs = glob.glob("%s/000*" % driver_dir)
+    if not pci_dirs:
+        test.cancel("Driver %s is not supported on this host." % driver)
+
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
     vmxml.remove_all_device_by_type('interface')
@@ -678,8 +683,7 @@ def run(test, params, env):
     else:
         if not vm.is_dead():
             vm.destroy()
-    driver_dir = "/sys/bus/pci/drivers/%s" % driver
-    pci_dirs = glob.glob("%s/000*" % driver_dir)
+
     pci_device_dir = "/sys/bus/pci/devices"
     pci_address = ""
     net_name = "test-net"
