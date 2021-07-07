@@ -119,8 +119,7 @@ def run(test, params, env):
             os.chmod(device_source, 0o777)
             #Format the disk.
             if disk_type in ["file", "floppy"]:
-                cmd = ("mkfs.ext3 -F %s && setsebool virt_use_nfs true"
-                       % device_source)
+                cmd = ("mkfs.ext3 -F %s" % device_source)
                 if process.system(cmd, ignore_status=True, shell=True):
                     test.cancel("Format disk failed")
 
@@ -132,6 +131,12 @@ def run(test, params, env):
         nfs_obj.setup()
         if not nfs_obj.mount():
             return None
+
+        # Set virt_use_nfs
+        result = process.run("setsebool virt_use_nfs true", ignore_status=True,
+                             shell=True)
+        if result.exit_status:
+            test.error("Set virt_use_nfs true failed")
 
         disk = {"disk_dev": nfs_obj, "format": "nfs", "source":
                 "%s/%s" % (mount_dir, os.path.split(device_source)[-1])}
