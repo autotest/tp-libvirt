@@ -1,5 +1,7 @@
+import aexpect
 import logging
 import os
+import re
 import time
 
 from avocado.utils import process
@@ -150,7 +152,8 @@ def run(test, params, env):
         virsh.restore(save_file, debug=True, ignore_status=False)
         if not libvirt.check_vm_state(vm_name, "running"):
             test.fail("The guest should be running after executing 'virsh restore'.")
-
+        vm.cleanup_serial_console()
+        vm.create_serial_console()
         vm_session = vm.wait_for_serial_login()
         check_vm_network_accessed(vm_session)
 
@@ -172,6 +175,47 @@ def run(test, params, env):
                             ignore_status=False)
         check_vm_network_accessed(vm_session)
 
+    def setup_save_restore_hostdev_iface_with_teaming():
+        logging.info("Create hostdev network.")
+        net_hostdev_fwd = params.get("net_hostdev_fwd",
+                                     '{"mode": "hostdev", "managed": "yes"}')
+        net_hostdev_dict = {"net_name": net_hostdev_name,
+                            "net_forward": net_hostdev_fwd,
+                            "net_forward_pf": '{"dev": "%s"}' % pf_name}
+        libvirt_network.create_or_del_network(net_hostdev_dict)
+        libvirt_vmxml.remove_vm_devices_by_type(vm, 'interface')
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        iface = interface.Interface("network")
+        iface.xml = create_bridge_iface_xml(vm, mac_addr, params)
+        vmxml.add_device(iface)
+        iface.xml = create_hostdev_iface_xml(vm, mac_addr, params)
+        vmxml.add_device(iface)
+        vmxml.sync()
+        logging.debug("VMXML after updating ifaces: %s.",
+                      vm_xml.VMXML.new_from_dumpxml(vm_name))
+        vm.start()
+        vm_session = vm.wait_for_serial_login(timeout=240)
+        check_vm_network_accessed(vm_session)
+
+    def teardown_save_restore_hostdev_iface_with_teaming():
+        teardown_hotplug_hostdev_iface_with_teaming()
+
+    def test_save_restore_hostdev_iface_with_teaming():
+        logging.info("Save/restore VM.")
+        save_file = os.path.join(data_dir.get_tmp_dir(), "save_file")
+        virsh.save(vm_name, save_file, debug=True, ignore_status=False, timeout=10)
+        if not libvirt.check_vm_state(vm_name, "shut off"):
+            test.fail("The guest should be down after executing 'virsh save'.")
+        virsh.restore(save_file, debug=True, ignore_status=False)
+        if not libvirt.check_vm_state(vm_name, "running"):
+            test.fail("The guest should be running after executing 'virsh restore'.")
+
+        vm.cleanup_serial_console()
+        vm.create_serial_console()
+        vm_session = vm.wait_for_serial_login()
+        check_vm_network_accessed(vm_session, tcpdump_iface=bridge_name,
+                                  tcpdump_status_error=True)
+
     def check_vm_iface_num(session, exp_num=3):
         """
         Check he number of interfaces
@@ -186,24 +230,42 @@ def run(test, params, env):
         return len(p_iface) == exp_num
 
     def check_vm_network_accessed(vm_session, expected_iface_no=3,
-                                  ping_dest="8.8.8.8", timeout=30):
+                                  ping_dest="8.8.8.8", timeout=30,
+                                  tcpdump_iface=None,
+                                  tcpdump_status_error=False):
         """
         Test VM's network by checking ifaces' number and the accessibility
 
         :param vm_session: The session object to the guest
         :param expected_iface_no: The expected number of ifaces
         :param ping_dest: The destination to be ping
-        :param timeout: The timeout of the checking.
-        :raise: test.fail when ifaces' number is incorrect or ping fails
+        :param timeout: The timeout of the checking
+        :param tcpdump_iface: The interface to check
+        :param tcpdump_status_error: Whether the tcpdump's output should include
+            the string "ICMP echo request"
+        :raise: test.fail when ifaces' number is incorrect or ping fails.
         """
         if not utils_misc.wait_for(lambda: check_vm_iface_num(
            vm_session, expected_iface_no), first=3, timeout=timeout):
             test.fail("%d interfaces should be found on the vm."
                       % expected_iface_no)
+        if tcpdump_iface:
+            cmd = "tcpdump  -i %s icmp" % tcpdump_iface
+            tcpdump_session = aexpect.ShellSession('bash')
+            tcpdump_session.sendline(cmd)
+
         if not utils_misc.wait_for(lambda: not utils_test.ping(
            ping_dest, count=3, timeout=5, output_func=logging.debug,
            session=vm_session)[0], first=5, timeout=timeout):
             test.fail("Failed to ping %s." % ping_dest)
+        if tcpdump_iface:
+            output = tcpdump_session.get_stripped_output()
+            pat_str = "ICMP echo request"
+            if re.search(pat_str, output) == tcpdump_status_error:
+                test.fail("Get incorrect tcpdump output: {}, it should{} "
+                          "include '{}'.".format(
+                              output, ' not' if tcpdump_status_error else '',
+                              pat_str))
 
     def create_bridge_iface_xml(vm, mac_addr, params):
         """
