@@ -745,9 +745,21 @@ def get_expected_spice_options(params, networks, expected_result):
 
     expected_opts = {
         'addr': listen_address,
-        'disable-ticketing': 'yes',
         'seamless-migration': 'on',
     }
+
+    if libvirt_version.version_compare(7, 3, 0):
+        expected_opts['disable-ticketing'] = 'on'
+        if copypaste == 'no':
+            expected_opts['disable-copy-paste'] = 'on'
+        elif copypaste == 'yes':
+            expected_opts['disable-copy-paste'] = 'off'
+    else:
+        expected_opts['disable-ticketing'] = 'yes'
+        if copypaste == 'no':
+            expected_opts['disable-copy-paste'] = 'yes'
+        elif copypaste == 'yes':
+            expected_opts['disable-copy-paste'] = 'no'
 
     if expected_port != 'not_set':
         expected_opts['port'] = expected_port
@@ -768,10 +780,6 @@ def get_expected_spice_options(params, networks, expected_result):
         expected_opts['playback-compression'] = playback_compression
     if graphic_passwd:
         expected_opts['passwd'] = graphic_passwd
-    if copypaste == 'no':
-        expected_opts['disable-copy-paste'] = 'yes'
-    elif copypaste == 'yes':
-        expected_opts['disable-copy-paste'] = 'no'
     if filetransfer == 'yes':
         expected_opts['disable-agent-file-xfer'] = 'no'
     if streaming_mode != 'not_set':
