@@ -107,15 +107,6 @@ def run(test, params, env):
         logging.error(msg)
         error_list.append(msg)
 
-    def check_device_exist(check, virsh_session_id):
-        """
-        Check if device exist after convertion
-        """
-        xml = virsh.dumpxml(vm_name, session_id=virsh_session_id).stdout
-        if check == 'cdrom':
-            if "device='cdrom'" not in xml:
-                log_fail('CDROM no longer exists')
-
     def check_vmtools(vmcheck, check):
         """
         Check whether vmware tools packages have been removed,
@@ -639,11 +630,8 @@ def run(test, params, env):
                 if not utils_v2v.multiple_versions_compare(
                         V2V_UNSUPPORT_RHEV_APT_VER):
                     check_windows_signature(vmchecker.checker, r'c:\rhev-apt.exe')
-            if 'cdrom' in checkpoint:
-                virsh_session = utils_sasl.VirshSessionSASL(params)
-                virsh_session_id = virsh_session.get_id()
-                check_device_exist('cdrom', virsh_session_id)
-                virsh_session.close()
+            if 'cdrom' in checkpoint and "device='cdrom'" not in vmchecker.vmxml:
+                test.fail('CDROM no longer exists')
             if 'vmtools' in checkpoint:
                 check_vmtools(vmchecker.checker, checkpoint)
             if 'modprobe' in checkpoint:
@@ -665,6 +653,8 @@ def run(test, params, env):
                     log_fail("Bridge virbr0 already started during conversion")
             if 'rhsrvany_checksum' in checkpoint:
                 check_rhsrvany_checksums(vmchecker.checker)
+            if 'block_dev' in checkpoint and not os.path.exists(blk_dev_link):
+                test.fail("checkpoint '%s' failed" % checkpoint)
             # Merge 2 error lists
             error_list.extend(vmchecker.errors)
             # Virtio drivers will not be installed without virtio-win setup
@@ -686,9 +676,6 @@ def run(test, params, env):
         if 'log decrease' in checkpoint:
             nbdkit_option = r'nbdkit\.backend\.datapath=0'
             if not re.search(nbdkit_option, output):
-                test.fail("checkpoint '%s' failed" % checkpoint)
-        if 'block_dev' in checkpoint:
-            if not os.path.exists(blk_dev_link):
                 test.fail("checkpoint '%s' failed" % checkpoint)
         if 'fstrim_warning' in checkpoint:
             # Actually, fstrim has no relationship with v2v, it may be related
