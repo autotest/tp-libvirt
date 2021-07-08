@@ -2,9 +2,31 @@ import logging
 import re
 
 from avocado.utils import process
+
+from virttest import libvirt_version
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
+
+
+def check_vm_cpu_model(vm_cpu_model, cmd_on_host, test):
+    """
+    Check if the vm cpu model is same with host cpu model
+
+    :param vm_cpu_model: str, vm cpu model
+    :param cmd_on_host: str, command to be executed on host
+    :param test: test object
+    """
+
+    # Get host cpu model
+    host_cpu_model = process.run(cmd_on_host,
+                                 shell=True,
+                                 verbose=True).stdout_text.strip()
+    if host_cpu_model != vm_cpu_model:
+        test.fail("VM cpu model '{}' should be same as "
+                  "host's '{}'".format(vm_cpu_model, host_cpu_model))
+    else:
+        logging.debug("Host cpu model is same with vm cpu model as expected")
 
 
 def run(test, params, env):
@@ -81,6 +103,7 @@ def run(test, params, env):
                                            **virsh_dargs)
         libvirt.check_exit_status(cmd_result)
 
+    libvirt_version.is_libvirt_feature_supported(params)
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
 
@@ -99,7 +122,7 @@ def run(test, params, env):
 
     cpu_vendor_id = None
     expected_qemuline = None
-    cmd_in_guest = None
+    cmd_in_guest = params.get("cmd_in_guest")
 
     bkxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
@@ -150,11 +173,14 @@ def run(test, params, env):
 
             if cmd_in_guest:
                 vm_session = vm.wait_for_login()
-                if vm_session.cmd_status(cmd_in_guest):
+                status, output = vm_session.cmd_status_output(cmd_in_guest)
+                if status:
                     vm_session.close()
-                    test.fail("Failed to run '%s' in vm." % cmd_in_guest)
+                    test.fail("Failed to run '{}' in vm with "
+                              "messages:\n{}".format(cmd_in_guest, output))
                 vm_session.close()
-
+                if cpu_mode == 'maximum':
+                    check_vm_cpu_model(output.strip(), cmd_in_guest, test)
     finally:
         logging.debug("Recover test environment")
         if vm.is_alive():
