@@ -82,6 +82,8 @@ def run(test, params, env):
         if original_disk_type == "local":
             image_name = "{}_image.qcow2".format(original_disk_target)
             disk_path = os.path.join(tmp_dir, image_name)
+            if os.path.exists(disk_path):
+                os.remove(disk_path)
             libvirt.create_local_disk("file", disk_path, original_disk_size,
                                       "qcow2")
             disk_params = {"device_type": "disk",
@@ -193,6 +195,8 @@ def run(test, params, env):
                     if target_type == "file":
                         target_file_name = "target_file_%s" % backup_index
                         target_file_path = os.path.join(tmp_dir, target_file_name)
+                        if os.path.exists(target_file_path):
+                            os.remove(target_file_path)
                         if prepare_target_file:
                             libvirt.create_local_disk("file", target_file_path,
                                                       original_disk_size, target_driver)
@@ -331,6 +335,11 @@ def run(test, params, env):
         if "target_file_path" in locals():
             if os.path.exists(target_file_path):
                 os.remove(target_file_path)
+
+        # Remove test disk's local image file
+        if original_disk_type == "local":
+            if "disk_path" in locals() and os.path.exists(disk_path):
+                os.remove(disk_path)
 
         # Remove iscsi devices
         libvirt.setup_or_cleanup_iscsi(False)
