@@ -70,7 +70,10 @@ def run(test, params, env):
         check_ifaces(vm_name, expected_ifaces={"bridge", "hostdev"})
 
         vm_session = vm.wait_for_serial_login(timeout=240)
-        check_vm_network_accessed(vm_session)
+        ping_ip = get_ping_dest(vm_session, mac_addr)
+        check_vm_network_accessed(vm_session, ping_dest=ping_ip,
+                                  tcpdump_iface=bridge_name,
+                                  tcpdump_status_error=True)
 
         logging.info("Detach the hostdev interface.")
         hostdev_iface = interface.Interface("network")
@@ -83,13 +86,17 @@ def run(test, params, env):
                             debug=True, ignore_status=False)
         check_ifaces(vm_name, expected_ifaces={"hostdev"}, status_error=True)
 
-        check_vm_network_accessed(vm_session, 2)
+        check_vm_network_accessed(vm_session, 2, ping_dest=ping_ip,
+                                  tcpdump_iface=bridge_name,
+                                  tcpdump_status_error=False)
 
         libvirt_vfio.check_vfio_pci(vf_pci, status_error=True)
         logging.info("Re-attach the hostdev interface.")
         virsh.attach_device(vm_name, hostdev_iface.xml, debug=True,
                             ignore_status=False)
-        check_vm_network_accessed(vm_session)
+        check_vm_network_accessed(vm_session, ping_dest=ping_ip,
+                                  tcpdump_iface=bridge_name,
+                                  tcpdump_status_error=True)
 
     def setup_hotplug_hostdev_device_with_teaming():
         libvirt_vmxml.remove_vm_devices_by_type(vm, 'interface')
@@ -111,8 +118,10 @@ def run(test, params, env):
         virsh.attach_device(vm_name, hostdev_dev.xml, debug=True,
                             ignore_status=False)
         vm_session = vm.wait_for_serial_login(timeout=240)
-        check_vm_network_accessed(vm_session)
-
+        ping_ip = get_ping_dest(vm_session, mac_addr)
+        check_vm_network_accessed(vm_session, ping_dest=ping_ip,
+                                  tcpdump_iface=bridge_name,
+                                  tcpdump_status_error=True)
         logging.info("Detach the hostdev device.")
         virsh.detach_device(vm_name, hostdev_dev.xml, wait_remove_event=True,
                             debug=True, ignore_status=False)
@@ -125,7 +134,9 @@ def run(test, params, env):
             test.fail("The hostdev device exists after detaching %s."
                       % check_hostdev)
         libvirt_vfio.check_vfio_pci(vf_pci, status_error=True)
-        check_vm_network_accessed(vm_session, 2)
+        check_vm_network_accessed(vm_session, 2, ping_dest=ping_ip,
+                                  tcpdump_iface=bridge_name,
+                                  tcpdump_status_error=False)
 
     def setup_save_restore_hostdev_device_with_teaming():
         logging.info("Start a VM with bridge iface and hostdev device.")
@@ -155,8 +166,10 @@ def run(test, params, env):
         vm.cleanup_serial_console()
         vm.create_serial_console()
         vm_session = vm.wait_for_serial_login()
-        check_vm_network_accessed(vm_session)
-
+        ping_ip = get_ping_dest(vm_session, mac_addr)
+        check_vm_network_accessed(vm_session, ping_dest=ping_ip,
+                                  tcpdump_iface=bridge_name,
+                                  tcpdump_status_error=True)
         logging.info("Detach the hostdev device.")
         hostdev_dev = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name).devices.\
             by_device_tag("hostdev")
@@ -168,12 +181,15 @@ def run(test, params, env):
             test.fail("The hostdev device exists after detaching %s."
                       % check_hostdev)
 
-        check_vm_network_accessed(vm_session, 2)
-        libvirt_vfio.check_vfio_pci(vf_pci, status_error=True)
+        check_vm_network_accessed(vm_session, 2, ping_dest=ping_ip,
+                                  tcpdump_iface=bridge_name,
+                                  tcpdump_status_error=False)
         logging.info("Attach the hostdev device.")
         virsh.attach_device(vm_name, hostdev_dev.xml, debug=True,
                             ignore_status=False)
-        check_vm_network_accessed(vm_session)
+        check_vm_network_accessed(vm_session, ping_dest=ping_ip,
+                                  tcpdump_iface=bridge_name,
+                                  tcpdump_status_error=True)
 
     def setup_save_restore_hostdev_iface_with_teaming():
         logging.info("Create hostdev network.")
@@ -260,12 +276,32 @@ def run(test, params, env):
             test.fail("Failed to ping %s." % ping_dest)
         if tcpdump_iface:
             output = tcpdump_session.get_stripped_output()
+            logging.debug("tcpdump's output: %s.", output)
             pat_str = "ICMP echo request"
-            if re.search(pat_str, output) == tcpdump_status_error:
-                test.fail("Get incorrect tcpdump output: {}, it should{} "
-                          "include '{}'.".format(
-                              output, ' not' if tcpdump_status_error else '',
-                              pat_str))
+            if re.search(pat_str, output):
+                if tcpdump_status_error:
+                    test.fail("Get incorrect tcpdump output: {}, it should not "
+                              "include '{}'.".format(output, pat_str))
+            else:
+                if not tcpdump_status_error:
+                    test.fail("Get incorrect tcpdump output: {}, it should "
+                              "include '{}'.".format(output, pat_str))
+
+    def get_ping_dest(vm_session, mac_addr, restart_network=True):
+        """
+        Get an ip address to ping
+
+        :param vm_session: The session object to the guest
+        :param mac_addr: mac address of given interface
+        :param restart_network:  Whether to restart guest's network
+        :return: ip address
+        """
+        if restart_network:
+            utils_misc.cmd_status_output("dhclient -r; sleep 5; dhclient",
+                                         shell=True, session=vm_session)
+        vm_iface_info = utils_net.get_linux_iface_info(
+            mac_addr, vm_session)['addr_info'][0]['local']
+        return re.sub('\d+$', '1', vm_iface_info)
 
     def create_bridge_iface_xml(vm, mac_addr, params):
         """
