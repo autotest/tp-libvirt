@@ -340,7 +340,7 @@ def run(test, params, env):
                 # If interface already added to a bridge, the output of the nmcli
                 # command will include "connection.slave-type: bridge"
                 out = process.run('nmcli dev show %s' % interface).stdout_text
-                con_l = re.findall(r'GENERAL.CONNECTION:(.+?)\n', out)
+                con_l = re.findall(r'GENERAL.CONNECTION:\s+(\S+.*)$', out, re.MULTILINE)
                 if not con_l:
                     test.cancel("no connection for the interface")
                 else:
