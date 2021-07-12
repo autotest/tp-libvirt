@@ -417,8 +417,11 @@ def run(test, params, env):
             test.fail("Backup job canceled: %s" % detail)
     finally:
         # Remove checkpoints
+        clean_checkpoint_metadata = not vm.is_alive()
+        if "error_operation" in locals() and "kill_qemu" in error_operation:
+            clean_checkpoint_metadata = True
         utils_backup.clean_checkpoints(vm_name,
-                                       clean_metadata=not vm.is_alive())
+                                       clean_metadata=clean_checkpoint_metadata)
 
         if vm.is_alive():
             vm.destroy(gracefully=False)
