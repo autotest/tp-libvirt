@@ -238,10 +238,11 @@ def run(test, params, env):
             if iface_target == "macvtap" and "mode" in iface.source:
                 cmd = "ip -d link show %s" % iface.target["dev"]
                 output = process.run(cmd, shell=True).stdout_text
-                if not re.findall("noqueue", output):
-                    test.fail("The default qdisc type should be noqueue, but it's not, check output '%s'" % output)
-                else:
-                    logging.info("Check the qisc type is expected noqueue")
+                if libvirt_version.version_compare(7, 0, 0):
+                    if not re.findall("noqueue", output):
+                        test.fail("The default qdisc type should be noqueue, but it's not, check output '%s'" % output)
+                    else:
+                        logging.info("Check the qisc type is expected noqueue")
                 logging.debug("ip link output: %s", output)
                 mode = iface.source["mode"]
                 if mode == "passthrough":
