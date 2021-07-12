@@ -1,9 +1,12 @@
 import logging
+import time
 
 from virttest import virsh
 from virttest import libvirt_vm
-from virttest.libvirt_xml import network_xml, IPXML
 from virttest import libvirt_version
+from virttest import utils_libvirtd
+from virttest.libvirt_xml import network_xml, IPXML
+from virttest.staging import service
 from virttest.utils_test import libvirt
 
 
@@ -19,6 +22,7 @@ def run(test, params, env):
     net_ref = params.get("net_start_net_ref", "netname")  # default is tested
     extra = params.get("net_start_options_extra", "")  # extra cmd-line params.
     route_test = "yes" == params.get("route_test", "no")
+    firewalld_operate = params.get("firewalld_operate", None)
 
     # make easy to maintain
     virsh_dargs = {'uri': uri, 'debug': True, 'ignore_status': True}
@@ -124,6 +128,37 @@ def run(test, params, env):
         logging.debug("Current network(s) state: %s", current_state)
         if 'default' not in current_state:
             test.fail('Network "default" cannot be found')
+        if firewalld_operate:
+            # current network is active, ensure firewalld is active
+            # if not, restart firewalld, then restart libvirtd
+            firewalld_service = service.Factory.create_service("firewalld")
+            libvirtd_obj = utils_libvirtd.Libvirtd()
+            if not firewalld_service.status():
+                firewalld_service.start()
+                libvirtd_obj.restart()
+                virsh_instance = virsh.VirshPersistent(**virsh_dargs)
+            if firewalld_operate == "restart":
+                # after firewalld restart, destroy and start the network
+                firewalld_service.restart()
+                time.sleep(5)
+                res1 = virsh.net_destroy(net_ref, extra, **virsh_dargs)
+                # need to add wait time. As libvirt doesn't know that firewalld has restarted until it gets the
+                # dbus message, but that message won't arrive until some time after all of libvirt's chains/rules
+                # have already been removed by the firewalld restart. refer to bug 1942805
+                time.sleep(5)
+                res2 = virsh.net_start(net_ref, extra, **virsh_dargs)
+            elif firewalld_operate == "stop_start":
+                # start network which has been destroyed before firewalld restart
+                res1 = virsh.net_destroy(net_ref, extra, **virsh_dargs)
+                firewalld_service.stop()
+                firewalld_service.start()
+                time.sleep(5)
+                res2 = virsh.net_start(net_ref, extra, **virsh_dargs)
+            logging.debug("firewalld_operate is %s, result for start network after firewalld restart: %s",
+                          firewalld_operate, res2)
+            status1 = res1.exit_status | res2.exit_status
+            if status1:
+                test.fail("Start or destroy network after firewalld restart fail!")
         # Check status_error
         if status_error:
             if not status:
