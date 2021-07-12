@@ -4,6 +4,7 @@ import sys
 import ast
 import logging
 import platform
+import shutil
 
 from avocado.utils import process
 from avocado.utils import stacktrace
@@ -181,7 +182,6 @@ TIMEOUT 3"""
             config = "%s=%s" % (key, value)
         else:
             config = key
-
         if not configs.count(config):
             if exists:
                 test.fail("Can't find %s=%s in configuration file" % (key, value))
@@ -580,6 +580,52 @@ TIMEOUT 3"""
         if not re.findall(expect_type, outputs):
             test.fail("The qdisc type should be %s, but it is not, check %s" % (expect_type, outputs))
 
+    def dns_host_prepare():
+        """
+        Hide host dns server and pass it to net_dns_forwarder
+        """
+        shutil.move(resolv_conf, resolv_conf_bak)
+        with open(resolv_conf_bak, 'r') as p, open(resolv_conf, 'w')as q:
+            if "nameserver" not in p.read():
+                test.fail("no nameserver in %s" % resolv_conf)
+            p.seek(0)
+            for line in p:
+                if "nameserver" not in line:
+                    q.write(line)
+                else:
+                    return "{'addr':'%s'}" % line.split()[1]
+
+    def dig_test(session):
+        """
+        Check srv, forwarder, host, txt resolving on guest
+        """
+        # Check if bind-utils is installed
+        if not utils_package.package_install("bind-utils", session):
+            test.error("Failed to install bind-utils on guest")
+        cmd1 = "dig _%s._%s.%s srv +short" % (dns_srv["service"],
+                                              dns_srv["protocol"], dns_srv["domain"])
+        cmd2 = "dig www.%s +short" % dns_srv["domain"]
+        cmd3 = "dig %s +short" % net_dns_hostnames[0]
+        cmd4 = "dig %s +short" % net_dns_hostnames[1]
+        cmd5 = "dig -t txt %s" % dns_txt["name"]
+        cmds = [cmd1, cmd2, cmd3, cmd4, cmd5]
+        for cmd in cmds:
+            status, output = session.cmd_status_output(cmd)
+            logging.debug(output)
+            if status:
+                test.fail("Cmd in guest failed: %s" % cmd)
+            if cmd == cmd1:
+                expect_text = " ".join([dns_srv['priority'],
+                                        dns_srv['weight'], dns_srv['port'], dns_srv['target']])
+                if expect_text not in output:
+                    test.fail("dns srv record is not '%s'" % expect_text)
+            if cmd == cmd2 and dns_srv["domain"] not in output:
+                test.fail("Not get expected result for: %s" % cmd)
+            if cmd in [cmd3, cmd4] and net_dns_hostip not in output:
+                test.fail("dns host ip is not '%s'" % net_dns_hostip)
+            if cmd == cmd5 and dns_txt["value"] not in output:
+                test.fail("dns txt value is not '%s'" % dns_txt["value"])
+
     start_error = "yes" == params.get("start_error", "no")
     define_error = "yes" == params.get("define_error", "no")
     restart_error = "yes" == params.get("restart_error", "no")
@@ -682,6 +728,10 @@ TIMEOUT 3"""
     # Build the xml and run test.
     try:
         if test_dnsmasq:
+            if test_dns_host:
+                resolv_conf = "/etc/resolv.conf"
+                resolv_conf_bak = "/etc/resolv.conf.bak"
+                params["net_dns_forwarders"] = dns_host_prepare()
             # Check the settings before modifying network xml
             if net_dns_forward == "no":
                 run_dnsmasq_default_test("domain-needed", exists=False)
@@ -1024,7 +1074,8 @@ TIMEOUT 3"""
                                                        password=password)
                 else:
                     session = vm.wait_for_login()
-
+                if test_dns_host:
+                    dig_test(session)
                 if test_dhcp_range:
                     dhcp_range = int(params.get("dhcp_range", "252"))
                     utils_net.restart_guest_network(session, iface_mac)
@@ -1182,3 +1233,5 @@ TIMEOUT 3"""
         if define_macvtap:
             cmd = "ip l del macvtap0; ip l del macvtap2; ip l del macvtap4"
             process.run(cmd, shell=True, verbose=True)
+        if test_dns_host and os.path.exists(resolv_conf_bak):
+            shutil.move(resolv_conf_bak, resolv_conf)
