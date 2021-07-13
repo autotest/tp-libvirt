@@ -11,6 +11,7 @@ from distutils.version import LooseVersion  # pylint: disable=E0611
 
 from avocado.core import exceptions
 from avocado.utils import process
+from aexpect.exceptions import ShellStatusError
 
 from virttest import utils_v2v
 from virttest import utils_sasl
@@ -19,7 +20,6 @@ from virttest import utils_misc
 from virttest import xml_utils
 from virttest.libvirt_xml import vm_xml
 
-V2V_7_3_VERSION = 'virt-v2v-1.32.1-1.el7'
 RETRY_TIMES = 10
 # Temporary workaround <Fix in future with a better solution>
 FEATURE_SUPPORT = {
@@ -198,7 +198,13 @@ class VMChecker(object):
         if self.os_type == 'linux':
             self.check_linux_vm()
         elif self.os_type == 'windows':
-            self.check_windows_vm()
+            try:
+                self.check_windows_vm()
+            except ShellStatusError:
+                logging.debug('Windows guest may be rebooting, try again!')
+                self.checker.session.close()
+                self.checker.session = None
+                self.check_windows_vm()
         else:
             logging.warn("Unspported os type: %s", self.os_type)
         return self.errors
@@ -215,28 +221,91 @@ class VMChecker(object):
             graphic_type = 'spice'
         return graphic_type
 
+    def get_virtio_win_config(self):
+        """
+        Return a value pair (virtio_win_installed, virtio_win_support_qxldod).
+        If virtio_win_installed is true, virtio-win is installed or VIRTIO_WIN
+        is set.
+        If virtio_win_support_qxldod is true, qxldod drivers are included.
+        """
+        # see bz1902635
+        virtio_win_ver = "[virtio-win-1.9.16,)"
+        virtio_win_installed = os.path.exists(
+            '/usr/share/virtio-win/virtio-win.iso')
+        # virtio-win is not installed, but VIRTIO_WIN is set
+        virtio_win_env = os.getenv('VIRTIO_WIN')
+        virtio_win_support_qxldod = False
+
+        if not virtio_win_installed:
+            if virtio_win_env:
+                if os.path.isdir(virtio_win_env):
+                    virtio_win_iso_dir = virtio_win_env
+                    qxldods = glob.glob(
+                        "%s/**/qxldod.inf" %
+                        virtio_win_iso_dir, recursive=True)
+                else:
+                    with tempfile.TemporaryDirectory(prefix='v2v_helper_') as virtio_win_iso_dir:
+                        process.run(
+                            'mount %s %s' %
+                            (virtio_win_env, virtio_win_iso_dir), shell=True)
+                        qxldods = glob.glob(
+                            "%s/**/qxldod.inf" %
+                            virtio_win_iso_dir, recursive=True)
+                        process.run(
+                            'umount %s' %
+                            (virtio_win_iso_dir),
+                            shell=True)
+                logging.debug('Found qxldods: %s', qxldods)
+                if qxldods:
+                    virtio_win_support_qxldod = True
+                    virtio_win_installed = True
+        else:
+            virtio_win_support_qxldod = utils_v2v.multiple_versions_compare(
+                virtio_win_ver)
+
+        return virtio_win_installed, virtio_win_support_qxldod
+
     def get_expect_video_model(self):
         """
         The video model in VM XML is different in different situation.
         """
+        def _when_target_libvirt(has_qxldod):
+            # Since RHEL7.3(virt-v2v-1.32.1-1.el7), video model will change to
+            # QXL for linux VMs
+            if self.os_type == 'linux':
+                video_model = 'qxl'
+            elif self.os_version in ['win7', 'win2008r2']:
+                video_model = 'qxl'
+            elif self.os_version in ['win10', 'win2016', 'win2019'] and has_qxldod:
+                video_model = 'qxl'
+            else:
+                video_model = 'cirrus'
+
+            # on slow train, video is set to 'cirrus' for windows guest.
+            v2v_av_version = '[virt-v2v-1.42,)'
+            if self.os_type == 'windows' and not utils_v2v.multiple_versions_compare(
+                    v2v_av_version):
+                logging.debug('video is changed because of slow train')
+                video_model = 'cirrus'
+
+            return video_model
+
+        def _when_target_ovirt():
+            # Video modle will change to QXL if convert target is ovirt/RHEVM
+            return 'qxl'
+
+        # Default value
         video_model = 'cirrus'
+        has_virtio_win, has_qxldod = self.get_virtio_win_config()
         # Video modle will change to QXL if convert target is ovirt/RHEVM
         if self.target == 'ovirt':
-            video_model = 'qxl'
-        # Since RHEL7.3(virt-v2v-1.32.1-1.el7), video model will change to
-        # QXL for linux VMs
-        if self.os_type == 'linux':
-            if compare_version(V2V_7_3_VERSION):
-                video_model = 'qxl'
+            video_model = _when_target_ovirt()
         # Video model will change to QXL for Windows2008r2 and windows7
-        if self.os_version in ['win7', 'win2008r2']:
-            video_model = 'qxl'
-            # video mode of windows guest will be cirrus if there is no virtio-win
-            # driver installed and environment 'VIRTIO_WIN' is not set on host
-            if process.run(
-                'rpm -q virtio-win',
-                    ignore_status=True).exit_status != 0 and not os.getenv('VIRTIO_WIN'):
-                video_model = 'cirrus'
+        if self.target == 'libvirt':
+            video_model = _when_target_libvirt(has_qxldod)
+        if not has_virtio_win:
+            video_model = 'cirrus'
+
         return video_model
 
     def check_metadata_libosinfo(self):
@@ -654,47 +723,15 @@ class VMChecker(object):
 
         # Check Red Hat VirtIO drivers and display adapter
         logging.info("Checking VirtIO drivers and display adapter")
+        expect_video = self.get_expect_video_model()
+        has_virtio_win, has_qxldod = self.get_virtio_win_config()
         expect_drivers = ["Red Hat VirtIO SCSI",
                           "Red Hat VirtIO Ethernet Adapte"]
-        # see bz1902635
-        virtio_win_ver = "[virtio-win-1.9.16,)"
+        expect_adapter = 'Microsoft Basic Display Driver'
         virtio_win_qxl_os = ['win2008r2', 'win7']
         virtio_win_qxldod_os = ['win10', 'win2016', 'win2019']
-        virtio_win_installed = os.path.exists(
-            '/usr/share/virtio-win/virtio-win.iso')
-        # virtio-win is not installed, but VIRTIO_WIN is set
-        virtio_win_env = os.getenv('VIRTIO_WIN')
-
-        expect_adapter = 'Microsoft Basic Display Driver'
-        if not virtio_win_installed:
-            if virtio_win_env:
-                if os.path.isdir(virtio_win_env):
-                    virtio_win_iso_dir = virtio_win_env
-                    qxldods = glob.glob(
-                        "%s/**/qxldod.inf" %
-                        virtio_win_iso_dir, recursive=True)
-                else:
-                    with tempfile.TemporaryDirectory(prefix='v2v_helper_') as virtio_win_iso_dir:
-                        process.run(
-                            'mount %s %s' %
-                            (virtio_win_env, virtio_win_iso_dir), shell=True)
-                        qxldods = glob.glob(
-                            "%s/**/qxldod.inf" %
-                            virtio_win_iso_dir, recursive=True)
-                        process.run(
-                            'umount %s' %
-                            (virtio_win_iso_dir),
-                            shell=True)
-                logging.debug('Found qxldods: %s', qxldods)
-                if qxldods:
-                    virtio_win_support_qxldod = True
-                    virtio_win_installed = True
-        else:
-            virtio_win_support_qxldod = utils_v2v.multiple_versions_compare(
-                virtio_win_ver)
-
-        if virtio_win_installed:
-            if virtio_win_support_qxldod and self.os_version in virtio_win_qxldod_os:
+        if has_virtio_win and expect_video == 'qxl':
+            if has_qxldod and self.os_version in virtio_win_qxldod_os:
                 expect_adapter = 'Red Hat QXL controller'
             elif self.os_version in virtio_win_qxl_os:
                 expect_adapter = 'Red Hat QXL GPU'
@@ -728,8 +765,7 @@ class VMChecker(object):
                 self.log_err("Not find driver: %s" % driver)
 
         # Check graphic and video type in VM XML
-        if compare_version(V2V_7_3_VERSION):
-            self.check_vm_xml()
+        self.check_vm_xml()
 
     def check_graphics(self, param):
         """
