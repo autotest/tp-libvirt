@@ -248,7 +248,7 @@ def run(test, params, env):
                 # Following are testing blkiotune
                 if virsh_cmd == "blkiotune":
                     logging.debug("blkiotune: The input info is: %s\n"
-                                  "The ouput info is: %s\n"
+                                  "The output info is: %s\n"
                                   "The cgroup info is:%s",
                                   virsh_input_info, virsh_output_info,
                                   cgroup_info)
@@ -258,7 +258,7 @@ def run(test, params, env):
                 # Following are testing memtune
                 elif virsh_cmd == "memtune":
                     logging.debug("memtune: The input info is: %s\n"
-                                  "The ouput info is: %s\n"
+                                  "The output info is: %s\n"
                                   "The cgroup info is:%s",
                                   virsh_input_info, virsh_output_info,
                                   cgroup_info)
@@ -268,7 +268,7 @@ def run(test, params, env):
                 # Following are testing schedinfo
                 elif virsh_cmd == "schedinfo":
                     logging.debug("schedinfo: The input info is: %s\n"
-                                  "The ouput info is: %s\n"
+                                  "The output info is: %s\n"
                                   "The cgroup info is:%s",
                                   virsh_input_info, virsh_output_info,
                                   cgroup_info)
