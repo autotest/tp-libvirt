@@ -234,7 +234,7 @@ def run(test, params, env):
                         'dns_txt': net_dns_txt, 'domain': domain, 'bridge': bridge,
                         'forward': forward, 'interface_dev': iface_name,
                         'virtualport': virtualport, 'virtualport_type': virtualport_type,
-                        'mac': mac,'net_bandwidth_inbound': net_bandwidth_inbound,
+                        'mac': mac, 'net_bandwidth_inbound': net_bandwidth_inbound,
                         'net_bandwidth_outbound': net_bandwidth_outbound}
             logging.debug("net_dict is %s" % net_dict)
             testnet_xml = libvirt_network.modify_network_xml(net_dict, testnet_xml)
