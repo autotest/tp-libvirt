@@ -219,6 +219,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     expected_result = params.get("expected_result", "virtlogd_disabled")
     stdio_handler = params.get("stdio_handler", "not_set")
+    matched_msg = params.get("matched_msg", "Powering off")
     start_vm = "yes" == params.get("start_vm", "yes")
     reload_virtlogd = "yes" == params.get("reload_virtlogd", "no")
     restart_libvirtd = "yes" == params.get("restart_libvirtd", "no")
@@ -391,7 +392,7 @@ def run(test, params, env):
             # Check VM shutdown log is written into log file correctly.
             if with_console_log:
                 check_info_in_vm_log_file(vm_name, guest_log_file,
-                                          matchedMsg="Powering off")
+                                          matchedMsg=matched_msg)
             else:
                 check_info_in_vm_log_file(vm_name, guest_log_file, matchedMsg="shutting down")
 
