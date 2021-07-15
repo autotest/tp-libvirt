@@ -103,7 +103,7 @@ def format_dasd(path, session):
     :raises TestError: if disk can't be formatted
     """
 
-    cmd = "dasdfmt -b 4096 -M quick -p -y %s" % path
+    cmd = "dasdfmt -b 4096 -M quick --force -p -y %s" % path
     err, out = cmd_status_output(cmd, shell=True, session=session)
     if err:
         raise TestError("Couldn't format disk. %s" % out)
