@@ -418,8 +418,9 @@ def run(test, params, env):
     finally:
         # Remove checkpoints
         clean_checkpoint_metadata = not vm.is_alive()
-        if "error_operation" in locals() and "kill_qemu" in error_operation:
-            clean_checkpoint_metadata = True
+        if "error_operation" in locals() and error_operation is not None:
+            if "kill_qemu" in error_operation:
+                clean_checkpoint_metadata = True
         utils_backup.clean_checkpoints(vm_name,
                                        clean_metadata=clean_checkpoint_metadata)
 
