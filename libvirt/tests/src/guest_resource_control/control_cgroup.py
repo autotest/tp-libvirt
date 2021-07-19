@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import re
 import time
@@ -254,7 +255,22 @@ def run(test, params, env):
                                   cgroup_info)
                     if not (is_subset_dict(virsh_input_info, virsh_output_info)
                             and is_subset_dict(virsh_output_info, cgroup_info)):
-                        test.fail("blkiotune checking failed.")
+                        if "weight" in virsh_input_info.keys():
+                            virsh_input_info_copy = virsh_input_info.copy()
+                            weight = int(virsh_input_info_copy["weight"])
+                            new_weight = math.ceil(weight / 10)
+                            virsh_input_info_copy["weight"] = str(new_weight)
+                            if not (is_subset_dict(virsh_input_info_copy, virsh_output_info)
+                                    and is_subset_dict(virsh_output_info, cgroup_info)):
+                                test.fail("blkiotune checking failed.")
+                            else:
+                                logging.warning("For current systemd, "
+                                                "the value of io.bfq.weight "
+                                                "is recalculated to a smaller "
+                                                "one, detailed info can be "
+                                                "found at bz1970830.")
+                        else:
+                            test.fail("blkiotune checking failed.")
                 # Following are testing memtune
                 elif virsh_cmd == "memtune":
                     logging.debug("memtune: The input info is: %s\n"
