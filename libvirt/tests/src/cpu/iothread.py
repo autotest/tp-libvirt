@@ -370,11 +370,8 @@ def run(test, params, env):
             result = virsh.schedinfo(vm_name, debug=True)
             libvirt.check_exit_status(result)
             if update_error:
-                items.update({"iothread_period": 100000})
-                if libvirt_version.version_compare(7, 4, 0):
-                    items.update({"iothread_quota": 17592186044415})
-                else:
-                    items.update({"iothread_quota": -1})
+                items.update({"iothread_period": 100000,
+                              "iothread_quota": '(17592186044415|-1)'})
             for key, val in items.items():
                 if not re.findall(key+'\s*:\s+'+str(val), result.stdout):
                     test.fail("Unable to find expected value {}:{} from {}"
