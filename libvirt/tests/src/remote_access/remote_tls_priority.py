@@ -1,3 +1,5 @@
+import logging
+
 from virttest import virsh
 from virttest import remote
 from avocado.utils import process
@@ -99,7 +101,6 @@ def run(test, params, env):
     server_pwd = params.get("server_pwd")
     tls_port = params.get("tls_port", "16514")
     ssl_v3 = params.get("priority_ssl_v3_only")
-    tls_v1 = params.get("priority_tls_v1_only")
     ssl_inv = params.get("priority_ssl_invalid")
     tls_inv = params.get("priority_tls_invalid")
     no_ssl_v3 = params.get("priority_no_ssl_v3")
@@ -133,6 +134,16 @@ def run(test, params, env):
     firewall_cmd = utils_iptables.Firewall_cmd(server_session)
     firewall_cmd.add_port(tls_port, 'tcp', permanent=True)
     server_session.close()
+
+    # Check which version to use for TLS v1.X
+    ssl_check = process.run('openssl s_client -connect {}:16514 -tls1_1'.
+                            format(server_ip), ignore_status=True)
+    if ssl_check.exit_status:
+        logging.debug('TLSv1.1 not supported, use TLS v1.2 instead')
+        tls_v1 = params.get("priority_tls_v1_2_only")
+    else:
+        # Use TLS v1.0
+        tls_v1 = params.get("priority_tls_v1_only")
 
     # Update TLS priority on remote
     replacements = {
@@ -185,7 +196,7 @@ def run(test, params, env):
             config = None
         else:
             test.fail('TLS priorities test failed for case when client supports'
-                      ' TLSv1.0 only and server does not support SSLv3 only.')
+                      ' TLSv1.X only and server does not support SSLv3 only.')
         # Pass invalid SSL priority
         new_tls_priority = {'tls_priority': '"{}"'.format(ssl_inv)}
         config = change_libvirtconf_on_client(new_tls_priority)
@@ -219,7 +230,7 @@ def run(test, params, env):
         test_pass = connect_to_server_hypervisor(connect_dict)
         if not test_pass:
             test.fail('TLS priorities test failed for case when the client '
-                      'supports TLSv1.0 only by URI and the server does not '
+                      'supports TLSv1.X only by URI and the server does not '
                       'support SSLv3 only.')
 
         uri_path = server_ip + '/system' + '?tls_priority={}'.format(tls_inv)
