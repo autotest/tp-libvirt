@@ -50,6 +50,10 @@ def run(test, params, env):
 
         logging.info("Clear up VM interface.")
         libvirt_vmxml.remove_vm_devices_by_type(vm, 'interface')
+        iface = interface.Interface("network")
+        iface.xml = create_bridge_iface_xml(vm, mac_addr, params)
+        virsh.attach_device(vm_name, iface.xml, flagstr='--persistent',
+                            debug=True, ignore_status=False)
         vm.start()
         vm.wait_for_serial_login(timeout=180).close()
 
@@ -59,11 +63,7 @@ def run(test, params, env):
         libvirt_network.create_or_del_network(net_hostdev_dict, is_del=True)
 
     def test_hotplug_hostdev_iface_with_teaming():
-        logging.info("Attach the bridge and hostdev interfaces.")
-        iface = interface.Interface("network")
-        iface.xml = create_bridge_iface_xml(vm, mac_addr, params)
-        virsh.attach_device(vm_name, iface.xml, debug=True,
-                            ignore_status=False)
+        logging.info("Attach a hostdev interface.")
         hostdev_iface_xml = create_hostdev_iface_xml(vm, mac_addr, params)
         virsh.attach_device(vm_name, hostdev_iface_xml, debug=True,
                             ignore_status=False)
@@ -211,7 +211,10 @@ def run(test, params, env):
                       vm_xml.VMXML.new_from_dumpxml(vm_name))
         vm.start()
         vm_session = vm.wait_for_serial_login(timeout=240)
-        check_vm_network_accessed(vm_session)
+        ping_ip = get_ping_dest(vm_session, mac_addr)
+        check_vm_network_accessed(vm_session, ping_dest=ping_ip,
+                                  tcpdump_iface=bridge_name,
+                                  tcpdump_status_error=True)
 
     def teardown_save_restore_hostdev_iface_with_teaming():
         teardown_hotplug_hostdev_iface_with_teaming()
@@ -228,8 +231,11 @@ def run(test, params, env):
 
         vm.cleanup_serial_console()
         vm.create_serial_console()
-        vm_session = vm.wait_for_serial_login()
-        check_vm_network_accessed(vm_session, tcpdump_iface=bridge_name,
+        vm_session = vm.wait_for_serial_login(timeout=240)
+        ping_ip = get_ping_dest(vm_session, mac_addr, False)
+        logging.debug(ping_ip)
+        check_vm_network_accessed(vm_session, ping_dest=ping_ip,
+                                  tcpdump_iface=bridge_name,
                                   tcpdump_status_error=True)
 
     def check_vm_iface_num(session, exp_num=3):
