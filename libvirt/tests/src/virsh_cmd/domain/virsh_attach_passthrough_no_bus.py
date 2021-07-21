@@ -1,4 +1,7 @@
 import logging
+
+from avocado.utils import process
+
 from virttest.libvirt_xml.devices.input import Input
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest import virsh
@@ -21,6 +24,11 @@ def run(test, params, env):
     # Create a new passthrough device without bus assigned
     input_dev = Input(type_name="passthrough")
     input_dev.source_evdev = "/dev/input/event1"
+
+    # Check whether host has passthrough device
+    if process.run("ls /dev/input/event1", ignore_status=True).exit_status:
+        test.cancel("Host doesn't have passthrough device")
+
     xml = input_dev.get_xml()
     logging.debug('Attached device xml:\n{}'.format(input_dev.xmltreefile))
     logging.debug('New Passthrough device XML is available at:{}'.format(xml))
