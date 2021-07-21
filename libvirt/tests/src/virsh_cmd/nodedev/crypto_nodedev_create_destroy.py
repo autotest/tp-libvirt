@@ -3,6 +3,7 @@ import os
 
 from uuid import uuid1
 
+from virttest import libvirt_version
 from virttest import virsh
 from virttest import utils_misc
 from virttest.utils_zcrypt import CryptoDeviceInfoBuilder, \
@@ -109,6 +110,7 @@ def run(test, params, env):
     :return:
     '''
 
+    libvirt_version.is_libvirt_feature_supported(params)
     matrix_cap = 'ap_matrix'
     device_file = None
 
