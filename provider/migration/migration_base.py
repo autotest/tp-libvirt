@@ -1,5 +1,6 @@
 import logging
 import types
+import re
 
 from virttest import virsh                           # pylint: disable=W0611
 
@@ -125,3 +126,69 @@ def cleanup_conn_obj(obj_list, test):
         if one_conn:
             logging.debug("Clean up one connection object")
             del one_conn
+
+
+def monitor_event(params):
+    """
+    Monitor event on source/target host
+
+    :param params: dict, used to setup the connection
+    :return: virsh session and remote virsh session to catch events
+    """
+    expected_event_src = params.get("expected_event_src")
+    expected_event_target = params.get("expected_event_target")
+    remote_pwd = params.get("migrate_dest_pwd")
+    remote_ip = params.get("migrate_dest_host")
+    remote_user = params.get("remote_user", "root")
+
+    cmd = "event --loop --all"
+    if expected_event_src:
+        logging.debug("Running virsh command on source: %s", cmd)
+        virsh_session = virsh.VirshSession(virsh_exec=virsh.VIRSH_EXEC,
+                                           auto_close=True)
+        virsh_session.sendline(cmd)
+
+    if expected_event_target:
+        logging.debug("Running virsh command on target: %s", cmd)
+        virsh_dargs = {'remote_ip': remote_ip, 'remote_user': remote_user,
+                       'remote_pwd': remote_pwd, 'unprivileged_user': None,
+                       'virsh_exec': virsh.VIRSH_EXEC, 'auto_close': True,
+                       'uri': 'qemu+ssh://%s/system' % remote_ip}
+        remote_virsh_session = virsh.VirshSession(**virsh_dargs)
+        remote_virsh_session.sendline(cmd)
+    return virsh_session, remote_virsh_session
+
+
+def check_output(output, expected_value_list, test):
+    """
+    Check if the output match expected value or not
+
+    :param output: actual output
+    :param expected_value_list: expected value
+    :param test: test object
+    :raise: test.fail if unable to find item(s)
+    """
+    logging.debug("Actual output is %s", output)
+    for item in expected_value_list:
+        if not re.findall(item, output):
+            test.fail("Unalbe to find {}".format(item))
+
+
+def check_event_output(params, test, virsh_session=None, remote_virsh_session=None):
+    """
+    Check event on source/target host
+
+    :param params: dict, used to setup the connection
+    :param test: test object
+    :param virsh_session: virsh session to catch events
+    :param remote_virsh_session: remote virsh session to catch events
+    """
+    expected_event_src = params.get("expected_event_src")
+    expected_event_target = params.get("expected_event_target")
+    if expected_event_src and virsh_session:
+        source_output = virsh_session.get_stripped_output()
+        check_output(source_output, eval(expected_event_src), test)
+
+    if expected_event_target and remote_virsh_session:
+        target_output = remote_virsh_session.get_stripped_output()
+        check_output(target_output, eval(expected_event_target), test)
