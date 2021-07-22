@@ -345,7 +345,8 @@ def run(test, params, env):
                     test.cancel("no connection for the interface")
                 else:
                     con = con_l[0].strip()
-                if "bridge" not in process.run('nmcli con show "%s"' % con).stdout_text:
+                if con == '--' or "bridge" not in process.run('nmcli con show "%s"' % con,
+                                                              ignore_status=True, shell=True).stdout_text:
                     params['forward_iface'] = interface
                     params['net_forward'] = "{'mode':'bridge', 'dev': '%s'}" % interface
                 else:
