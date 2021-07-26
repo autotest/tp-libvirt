@@ -66,6 +66,7 @@ class VMChecker(object):
         self.original_vm_name = params.get('original_vm_name')
         self.hypervisor = params.get("hypervisor")
         self.target = params.get('target')
+        self.input_mode = params.get('input_mode')
         self.output_method = params.get('output_method')
         # The expected boottype of guest, default 0 is 'i440fx+bios'
         # Other values are 1 for q35+bios, 2 for q35+uefi, 3 for
@@ -93,7 +94,7 @@ class VMChecker(object):
                 'xen',
                 'kvm'] and utils_v2v.compare_version(
                 rhv_bz_1983610_ver,
-                    self.ovirt_server_version.full_version):
+                    self.ovirt_server_version.full_version) and self.input_mode != 'ova':
                 self.boottype = int(params.get("boottype", 0))
         if compare_version(FEATURE_SUPPORT['q35']):
             self.boottype = int(params.get("boottype", 1))
