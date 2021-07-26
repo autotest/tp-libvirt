@@ -107,7 +107,12 @@ class VMChecker(object):
         self.virsh_session_id = self.virsh_session.get_id(
             ) if self.virsh_session else params.get('virsh_session_id')
         self.checker = utils_v2v.VMCheck(test, params, env)
-        self.setup_session()
+        # Should delete the guest when setup_session failed
+        try:
+            self.setup_session()
+        except Exception:
+            self.checker.cleanup()
+            raise
         if not self.checker.virsh_session_id:
             self.checker.virsh_session_id = self.virsh_session_id
         self.init_vmxml(raise_exception=False)
