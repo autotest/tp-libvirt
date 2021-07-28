@@ -171,6 +171,11 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     virsh_dargs = {'debug': True, 'ignore_status': True}
     sparse_option_support = "yes" == params.get("sparse_option_support", "yes")
+    with_clusterSize = "yes" == params.get("with_clusterSize")
+    vol_clusterSize = params.get("vol_clusterSize", "64")
+    vol_clusterSize_unit = params.get("vol_clusterSize_unit")
+    vol_format = params.get("vol_format", "qcow2")
+    libvirt_version.is_libvirt_feature_supported(params)
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
@@ -219,6 +224,10 @@ def run(test, params, env):
                 vol_arg['name'] = vol_name
                 vol_arg['capacity'] = int(capacity)
                 vol_arg['allocation'] = int(allocation)
+                if with_clusterSize:
+                    vol_arg['format'] = vol_format
+                    vol_arg['clusterSize'] = int(vol_clusterSize)
+                    vol_arg['clusterSize_unit'] = vol_clusterSize_unit
                 create_luks_vol(pool_name, vol_name, luks_sec_uuid, vol_arg)
             else:
                 pvt.pre_vol(vol_name, frmt, capacity, allocation, pool_name)

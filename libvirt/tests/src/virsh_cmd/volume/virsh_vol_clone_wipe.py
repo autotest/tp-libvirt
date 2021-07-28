@@ -99,6 +99,10 @@ def run(test, params, env):
     encryption_password = params.get("encryption_password", "redhat")
     secret_uuids = []
     wipe_old_vol = False
+    with_clusterSize = "yes" == params.get("with_clusterSize")
+    vol_clusterSize = params.get("vol_clusterSize", "64")
+    vol_clusterSize_unit = params.get("vol_clusterSize_unit")
+    libvirt_version.is_libvirt_feature_supported(params)
 
     if virsh.has_command_help_match("vol-clone", "--prealloc-metadata") is None:
         if "prealloc-metadata" in clone_option:
@@ -173,6 +177,9 @@ def run(test, params, env):
                 vol_arg['capacity'] = int(vol_capability)
                 vol_arg['allocation'] = int(vol_allocation)
                 vol_arg['format'] = vol_format
+                if with_clusterSize:
+                    vol_arg['clusterSize'] = int(vol_clusterSize)
+                    vol_arg['clusterSize_unit'] = vol_clusterSize_unit
                 create_luks_vol(pool_name, vol_name, luks_sec_uuid, vol_arg)
             else:
                 libvirt_pvt.pre_vol(vol_name=vol_name,
