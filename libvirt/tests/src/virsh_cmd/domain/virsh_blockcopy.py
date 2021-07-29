@@ -361,6 +361,12 @@ def run(test, params, env):
     snapshots_take = int(params.get("snapshots_take", '0'))
     external_disk_only_snapshot = "yes" == params.get("external_disk_only_snapshot", "no")
     enable_iscsi_auth = "yes" == params.get("enable_iscsi_auth", "no")
+    selinux_local = "yes" == params.get("set_sebool_local", "no")
+
+    # Set selinux
+    if selinux_local:
+        selinux_bool = utils_misc.SELinuxBoolean(params)
+        selinux_bool.setup()
 
     # Skip/Fail early
     if with_blockdev and not libvirt_version.version_compare(1, 2, 13):
@@ -784,3 +790,5 @@ def run(test, params, env):
             process.run('systemctl restart virtlogd ')
         except path.CmdNotFoundError:
             pass
+        if selinux_local:
+            selinux_bool.cleanup(keep_authorized_keys=True)
