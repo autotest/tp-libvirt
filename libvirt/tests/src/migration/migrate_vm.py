@@ -1153,20 +1153,21 @@ def run(test, params, env):
     Test remote access with TCP, TLS connection
     """
 
-    def get_target_hugepage_num(params):
+    def get_target_hugepage_num(params, mem):
         """
         Get the number of hugepage on target host
 
         :param params: The parameters used
+        :param mem: Current VM's memory
         :return: the number of hugepage to be allocated on target host
         """
         hugepage_file = params.get("kernel_hp_file", "/proc/sys/vm/nr_hugepages")
         with open(hugepage_file, 'r') as fp:
             hugepage_num = int(fp.readline().strip())
         more_less_hp = int(params.get("remote_target_hugepages", "0"))
-        logging.debug("Number of huge pages on target host to be allocated:%d",
-                      hugepage_num + more_less_hp)
-        return (hugepage_num + more_less_hp)
+        target_hugepage = min(int(mem/(1024*2)), hugepage_num) + more_less_hp
+        logging.debug("Number of huge pages on target host to be allocated:%d", target_hugepage)
+        return target_hugepage
 
     test_dict = dict(params)
     vm_name = test_dict.get("main_vm")
@@ -1235,7 +1236,6 @@ def run(test, params, env):
                                                      "no")
     enable_kvm_hugepages = "yes" == test_dict.get("enable_kvm_hugepages", "no")
     enable_remote_kvm_hugepages = "yes" == test_dict.get("enable_remote_kvm_hugepages", "no")
-    remote_tgt_hugepages = get_target_hugepage_num(test_dict)
     remote_hugetlbfs_path = test_dict.get("remote_hugetlbfs_path")
     delay = int(params.get("delay_time", 10))
 
@@ -1397,6 +1397,8 @@ def run(test, params, env):
     # Get current VM's memory
     current_mem = vmxml_backup.current_mem
     logging.debug("Current VM memory: %s", current_mem)
+
+    remote_tgt_hugepages = get_target_hugepage_num(test_dict, current_mem)
 
     # Disk XML file
     disk_xml = None
