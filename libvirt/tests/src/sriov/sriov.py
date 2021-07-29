@@ -1,18 +1,18 @@
 import logging
 import os
 import re
-import glob
 import string
 import random
 
 from avocado.utils import process
 
 from virttest import virsh
-from virttest import utils_net
+from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import utils_net
 from virttest import utils_package
 from virttest import utils_test
-from virttest import utils_libvirtd
+from virttest import utils_sriov
 from virttest.libvirt_xml.nodedev_xml import NodedevXML
 from virttest.libvirt_xml import network_xml
 from virttest.libvirt_xml import vm_xml
@@ -30,19 +30,6 @@ def run(test, params, env):
     4.Reboot a guest with vf;
     5.suspend/resume a guest with vf
     """
-    def find_pf():
-        pci_address = ""
-        for pci in pci_dirs:
-            temp_iface_name = os.listdir("%s/net" % pci)[0]
-            operstate = utils_net.get_net_if_operstate(temp_iface_name)
-            if operstate == "up":
-                pf_iface_name = temp_iface_name
-                pci_address = pci
-                break
-        if pci_address == "":
-            return False
-        else:
-            return pci_address
 
     def create_address_dict(pci_id):
         """
@@ -622,7 +609,6 @@ def run(test, params, env):
     vm = env.get_vm(params["main_vm"])
     machine_type = params.get("machine_type", "pc")
     operation = params.get("operation")
-    driver = params.get("driver", "ixgbe")
     status_error = params.get("status_error", "no") == "yes"
     model = params.get("model", "")
     managed = params.get("managed", "yes")
@@ -646,11 +632,6 @@ def run(test, params, env):
     controller_index = int(params.get("controller_index", "12"))
     vlan_id = eval(params.get("vlan_id", "None"))
     trunk = params.get("trunk", "no") == "yes"
-
-    driver_dir = "/sys/bus/pci/drivers/%s" % driver
-    pci_dirs = glob.glob("%s/000*" % driver_dir)
-    if not pci_dirs:
-        test.cancel("Driver %s is not supported on this host." % driver)
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
@@ -686,17 +667,19 @@ def run(test, params, env):
 
     pci_device_dir = "/sys/bus/pci/devices"
     pci_address = ""
+    driver = ""
     net_name = "test-net"
 
     # Prepare interface xml
     try:
-        pf_iface_name = ""
-        pci_address = utils_misc.wait_for(find_pf, timeout=60)
-        if not pci_address:
-            test.cancel("no up pf found in the test machine")
-        pci_id = pci_address.split("/")[-1]
-        pf_name = os.listdir('%s/net' % pci_address)[0]
-        bus_slot = ':'.join(pci_address.split(':')[1:])
+        pci_id = utils_sriov.get_pf_pci()
+        if not pci_id:
+            test.cancel("NO available pf found.")
+        pci_info = utils_sriov.get_pf_info_by_pci(pci_id)
+        pf_name = pci_info.get('iface')
+        driver = pci_info.get('driver')
+        pci_address = os.path.join("/sys/bus/pci/drivers", driver, pci_id)
+        bus_slot = ':'.join(pci_id.split(':')[1:])
         if not utils_package.package_install('pciutils'):
             test.error('Failed to install "pciutils" which provides '
                        'command "lspci"')

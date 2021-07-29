@@ -105,8 +105,9 @@ def run(test, params, env):
     vm_name = params.get("main_vm", "avocado-vt-vm1")
     vm = env.get_vm(vm_name)
 
-    driver = params.get("driver", "ixgbe")
-    pf_name, pf_pci = utils_sriov.find_pf(driver)
+    pf_pci = utils_sriov.get_pf_pci()
+    if not pf_pci:
+        test.cancel("NO available pf found.")
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     orig_config_xml = vmxml.copy()

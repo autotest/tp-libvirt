@@ -395,7 +395,10 @@ def run(test, params, env):
     libvirt_version.is_libvirt_feature_supported(params)
 
     mac_addr = utils_net.generate_mac_address_simple()
-    pf_name, pf_pci = utils_sriov.find_pf(driver)
+    pf_pci = utils_sriov.get_pf_pci()
+    if not pf_pci:
+        test.cancel("NO available pf found.")
+    pf_name = utils_sriov.get_pf_info_by_pci(pf_pci).get('iface')
     brg_dict = {'pf_name': pf_name, 'bridge_name': bridge_name}
     bridge_dict = {"net_name": net_bridge_name,
                    "net_forward": net_bridge_fwd,
