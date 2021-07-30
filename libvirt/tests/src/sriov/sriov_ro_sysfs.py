@@ -44,7 +44,10 @@ def run(test, params, env):
         if 'hostdev' not in vm_iface_types:
             test.fail('Unable to get hostdev interface!')
         if cmd_in_vm:
-            vm_session.cmd(cmd_in_vm)
+            if not utils_misc.wait_for(lambda:
+                                       not vm_session.cmd_status(cmd_in_vm),
+                                       30, 10):
+                test.fail("Can not get the Virtual Function info on vm!")
         vm_session.close()
 
     libvirt_version.is_libvirt_feature_supported(params)
