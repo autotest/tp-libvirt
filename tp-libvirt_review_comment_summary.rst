@@ -98,11 +98,27 @@ Coding
 
 - duplicate code avoidance
 
- - when code was called twice, better package them into one method
+ - when code was called twice, better package them into one function
+
+ - depending on how specific the function is to a test case, it should live
+
+   - as top-level function in the test script, if it's not needed in other test scripts
+
+   - as a helper function in modules below tp-libvirt/provider, if it's a function that needs to be used in several test scripts in tp-libvirt; the module structure should be similar to the structure of the test cases or similar to how avocado-vt organizes its modules
+
+   - in avocado-vt, if it's a function that's generally useful for various tests and test providers
+
+ - these functions can be moved in time, e.g. from test script, to provider module, to avocado-vt
+
+ - when defining a function, raising avocado exceptions directly instead of passing the `test` instance from the the run method, can make it easier to move the function later to other places
 
 - exception handling
 
  - miss do assert in throwing exception
+
+- libvirt version switches
+
+ - instead of hardcoding libvirt version switches in the test scripts, it's preferable to add the version that's minimally supported in the test configuration file, e.g. called `func_supported_since_libvirt_ver = (7, 0, 0)` in the cfg and use in the script as `libvirt_version.is_libvirt_feature_supported(params)`.
 
 ======================================================================
 Enhancement (best practice):
