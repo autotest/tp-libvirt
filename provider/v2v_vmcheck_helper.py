@@ -250,6 +250,8 @@ class VMChecker(object):
 
         if not virtio_win_installed:
             if virtio_win_env:
+                # Users should assure VIRTIO_WIN is valid
+                virtio_win_installed = True
                 if os.path.isdir(virtio_win_env):
                     virtio_win_iso_dir = virtio_win_env
                     qxldods = glob.glob(
@@ -270,7 +272,6 @@ class VMChecker(object):
                 logging.debug('Found qxldods: %s', qxldods)
                 if qxldods:
                     virtio_win_support_qxldod = True
-                    virtio_win_installed = True
         else:
             virtio_win_support_qxldod = utils_v2v.multiple_versions_compare(
                 virtio_win_ver)
