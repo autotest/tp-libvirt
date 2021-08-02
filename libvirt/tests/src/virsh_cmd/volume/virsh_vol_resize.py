@@ -154,7 +154,7 @@ def create_luks_vol(vol_name, sec_uuid, params, test):
     vol_arg = {}
     for key in list(params.keys()):
         if (key.startswith('vol_') and not key.startswith('vol_new')):
-            if key[4:] in ['capacity', 'allocation']:
+            if key[4:] in ['capacity', 'allocation', 'clusterSize']:
                 vol_arg[key[4:]] = int(float(utils_misc.normalize_data_size(params[key],
                                                                             "B", 1024)))
             elif key[4:] in ['owner', 'group']:
@@ -249,6 +249,8 @@ def run(test, params, env):
     b_luks_encrypt = "luks" == params.get("encryption_method")
     encryption_password = params.get("encryption_password", "redhat")
     secret_uuids = []
+    with_clusterSize = "yes" == params.get("with_clusterSize")
+    libvirt_version.is_libvirt_feature_supported(params)
 
     if not libvirt_version.version_compare(1, 0, 0):
         if "--allocate" in resize_option:
