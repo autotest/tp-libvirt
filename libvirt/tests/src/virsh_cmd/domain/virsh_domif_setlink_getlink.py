@@ -8,6 +8,7 @@ from virttest import virsh
 from virttest import data_dir
 from virttest import utils_net
 from virttest import utils_misc
+from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
 
 
@@ -130,9 +131,11 @@ def run(test, params, env):
     device = "vnet0"
     username = params.get("username")
     password = params.get("password")
+    post_action = params.get("post_action")
+    save_file = os.path.join(data_dir.get_data_dir(), "vm.save")
 
     # Back up xml file.
-    vm_xml_file = os.path.join(data_dir.get_tmp_dir(), "vm.xml")
+    vm_xml_file = os.path.join(data_dir.get_data_dir(), "vm.xml")
     virsh.dumpxml(vm_name[0], extra="--inactive", to_file=vm_xml_file)
 
     # Vm status
@@ -186,6 +189,12 @@ def run(test, params, env):
         status = result.exit_status
         logging.info("Setlink done")
 
+        if post_action == "restart_libvirtd":
+            utils_libvirtd.libvirtd_restart()
+        elif post_action == "save_restore":
+            vm.save_to_file(save_file)
+            vm.restore_from_file(save_file)
+
         # Getlink opertation
         get_result = domif_getlink(vm_name[1], device, options)
         getlink_output = get_result.stdout.strip()
@@ -197,6 +206,15 @@ def run(test, params, env):
                           "equal with setlink operation")
 
         logging.info("Getlink done")
+
+        # Check guest xml about link status
+        if post_action == "save_restore":
+            vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+            iface = vmxml.get_devices(device_type="interface")[0]
+            logging.debug("Guest current interface xml is %s" % iface)
+            if iface.link_state != if_operation:
+                test.fail("link state in guest xml should be %s" % if_operation)
+
         # If --config or --persistent is given should restart the vm then test link status
         if any(options == option for option in ["--config", "--persistent"]) and vm.is_alive():
             vm.destroy()
@@ -207,7 +225,7 @@ def run(test, params, env):
             vm.start()
 
         error_msg = None
-        if status_error == "no":
+        if status_error == "no" and not post_action:
             # Serial login the vm to check link status
             # Start vm check the link statue
             session = vm.wait_for_serial_login(username=username,
@@ -273,3 +291,5 @@ def run(test, params, env):
         virsh.undefine(vm_name[0])
         virsh.define(vm_xml_file)
         os.remove(vm_xml_file)
+        if os.path.exists(save_file):
+            os.remove(save_file)
