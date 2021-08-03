@@ -57,6 +57,7 @@ def run(test, params, env):
     iface_filter = params.get("iface_filter")
     iface_boot = params.get('iface_boot')
     iface_coalesce = params.get('iface_coalesce')
+    iface_source = params.get('iface_source')
 
     new_iface_driver = params.get("new_iface_driver")
     new_iface_driver_host = params.get("new_iface_driver_host")
@@ -84,20 +85,38 @@ def run(test, params, env):
     rules = eval(params.get("rules", "{}"))
     del_mac = "yes" == params.get("del_mac", "no")
     del_coalesce = 'yes' == params.get('del_coalesce', 'no')
+    direct_net = 'yes' == params.get('direct_net', 'no')
+    direct_mode = params.get("direct_mode", "bridge")
 
     del_net_bandwidth = 'yes' == params.get('del_net_bandwidth', 'no')
 
     # Backup the vm xml for recover at last
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    netxml_backup = network_xml.NetworkXML.new_from_net_dumpxml(network_name)
+    current_net = virsh.net_list("--all").stdout.strip()
+    netxml_backup = None
+    if network_name in current_net:
+        netxml_backup = network_xml.NetworkXML.new_from_net_dumpxml(network_name)
 
     try:
         # Prepare network
-        netxml = network_xml.NetworkXML.new_from_net_dumpxml(network_name)
-        logging.debug('Network xml before update:\n%s', netxml)
-        if del_net_bandwidth:
-            netxml.del_element('/bandwidth')
-        logging.debug('Network xml after update:\n%s', netxml)
+        # Create new network if need
+        if create_new_net:
+            if direct_net:
+                net_ifs = utils_net.get_net_if(state="UP")
+                net_forward = str({'dev': net_ifs[0], 'mode': direct_mode})
+                net_dict = {'net_forward': net_forward}
+            else:
+                net_dict = params
+            new_net_xml = libvirt.create_net_xml(new_network_name, net_dict)
+            new_net_xml.sync()
+
+        else:
+            netxml = network_xml.NetworkXML.new_from_net_dumpxml(network_name)
+            logging.debug('Network xml before update:\n%s', netxml)
+            if del_net_bandwidth:
+                netxml.del_element('/bandwidth')
+                netxml.sync()
+            logging.debug('Network xml after prepare:\n%s', netxml)
 
         # According to the different os find different file for rom
         if (iface_rom and "file" in eval(iface_rom)
@@ -114,8 +133,8 @@ def run(test, params, env):
         # Collect need update items in 2 dicts for both start vm before and after
         update_list_bef = [
             "driver", 'driver_host', 'driver_guest', "model", "mtu", "rom",
-            "filter", 'boot', 'coalesce'
-            ]
+            "filter", 'boot', 'coalesce', 'source'
+        ]
         for update_item_bef in update_list_bef:
             if names['iface_'+update_item_bef]:
                 iface_dict_bef.update({update_item_bef: names['iface_'+update_item_bef]})
@@ -176,11 +195,6 @@ def run(test, params, env):
             check_mtu()
             utils_libvirtd.libvirtd_restart()
             check_mtu()
-
-        # Create new network if need
-        if create_new_net:
-            new_net_xml = libvirt.create_net_xml(new_network_name, params)
-            new_net_xml.sync()
 
         # Do update for iface_driver
         logging.info('Creating new iface xml.')
@@ -289,6 +303,7 @@ def run(test, params, env):
 
     finally:
         vmxml_backup.sync()
-        netxml_backup.sync()
+        if netxml_backup:
+            netxml_backup.sync()
         if create_new_net:
             new_net_xml.undefine()
