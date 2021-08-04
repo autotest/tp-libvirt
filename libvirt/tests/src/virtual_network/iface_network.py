@@ -571,6 +571,8 @@ TIMEOUT 3"""
         """
         if not vm.is_alive():
             vm.start()
+        if not libvirt_version.version_compare(7, 0, 0):
+            return
         mac = vm_xml.VMXML.get_iface_dev(vm_name)[0]
         iface_features = vm_xml.VMXML.get_iface_by_mac(vm_name, mac)
         target_dev = iface_features.get('target', {}).get('dev')
