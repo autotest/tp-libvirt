@@ -63,6 +63,9 @@ def run(test, params, env):
     encryption_secret_type = params.get("encryption_secret_type", "passphrase")
     virsh_readonly_mode = 'yes' == params.get("virsh_readonly", "no")
     vm_name = params.get("main_vm")
+    with_clusterSize = "yes" == params.get("with_clusterSize")
+    clusterSize = params.get("vol_clusterSize", "64")
+    libvirt_version.is_libvirt_feature_supported(params)
 
     if vm_name:
         vm = env.get_vm(vm_name)
@@ -106,7 +109,7 @@ def run(test, params, env):
     vol_arg = {}
     for key in params.keys():
         if key.startswith('vol_'):
-            if key[4:] in ['capacity', 'allocation', 'owner', 'group']:
+            if key[4:] in ['capacity', 'allocation', 'owner', 'group', 'clusterSize']:
                 vol_arg[key[4:]] = int(params[key])
             else:
                 vol_arg[key[4:]] = params[key]
@@ -266,6 +269,32 @@ def run(test, params, env):
                 test.fail("Find volume %s in pool %s, but expect not"
                           % (vol_name, pool_name))
 
+    def attach_volume_disk(vm_name, src_pool_name, vol_name, params):
+        """
+        Attach volume disk to the guest
+
+        params: vm_name: the name of the vm
+        params: src_pool_name: the name of the pool
+        params: vol_name: the name of the created volume
+        params: params: the parameter dictionary
+        """
+        disk_target = params.get("disk_target", "vdb")
+        disk_target_bus = params.get("disk_target_bus", "virtio")
+        attach_options = params.get("attach_options", "")
+        disk_params = {'device_type': 'disk',
+                       'type_name': 'volume',
+                       'target_dev': disk_target,
+                       'target_bus': disk_target_bus}
+        disk_params_src = {}
+        disk_params_src = {'source_pool': src_pool_name,
+                           'source_volume': vol_name,
+                           'driver_type': 'qcow2'}
+        disk_params.update(disk_params_src)
+        disk_xml = utlv.create_disk_xml(disk_params)
+        cmd_result = virsh.attach_device(domainarg=vm_name, filearg=disk_xml,
+                                         flagstr=attach_options, debug=True)
+        utlv.check_exit_status(cmd_result, status_error)
+
     fmt_err0 = "Unknown file format '%s'" % vol_format
     fmt_err1 = "Formatting or formatting option not "
     fmt_err1 += "supported for file format '%s'" % vol_format
@@ -361,6 +390,30 @@ def run(test, params, env):
                     uuid = luks_secret_uuid
                     attach_disk_encryption(vol_path, uuid, params)
                     check_vm_start()
+                if with_clusterSize:
+                    clusterSize_B = int(clusterSize) * 1024
+                    # check cluster size in volume xml
+                    volume_xml = volxml.new_from_vol_dumpxml(vol_name, src_pool_name)
+                    check_point = "%s</clusterSize>" % clusterSize_B
+                    if check_point in str(volume_xml):
+                        logging.debug("Can get expected cluster size in volume xml")
+                    else:
+                        test.fail("Can't get expected cluster size %s in volume xml %s"
+                                  % (clusterSize_B, volume_xml))
+                    # check cluster size in qemu-img info
+                    vol_path = virsh.vol_path(vol_name,
+                                              src_pool_name).stdout.strip()
+                    ret = process.run("qemu-img info %s | grep cluster_size"
+                                      % vol_path, shell=True)
+                    ret_clusterSize = int(ret.stdout_text.split(':')[1].strip())
+                    if clusterSize_B == ret_clusterSize:
+                        logging.debug("Can get expected cluster size in qemu-img info")
+                    else:
+                        test.fail("Gan't get expected cluster size %s in the image, the"
+                                  " incorrect cluster size is %s" % (clusterSize_B, ret_clusterSize))
+                    # start the guest with volume disk
+                    attach_volume_disk(vm_name, src_pool_name, vol_name, params)
+                    check_vm_start()
 
             else:
                 # Run virsh_vol_create_as to create_vol
@@ -416,7 +469,7 @@ def run(test, params, env):
         # For old version lvm2(2.02.106 or early), deactivate volume group
         # (destroy libvirt logical pool) will fail if which has deactivated
         # lv snapshot, so before destroy the pool, we need activate it manually
-        if vm_name:
+        if vm.is_alive():
             virsh.destroy(vm_name, debug=True, ignore_status=True)
         if params.get("orig_config_xml"):
             params.get("orig_config_xml").sync()
