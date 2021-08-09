@@ -93,6 +93,8 @@ def run(test, params, env):
         if scsi_wwnn.count("ENTER.YOUR.WWNN") or \
                 scsi_wwpn.count("ENTER.YOUR.WWPN"):
             test.cancel("You didn't provide proper wwpn/wwnn")
+        # Load sg module if necessary
+        process.run("modprobe sg", shell=True, ignore_status=True, verbose=True)
         if vm.is_dead():
             vm.start()
         session = vm.wait_for_login()
