@@ -1,6 +1,8 @@
 import logging
 import time
 
+
+from os.path import exists, join
 from avocado.core.exceptions import TestError, TestFail
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.utils_misc import cmd_status_output, wait_for
@@ -9,6 +11,7 @@ from virttest.utils_misc import cmd_status_output, wait_for
 DEACTIVATE_FORWARDING = 0
 FORWARD_COUNTER_TIMEOUT = 360
 CHECK_INTERVAL = 60
+FORWARD_VALUE_PATH = None
 
 
 def update_kvm_parameter(hz):
@@ -72,7 +75,7 @@ def get_forward_value():
     """
     Reads sysfs for forward value
     """
-    cmd = "cat /sys/kernel/debug/kvm/diag_9c_forward"
+    cmd = "cat %s" % FORWARD_VALUE_PATH
     return cmd_status_output(cmd, shell=True)
 
 
@@ -98,6 +101,23 @@ def wait_for_forward_count_to_be_non_zero(timeout):
     is_non_zero = wait_for(count_is_non_zero, step=10, timeout=timeout)
     if not is_non_zero:
         raise TestFail("Counter didn't go up though forwarding active.")
+
+
+def update_forward_value_path():
+    """
+    The forward counter attribute has a different name in newer
+    kernel versions. Update the attribute to be read.
+    """
+    basepath = "/sys/kernel/debug/kvm/"
+    global FORWARD_VALUE_PATH
+    for attr in ["diagnose_9c_forward", "diag_9c_forward"]:
+        fullpath = join(basepath, attr)
+        if exists(fullpath):
+            FORWARD_VALUE_PATH = fullpath
+            break
+    if not FORWARD_VALUE_PATH:
+        raise TestError("Pre-condition not met:"
+                        " Counter attribute not found in sysfs.")
 
 
 def run(test, params, env):
@@ -126,6 +146,7 @@ def run(test, params, env):
     vmxml_backup = vmxml.copy()
 
     try:
+        update_forward_value_path()
         update_kvm_parameter(diag9c_forward_hz)
         session = vm.wait_for_login()
         start_locktorture(session)
