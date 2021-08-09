@@ -56,30 +56,44 @@ def run(test, params, env):
             session = vm.wait_for_login()
             for fs_dev in fs_devs:
                 logging.debug(fs_dev)
-                session.cmd('rm -rf %s' % fs_dev.source['dir'], ignore_all_errors=False)
-                session.cmd('mkdir -p %s' % fs_dev.source['dir'])
+                mount_dir = '/var/tmp/' + fs_dev.target['dir']
+                session.cmd('rm -rf %s' % mount_dir, ignore_all_errors=False)
+                session.cmd('mkdir -p %s' % mount_dir)
                 logging.debug("mount virtiofs dir in guest")
-                cmd = "mount -t virtiofs %s %s" % (fs_dev.target['dir'], fs_dev.source['dir'])
+                cmd = "mount -t virtiofs %s %s" % (fs_dev.target['dir'], mount_dir)
                 status, output = session.cmd_status_output(cmd, timeout=300)
                 if status != 0:
                     session.close()
                     test.fail("mount virtiofs dir failed: %s" % output)
                 if vm == vms[0]:
-                    filename = fs_dev.source['dir'] + '/' + vm.name
-                    cmd = "dd if=/dev/urandom of=%s bs=1M count=512 oflag=direct" % filename
+                    filename_guest = mount_dir + '/' + vm.name
+                    cmd = "dd if=/dev/urandom of=%s bs=1M count=512 oflag=direct" % filename_guest
                     status, output = session.cmd_status_output(cmd, timeout=300)
                     if status != 0:
                         session.close()
                         test.fail("Write data failed: %s" % output)
-                md5_value = session.cmd_status_output("md5sum %s" % filename)[1].strip()
+                md5_value = session.cmd_status_output("md5sum %s" % filename_guest)[1].strip().split()[0]
                 md5s.append(md5_value)
                 logging.debug(md5_value)
-                md5_value = process.run("md5sum %s" % filename).stdout_text.strip()
+                md5_value = process.run("md5sum %s" % filename_guest).stdout_text.strip().split()[0]
                 logging.debug(md5_value)
                 md5s.append(md5_value)
             session.close()
         if len(set(md5s)) != len(fs_devs):
             test.fail("The md5sum value are not the same in guests and host")
+
+    def launch_externally_virtiofs(source_dir, source_socket):
+        """
+        Launch externally virtiofs
+
+        :param source_dir:  the dir shared on host
+        :param source_socket: the socket file listened on
+        """
+        process.run('chcon -t virtd_exec_t %s' % path, ignore_status=False, shell=True)
+        cmd = "systemd-run %s --socket-path=%s -o source=%s" % (path, source_socket, source_dir)
+        process.run(cmd, ignore_status=False, shell=True)
+        process.run("chown qemu:qemu %s" % source_socket, ignore_status=False)
+        process.run('chcon -t svirt_image_t %s' % source_socket, ignore_status=False, shell=True)
 
     start_vm = params.get("start_vm", "no")
     vm_names = params.get("vms", "avocado-vt-vm1").split()
@@ -94,8 +108,7 @@ def run(test, params, env):
     guest_num = int(params.get("guest_num", "1"))
     fs_num = int(params.get("fs_num", "1"))
     vcpus_per_cell = int(params.get("vcpus_per_cell", 2))
-    source_dir_prefix = params.get("source_dir_prefix", "/dir")
-    target_prefix = params.get("target_prefix", "mount_tag")
+    dir_prefix = params.get("dir_prefix", "mount_tag")
     error_msg_start = params.get("error_msg_start", "")
     error_msg_save = params.get("error_msg_save", "")
     status_error = params.get("status_error", "no") == "yes"
@@ -108,6 +121,8 @@ def run(test, params, env):
     with_hugepages = params.get("with_hugepages", "yes") == "yes"
     with_numa = params.get("with_numa", "yes") == "yes"
     with_memfd = params.get("with_memfd", "no") == "yes"
+    source_socket = params.get("source_socket", "/var/tmp/vm001.socket")
+    launched_mode = params.get("launched_mode", "auto")
 
     fs_devs = []
     vms = []
@@ -127,23 +142,27 @@ def run(test, params, env):
     try:
         # Define filesystem device xml
         for index in range(fs_num):
-            fsdev_keys = ['accessmode', 'driver', 'source', 'target', 'binary']
-            accessmode = "passthrough"
             driver = {'type': driver_type, 'queue': queue_size}
-            source_dir = str(source_dir_prefix) + str(index)
+            source_dir = os.path.join('/var/tmp/', str(dir_prefix) + str(index))
             logging.debug(source_dir)
             not os.path.isdir(source_dir) and os.mkdir(source_dir)
-            target_dir = target_prefix + str(index)
-            source = {'dir': source_dir}
+            target_dir = dir_prefix + str(index)
+            source = {'socket': source_socket}
             target = {'dir': target_dir}
-            fsdev_dict = [accessmode, driver, source, target]
-            binary_keys = ['path', 'cache_mode', 'xattr', 'lock_posix', 'flock']
-            binary_values = [path, cache_mode, xattr, lock_posix, flock]
-            binary_dict = dict(zip(binary_keys, binary_values))
-            fsdev_values = [accessmode, driver, source, target, binary_dict]
+            if launched_mode == "auto":
+                binary_keys = ['path', 'cache_mode', 'xattr', 'lock_posix', 'flock']
+                binary_values = [path, cache_mode, xattr, lock_posix, flock]
+                binary_dict = dict(zip(binary_keys, binary_values))
+                source = {'dir': source_dir}
+                accessmode = "passthrough"
+                fsdev_keys = ['accessmode', 'driver', 'source', 'target', 'binary']
+                fsdev_values = [accessmode, driver, source, target, binary_dict]
+            else:
+                fsdev_keys = ['driver', 'source', 'target']
+                fsdev_values = [driver, source, target]
             fsdev_dict = dict(zip(fsdev_keys, fsdev_values))
             logging.debug(fsdev_dict)
-            fs_dev = libvirt_device_utils.create_fs_xml(fsdev_dict)
+            fs_dev = libvirt_device_utils.create_fs_xml(fsdev_dict, launched_mode)
             logging.debug(fs_dev)
             fs_devs.append(fs_dev)
 
@@ -170,6 +189,8 @@ def run(test, params, env):
                                                hpgs=with_hugepages, memfd=with_memfd)
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[index])
             logging.debug(vmxml)
+            if launched_mode == "externally":
+                launch_externally_virtiofs(source_dir, source_socket)
             if coldplug:
                 ret = virsh.attach_device(vm_names[index], fs_devs[0].xml,
                                           flagstr='--config', debug=True)
@@ -187,8 +208,9 @@ def run(test, params, env):
             else:
                 utils_test.libvirt.check_exit_status(result, expect_error=False)
             expected_results = generate_expected_process_option(expected_results)
-            cmd = 'ps aux | grep virtiofsd | head -n 1'
-            utils_test.libvirt.check_cmd_output(cmd, content=expected_results)
+            if launched_mode == "auto":
+                cmd = 'ps aux | grep virtiofsd | head -n 1'
+                utils_test.libvirt.check_cmd_output(cmd, content=expected_results)
 
         if managedsave:
             expected_error = error_msg_save
@@ -204,7 +226,7 @@ def run(test, params, env):
                 vmxml_virtio_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[0])
                 if vm.is_alive():
                     virsh.destroy(vm_names[0])
-                    cmd = "virt-xml %s --edit --qemu-commandline  '\-foo'" % vm_names[0]
+                    cmd = "virt-xml %s --edit --qemu-commandline '\-foo'" % vm_names[0]
                     cmd_result = process.run(cmd, ignore_status=True, shell=True)
                     logging.debug(virsh.dumpxml(vm_names[0]))
                     if cmd_result.exit_status:
@@ -242,14 +264,17 @@ def run(test, params, env):
             if vm.is_alive():
                 session = vm.wait_for_login()
                 for fs_dev in fs_devs:
-                    mount_dir = fs_dev.source['dir']
+                    mount_dir = '/var/tmp/' + fs_dev.target['dir']
                     logging.debug(mount_dir)
                     session.cmd('umount -f %s' % mount_dir, ignore_all_errors=True)
                     session.cmd('rm -rf %s' % mount_dir, ignore_all_errors=True)
                 session.close()
                 vm.destroy(gracefully=False)
-        for index in range(fs_num):
-            process.run('rm -rf %s' % source_dir_prefix + str(index), ignore_status=False)
         for vmxml_backup in vmxml_backups:
             vmxml_backup.sync()
+        for index in range(fs_num):
+            process.run('rm -rf %s' % '/var/tmp/' + str(dir_prefix) + str(index), ignore_status=False)
+            process.run('rm -rf %s' % source_socket, ignore_status=False, shell=True)
+        if launched_mode == "externally":
+            process.run('restorecon %s' % path, ignore_status=False, shell=True)
         utils_memory.set_num_huge_pages(backup_huge_pages_num)
