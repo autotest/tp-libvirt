@@ -1,6 +1,5 @@
 from uuid import uuid4
 
-from virttest.utils_zchannels import ChannelPaths
 from virttest.libvirt_xml.vm_xml import VMXML
 
 from provider.vfio import ccw
@@ -20,7 +19,6 @@ def run(test, params, env):
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
 
-    device_removal_case = "yes" == params.get("device_removal_case", "no")
     schid = None
     uuid = None
     chpids = None
@@ -41,29 +39,10 @@ def run(test, params, env):
         vm.start()
         session = vm.wait_for_login()
 
-        if not ccw.device_is_listed(session, chpids):
-            test.fail("Device not visible inside guest")
-
-        if device_removal_case:
-            ChannelPaths.set_standby(chpids)
-            if ccw.device_is_listed(session, chpids):
-                test.fail("Device must not be visible inside guest")
-
-            vm.destroy()
-            ChannelPaths.set_online(chpids)
-
-            ccw.set_override(schid)
-            ccw.start_device(uuid, schid)
-
-            vm.start()
-            session = vm.wait_for_login()
-
-            if not ccw.device_is_listed(session, chpids):
-                test.fail("Device not visible after restoring setup.")
+        if not ccw.read_write_operations_work(session, chpids):
+            test.fail("Read/write operation failing inside guest.")
 
     finally:
-        if chpids:
-            ChannelPaths.set_online(chpids)
         if uuid:
             ccw.stop_device(uuid)
         if schid:
