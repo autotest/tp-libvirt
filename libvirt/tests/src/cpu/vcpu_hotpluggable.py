@@ -21,8 +21,8 @@ from virttest.utils_test import libvirt
 def check_vcpu_after_plug_unplug(test, vm_name, config_vcpus, option='--inactive'):
     re_dump_xml = virsh.dumpxml(vm_name, option).stdout.strip()
     # Check <vcpu current='number'> xx </vcpu>
-    crt_vcpus = re.findall(r"vcpu.*current=.%s.*" %
-                               config_vcpus, re_dump_xml)
+    crt_vcpus = re.findall(r"vcpu.*current=.%s.*" % config_vcpus,
+                           re_dump_xml)
     logging.info("dumpxml %s xml: \n %s", option, crt_vcpus)
     if len(crt_vcpus) != 1:
         test.fail("Dumpxml with {},"
