@@ -852,7 +852,10 @@ def get_expected_vnc_options(params, networks, expected_result):
             expected_opts['x509'] = x509_dir
 
     if graphic_passwd:
-        expected_opts['passwd'] = graphic_passwd
+        if libvirt_version.version_compare(7, 3, 0):
+            expected_opts['password'] = "on"
+        else:
+            expected_opts['passwd'] = graphic_passwd
     if vnc_secret_uuid == "valid":
         expected_opts['vnc-secret'] = "vnc-tls-creds0-secret0"
         expected_opts['tls'] = 'yes'
