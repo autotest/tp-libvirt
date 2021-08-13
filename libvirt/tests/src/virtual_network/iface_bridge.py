@@ -1,6 +1,7 @@
 import os
 import logging
 import re
+import ast
 
 from avocado.utils import process
 from virttest import utils_net
@@ -30,7 +31,7 @@ def run(test, params, env):
     8) check if the 2 guests can ping each other
     """
 
-    def create_bridge_network(br_name, net_name):
+    def create_bridge_network(br_name, net_name, inbound="{'average':'0'}", outbound="{'average':'0'}"):
         """
         Define and start the bridge type network
         """
@@ -41,6 +42,9 @@ def run(test, params, env):
         test_xml = network_xml.NetworkXML(network_name="%s" % net_name)
         test_xml.forward = {"mode": "bridge"}
         test_xml.bridge = {"name": br_name}
+        test_xml.bandwidth_inbound = eval(inbound)
+        test_xml.bandwidth_outbound = eval(outbound)
+        logging.debug("#### the network's xml is %s", test_xml)
         test_xml.create()
 
     def define_nwfilter(filter_name):
@@ -108,7 +112,7 @@ def run(test, params, env):
     attach_interface = "yes" == params.get("attach_interface", "no")
     iface_model = params.get("iface_model", "virtio")
     iface_source = eval(params.get("iface_source", "{'bridge':'test_br0'}"))
-    iface_type = params.get("iface_type", None)
+    iface_type = params.get("iface_type", 'bridge')
     iface_target = params.get("iface_target", "br_target")
     iface_alias = params.get("iface_alias", None)
     hotplug = "yes" == params.get("hotplug", "no")
@@ -116,16 +120,24 @@ def run(test, params, env):
     start_vm2 = "yes" == params.get("start_vm2", "no")
     create_network = "yes" == params.get("create_network", "no")
     update_device = "yes" == params.get("update_with_diff_type", "no")
+    test_qos = "yes" == params.get("test_qos", "no")
+    test_net_qos = "yes" == params.get("test_net_qos", "no")
+    iface_inbound = params.get("iface_bandwidth_inbound", "{'average':'0'}")
+    iface_outbound = params.get("iface_bandwidth_outbound", "{'average':'0'}")
+    net_inbound = params.get("net_bandwidth_inbound", "{'average':'0'}")
+    net_outbound = params.get("net_bandwidth_outbound", "{'average':'0'}")
 
     vms = params.get("vms").split()
-    if len(vms) <= 1:
-        test.cancel("Need two VMs to test")
-    else:
-        vm1_name = vms[0]
-        vm2_name = vms[1]
-
+    vm1_name = vms[0]
     vm1 = env.get_vm(vm1_name)
-    vm2 = env.get_vm(vm2_name)
+
+    if start_vm2:
+        if len(vms) <= 1:
+            test.cancel("Need two VMs to test")
+        else:
+            vm2_name = vms[1]
+        vm2 = env.get_vm(vm2_name)
+        vm2_xml_bak = vm_xml.VMXML.new_from_dumpxml(vm2_name)
 
     # Back up the interface script
     if os.path.exists(iface_script):
@@ -133,7 +145,6 @@ def run(test, params, env):
                     shell=True, verbose=True)
     # Back up vm xml
     vm1_xml_bak = vm_xml.VMXML.new_from_dumpxml(vm1_name)
-    vm2_xml_bak = vm_xml.VMXML.new_from_dumpxml(vm2_name)
 
     # Stop NetworkManager service
     NM_service = service.Factory.create_service("NetworkManager")
@@ -149,6 +160,8 @@ def run(test, params, env):
         if s:
             test.fail("Failed to create linux bridge on the host. Status: %s Stdout: %s" % (s, o))
         define_nwfilter(filter_name)
+        if create_network:
+            create_bridge_network(bridge_name, iface_source["network"], net_inbound, net_outbound)
         if hotplug:
             err_msgs = ("No more available PCI slots",
                         "No more available PCI addresses")
@@ -167,12 +180,15 @@ def run(test, params, env):
                 options = ("%s %s --model %s --mac %s" %
                            (iface_type, iface_source['bridge'],
                             iface_model, mac))
+                if test_qos:
+                    inbound_value = ','.join(eval(iface_inbound).values())
+                    outbound_value = ','.join(eval(iface_outbound).values())
+                    options = ("%s %s --model %s --mac %s --inbound %s --outbound %s" %
+                               (iface_type, iface_source['bridge'], iface_model, mac, inbound_value, outbound_value))
                 ret = virsh.attach_interface(vm1_name, options,
                                              ignore_status=True)
             else:
                 logging.info("Try to hot-plug device")
-                if create_network:
-                    create_bridge_network(bridge_name, iface_source["network"])
                 target = str({'dev': iface_target})
                 iface_alias = str({'name': iface_alias})
                 vm_iface_source = str(iface_source)
@@ -201,8 +217,9 @@ def run(test, params, env):
 
         else:
             vm_iface_source = str(iface_source)
-            vm1_iface_params = {"type": "bridge", "source": vm_iface_source, "filter": filter_name,
-                                "mac": mac, 'driver': iface_driver, "iface_model": iface_model}
+            vm1_iface_params = {"type": iface_type, "source": vm_iface_source, "filter": filter_name,
+                                "mac": mac, 'driver': iface_driver, "iface_model": iface_model,
+                                "inbound": iface_inbound, "outbound": iface_outbound}
             libvirt.modify_vm_iface(vm1_name, "update_iface", vm1_iface_params)
 
             if vm1.is_alive():
@@ -311,11 +328,26 @@ def run(test, params, env):
                                     host_ip, remote_url, vm2_ip)
                 check_net_functions(vm2_ip, ping_count, ping_timeout, session2,
                                     host_ip, remote_url, vm1_ip)
-
+        if test_qos:
+            if test_net_qos:
+                logging.debug("Test network inbound:")
+                res1 = utils_net.check_class_rules(bridge_name, "1:2", ast.literal_eval(net_inbound))
+                logging.debug("Test network outbound:")
+                res2 = utils_net.check_filter_rules(bridge_name, ast.literal_eval(net_outbound))
+            else:
+                iface_mac = vm_xml.VMXML.get_first_mac_by_name(vm1_name)
+                iface_name = libvirt.get_ifname_host(vm1_name, iface_mac)
+                logging.debug("Test inbound:")
+                res1 = utils_net.check_class_rules(iface_name, "1:1", ast.literal_eval(iface_inbound))
+                logging.debug("Test outbound:")
+                res2 = utils_net.check_filter_rules(iface_name, ast.literal_eval(iface_outbound))
+            if not res1 or not res2:
+                test.fail("Qos test fail!")
     finally:
         logging.debug("Start to restore")
         vm1_xml_bak.sync()
-        vm2_xml_bak.sync()
+        if start_vm2:
+            vm2_xml_bak.sync()
         virsh.nwfilter_undefine(filter_name, ignore_status=True)
         if os.path.exists(iface_script_bk):
             process.run("mv %s %s" % (iface_script_bk, iface_script),

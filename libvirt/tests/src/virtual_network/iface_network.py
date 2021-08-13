@@ -215,80 +215,6 @@ TIMEOUT 3"""
         if not configs.count(config):
             test.fail("Can't find host configuration in file %s" % conf_file)
 
-    def check_class_rules(ifname, rule_id, bandwidth):
-        """
-        Check bandwidth settings via 'tc class' output
-        """
-        cmd = "tc class show dev %s" % ifname
-        class_output = process.run(cmd, shell=True).stdout_text
-        logging.debug("Bandwidth class output: %s", class_output)
-        class_pattern = (r"class htb %s.*rate (\d+)(K?M?)bit ceil (\d+)(K?M?)bit burst (\d+)(K?M?)b.*" % rule_id)
-        se = re.search(class_pattern, class_output, re.M)
-        if not se:
-            test.fail("Can't find outbound setting for htb %s" % rule_id)
-        logging.debug("bandwidth from tc output:%s" % str(se.groups()))
-        rate = None
-        if "floor" in bandwidth:
-            rate = int(bandwidth["floor"]) * 8
-        elif "average" in bandwidth:
-            rate = int(bandwidth["average"]) * 8
-        if rate:
-            if se.group(2) == 'M':
-                rate_check = int(se.group(1)) * 1000
-            else:
-                rate_check = int(se.group(1))
-            assert rate_check == rate
-        if "peak" in bandwidth:
-            if se.group(4) == 'M':
-                ceil_check = int(se.group(3)) * 1000
-            else:
-                ceil_check = int(se.group(3))
-            assert ceil_check == int(bandwidth["peak"]) * 8
-        if "burst" in bandwidth:
-            if se.group(6) == 'M':
-                tc_burst = int(se.group(5)) * 1024
-            else:
-                tc_burst = int(se.group(5))
-            assert tc_burst == int(bandwidth["burst"])
-
-    def check_filter_rules(ifname, bandwidth, expect_none=False):
-        """
-        Check bandwidth settings via 'tc filter' output
-
-        :param ifname: name of iface to be checked
-        :param bandwidth: bandwidth to be match with
-        :param expect_none: whether or not expect nothing in output,
-                            default to be False
-        :return: if expect nothing from the output,
-                            return True if the output is empty,
-                            else return False
-        """
-        cmd = "tc -d filter show dev %s parent ffff:" % ifname
-        filter_output = process.run(cmd, shell=True).stdout_text
-        logging.debug("Bandwidth filter output: %s", filter_output)
-        if expect_none:
-            return not filter_output.strip()
-        if not filter_output.count("filter protocol all pref"):
-            test.fail("Can't find 'protocol all' settings in filter rules")
-        filter_pattern = r".*police.*rate (\d+)(K?M?)bit burst (\d+)(K?M?)b.*"
-        se = re.search(r"%s" % filter_pattern, filter_output, re.M)
-        if not se:
-            test.fail("Can't find any filter policy")
-        logging.debug("bandwidth from tc output:%s" % str(se.groups()))
-        logging.debug("bandwidth from setting:%s" % str(bandwidth))
-        if "average" in bandwidth:
-            if se.group(2) == 'M':
-                tc_average = int(se.group(1)) * 1000
-            else:
-                tc_average = int(se.group(1))
-            assert tc_average == int(bandwidth["average"]) * 8
-        if "burst" in bandwidth:
-            if se.group(4) == 'M':
-                tc_burst = int(se.group(3)) * 1024
-            else:
-                tc_burst = int(se.group(3))
-            assert tc_burst == int(bandwidth["burst"])
-
     def check_host_routes():
         """
         Check network routes on host
@@ -332,34 +258,39 @@ TIMEOUT 3"""
                 logging.debug("Bandwidth qdisc output: %s", qdisc_output)
                 if not qdisc_output.count("qdisc ingress ffff:"):
                     test.fail("Can't find ingress setting")
-                check_class_rules(net_bridge_name, "1:1",
-                                  {"average": net_inbound["average"],
-                                   "peak": net_inbound["peak"]})
-                check_class_rules(net_bridge_name, "1:2", net_inbound)
-
+                res1 = utils_net.check_class_rules(net_bridge_name, "1:1",
+                                                   {"average": net_inbound["average"],
+                                                    "peak": net_inbound["peak"]})
+                res2 = utils_net.check_class_rules(net_bridge_name, "1:2", net_inbound)
+                if not res1 or not res2:
+                    test.fail("Check network inbound failed as no settings found by tc!")
             # Check filter rules on bridge interface
             if check_net and net_outbound:
-                check_filter_rules(net_bridge_name, net_outbound)
+                res3 = utils_net.check_filter_rules(net_bridge_name, net_outbound)
+                if not res3:
+                    test.fail("check network outbound failed as no settings found by tc!")
 
             # Check class rules on interface inbound settings
             if check_iface and iface_inbound:
-                check_class_rules(iface_name, "1:1",
-                                  {'average': iface_inbound['average'],
-                                   'peak': iface_inbound['peak'],
-                                   'burst': iface_inbound['burst']})
+                res4 = utils_net.check_class_rules(iface_name, "1:1", {'average': iface_inbound['average'],
+                                                                       'peak': iface_inbound['peak'],
+                                                                       'burst': iface_inbound['burst']})
+                if not res4:
+                    test.fail("check interface inbound failed as no setting found by tc!")
                 if "floor" in iface_inbound:
                     if not libvirt_version.version_compare(1, 0, 1):
                         test.cancel("Not supported Qos options 'floor'")
 
-                    check_class_rules(net_bridge_name, "1:3",
-                                      {'floor': iface_inbound["floor"]})
-
+                    res5 = utils_net.check_class_rules(net_bridge_name, "1:3", {'floor': iface_inbound["floor"]})
+                    if not res5:
+                        test.fail("check interface inbound with floor failed as no settings found by tc!")
             # Check filter rules on interface outbound settings
             if check_iface and iface_outbound:
-                check_filter_rules(iface_name, iface_outbound)
+                if not utils_net.check_filter_rules(iface_name, iface_outbound):
+                    test.fail("check interface outbound failed as no settings found by tc!")
         except AssertionError:
             stacktrace.log_exc_info(sys.exc_info())
-            test.fail("Failed to check network bandwidth")
+            test.fail("Failed to check network bandwidth as the value don't match")
 
     def check_name_ip(session):
         """
@@ -1151,8 +1082,10 @@ TIMEOUT 3"""
                             inbound = iface_inbound
                         if iface_outbound:
                             outbound = iface_outbound
-                        check_class_rules(iface_name, "1:1", inbound)
-                        check_filter_rules(iface_name, outbound)
+                        ret1 = utils_net.check_class_rules(iface_name, "1:1", inbound)
+                        ret2 = utils_net.check_filter_rules(iface_name, outbound)
+                        if not ret1 or not ret2:
+                            test.fail("Test outbound or inbound failed as no settings found by tc!")
                 if test_qos_remove:
                     # Remove the bandwidth settings in network xml
                     logging.debug("Removing network bandwidth settings...")
@@ -1198,7 +1131,7 @@ TIMEOUT 3"""
             logging.debug(cur_xml)
             if 'bandwidth' in cur_xml:
                 test.fail('bandwidth still in xml')
-            if not check_filter_rules(iface_name, 0, expect_none=True):
+            if not utils_net.check_filter_rules(iface_name, 0, expect_none=True):
                 test.fail('There should be nothing in output')
         if update_device and loop:
             loop -= 1
