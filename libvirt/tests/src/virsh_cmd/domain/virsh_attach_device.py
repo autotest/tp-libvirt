@@ -659,7 +659,7 @@ class VirtualDiskBasic(AttachDeviceBase):
 
     def make_image_file_path(self, index):
         """Create backing file for test disk device"""
-        return os.path.join(data_dir.get_tmp_dir(),
+        return os.path.join(data_dir.get_data_dir(),
                             'disk_%s_%s_%d.raw'
                             % (self.__class__.__name__,
                                self.identifier,
