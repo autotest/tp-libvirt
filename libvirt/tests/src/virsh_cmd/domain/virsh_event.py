@@ -572,7 +572,7 @@ def run(test, params, env):
             if re.search("block-threshold", event):
                 event_str = "block-threshold"
             else:
-                event_str = "event " + event % ("domain '%s'" % dom_name)
+                event_str = "event " + event % ("domain.*%s" % dom_name)
             logging.info("Expected event: %s", event_str)
             match = re.search(event_str, output[event_idx:])
             if match:
