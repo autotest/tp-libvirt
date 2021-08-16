@@ -105,6 +105,7 @@ def run(test, params, env):
     virsh_options = params.get("virsh_options", "")
     copy_storage_option = params.get("copy_storage_option")
     extra = params.get("virsh_migrate_extra", "")
+    extra_again = params.get("virsh_migrate_extra_again", extra)
     options = params.get("virsh_migrate_options", "--live --verbose")
     backingfile_type = params.get("backingfile_type")
     check_str_local_log = params.get("check_str_local_log", "")
@@ -217,7 +218,7 @@ def run(test, params, env):
                                         options, thread_timeout=900,
                                         ignore_status=True,
                                         virsh_opt=virsh_options,
-                                        extra_opts=extra,
+                                        extra_opts=extra_again,
                                         func=action_during_mig,
                                         **extra_args)
 
