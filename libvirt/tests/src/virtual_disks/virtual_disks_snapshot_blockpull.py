@@ -363,7 +363,7 @@ def run(test, params, env):
                 test.fail("VM should start but failed: %s" % str(details))
 
         if fill_in_vm:
-            libvirt_disk.fill_sth_in_vm(vm, device_target)
+            libvirt_disk.fill_null_in_vm(vm, device_target)
 
         if backend_path in ['native_path']:
             external_snapshot_disks = libvirt_disk.make_external_disk_snapshots(vm, device_target, "blockpull_snapshot", snapshot_take)
