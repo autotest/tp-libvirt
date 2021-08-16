@@ -269,6 +269,12 @@ def run(test, params, env):
                        "[output]: %s." % (status, output))
     server_session.close()
 
+    if distro.detect().name == 'rhel' and int(distro.detect().version) >= 9:
+        # Update crypto policies to legacy for RHEL>=9 per Bug 1931723 or
+        # https://libguestfs.org/virt-v2v-input-xen.1.html#ssh-authentication
+        crypto_policies = process.run("update-crypto-policies --set LEGACY",
+                                      ignore_status=False)
+
     # only simply connect libvirt daemon then return
     if no_any_config == "yes":
         test_dict["uri"] = "%s%s%s://%s" % (driver, plus, transport, uri_path)
