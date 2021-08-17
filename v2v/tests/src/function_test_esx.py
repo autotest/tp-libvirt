@@ -781,6 +781,14 @@ def run(test, params, env):
         if output_mode == 'libvirt':
             pvt.pre_pool(pool_name, pool_type, pool_target, '')
 
+        # Create json output dir
+        if output_mode == 'json':
+            base_os_directory = params_get(params, 'base_os_directory')
+            os_directory = None
+            os_directory = tempfile.TemporaryDirectory(prefix='v2v_test_', dir=base_os_directory)
+            logging.info("-os dir is %s", os_directory)
+            params['os_directory'] = os_directory.name
+
         if 'root' in checkpoint and 'ask' in checkpoint:
             v2v_params['v2v_opts'] += ' --root ask'
             v2v_params['custom_inputs'] = params.get('choice', '2')
@@ -1018,6 +1026,8 @@ def run(test, params, env):
             v2v_sasl.close_session()
         if output_mode == 'libvirt':
             pvt.cleanup_pool(pool_name, pool_type, pool_target, '')
+        if output_mode == 'json' and os_directory:
+            os_directory.cleanup()
         if 'with_proxy' in checkpoint:
             logging.info('Unset http_proxy&https_proxy')
             os.environ.pop('http_proxy')
