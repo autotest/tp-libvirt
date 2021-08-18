@@ -6,9 +6,11 @@ import ast
 from avocado.utils import process
 from virttest import utils_net
 from virttest import utils_libvirtd
+from virttest import utils_misc
 from virttest import data_dir
 from virttest import virsh
 from virttest.utils_test import libvirt
+from virttest.utils_libvirt import libvirt_network
 from virttest.staging import service
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import interface
@@ -44,7 +46,7 @@ def run(test, params, env):
         test_xml.bridge = {"name": br_name}
         test_xml.bandwidth_inbound = eval(inbound)
         test_xml.bandwidth_outbound = eval(outbound)
-        logging.debug("#### the network's xml is %s", test_xml)
+        logging.debug("The network's xml is %s", test_xml)
         test_xml.create()
 
     def define_nwfilter(filter_name):
@@ -117,6 +119,8 @@ def run(test, params, env):
     iface_alias = params.get("iface_alias", None)
     hotplug = "yes" == params.get("hotplug", "no")
     iface_driver = params.get("iface_driver", None)
+    reconnect_tap = "yes" == params.get("reconnect_tap", "no")
+    restart_net = "yes" == params.get("restart_net", "no")
     start_vm2 = "yes" == params.get("start_vm2", "no")
     create_network = "yes" == params.get("create_network", "no")
     update_device = "yes" == params.get("update_with_diff_type", "no")
@@ -336,13 +340,43 @@ def run(test, params, env):
                 res2 = utils_net.check_filter_rules(bridge_name, ast.literal_eval(net_outbound))
             else:
                 iface_mac = vm_xml.VMXML.get_first_mac_by_name(vm1_name)
-                iface_name = libvirt.get_ifname_host(vm1_name, iface_mac)
+                tap_name = libvirt.get_ifname_host(vm1_name, iface_mac)
                 logging.debug("Test inbound:")
-                res1 = utils_net.check_class_rules(iface_name, "1:1", ast.literal_eval(iface_inbound))
+                res1 = utils_net.check_class_rules(tap_name, "1:1", ast.literal_eval(iface_inbound))
                 logging.debug("Test outbound:")
-                res2 = utils_net.check_filter_rules(iface_name, ast.literal_eval(iface_outbound))
+                res2 = utils_net.check_filter_rules(tap_name, ast.literal_eval(iface_outbound))
             if not res1 or not res2:
                 test.fail("Qos test fail!")
+        if reconnect_tap:
+            iface_mac = vm_xml.VMXML.get_first_mac_by_name(vm1_name)
+            tap_name = libvirt.get_ifname_host(vm1_name, iface_mac)
+            # For network with shared host bridge, destroy the network will not
+            # impact the connection
+            if create_network and restart_net:
+                virsh.net_destroy(iface_source["network"])
+                out1 = libvirt_network.check_tap_connected(tap_name, True,
+                                                           bridge_name)
+                virsh.net_start(iface_source["network"])
+                out2 = libvirt_network.check_tap_connected(tap_name, True,
+                                                           bridge_name)
+                if not out1 or not out2:
+                    test.fail("Network destroy and restart should not impact "
+                              "tap connection from bridge network!")
+            else:
+                # Delete and re-create the bridge, check the tap is not connected
+                utils_net.delete_linux_bridge_tmux(bridge_name, iface_name)
+                utils_net.create_linux_bridge_tmux(bridge_name, iface_name)
+                out3 = libvirt_network.check_tap_connected(tap_name, False,
+                                                           bridge_name)
+                # Check restart libvirtd will recover the connection
+                libvirtd = utils_libvirtd.Libvirtd()
+                libvirtd.restart()
+                out4 = utils_misc.wait_for(
+                    lambda: libvirt_network.check_tap_connected(tap_name, True,
+                                                                bridge_name), 20)
+                if not out3 or not out4:
+                    test.fail("Delete and create linux bridge and check tap "
+                              "connection is not as expected!")
     finally:
         logging.debug("Start to restore")
         vm1_xml_bak.sync()
