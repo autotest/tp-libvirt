@@ -116,9 +116,11 @@ def run(test, params, env):
         hostname_info = {}
         session = vm.wait_for_login()
         try:
-            output = session.cmd_output('hostnamectl --static').strip()
+            output = session.cmd_output('hostname').strip()
             if not output:
-                output = session.cmd_output('hostnamectl --transient').strip()
+                output = session.cmd_output('hostnamectl --static').strip()
+                if not output:
+                    output = session.cmd_output('hostnamectl --transient').strip()
         finally:
             session.close()
         hostname_info['hostname'] = output
