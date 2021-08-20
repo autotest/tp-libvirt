@@ -4,6 +4,7 @@ from virttest import virt_vm
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import LibvirtXMLError
+from virttest.libvirt_xml.devices.video import Video
 from virttest.utils_test import libvirt
 
 
@@ -43,7 +44,19 @@ def run(test, params, env):
         <model type='qxl' ram='65536' vram='65536' vgamem='65536' foot='3'/>
         """
         new_xml = xml_backup.copy()
+
+        # Add video device if guest doesn't have
+        if not new_xml.get_devices(device_type="video"):
+            logging.debug("Guest doesn't have video device, add one")
+            new_video = Video()
+            new_video.model_type = "virtio"
+            new_xml.add_device(new_video)
+            logging.debug("The xml with video is %s", new_xml)
+
+        # Set invalid attribute for video device
         video_device_xml = new_xml.xmltreefile.find('/devices/video/model')
+        if video_device_xml is None:
+            test.error("Failed to get guest video device")
         video_device_xml.set("foot", "3")
         logging.debug("The new xml used for defining a new domain is %s", new_xml)
         xml_file = new_xml.xmltreefile.name
