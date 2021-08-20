@@ -8,6 +8,7 @@ from virttest import data_dir
 from virttest import virsh
 from virttest import utils_libvirtd
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.devices import graphics
 from virttest.utils_test import libvirt
 
 MANAGEDSAVE_FILE = '/var/lib/libvirt/qemu/save/%s.save'
@@ -59,6 +60,10 @@ def run(test, params, env):
         if checkpoint == 'secure_info':
             # Check managedsave-dumpxml with option --security-info
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+            # Add graphics vnc if guest doesn't have
+            if not vmxml.get_devices(device_type="graphics"):
+                logging.debug("Guest doesn't have graphic, add one")
+                graphics.Graphics.add_graphic(vm_name, graphic="vnc")
             vm_xml.VMXML.set_graphics_attr(vm_name, {'passwd': '123456'})
             start_and_login_vm()
             virsh.managedsave(vm_name, **virsh_dargs)

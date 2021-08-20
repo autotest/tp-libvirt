@@ -10,6 +10,7 @@ from virttest import utils_disk
 from virttest import utils_backup
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import checkpoint_xml
+from virttest.libvirt_xml.devices import graphics
 from virttest.utils_test import libvirt
 
 
@@ -267,6 +268,10 @@ def run(test, params, env):
                 if vm.is_alive():
                     vm.destroy(gracefully=False)
                 password = "xyzxyzabcabc"
+                # Add graphics vnc if guest doesn't have
+                if not vmxml.get_devices(device_type="graphics"):
+                    logging.debug("Guest doesn't have graphic, add one")
+                    graphics.Graphics.add_graphic(vm_name, graphic="vnc")
                 vm_xml.VMXML.set_graphics_attr(vm_name, {'passwd': password})
                 vm.start()
                 vm.wait_for_login().close()
