@@ -311,6 +311,7 @@ def apply_boot_options(vmxml, params, test):
     with_loader_type = (params.get("with_loader_type", "yes") == "yes")
     with_nvram_template = (params.get("with_nvram_template", "yes") == "yes")
     vm_name = params.get("main_vm", "")
+    with_feature = params.get("with_feature", "no") == "yes"
 
     dict_os_attrs = {}
     # Set attributes of loader of VMOSXML
@@ -331,6 +332,10 @@ def apply_boot_options(vmxml, params, test):
             # Include secure='yes' in loader and support no smm element in guest xml
             if with_secure:
                 dict_os_attrs.update({"secure": "yes"})
+            # Set attributes of feature of VMOSFWXML
+            if with_feature:
+                vm_os_attrs = eval(params.get('vm_os_attrs', '{}'))
+                vmxml.setup_attrs(**{'os': vm_os_attrs})
 
     # To use BIOS Serial Console, need set userserial=yes in VMOSXML
     if boot_type == "seabios" and boot_dev == "cdrom":
@@ -653,6 +658,7 @@ def run(test, params, env):
     brick_path = os.path.join(test.virtdir, "gluster-pool")
     boot_type = params.get("boot_type", "seabios")
     boot_loadparm = params.get("boot_loadparm", None)
+    libvirt_version.is_libvirt_feature_supported(params)
 
     # Prepare result checkpoint list
     check_points = []
