@@ -20,6 +20,7 @@ from virttest import utils_libguestfs
 from virttest import utils_libvirtd
 from virttest.utils_test import libvirt
 from virttest.utils_test.__init__ import ping
+from virttest.utils_libvirt import libvirt_network
 from virttest.libvirt_xml import vm_xml, xcepts
 from virttest.libvirt_xml.network_xml import NetworkXML
 from virttest.libvirt_xml.devices.interface import Interface
@@ -112,7 +113,6 @@ TIMEOUT 3"""
             bandwidth = iface.new_bandwidth(**iface_bandwidth)
             iface.bandwidth = bandwidth
 
-        iface_type = params.get("iface_type", "network")
         iface.type_name = iface_type
         source = ast.literal_eval(iface_source)
         if not source:
@@ -590,6 +590,7 @@ TIMEOUT 3"""
     iface_bandwidth_outbound = params.get("iface_bandwidth_outbound", "{}")
     iface_num = params.get("iface_num", "1")
     iface_source = params.get("iface_source", "{}")
+    iface_type = params.get("iface_type", "network")
     iface_rom = params.get("iface_rom")
     iface_boot = params.get("iface_boot")
     iface_model = params.get("iface_model")
@@ -617,6 +618,7 @@ TIMEOUT 3"""
     net_with_dev = "yes" == params.get("with_dev", "no")
     update_device = 'yes' == params.get('update_device', 'no')
     remove_bandwidth = 'yes' == params.get('remove_bandwidth', 'no')
+    reconnect_tap = "yes" == params.get("reconnect_tap", "no")
     with_2net = 'yes' == params.get('with_2net', 'no')
     loop = int(params.get('loop', 0))
     username = params.get("username")
@@ -793,7 +795,6 @@ TIMEOUT 3"""
                     test.fail("Failed to sync VM")
         # Attach interface if needed
         if attach_iface:
-            iface_type = params.get("iface_type", "network")
             for i in range(int(iface_num)):
                 logging.info("Try to attach interface loop %s" % i)
                 options = ("%s %s --model %s --config" %
@@ -1105,7 +1106,31 @@ TIMEOUT 3"""
                         run_ip_test(session, "ipv4")
                 if test_guest_libvirt:
                     run_guest_libvirt(session)
-
+                if reconnect_tap:
+                    # try to destroy the network, which will cause the tap
+                    # device alone and network broken, then test start network
+                    # and restart libvirtd will recover it
+                    logging.debug("Destroy and start the network:")
+                    virsh.net_destroy(net_name)
+                    virsh.net_start(net_name)
+                    tap_name = libvirt.get_ifname_host(vm_name, iface_mac)
+                    if iface_type == "bridge":
+                        br_name = ast.literal_eval(iface_source)["bridge"]
+                    else:
+                        br_name = ast.literal_eval(net_bridge)["name"]
+                    st1 = libvirt_network.check_tap_connected(tap_name,
+                                                              False, br_name)
+                    # restart libvirtd here and check the network
+                    logging.debug("Restart libvirtd and check tap reattached:")
+                    session.close()
+                    libvirtd = utils_libvirtd.Libvirtd()
+                    libvirtd.restart()
+                    st2 = utils_misc.wait_for(lambda:
+                                              libvirt_network.check_tap_connected(tap_name, True, br_name), 5)
+                    if not st1 or not st2:
+                        test.fail("The tap device status is not expected!")
+                    session = vm.wait_for_login()
+                    run_ip_test(session, "ipv4")
                 session.close()
         except virt_vm.VMStartError as details:
             logging.info(str(details))
