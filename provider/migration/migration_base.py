@@ -195,3 +195,13 @@ def check_event_output(params, test, virsh_session=None, remote_virsh_session=No
     if expected_event_target and remote_virsh_session:
         target_output = remote_virsh_session.get_stripped_output()
         check_output(target_output, eval(expected_event_target), test)
+
+
+def poweroff_src_vm(params):
+    """
+    Poweroff guest on source host
+
+    :param params: dict, used to setup the connection
+    """
+    vm_session = params.get("vm_session")
+    vm_session.cmd("poweroff", ignore_all_errors=True)
