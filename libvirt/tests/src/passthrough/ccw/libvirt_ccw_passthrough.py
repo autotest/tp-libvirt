@@ -62,7 +62,9 @@ def run(test, params, env):
                 test.fail("Device not visible after restoring setup.")
 
     finally:
-        if chpids:
+        if vm.is_alive():
+            vm.destroy()
+        if chpids and device_removal_case:
             ChannelPaths.set_online(chpids)
         if uuid:
             ccw.stop_device(uuid)
