@@ -151,12 +151,12 @@ def run(test, params, env):
         iface_xml = live_vmxml.get_devices('interface')[0]
         logging.debug(iface_xml.target)
         dev = iface_xml.target['dev']
-        ifconfig_info = process.run('ifconfig|grep mtu|grep %s' % dev,
-                                    shell=True, verbose=True).stdout_text
-        if 'mtu %s' % mtu_size in ifconfig_info:
-            logging.info('PASS on ifconfig check for vnet.')
+        tap_info = process.run('ip link|grep mtu|grep %s' % dev,
+                               shell=True, verbose=True).stdout_text
+        if 'mtu %s' % mtu_size in tap_info:
+            logging.info('PASS on mtu check for vnet.')
         else:
-            error += 'Fail on ifconfig check for vnet.'
+            error += 'Fail on mtu check for vnet.'
         if qemu:
             qemu_mtu_info = process.run('ps aux|grep qemu-kvm',
                                         shell=True, verbose=True).stdout_text
@@ -172,7 +172,7 @@ def run(test, params, env):
         Check if mtu meets expectations in vm
         """
         session = fn_login(timeout=timeout)
-        check_cmd = 'ifconfig'
+        check_cmd = 'ip link'
         output = session.cmd(check_cmd)
         session.close()
         logging.debug(output)
