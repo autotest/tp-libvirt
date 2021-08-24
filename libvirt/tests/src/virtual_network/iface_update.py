@@ -4,6 +4,7 @@ import logging
 import time
 
 from avocado.utils import process
+from avocado.utils.software_manager.backends import rpm
 
 from virttest import virsh
 from virttest import utils_net
@@ -102,6 +103,11 @@ def run(test, params, env):
         # According to the different os find different file for rom
         if (iface_rom and "file" in eval(iface_rom)
                 and "%s" in eval(iface_rom)['file']):
+            if rpm.RpmBackend().check_installed('ipxe-roms-qemu', '20200823'):
+                logging.debug("Update the file path since "
+                              "ipxe-20200823-5:")
+                iface_rom_new = iface_rom.replace('qemu-kvm', 'ipxe/qemu')
+                iface_rom = iface_rom_new
             if os.path.exists(eval(iface_rom)['file'] % "pxe"):
                 iface_rom = iface_rom % "pxe"
             elif os.path.exists(eval(iface_rom)['file'] % "efi"):
