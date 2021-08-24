@@ -7,6 +7,7 @@ from virttest import utils_misc
 from virttest import utils_net
 from virttest import utils_package
 from virttest import utils_sriov
+from virttest import utils_test
 
 
 def setup_vf(pf_pci, params):
@@ -76,3 +77,20 @@ def get_ping_dest(vm_session, mac_addr="", restart_network=False):
         raise exceptions.TestError("Failed to run cmd - {}, status - {}, "
                                    "output - {}.".format(cmd, status, output))
     return re.sub('\d+$', '1', output.strip())
+
+
+def check_vm_network_accessed(vm_session, ping_count=3, ping_timeout=5):
+    """
+    Test VM's network accessibility
+
+    :param vm_session: The session object to the guest
+    :param ping_count: The count value of ping command
+    :param ping_timeout: The timeout of ping command
+    :raise: test.fail when ping fails.
+    """
+    ping_dest = get_ping_dest(vm_session)
+    s, o = utils_test.ping(
+        ping_dest, count=ping_count, timeout=ping_timeout, session=vm_session)
+    if s:
+        raise exceptions.TestFail("Failed to ping %s! status: %s, "
+                                  "output: %s." % (ping_dest, s, o))
