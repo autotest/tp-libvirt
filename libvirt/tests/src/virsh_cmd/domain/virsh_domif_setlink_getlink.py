@@ -273,7 +273,7 @@ def run(test, params, env):
             session.cmd_status_output(cmd, timeout=10)
             pattern = "%s:.*state UP.*" % guest_if_name
             if not utils_misc.wait_for(lambda: guest_cmd_check(
-                    pattern_cmd, session, pattern), timeout=5):
+                    pattern_cmd, session, pattern), timeout=20):
                 test.fail("Could not bring up interface %s inside guest"
                           % guest_if_name)
         else:  # negative test
