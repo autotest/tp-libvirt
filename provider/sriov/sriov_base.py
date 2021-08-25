@@ -1,7 +1,11 @@
+import re
+
 from avocado.core import exceptions
 from avocado.utils import process
 
 from virttest import utils_misc
+from virttest import utils_net
+from virttest import utils_package
 from virttest import utils_sriov
 
 
@@ -37,3 +41,34 @@ def recover_vf(pf_pci, params, default_vf=0):
     vf_no = int(params.get("vf_no", "4"))
     if default_vf != vf_no:
         utils_sriov.set_vf(pf_pci_path, default_vf)
+
+
+def get_ping_dest(vm_session, mac_addr="", restart_network=False):
+    """
+    Get an ip address to ping
+
+    :param vm_session: The session object to the guest
+    :param mac_addr: mac address of given interface
+    :param restart_network:  Whether to restart guest's network
+    :return: ip address
+    """
+    if restart_network:
+        if not utils_package.package_install('dhcp-client', session=vm_session):
+            raise exceptions.TestFail("Failed to install dhcp-client on guest.")
+        utils_net.restart_guest_network(vm_session)
+    vm_iface = utils_net.get_linux_ifname(vm_session, mac_addr)
+    if isinstance(vm_iface, list):
+        iface_name = vm_iface[0]
+    else:
+        iface_name = vm_iface
+    utils_misc.wait_for(
+         lambda: utils_net.get_net_if_addrs(
+            iface_name, vm_session.cmd_output).get('ipv4'), 20)
+    cmd = ("ip route |awk -F '/' '/^[0-9]/, /dev %s/ {print $1}' |tail -1"
+           % iface_name)
+    status, output = utils_misc.cmd_status_output(cmd, shell=True,
+                                                  session=vm_session)
+    if status or not output:
+        raise exceptions.TestError("Failed to run cmd - {}, status - {}, "
+                                   "output - {}.".format(cmd, status, output))
+    return re.sub('\d+$', '1', output.strip())

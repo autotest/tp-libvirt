@@ -6,6 +6,8 @@ import time
 
 from avocado.utils import process
 
+from provider.sriov import sriov_base
+
 from virttest import data_dir
 from virttest import libvirt_version
 from virttest import utils_libvirtd
@@ -70,7 +72,7 @@ def run(test, params, env):
         check_ifaces(vm_name, expected_ifaces={"bridge", "hostdev"})
 
         vm_session = vm.wait_for_serial_login(timeout=240)
-        ping_ip = get_ping_dest(vm_session, mac_addr)
+        ping_ip = sriov_base.get_ping_dest(vm_session, mac_addr)
         check_vm_network_accessed(vm_session, ping_dest=ping_ip,
                                   tcpdump_iface=bridge_name,
                                   tcpdump_status_error=True)
@@ -118,7 +120,7 @@ def run(test, params, env):
         virsh.attach_device(vm_name, hostdev_dev.xml, debug=True,
                             ignore_status=False)
         vm_session = vm.wait_for_serial_login(timeout=240)
-        ping_ip = get_ping_dest(vm_session, mac_addr)
+        ping_ip = sriov_base.get_ping_dest(vm_session, mac_addr)
         check_vm_network_accessed(vm_session, ping_dest=ping_ip,
                                   tcpdump_iface=bridge_name,
                                   tcpdump_status_error=True)
@@ -166,7 +168,7 @@ def run(test, params, env):
         vm.cleanup_serial_console()
         vm.create_serial_console()
         vm_session = vm.wait_for_serial_login()
-        ping_ip = get_ping_dest(vm_session, mac_addr)
+        ping_ip = sriov_base.get_ping_dest(vm_session, mac_addr)
         check_vm_network_accessed(vm_session, ping_dest=ping_ip,
                                   tcpdump_iface=bridge_name,
                                   tcpdump_status_error=True)
@@ -211,7 +213,7 @@ def run(test, params, env):
                       vm_xml.VMXML.new_from_dumpxml(vm_name))
         vm.start()
         vm_session = vm.wait_for_serial_login(timeout=240)
-        ping_ip = get_ping_dest(vm_session, mac_addr)
+        ping_ip = sriov_base.get_ping_dest(vm_session, mac_addr)
         check_vm_network_accessed(vm_session, ping_dest=ping_ip,
                                   tcpdump_iface=bridge_name,
                                   tcpdump_status_error=True)
@@ -232,8 +234,7 @@ def run(test, params, env):
         vm.cleanup_serial_console()
         vm.create_serial_console()
         vm_session = vm.wait_for_serial_login(timeout=240)
-        ping_ip = get_ping_dest(vm_session, mac_addr, False)
-        logging.debug(ping_ip)
+        ping_ip = sriov_base.get_ping_dest(vm_session, mac_addr, False)
         check_vm_network_accessed(vm_session, ping_dest=ping_ip,
                                   tcpdump_iface=bridge_name,
                                   tcpdump_status_error=True)
@@ -292,22 +293,6 @@ def run(test, params, env):
                 if not tcpdump_status_error:
                     test.fail("Get incorrect tcpdump output: {}, it should "
                               "include '{}'.".format(output, pat_str))
-
-    def get_ping_dest(vm_session, mac_addr, restart_network=True):
-        """
-        Get an ip address to ping
-
-        :param vm_session: The session object to the guest
-        :param mac_addr: mac address of given interface
-        :param restart_network:  Whether to restart guest's network
-        :return: ip address
-        """
-        if restart_network:
-            utils_misc.cmd_status_output("dhclient -r; sleep 5; dhclient",
-                                         shell=True, session=vm_session)
-        vm_iface_info = utils_net.get_linux_iface_info(
-            mac_addr, vm_session)['addr_info'][0]['local']
-        return re.sub('\d+$', '1', vm_iface_info)
 
     def create_bridge_iface_xml(vm, mac_addr, params):
         """
