@@ -26,6 +26,10 @@ def setup_vf(pf_pci, params):
     default_vf = process.run(cmd, shell=True, verbose=True).stdout_text
     if not utils_sriov.set_vf(pf_pci_path, vf_no):
         raise exceptions.TestError("Failed to set vf.")
+    if not utils_misc.wait_for(lambda: process.run(
+       cmd, shell=True, verbose=True).stdout_text.strip() == str(vf_no),
+       30, 5):
+        raise exceptions.TestError("VF's number should set to %d." % vf_no)
     return default_vf
 
 
