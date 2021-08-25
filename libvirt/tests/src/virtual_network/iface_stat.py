@@ -84,6 +84,8 @@ def compare_iface_stat(vm_stat, host_stat, bar=0.2):
 
     for key in vm_stat.keys():
         delta = abs(vm_stat[key] - host_stat[key])
+        if key == 'rx_errs' or key == 'rx_drop':
+            continue
         if delta == 0:
             continue
         elif delta / max(vm_stat[key], host_stat[key]) > bar:
