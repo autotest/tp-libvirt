@@ -37,6 +37,7 @@ def start_vhost_sock_service(image_path, sock_path):
         ' --blockdev \'{"driver":"file","filename":"%s","node-name":"libvirt-1-storage","auto-read-only":true,"discard":"unmap"}\''
         ' --blockdev \'{"node-name":"libvirt-1-format","read-only":false,"driver":"raw","file":"libvirt-1-storage"}\''
         ' --export vhost-user-blk,id=vhost-user-blk0,node-name=libvirt-1-format,addr.type=unix,addr.path=%s,writable=on'
+        ',num-queues=3'
         ' --chardev stdio,mux=on,id=char0; sleep 3'
         % (image_path, sock_path))
     cmd_output = process.run(start_sock_service_cmd, ignore_status=False, shell=True).stdout_text.strip()
