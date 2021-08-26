@@ -214,7 +214,7 @@ def run(test, params, env):
                 action_during_mig = None
             extra_args["status_error"] = "no"
             migration_test.do_migration(vms, None, dest_uri, 'orderly',
-                                        options, thread_timeout=900,
+                                        options, thread_timeout=1200,
                                         ignore_status=True,
                                         virsh_opt=virsh_options,
                                         extra_opts=extra,
