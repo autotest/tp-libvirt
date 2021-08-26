@@ -107,6 +107,7 @@ def run(test, params, env):
     edit_start = params.get("edit_start", "no") == "yes"
     with_hugepages = params.get("with_hugepages", "yes") == "yes"
     with_numa = params.get("with_numa", "yes") == "yes"
+    with_memfd = params.get("with_memfd", "no") == "yes"
 
     fs_devs = []
     vms = []
@@ -166,7 +167,7 @@ def run(test, params, env):
                 numa_no = vmxml.vcpu // vcpus_per_cell if vmxml.vcpu != 1 else 1
             vm_xml.VMXML.set_vm_vcpus(vmxml.vm_name, vmxml.vcpu, numa_number=numa_no)
             vm_xml.VMXML.set_memoryBacking_tag(vmxml.vm_name, access_mode="shared",
-                                               hpgs=with_hugepages)
+                                               hpgs=with_hugepages, memfd=with_memfd)
             vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[index])
             logging.debug(vmxml)
             if coldplug:
