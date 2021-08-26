@@ -184,22 +184,39 @@ def run(test, params, env):
         used_size = disk_size.split()[2]
         return total_size, used_size
 
-    def check_guest_filesystem_info():
+    def check_guest_filesystem_info(info_from_agent_cmd):
         """
         check the info of filesystem from guest side
 
+        :param info_from_agent_cmd: fs info from agent cmd
         :return: the filesystem info from guest side
         """
         fs_info = {}
+        fs = []
         count = -1
         session = vm.wait_for_login()
         try:
             lsblk_cmd = 'lsblk -Jp -o KNAME,FSTYPE,TYPE,MOUNTPOINT,PKNAME,SERIAL'
             output = json.loads(session.cmd_output(lsblk_cmd).strip())
-
             fs_unsorted = [item for item in dict(output)['blockdevices']
                            if item['mountpoint'] not in [None, '[SWAP]']]
-            fs = sorted(fs_unsorted, key=lambda item: item['kname'])
+
+            # Sort the guest disks that have fs to ensure the order is same
+            # with agent cmd.
+            # There is no order guarantee of fs. The output of guestinfo
+            # filesystem is in the order whatever the agent reported by
+            # parsing /proc/self/mountinfo.
+            disk_from_agent = [v for k, v in info_from_agent_cmd.items()
+                               if "name" in k]
+            logging.debug("disk_from_agent is %s" % disk_from_agent)
+            # Sort the guest filesystem in the order of agent output
+            for disk in disk_from_agent:
+                for item in fs_unsorted:
+                    if disk in item['kname']:
+                        fs.append(item)
+                        fs_unsorted.remove(item)
+            fs.extend(fs_unsorted)
+            logging.debug("fs is %s" % fs)
 
             fs_info['fs.count'] = str(len(fs))
             for item in fs:
@@ -286,8 +303,11 @@ def run(test, params, env):
                           "result: %s" % info_from_agent_cmd)
             return
         else:
-            func_name = "check_guest_%s_info" % option[2:]
-            info_from_guest = locals()[func_name]()
+            if "filesystem" in option:
+                info_from_guest = check_guest_filesystem_info(info_from_agent_cmd)
+            else:
+                func_name = "check_guest_%s_info" % option[2:]
+                info_from_guest = locals()[func_name]()
             logging.debug('%s_info_from_guest is %s', option[2:], info_from_guest)
 
         if ("user" not in option) and ("filesystem" not in option):
