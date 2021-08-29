@@ -141,6 +141,9 @@ def monitor_event(params):
     remote_ip = params.get("migrate_dest_host")
     remote_user = params.get("remote_user", "root")
 
+    virsh_session = None
+    remote_virsh_session = None
+
     cmd = "event --loop --all"
     if expected_event_src:
         logging.debug("Running virsh command on source: %s", cmd)
