@@ -3,6 +3,7 @@ import re
 
 from virttest.libvirt_xml.vm_xml import VMXML
 from virttest.libvirt_xml.devices.video import Video
+from virttest.utils_test import libvirt
 from virttest import virsh
 from virttest import libvirt_version
 
@@ -70,8 +71,19 @@ def run(test, params, env):
             setattr(video_dev, key, value)
         domain_xml.add_device(video_dev)
         try:
-            domain_xml.sync()
+            # Take relevant line only from the XML (without header)
+            video_xml_string = str(video_dev).split('\n')[-1]
+            # Prepare a string for VI to replace with it using virsh edit utility
+            replace_string = r":%s:<video>\_.\{-}</video>:"+video_xml_string+":"
+            status = libvirt.exec_virsh_edit(vm_name, [replace_string])
+            if status:
+                domain_xml.sync()
+            else:
+                # Raise exception which is handled right after in except block.
+                raise Exception('Virsh edit has failed, but that is '
+                                'intentional in negative cases.')
         except Exception as error:
+            logging.debug(error)
             if not status_error:
                 test.fail("Failed to define the guest after adding the %s video "
                           "device xml. Details: %s " % (video_model, error))
