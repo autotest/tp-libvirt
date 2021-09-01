@@ -429,7 +429,7 @@ def run(test, params, env):
                     break
             vf_addr_attrs = interface.hostdev_address.attrs
             pci_addr = addr_to_pci(vf_addr_attrs)
-            nic_driver = os.readlink(os.path.join(pci_device_dir, vf_addr, "driver")).split('/')[-1]
+            nic_driver = os.readlink(os.path.join(pci_device_dir, pci_addr, "driver")).split('/')[-1]
             if nic_driver != "vfio-pci":
                 test.fail("The driver of the hostdev interface is not vfio\n")
         elif vf_type == "macvtap" or vf_type == "macvtap_network":
