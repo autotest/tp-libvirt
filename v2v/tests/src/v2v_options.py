@@ -534,6 +534,10 @@ def run(test, params, env):
                         win_img,
                         ignore_status=True).exit_status == 0:
                     test.fail('Command "%s" success' % command % win_img)
+            #check 'yum deplist virt-v2v'
+            if checkpoint == 'deplist':
+                if 'platform-python' not in output:
+                    test.fail('platform-python is not in dependency')
             if checkpoint == 'no_dcpath':
                 if '--dcpath' in output:
                     test.fail('"--dcpath" is not removed')
