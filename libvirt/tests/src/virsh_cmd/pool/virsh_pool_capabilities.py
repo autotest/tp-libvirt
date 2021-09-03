@@ -68,7 +68,7 @@ def run(test, params, env):
 
         #Check the pool capability information
         if pool_capa != pool_type_info_dict:
-            test.fail('Unexpected pool information support occured,please check the information by manual')
+            test.fail('Unexpected pool information support occurred,please check the information by manual')
 
     # Run test case
     option = params.get("virsh_pool_cap_options")

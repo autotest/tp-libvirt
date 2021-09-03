@@ -75,7 +75,7 @@ def run(test, params, env):
         libvirtd.restart()
         run_test()
     finally:
-        logging.info("Recover test enviroment.")
+        logging.info("Recover test environment.")
         utils_misc.mount('/sys', '', None, 'remount,rw')
         sriov_base.recover_vf(pf_pci, params, default_vf)
         if vm.is_alive():

@@ -74,7 +74,7 @@ def compare_iface_stat(vm_stat, host_stat, bar=0.2):
     :param vm_stat: iface stat in vm
     :param host_stat: iface stat on host
     :param bar: allowable error
-    :return: True if the two match within allowable eror, False if not
+    :return: True if the two match within allowable error, False if not
     """
 
     flag = True

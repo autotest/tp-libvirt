@@ -89,7 +89,7 @@ def run(test, params, env):
                 vm.resume()
             vm.wait_for_login()
             # Shutdown and start the domain,
-            # it should be in runing state and can be login.
+            # it should be in running state and can be login.
             vm.shutdown()
             if not vm.wait_for_shutdown(shutdown_timeout):
                 test.fail('VM failed to shutdown')
@@ -390,7 +390,7 @@ def run(test, params, env):
             if virsh.create(vmxml_for_test.xml, ignore_status=True,
                             debug=True).exit_status:
                 vmxml_backup.define()
-                test.cancel("Cann't create the domain")
+                test.cancel("Can't create the domain")
 
         # Wait for vm in stable state
         if params.get("start_vm") == "yes":
@@ -418,7 +418,7 @@ def run(test, params, env):
         option += extra_param
 
         # For bypass_cache test. Run a shell command to check fd flags while
-        # excuting managedsave command
+        # executing managedsave command
         software_mgr = software_manager.SoftwareManager()
         if not software_mgr.check_installed('lsof'):
             logging.info('Installing lsof package:')
@@ -462,7 +462,7 @@ def run(test, params, env):
             ret = virsh.managedsave(vm_ref, options=option,
                                     ignore_status=True, debug=True)
             status = ret.exit_status
-            # The progress information outputed in error message
+            # The progress information outputted in error message
             error_msg = ret.stderr.strip()
             if move_saved_file:
                 cmd = "echo > %s" % managed_save_file

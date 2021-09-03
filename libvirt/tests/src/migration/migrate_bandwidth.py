@@ -234,7 +234,7 @@ def run(test, params, env):
         # Clean VM on destination and source
         migration_test.cleanup_vm(vm, dest_uri)
 
-        logging.info("Recover VM XML configration")
+        logging.info("Recover VM XML configuration")
         orig_config_xml.sync()
 
         if libvirtd_conf:

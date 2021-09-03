@@ -11,7 +11,7 @@ from virttest.utils_test import libvirt as utlv
 
 def run(test, params, env):
     """
-    Test if domain destory with nwfilter will
+    Test if domain destroy with nwfilter will
     produce error messege in libvirt.log
 
     1) set env
@@ -48,7 +48,7 @@ def run(test, params, env):
         # start vm
         ret = virsh.start(vm_name, debug=True)
         utlv.check_exit_status(ret, status_error)
-        # destory vm see if libvirtd.log will get error
+        # destroy vm see if libvirtd.log will get error
         virsh.destroy(vm_name)
         utlv.check_exit_status(ret, status_error)
         out = astring.to_text(process.system_output(

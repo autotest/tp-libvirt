@@ -121,7 +121,7 @@ def run(test, params, env):
         source_ip = None
         source_pwd = None
     else:
-        test.cancel("Unspported hypervisor: %s" % hypervisor)
+        test.cancel("Unsupported hypervisor: %s" % hypervisor)
 
     # Create libvirt URI
     v2v_uri = utils_v2v.Uri(hypervisor)
@@ -251,7 +251,7 @@ def run(test, params, env):
 
     def check_floppy_exist(vmcheck):
         """
-        Check if floppy exists after convertion
+        Check if floppy exists after conversion
         """
         blk = vmcheck.session.cmd('lsblk')
         logging.info(blk)
@@ -527,7 +527,7 @@ def run(test, params, env):
     @vm_shell
     def vm_cmd(cmd_list, **kwargs):
         """
-        Excecute a list of commands on guest.
+        Execute a list of commands on guest.
         """
         session = kwargs['session']
         for cmd in cmd_list:
@@ -543,7 +543,7 @@ def run(test, params, env):
 
     def check_time_keep(vmcheck):
         """
-        Check time drift after convertion.
+        Check time drift after conversion.
         """
         logging.info('Check time drift')
         output = vmcheck.session.cmd('chronyc tracking')
@@ -598,7 +598,7 @@ def run(test, params, env):
                     virsh.start(vm_name, debug=True, ignore_status=False)
                 except Exception as e:
                     test.fail('Start vm failed: %s' % str(e))
-            # Check guest following the checkpoint document after convertion
+            # Check guest following the checkpoint document after conversion
             if params.get('skip_vm_check') != 'yes':
                 ret = vmchecker.run()
                 if len(ret) == 0:
@@ -608,7 +608,7 @@ def run(test, params, env):
                 check_boot_kernel(vmchecker.checker)
                 check_vmlinuz_initramfs(output)
             if checkpoint == 'floppy':
-                # Convert to rhv will remove all removeable devices(floppy,
+                # Convert to rhv will remove all removable devices(floppy,
                 # cdrom)
                 if output_mode in ['local', 'libvirt']:
                     check_floppy_exist(vmchecker.checker)
@@ -908,7 +908,7 @@ def run(test, params, env):
             params['vmchecker'].cleanup()
         if hypervisor == "xen":
             # Restore crypto-policies to DEFAULT, the setting is impossible to be
-            # other values by default in testing envrionment.
+            # other values by default in testing environment.
             process.run(
                 'update-crypto-policies --set DEFAULT',
                 verbose=True,

@@ -35,7 +35,7 @@ def run(test, params, env):
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
 
-    # Get varialbles about image.
+    # Get variables about image.
     img_label = params.get('svirt_undefine_define_disk_label')
     # Label the disks of VM with img_label.
     disks = vm.get_disk_devices()

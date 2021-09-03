@@ -60,7 +60,7 @@ def run(test, params, env):
     vm = env.get_vm(vm_name)
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
-    # Get varialbles about image.
+    # Get variables about image.
     img_label = params.get('svirt_attach_disk_disk_label')
     sec_disk_dict = {'model': sec_model, 'label': img_label, 'relabel': sec_relabel}
     enable_namespace = 'yes' == params.get('enable_namespace', 'no')
@@ -218,7 +218,7 @@ def run(test, params, env):
                         if val_list[0] in cap_list:
                             cap_dict[val_list[0]] = int(val_list[1].strip(), 16)
 
-                # bit and with rawio capabilitiy value to check cap_sys_rawio
+                # bit and with rawio capability value to check cap_sys_rawio
                 # is set
                 cap_rawio_val = 0x0000000000020000
                 for i in cap_list:

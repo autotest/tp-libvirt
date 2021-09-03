@@ -97,7 +97,7 @@ def run(test, params, env):
             elif target.startswith("sd"):
                 added_part = added_parts[0]
             if not added_part:
-                logging.error("Cann't see added partition in VM")
+                logging.error("Can't see added partition in VM")
                 return False
             utils_disk.linux_disk_check(session, added_part)
             session.close()
@@ -163,7 +163,7 @@ def run(test, params, env):
 
     secret_uuid = ""
 
-    # Start vm and get all partions in vm.
+    # Start vm and get all partitions in vm.
     if device == "lun":
         if vm.is_dead():
             vm.start()

@@ -24,7 +24,7 @@ def run(test, params, env):
         Edit net xml with virsh net-edit
 
         :params edit_cmd: The edit cmd to execute
-        :params expect_error: Boolen, expect success or not
+        :params expect_error: Boolean, expect success or not
         :params **dargs: The virsh edit's option
         """
         logging.debug("edit_cmd: %s", edit_cmd)

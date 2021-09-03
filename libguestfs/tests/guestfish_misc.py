@@ -308,7 +308,7 @@ def test_fallocate(test, vm, params):
         gf.close_session()
         test.fail("File size is not correct")
 
-    # overwriteen a existed file
+    # overwritten a existed file
     string = "Hello World"
     gf.write("/exist", "Hello world")
     gf.fallocate("/exist", 200)
@@ -349,7 +349,7 @@ def test_fallocate64(test, vm, params):
         gf.close_session()
         test.fail("File size is not correct")
 
-    # overwriteen a existed file
+    # overwritten a existed file
     string = "Hello World"
     gf.write("/exist", "Hello world")
     gf.fallocate64("/exist", 200)

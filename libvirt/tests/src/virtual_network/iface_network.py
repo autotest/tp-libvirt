@@ -29,7 +29,7 @@ from virttest import libvirt_version
 
 def run(test, params, env):
     """
-    Test interafce xml options.
+    Test interface xml options.
 
     1.Prepare test environment,destroy or suspend a VM.
     2.Edit xml and start the domain.
@@ -49,7 +49,7 @@ def run(test, params, env):
                     "tftp", "ipxe-roms-qemu", "wget"]
         # Try to install required packages
         if not utils_package.package_install(pkg_list):
-            test.error("Failed ot install required packages")
+            test.error("Failed to install required packages")
         boot_initrd = params.get("boot_initrd", "EXAMPLE_INITRD")
         boot_vmlinuz = params.get("boot_vmlinuz", "EXAMPLE_VMLINUZ")
         if boot_initrd.count("EXAMPLE") or boot_vmlinuz.count("EXAMPLE"):
@@ -777,7 +777,7 @@ TIMEOUT 3"""
                 else:
                     modify_iface_xml()
                     if with_2net:
-                        # Create another interface attaching with 2rd network
+                        # Create another interface attaching with 2nd network
                         new_iface = Interface('network')
                         new_iface.source = eval(net2_params['iface_source'])
                         new_iface.model = net2_params['iface_model']
@@ -884,9 +884,9 @@ TIMEOUT 3"""
                         if not match_obj:
                             test.fail("Can't see forward delay messages from command")
                         elif int(match_obj.group(1)) != br_delay:
-                            test.fail("Foward delay setting can't take effect")
+                            test.fail("Forward delay setting can't take effect")
                         else:
-                            logging.debug("Foward delay set successfully!")
+                            logging.debug("Forward delay set successfully!")
             if dhcp_start_ipv4 and dhcp_end_ipv4:
                 run_dnsmasq_default_test("dhcp-range", "%s,%s"
                                          % (dhcp_start_ipv4, dhcp_end_ipv4),

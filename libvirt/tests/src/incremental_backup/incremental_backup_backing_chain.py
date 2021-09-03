@@ -20,7 +20,7 @@ def run(test, params, env):
     Integration test of backup and backing_chain.
 
     Steps:
-    1. craete a vm with extra disk vdb
+    1. create a vm with extra disk vdb
     2. create some data on vdb
     3. start a pull mode full backup on vdb
     4. create some data on vdb
@@ -168,7 +168,7 @@ def run(test, params, env):
         test.cancel("Current libvirt version doesn't support "
                     "incremental backup.")
 
-    # vm's origianl disk config
+    # vm's original disk config
     original_disk_size = params.get("original_disk_size", "100M")
     original_disk_type = params.get("original_disk_type", "local")
     original_disk_target = params.get("original_disk_target", "vdb")

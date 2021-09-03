@@ -228,7 +228,7 @@ def run(test, params, env):
         except Exception as err:
             logging.error(err)
 
-        logging.info("Recovery VM XML configration")
+        logging.info("Recovery VM XML configuration")
         orig_config_xml.sync()
 
         if libvirtd_conf:

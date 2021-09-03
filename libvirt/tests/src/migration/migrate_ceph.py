@@ -110,7 +110,7 @@ def check_virsh_command_and_option(test, command, option=None):
     :param test: test object
     :param command: the command to validate
     :param option: the option for the command
-    :raise: test.cancel if commmand is not supported
+    :raise: test.cancel if command is not supported
     """
     msg = "This version of libvirt does not support "
     if not virsh.has_help_command(command):
@@ -503,7 +503,7 @@ def run(test, params, env):
     remote_ssh_session = remote.remote_login("ssh", server_ip, "22", server_user,
                                              server_pwd, r"[\#\$]\s*$")
     if not utils_package.package_install(["ceph-common"], remote_ssh_session):
-        test.error("Failed ot install required packages on remote host")
+        test.error("Failed to install required packages on remote host")
     remote_ssh_session.close()
     try:
         # Create a remote runner for later use
@@ -594,7 +594,7 @@ def run(test, params, env):
         destroy_vm_cmd = "virsh destroy %s" % vm_name
         remote.run_remote_cmd(destroy_vm_cmd, params, runner_on_target)
 
-        logging.info("Recovery VM XML configration")
+        logging.info("Recovery VM XML configuration")
         vmxml_backup.sync()
         logging.debug("The current VM XML:\n%s", vmxml_backup.xmltreefile)
 

@@ -79,7 +79,7 @@ def run(test, params, env):
         else:
             if status_error:
                 test.fail("xml sync should failed as it is a negative case.")
-            logging.debug("Add devices succeed in postive case.")
+            logging.debug("Add devices succeed in positive case.")
 
     def check_model_test_cmd_line(model_type, is_primary=None):
         """
@@ -242,7 +242,7 @@ def run(test, params, env):
             if res.exit_status:
                 test.fail("failed to start vm after adding the video "
                           "device xml. details: %s " % res)
-            logging.debug("vm started successfully in postive cases.")
+            logging.debug("vm started successfully in positive cases.")
 
             if model_test:
                 check_model_test_cmd_line(model_type, is_primary)

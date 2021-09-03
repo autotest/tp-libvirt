@@ -133,7 +133,7 @@ def run(test, params, env):
             if not check_echo_shell(escaped_str, output):
                 test.fail("Command output is not expected.")
 
-    # Run exit commnad and close the session
+    # Run exit command and close the session
     try:
         if 'exit' in exit_cmd:
             vp.exit(ignore_status=True, debug=True)

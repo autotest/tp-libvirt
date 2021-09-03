@@ -53,7 +53,7 @@ class Vol_clone(object):
 
     def run_test(self):
         """
-        Start test, Creat a volume.
+        Start test, Create a volume.
         """
         emulated_size = "%sG" % (int(self.volume_size[:-1]) + 1)
         if int(self.volume_size[:-1]) <= 1:
@@ -106,7 +106,7 @@ class Vol_create(object):
 
     def run_test(self):
         """
-        Start test, Creat a volume.
+        Start test, Create a volume.
         """
         emulated_size = "%sG" % (int(self.volume_size[:-1]) + 1)
         if int(self.volume_size[:-1]) <= 1:
@@ -358,7 +358,7 @@ class Snapshot_create(object):
 
     def run_test(self):
         """
-        Start test, Creat a cgroup to create snapshot.
+        Start test, Create a cgroup to create snapshot.
         """
         modules = utils_cgroup.CgroupModules(self.cgroup_dir)
         modules.init(['cpuset'])
@@ -468,7 +468,7 @@ class Virsh_dump(object):
 
     def run_test(self):
         """
-        Start test, Creat a cgroup to create snapshot.
+        Start test, Create a cgroup to create snapshot.
         """
         modules = utils_cgroup.CgroupModules(self.cgroup_dir)
         modules.init(['cpuset'])
@@ -602,7 +602,7 @@ class Virt_install(object):
 
     def run_test(self):
         """
-        Start test, Creat a threading to install VM.
+        Start test, Create a threading to install VM.
         """
         self.td = threading.Thread(target=unattended_install.run,
                                    args=(self.test, self.params, self.env))
@@ -729,7 +729,7 @@ class Migration(object):
 
     def run_test(self):
         """
-        Start test, Creat a threading to migrate VM.
+        Start test, Create a threading to migrate VM.
         """
         remote_uri = libvirt_vm.get_uri_with_transport(transport="ssh",
                                                        dest_ip=self.remote_ip)
@@ -850,7 +850,7 @@ class Dom_opterations_nfs(object):
 
     def run_test(self):
         """
-        Run opertions as thread
+        Run operations as thread
         """
         self.vm.start()
         # Try to save VM

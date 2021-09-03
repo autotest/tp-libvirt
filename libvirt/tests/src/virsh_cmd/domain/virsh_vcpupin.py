@@ -59,7 +59,7 @@ def run(test, params, env):
     def check_vcpupin(vm_name, vcpu, cpu_list, pid, vcpu_pid):
         """
         This function checks the actual and the expected affinity of given vcpu
-        and raises error if not matchs
+        and raises error if not matches
 
         :param vm_name: VM Name to operate on
         :param vcpu: vcpu number for which the affinity is required

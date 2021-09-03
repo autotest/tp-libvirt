@@ -19,8 +19,8 @@ def run(test, params, env):
     Even on rhel 8, most of the commands are not recommended. Only iface-mac, iface-name,
     iface-list, iface-dumpxml are still supported. And the backend change to be udev.
     (1) Using exist interface for testing(eg. lo or ethX)
-        1.1 List interfaces with '--inactive' optioin
-        1.2 List interfaces with '--all' optioin
+        1.1 List interfaces with '--inactive' option
+        1.2 List interfaces with '--all' option
         1.3 List interfaces with no option
     (2) Dumpxml for the interface
         2.1 Dumpxml for the interface(with --inactive option)
@@ -165,6 +165,6 @@ def run(test, params, env):
                     # test iface-name command
                     name_cmd = virsh.iface_name(mac).stdout_text.strip()
                     if iface != name_cmd:
-                        test.fail("The name get from virsh iface-name for %s is not expexted" % mac)
+                        test.fail("The name get from virsh iface-name for %s is not expected" % mac)
     finally:
         logging.info("Test case finished, and no need to restore any environment")

@@ -75,7 +75,7 @@ def run(test, params, env):
         :param pool_type: Type of the pool.
         :param checkpoint: Which part for checking.
         :param expect_value: Expected value.
-        :param expect_error: Boolen value, expect command success or fail
+        :param expect_error: Boolean value, expect command success or fail
         """
         libvirt_pool = libvirt_storage.StoragePool()
         virsh.pool_list(option="--all", debug=True)

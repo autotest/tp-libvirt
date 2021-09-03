@@ -208,11 +208,11 @@ def run(test, params, env):
     """
     def _check_result(cap, ref_list, result, mode):
         """
-        Check test result agains a device list retrived from sysfs.
+        Check test result against a device list retrieved from sysfs.
 
         :param cap:        Capability being checked, current available caps are
                            defined in variable `caps`.
-        :param ref_list:   Reference device list retrived from sysfs.
+        :param ref_list:   Reference device list retrieved from sysfs.
         :param result:     Stdout returned from virsh nodedev-list command.
         :param mode:       How to compare sysfs info with command output:
                            "exact" or "similar".

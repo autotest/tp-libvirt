@@ -192,7 +192,7 @@ def do_fstrim(test, fstrim_type, vm, status_error=False):
                 return
             else:
                 test.fail("Not supported fstrim on supported "
-                          "envrionment.Bug?")
+                          "environment.Bug?")
         try:
             trimmed_bytes = re.search("\d+\sbytes",
                                       output).group(0).split()[0]
@@ -310,7 +310,7 @@ def run(test, params, env):
                 test.fail("Manual 'fstrims' didn't work.")
         elif fstrim_type == "mount_with_discard":
             if sig_delta(bf_cpy, bf_fstrim_cpy) and not status_error:
-                test.fail("Automatical 'fstrims' didn't work.")
+                test.fail("Automatic 'fstrims' didn't work.")
     finally:
         if new_vm.is_alive():
             new_vm.destroy()

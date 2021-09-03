@@ -41,7 +41,7 @@ def run(test, params, env):
         nbdfuse_cmd = "nbdfuse %s --socket-activation qemu-nbd -f qcow2 %s &" % (
             nbdfuse_mp_filename, image_qcow2_path)
         # Must set ignore_bg_processes=True because nbdfuse is serving like
-        # a deamon at background
+        # a daemon at background
         # Must set shell=True
         process.run(
             nbdfuse_cmd,

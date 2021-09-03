@@ -21,7 +21,7 @@ def run(test, params, env):
     def attach_disk_test(test_disk_source, front_dev):
         """
         Attach-disk testcase.
-        1.Attch a disk to guest.
+        1.Attach a disk to guest.
         2.Perform domblkinfo operation.
         3.Detach the disk.
 

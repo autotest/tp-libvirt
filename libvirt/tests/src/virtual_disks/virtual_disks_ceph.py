@@ -383,7 +383,7 @@ def run(test, params, env):
             logging.info("Check disk operation in VM:\n, %s, %s", s, o)
             # Readonly fs, check the error messages.
             # The command may return True, read-only
-            # messges can be found from the command output
+            # messages can be found from the command output
             if read_only:
                 if "Read-only file system" not in o:
                     return False
@@ -546,7 +546,7 @@ def run(test, params, env):
     if rbd_blockcopy and not libvirt_version.version_compare(6, 0, 0):
         test.cancel("blockcopy rbd backend is not supported in current libvirt version")
 
-    # Start vm and get all partions in vm.
+    # Start vm and get all partitions in vm.
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()

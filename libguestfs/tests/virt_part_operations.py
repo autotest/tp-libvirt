@@ -48,7 +48,7 @@ def test_unformatted_part(test, vm, params):
     mountpoint = params.get("vt_mountpoint", "/mnt")
     mounts, mounto = vt.guestmount(mountpoint, vm_ref)
     if utils_misc.umount("", mountpoint, "") and mounts:
-        test.fail("Mount vm's filesytem successfully, "
+        test.fail("Mount vm's filesystem successfully, "
                   "but not expected.")
     logging.info("Mount vm's filesystem failed as expected.")
 

@@ -299,7 +299,7 @@ def manipulate_vm(vm, operation, params=None):
             except OSError:
                 pass
     else:
-        err_msg = "Unsupport operation in this function: %s" % operation
+        err_msg = "Unsupported operation in this function: %s" % operation
     return err_msg
 
 
@@ -448,7 +448,7 @@ def test_specific_timer(test, vm, params):
     if vm.is_dead():
         vm.start()
     vm.wait_for_login()
-    # Not config VM clock if the timer is unsupport in VM
+    # Not config VM clock if the timer is unsupported in VM
     config_clock_in_vm = True
     for timer in timers:
         timer = translate_timer_name(timer)

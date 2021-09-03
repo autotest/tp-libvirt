@@ -199,7 +199,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 
-    # Start vm and get all partions in vm.
+    # Start vm and get all partitions in vm.
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
@@ -315,7 +315,7 @@ def run(test, params, env):
         if vm.is_alive():
             vm.pause()
     elif pre_vm_state == "shut off":
-        logging.info("Shuting down %s..." % vm_name)
+        logging.info("Shutting down %s..." % vm_name)
         if vm.is_alive():
             vm.destroy(gracefully=False)
 

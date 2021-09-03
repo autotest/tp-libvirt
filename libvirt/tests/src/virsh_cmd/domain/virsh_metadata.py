@@ -94,7 +94,7 @@ def run(test, params, env):
                     remote.handle_prompts(session, None, None, r"[\#\$]\s*$",
                                           debug=True, timeout=CMD_TIMEOUT)
                 except Exception as e:
-                    logging.error("Error occured: %s", e)
+                    logging.error("Error occurred: %s", e)
                 session.close()
             else:
                 result = virsh.metadata(vm_name,

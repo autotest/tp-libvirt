@@ -131,7 +131,7 @@ def run(test, params, env):
     # Case step options
     hotplug_disk = "yes" == params.get("hotplug_disk", "no")
 
-    # Start vm and get all partions in vm
+    # Start vm and get all partitions in vm
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()

@@ -1,5 +1,5 @@
 """
-Module to exercize virsh attach-device command with various devices/options
+Module to exercise virsh attach-device command with various devices/options
 """
 
 import os
@@ -141,7 +141,7 @@ class TestParams(object):
                 device.cleanup()
                 # Attempt to finish entire list before raising
                 # any exceptions that occurred
-            # ignore pylint W0703 - exception acumulated and raised below
+            # ignore pylint W0703 - exception accumulated and raised below
             except Exception as xcept_obj:
                 xcpt_list.append(xcept_obj)
         if xcpt_list:
@@ -653,7 +653,7 @@ class VirtualDiskBasic(AttachDeviceBase):
             devname_prefix = "hd"
             self.devidx = hd_count
         else:
-            self.test.cancel("Unsupport bus '%s' in this test" %
+            self.test.cancel("Unsupported bus '%s' in this test" %
                              self.targetbus)
         return devname_prefix + self.devname_suffix(self.devidx + index)
 

@@ -111,7 +111,7 @@ def run(test, params, env):
                 test.fail("The key should be added, please check the user's "
                           "authorized keys %s" % user_sshkeys)
             if not check_ssh_conn(host_test_user, guest_user, vm_ip):
-                test.fail("ssh connection to guest should be sucessful")
+                test.fail("ssh connection to guest should be successful")
         if "--remove" in option:
             pre_added_key_authorized, _ = check_user_sshkeys(guest_user,
                                                              pre_added_key)
@@ -129,7 +129,7 @@ def run(test, params, env):
                               "should be deleted. please check the user's"
                               "authorized keys %s" % user_sshkeys)
                 if not check_ssh_conn(host_test_user, guest_user, vm_ip):
-                    test.fail("ssh connection to guest should be sucessful")
+                    test.fail("ssh connection to guest should be successful")
             else:
                 if user_sshkeys:
                     test.fail("All keys should be removed, please check the user's "

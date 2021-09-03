@@ -348,7 +348,7 @@ def run(test, params, env):
                 logging.debug('cur_pci_br: %s', cur_pci_br)
 
                 if case.endswith('multi_br'):
-                    # Check whether all new pcie-to-pci-br are successfullly added
+                    # Check whether all new pcie-to-pci-br are successfully added
                     if len(cur_pci_br) - len(ori_pci_br) != pcie_br_count:
                         test.fail('Not all pcie-to-pci-br successfully added.'
                                   'Should be %d, actually is %d' %

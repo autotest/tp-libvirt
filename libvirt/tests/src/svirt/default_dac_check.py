@@ -15,7 +15,7 @@ def run(test, params, env):
         Test the default dac label after starting libvirtd and guests.
 
         1.Check the default dac label of hugepage file;
-        2.Check the default dac lable of /var/run/qemu;
+        2.Check the default dac label of /var/run/qemu;
         3.Check the default dac label of guest agent file;
     """
 

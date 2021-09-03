@@ -55,7 +55,7 @@ def run(test, params, env):
         Modify vm's cpu information by virsh edit command.
 
         :param source : virsh edit's option.
-        :return: True if edit successed,False if edit failed.
+        :return: True if edit succeeded,False if edit failed.
         """
         vcpucount_result = virsh.vcpucount(vm_name,
                                            options="--config --maximum")
@@ -157,7 +157,7 @@ def run(test, params, env):
         Modify vm's maximum and current memory(unit and value).
 
         :param source: virsh edit's option.
-        :return: True if edit successed,False if edit failed.
+        :return: True if edit succeeded,False if edit failed.
         """
         mem_unit = params.get("mem_unit", "K")
         mem_value = params.get("mem_value", "1048576")
@@ -186,7 +186,7 @@ def run(test, params, env):
                     logging.error("New max memory %s is not excepted", new_mem)
                     return False
         except Exception as e:
-            logging.error("Error occured when check domain memory: %s", e)
+            logging.error("Error occurred when check domain memory: %s", e)
             return False
         return status
 

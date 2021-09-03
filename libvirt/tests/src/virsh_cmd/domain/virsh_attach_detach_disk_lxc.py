@@ -96,7 +96,7 @@ def run(test, params, env):
         if vm.is_alive():
             vm.pause()
     elif pre_vm_state == "shut off":
-        logging.info("Shuting down %s..." % vm_name)
+        logging.info("Shutting down %s..." % vm_name)
         if vm.is_alive():
             vm.destroy(gracefully=False)
 

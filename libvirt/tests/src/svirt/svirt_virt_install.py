@@ -59,7 +59,7 @@ def run(test, params, env):
         cmd += " --security"
         if sec_type == 'static':
             if sec_label is None:
-                raise ValueError("Seclabel is not setted for static.")
+                raise ValueError("Seclabel is not set for static.")
             cmd += " type=static,label=%s" % (sec_label)
         elif sec_type == 'dynamic':
             cmd += " type=dynamic"

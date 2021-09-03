@@ -185,7 +185,7 @@ def run(test, params, env):
             ret_clone = utils_libguestfs.virt_clone_cmd(vm_name, vm2_name,
                                                         True, timeout=360, debug=True)
             if ret_clone.exit_status:
-                test.error("Need more than one domains, but error occured when virt-clone.")
+                test.error("Need more than one domains, but error occurred when virt-clone.")
             vm2 = vm.clone(vm2_name)
             vm2_xml = VMXML.new_from_inactive_dumpxml(vm2_name)
         if vm2.is_alive():
@@ -343,11 +343,11 @@ def run(test, params, env):
             if not service_mgr.start('tcsd'):
                 # service_mgr.start() return 'True' if succeed
                 if tpm_v == "1.2":
-                    test.fail("Host tcsd.serivce start failed")
+                    test.fail("Host tcsd.service start failed")
                 else:
                     # Means tpm_v got nothing from dmesg, log failure here and
                     # go to next 'if' to try tpm2.0 tools.
-                    logging.info("Host tcsd.serivce start failed")
+                    logging.info("Host tcsd.service start failed")
             else:
                 tpm_real_v = "1.2"
                 logging.info("Host tpm version info:")
@@ -372,7 +372,7 @@ def run(test, params, env):
         """
         Test host tpm function after passthrough
 
-        :param tpm_real_v: host tpm real version indentified from testing
+        :param tpm_real_v: host tpm real version identified from testing
         """
         logging.info("------Checking host tpm device after passthrough------")
         if tpm_real_v == "1.2":
@@ -462,7 +462,7 @@ def run(test, params, env):
         download_cmd = "wget %s -O %s" % (src_url, "/root/linux.tar.xz")
         output = session.cmd_output(download_cmd, timeout=480)
         logging.debug("Command output: %s", output)
-        # Install neccessary pkgs to build test suite
+        # Install necessary pkgs to build test suite
         if not utils_package.package_install(["tar", "make", "gcc", "rsync", "python2"], session, 360):
             test.fail("Failed to install specified pkgs in guest OS.")
         # Unzip the downloaded test suite
@@ -635,7 +635,7 @@ def run(test, params, env):
                             # remove_dev or do other vm operations during restart
                             vm_xml.remove_all_device_by_type('tpm')
                             if secret_uuid == "change" or encrypt_change:
-                                # Change secret uuid, or change encrytion state:from plain to encrypted, or on the contrary
+                                # Change secret uuid, or change encryption state:from plain to encrypted, or on the contrary
                                 if encrypt_change == 'plain':
                                     # Change from encrypted state to plain：redefine a tpm dev without encryption
                                     tpm_dev = Tpm()

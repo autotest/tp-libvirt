@@ -394,7 +394,7 @@ def run(test, params, env):
         vm.connect_uri = bk_uri
         migration_test.cleanup_vm(vm, dest_uri)
 
-        logging.info("Recovery VM XML configration")
+        logging.info("Recovery VM XML configuration")
         orig_config_xml.sync()
         remote_session = remote.remote_login("ssh", server_ip, "22",
                                              server_user, server_pwd,
@@ -403,7 +403,7 @@ def run(test, params, env):
             target_vm.destroy(gracefully=False)
 
         if target_org_xml and target_vm_name:
-            logging.info("Recovery XML configration for %s.", target_vm_name)
+            logging.info("Recovery XML configuration for %s.", target_vm_name)
             virsh_session_remote = virsh.VirshPersistent(**remote_virsh_dargs)
             vm_sync(target_org_xml, vm_name=target_vm_name,
                     virsh_instance=virsh_session_remote)

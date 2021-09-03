@@ -124,7 +124,7 @@ def run(test, params, env):
            similarly to host-model.
         2. policy='optional' features(support by host) will update to
            policy='require'
-        3. policy='optional' features(unsupport by host) will update to
+        3. policy='optional' features(unsupported by host) will update to
            policy='disable'
         4. Other policy='disable|force|forbid|require' with keep the
            original values

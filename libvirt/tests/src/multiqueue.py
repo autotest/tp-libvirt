@@ -105,7 +105,7 @@ def top_vhost(test, pids, expected_running_vhosts=1, timeout=15):
             if timeout > 0:
                 timeout -= 3
                 time.sleep(3)
-                logging.debug("Trying again to avoid occassional...")
+                logging.debug("Trying again to avoid occasional...")
                 continue
             else:
                 test.fail("Couldn't get enough running vhosts:%s "

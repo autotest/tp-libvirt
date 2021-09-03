@@ -123,7 +123,7 @@ def run(test, params, env):
                    awk '{print $5}'" % pci_node
             driver_name = process.run(cmd, shell=True).stdout_text.strip()
             if driver_name == "vfio-pci":
-                logging.debug("device alreay detached")
+                logging.debug("device already detached")
             else:
                 if virsh.nodedev_detach(pci_value).exit_status:
                     test.error("Hostdev node detach failed")
@@ -139,7 +139,7 @@ def run(test, params, env):
                    awk '{print $5}'" % pci_node
             driver_name = process.run(cmd, shell=True).stdout_text.strip()
             if driver_name != "vfio-pci":
-                logging.debug("device alreay attached")
+                logging.debug("device already attached")
             else:
                 if virsh.nodedev_reattach(pci_value).exit_status:
                     test.fail("Hostdev node reattach failed")

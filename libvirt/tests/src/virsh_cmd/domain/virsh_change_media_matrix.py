@@ -225,7 +225,7 @@ def run(test, params, env):
                 vm.start()
                 vm.wait_for_login().close()
         elif pre_vm_state == "shutoff":
-            logging.info("Shuting down %s..." % vm_name)
+            logging.info("Shutting down %s..." % vm_name)
             if vm.is_alive():
                 vm.destroy(gracefully=False)
         elif pre_vm_state == "paused":
@@ -234,14 +234,14 @@ def run(test, params, env):
                 vm.start()
                 vm.wait_for_login().close()
             if not vm.pause():
-                test.cancel("Cann't pause the domain")
+                test.cancel("Can't pause the domain")
             time.sleep(5)
         elif pre_vm_state == "transient":
             logging.info("Creating %s..." % vm_name)
             vm.undefine()
             if virsh.create(vmxml_for_test.xml, **virsh_dargs).exit_status:
                 vmxml_backup.define()
-                test.cancel("Cann't create the domain")
+                test.cancel("Can't create the domain")
 
         # Libvirt will ignore --source when action is eject
         attach = True
@@ -282,7 +282,7 @@ def run(test, params, env):
         if action_twice:
             if pre_vm_state == "paused":
                 if not vm.pause():
-                    test.fail("Cann't pause the domain")
+                    test.fail("Can't pause the domain")
                 time.sleep(5)
             attach = True
             device_source = new_iso

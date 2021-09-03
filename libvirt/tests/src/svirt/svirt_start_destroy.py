@@ -73,7 +73,7 @@ def run(test, params, env):
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
 
-    # Get varialbles about image.
+    # Get variables about image.
     img_label = params.get('svirt_start_destroy_disk_label')
     # Backup disk Labels.
     disks = vm.get_disk_devices()
@@ -224,7 +224,7 @@ def run(test, params, env):
                         # Bug 547546 - RFE: the security drivers must remember original
                         # permissions/labels and restore them after
                         # https://bugzilla.redhat.com/show_bug.cgi?id=547546
-                        err_msg = "Label of disk is not restored in VM shuting down.\n"
+                        err_msg = "Label of disk is not restored in VM shutting down.\n"
                         err_msg += "Detail: img_label_after=%s, " % img_label_after
                         err_msg += "img_label_before=%s.\n" % img_label
                         err_msg += "More info in https://bugzilla.redhat.com/show_bug"
@@ -232,7 +232,7 @@ def run(test, params, env):
                         test.fail(err_msg)
                 elif (img_label_after != img_label or
                       ownership_of_disk != backup_ownership_of_disks[filename]):
-                    err_msg = "Label of disk is not restored in VM shuting down.\n"
+                    err_msg = "Label of disk is not restored in VM shutting down.\n"
                     err_msg += "Detail: img_label_after=%s, %s " % (img_label_after, ownership_of_disk)
                     err_msg += "img_label_before=%s, %s\n" % (img_label, backup_ownership_of_disks[filename])
                     test.fail(err_msg)

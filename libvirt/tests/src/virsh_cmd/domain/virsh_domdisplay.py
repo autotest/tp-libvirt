@@ -40,7 +40,7 @@ def run(test, params, env):
 
     if "--type" in options:
         if not libvirt_version.version_compare(1, 2, 6):
-            test.cancel("--type option is not supportted in this"
+            test.cancel("--type option is not supported in this"
                         " libvirt version.")
         elif "vnc" in options and graphic != "vnc" or \
              "spice" in options and graphic != "spice":

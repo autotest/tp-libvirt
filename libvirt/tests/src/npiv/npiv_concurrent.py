@@ -127,7 +127,7 @@ def get_blks_by_scsi(test, scsi_bus, blk_prefix="sd"):
         result = process.run(cmd, shell=True)
         logging.debug("multipath result: %s", result.stdout_text.strip())
     except process.cmdError as detail:
-        test.error("Error happend for multipath: %s" % detail)
+        test.error("Error happened for multipath: %s" % detail)
     blk_names = result.stdout_text.strip().splitlines()
     return blk_names
 
@@ -229,7 +229,7 @@ def run(test, params, env):
                     lambda: utils_npiv.is_vhbas_added(old_vhbas),
                     timeout=_TIMEOUT*2)
             if not new_vhba:
-                test.fail("vHBA not sucessfully generated.")
+                test.fail("vHBA not successfully generated.")
             new_vhbas.append(new_vhba)
             if vd_formats[vm_index] == "mpath":
                 utils_misc.wait_for(

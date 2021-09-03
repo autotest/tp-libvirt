@@ -399,7 +399,7 @@ def test_tune2fs(test, vm, params):
 
     mount_point = params.get("mount_point")
 
-    # tune2fs: ajust
+    # tune2fs: adjust
     newmaxmc, newmc, newgroup, newintervalbc, newreservebc,\
         newuser, neweb = '3', '5', '1', '600', '600', '1', 'panic'
     gf.tune2fs(mount_point, 'true', newmaxmc, newmc, neweb,

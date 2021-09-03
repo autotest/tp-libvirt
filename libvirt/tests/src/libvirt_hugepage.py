@@ -49,8 +49,8 @@ def run(test, params, env):
 
     1) Get the params from params.
     2) check the environment
-    3) Strat the VM and check whether the VM been started successfully
-    4) Compare the Hugepage memory size to the Guest memory setted.
+    3) Start the VM and check whether the VM been started successfully
+    4) Compare the Hugepage memory size to the Guest memory set.
     5) Check the hugepage memory usage.
     6) Clean up
     """
@@ -80,7 +80,7 @@ def run(test, params, env):
             unixbench_control_file = params.get("unixbench_controle_file",
                                                 "unixbench5.control")
 
-    # backup orignal setting
+    # backup original setting
     shp_orig_num = utils_memory.get_num_huge_pages()
     thp_orig_status = utils_memory.get_transparent_hugepage()
     page_size = utils_memory.get_huge_page_size()

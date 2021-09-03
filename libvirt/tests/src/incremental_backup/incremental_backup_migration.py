@@ -36,7 +36,7 @@ class MigrationWithCheckpoint(mt.MigrationTemplate):
         """
         Attach a disk to vm
 
-        :param vm: The vm to attch disk to
+        :param vm: The vm to attach disk to
         """
         test_disk_path = os.path.join(self.tmp_dir,
                                       self.test_disk_target + '.qcow2')

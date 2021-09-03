@@ -179,7 +179,7 @@ def run(test, params, env):
                                   (blkdev_major, blkdev_minor))
             chardev_unpriv_path = ("/sys/dev/char/%s:%s/device/unpriv_sgio" %
                                    (chardev_major, chardev_minor))
-            # unpriv_sgio feature change in centain kernel,e.g: /sys/dev/char/%s:%s/queue/unpriv_sgio may not exist
+            # unpriv_sgio feature change in certain kernel,e.g: /sys/dev/char/%s:%s/queue/unpriv_sgio may not exist
             if os.path.exists(blkdev_unpriv_path) is False:
                 return
             with open(blkdev_unpriv_path, 'r') as f:

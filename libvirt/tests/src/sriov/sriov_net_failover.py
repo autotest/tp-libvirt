@@ -406,7 +406,7 @@ def run(test, params, env):
         run_test()
 
     finally:
-        logging.info("Recover test enviroment.")
+        logging.info("Recover test environment.")
         utils_sriov.add_or_del_connection(brg_dict, is_del=True)
         libvirt_network.create_or_del_network(bridge_dict, is_del=True)
         if 'pf_pci_path' in locals() and default_vf != vf_no:

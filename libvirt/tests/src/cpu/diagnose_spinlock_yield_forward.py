@@ -16,7 +16,7 @@ FORWARD_VALUE_PATH = None
 
 def update_kvm_parameter(hz):
     """
-    Updates kvm paramter for forwarding
+    Updates kvm parameter for forwarding
 
     :param hz: diag9c_forwarding_hz
     :raises TestError: if parameter couldn't be updated

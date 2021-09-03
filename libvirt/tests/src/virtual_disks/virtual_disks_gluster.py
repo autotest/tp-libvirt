@@ -107,7 +107,7 @@ def run(test, params, env):
         if vm.is_dead():
             vm.start()
             vm.wait_for_login()
-        # Create swap partition if nessesary.
+        # Create swap partition if necessary.
         if not vm.has_swap():
             swap_path = os.path.join(data_dir.get_data_dir(), 'swap.img')
             vm.create_swap_partition(swap_path)

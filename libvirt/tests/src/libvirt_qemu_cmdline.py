@@ -38,14 +38,14 @@ def config_feature_pv_eoi(test, vmxml, **kwargs):
             elif eoi_enable == 'off':
                 qemu_flags.append('-kvm_pv_eoi')
             else:
-                logging.error("Invaild value %s, eoi_enable must be 'on' or 'off'", eoi_enable)
+                logging.error("Invalid value %s, eoi_enable must be 'on' or 'off'", eoi_enable)
         elif hostos_version > float(8.0):
             if eoi_enable == 'on':
                 qemu_flags.append('kvm-pv-eoi=on')
             elif eoi_enable == 'off':
                 qemu_flags.append('kvm-pv-eoi=off')
             else:
-                logging.error("Invaild value %s, eoi_enable must be 'on' or 'off'", eoi_enable)
+                logging.error("Invalid value %s, eoi_enable must be 'on' or 'off'", eoi_enable)
         else:
             test.fail("Can not decide the expected qemu cmd line because of no expected hostos version")
 
@@ -126,7 +126,7 @@ def run(test, params, env):
     testcase = globals()['config_feature_%s' % test_feature]
     test_feature_attr = params.get("test_feature_attr", '').split(",")
     test_feature_valu = params.get("test_feature_valu", '').split(",")
-    # Paramters for test case
+    # Parameters for test case
     if len(test_feature_attr) != len(test_feature_valu):
         test.error("Attribute number not match with value number")
     test_dargs = dict(list(zip(test_feature_attr, test_feature_valu)))

@@ -95,7 +95,7 @@ def run(test, params, env):
         backup_xml = vmxml.copy()
         logging.info(
             "USB devices within guest before passthrough: %s", lsusb_op_bef)
-        # Edit guest xml to add hostdev entries for diffrent ports
+        # Edit guest xml to add hostdev entries for different ports
         usb_address = {}
         usb_address['bus'] = '0x' + (usb_dev.split())[1]
         usb_address['device'] = '0x' + ((usb_dev.split())[3]).strip(':')

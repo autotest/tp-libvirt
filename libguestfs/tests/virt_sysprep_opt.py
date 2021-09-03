@@ -161,7 +161,7 @@ def run(test, params, env):
         try:
             prepare_action(session)
         except Exception as detail:
-            test.cancel("Enviroment doesn't support this test:%s"
+            test.cancel("Environment doesn't support this test:%s"
                         % str(detail))
         session.close()
         vm.destroy(gracefully=False)
@@ -200,11 +200,11 @@ def run(test, params, env):
                 else:
                     session = vm.wait_for_login()
                 if result_confirm_vm(session):
-                    test.fail("'%s' check falied in guest!"
+                    test.fail("'%s' check failed in guest!"
                               % sysprep_opt)
             else:
                 if result_confirm_host():
-                    test.fail("'%s' check falied in host!"
+                    test.fail("'%s' check failed in host!"
                               % sysprep_opt)
         else:
             try:

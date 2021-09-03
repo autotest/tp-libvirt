@@ -149,7 +149,7 @@ def run(test, params, env):
         cmdline_tmp = process.run("cat -v /proc/%d/cmdline" % pid, shell=True).stdout_text
 
         # Output has a trailing '^@' which gets converted into an empty
-        # element when spliting by '\x20', so strip it on the end.
+        # element when splitting by '\x20', so strip it on the end.
         cmdline = re.sub(r'\^@', ' ', cmdline_tmp).strip(' ')
 
         # Fedora 19 replaces the /usr/bin/qemu-kvm with the string

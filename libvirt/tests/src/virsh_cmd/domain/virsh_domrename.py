@@ -41,7 +41,7 @@ def run(test, params, env):
         if not libvirt_version.version_compare(6, 10, 0):
             status_error = True
 
-    # Replace the varaiables
+    # Replace the variables
     if vm_ref == "name":
         vm_ref = vm_name
     elif vm_ref == "uuid":
@@ -75,7 +75,7 @@ def run(test, params, env):
         ret_clone = utils_libguestfs.virt_clone_cmd(vm_name, vm2_name,
                                                     True, timeout=360)
         if ret_clone.exit_status:
-            test.fail("Error occured when clone a second vm!")
+            test.fail("Error occurred when clone a second vm!")
         vm2 = libvirt_vm.VM(vm2_name, vm.params, vm.root_dir, vm.address_cache)
         virsh.dom_list("--name --all", debug=True)
 

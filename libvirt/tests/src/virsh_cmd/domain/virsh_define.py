@@ -27,7 +27,7 @@ def run(test, params, env):
             test.fail("Rename %s to %s failed:\n%s"
                       % (vm.name, new_name, detail))
 
-        # Exercize the defined XML
+        # Exercise the defined XML
         try:
             vm.start()
         except virt_vm.VMStartError as detail:
@@ -84,7 +84,7 @@ def run(test, params, env):
             # for positive test, undefine the defined vm firstly
             if not ret.exit_status:
                 virsh.undefine(vm_name)
-            # restore the orignal vm
+            # restore the original vm
             virsh.define(xml_backup_file)
         return
 
