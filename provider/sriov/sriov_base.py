@@ -33,18 +33,19 @@ def setup_vf(pf_pci, params):
     return default_vf
 
 
-def recover_vf(pf_pci, params, default_vf=0):
+def recover_vf(pf_pci, params, default_vf=0, timeout=60):
     """
     Recover vf setting
 
     :param pf_pci: The pci of PF
     :param params: the parameters dict
     :param default_vf: The value to be set
+    :param timeout: Timeout in seconds
     """
     pf_pci_path = utils_misc.get_pci_path(pf_pci)
     vf_no = int(params.get("vf_no", "4"))
     if default_vf != vf_no:
-        utils_sriov.set_vf(pf_pci_path, default_vf)
+        utils_sriov.set_vf(pf_pci_path, default_vf, timeout=timeout)
 
 
 def get_ping_dest(vm_session, mac_addr="", restart_network=False):
