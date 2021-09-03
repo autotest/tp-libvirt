@@ -332,8 +332,8 @@ def run(test, params, env):
             """
             Get qemu-guest-agent version in VM
             """
-            vender = vmcheck.get_vm_os_vendor()
-            if vender in ['Ubuntu', 'Debian']:
+            vendor = vmcheck.get_vm_os_vendor()
+            if vendor in ['Ubuntu', 'Debian']:
                 cmd = 'dpkg -l qemu-guest-agent'
             else:
                 cmd = 'rpm -q qemu-guest-agent'

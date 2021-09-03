@@ -190,7 +190,7 @@ def run(test, params, env):
     managedsave = params.get("managedsave", "no") == "yes"
     no_vsock = params.get("no_vsock", "no") == "yes"
     vsock_num = params.get("num")
-    commuication = params.get("communication", "no") == "yes"
+    communication = params.get("communication", "no") == "yes"
 
     # Backup xml file
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -253,7 +253,7 @@ def run(test, params, env):
             cid = vsock_list[0].cid['address']
             if 0 == len(vsock_list):
                 test.fail("No vsock device found in live xml\n")
-            if commuication:
+            if communication:
                 validate_data_transfer_by_vsock()
             if managedsave and not no_vsock:
                 managedsave_restore()

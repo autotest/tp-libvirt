@@ -718,8 +718,8 @@ def run(test, params, env):
             targetbus = params.get("disk_target_bus", "scsi")
             # Add virtio-scsi controller for sd* test
             controller_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-            condict = {'controller_type': targetbus}
-            ctrl = libvirt.create_controller_xml(condict)
+            conduct = {'controller_type': targetbus}
+            ctrl = libvirt.create_controller_xml(conduct)
             libvirt.add_controller(vm.name, ctrl)
             logging.debug("Controller XML is:%s", ctrl)
         # To be compatible with create_disk_xml function,

@@ -841,7 +841,7 @@ class Dom_opterations_nfs(object):
             if self.operation == "save":
                 virsh.save(self.vm_name, self.save_file, debug=True, timeout=self.operation_timeout)
             if self.operation == "domstats":
-                virsh.domstats(self.vm_name, opertions=self.operation_option, debug=True, timeout=self.operation_timeout)
+                virsh.domstats(self.vm_name, operations=self.operation_option, debug=True, timeout=self.operation_timeout)
             if self.operation == "blkdeviotune":
                 virsh.blkdeviotune(self.vm_name, self.disk_tgt, debug=True, timeout=self.operation_timeout)
         self.nfs_res = setup_nfs_disk(self.vm_name)

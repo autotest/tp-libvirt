@@ -261,6 +261,6 @@ def run(test, params, env):
             if not re.search(expect_msg, result.stderr_text.strip()):
                 test.fail("Fail to get expect err msg! "
                           "Expected: {} Actual: {}"
-                          .foramt(expect_msg, result.stderr_text.strip()))
+                          .format(expect_msg, result.stderr_text.strip()))
     finally:
         orig_config_xml.sync()

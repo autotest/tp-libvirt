@@ -209,11 +209,11 @@ def run(test, params, env):
 
         # If the cpus_list has too many cpus, then only test the
         # cpus of the head, middle and tail part
-        lenght = len(cpus_list)
-        if lenght > 30:
+        length = len(cpus_list)
+        if length > 30:
             cpus_list = cpus_list[:10] + \
-                        cpus_list[lenght//2 - 5: lenght//2 + 5] + \
-                        cpus_list[lenght - 10:]
+                        cpus_list[length//2 - 5: length//2 + 5] + \
+                        cpus_list[length - 10:]
             logging.info('Will run test on cpus: %s', cpus_list)
 
         # Control multi domain vcpu affinity
