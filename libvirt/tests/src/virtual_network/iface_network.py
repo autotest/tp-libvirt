@@ -215,6 +215,26 @@ TIMEOUT 3"""
         if not configs.count(config):
             test.fail("Can't find host configuration in file %s" % conf_file)
 
+    def service_is_active(service, br_ip):
+        """
+        Check the service's status by the listening ports
+
+        :param service: dnsmasq provided services, DNS or DHCP
+        :param br_ip: the ip of the linux bridge which dnsmasq attached
+        :return: True or False. If the service is active, return True,
+                else return False;
+        """
+        cmd = "netstat -nlp | grep dnsmasq"
+        outputs = process.run(cmd, shell=True, ignore_status=True).stdout_text
+        logging.debug("The port opened by dnsmasq:\n %s", outputs)
+        dns_port = '%s:53' % br_ip
+        dhcp_port = '0.0.0.0:67'
+        if (service == 'DNS' and dns_port in outputs) or \
+                (service == 'DHCP' and dhcp_port in outputs):
+            return True
+        else:
+            return False
+
     def check_host_routes():
         """
         Check network routes on host
@@ -578,6 +598,8 @@ TIMEOUT 3"""
     dhcp_end_ipv4 = params.get("dhcp_end_ipv4")
     dhcp_start_ipv6 = params.get("dhcp_start_ipv6")
     dhcp_end_ipv6 = params.get("dhcp_end_ipv6")
+    disable_dns = "yes" == params.get("disable_dns", "no")
+    disable_dhcp = "yes" == params.get("disable_dhcp", "no")
     guest_name = params.get("guest_name")
     guest_ipv4 = params.get("guest_ipv4")
     guest_ipv6 = params.get("guest_ipv6")
@@ -674,7 +696,15 @@ TIMEOUT 3"""
             if net_domain:
                 run_dnsmasq_default_test("domain", net_domain, exists=False)
                 run_dnsmasq_default_test("expand-hosts", exists=False)
-
+            if disable_dns:
+                run_dnsmasq_default_test('port', '0', exists=False)
+                run_dnsmasq_default_test('addn-hosts', exists=True)
+            if disable_dhcp:
+                run_dnsmasq_default_test('dhcp-range', exists=True)
+                run_dnsmasq_default_test('dhcp-no-override', exists=True)
+                run_dnsmasq_default_test('dhcp-authoritative', exists=True)
+                run_dnsmasq_default_test('dhcp-lease-max', exists=True)
+                run_dnsmasq_default_test('dhcp-hostsfile', exists=True)
         # Prepare pxe boot directory
         if pxe_boot:
             prepare_pxe_boot()
@@ -897,6 +927,15 @@ TIMEOUT 3"""
                                          name=net_name)
             if guest_name and guest_ipv4:
                 run_dnsmasq_host_test(iface_mac, guest_ipv4, guest_name)
+            if disable_dns:
+                run_dnsmasq_default_test('port', '0')
+                run_dnsmasq_default_test('addn-hosts', exists=False)
+            if disable_dhcp:
+                run_dnsmasq_default_test('dhcp-range', exists=False)
+                run_dnsmasq_default_test('dhcp-no-override', exists=False)
+                run_dnsmasq_default_test('dhcp-authoritative', exists=False)
+                run_dnsmasq_default_test('dhcp-lease-max', exists=False)
+                run_dnsmasq_default_test('dhcp-hostsfile', exists=False)
 
             if test_netmask and libvirt_version.version_compare(5, 1, 0):
                 run_dnsmasq_default_test("dhcp-range", "192.168.122.2,192.168.122.254,255.255.252.0")
@@ -908,21 +947,29 @@ TIMEOUT 3"""
                 run_dnsmasq_default_test("pid-file", "/var/run/libvirt/network/%s.pid" % net_name, name=net_name)
             run_dnsmasq_default_test("except-interface", "lo", name=net_name)
             run_dnsmasq_default_test("bind-dynamic", name=net_name)
-            run_dnsmasq_default_test("dhcp-no-override", name=net_name)
+            if not disable_dhcp:
+                run_dnsmasq_default_test("dhcp-no-override", name=net_name)
             if dhcp_start_ipv6 and dhcp_start_ipv4:
                 run_dnsmasq_default_test("dhcp-lease-max", "493", name=net_name)
-            else:
+            elif not disable_dhcp:
                 range_num = int(params.get("dhcp_range", "252"))
                 run_dnsmasq_default_test("dhcp-lease-max", str(range_num + 1), name=net_name)
-            run_dnsmasq_default_test("dhcp-hostsfile",
-                                     "/var/lib/libvirt/dnsmasq/%s.hostsfile" % net_name,
-                                     name=net_name)
-            run_dnsmasq_default_test("addn-hosts",
-                                     "/var/lib/libvirt/dnsmasq/%s.addnhosts" % net_name,
-                                     name=net_name)
+                run_dnsmasq_default_test("dhcp-hostsfile",
+                                         "/var/lib/libvirt/dnsmasq/%s.hostsfile" % net_name,
+                                         name=net_name)
+            if not disable_dns:
+                run_dnsmasq_default_test("addn-hosts",
+                                         "/var/lib/libvirt/dnsmasq/%s.addnhosts" % net_name,
+                                         name=net_name)
             if dhcp_start_ipv6:
                 run_dnsmasq_default_test("enable-ra", name=net_name)
 
+        if disable_dns:
+            if service_is_active('DNS', net_ip_address):
+                test.fail("DNS is disabled but it is active on the host!")
+        if disable_dhcp:
+            if service_is_active('DHCP', net_ip_address):
+                test.fail("DHCP is disabled but it is active on the host!")
         if test_dns_host:
             if net_dns_txt:
                 dns_txt = ast.literal_eval(net_dns_txt)
