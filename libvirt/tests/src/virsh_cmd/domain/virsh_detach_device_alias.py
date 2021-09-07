@@ -1,8 +1,8 @@
 import uuid
-import time
 import logging
 
 from virttest import virsh
+from virttest import utils_misc
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 from virttest.utils_disk import get_scsi_info
@@ -38,6 +38,18 @@ def run(test, params, env):
     channel_target = eval(params.get("detach_channel_target", "{}"))
 
     device_alias = "ua-" + str(uuid.uuid4())
+
+    def check_detached_xml_noexist():
+        """
+        Check detached xml does not exist in the guest dumpxml
+
+        :return: True if it does not exist, False if still exists
+        """
+        domxml_dt = virsh.dumpxml(vm_name, dump_option).stdout_text.strip()
+        if detach_check_xml not in domxml_dt:
+            return True
+        else:
+            return False
 
     def get_usb_info():
         """
@@ -109,11 +121,13 @@ def run(test, params, env):
             test.error("Can not find %s in domxml after attach" % detach_check_xml)
 
         # Detach xml with alias
-        result = virsh.detach_device_alias(vm_name, device_alias, detach_options, debug=True)
-        time.sleep(10)
+        result = virsh.detach_device_alias(vm_name, device_alias, detach_options,
+                                           wait_remove_event=True, debug=True)
         libvirt.check_exit_status(result)
-        domxml_dt = virsh.dumpxml(vm_name, dump_option, debug=True).stdout.strip()
-        if detach_check_xml in domxml_dt:
+        if not utils_misc.wait_for(check_detached_xml_noexist,
+                                   60,
+                                   step=2,
+                                   text="Repeatedly search guest dumpxml with detached xml"):
             test.fail("Still can find %s in domxml" % detach_check_xml)
     finally:
         backup_xml.sync()
