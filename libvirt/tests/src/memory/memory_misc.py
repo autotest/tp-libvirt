@@ -281,6 +281,95 @@ def run(test, params, env):
                       ' match vmxml, should be %d' % (dimm_device_num + 1))
         libvirt.check_qemu_cmd_line(qemu_check)
 
+    def setup_test_audit_size(case):
+        """
+        Setup vmxml for test
+
+        :param case: test case
+        """
+        vm_attrs = {k.replace('vmxml_', ''): int(v) if v.isdigit() else v
+                    for k, v in params.items() if k.startswith('vmxml_')}
+        cpu_attrs = eval(params.get('cpu_attrs', '{}'))
+        vm_attrs.update({'cpu': cpu_attrs})
+        vmxml.setup_attrs(**vm_attrs)
+        vmxml.sync()
+
+    def run_test_audit_size(case):
+        """
+        Audit memory size with memory hot-plug/unplug operations
+
+        :param case: test case
+        """
+        numa_node_size = int(params.get('numa_node_size'))
+        at_size = int(params.get('at_size'))
+        current_mem = int(params.get('vmxml_current_mem'))
+        audit_cmd = params.get('audit_cmd')
+        dominfo_check_0 = params.get('dominfo_check_0') % (
+            numa_node_size * 2, current_mem)
+        dominfo_check_1 = params.get('dominfo_check_1') % (
+            numa_node_size * 2 + at_size, current_mem + at_size
+        )
+        ausearch_check_1 = params.get('ausearch_check_1') % (
+            0, numa_node_size * 2,
+            numa_node_size * 2, numa_node_size * 2 + at_size
+        )
+        ausearch_check_2 = params.get('ausearch_check_2') % (
+            numa_node_size * 2 + at_size, numa_node_size * 2 + at_size
+        )
+        dominfo_check_3 = dominfo_check_0
+        ausearch_check_3 = params.get('ausearch_check_3') % (
+            numa_node_size * 2 + at_size, numa_node_size * 2
+        )
+
+        # Start vm and wait for vm to bootup
+        vm.start()
+        vm.wait_for_login().close()
+        logging.debug('Vmxml after started:\n%s',
+                      virsh.dumpxml(vm_name).stdout_text)
+
+        # Check dominfo before hotplug mem device
+        dominfo = virsh.dominfo(vm_name, **VIRSH_ARGS)
+        libvirt.check_result(dominfo, expected_match=dominfo_check_0)
+
+        # Prepare dimm memory devices to be attached
+        dimm_devices = []
+        for i in (0, 1):
+            dimm_device = Memory()
+            dimm_device_attrs = eval(
+                params.get('dimm_device_%d_attrs' % i, '{}'))
+            dimm_device.setup_attrs(**dimm_device_attrs)
+            dimm_devices.append(dimm_device)
+
+        def check_dominfo_and_ausearch(dominfo_check, ausearch_check):
+            """
+            Check output of virsh dominfo and ausearch command
+
+            :param dominfo_check: patterns to search in dominfo output
+            :param ausearch_check: patterns to search in ausearch output
+            """
+            if dominfo_check:
+                dominfo = virsh.dominfo(vm_name, **VIRSH_ARGS)
+                libvirt.check_result(dominfo, expected_match=dominfo_check)
+            if ausearch_check:
+                ausearch_result = process.run(audit_cmd,
+                                              verbose=True, shell=True)
+                libvirt.check_result(ausearch_result,
+                                     expected_match=ausearch_check)
+
+        # Hotplug dimm device to guest
+        virsh.attach_device(vm_name, dimm_devices[1].xml, **VIRSH_ARGS)
+        check_dominfo_and_ausearch(dominfo_check_1, ausearch_check_1)
+
+        # Hotplug dimm device with size 0 G, should fail with error message
+        at_result = virsh.attach_device(vm_name, dimm_devices[0].xml,
+                                        debug=True)
+        libvirt.check_result(at_result, error_msg)
+        check_dominfo_and_ausearch(None, ausearch_check_2)
+
+        # HotUnplug the dimm device
+        virsh.detach_device(vm_name, dimm_devices[1].xml, **VIRSH_ARGS)
+        check_dominfo_and_ausearch(dominfo_check_3, ausearch_check_3)
+
     # Variable assignment
     group = params.get('group', 'default')
     case = params.get('case', '')
