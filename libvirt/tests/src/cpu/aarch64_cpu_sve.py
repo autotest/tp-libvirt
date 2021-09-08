@@ -7,6 +7,7 @@ from avocado.core import exceptions
 from virttest import virsh
 from virttest import utils_package
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml import LibvirtXMLError
 from virttest.utils_test import libvirt
 
 
@@ -29,9 +30,11 @@ def run(test, params, env):
     cpu_xml_policy = params.get("cpu_xml_policy", "require")
 
     status_error = "yes" == params.get("status_error", "no")
+    define_error = "yes" == params.get("define_error", "no")
     expect_sve = "yes" == params.get("expect_sve", "yes")
     expect_msg = params.get("expect_msg", "")
     vector_length = params.get("vector_length", "sve")
+    vector_lenth_list = params.get("vector_lenth_list", "")
 
     def _prepare_env(vm):
         """
@@ -50,8 +53,8 @@ def run(test, params, env):
                     or not utils_package.package_install("util-linux", session)):
                 test.error("Failed to install util-linux")
             # Cancel test if host doesn't support SVE
-            if not process.run(check_sve,
-                               ignore_status=True, shell=True).exit_status:
+            if process.run(check_sve,
+                           ignore_status=True, shell=True).exit_status:
                 test.cancel("Host doesn't support SVE")
             # To enable SVE: Hardware support && enable kconfig
             # CONFIG_ARM64_SVE
@@ -129,13 +132,28 @@ def run(test, params, env):
         cpu_xml.mode = cpu_xml_mode
         # For sve, each SVE vector_length is a feature name
         # E.g. sve128 sve256 sve512
-        cpu_xml.add_feature(vector_length, cpu_xml_policy)
+        if vector_lenth_list:
+            vector_list = eval(vector_lenth_list)
+            for vector in vector_list:
+                for length, policy in vector.items():
+                    cpu_xml.add_feature(length, policy)
+        else:
+            cpu_xml.add_feature(vector_length, cpu_xml_policy)
+
         logging.debug("cpu_xml is %s" % cpu_xml)
 
         # Updae vm's cpu
         vmxml.cpu = cpu_xml
-        vmxml.sync()
-        logging.debug("vmxml is %s" % vmxml)
+        try:
+            vmxml.sync()
+            logging.debug("vmxml is %s" % vmxml)
+        except LibvirtXMLError as e:
+            if define_error:
+                if not re.search(expect_msg, str(e)):
+                    test.fail("Expect definition failure: %s but got %s" % (expect_msg, str(e)))
+                return True
+            else:
+                test.error("Failed to define guest: %s" % str(e))
 
         result = virsh.start(vm_name)
         libvirt.check_exit_status(result, status_error)
