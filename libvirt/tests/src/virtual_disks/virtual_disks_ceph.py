@@ -866,7 +866,8 @@ def run(test, params, env):
                 disk_cmd = ("rbd -m %s %s create %s --size 400M 2> /dev/null"
                             % (mon_host, key_opt, disk_src_name))
                 process.run(disk_cmd, ignore_status=False, shell=True)
-                slice_dict = {"slice_type": "storage", "slice_offset": "12345", "slice_size": "105185280"}
+                slice_dict = {"slice_type": "storage", "slice_offset": "12345",
+                              "slice_size": "52428800"}
                 params.update({"disk_slice": slice_dict})
                 logging.debug('create one volume on ceph backend storage for slice testing')
             # Create one file on VM before doing blockcopy
