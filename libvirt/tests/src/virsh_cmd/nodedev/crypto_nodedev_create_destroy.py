@@ -104,6 +104,13 @@ def run(test, params, env):
     5. Destroy the mdev
     6. Confirm the mdev was destroyed successfully
 
+    NOTE: It can take a while after loading vfio_ap for the
+          matrix device to become available due to current
+          performance issues with the API if there are several
+          mdev definitions already available. The test supposes
+          no other mdev devices have been defined yet in order
+          to avoid complexity in the test code.
+
     :param test: test object
     :param params: Dict with test parameters
     :param env: Dict with the test environment
