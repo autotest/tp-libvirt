@@ -779,11 +779,6 @@ def run(test, params, env):
         if checkpoint == 'serial_terminal':
             grub_serial_terminal()
             check_boot()
-        if checkpoint == 'no_space':
-            @vm_shell
-            def take_space(**kwargs):
-                create_large_file(kwargs['session'], 20)
-            take_space()
         if checkpoint.startswith('host_no_space'):
             session = aexpect.ShellSession('sh')
             create_large_file(session, 1000)
