@@ -10,6 +10,8 @@ from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.memory import Memory
 from virttest.utils_test import libvirt
 
+VIRSH_ARGS = {'debug': True, 'ignore_status': False}
+
 
 def run(test, params, env):
     """
@@ -233,6 +235,52 @@ def run(test, params, env):
                 else:
                     test.fail('Xml comparision of %s failed.', attr)
 
+    def run_test_dimm(case):
+        """
+        Multi-operation for dimm devices
+
+        :param case: test case
+        """
+        vm_attrs = eval(params.get('vm_attrs', '{}'))
+        vmxml.setup_attrs(**vm_attrs)
+
+        # Start a guest with 3 dimm device
+        dimm_devices_attrs = [eval(v) for k, v in params.items()
+                              if k.startswith('dimm_device_')]
+        for attrs in dimm_devices_attrs:
+            dimm_device = Memory()
+            dimm_device.setup_attrs(**attrs)
+            logging.debug(dimm_device)
+            vmxml.add_device(dimm_device)
+
+        vmxml.sync()
+        logging.debug(virsh.dumpxml(vm_name).stdout_text)
+        vm.start()
+        # Check qemu cmd line for amount of dimm device
+        dimm_device_num = len(dimm_devices_attrs)
+        qemu_cmd = 'pgrep -a qemu'
+        qemu_cmd_output = process.run(qemu_cmd, verbose=True).stdout_text
+        if qemu_cmd_output.count('-device pc-dimm') != dimm_device_num:
+            test.fail('The amount of dimm device in qemu command line does not'
+                      ' match vmxml, should be %d' % dimm_device_num)
+
+        # Attach a mem device
+        at_dimm_device_attrs = eval(params.get('at_dimm_device'))
+        at_dim_device = Memory()
+        at_dim_device.setup_attrs(**at_dimm_device_attrs)
+        virsh.attach_device(vm_name, at_dim_device.xml, **VIRSH_ARGS)
+
+        # Managedsave guest and restore
+        virsh.managedsave(vm_name, **VIRSH_ARGS)
+        virsh.start(vm_name, **VIRSH_ARGS)
+
+        # Check qemu cmd line for attached dimm device
+        new_qemu_cmd_output = process.run(qemu_cmd, verbose=True).stdout_text
+        if new_qemu_cmd_output.count('-device pc-dimm') != dimm_device_num + 1:
+            test.fail('The amount of dimm device in qemu command line does not'
+                      ' match vmxml, should be %d' % (dimm_device_num + 1))
+        libvirt.check_qemu_cmd_line(qemu_check)
+
     # Variable assignment
     group = params.get('group', 'default')
     case = params.get('case', '')
@@ -244,6 +292,7 @@ def run(test, params, env):
     status_error = "yes" == params.get('status_error', 'no')
     error_msg = params.get('error_msg', '')
     expect_msg = params.get('expect_msg', '')
+    qemu_check = params.get('qemu_check')
     bkxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
 
