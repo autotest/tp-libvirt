@@ -100,10 +100,20 @@ nbdkit -rfv -U - --exportname / \
             nbdkit_cmd = nbdkit_cmd.strip()[:-2] + vddk_thumbprint
             logging.info('nbdkit command:\n%s', nbdkit_cmd)
 
-            # Run the finnal nbdkit command
+            if checkpoint == 'vddk_stats':
+                vddk_stats = params_get(params, "vddk_stats")
+                nbdkit_cmd = nbdkit_cmd + ' -D vddk.stats=%s' % vddk_stats
+                logging.info('nbdkit command with -D option:\n%s', nbdkit_cmd)
+
+            # Run the final nbdkit command
             output = process.run(nbdkit_cmd, shell=True).stdout_text
             utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
-            if not re.search(r'virtual size', output):
+            if checkpoint == 'vddk_stats':
+                if vddk_stats == 1 and not re.search(r'VDDK function stats', output):
+                    test.fail('failed to test vddk_stats')
+                if vddk_stats == 0 and re.search(r'VDDK function stats', output):
+                    test.fail('failed to test vddk_stats')
+            if checkpoint == 'has_run_againt_vddk7_0' and not re.search(r'virtual size', output):
                 test.fail('failed to test has_run_againt_vddk7_0')
 
     def test_memory_max_disk_size():
@@ -134,7 +144,7 @@ nbdkit -rfv -U - --exportname / \
 
     if checkpoint == 'filter_stats_fd_leak':
         test_filter_stats_fd_leak()
-    elif checkpoint == 'has_run_againt_vddk7_0':
+    elif checkpoint in ['has_run_againt_vddk7_0', 'vddk_stats']:
         test_has_run_againt_vddk7_0()
     elif checkpoint == 'memory_max_disk_size':
         test_memory_max_disk_size()
