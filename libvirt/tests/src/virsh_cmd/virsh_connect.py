@@ -223,7 +223,7 @@ def run(test, params, env):
             logging.debug("actual uri after connect is: %s", uri)
             if not uri == connect_uri:
                 test.fail("Command exit normally but the uri is "
-                          "not setted as expected.")
+                          "not set as expected.")
         except process.CmdError as detail:
             if status_error == "no":
                 test.fail("Connect failed in the case expected"

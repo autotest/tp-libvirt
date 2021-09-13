@@ -153,7 +153,7 @@ def run(test, params, env):
                     virsh.start(vm_name, debug=True, ignore_status=False)
                 except Exception as e:
                     test.fail('Start vm failed: %s' % str(e))
-            # Check guest following the checkpoint document after convertion
+            # Check guest following the checkpoint document after conversion
             if params.get('skip_vm_check') != 'yes':
                 if checkpoint != 'win2008r2_ostk':
                     ret = vmchecker.run()

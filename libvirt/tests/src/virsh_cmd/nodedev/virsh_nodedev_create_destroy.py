@@ -122,7 +122,7 @@ def create_nodedev_from_xml(test, params):
                                   unprivileged_user=unprivileged_user)
     status = result.exit_status
 
-    # Remove temprorary file
+    # Remove temporary file
     os.unlink(device_file)
 
     # Check status_error

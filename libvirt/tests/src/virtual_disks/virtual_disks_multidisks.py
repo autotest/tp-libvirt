@@ -1704,7 +1704,7 @@ def run(test, params, env):
                 test.fail("Test disk block size in VM failed")
 
         if test_disk_option_cmd:
-            # Check if disk options take affect in qemu commmand line.
+            # Check if disk options take affect in qemu command line.
             cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
             logging.debug("VM cmdline: %s", process.system_output(cmd, shell=True))
             if test_with_boot_disk:
@@ -2043,7 +2043,7 @@ def run(test, params, env):
     finally:
         # Delete snapshots.
         if virsh.domain_exists(vm_name):
-            #To Delet snapshot, destroy vm first.
+            #To Delete snapshot, destroy vm first.
             if vm.is_alive():
                 vm.destroy()
             libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)

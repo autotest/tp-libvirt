@@ -452,7 +452,7 @@ def run(test, params, env):
 
         :param nic_num: number of nic card bond to numa node
         :param controller_index: index num used to create controllers
-        :param ctl_models: contoller topo for numa bond
+        :param ctl_models: controller topo for numa bond
         """
         index = controller_index
         if nic_num == 2:

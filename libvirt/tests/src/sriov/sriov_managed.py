@@ -142,7 +142,7 @@ def run(test, params, env):
         run_test()
 
     finally:
-        logging.info("Recover test enviroment.")
+        logging.info("Recover test environment.")
         sriov_base.recover_vf(pf_pci, params, default_vf)
         if vm.is_alive():
             vm.destroy(gracefully=False)

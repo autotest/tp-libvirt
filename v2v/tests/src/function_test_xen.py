@@ -149,7 +149,7 @@ def run(test, params, env):
                     virsh.start(vm_name, debug=True, ignore_status=False)
                 except Exception as e:
                     test.fail('Start vm failed: %s' % str(e))
-            # Check guest following the checkpoint document after convertion
+            # Check guest following the checkpoint document after conversion
             logging.info('Checking common checkpoints for v2v')
             if params.get('skip_vm_check') != 'yes':
                 ret = vmchecker.run()
@@ -420,7 +420,7 @@ def run(test, params, env):
             session.cmd('rm -f /etc/ssh/ssh_banner')
             session.cmd('service sshd restart')
         # Restore crypto-policies to DEFAULT, the setting is impossible to be
-        # other values by default in testing envrionment.
+        # other values by default in testing environment.
         process.run(
             'update-crypto-policies --set DEFAULT',
             verbose=True,

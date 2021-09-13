@@ -172,7 +172,7 @@ def run(test, params, env):
     disk_format = params.get("disk_format", "qcow2")
     device_bus = params.get("device_bus", "virtio")
 
-    # blockcopy,snapshot,blockcommit related paremeter
+    # blockcopy,snapshot,blockcommit related parameter
     max_cache_size = params.get("max_cache_size", "10")
     max_blockcopy_size = params.get("mirror_max_cache_size", "1000")
     max_snapshot_size = params.get("snapshot_max_cache_size", "100")

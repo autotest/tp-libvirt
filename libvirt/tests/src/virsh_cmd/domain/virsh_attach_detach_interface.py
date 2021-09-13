@@ -101,7 +101,7 @@ def login_to_check(vm, checked_mac):
 
 def format_param(iface_dict):
     """
-    Change the param formate to interface class mapping data
+    Change the param format to interface class mapping data
 
     :param iface_dict: interface properties
     """
@@ -466,7 +466,7 @@ def run(test, params, env):
             logging.info("cmd output is %s", cmd_result)
             check_patten = ("%s@%s.*\n.*%s.*\n.*macvtap.*mode.*%s"
                             % (iface_target, iface_source, iface_mac, iface_mode))
-            logging.info("check patten is %s", check_patten)
+            logging.info("check pattern is %s", check_patten)
             if not re.search(check_patten, cmd_result):
                 logging.error("Can not find %s in ip link" % check_patten)
                 fail_flag = 1

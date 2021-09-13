@@ -36,8 +36,8 @@ def run(test, params, env):
     def set_env():
         """
         prepare the vm interface xml
-        this xml can both use in two senario.
-        but little different for two senario
+        this xml can both use in two scenario.
+        but little different for two scenario
         """
         vmxml = libvirt_xml.VMXML.new_from_inactive_dumpxml(vm_name)
         iface_xml = vmxml.get_devices('interface')[0]
@@ -100,7 +100,7 @@ def run(test, params, env):
             check_binding_port(ret, filter_name, is_match=True)
 
         ret_create = virsh.nwfilter_binding_create(binding.xml, debug=True)
-        # two Senario
+        # two Scenario
         if is_nwfilter_define:
             utlv.check_result(ret_create, failed_msg)
 

@@ -118,7 +118,7 @@ def check_dominfo(test, vm_name, deprecated_list, empty=False):
         if empty:
             logging.debug("No Messages are found in dominfo output as expected.")
         else:
-            test.fail("There is no tainted deprecated messsage: {} in dominfo "
+            test.fail("There is no tainted deprecated message: {} in dominfo "
                       "output: {}".format(tainted_message, res.stdout_text))
     else:
         if empty:

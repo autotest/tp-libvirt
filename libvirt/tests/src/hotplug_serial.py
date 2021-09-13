@@ -152,7 +152,7 @@ def run(test, params, env):
         result = virsh.qemu_monitor_command(vm_name, "info qtree", "--hmp")
         h_o = result.stdout.strip()
         if not h_o.count("name = \"%s\"" % char_dev):
-            test.fail("Cann't find device(%s) from:\n%s" % (char_dev, h_o))
+            test.fail("Can't find device(%s) from:\n%s" % (char_dev, h_o))
         if char_dev == "file":
             session.cmd("echo test > %s" % serial_file)
             with open(tmp_file, "r") as f:

@@ -496,7 +496,7 @@ def run(test, params, env):
         # DIGEST-MD5 to GSSAPI. "sasl_user" is discarded.
         # More details: https://libvirt.org/auth.html#ACL_server_kerberos
         if sasl_user_pwd and sasl_type in ['digest-md5', 'plain']:
-            # covert string tuple and list to python data type
+            # convert string tuple and list to python data type
             sasl_user_pwd = eval(sasl_user_pwd)
             if sasl_allowed_users:
                 sasl_allowed_users = eval(sasl_allowed_users)

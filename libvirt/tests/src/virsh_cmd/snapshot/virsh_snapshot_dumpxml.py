@@ -27,7 +27,7 @@ def get_snap_createtime(vm_name, snap_name):
 def snapshot_dumpxml_check(test, output, opt_dict):
     """
     Check the snapshot dumpxml info, including
-    1. snaphot name
+    1. snapshot name
     2. description
     3. createTime
     4. domstate

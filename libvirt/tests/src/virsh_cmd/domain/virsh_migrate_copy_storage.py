@@ -21,7 +21,7 @@ def create_destroy_pool_on_remote(test, action, params):
     """
     This is to create or destroy a specified pool on remote.
 
-    :param action: "create" or "destory"
+    :param action: "create" or "destroy"
     :type str
     :param params: a dict for parameters
     :type dict

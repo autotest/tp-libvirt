@@ -188,7 +188,7 @@ def run(test, params, env):
         run_test()
 
     finally:
-        logging.info("Recover test enviroment.")
+        logging.info("Recover test environment.")
         if vm.is_alive():
             vm.destroy(gracefully=False)
         orig_config_xml.sync()

@@ -93,7 +93,7 @@ def run(test, params, env):
                 vendor_id, product_id = line.split()[5].split(':')
             if not (vendor_id and product_id):
                 test.fail("vendor/product id is not available")
-            # filter out the remaining usb hub devcie not catched above
+            # filter out the remaining usb hub device not caught above
             cmd = "lsusb -v -d {}:{}".format(vendor_id, product_id)
             if session:
                 output = session.get_command_output(cmd)
@@ -143,7 +143,6 @@ def run(test, params, env):
                   (src_guest['product'], output))
 
     def usb_device_check(session, src_host):
-
         """
         check usb devices passed from host with xml file, output of lsusb, and
         usb storage disk.

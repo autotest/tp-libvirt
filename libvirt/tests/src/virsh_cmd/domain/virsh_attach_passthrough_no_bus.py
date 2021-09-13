@@ -10,7 +10,7 @@ from virttest import libvirt_version
 
 def run(test, params, env):
     """
-    Test the virtio bus autommated assignement for passthrough devices
+    Test the virtio bus autommated assignment for passthrough devices
 
     1. prepare a passthrough device xml without bus defined
     2. start the guest and check if the device can be attached

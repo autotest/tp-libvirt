@@ -111,7 +111,7 @@ def run(test, params, env):
         else:
             logging.debug("Not find pool %s in pool list.", pool_name)
         if expect_error and found:
-            test.fail("Unexpect pool '%s' exist." % pool_name)
+            test.fail("Unexpected pool '%s' exist." % pool_name)
         if not expect_error and not found:
             test.fail("Expect pool '%s' doesn't exist." % pool_name)
 
@@ -263,7 +263,7 @@ def run(test, params, env):
         utlv.check_exit_status(result, status_error)
         if not result.exit_status:
             # Step (6)
-            # Buid pool
+            # Build pool
             # '--overwrite/--no-overwrite' just for fs/disk/logiacl type pool
             # disk/fs pool: as prepare step already make label and create filesystem
             #               for the disk, use '--overwrite' is necessary

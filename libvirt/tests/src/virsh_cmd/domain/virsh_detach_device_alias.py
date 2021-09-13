@@ -55,7 +55,7 @@ def run(test, params, env):
         """
         Get local host usb info
 
-        :return: usb verndor and product id
+        :return: usb vendor and product id
         """
         install_cmd = process.run("yum install usbutils* -y", shell=True)
         result = process.run("lsusb|awk '{print $6\":\"$2\":\"$4}'", shell=True)

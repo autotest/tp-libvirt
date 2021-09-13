@@ -99,7 +99,7 @@ def run(test, params, env):
 
         # iSCSI and SCSI type pool can't create vols via virsh
         if dest_pool_type in ["iscsi", "scsi"]:
-            test.fail("Unsupport create vol for %s type pool"
+            test.fail("Unsupported create vol for %s type pool"
                       % dest_pool_type)
         # Metadata preallocation is not supported for block volumes
         if dest_pool_type in ["disk", "logical"]:

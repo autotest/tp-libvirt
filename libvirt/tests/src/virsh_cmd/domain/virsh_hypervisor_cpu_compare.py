@@ -193,7 +193,7 @@ def run(test, params, env):
             test.fail("Expect success but got:\n%s" % result.stderr)
 
         if msg_pattern:
-            logging.debug("Expect key word in comand output: %s", msg_pattern)
+            logging.debug("Expect key word in command output: %s", msg_pattern)
             output = result.stdout.strip()
             if not output:
                 output = result.stderr.strip()

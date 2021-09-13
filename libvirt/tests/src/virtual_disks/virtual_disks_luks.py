@@ -47,7 +47,7 @@ def run(test, params, env):
         """
         Encrypt device with luks format
 
-        :param device: Storage deivce to be encrypted.
+        :param device: Storage device to be encrypted.
         :param params: From the dict to get encryption password.
         """
         password = params.get("luks_encrypt_passwd", "password")
@@ -66,7 +66,7 @@ def run(test, params, env):
         """
         Check if device is in luks format
 
-        :param device: Storage deivce to be checked.
+        :param device: Storage device to be checked.
         :param fmt: Expected disk format.
         :return: If device's format equals to fmt, return True, else return False.
         """
@@ -232,7 +232,7 @@ def run(test, params, env):
             not libvirt_version.version_compare(3, 9, 0)):
         test.cancel("Cannot put <encryption> or <auth> inside disk <source> "
                     "in this libvirt version.")
-    # Start VM and get all partions in VM.
+    # Start VM and get all partitions in VM.
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()

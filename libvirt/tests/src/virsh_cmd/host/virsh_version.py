@@ -47,4 +47,4 @@ def run(test, params, env):
             test.fail("Command 'virsh version %s' failed "
                       "(correct command)" % option)
         if option.count("daemon") and not result.stdout.count("daemon"):
-            test.fail("No daemon information outputed!")
+            test.fail("No daemon information outputted!")

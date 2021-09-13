@@ -134,7 +134,7 @@ def run(test, params, env):
         utils_misc.wait_for(
             lambda: utils_npiv.is_vhbas_added(old_vhbas), timeout=_DELAY_TIME*2)
         if not new_vhba:
-            raise exceptions.TestFail("vHBA not sucessfully generated.")
+            raise exceptions.TestFail("vHBA not successfully generated.")
         new_vhbas.append(new_vhba)
         utils_misc.wait_for(
             lambda: utils_npiv.is_mpath_devs_added(old_mpath_devs),
@@ -168,7 +168,7 @@ def run(test, params, env):
         utils_misc.wait_for(
             lambda: utils_npiv.is_vhbas_added(old_vhbas), timeout=_DELAY_TIME*2)
         if not new_vhba:
-            raise exceptions.TestFail("vHBA not sucessfully generated.")
+            raise exceptions.TestFail("vHBA not successfully generated.")
         new_vhbas.append(new_vhba)
         utils_misc.wait_for(
             lambda: utils_npiv.is_mpath_devs_added(old_mpath_devs),

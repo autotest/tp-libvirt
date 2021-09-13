@@ -20,11 +20,11 @@ def run(test, params, env):
     Test the pull-mode backup function
 
     Steps:
-    1. craete a vm with extra disk vdb
+    1. create a vm with extra disk vdb
     2. create some data on vdb
     3. start a pull mode full backup on vdb
     4. monitor block-threshold event on scratch file/dev
-    5. create some data on vdb's same postion as step 2 to trigger event
+    5. create some data on vdb's same position as step 2 to trigger event
     6. check the block-threshold event captured
     """
 

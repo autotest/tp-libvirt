@@ -241,7 +241,7 @@ def run(test, params, env):
                 lambda: utils_npiv.is_vhbas_added(old_vhbas),
                 timeout=_TIMEOUT*2)
             if not new_vhba:
-                raise exceptions.TestFail("vHBA not sucessfully generated.")
+                raise exceptions.TestFail("vHBA not successfully generated.")
             new_vhbas.append(new_vhba)
             if vd_format == "mpath":
                 utils_misc.wait_for(
@@ -289,7 +289,7 @@ def run(test, params, env):
                 raise exceptions.TestFail("Fail to create qcow2 on blk dev: %s",
                                           detail)
         else:
-            raise exceptions.TestFail("Don't have a vaild path to blk dev.")
+            raise exceptions.TestFail("Don't have a valid path to blk dev.")
 
         # prepare disk xml
         if "vol" in vd_format:

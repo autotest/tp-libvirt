@@ -162,7 +162,7 @@ def run(test, params, env):
 
     # Do nodedev detach and reattach success.
     if status_error:
-        test.fail('Test successed in negative case.')
+        test.fail('Test succeeded in negative case.')
 
     # reload the device driver
     if not with_driver:

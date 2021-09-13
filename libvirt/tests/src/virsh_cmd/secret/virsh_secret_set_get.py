@@ -81,7 +81,7 @@ def create_secret_volume(test, params):
     result = virsh.secret_define(sec_file)
     status = result.exit_status
 
-    # Remove temprorary file
+    # Remove temporary file
     os.unlink(sec_file)
 
     if status:

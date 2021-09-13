@@ -111,7 +111,7 @@ def run(test, params, env):
             test.fail("Expected fail in negative cases but vm started successfully.")
             return
 
-        logging.debug("VM started successfully in postive cases.")
+        logging.debug("VM started successfully in positive cases.")
         check_dumpxml()
         check_qemu_cmd_line()
     finally:

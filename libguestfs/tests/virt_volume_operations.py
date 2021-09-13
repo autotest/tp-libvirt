@@ -136,7 +136,7 @@ def test_created_volume(test, vm, params):
         test.fail("Get md5 value failed.")
 
     if not utils_misc.umount("", mountpoint, ""):
-        test.fail("Unmount vm's filesytem failed.")
+        test.fail("Unmount vm's filesystem failed.")
     logging.info("Unmount vm's filesystem successfully.")
 
     attached_vm = vt.newvm

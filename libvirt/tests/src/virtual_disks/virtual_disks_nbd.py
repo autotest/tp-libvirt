@@ -166,7 +166,7 @@ def run(test, params, env):
     # Initialize one NbdExport object
     nbd = None
 
-    # Start VM and get all partions in VM.
+    # Start VM and get all partitions in VM.
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()

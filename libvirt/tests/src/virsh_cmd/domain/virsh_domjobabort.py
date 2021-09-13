@@ -164,7 +164,7 @@ def run(test, params, env):
         try:
             os.unlink(tmp_file)
         except OSError as detail:
-            logging.info("Cant' remove %s: %s", tmp_file, detail)
+            logging.info("Can't remove %s: %s", tmp_file, detail)
 
     # Recover the environment.
     if pre_vm_state == "suspend":

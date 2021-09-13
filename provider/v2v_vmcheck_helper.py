@@ -34,11 +34,11 @@ def compare_version(compare_version, real_version=None, cmd=None):
     """
     Compare version against given version.
 
-    :param compare_version: The minumum version to be compared
+    :param compare_version: The minimum version to be compared
     :param real_version: The real version to compare
     :param cmd: the command to get the real version
 
-    :return: If the real_version is greater equal than minumum version,
+    :return: If the real_version is greater equal than minimum version,
             return True, others return False
     """
     if not real_version:
@@ -174,8 +174,8 @@ class VMChecker(object):
         """
         Initialize the self.vmxml.
 
-        The self.vmxml could be empty untill VMChecker.run begins.
-        It's not neccessary to get the xml if you don't need to check it or the
+        The self.vmxml could be empty until VMChecker.run begins.
+        It's not necessary to get the xml if you don't need to check it or the
         env is not ready to get the xml.
 
         e.g. When the VM is in a rhv host, the dumpxml will not success unless
@@ -218,17 +218,17 @@ class VMChecker(object):
                 self.checker.session = None
                 self.check_windows_vm()
         else:
-            logging.warn("Unspported os type: %s", self.os_type)
+            logging.warn("Unsupported os type: %s", self.os_type)
         return self.errors
 
     def get_expect_graphic_type(self):
         """
         The graphic type in VM XML is different for different target.
         """
-        # 'ori_graphic' only can be set when hypervior is KVM. For Xen and
+        # 'ori_graphic' only can be set when hypervisor is KVM. For Xen and
         # Esx, it will always be 'None' and 'vnc' will be set by default.
         graphic_type = self.params.get('ori_graphic', 'vnc')
-        # Video modle will change to QXL if convert target is ovirt/RHEVM
+        # Video model will change to QXL if convert target is ovirt/RHEVM
         if self.target == 'ovirt':
             graphic_type = 'spice'
         return graphic_type
@@ -304,13 +304,13 @@ class VMChecker(object):
             return video_model
 
         def _when_target_ovirt():
-            # Video modle will change to QXL if convert target is ovirt/RHEVM
+            # Video model will change to QXL if convert target is ovirt/RHEVM
             return 'qxl'
 
         # Default value
         video_model = 'cirrus'
         has_virtio_win, has_qxldod = self.get_virtio_win_config()
-        # Video modle will change to QXL if convert target is ovirt/RHEVM
+        # Video model will change to QXL if convert target is ovirt/RHEVM
         if self.target == 'ovirt':
             video_model = _when_target_ovirt()
         # Video model will change to QXL for Windows2008r2 and windows7
@@ -459,7 +459,7 @@ class VMChecker(object):
 
         # '<libosinfo:os id' was changed to '<ns0:os id' after calling
         # vm_xml.VMXML.new_from_inactive_dumpxml.
-        # It's problably a problem in vm_xml.
+        # It's probably a problem in vm_xml.
         # <TODO>  Fix it
         #libosinfo_pattern = r'<libosinfo:os id="%s"/>' % long_id
         # A temp workaround for above problem
@@ -474,7 +474,7 @@ class VMChecker(object):
         Check expected video module on VM
         :param video_type: the expected video type
         :param dev_id: the ID of the video device
-        :return: log error will be recored if not found, else return nothing
+        :return: log error will be recorded if not found, else return nothing
         """
         # Check by 'lspci' or 'lshw' or 'hwinfo --gfxcard'
         cmd = ["lspci", "lshw", "hwinfo --gfxcard"]
@@ -616,7 +616,7 @@ class VMChecker(object):
         Only for RHEL VMs(RHEL4 or later)
         """
         self.checker.create_session()
-        # Check OS vender and distribution
+        # Check OS vendor and distribution
         logging.info("Checking VM os info")
         os_info = self.checker.get_vm_os_info()
         os_vendor = self.checker.get_vm_os_vendor()
@@ -739,7 +739,7 @@ class VMChecker(object):
         expect_video = self.get_expect_video_model()
         has_virtio_win, has_qxldod = self.get_virtio_win_config()
         expect_drivers = ["Red Hat VirtIO SCSI",
-                          "Red Hat VirtIO Ethernet Adapte"]
+                          "Red Hat VirtIO Ethernet Adapter"]
         expect_adapter = 'Microsoft Basic Display Driver'
         virtio_win_qxl_os = ['win2008r2', 'win7']
         virtio_win_qxldod_os = ['win10', 'win2016', 'win2019']
@@ -754,7 +754,7 @@ class VMChecker(object):
         for check_times in range(10):
             logging.info('Check drivers for the %dth time', check_times + 1)
             # Windows VM may reboot after drivers are installed, a fresh
-            # session should be created to avoid using inavlid session.
+            # session should be created to avoid using invalid session.
             self.checker.session.close()
             self.checker.session = None
             self.checker.create_session(timeout=900)

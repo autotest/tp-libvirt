@@ -36,7 +36,7 @@ def run(test, params, env):
         if not vm.is_alive():
             vm.start()
 
-        # Firstly, freeze all filesytems
+        # Firstly, freeze all filesystems
         if not no_freeze:
             # Add channel device for qemu-ga
             vm.prepare_guest_agent()

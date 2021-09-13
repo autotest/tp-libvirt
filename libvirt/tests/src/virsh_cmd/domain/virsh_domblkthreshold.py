@@ -532,7 +532,7 @@ def run(test, params, env):
             if mirror_mode_blockcopy:
                 if not libvirt_version.version_compare(6, 6, 0):
                     test.cancel("Set threshold for disk mirroring feature is not supported on current version")
-                # Do transient blockcopy in backgroud.
+                # Do transient blockcopy in background.
                 blockcopy_options = "--transient-job "
                 # Do cleanup
                 if os.path.exists(dest_path):

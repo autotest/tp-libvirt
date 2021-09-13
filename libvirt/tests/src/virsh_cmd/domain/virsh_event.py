@@ -422,7 +422,7 @@ def run(test, params, env):
                         remote.handle_prompts(session, None, None, r"[\#\$]\s*$",
                                               debug=True, timeout=60)
                     except Exception as e:
-                        test.error("Error occured: %s" % e)
+                        test.error("Error occurred: %s" % e)
                     session.close()
                     # Check metadata after edit
                     virsh.metadata(dom.name,

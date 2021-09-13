@@ -113,7 +113,7 @@ def run(test, params, env):
                     if "--redefine-validate" in extra_flag:
                         if not libvirt_version.version_compare(6, 6, 0):
                             test.cancel("--redefine-validate not supported in "
-                                        "current libvirt versoin.")
+                                        "current libvirt version.")
                         if not image_with_bitmap:
                             status_error = True
                             # replace vdb's image with a new qcow2 file to make sure
@@ -148,7 +148,7 @@ def run(test, params, env):
                     not re.search("children.*1", stdout, re.IGNORECASE) or
                     not re.search("descendants.*1", stdout, re.IGNORECASE)
                ):
-                test.fail("checkpoint-info return inaccurate informaion: %s" % stdout)
+                test.fail("checkpoint-info return inaccurate information: %s" % stdout)
         elif checkpoint_cmd == "checkpoint-list":
             logic_error = False
             if not cmd_flag:

@@ -110,7 +110,7 @@ def run(test, params, env):
     status_error = bool("yes" == params.get("status_error", "no"))
     timeout = params.get("lvsb_network_timeout", 5)
 
-    # list of sandbox agregation managers
+    # list of sandbox aggregation managers
     sb_list = make_sandboxes(params, env)
     if not sb_list:
         test.fail("Failed to return list of instantiated "

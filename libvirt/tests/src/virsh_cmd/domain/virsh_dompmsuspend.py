@@ -119,7 +119,7 @@ def run(test, params, env):
         # Selinux should be enforcing
         vm.setenforce(1)
 
-        # Create swap partition/file if nessesary.
+        # Create swap partition/file if necessary.
         need_mkswap = False
         if suspend_target in ['disk', 'hybrid']:
             need_mkswap = not vm.has_swap()

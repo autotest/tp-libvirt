@@ -154,5 +154,5 @@ def run(test, params, env):
         if libvirtd_conf_in_vm:
             del libvirtd_conf_in_vm
 
-        logging.info("Recover VM XML configration")
+        logging.info("Recover VM XML configuration")
         vmxml_backup.sync()

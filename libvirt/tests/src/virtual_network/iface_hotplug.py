@@ -15,7 +15,7 @@ from avocado.utils import process
 
 def run(test, params, env):
     """
-    Test interafce xml options.
+    Test interface xml options.
 
     1.Prepare test environment,destroy or suspend a VM.
     2.Edit xml and start the domain.

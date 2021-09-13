@@ -89,7 +89,7 @@ def run(test, params, env):
             base context
        1.2) dynamically allocate an SELinux label, using the base context
             USER:ROLE:TYPE:LEVEL, instead of the default base context
-       1.3) staticly allocate an SELinux label, using the selinux context
+       1.3) statically allocate an SELinux label, using the selinux context
             USER:ROLE:TYPE:LEVEL
     2) Negative testing
        2.1) invalid security option
@@ -97,7 +97,7 @@ def run(test, params, env):
        2.3) invalid static selinux context
     """
     status_error = bool("yes" == params.get("status_error", "no"))
-    # list of sandbox agregation managers
+    # list of sandbox aggregation managers
     sb_list = make_sandboxes(params, env)
     if not sb_list:
         test.fail("Failed to return list of instantiated "

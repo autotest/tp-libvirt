@@ -17,7 +17,7 @@ def run(test, params, env):
     Test command: virt-admin server-update-tls.
 
     1) when tls related files changed, notify server to update TLS related files
-        online, without restart deamon
+        online, without restart daemon
     """
     def add_remote_firewall_port(port, params):
         """

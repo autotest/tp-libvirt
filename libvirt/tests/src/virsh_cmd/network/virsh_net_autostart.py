@@ -161,7 +161,7 @@ def run(test, params, env):
                 test.fail("Disable autostart failed.")
         else:
             if status:
-                test.fail("The virsh cmd return eror when enable autostart!")
+                test.fail("The virsh cmd return error when enable autostart!")
             # If host reboot(sim_reboot=True), the network should be active
             # If host do not reboot, restart libvirtd will not start inactive
             # autostart network after libvirt 5.6.0

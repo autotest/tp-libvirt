@@ -90,7 +90,7 @@ def run(test, params, env):
             target_path = os.path.join("/home", v2v_user, pool_target)
             cmd = su_cmd + "'mkdir -p %s'" % target_path
             process.system(cmd, verbose=True)
-            # Sometimes pool_creat_as returns sucess, but the pool can
+            # Sometimes pool_creat_as returns success, but the pool can
             # not be found in user session.
             virsh.pool_create_as(
                 pool_name,
@@ -453,7 +453,7 @@ def run(test, params, env):
                         v2v_start = False
                     # 76 is the max length in v2v
                     if v2v_start and len(line) > 76:
-                        test.fail('Error log longer than 76 charactors: %s' %
+                        test.fail('Error log longer than 76 characters: %s' %
                                   line)
             if checkpoint == 'disk_not_exist':
                 vol_list = virsh.vol_list(pool_name)
@@ -605,7 +605,7 @@ def run(test, params, env):
     try:
         if version_requried and not utils_v2v.multiple_versions_compare(
                 version_requried):
-            test.cancel("Testing requries version: %s" % version_requried)
+            test.cancel("Testing requires version: %s" % version_requried)
 
         if hypervisor == "xen":
             # See man virt-v2v-input-xen(1)
@@ -637,7 +637,7 @@ def run(test, params, env):
         elif input_mode == "libvirt":
             uri_obj = utils_v2v.Uri(hypervisor)
             ic_uri = uri_obj.get_uri(remote_host, vpx_dc, esx_ip)
-            # Remote libvirt connection is not offically supported by
+            # Remote libvirt connection is not officially supported by
             # v2v and may fail. Just use localhost to simulate a remote
             # connection to test the warnings.
             if checkpoint == 'remote_libvirt_conn':
@@ -742,7 +742,7 @@ def run(test, params, env):
             user_info = pwd.getpwnam(v2v_user)
             logging.info("Convert to qemu:///session by user '%s'", v2v_user)
             if input_mode == "disk":
-                # Copy image from souce and change the image owner and group
+                # Copy image from source and change the image owner and group
                 disk_path = os.path.join(
                     data_dir.get_tmp_dir(), os.path.basename(disk_img))
                 logging.info('Copy image file %s to %s', disk_img, disk_path)
@@ -945,7 +945,7 @@ def run(test, params, env):
             os.remove(estimate_file)
         if hypervisor == "xen":
             # Restore crypto-policies to DEFAULT, the setting is impossible to be
-            # other values by default in testing envrionment.
+            # other values by default in testing environment.
             process.run(
                 'update-crypto-policies --set DEFAULT',
                 verbose=True,

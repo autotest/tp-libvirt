@@ -611,7 +611,7 @@ def test_nic_single(test, vm, params):
         # Start successfully, but not expected.
         vm.destroy(gracefully=False)
         cleanup_devices(pci_id, device_type)
-        test.fail("Start vm succesfully after attaching single "
+        test.fail("Start vm successfully after attaching single "
                   "device to iommu group.Not expected.")
     except (process.CmdError, virt_vm.VMStartError) as detail:
         logging.debug("Expected:New device does not work well: %s" % detail)

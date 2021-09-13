@@ -68,7 +68,7 @@ def check_host(test):
     out = process.run(cmd, shell=True).stdout_text
 
     if not re.search('node', out):
-        test.fail("There is no memory_bandwidth info in capablities")
+        test.fail("There is no memory_bandwidth info in capabilities")
 
 
 def assemble_memorytune(params):

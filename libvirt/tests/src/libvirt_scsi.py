@@ -99,7 +99,7 @@ def run(test, params, env):
             vm.start()
             # Start VM successfully.
             if status_error:
-                test.fail('Starting VM successed in negative case.')
+                test.fail('Starting VM succeeded in negative case.')
         except virt_vm.VMStartError as e:
             # Starting VM failed.
             if not status_error:

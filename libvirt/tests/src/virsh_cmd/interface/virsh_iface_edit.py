@@ -87,7 +87,7 @@ def run(test, params, env):
         if new_ifstart_mode == after_edit_mode:
             logging.debug("Interface start mode change to %s", new_ifstart_mode)
         else:
-            test.fail("Unexpect interface start mode: %s"
+            test.fail("Unexpected interface start mode: %s"
                       % after_edit_mode)
     finally:
         net_iface.down()

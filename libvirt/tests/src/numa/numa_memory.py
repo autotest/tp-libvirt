@@ -160,7 +160,7 @@ def run(test, params, env):
         except path.CmdNotFoundError:
             pass
 
-        # Allow for more times to libvirtd restarted sucessfully.
+        # Allow for more times to libvirtd restarted successfully.
         ret = utils_misc.wait_for(lambda: libvirtd.is_working(),
                                   timeout=240,
                                   step=1)

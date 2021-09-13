@@ -32,7 +32,7 @@ def format_user_group_str(user, group):
         try:
             user_id = pwd.getpwnam(user).pw_uid
         except KeyError:
-            # user did not exist will definitly fail start domain, log warning
+            # user did not exist will definitely fail start domain, log warning
             # here, let the test continue
             logging.warning("the user name: %s not found on host" % user)
             user_id = user

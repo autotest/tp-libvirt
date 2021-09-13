@@ -293,7 +293,7 @@ def run(test, params, env):
                     if libvirt_version.version_compare(1, 2, 5):
                         # As commit d2e668e in 1.2.5, internal active snapshot
                         # without memory state is rejected. Handle it as SKIP
-                        # for now. This could be supportted in future by bug:
+                        # for now. This could be supported in future by bug:
                         # https://bugzilla.redhat.com/show_bug.cgi?id=1103063
                         if re.search("internal snapshot of a running VM" +
                                      " must include the memory state",
@@ -398,7 +398,7 @@ def run(test, params, env):
                 if vm.is_paused():
                     vm.resume()
                 else:
-                    test.fail("Revert command successed, but VM is not "
+                    test.fail("Revert command succeeded, but VM is not "
                               "paused after reverting with --paused"
                               "  option.")
             # login vm.
@@ -414,7 +414,7 @@ def run(test, params, env):
 
         # Test delete snapshot without "--metadata", delete external disk
         # snapshot will fail for now.
-        # Only do this when snapshot creat succeed which filtered in cfg file.
+        # Only do this when snapshot create succeed which filtered in cfg file.
         if snapshot_del_test:
             if snapshot_name:
                 del_result = virsh.snapshot_delete(vm_name, snapshot_name,

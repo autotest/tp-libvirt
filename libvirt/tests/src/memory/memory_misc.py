@@ -233,7 +233,7 @@ def run(test, params, env):
                 if getattr(vmxml, attr) == getattr(newxml, attr):
                     logging.debug('Result: Equal.')
                 else:
-                    test.fail('Xml comparision of %s failed.', attr)
+                    test.fail('Xml comparison of %s failed.', attr)
 
     def run_test_dimm(case):
         """

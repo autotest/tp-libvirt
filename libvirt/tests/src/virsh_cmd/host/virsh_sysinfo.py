@@ -67,7 +67,7 @@ def run(test, params, env):
                         # spaces, while for others it trims trailing. This
                         # code compares against dmidecode output that was
                         # strip()'d - so just do the same here to avoid
-                        # spurrious failures
+                        # spurious failures
                         val = processor_dict[i]['version'].strip()
                         processor_version.append(val)
                 logging.debug("Processor version list from sysinfo output is: "

@@ -93,7 +93,7 @@ def run(test, params, env):
         # Check whether relative path has been kept
         for i in range(0, len(chain_list)-1):
             if chain_list[i] not in parse_source_file_list[i]:
-                test.fail("The relative path parsed from disk xml is diffrent with pre-expected ones")
+                test.fail("The relative path parsed from disk xml is different with pre-expected ones")
 
     def check_file_not_exists(root_dir, file_name, reverse=False):
         """

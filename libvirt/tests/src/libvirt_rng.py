@@ -69,7 +69,7 @@ def run(test, params, env):
             """
             Get set and get value to compare
 
-            :param xml_set: seting xml object
+            :param xml_set: setting xml object
             :param xml_get: getting xml object
             :param rng_attr: attribute of rng device
             :return: set and get value in xml

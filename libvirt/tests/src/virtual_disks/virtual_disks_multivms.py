@@ -20,7 +20,7 @@ from virttest import libvirt_version
 
 def run(test, params, env):
     """
-    Test disk attachement of multiple disks.
+    Test disk attachment of multiple disks.
 
     1.Prepare test environment, destroy VMs.
     2.Perform 'qemu-img create' operation.
@@ -244,7 +244,7 @@ def run(test, params, env):
                             s, o = session.cmd_status_output(cmd)
                             logging.debug("error_policy in vm0 exit %s; output: %s", s, o)
                             if 0 != s:
-                                test.fail("Test error_policy %s: cann't see"
+                                test.fail("Test error_policy %s: can't see"
                                           " error messages")
                             session.close()
                             break
@@ -275,17 +275,17 @@ def run(test, params, env):
                                     return 'Segmentation fault' in cmd_result.stdout_text.strip()
                                 status = utils_misc.wait_for(lambda: _check_error, timeout=90)
                                 if not status:
-                                    test.fail("Test error_policy %s: cann't report"
+                                    test.fail("Test error_policy %s: can't report"
                                               " error" % error_policy)
                             elif error_policy == "ignore":
                                 if 0 == s:
-                                    test.fail("Test error_policy %s: error cann't"
+                                    test.fail("Test error_policy %s: error can't"
                                               " be ignored" % error_policy)
                             session0.close()
                         except (remote.LoginError, virt_vm.VMError, aexpect.ShellError) as e:
                             if error_policy == "stop":
                                 if not vms_list[0]['vm'].is_paused():
-                                    test.fail("Test error_policy %s: cann't stop"
+                                    test.fail("Test error_policy %s: can't stop"
                                               " VM" % error_policy)
                             else:
                                 logging.error(str(e))

@@ -261,7 +261,7 @@ def run(test, params, env):
         _extend_blkpull_execution(None, True, context_msg)
 
     def start_bandwidth_blkpull_on_vm():
-        """Start blockpull with bandwith option """
+        """Start blockpull with bandwidth option """
         _extend_blkpull_execution()
 
     def start_timeout_blkpull_on_vm():
