@@ -5,7 +5,7 @@ import tempfile
 import time
 
 
-from virttest import data_dir, utils_libvirtd
+from virttest import data_dir
 from virttest import virsh
 from virttest import utils_net
 from virttest import remote
@@ -537,16 +537,11 @@ def run(test, params, env):
                 if dns_host_str:
                     check_host(hostline)
 
-            # check libvirtd should not crash during the net-update
-            ori_pid_libvirtd = process.getoutput("pidof libvirtd")
             # Do net-update operation
             cmd_result = virsh.net_update(net_name,
                                           update_command,
                                           net_section,
                                           xmlfile, options, debug=True)
-            aft_pid_libvirtd = process.getoutput("pidof libvirtd")
-            if not utils_libvirtd.libvirtd_is_running() or ori_pid_libvirtd != aft_pid_libvirtd:
-                test.fail("Libvirtd crash after net-update operation")
 
             if cmd_result.exit_status:
                 err = cmd_result.stderr.strip()
