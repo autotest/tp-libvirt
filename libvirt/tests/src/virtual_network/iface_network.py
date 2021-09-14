@@ -653,16 +653,7 @@ TIMEOUT 3"""
     define_macvtap = "yes" == params.get("define_macvtap", "no")
     net_dns_forwarders = params.get("net_dns_forwarders", "").split()
 
-    # Destroy VM first
-    if vm.is_alive() and not update_device:
-        vm.destroy(gracefully=False)
-
-    # Back up xml file.
-    netxml_backup = NetworkXML.new_from_net_dumpxml("default")
-    iface_mac = vm_xml.VMXML.get_first_mac_by_name(vm_name)
-    params["guest_mac"] = iface_mac
-    vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
-    vms_list = []
+    # Cancel if not yet supported in libvirt version under test
     if "floor" in ast.literal_eval(iface_bandwidth_inbound):
         if not libvirt_version.version_compare(1, 0, 1):
             test.cancel("Not supported Qos options 'floor'")
@@ -674,6 +665,19 @@ TIMEOUT 3"""
             test.cancel('Test case might fail before 6.5.0 where it was'
                         ' fixed with libvirt commit'
                         ' 876211ef4a192df1603b45715044ec14567d7e9f')
+
+    libvirt_version.is_libvirt_feature_supported(params)
+
+    # Destroy VM first
+    if vm.is_alive() and not update_device:
+        vm.destroy(gracefully=False)
+
+    # Back up xml file.
+    netxml_backup = NetworkXML.new_from_net_dumpxml("default")
+    iface_mac = vm_xml.VMXML.get_first_mac_by_name(vm_name)
+    params["guest_mac"] = iface_mac
+    vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vms_list = []
 
     # Enabling IPv6 forwarding with RA routes without accept_ra set to 2
     # is likely to cause routes loss
