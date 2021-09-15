@@ -50,6 +50,8 @@ def prepare_host_for_test(params, test):
     # Create a NumaInfo object to get NUMA related information
     numa_info = utils_misc.NumaInfo()
     online_nodes = numa_info.get_online_nodes_withmem()
+    if len(online_nodes) < 2:
+        test.cancel("This test needs at least 2 available numa nodes")
     numa_memory = {
         'mode': params.get('memory_mode', 'strict'),
         # If nodeset is not defined in config, take a first node with memory.
