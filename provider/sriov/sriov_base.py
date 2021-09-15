@@ -77,7 +77,8 @@ def get_ping_dest(vm_session, mac_addr="", restart_network=False):
     if status or not output:
         raise exceptions.TestError("Failed to run cmd - {}, status - {}, "
                                    "output - {}.".format(cmd, status, output))
-    return re.sub('\d+$', '1', output.strip())
+    net_ip = re.findall(r'\d+.\d+.\d+.\d+', output.strip())[0]
+    return re.sub('\d+$', '1', net_ip)
 
 
 def check_vm_network_accessed(vm_session, ping_count=3, ping_timeout=5):
