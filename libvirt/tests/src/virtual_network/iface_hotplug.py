@@ -7,6 +7,7 @@ from virttest import utils_misc
 from virttest import utils_net
 from virttest import virsh
 from virttest import virt_vm
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices.interface import Interface
 from virttest.utils_test import libvirt
@@ -94,6 +95,7 @@ def run(test, params, env):
     customer_alias = "yes" == params.get("customer_alias", "no")
     detach_error = params.get("detach_error", None)
 
+    libvirt_version.is_libvirt_feature_supported(params)
     # stree_test require detach operation
     stress_test_detach_device = False
     stress_test_detach_interface = False
