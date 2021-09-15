@@ -1,6 +1,7 @@
 import os
 import logging
 import aexpect
+import re
 import threading
 import time
 
@@ -90,6 +91,16 @@ def run(test, params, env):
         ret = virsh.event(vm_name, event_type, event_timeout, options, **dargs)
         logging.debug(ret.stdout_text)
         libvirt.check_exit_status(ret)
+        event_out = ret.stdout_text.replace("\n", "").strip()
+        expect_event_count = params.get("event_count")
+        if expect_event_count:
+            match = re.match(r'.*events received:\s+(.*)', event_out)
+            if match is None:
+                test.fail("No events received")
+            event_count = match.group(1)
+            if event_count != expect_event_count:
+                test.fail("Get events count: %s is not equal to expected event counts:%s"
+                          % (event_count, expect_event_count))
 
     def create_vol(p_name, vol_params):
         """
@@ -197,6 +208,7 @@ def run(test, params, env):
     mirror_mode_blockcommit = "yes" == params.get("mirror_mode_blockcommit", "no")
     mirror_mode_blockcopy = "yes" == params.get("mirror_mode_blockcopy", "no")
     default_snapshot_test = "yes" == params.get("default_snapshot_test", "no")
+    threshold_index_event_once = "yes" == params.get("threshold_index_event_once", "no")
     block_threshold_value = params.get("block_threshold_value", "100M")
     snapshot_external_disks = []
     tmp_dir = data_dir.get_tmp_dir()
@@ -224,6 +236,9 @@ def run(test, params, env):
 
     # Additional disk images.
     disks_img = []
+
+    # Enable filter feature case in specific libvirt version
+    libvirt_version.is_libvirt_feature_supported(params)
     try:
         # Clean up dirty secrets in test environments if there are.
         utils_secret.clean_up_secrets()
@@ -544,7 +559,13 @@ def run(test, params, env):
                 mirror_blockcopy_thread.join(10)
                 device_target = "vda[%d]" % get_mirror_source_index(vm_name)
                 func_name = trigger_mirror_threshold_event
+            if threshold_index_event_once:
+                # Use dev[index] to enable set domain block threshold with DEV[INDEX] use case
+                device_target = params.get("dev_target_index", "vdb[1]")
         set_vm_block_domblkthreshold(vm_name, device_target, block_threshold_value, **{"debug": True})
+        if threshold_index_event_once:
+            # Restore device_target to original value since events trigger use device target, rather than DEV[INDEX]
+            device_target = params.get("virt_disk_device_target", "vdd")
         cli_thread = threading.Thread(target=func_name,
                                       args=(vm, device_target))
         cli_thread.start()
