@@ -667,6 +667,7 @@ def run(test, params, env):
     check_statistics = "yes" == params.get("check_statistics", "no")
     enable_multiqueue = "yes" == params.get("enable_multiqueue", "no")
 
+    libvirt_version.is_libvirt_feature_supported(params)
     queue_size = None
     if iface_driver:
         driver_dict = ast.literal_eval(iface_driver)
