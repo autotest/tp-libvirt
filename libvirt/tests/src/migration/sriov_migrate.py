@@ -69,8 +69,17 @@ def run(test, params, env):
         :raise: test.fail when interfaces' number is not equal to exp_num
         """
         if len(iface_list) != exp_num:
-            test.fail("%d interfaces should be found on the vm, "
-                      "but find %s." % (exp_num, iface_list))
+            # There is issue before qemu-kvm-5.2.0-10 that only 2 interfaces
+            # exists cancel test once qemu-kvm less than 5.2.0, refer to
+            # bug 1817003#c13
+            if not utils_misc.compare_qemu_version(5, 2, 0, is_rhev=False):
+                test.cancel("Cancel the test as there are only %s interfaces "
+                            "on vm, while expect is %s. It's caused by an qemu "
+                            "issue which was fixed since qemu-kvm-5.2.0" %
+                            (len(iface_list), exp_num))
+            else:
+                test.fail("%d interfaces should be found on the vm, "
+                          "but find %s." % (exp_num, iface_list))
 
     def create_or_del_networks(pf_name, params, remote_virsh_session=None,
                                is_del=False):
