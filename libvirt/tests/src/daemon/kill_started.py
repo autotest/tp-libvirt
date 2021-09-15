@@ -52,6 +52,7 @@ def run(test, params, env):
     should_restart = params.get("expect_restart", "yes") == "yes"
     timeout = int(params.get("restart_timeout", 1))
     pid_should_change = params.get("expect_pid_change", "yes") == "yes"
+    expect_coredump = params.get("expect_coredump", "no") == "yes"
     sysconfig = params.get("sysconfig", None)
     check_dmesg = params.get("check_dmesg", None)
 
@@ -100,6 +101,11 @@ def run(test, params, env):
                 test.fail('%s should in %s , but not now' % (check_dmesg, message_src_file))
 
     finally:
+        # Clear coredump info
+        if expect_coredump:
+            cmd = 'journalctl --flush;'
+            cmd += 'journalctl --rotate; journalctl --vacuum-size=1K; journalctl --vacuum-time=1s'
+            process.run(cmd, ignore_status=True, shell=True)
         if not libvirtd.is_running():
             if os.path.exists(pid_file):
                 os.remove(pid_file)
