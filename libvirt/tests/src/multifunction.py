@@ -241,7 +241,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 
-    # Temparay way to avoid unmatched prompt
+    # Temporary way to avoid unmatched prompt
     params['shell_prompt'] = ".*@.*[\#\$]\s*"
     vm.params = params
 

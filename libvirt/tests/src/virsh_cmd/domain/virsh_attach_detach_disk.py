@@ -487,7 +487,7 @@ def run(test, params, env):
             eject_xml = libvirt.create_disk_xml(eject_params)
             with open(eject_xml) as eject_file:
                 logging.debug("Eject CDROM by XML: %s", eject_file.read())
-            # Run command tiwce to make sure cdrom tray open first #BZ892289
+            # Run command twice to make sure cdrom tray open first #BZ892289
             # Open tray
             virsh.attach_device(domainarg=vm_name, filearg=eject_xml, debug=True)
             # Add time sleep between two attach commands.

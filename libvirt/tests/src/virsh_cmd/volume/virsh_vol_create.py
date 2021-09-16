@@ -185,7 +185,7 @@ def run(test, params, env):
 
     def post_process_vol(ori_vol_path):
         """
-        Create or disactive a volume without libvirt
+        Create or deactivate a volume without libvirt
 
         :param ori_vol_path: Full path of an original volume
         :return: Volume name for checking

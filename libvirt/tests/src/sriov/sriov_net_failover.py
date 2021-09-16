@@ -29,7 +29,7 @@ def exec_function(test_func):
     """
     A wrapper function to run 'setup/teardown' function
 
-    :param test_func: The name setup/tearndown function
+    :param test_func: The name setup/teardown function
     """
     if not callable(test_func):
         logging.warning('Function "%s" is not implemented yet.', test_func)

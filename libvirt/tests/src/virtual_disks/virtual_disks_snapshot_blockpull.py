@@ -230,7 +230,7 @@ def run(test, params, env):
 
         :params base: specific base
         :params status_error: expected error or not
-        :params err_msg: error message if blockpulll command fail
+        :params err_msg: error message if blockpull command fail
         :params expected_msg: jobinfo expected message if checked
         """
         blockpull_options = params.get("options")

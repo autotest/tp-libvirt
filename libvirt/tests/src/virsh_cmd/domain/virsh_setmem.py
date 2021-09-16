@@ -308,7 +308,7 @@ def run(test, params, env):
         vm.start()
     session = vm.wait_for_login()
     if session.cmd_status('dmidecode'):
-        # The physical memory size is in vm xml, use it when dmideode not
+        # The physical memory size is in vm xml, use it when dmidecode not
         # supported
         unusable_mem = int(vmxml.max_mem) - get_vm_usable_mem(session)
     else:

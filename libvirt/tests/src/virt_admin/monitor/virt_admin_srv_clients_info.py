@@ -11,7 +11,7 @@ def run(test, params, env):
     1) Change the clients related parameters in daemon config file;
     2) Restart daemon;
     3) Start several virsh connections;
-    4) Check whether the parameters value listed by srv-clents-info
+    4) Check whether the parameters value listed by srv-clients-info
        are the same with the above settings.
     """
     max_clients = params.get("max_clients")

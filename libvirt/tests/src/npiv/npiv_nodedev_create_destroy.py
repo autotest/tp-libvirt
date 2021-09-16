@@ -265,7 +265,7 @@ def vhbas_cleanup(new_vhbas):
 
 def run(test, params, env):
     """
-    NPIV test for vhba create/destroy, contains following sceraions:
+    NPIV test for vhba create/destroy, contains following scenarios:
     1. create a vhba then destroy it
     2. create and destroy vhba frequently
     3. create a lot of vhbas

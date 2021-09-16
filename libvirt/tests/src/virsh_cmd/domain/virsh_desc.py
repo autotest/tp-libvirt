@@ -147,7 +147,7 @@ def run(test, params, env):
         if domain == "ID":
             vm_name = vm.get_id()
         run_test()
-        # Recvoer the vm and shutoff it
+        # Recover the vm and shutoff it
         if persistent_vm == "yes" and domain != "ID":
             vm.define(original_xml)
             vm.destroy()

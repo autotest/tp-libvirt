@@ -128,7 +128,7 @@ class MigrationWithCheckpoint(mt.MigrationTemplate):
         The steps to be executed before vm started
         """
         # Steps:
-        # 1. Clean any existing checkponits
+        # 1. Clean any existing checkpoints
         # 2. Add test disk to the vm
         utils_backup.clean_checkpoints(self.main_vm.name)
         self.add_test_disk_to_vm(self.main_vm)

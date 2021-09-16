@@ -50,7 +50,7 @@ def run(test, params, env):
         :param on_shutdown: action taking on host shutdown
         :param parallel_shutdown: the number of parallel_shutdown guests would
                                   be shutdown concurrently on shutdown
-        :param output: apppended message from /var/log/messages
+        :param output: appended message from /var/log/messages
         """
         if on_shutdown == "shutdown" and on_boot == "start":
             second_boot_time = boot_time()
