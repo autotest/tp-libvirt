@@ -156,11 +156,9 @@ def run(test, params, env):
     server_params = {'server_ip': params.get("migrate_dest_host"),
                      'server_user': params.get("remote_user", "root"),
                      'server_pwd': params.get("migrate_dest_pwd")}
+    poweroff_src_vm = "yes" == params.get("poweroff_src_vm", "no")
 
-    if action_during_mig:
-        action_during_mig = migration_base.parse_funcs(action_during_mig,
-                                                       test, params)
-
+    vm_session = None
     qemu_conf_remote = None
     (remove_key_local, remove_key_remote) = (None, None)
 
@@ -207,7 +205,12 @@ def run(test, params, env):
         logging.debug("Guest xml after starting:\n%s",
                       vm_xml.VMXML.new_from_dumpxml(vm_name))
 
-        vm.wait_for_login().close()
+        vm_session = vm.wait_for_login()
+        if action_during_mig:
+            if poweroff_src_vm:
+                params.update({'vm_session': vm_session})
+            action_during_mig = migration_base.parse_funcs(action_during_mig,
+                                                           test, params)
 
         if stress_package:
             migration_test.run_stress_in_vm(vm, params)
@@ -233,6 +236,9 @@ def run(test, params, env):
                                        bk_uri, dest_uri, test)
 
         if migrate_again:
+            if not vm.is_alive():
+                vm.start()
+            vm_session = vm.wait_for_login()
             action_during_mig = migration_base.parse_funcs(params.get('action_during_mig_again'),
                                                            test, params)
             extra_args['status_error'] = params.get("migrate_again_status_error", "no")
@@ -268,6 +274,8 @@ def run(test, params, env):
     finally:
         logging.info("Recover test environment")
         vm.connect_uri = bk_uri
+        if vm_session:
+            vm_session.close()
         # Clean VM on destination and source
         migration_test.cleanup_vm(vm, dest_uri)
         # Restore remote qemu conf and restart libvirtd
