@@ -189,9 +189,8 @@ def run(test, params, env):
         # And get the numastat prior the test
         total_prior = get_qemu_total_for_nodes()
         # Start test
-        result = session.cmd_status_output('memhog -r1 {}k'.
-                                           format(memory_to_eat),
-                                           timeout=60)
+        result = session.cmd('memhog -r1 {}k'.format(memory_to_eat),
+                             timeout=120)
         logging.debug(result)
         if vm.is_dead():
             test.fail('The VM crashed when memhog was executed.')
@@ -210,3 +209,4 @@ def run(test, params, env):
 
     finally:
         backup_xml.sync()
+        process.run("swapon -a", shell=True)
