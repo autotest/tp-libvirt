@@ -5,7 +5,6 @@ import time
 import logging
 import platform
 import shutil
-import aexpect
 
 import aexpect
 
@@ -19,9 +18,9 @@ from virttest import utils_misc
 from virttest import utils_package
 from virttest import utils_libguestfs
 from virttest import utils_libvirtd
-from virttest import utils_config
 from virttest import data_dir
 from virttest import utils_selinux
+from virttest import utils_split_daemons
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml import capability_xml
@@ -656,7 +655,7 @@ def run(test, params, env):
     cpu_mode = params.get("cpu_mode")
     hugepage_num = params.get("hugepage_num")
     log_pattern_list = ast.literal_eval(params.get("log_pattern_list", "[]"))
-    log_level = params.get("log_level")
+    log_level = params.get("log_level", "1")
     limit_nofile = params.get("limit_nofile")
     testpmd_cmd = params.get("testpmd_cmd")
 
@@ -713,15 +712,24 @@ def run(test, params, env):
     libvirtd = utils_libvirtd.Libvirtd()
 
     libvirtd_log_path = None
-    libvirtd_conf = None
+    daemon_dict = {}
     if check_libvirtd_log:
         libvirtd_log_path = os.path.join(data_dir.get_tmp_dir(), "libvirtd.log")
         logging.debug("libvirtd_log_path is %s", libvirtd_log_path)
-        libvirtd_conf = utils_config.LibvirtdConfig()
-        if log_level:
-            libvirtd_conf["log_level"] = log_level
-            libvirtd_conf["log_filters"] = '"1:json 1:libvirt 1:qemu 1:monitor 3:remote 4:event"'
-        libvirtd_conf["log_outputs"] = '"1:file:%s"' % libvirtd_log_path
+        conf_dict = {"log_level": log_level,
+                     "log_filters": "\"1:json 1:libvirt 1:qemu 1:monitor 3:remote 4:event\"",
+                     "log_outputs": "\"1:file:%s\"" % libvirtd_log_path}
+        if utils_split_daemons.is_modular_daemon():
+            for drv in ['virtqemud', 'virtnodedevd', 'virtnetworkd',
+                        'virtnwfilterd', 'virtsecretd',
+                        'virtstoraged', 'virtinterfaced']:
+                daemon_dict[drv] = libvirt.customize_libvirt_config(conf_dict,
+                                                                    config_type=drv,
+                                                                    restart_libvirt=False)
+        else:
+            daemon_dict['libvirtd'] = libvirt.customize_libvirt_config(conf_dict,
+                                                                       config_type='libvirtd',
+                                                                       restart_libvirt=False)
         libvirtd.restart()
 
     # Prepare vhostuser
@@ -967,7 +975,8 @@ def run(test, params, env):
                 check_libvirt_log(libvirtd_log_path, log_pattern_list)
 
             # change libvirtd.service
-            if test_type == "check_performance":
+            if test_type == "check_performance" and \
+                    not utils_split_daemons.is_modular_daemon():
                 # Get the NOFILE limit value
                 process.run("prlimit -p `pidof libvirtd` |grep NOFILE", shell=True)
                 # Let libvirtd run with a big NOFILE limit, check runtime
@@ -1106,15 +1115,19 @@ def run(test, params, env):
         if need_vhostuser_env:
             utils_net.clean_ovs_env(selinux_mode=selinux_mode, page_size=orig_size,
                                     clean_ovs=True)
-
-        if libvirtd_conf:
-            libvirtd_conf.restore()
+        if check_libvirtd_log:
+            if daemon_dict:
+                for drv_daemon in daemon_dict.values():
+                    libvirt.customize_libvirt_config(None, is_recover=True,
+                                                     config_object=drv_daemon,
+                                                     restart_libvirt=False)
             libvirtd.restart()
 
         if libvirtd_log_path and os.path.exists(libvirtd_log_path):
             os.unlink(libvirtd_log_path)
 
-        if test_type == "check_performance":
+        if test_type == "check_performance" and \
+                not utils_split_daemons.is_modular_daemon():
             shutil.copy(backup_file, libvirtd_service_file)
             process.run("systemctl daemon-reload")
             libvirtd.restart()
