@@ -739,7 +739,7 @@ class VMChecker(object):
         expect_video = self.get_expect_video_model()
         has_virtio_win, has_qxldod = self.get_virtio_win_config()
         expect_drivers = ["Red Hat VirtIO SCSI",
-                          "Red Hat VirtIO Ethernet Adapter"]
+                          "Red Hat VirtIO Ethernet Adapte"]
         expect_adapter = 'Microsoft Basic Display Driver'
         virtio_win_qxl_os = ['win2008r2', 'win7']
         virtio_win_qxldod_os = ['win10', 'win2016', 'win2019']
