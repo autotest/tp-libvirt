@@ -1,11 +1,13 @@
 import logging
 import types
 import re
+import signal                                        # pylint: disable=W0611
 
 from virttest import virsh                           # pylint: disable=W0611
 
 from virttest.utils_conn import TLSConnection
 from virttest.utils_libvirt import libvirt_network   # pylint: disable=W0611
+from virttest.migration import MigrationTest
 
 
 def parse_funcs(action_during_mig, test, params):
@@ -205,3 +207,17 @@ def poweroff_src_vm(params):
     """
     vm_session = params.get("vm_session")
     vm_session.cmd("poweroff", ignore_all_errors=True)
+
+
+def set_migrate_speed_to_high(params):
+    """
+    Set migrate speed to high value
+
+    :param params: dict, used to setup the connection
+    """
+    vm_name = params.get("migrate_main_vm")
+    migrate_speed_high = params.get("migrate_speed_high")
+    postcopy_options = params.get("postcopy_options")
+
+    mode = 'both' if '--postcopy' in postcopy_options else 'precopy'
+    MigrationTest().control_migrate_speed(vm_name, int(migrate_speed_high), mode)
