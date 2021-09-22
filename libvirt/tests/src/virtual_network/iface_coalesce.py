@@ -25,7 +25,7 @@ def run(test, params, env):
 
     For each host network type, guest can use bridge/network interface type to set coalesce
     except macvtap network type.
-    Execute 'ethtool -c ${interface}|grep "rx-frames"' and anylize the output to check
+    Execute 'ethtool -c ${interface}|grep "rx-frames"' and analyse the output to check
     whether coalesce setting take effect or not.
 
     For macvtap network type, guest can start but query coalesce will fail.
@@ -214,7 +214,7 @@ def run(test, params, env):
     def modify_iface_xml():
         """
         Modify interface xml options
-        Two methods to modify domain interfae:
+        Two methods to modify domain interface:
         1. modify guest xml, define it
         2. attach one interface for running guest
 

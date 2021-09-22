@@ -133,7 +133,7 @@ def snapshot_list_check(vm_name, snapshot_take, postfix, test):
 
 def domain_lifecycle(vmxml, vm, test, virsh_dargs, **kwargs):
     """
-    Test the lifrcycle of the domain
+    Test the lifecycle of the domain
 
     :params: vmxml: the xml of the vm
     :params: vm: vm to wait for login the vm

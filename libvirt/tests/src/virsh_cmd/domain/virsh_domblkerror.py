@@ -60,7 +60,7 @@ def run(test, params, env):
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
 
     try:
-        # Gerenate tmp dir
+        # Generate tmp dir
         tmp_dir = data_dir.get_tmp_dir()
         img_dir = os.path.join(tmp_dir, 'images')
         if not os.path.exists(img_dir):

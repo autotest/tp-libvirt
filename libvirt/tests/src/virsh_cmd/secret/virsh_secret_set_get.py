@@ -141,7 +141,7 @@ def get_secret_value(test, params):
 
 def set_secret_value(test, params):
     """
-    Set the secet value
+    Set the secret value
     :params: the parameter dictionary
     """
     uuid = params.get("secret_ref")

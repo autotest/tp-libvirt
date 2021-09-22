@@ -152,7 +152,7 @@ def run(test, params, env):
     if os.path.exists(test_disk_source):
         disk_size = os.path.getsize(test_disk_source)
 
-    # Recover enviremont
+    # Recover environment
     if os.path.exists(test_attach_disk):
         os.remove(test_attach_disk)
 

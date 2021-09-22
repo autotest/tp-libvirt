@@ -100,7 +100,7 @@ nbdkit -rfv -U - --exportname / \
             nbdkit_cmd = nbdkit_cmd.strip()[:-2] + vddk_thumbprint
             logging.info('nbdkit command:\n%s', nbdkit_cmd)
 
-            # Run the finnal nbdkit command
+            # Run the final nbdkit command
             output = process.run(nbdkit_cmd, shell=True).stdout_text
             utils_misc.umount(vddk_libdir_src, vddk_libdir, 'nfs')
             if not re.search(r'virtual size', output):

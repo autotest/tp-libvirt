@@ -100,7 +100,7 @@ def run(test, params, env):
            (ephemeral == "no" and not exist):
             test.fail("The ephemeral attribute worked not expected")
 
-        # Check private attrbute
+        # Check private attribute
         virsh.secret_set_value(uuid, SECRET_BASE64, debug=True)
         if get_value_acl:
             cmd_result = virsh.secret_get_value(uuid, **acl_dargs)

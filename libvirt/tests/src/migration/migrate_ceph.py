@@ -370,7 +370,7 @@ def build_disk_xml(vm_name, disk_format, host_ip, disk_src_protocol,
     :param vm_name: specified VM name.
     :param disk_format: disk format,e.g raw or qcow2
     :param host_ip: host ip address
-    :param disk_src_protocol: access disk procotol ,e.g network or file
+    :param disk_src_protocol: access disk protocol ,e.g network or file
     :param volume_name: volume name
     :param disk_img: disk image name
     :param transport: transport pattern,e.g TCP

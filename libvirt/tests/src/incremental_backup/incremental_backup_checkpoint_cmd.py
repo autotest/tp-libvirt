@@ -132,7 +132,7 @@ def run(test, params, env):
                            "checkpoint=bitmap,bitmap={0} "
                            "--print-xml".format(checkpoint_name, test_disk_target))
                 virsh.checkpoint_create_as(vm_name, options, **virsh_dargs)
-                # The checkpiont should not be created, so we have following check
+                # The checkpoint should not be created, so we have following check
                 cp_list_result = virsh.checkpoint_list(vm_name, checkpoint_name, debug=True)
                 libvirt.check_exit_status(cp_list_result, True)
         elif checkpoint_cmd == "checkpoint-info":

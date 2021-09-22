@@ -239,7 +239,7 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
 
-        # Check if images' bitmap info is same as the checkponits we created
+        # Check if images' bitmap info is same as the checkpoints we created
         bitmaps_eq_checkponits = True
         for test_disk in list(test_disk_dict.keys()):
             bitmaps = utils_backup.get_img_bitmaps(test_disk_dict[test_disk]['path'])

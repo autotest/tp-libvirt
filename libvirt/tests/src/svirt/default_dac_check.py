@@ -74,7 +74,7 @@ def run(test, params, env):
         vm.wait_for_login()
         # Check the default dac of hugepage file
         hugepage_file_name = "/dev/hugepages/libvirt"
-        # Get the mode of hugepge file
+        # Get the mode of hugepage file
         f = os.open(hugepage_file_name, 0)
         stat_re = os.fstat(f)
         hugepage_file_mode = oct(stat_re.st_mode & 0o777)

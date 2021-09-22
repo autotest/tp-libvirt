@@ -41,7 +41,7 @@ def run(test, params, env):
     def check_ssh_conn(host_test_user, guest_user, vm_ip):
         """
         Check whether ssh connection to guest user from host user account can be
-        seccussfull
+        successful
 
         :param user: ssh connection from which host user
         :param guest_user: ssh connection to which guest user account

@@ -75,7 +75,7 @@ def run(test, params, env):
         logging.debug("cpu_frequency_nodeinfo=%s cpu_frequency_os=%s",
                       cpu_frequency_nodeinfo, cpu_frequency_os)
         #
-        # Matching CPU Frequency is not an exact science in todays modern
+        # Matching CPU Frequency is not an exact science in today's modern
         # processors and OS's. CPU's can have their execution speed varied
         # based on current workload in order to save energy and keep cool.
         # Thus since we're getting the values at disparate points in time,

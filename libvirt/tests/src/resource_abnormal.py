@@ -742,7 +742,7 @@ class Migration(object):
 
     def result_confirm(self, params):
         """
-        Confirm if migratiton is succeed.
+        Confirm if migration is succeed.
         """
         if self.time_out_test:
             time.sleep(self.time_out)
