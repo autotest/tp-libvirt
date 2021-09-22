@@ -436,7 +436,7 @@ def run(test, params, env):
         if extra.count("--postcopy"):
             action_during_mig = virsh.migrate_postcopy
         if cancel_migration:
-            action_during_mig = migration_test.do_cancel
+            action_during_mig = virsh.domjobabort
 
         remove_dict = {"do_search": '{"%s": "ssh:/"}' % dest_uri}
         src_libvirt_file = libvirt_config.remove_key_for_modular_daemon(
