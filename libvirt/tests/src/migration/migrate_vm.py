@@ -1153,19 +1153,36 @@ def run(test, params, env):
     Test remote access with TCP, TLS connection
     """
 
-    def get_target_hugepage_num(params, mem):
+    def get_target_hugepage_num(params):
         """
-        Get the number of hugepage on target host
+        Get the number of hugepages to be set on target host
+
+        It is difficult to determine this number as it depends on the number
+        of already allocated hugepages locally and on the different hugepage sizes.
+
+        Therefore, let's assume
+        1. that the current hugepages_num was set up correctly for a single
+           vm to start correctly with hugepage memory backing.
+           (This is usually done by the setup_hugepages = yes setting and through
+           the env_process.py.)
+        2. Only a single vm is configured to run on source and on destination.
+        3. A negative value of 'remote_target_hugepages' indicates we want the
+           migration to fail.
+
+        Under these circumstances we can just choose the same hugepage_num that works
+        on the source host for the target host in case of positive testing (migration
+        succeeds) and a ridiculously low value of 1 hugepage on the target should be enough
+        to cause the migration to fail because the vm would not be backed by hugepages
+        on the target.
 
         :param params: The parameters used
-        :param mem: Current VM's memory
         :return: the number of hugepage to be allocated on target host
         """
         hugepage_file = params.get("kernel_hp_file", "/proc/sys/vm/nr_hugepages")
         with open(hugepage_file, 'r') as fp:
             hugepage_num = int(fp.readline().strip())
         more_less_hp = int(params.get("remote_target_hugepages", "0"))
-        target_hugepage = min(int(mem/(1024*2)), hugepage_num) + more_less_hp
+        target_hugepage = hugepage_num if more_less_hp >= 0 else 1
         logging.debug("Number of huge pages on target host to be allocated:%d", target_hugepage)
         return target_hugepage
 
@@ -1396,9 +1413,11 @@ def run(test, params, env):
 
     # Get current VM's memory
     current_mem = vmxml_backup.current_mem
-    logging.debug("Current VM memory: %s", current_mem)
+    logging.debug("Current VM memory: %s KiB", current_mem)
+    logging.debug("VM memory used during source hugepage setup: %s MB."
+                  " See HugePageConfig/get_target_hugepages for more details.", params.get('mem'))
 
-    remote_tgt_hugepages = get_target_hugepage_num(test_dict, current_mem)
+    remote_tgt_hugepages = get_target_hugepage_num(test_dict)
 
     # Disk XML file
     disk_xml = None
