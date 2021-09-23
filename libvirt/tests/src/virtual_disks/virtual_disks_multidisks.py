@@ -1040,7 +1040,7 @@ def run(test, params, env):
 
     virt_disk_with_boot_nfs_pool = "yes" == params.get("virt_disk_with_boot_nfs_pool", "no")
     iso_url = ("https://dl.fedoraproject.org/pub/fedora/linux/releases",
-               "/30/Everything/x86_64/os/images/boot.iso")
+               "/34/Everything/x86_64/os/images/boot.iso")
     default_iso_url = ''.join(iso_url)
     boot_iso_url = params.get("boot_iso_url")
     if virt_disk_with_boot_nfs_pool and 'EXAMPLE_BOOT_ISO_URL' in boot_iso_url:
