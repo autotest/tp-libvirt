@@ -1,3 +1,4 @@
+import os
 import platform
 import re
 
@@ -27,6 +28,7 @@ def run(test, params, env):
     """
     baseline_option = substitute_param(params)
     domcap_path = params.get("domcap_path")
+    domcap_path = os.path.join(os.path.dirname(__file__), domcap_path)
     err_msg = params.get("err_msg")
 
     ret = virsh.hypervisor_cpu_baseline(domcap_path,

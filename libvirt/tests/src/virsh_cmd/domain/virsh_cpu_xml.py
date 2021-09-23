@@ -1,4 +1,5 @@
 import logging
+import os
 import tempfile
 
 from virttest import data_dir
@@ -23,6 +24,7 @@ def run(test, params, env):
     err_msg = params.get('err_msg')
     data_file = tempfile.mktemp(dir=data_dir.get_tmp_dir())
     file_content = None
+    file_path = os.path.join(os.path.dirname(__file__), file_path)
     if file_xml_declaration:
         with open(file_path) as path_fd:
             file_content = path_fd.read()
