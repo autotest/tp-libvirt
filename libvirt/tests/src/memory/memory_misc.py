@@ -123,7 +123,7 @@ def run(test, params, env):
                 if vmxml.xmltreefile.find('cpu'):
                     cpuxml = vmxml.cpu
                 else:
-                    cpuxml = vm_xml.VMCPUXML
+                    cpuxml = vm_xml.VMCPUXML()
                 cpuxml.numa_cell = cpuxml.dicts_to_cells(numa_cells)
                 vmxml.cpu = cpuxml
                 vmxml.vcpu = 4
