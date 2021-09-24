@@ -262,7 +262,7 @@ def run(test, params, env):
         if start_vm and not default_pool:
             if gluster_disk:
                 ret = virsh.detach_device(vm_name, custom_disk.xml,
-                                          flagstr=attach_option, dargs=virsh_dargs, wait_remove_event=True)
+                                          flagstr=attach_option, dargs=virsh_dargs, wait_for_event=True)
                 libvirt.check_exit_status(ret)
 
     finally:

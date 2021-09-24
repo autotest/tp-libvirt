@@ -117,7 +117,7 @@ def run(test, params, env):
 
         check_vm_iface_managed(vm_name, iface_dict)
         vm.wait_for_serial_login().close()
-        virsh.detach_device(vm_name, iface.xml, wait_remove_event=True,
+        virsh.detach_device(vm_name, iface.xml, wait_for_event=True,
                             debug=True, ignore_status=False)
         libvirt_vfio.check_vfio_pci(vf_pci)
         virsh.nodedev_reattach(dev_name, debug=True, ignore_status=False)

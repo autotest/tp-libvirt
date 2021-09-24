@@ -225,7 +225,7 @@ def run(test, params, env):
         # Detach hot plugged device.
         if hot_plug:
             virsh.detach_device(vm_name, custom_disk.xml,
-                                flagstr=attach_option, dargs=virsh_dargs, ignore_status=False, wait_remove_event=True)
+                                flagstr=attach_option, dargs=virsh_dargs, ignore_status=False, wait_for_event=True)
     finally:
         # Recover VM.
         if vm.is_alive():
