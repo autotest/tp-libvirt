@@ -245,6 +245,21 @@ def run(test, params, env):
             vm1_ip = utils_net.get_guest_ip_addr(session1, mac)
         except Exception as errs:
             test.fail("vm1 can't get IP with the new create bridge: %s" % errs)
+        if test_qos:
+            if test_net_qos:
+                logging.debug("Test network inbound:")
+                res1 = utils_net.check_class_rules(bridge_name, "1:2", ast.literal_eval(net_inbound))
+                logging.debug("Test network outbound:")
+                res2 = utils_net.check_filter_rules(bridge_name, ast.literal_eval(net_outbound))
+            else:
+                iface_mac = vm_xml.VMXML.get_first_mac_by_name(vm1_name)
+                tap_name = libvirt.get_ifname_host(vm1_name, iface_mac)
+                logging.debug("Test inbound:")
+                res1 = utils_net.check_class_rules(tap_name, "1:1", ast.literal_eval(iface_inbound))
+                logging.debug("Test outbound:")
+                res2 = utils_net.check_filter_rules(tap_name, ast.literal_eval(iface_outbound))
+            if not res1 or not res2:
+                test.fail("Qos test fail!")
         if hotplug:
             # reboot vm1 then check network function to ensure the interface still there and works fine
             logging.info("reboot the vm")
@@ -332,21 +347,6 @@ def run(test, params, env):
                                     host_ip, remote_url, vm2_ip)
                 check_net_functions(vm2_ip, ping_count, ping_timeout, session2,
                                     host_ip, remote_url, vm1_ip)
-        if test_qos:
-            if test_net_qos:
-                logging.debug("Test network inbound:")
-                res1 = utils_net.check_class_rules(bridge_name, "1:2", ast.literal_eval(net_inbound))
-                logging.debug("Test network outbound:")
-                res2 = utils_net.check_filter_rules(bridge_name, ast.literal_eval(net_outbound))
-            else:
-                iface_mac = vm_xml.VMXML.get_first_mac_by_name(vm1_name)
-                tap_name = libvirt.get_ifname_host(vm1_name, iface_mac)
-                logging.debug("Test inbound:")
-                res1 = utils_net.check_class_rules(tap_name, "1:1", ast.literal_eval(iface_inbound))
-                logging.debug("Test outbound:")
-                res2 = utils_net.check_filter_rules(tap_name, ast.literal_eval(iface_outbound))
-            if not res1 or not res2:
-                test.fail("Qos test fail!")
         if reconnect_tap:
             iface_mac = vm_xml.VMXML.get_first_mac_by_name(vm1_name)
             tap_name = libvirt.get_ifname_host(vm1_name, iface_mac)
@@ -363,7 +363,7 @@ def run(test, params, env):
                     test.fail("Network destroy and restart should not impact "
                               "tap connection from bridge network!")
             else:
-                # Delete and re-create the bridge, check the tap is not connected
+                # Delete and re-create bridge, check the tap is not connected
                 utils_net.delete_linux_bridge_tmux(bridge_name, iface_name)
                 utils_net.create_linux_bridge_tmux(bridge_name, iface_name)
                 out3 = libvirt_network.check_tap_connected(tap_name, False,
