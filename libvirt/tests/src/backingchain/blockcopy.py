@@ -8,6 +8,7 @@ from virttest import data_dir
 from virttest import qemu_storage
 from virttest import utils_misc
 from virttest import virsh
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
@@ -22,6 +23,7 @@ def run(test, params, env):
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
+    libvirt_version.is_libvirt_feature_supported(params)
 
     file_to_del = []
     tmp_dir = data_dir.get_data_dir()
