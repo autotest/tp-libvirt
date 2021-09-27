@@ -114,7 +114,10 @@ def run(test, params, env):
         ret = virsh.nwfilter_binding_list(debug=True)
         utlv.check_result(ret, expected_match=[r"vnet\d+\s+clean-traffic"])
         utlv.check_result(ret, expected_match=[r"vnet\d+\s+allow-dhcp-server"])
-        # detach a interface
+        # detach a interface, before detach, make sure guest boot up
+        vm.cleanup_serial_console()
+        vm.create_serial_console()
+        vm.wait_for_serial_login().close
         option = "--type network" + " --mac " + new_iface_1.mac_address
         ret = virsh.detach_interface(vm_name, option, debug=True)
         time.sleep(time_wait)
