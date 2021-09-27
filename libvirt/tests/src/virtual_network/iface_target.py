@@ -154,7 +154,7 @@ def run(test, params, env):
         # one interface with same iface type attached, counter increase by 1
         counter = counter + 1
         # detach the new attached interface
-        time.sleep(10)
+        time.sleep(15)
         virsh.detach_device(vm_name, iface_add_xml, wait_remove_event=True,
                             debug=True, ignore_status=False)
         if flush_after_detach:
