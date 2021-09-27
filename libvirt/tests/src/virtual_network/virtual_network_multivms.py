@@ -259,7 +259,7 @@ def run(test, params, env):
                     virsh.detach_device(
                         vm_name_i,
                         new_ifaces[vm_name_i].xml,
-                        wait_remove_event=True,
+                        wait_for_event=True,
                         debug=True, ignore_status=False
                     )
 

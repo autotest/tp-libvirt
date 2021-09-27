@@ -155,7 +155,7 @@ def run(test, params, env):
         counter = counter + 1
         # detach the new attached interface
         time.sleep(10)
-        virsh.detach_device(vm_name, iface_add_xml, wait_remove_event=True,
+        virsh.detach_device(vm_name, iface_add_xml, wait_for_event=True,
                             debug=True, ignore_status=False)
         if flush_after_detach:
             libvirtd.restart()

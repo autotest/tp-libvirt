@@ -146,7 +146,7 @@ def run(test, params, env):
                 if not libvirt_disk.check_in_vm(vm, device_target, old_parts):
                     test.fail("Check encryption disk in VM failed")
                 virsh.detach_device(vm_name, disk_xml.xml, ignore_status=True,
-                                    debug=True, wait_remove_event=True)
+                                    debug=True, wait_for_event=True)
                 if not libvirt_disk.check_in_vm(vm, device_target, old_parts, is_equal=True):
                     test.fail("can not detach device successfully")
             else:
