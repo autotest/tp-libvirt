@@ -116,26 +116,32 @@ def update_with_memorytune(cputunexml, memorytune_item_list,
     :param mem_monitor_item_list: list of monitorxml info
     :return: the updated VMCPUTuneXML object
     """
+    memorytunes = []
     for mitem in range(len(memorytune_item_list)):
         logging.debug("node %d " % mitem)
         memorytunexml = vm_xml.MemoryTuneXML()
 
         memorytunexml.vcpus = memorytune_item_list[mitem]['vcpus']
+        nodes = []
         for node in node_item_list[mitem]:
             nodexml = memorytunexml.NodeXML()
             nodexml.id = node['id']
             nodexml.bandwidth = node['bandwidth']
-            memorytunexml.set_node(nodexml)
+            nodes.append(nodexml)
+        memorytunexml.nodes = nodes
 
+        monitors = []
         for monitor in mem_monitor_item_list[mitem]:
             monitorxml = memorytunexml.MonitorXML()
             monitorxml.vcpus = monitor['vcpus']
-            memorytunexml.set_monitor(monitorxml)
+            monitors.append(monitorxml)
+        memorytunexml.monitors = monitors
         logging.debug("memorytunexml.xml %s" % memorytunexml.xml)
 
-        cputunexml.set_memorytune(memorytunexml)
-        logging.debug("cputunexml.xml %s" % cputunexml.xml)
+        memorytunes.append(memorytunexml)
 
+    cputunexml.memorytunes = memorytunes
+    logging.debug("cputunexml.xml %s" % cputunexml.xml)
     return cputunexml
 
 
@@ -156,11 +162,13 @@ def update_with_cachetune(cputunexml, params):
     monitor_item_list = [ast.literal_eval(x)
                          for x in params.get("monitor_items",
                                              "").split(';')]
+    cachetunes = []
     for citem in range(len(cachetune_item_list)):
         logging.debug("cache %d " % citem)
         cachetunexml = vm_xml.CacheTuneXML()
         logging.debug("cachetunexml: %s" % cachetunexml)
         cachetunexml.vcpus = cachetune_item_list[citem]['vcpus']
+        caches = []
         for cache in cache_item_list:
             cachexml = cachetunexml.CacheXML()
             cachexml.id = cache['id']
@@ -168,14 +176,19 @@ def update_with_cachetune(cputunexml, params):
             cachexml.type = cache['type']
             cachexml.size = cache['size']
             cachexml.unit = cache['unit']
-            cachetunexml.set_cache(cachexml)
+            caches.append(cachexml)
+        cachetunexml.caches = caches
 
+        monitors = []
         for monitor in monitor_item_list:
             monitorxml = cachetunexml.MonitorXML()
             monitorxml.level = monitor['level']
             monitorxml.vcpus = monitor['vcpus']
-            cachetunexml.set_monitor(monitorxml)
-        cputunexml.set_cachetune(cachetunexml)
+            monitors.append(monitorxml)
+        cachetunexml.monitors = monitors
+        cachetunes.append(cachetunexml)
+
+    cputunexml.cachetunes = cachetunes
 
     return cputunexml
 
