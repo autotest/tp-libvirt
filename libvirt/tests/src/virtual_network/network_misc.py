@@ -7,12 +7,16 @@ from avocado.utils import service
 
 from virttest import libvirt_version
 from virttest import utils_misc
+from virttest import utils_net
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.devices import interface
 from virttest.libvirt_xml.network_xml import NetworkXML
+from virttest.utils_test import libvirt
 
 DEFAULT_NET = 'default'
+VIRSH_ARGS = {'debug': True, 'ignore_status': False}
 
 
 def setup_firewalld():
@@ -33,7 +37,9 @@ def run(test, params, env):
     """
     vm_name = params.get('main_vm')
     vm = env.get_vm(vm_name)
+    machine_type = params.get('machine_type')
     net = params.get('net', DEFAULT_NET)
+    status_error = 'yes' == params.get('status_error', 'no')
     expect_str = params.get('expect_str')
     bridge_name = 'br_' + utils_misc.generate_random_string(3)
 
@@ -46,7 +52,7 @@ def run(test, params, env):
 
         :param case: test case
         """
-        logging.info('No specific setup step for %s', case)
+        libvirt_version.is_libvirt_feature_supported(params)
 
     def cleanup_test_default(case):
         """
@@ -121,8 +127,91 @@ def run(test, params, env):
         test_zone = eval('run_test_zone_%s' % case)
         test_zone()
 
+    def run_test_iface_acpi(case):
+        """
+        Test acpi setting of interface
+
+        :param case: test case
+        """
+        if not utils_misc.compare_qemu_version(6, 1, 0, is_rhev=False) and \
+                machine_type == 'q35':
+            test.cancel('This test is not supported on q35 '
+                        'by qemu until v6.1.0')
+
+        acpi_index = params.get('acpi_index')
+        iface_in_vm = params.get('iface_in_vm')
+        iface_attrs = eval(params.get('iface_attrs'))
+
+        # Create interface with apci setting
+        iface_acpi = interface.Interface('network')
+        iface_acpi.setup_attrs(**iface_attrs)
+        logging.debug('New interface with acpi: %s', iface_acpi)
+
+        # Setup vm features with acpi if there is not
+        features = vmxml.features
+        feature_acpi = 'acpi'
+        if not features.has_feature(feature_acpi):
+            features.add_feature(feature_acpi)
+            vmxml.features = features
+
+        # Prepare vmxml for further test
+        vmxml.remove_all_device_by_type('interface')
+        vmxml.sync()
+
+        # Test vm with iface with acpi
+        if case == 'inplace':
+            libvirt.add_vm_device(vmxml, iface_acpi)
+            vm.start()
+
+        # Test hotplug iface with acpi
+        elif case == 'hotplug':
+            vm.start()
+            virsh.attach_device(vm_name, iface_acpi.xml, **VIRSH_ARGS)
+
+        # Test boundry/negative values of acpi setting
+        elif case == 'value_test':
+            vm.start()
+            vm.wait_for_serial_login().close()
+            at_result = virsh.attach_device(vm_name, iface_acpi.xml, debug=True)
+            libvirt.check_exit_status(at_result, status_error)
+            if status_error:
+                libvirt.check_result(at_result, expect_str)
+            return
+
+        # Check acpi setting in iface after adding/attaching to vm
+        new_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        new_iface = new_vmxml.get_devices('interface')[0]
+        logging.debug('Interface with acpi in vm: %s', new_iface)
+
+        if new_iface.xmltreefile.find('acpi') is None:
+            test.fail('acpi not found in Interface')
+        if new_iface.acpi.get('index') != acpi_index:
+            test.fail('Index of acpi check failed, should be %s' % acpi_index)
+
+        # Chech acpi inside vm
+        session = vm.wait_for_serial_login()
+        ip_output = session.cmd_output('ip l')
+        logging.debug(ip_output)
+
+        vm_ifaces = utils_net.get_linux_ifname(session)
+        if iface_in_vm in vm_ifaces:
+            logging.info('Found Interface %s in vm', iface_in_vm)
+        else:
+            test.fail('Interface %s not found in vm' % iface_in_vm)
+
+        # Hotunplug iface
+        virsh.detach_device(vm_name, new_iface.xml, **VIRSH_ARGS)
+        vm_ifaces = utils_net.get_linux_ifname(session)
+        if iface_in_vm in vm_ifaces:
+            test.fail('Interface %s should be removed from vmxml' % iface_in_vm)
+
+        new_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+        if new_vmxml.get_devices('interface'):
+            test.fail('Interface should be removed.')
+
     bk_netxml = NetworkXML.new_from_net_dumpxml(net)
-    bk_xml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+    vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    bk_xml = vmxml.copy()
 
     try:
         # Get setup function
