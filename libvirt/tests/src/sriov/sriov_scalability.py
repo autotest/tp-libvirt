@@ -105,7 +105,7 @@ def run(test, params, env):
         """
         Hotplug MAX VFs to guest
 
-        1. Start vm with 64 vfio intefaces
+        1. Start vm with 64 vfio interfaces
         2. Check networks
         3. Try to hot plug the 65th hostdev interface
         4. Destroy vm and cold plug 1 hostdev interface
@@ -148,9 +148,9 @@ def run(test, params, env):
 
     def get_net_dict(pf_info):
         """
-        Get network dict from pfs' info
+        Get network dict from pfs info
 
-        :param pf_info: PFs' info
+        :param pf_info: PFs info
         :return: Network parameters
         """
         pf_id_list = get_pf_id_list(pf_info)
