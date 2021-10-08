@@ -706,6 +706,8 @@ pem
 perf
 perl
 persistency
+pfs
+PFs
 PF's
 pid
 PID
@@ -798,6 +800,7 @@ Resize
 resized
 resizing
 restared
+restorecon
 ret
 retlist
 RFE

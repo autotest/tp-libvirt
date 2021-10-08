@@ -142,7 +142,7 @@ def run(test, params, env):
         iface_in_vm = params.get('iface_in_vm')
         iface_attrs = eval(params.get('iface_attrs'))
 
-        # Create interface with apci setting
+        # Create interface with acpi setting
         iface_acpi = interface.Interface('network')
         iface_acpi.setup_attrs(**iface_attrs)
         logging.debug('New interface with acpi: %s', iface_acpi)
@@ -168,7 +168,7 @@ def run(test, params, env):
             vm.start()
             virsh.attach_device(vm_name, iface_acpi.xml, **VIRSH_ARGS)
 
-        # Test boundry/negative values of acpi setting
+        # Test boundary/negative values of acpi setting
         elif case == 'value_test':
             vm.start()
             vm.wait_for_serial_login().close()
@@ -188,7 +188,7 @@ def run(test, params, env):
         if new_iface.acpi.get('index') != acpi_index:
             test.fail('Index of acpi check failed, should be %s' % acpi_index)
 
-        # Chech acpi inside vm
+        # Check acpi inside vm
         session = vm.wait_for_serial_login()
         ip_output = session.cmd_output('ip l')
         logging.debug(ip_output)
