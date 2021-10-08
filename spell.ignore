@@ -320,6 +320,8 @@ Getlink
 getrandom
 getspeed
 gfxcard
+Gib
+GiB
 gid
 gluster
 Gluster
@@ -449,6 +451,7 @@ journalctl
 json
 judgement
 kallsysm
+kb
 kconfig
 kdump
 kexec
@@ -457,6 +460,7 @@ keypresses
 keyvalue
 keywards
 keywrap
+KiB
 kms
 ksm
 KSM
@@ -554,6 +558,7 @@ messege
 Metabytes
 metadata
 metadatacache
+MiB
 middletotop
 migratable
 migrateuri
@@ -1008,6 +1013,8 @@ unexcepted
 unhotplug
 unix
 unixbench
+unlink
+unlinked
 unmap
 Unmark
 unmount
@@ -1143,9 +1150,11 @@ xen
 Xen
 XEN
 xfs
+xfstest
 xhci
 xml
 xmlfile
+xmls
 xmltreefile
 xorg
 xxxx

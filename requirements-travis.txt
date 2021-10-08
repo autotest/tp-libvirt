@@ -5,3 +5,4 @@ tox==1.5.0
 virtualenv==1.9.1
 simplejson==3.8.1
 inspektor==0.5.2
+pyenchant
