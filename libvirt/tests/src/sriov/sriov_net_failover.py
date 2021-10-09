@@ -29,7 +29,7 @@ def exec_function(test_func):
     """
     A wrapper function to run 'setup/teardown' function
 
-    :param test_func: The name setup/tearndown function
+    :param test_func: The name setup/teardown function
     """
     if not callable(test_func):
         logging.warning('Function "%s" is not implemented yet.', test_func)
@@ -84,7 +84,7 @@ def run(test, params, env):
             if ifc.type_name == "hostdev":
                 ifc.del_address()
                 hostdev_iface = ifc
-        virsh.detach_device(vm_name, hostdev_iface.xml, wait_remove_event=True,
+        virsh.detach_device(vm_name, hostdev_iface.xml, wait_for_event=True,
                             debug=True, ignore_status=False)
         check_ifaces(vm_name, expected_ifaces={"hostdev"}, status_error=True)
 
@@ -125,7 +125,7 @@ def run(test, params, env):
                                   tcpdump_iface=bridge_name,
                                   tcpdump_status_error=True)
         logging.info("Detach the hostdev device.")
-        virsh.detach_device(vm_name, hostdev_dev.xml, wait_remove_event=True,
+        virsh.detach_device(vm_name, hostdev_dev.xml, wait_for_event=True,
                             debug=True, ignore_status=False)
         logging.debug("Recover vf's mac to %s.", default_vf_mac)
         utils_sriov.set_vf_mac(pf_name, default_vf_mac)
@@ -175,7 +175,7 @@ def run(test, params, env):
         logging.info("Detach the hostdev device.")
         hostdev_dev = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name).devices.\
             by_device_tag("hostdev")
-        virsh.detach_device(vm_name, hostdev_dev.xml, wait_remove_event=True,
+        virsh.detach_device(vm_name, hostdev_dev.xml, wait_for_event=True,
                             debug=True, ignore_status=False)
         check_hostdev = vm_xml.VMXML.new_from_dumpxml(vm_name)\
             .devices.by_device_tag('hostdev')
@@ -406,7 +406,7 @@ def run(test, params, env):
         run_test()
 
     finally:
-        logging.info("Recover test enviroment.")
+        logging.info("Recover test environment.")
         utils_sriov.add_or_del_connection(brg_dict, is_del=True)
         libvirt_network.create_or_del_network(bridge_dict, is_del=True)
         if 'pf_pci_path' in locals() and default_vf != vf_no:

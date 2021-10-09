@@ -76,7 +76,7 @@ def run(test, params, env):
             maxvcpus = None
             maxvcpus_cap = None
             dom_capabilities = None
-            # make sure we take maxvcpus from right host, helps incase remote
+            # make sure we take maxvcpus from right host, helps in case remote
             try:
                 dom_capabilities = domcap.DomCapabilityXML(virsh_instance=virsh_instance)
                 maxvcpus = dom_capabilities.max
@@ -93,7 +93,7 @@ def run(test, params, env):
             except Exception as details:
                 logging.debug("Failed to get maxvcpu from virsh "
                               "capabilities: %s", details)
-                # Let's fall back incase of failure
+                # Let's fall back in case of failure
                 maxvcpus_cap = maxvcpus
             if not maxvcpus:
                 raise exceptions.TestFail("Failed to get max value for vcpu"
@@ -120,7 +120,7 @@ def run(test, params, env):
     # Check status_error
     if status_error == "yes":
         if status == 0:
-            raise exceptions.TestFail("Run successed with unsupported option!")
+            raise exceptions.TestFail("Run succeeded with unsupported option!")
         else:
             logging.info("Run failed with unsupported option %s " % option)
     elif status_error == "no":

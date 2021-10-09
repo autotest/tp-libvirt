@@ -34,7 +34,7 @@ from virttest import libvirt_version
 
 def run(test, params, env):
     """
-    Test interafce xml options.
+    Test interface xml options.
 
     1.Prepare test environment,destroy or suspend a VM.
     2.Edit xml and start the domain.
@@ -667,6 +667,7 @@ def run(test, params, env):
     check_statistics = "yes" == params.get("check_statistics", "no")
     enable_multiqueue = "yes" == params.get("enable_multiqueue", "no")
 
+    libvirt_version.is_libvirt_feature_supported(params)
     queue_size = None
     if iface_driver:
         driver_dict = ast.literal_eval(iface_driver)

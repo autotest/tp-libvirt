@@ -112,7 +112,7 @@ def run(test, params, env):
             Prepare disk xml to be hot plugged
 
             :param test_disk: The vm's disk, such as 'vdb'
-            :param image_path: The path to the iamge
+            :param image_path: The path to the image
             :return: The xml of the test disk
             """
             test_disk_params = {"device_type": "disk",
@@ -173,7 +173,7 @@ def run(test, params, env):
 
         def prepare_checkpoint_xml(backup_disks, all_vm_disks):
             """
-            Preapre checkpoint xml
+            Prepare checkpoint xml
 
             :param backup_disks: List of disks to be backuped
             :param all_vm_disks: List of vm disks
@@ -239,7 +239,7 @@ def run(test, params, env):
         if vm.is_alive():
             vm.destroy(gracefully=False)
 
-        # Check if images' bitmap info is same as the checkponits we created
+        # Check if images' bitmap info is same as the checkpoints we created
         bitmaps_eq_checkponits = True
         for test_disk in list(test_disk_dict.keys()):
             bitmaps = utils_backup.get_img_bitmaps(test_disk_dict[test_disk]['path'])

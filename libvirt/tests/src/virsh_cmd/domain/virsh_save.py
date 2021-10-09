@@ -97,7 +97,7 @@ def run(test, params, env):
                 test.fail("virsh run failed with a "
                           "correct command")
             if progress and not err_msg.count("Save:"):
-                test.fail("No progress information outputed!")
+                test.fail("No progress information outputted!")
             if options.count("running"):
                 if vm.is_dead() or vm.is_paused():
                     test.fail("Guest state should be"

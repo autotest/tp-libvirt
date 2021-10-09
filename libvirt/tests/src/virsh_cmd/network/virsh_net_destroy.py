@@ -19,7 +19,7 @@ def run(test, params, env):
     1.Make sure the network exists.
     2.Prepare network status.
     3.Perform virsh net-destroy operation.
-    4.Check if the network has been destroied.
+    4.Check if the network has been destroyed.
     5.Recover network environment.
     6.Confirm the test result.
     """

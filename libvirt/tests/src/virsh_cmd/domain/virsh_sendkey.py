@@ -7,6 +7,7 @@ from virttest import utils_test
 from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
+from virttest.libvirt_xml.devices.input import Input
 
 from avocado.utils import wait
 
@@ -41,6 +42,7 @@ def run(test, params, env):
     unprivileged_user = params.get('unprivileged_user')
     is_crash = ("yes" == params.get("is_crash", "no"))
     add_panic_device = ("yes" == params.get("add_panic_device", "yes"))
+    need_keyboard_device = ("yes" == params.get("need_keyboard_device", "yes"))
     panic_model = params.get('panic_model', 'isa')
     force_vm_boot_text_mode = ("yes" == params.get("force_vm_boot_text_mode", "yes"))
     crash_dir = "/var/crash"
@@ -64,9 +66,33 @@ def run(test, params, env):
         virsh.sendkey(vm_name, "KEY_ENTER",
                       ignore_status=False)
 
+    def add_keyboard_device(vm_name):
+        """
+        Add keyboard to guest if guest doesn't have
+
+        :params: vm_name: the guest name
+        """
+        inputs = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)\
+            .get_devices(device_type="input")
+        for input_device in inputs:
+            if input_device.type_name == "keyboard":
+                logging.debug("Guest already has a keyboard device")
+                return
+
+        kbd = Input("keyboard")
+        kbd.input_bus = "virtio"
+        logging.debug("Add keyboard device %s" % kbd)
+        result = virsh.attach_device(vm_name, kbd.xml)
+        if result.exit_status:
+            test.error("Failed to add keyboard device")
+
     vm = env.get_vm(vm_name)
-    vm.wait_for_login().close()
+    # Part of sysrq tests need keyboard device otherwise the sysrq cmd doesn't
+    # work. Refer to BZ#1526862
+    if need_keyboard_device:
+        add_keyboard_device(vm_name)
     vmxml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
+    vm.wait_for_login().close()
 
     if force_vm_boot_text_mode:
         # Boot the guest in text only mode so that send-key commands would succeed

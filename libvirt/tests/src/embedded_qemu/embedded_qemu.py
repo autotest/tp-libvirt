@@ -40,7 +40,7 @@ def run(test, params, env):
 
     def _confirm_terminate():
         """
-        Confirm qemu process exits successuflly after 'ctrl+c'
+        Confirm qemu process exits successfully after 'ctrl+c'
         """
         cmd = 'pgrep qemu | wc -l'
         output = int(process.run(cmd, shell=True).stdout_text.strip())

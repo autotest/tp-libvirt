@@ -37,7 +37,7 @@ def run(test, params, env):
     def check_ping(dest_ip, ping_count, timeout, src_ip=None, session=None,
                    expect_success=True):
         """
-        Check if ping result meets expectaion
+        Check if ping result meets expectation
         """
         status, output = utils_net.ping(dest=dest_ip, count=ping_count,
                                         interface=src_ip, timeout=timeout,

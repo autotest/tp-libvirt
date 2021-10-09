@@ -308,7 +308,7 @@ def run(test, params, env):
         vm.start()
     session = vm.wait_for_login()
     if session.cmd_status('dmidecode'):
-        # The physical memory size is in vm xml, use it when dmideode not
+        # The physical memory size is in vm xml, use it when dmidecode not
         # supported
         unusable_mem = int(vmxml.max_mem) - get_vm_usable_mem(session)
     else:
@@ -363,7 +363,7 @@ def run(test, params, env):
             logging.info(
                 "Waiting %d seconds for VM memory to settle", quiesce_delay)
             # It takes time for kernel to settle on new memory
-            # and current clean pages is not predictable. Therefor,
+            # and current clean pages is not predictable. Therefore,
             # extremely difficult to determine quiescence, so
             # sleep one second per error percent is reasonable option.
             time.sleep(quiesce_delay)

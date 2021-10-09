@@ -189,7 +189,7 @@ def run(test, params, env):
             result = virsh.start(vm_name, debug=True)
             libvirt.check_exit_status(result, expect_error=status_error)
 
-            # if vm is not suposed to start, terminate test
+            # if vm is not supposed to start, terminate test
             if status_error:
                 libvirt.check_result(result, error_msg)
                 return
@@ -212,7 +212,7 @@ def run(test, params, env):
                 logging.debug(mem_xml)
 
                 # Attach memory device to the guest for 12 times
-                # that will reach the maxinum memory limitation
+                # that will reach the maximum memory limitation
                 for i in range(12):
                     virsh.attach_device(vm_name, mem_xml.xml,
                                         debug=True, ignore_status=False)

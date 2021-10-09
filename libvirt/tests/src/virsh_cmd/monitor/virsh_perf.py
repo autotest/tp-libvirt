@@ -47,11 +47,11 @@ def check_perf_result(vm_name, perf_option, events):
 
     :param vm_name: Domain name,id
     :param perf_option: --enable or  --disable
-    :param events: perf event names seperated by comma
+    :param events: perf event names separated by comma
     """
     # logging.debug("events:%s in check_perf_result", events)
     ret_event = ""
-    # If there is a event list, get the first event group seperated by ' '
+    # If there is a event list, get the first event group separated by ' '
     events_list = events.strip().split(' ')
     for event in events_list[0].split(','):
         if not check_event_value(vm_name, perf_option, event):

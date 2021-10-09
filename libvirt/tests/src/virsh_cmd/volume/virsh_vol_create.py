@@ -185,17 +185,17 @@ def run(test, params, env):
 
     def post_process_vol(ori_vol_path):
         """
-        Create or disactive a volume without libvirt
+        Create or deactivate a volume without libvirt
 
         :param ori_vol_path: Full path of an original volume
-        :retur: Volume name for checking
+        :return: Volume name for checking
         """
         process_vol_name = params.get("process_vol_name", "process_vol")
         process_vol_options = params.get("process_vol_options", "")
         process_vol_capacity = params.get("process_vol_capacity", vol_capacity)
         process_vol_cmd = ""
-        unsupport_err = "Unsupport do '%s %s' in this test" % (process_vol_by,
-                                                               process_vol_type)
+        unsupport_err = "Unsupported do '%s %s' in this test" % (process_vol_by,
+                                                                 process_vol_type)
         if process_vol_by == "lvcreate":
             process_vol_cmd = "lvcreate -L %s " % process_vol_capacity
             if process_vol_type == "thin":

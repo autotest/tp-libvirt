@@ -520,8 +520,8 @@ def run(test, params, env):
             cleanup_vm(vm, vm_name=dname, uri=dest_uri)
             cleanup_vm(vm, vm_name=vm_name_backup, uri=src_uri)
 
-        # Recover source vm defination (just in case).
-        logging.info("Recover vm defination on source")
+        # Recover source vm definition (just in case).
+        logging.info("Recover vm definition on source")
         if vm_xml_backup:
             vm_xml_backup.define()
 

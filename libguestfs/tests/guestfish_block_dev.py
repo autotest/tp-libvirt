@@ -84,7 +84,7 @@ def test_blockdev_set_get_ro_rw(test, vm, params):
 
     try:
         if gf_result != expect_result:
-            test.fail("Get the uncorrect status, test failed.")
+            test.fail("Get the incorrect status, test failed.")
     finally:
         gf.close_session()
 
@@ -166,7 +166,7 @@ def test_blockdev_getss(test, vm, params):
     logging.debug("Size of %s is %d" % (pv_name, int(gf_result)))
 
     if int(gf_result) < 512:
-        test.fail("Size of sectors is uncorrect")
+        test.fail("Size of sectors is incorrect")
 
 
 def test_blockdev_getsize64(test, vm, params):
@@ -387,7 +387,7 @@ def test_max_disks(test, vm, params):
     logging.debug("The maximum number of disks is %s" % max_disk)
 
     if max_disk != '255':
-        test.fail("The maximum number of disks is uncorrect")
+        test.fail("The maximum number of disks is incorrect")
 
 
 def test_nr_devices(test, vm, params):
@@ -411,7 +411,7 @@ def test_nr_devices(test, vm, params):
     logging.debug("The number of device is %s" % device_num)
 
     if device_num != '1':
-        test.fail("The number of device is uncorrect")
+        test.fail("The number of device is incorrect")
 
 
 def test_list_partitions(test, vm, params):
@@ -444,7 +444,7 @@ def test_list_partitions(test, vm, params):
         device_num = len(re.findall('\S+', devices))
         if device_num != 1:
             # add one disk with one partition as default
-            test.fail("The number of device is uncorrect")
+            test.fail("The number of device is incorrect")
     elif params["partition_type"] == "lvm":
         logging.debug("This does not return logical volumes. "
                       "For that you will need to call 'lvs'")
@@ -522,12 +522,12 @@ def test_disk_virtual_size(test, vm, params):
     if params["image_format"] == "raw":
         if result != disk_size and result != image_size:
             gf.close_session()
-            test.fail("disk-virtual-size can't get uncorrect size")
+            test.fail("disk-virtual-size can't get incorrect size")
     elif params["image_format"] == "qcow2":
         # disk size of qcow format is not fixed
         if result != image_size:
             gf.close_session()
-            test.fail("disk-virtual-size can't get uncorrect size")
+            test.fail("disk-virtual-size can't get incorrect size")
 
     gf.close_session()
 
@@ -932,7 +932,7 @@ def test_part_set_get_bootable(test, vm, params):
             ret = gf.part_get_bootable(pv_name, 1).stdout.strip()
             if ret != v:
                 gf.close_session()
-                test.fail("Get the uncorrect status")
+                test.fail("Get the incorrect status")
 
     gf.close_session()
 
@@ -962,7 +962,7 @@ def test_part_set_get_mbr_id(test, vm, params):
                 ret = gf.part_get_mbr_id(pv_name, i).stdout.strip()
                 if ret != v:
                     gf.close_session()
-                    test.fail("Get the uncorrect mbr id")
+                    test.fail("Get the incorrect mbr id")
 
     gf.close_session()
 

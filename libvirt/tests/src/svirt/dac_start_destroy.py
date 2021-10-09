@@ -66,7 +66,7 @@ def format_user_group_str(user, group):
         try:
             user_id = pwd.getpwnam(user).pw_uid
         except KeyError:
-            # user did not exist will definitly fail start domain, log warning
+            # user did not exist will definitely fail start domain, log warning
             # here, let the test continue
             logging.warning("the user name: %s not found on host" % user)
             user_id = user
@@ -125,7 +125,7 @@ def run(test, params, env):
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
 
-    # Get varialbles about image.
+    # Get variables about image.
     img_label = params.get('dac_start_destroy_disk_label')
     # Label the disks of VM with img_label.
     disks = vm.get_disk_devices()
@@ -143,7 +143,7 @@ def run(test, params, env):
             os.close(f)
             st = os.stat(disk_path)
             if not bool(st.st_mode & stat.S_IWGRP):
-                # add group wirte mode to disk by chmod g+w
+                # add group write mode to disk by chmod g+w
                 os.chmod(disk_path, st.st_mode | stat.S_IWGRP)
                 qemu_disk_mod = True
 
@@ -253,7 +253,7 @@ def run(test, params, env):
             if set_sec_label and sec_label:
                 if ":" in sec_label:
                     if vm_context != sec_label_trans:
-                        test.fail("Label of VM processs is not "
+                        test.fail("Label of VM process is not "
                                   "expected after starting.\nDetail:"
                                   "vm_context=%s, sec_label_trans=%s"
                                   % (vm_context, sec_label_trans))
@@ -270,7 +270,7 @@ def run(test, params, env):
             elif(set_qemu_conf and not security_default_confined and not
                  qemu_no_usr_grp):
                 if vm_context != qemu_conf_label_trans:
-                    test.fail("Label of VM processs is not expected"
+                    test.fail("Label of VM process is not expected"
                               " after starting.\nDetail: vm_context="
                               "%s, qemu_conf_label_trans=%s"
                               % (vm_context, qemu_conf_label_trans))
@@ -308,7 +308,7 @@ def run(test, params, env):
                     test.fail("Label of disk is img_label_after"
                               ":%s" % img_label_after + ", it "
                               "did not restore to %s in VM "
-                              "shuting down." % img_label)
+                              "shutting down." % img_label)
             elif set_sec_label and sec_relabel == "yes":
                 # As dynamic_ownership as 1 on non-share fs, current domain
                 # image will restore to 0:0 when sec_relabel enabled.
@@ -317,7 +317,7 @@ def run(test, params, env):
                         test.fail("Label of disk is img_label_after"
                                   ":%s" % img_label_after + ", it "
                                   "did not restore to 0:0 in VM "
-                                  "shuting down.")
+                                  "shutting down.")
             elif set_qemu_conf and not set_sec_label:
                 # As dynamic_ownership as 1 on non-share fs, current domain
                 # image will restore to 0:0 when only set qemu.conf.
@@ -326,7 +326,7 @@ def run(test, params, env):
                         test.fail("Label of disk is img_label_after"
                                   ":%s" % img_label_after + ", it "
                                   "did not restore to 0:0 in VM "
-                                  "shuting down.")
+                                  "shutting down.")
                 else:
                     if (not img_label_after == img_label):
                         test.fail("Bug: Label of disk is changed\n"

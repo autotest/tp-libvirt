@@ -884,7 +884,7 @@ def run(test, params, env):
 
     def get_conf_type(conf_type):
         """
-        Convert the configred conf_type to the actual conf_type\
+        Convert the configured conf_type to the actual conf_type\
         according to test env.
         Note: The conf_type configured in <test>.cfg is always set to the value
               in modular daemon mode. Need to convert it to the actual value
@@ -1625,7 +1625,7 @@ def run(test, params, env):
             # Clean VM on destination
             migration_test.cleanup_vm(vm, dest_uri)
 
-            logging.info("Recover VM XML configration")
+            logging.info("Recover VM XML configuration")
             orig_config_xml.sync()
             logging.debug("The current VM XML:\n%s", orig_config_xml.xmltreefile)
 

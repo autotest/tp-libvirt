@@ -310,7 +310,7 @@ def run(test, params, env):
             for i in h_list:
                 node_val = hp_cl.get_node_num_huge_pages(i['nodenum'],
                                                          i['size'])
-                # set hugpege per node if current value not satisfied
+                # set hugepage per node if current value not satisfied
                 # kernel 1G hugepage runtime number update is supported now
                 if int(i['num']) > node_val:
                     node_dict = i.copy()

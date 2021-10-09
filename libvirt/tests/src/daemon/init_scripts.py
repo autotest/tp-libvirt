@@ -19,7 +19,7 @@ def run(test, params, env):
         Check the availability of three init services.
 
         :param cmd: service name. Can be initctl, systemctl or initscripts
-        :return: True if init system avaiable or False if not.
+        :return: True if init system available or False if not.
         """
         if cmd in ['initctl', 'systemctl']:
             try:

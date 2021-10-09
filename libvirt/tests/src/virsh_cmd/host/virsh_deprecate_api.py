@@ -2,6 +2,7 @@ import json
 import logging
 import re
 
+from avocado.core import exceptions
 from virttest import libvirt_version
 from virttest import libvirt_xml
 from virttest import utils_libvirtd
@@ -118,7 +119,7 @@ def check_dominfo(test, vm_name, deprecated_list, empty=False):
         if empty:
             logging.debug("No Messages are found in dominfo output as expected.")
         else:
-            test.fail("There is no tainted deprecated messsage: {} in dominfo "
+            test.fail("There is no tainted deprecated message: {} in dominfo "
                       "output: {}".format(tainted_message, res.stdout_text))
     else:
         if empty:
@@ -215,6 +216,8 @@ def run(test, params, env):
             utils_misc.wait_for(lambda: vm.state() == 'shut off', 60)
             check_dominfo(test, vm_name, deprecated_list, empty=True)
 
+    except (exceptions.TestFail, exceptions.TestCancel):
+        raise
     except Exception as e:
         test.error('Unexpected error: {}'.format(e))
     finally:

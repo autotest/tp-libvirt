@@ -90,7 +90,7 @@ def destroy_active_pool_on_remote(params):
 def create_destroy_pool_on_remote(test, action, params):
     """
     This is to create or destroy a specified pool on remote host.
-    :param action: "create" or "destory"
+    :param action: "create" or "destroy"
     :param params: a dict for parameters
 
     :return: True if successful, otherwise False
@@ -738,7 +738,7 @@ def check_virsh_command_and_option(test, command, option=None):
     :param test: test object
     :param command: the command to validate
     :param option: the option for the command
-    :raise: test.cancel if commmand is not supported
+    :raise: test.cancel if command is not supported
     """
     msg = "This version of libvirt does not support "
     if not virsh.has_help_command(command):
@@ -911,7 +911,7 @@ def check_migration_disk_port(params):
     """
     Handle the option '--disks-port'.
     As the migration thread begins to execute, this function is executed
-    at same time almostly. It will wait for several seconds to make sure
+    at same time almost. It will wait for several seconds to make sure
     the storage migration start actually. Then it checks the port on remote
     in use is same as that specified by '--disks-port'.
     """
@@ -1416,7 +1416,7 @@ def run(test, params, env):
     local_image_list = []
     remote_image_list = []
 
-    # Defaut don't add new iptables rules
+    # Default don't add new iptables rules
     add_iptables_rules = False
 
     # Converting time to second
@@ -1711,7 +1711,7 @@ def run(test, params, env):
                 vm_xml_cxt = process.run("virsh dumpxml %s" % vm_name, shell=True).stdout_text
                 logging.debug("The current VM XML contents: \n%s", vm_xml_cxt)
             finally:
-                logging.info("Recovery VM XML configration")
+                logging.info("Recovery VM XML configuration")
                 vmxml_backup.sync()
                 logging.debug("The current VM XML:\n%s", vmxml_backup.xmltreefile)
 
@@ -1960,7 +1960,7 @@ def run(test, params, env):
             try:
                 vm.start()
             except virt_vm.VMStartError as e:
-                logging.info("Recovery VM XML configration")
+                logging.info("Recovery VM XML configuration")
                 vmxml_backup.sync()
                 logging.debug("The current VM XML:\n%s", vmxml_backup.xmltreefile)
                 if start_filter_string:
@@ -2430,7 +2430,7 @@ def run(test, params, env):
         #tcp6   23168 0 10.66.4.167:56789  10.66.5.225:41334 ESTABLISHED 21266/qemu-kvm
 
         if disk_port:
-            # Run migration command on a seperate thread
+            # Run migration command on a separate thread
             migration_test = migration.MigrationTest()
             vms = [vm]
             func_dict = {"disk_port": disk_port, "server_ip": server_ip,
@@ -2491,7 +2491,7 @@ def run(test, params, env):
                 logging.debug("Replace guest image with nfs image")
                 image_name = os.path.basename(disk_source)
 
-                # Dumpxml of remote guest to tempory file for updating
+                # Dumpxml of remote guest to temporary file for updating
                 # its disk image
                 logging.debug("Dumpxml of remote guest")
                 cmd = "virsh dumpxml %s > %s" % (target_vm_name, xml_path)
@@ -2892,7 +2892,7 @@ def run(test, params, env):
             libvirt.setup_or_cleanup_iscsi(is_setup=False)
             libvirtd.restart()
 
-        logging.info("Recovery VM XML configration")
+        logging.info("Recovery VM XML configuration")
         vmxml_backup.sync()
         logging.debug("The current VM XML:\n%s", vmxml_backup.xmltreefile)
 

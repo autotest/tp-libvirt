@@ -43,14 +43,14 @@ def run(test, params, env):
     def chk_on_shutdown(status_error, on_shutdown, parallel_shutdown, output):
         """
         check domains' state when host shutdown, and if parallel_shutdown is set
-        to non-zero, check whether the guests have been shutdown corretly.
+        to non-zero, check whether the guests have been shutdown correctly.
 
         :param status_error: positive test if status_error is "no", otherwise
                              negative test
         :param on_shutdown: action taking on host shutdown
         :param parallel_shutdown: the number of parallel_shutdown guests would
                                   be shutdown concurrently on shutdown
-        :param output: apppended message from /var/log/messages
+        :param output: appended message from /var/log/messages
         """
         if on_shutdown == "shutdown" and on_boot == "start":
             second_boot_time = boot_time()
@@ -205,7 +205,7 @@ def run(test, params, env):
         nfs_export_dir = nfs_server['export_dir']
         logging.debug("nfs dir is %s", nfs_export_dir)
 
-        # change the orignal xml and image path
+        # change the original xml and image path
         for dom in vms:
             vmxml = vm_xml.VMXML.new_from_dumpxml(dom.name)
             vmxml_backup.append(vmxml.copy())
@@ -301,7 +301,7 @@ def run(test, params, env):
 
         tail_messages = get_log()
         # Even though libvirt-guests was designed to operate guests when
-        # host shutdown. The purpose can also be fullfilled by restart the
+        # host shutdown. The purpose can also be fulfilled by restart the
         # libvirt-guests service.
         libvirt_guests_service.restart()
         time.sleep(10)

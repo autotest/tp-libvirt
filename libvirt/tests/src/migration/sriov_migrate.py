@@ -173,7 +173,7 @@ def run(test, params, env):
         cmd = "readlink %s/driver | awk -F '/' '{print $NF}'" % pci_path
         output = process.run(cmd, shell=True, verbose=True).stdout_text.strip()
         if (output == "vfio-pci") == status_error:
-            test.fail("Get incorrect dirver %s, it should%s be vfio-pci."
+            test.fail("Get incorrect driver %s, it should%s be vfio-pci."
                       % (output, ' not' if status_error else ''))
 
     def update_iface_xml(vmxml, enable_hostdev_iface):
@@ -480,7 +480,7 @@ def run(test, params, env):
 
                 if re.findall('Destination Host Unreachable', cmd_result, re.M):
                     test.fail("The network does not work well during "
-                              "the migration peirod. ping output: %s"
+                              "the migration period. ping output: %s"
                               % cmd_result)
 
             # Execute migration from remote
@@ -530,7 +530,7 @@ def run(test, params, env):
         # Clean VM on destination
         migration_test.cleanup_vm(vm, dest_uri)
 
-        logging.info("Recover VM XML configration")
+        logging.info("Recover VM XML configuration")
         orig_config_xml.sync()
         logging.debug("The current VM XML:\n%s", orig_config_xml.xmltreefile)
 

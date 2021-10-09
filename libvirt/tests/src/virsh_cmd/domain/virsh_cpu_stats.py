@@ -15,7 +15,7 @@ def run(test, params, env):
     The command can display domain per-CPU and total statistics.
     1. Call virsh cpu-stats [domain]
     2. Call virsh cpu-stats [domain] with valid options
-    3. Call virsh cpu-stats [domain] with invalide options
+    3. Call virsh cpu-stats [domain] with invalid options
     """
 
     if not virsh.has_help_command('cpu-stats'):

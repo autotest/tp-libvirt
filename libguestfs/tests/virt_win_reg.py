@@ -129,7 +129,7 @@ def run(test, params, env):
         if operation == "query":
             output_in_guest = output.split()[-1].strip()
             if not output_in_guest == output_virt_win_reg:
-                test.fail("Informations are not equal from "
+                test.fail("Information are not equal from "
                           "virt_win_reg and from cmd in guest.\n"
                           "virt_win_reg: %s\n"
                           "cmd_in_guest: %s" %

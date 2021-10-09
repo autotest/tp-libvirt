@@ -90,7 +90,7 @@ def run(test, params, env):
                 status = virsh_session.cmd_status(cmd)
                 if status:
                     test.fail("Failed to start vm with --autodestroy.")
-                # Close the session, then the vm shoud be destroyed.
+                # Close the session, then the vm should be destroyed.
                 virsh_session.close()
             elif opt.count("force-boot"):
                 # With --force-boot, VM will be stared from boot

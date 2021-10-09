@@ -286,7 +286,7 @@ def run(test, params, env):
                 vm_dump_xml.add_device(scsi_controller)
                 vm_dump_xml.sync()
         else:
-            test.cancel("Unsupport disk type in this test")
+            test.cancel("Unsupported disk type in this test")
         disk_params.update(disk_params_src)
         if chap_auth and disk_type != "volume":
             disk_params_auth = {'auth_user': chap_user,
@@ -363,7 +363,7 @@ def run(test, params, env):
         elif domain_operation == "":
             logging.debug("No domain operation provided, so skip it")
         else:
-            logging.error("Unsupport operation %s in this case, so skip it",
+            logging.error("Unsupported operation %s in this case, so skip it",
                           domain_operation)
 
         def find_attach_disk(expect=True):

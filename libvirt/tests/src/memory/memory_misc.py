@@ -123,7 +123,7 @@ def run(test, params, env):
                 if vmxml.xmltreefile.find('cpu'):
                     cpuxml = vmxml.cpu
                 else:
-                    cpuxml = vm_xml.VMCPUXML
+                    cpuxml = vm_xml.VMCPUXML()
                 cpuxml.numa_cell = cpuxml.dicts_to_cells(numa_cells)
                 vmxml.cpu = cpuxml
                 vmxml.vcpu = 4
@@ -233,7 +233,7 @@ def run(test, params, env):
                 if getattr(vmxml, attr) == getattr(newxml, attr):
                     logging.debug('Result: Equal.')
                 else:
-                    test.fail('Xml comparision of %s failed.', attr)
+                    test.fail('Xml comparison of %s failed.', attr)
 
     def run_test_dimm(case):
         """

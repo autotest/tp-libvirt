@@ -30,7 +30,7 @@ def run(test, params, env):
 
         :param vm : domain name
         :param device : domain virtual interface
-        :param opration : domain virtual interface state
+        :param operation : domain virtual interface state
         :param options : some options like --config
 
         """

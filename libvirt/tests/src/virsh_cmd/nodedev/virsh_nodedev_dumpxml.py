@@ -122,7 +122,7 @@ def run(test, params, env):
         dump_nodedev_xml(dev_name=device_name, dev_opt=device_opt,
                          **virsh_dargs)
         if status_error:
-            test.fail('Nodedev dumpxml successed in negative test.')
+            test.fail('Nodedev dumpxml succeeded in negative test.')
     except Exception as e:
         if not status_error:
             test.fail('Nodedev dumpxml failed in positive test.'

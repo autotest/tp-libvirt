@@ -787,7 +787,7 @@ def test_aug_label(test, vm, params):
 
     if aug_label_result.stdout.strip('\n') != 'root':
         gf.close_session()
-        test.fail("aug-label return the wrong lable")
+        test.fail("aug-label return the wrong label")
     gf.close_session()
 
 

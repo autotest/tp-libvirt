@@ -97,7 +97,7 @@ def run(test, params, env):
         source_ip = None
         source_pwd = None
     else:
-        test.cancel("Unspported hypervisor: %s" % hypervisor)
+        test.cancel("Unsupported hypervisor: %s" % hypervisor)
 
     if output_method == 'rhv_upload':
         # Create password file for '-o rhv_upload' to connect to ovirt
@@ -233,7 +233,7 @@ def run(test, params, env):
             v2v_sasl.close_session()
         if hypervisor == "xen":
             # Restore crypto-policies to DEFAULT, the setting is impossible to be
-            # other values by default in testing envrionment.
+            # other values by default in testing environment.
             process.run(
                 'update-crypto-policies --set DEFAULT',
                 verbose=True,

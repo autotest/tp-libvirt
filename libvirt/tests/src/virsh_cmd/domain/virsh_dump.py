@@ -158,7 +158,7 @@ def run(test, params, env):
         Check the format of dumped file.
 
         If 'dump_image_format' is not specified or invalid in qemu.conf, then
-        the file shoule be normal raw file, otherwise it shoud be compress to
+        the file should be normal raw file, otherwise it should be compress to
         specified format, the supported compress format including: lzop, gzip,
         bzip2, and xz.
         For memory-only dump, the default dump format is ELF, and it can also

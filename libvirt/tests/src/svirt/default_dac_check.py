@@ -15,7 +15,7 @@ def run(test, params, env):
         Test the default dac label after starting libvirtd and guests.
 
         1.Check the default dac label of hugepage file;
-        2.Check the default dac lable of /var/run/qemu;
+        2.Check the default dac label of /var/run/qemu;
         3.Check the default dac label of guest agent file;
     """
 
@@ -74,7 +74,7 @@ def run(test, params, env):
         vm.wait_for_login()
         # Check the default dac of hugepage file
         hugepage_file_name = "/dev/hugepages/libvirt"
-        # Get the mode of hugepge file
+        # Get the mode of hugepage file
         f = os.open(hugepage_file_name, 0)
         stat_re = os.fstat(f)
         hugepage_file_mode = oct(stat_re.st_mode & 0o777)

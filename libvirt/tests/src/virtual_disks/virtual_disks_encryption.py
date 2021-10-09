@@ -174,7 +174,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 
-    # Start vm and get all partions in vm.
+    # Start vm and get all partitions in vm.
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
@@ -275,7 +275,7 @@ def run(test, params, env):
                     if not check_in_vm(vm, device_target, old_parts):
                         test.fail("Check encryption disk in VM failed")
                     result = virsh.detach_device(vm_name, disk_xml.xml,
-                                                 debug=True, wait_remove_event=True)
+                                                 debug=True, wait_for_event=True)
                     libvirt.check_exit_status(result)
                 else:
                     if not check_in_vm(vm, device_target, old_parts):

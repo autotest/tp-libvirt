@@ -51,7 +51,7 @@ def check_disk(vm_name, disk, test):
     Check if given disk exist in VM.
 
     :param vm_name: Domain name.
-    :param disk: Domian disk source path or darget dev.
+    :param disk: Domain disk source path or darget dev.
     :return: True/False
     """
     if vm_xml.VMXML.check_disk_exist(vm_name, disk):
@@ -67,11 +67,11 @@ def run(test, params, env):
     This command can manage active block operations.
     1. Positive testing
         1.1 Query active block job for the specified disk.
-        1.2 Manager the active block job(cancle/pivot).
+        1.2 Manager the active block job(cancel/pivot).
         1.3 Adjust speed for the active block job.
     2. Negative testing
         2.1 Query active block job for a invalid disk.
-        2.2 Invalid bandwith test.
+        2.2 Invalid bandwidth test.
         2.3 No active block job management.
     """
 

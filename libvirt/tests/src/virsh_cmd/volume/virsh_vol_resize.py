@@ -19,7 +19,7 @@ from virttest import libvirt_version
 
 def get_expect_info(new_capacity, vol_path, test, resize_option=None):
     """
-    Get the expect volume capacity and allocation size, for comparation
+    Get the expect volume capacity and allocation size, for comparison
     after volume resize. As virsh vol-info return imprecise values, so we
     need get volume info from qemu side. The process is:
     1) Transform new capacity size to bytes.
@@ -48,7 +48,7 @@ def get_expect_info(new_capacity, vol_path, test, resize_option=None):
     elif suffix in suffixes_list2:
         factor = "1000"
     else:
-        test.error("Unsupport size unit '%s'." % suffix)
+        test.error("Unsupported size unit '%s'." % suffix)
 
     try:
         # Transform the size to bytes
@@ -188,7 +188,7 @@ def check_vol_info(pool_vol, vol_name, test, expect_info=None):
 
     :params pool_vol: Instance of PoolVolume.
     :params vol_name: Name of the volume.
-    :params expect_info: Expect volume info for comparation.
+    :params expect_info: Expect volume info for comparison.
     """
     vol_info = pool_vol.volume_info(vol_name)
     for key in vol_info:
@@ -231,7 +231,7 @@ def run(test, params, env):
     5. Delete the volume and pool.
 
     TODO:
-    Add volume shrink test after libvirt uptream support it.
+    Add volume shrink test after libvirt upstream support it.
     """
 
     pool_name = params.get("pool_name")
@@ -282,7 +282,7 @@ def run(test, params, env):
             pool_info = libv_pool.pool_info(pool_name)
             for key in pool_info:
                 logging.debug("Pool info: %s = %s", key, pool_info[key])
-            # Deal with vol_new_capacity, '--capacity' only accpet integer
+            # Deal with vol_new_capacity, '--capacity' only accept integer
             if vol_new_capacity == "pool_available":
                 pool_avai = pool_info["Available"].split()
                 vol_new_capacity = pool_avai[0].split('.')[0] + pool_avai[1]

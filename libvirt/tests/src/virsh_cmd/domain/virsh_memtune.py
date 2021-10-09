@@ -119,7 +119,7 @@ def mem_step(params, path, vm, test, acceptable_minus=8):
     # Run test case with 100kB increase in memory value for each iteration
     start = time.time()
     while (Mem < Memtotal):
-        # If time pass over 60 secondes, exit directly from while
+        # If time pass over 60 seconds, exit directly from while
         if time.time() - start > 60:
             break
         hard_mem = Mem - hard_base

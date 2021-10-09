@@ -114,7 +114,7 @@ def run(test, params, env):
     def network_device_address(net_device_name):
         """
         Get the address of network pci device
-        :param net_device_name: The name of net_device gotten fron host
+        :param net_device_name: The name of net_device gotten from host
         """
         net_device_address = nodedev_xml.NodedevXML.new_from_dumpxml(net_device_name).parent
         return net_device_address

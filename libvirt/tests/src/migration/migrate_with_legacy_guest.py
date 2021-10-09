@@ -227,7 +227,7 @@ def run(test, params, env):
         # Clean VM on destination
         migration_test.cleanup_vm(vm, dest_uri)
 
-        logging.info("Recover VM XML configration")
+        logging.info("Recover VM XML configuration")
         orig_config_xml.sync()
         logging.debug("The current VM XML:\n%s", orig_config_xml.xmltreefile)
 

@@ -260,7 +260,7 @@ def run(test, params, env):
                             not net_state[net_name]['persistent']):
                         fail_flag = 1
                         result_info.append("Found wrong network states for "
-                                           "defined netowrk: %s" % str(net_state))
+                                           "defined network: %s" % str(net_state))
 
                 if define_status == 1 and status_error and expect_msg:
                     logging.debug("check result is %s, expect_msg is %s" % (define_result, expect_msg))
@@ -280,7 +280,7 @@ def run(test, params, env):
                         if start_status:
                             fail_flag = 1
                             result_info.append("Found wrong network states for "
-                                               "defined netowrk: %s" % str(net_state))
+                                               "defined network: %s" % str(net_state))
 
                 # Check network states after start
                 if check_states and not status_error:
@@ -290,7 +290,7 @@ def run(test, params, env):
                             not net_state[net_name]['persistent']):
                         fail_flag = 1
                         result_info.append("Found wrong network states for "
-                                           "started netowrk: %s" % str(net_state))
+                                           "started network: %s" % str(net_state))
                     # Try to set autostart
                     virsh.net_autostart(net_name, **virsh_dargs)
                     net_state = virsh_instance.net_state_dict()
@@ -332,7 +332,7 @@ def run(test, params, env):
                                     net_state[net_name]['persistent']):
                                 fail_flag = 1
                                 result_info.append("Found wrong network states for "
-                                                   "undefined netowrk: %s" % str(net_state))
+                                                   "undefined network: %s" % str(net_state))
                         else:
                             if net_name in net_state:
                                 fail_flag = 1

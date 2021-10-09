@@ -13,7 +13,7 @@ def run(test, params, env):
 
         1) create a nbd server by nbdkit
         2) check the image size by get_size
-        3) check the image conent by pwrite and pread
+        3) check the image content by pwrite and pread
         """
         expected_size = int(params.get('image_size', 1048576))
         real_size = 0

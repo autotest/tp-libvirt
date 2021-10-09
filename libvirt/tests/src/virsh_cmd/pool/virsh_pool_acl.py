@@ -106,7 +106,7 @@ def run(test, params, env):
         else:
             logging.debug("Not find pool %s in pool list.", pool_name)
         if expect_error and found:
-            test.fail("Unexpect pool '%s' exist." % pool_name)
+            test.fail("Unexpected pool '%s' exist." % pool_name)
         if not expect_error and not found:
             test.fail("Expect pool '%s' doesn't exist." % pool_name)
 

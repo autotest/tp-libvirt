@@ -161,14 +161,14 @@ def run(test, params, env):
                 else:
                     msg_patterns = ["identical"]
             else:
-                test.cancel("Unsupport modify target %s in this "
+                test.cancel("Unsupported modify target %s in this "
                             "test" % mode)
         elif mode == "clear":
             msg_patterns = ["empty", "does not contain any"]
         elif mode == "invalid_test":
             msg_patterns = []
         else:
-            test.cancel("Unsupport modify mode %s in this "
+            test.cancel("Unsupported modify mode %s in this "
                         "test" % mode)
         status_error = params.get("status_error", "")
         if status_error == "yes":
@@ -201,7 +201,7 @@ def run(test, params, env):
             test.fail("Exit status %s is not expected"
                       % result.exit_status)
         if msg_patterns:
-            logging.debug("Expect key word in comand output: %s", msg_patterns)
+            logging.debug("Expect key word in command output: %s", msg_patterns)
             if result.stdout.strip():
                 output = result.stdout.strip()
             else:

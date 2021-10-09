@@ -57,7 +57,7 @@ def check_nodedev(dev_name, dev_parent=None):
         logging.error("The wwpn is not valid: %s", wwpn_from_xml)
         return False
     if fc_dict["node_name"] != wwnn_from_xml:
-        logging.error("The node name is differnet: %s is not %s",
+        logging.error("The node name is different: %s is not %s",
                       fc_dict["node_name"], wwnn_from_xml)
         return False
     if fc_dict["port_name"] != wwpn_from_xml:
@@ -65,7 +65,7 @@ def check_nodedev(dev_name, dev_parent=None):
                       fc_dict["port_name"], wwpn_from_xml)
         return False
     if fc_dict["fabric_name"] != fabric_wwn_from_xml:
-        logging.error("The fabric wwpn is differnt: %s is not %s",
+        logging.error("The fabric wwpn is different: %s is not %s",
                       fc_dict["fabric_name"], fabric_wwn_from_xml)
         return False
 
@@ -174,7 +174,7 @@ def nodedev_create_from_xml(params):
                                   )
     status = result.exit_status
 
-    # Remove temprorary file
+    # Remove temporary file
     os.unlink(vhba_file)
 
     # Check status_error
@@ -265,7 +265,7 @@ def vhbas_cleanup(new_vhbas):
 
 def run(test, params, env):
     """
-    NPIV test for vhba create/destroy, contains following sceraions:
+    NPIV test for vhba create/destroy, contains following scenarios:
     1. create a vhba then destroy it
     2. create and destroy vhba frequently
     3. create a lot of vhbas

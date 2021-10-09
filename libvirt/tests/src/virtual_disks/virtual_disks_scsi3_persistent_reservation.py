@@ -131,7 +131,7 @@ def run(test, params, env):
     # Case step options
     hotplug_disk = "yes" == params.get("hotplug_disk", "no")
 
-    # Start vm and get all partions in vm
+    # Start vm and get all partitions in vm
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
@@ -245,7 +245,7 @@ def run(test, params, env):
             new_part = new_parts[0]
             check_pr_cmds(vm, new_part)
             result = virsh.detach_device(vm_name, disk_xml.xml,
-                                         ignore_status=True, debug=True, wait_remove_event=True)
+                                         ignore_status=True, debug=True, wait_for_event=True)
             libvirt.check_exit_status(result)
         except virt_vm.VMStartError as e:
             test.fail("VM failed to start."

@@ -58,7 +58,7 @@ def create_vhostuser_disk(params):
     device_target = params.get("target_dev")
     device_bus = params.get("target_bus")
     device_format = params.get("target_format")
-    queues = params.get("queues")
+    queues = params.get("queues", "1")
     sock_path = params.get("source_file")
     disk_src_dict = {"attrs": {"type": "unix",
                      "path": sock_path}}
@@ -67,7 +67,8 @@ def create_vhostuser_disk(params):
         device_target, device_bus,
         device_format, disk_src_dict, None)
     vhostuser_disk.snapshot = "no"
-    vhostuser_disk.driver["queues"] = queues
+    driver_dict = {"name": "qemu", "type": device_format, "queues": int(queues)}
+    vhostuser_disk.driver = driver_dict
     return vhostuser_disk
 
 
@@ -145,7 +146,7 @@ def run(test, params, env):
                 if not libvirt_disk.check_in_vm(vm, device_target, old_parts):
                     test.fail("Check encryption disk in VM failed")
                 virsh.detach_device(vm_name, disk_xml.xml, ignore_status=True,
-                                    debug=True, wait_remove_event=True)
+                                    debug=True, wait_for_event=True)
                 if not libvirt_disk.check_in_vm(vm, device_target, old_parts, is_equal=True):
                     test.fail("can not detach device successfully")
             else:

@@ -43,7 +43,7 @@ def run(test, params, env):
         if status == 0:
             test.fail("Run successfully with wrong command!")
         if err == "":
-            test.fail("The wrong command has no error outputed!")
+            test.fail("The wrong command has no error outputted!")
         else:
             logging.info("It's an expected error")
     elif status_error == "no":

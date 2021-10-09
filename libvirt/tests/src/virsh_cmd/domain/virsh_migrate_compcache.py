@@ -162,7 +162,7 @@ def run(test, params, env):
                 size = int(int(size) / 1073741824)
             if value != size:
                 test.fail("Compression cache is not match"
-                          " with setted")
+                          " with set")
             else:
                 return
             test.fail("Get compression cache in job failed.")

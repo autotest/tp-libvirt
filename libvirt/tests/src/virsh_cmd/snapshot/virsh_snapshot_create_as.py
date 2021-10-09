@@ -69,7 +69,7 @@ def compose_disk_options(test, params, opt_names, tmp_dir):
     """
     Compose the {disk,mem}spec options
 
-    The diskspec file need to add suitable dir with the name which is configed
+    The diskspec file need to add suitable dir with the name which is configured
     individually, The 'value' after 'file=' is a parameter which also need to
     get from cfg
 

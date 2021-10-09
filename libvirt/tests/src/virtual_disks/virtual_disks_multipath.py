@@ -120,7 +120,7 @@ def run(test, params, env):
     storage_size = params.get("storage_size", "1G")
     hotplug_disk = "yes" == params.get("hotplug_disk", "no")
     status_error = "yes" == params.get("status_error")
-    # Start VM and get all partions in VM.
+    # Start VM and get all partitions in VM.
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()

@@ -199,7 +199,7 @@ def run(test, params, env):
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
 
-    # Start vm and get all partions in vm.
+    # Start vm and get all partitions in vm.
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
@@ -315,7 +315,7 @@ def run(test, params, env):
         if vm.is_alive():
             vm.pause()
     elif pre_vm_state == "shut off":
-        logging.info("Shuting down %s..." % vm_name)
+        logging.info("Shutting down %s..." % vm_name)
         if vm.is_alive():
             vm.destroy(gracefully=False)
 
@@ -487,7 +487,7 @@ def run(test, params, env):
             eject_xml = libvirt.create_disk_xml(eject_params)
             with open(eject_xml) as eject_file:
                 logging.debug("Eject CDROM by XML: %s", eject_file.read())
-            # Run command tiwce to make sure cdrom tray open first #BZ892289
+            # Run command twice to make sure cdrom tray open first #BZ892289
             # Open tray
             virsh.attach_device(domainarg=vm_name, filearg=eject_xml, debug=True)
             # Add time sleep between two attach commands.

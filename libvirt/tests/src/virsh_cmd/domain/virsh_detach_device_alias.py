@@ -55,7 +55,7 @@ def run(test, params, env):
         """
         Get local host usb info
 
-        :return: usb verndor and product id
+        :return: usb vendor and product id
         """
         install_cmd = process.run("yum install usbutils* -y", shell=True)
         result = process.run("lsusb|awk '{print $6\":\"$2\":\"$4}'", shell=True)
@@ -122,7 +122,7 @@ def run(test, params, env):
 
         # Detach xml with alias
         result = virsh.detach_device_alias(vm_name, device_alias, detach_options,
-                                           wait_remove_event=True, debug=True)
+                                           wait_for_event=True, debug=True)
         libvirt.check_exit_status(result)
         if not utils_misc.wait_for(check_detached_xml_noexist,
                                    60,

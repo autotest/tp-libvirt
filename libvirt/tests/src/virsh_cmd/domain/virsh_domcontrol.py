@@ -91,7 +91,7 @@ def run(test, params, env):
 
     process = None
     if job == "yes" and start_vm == "yes" and status_error == "no":
-        # Check domain contorl interface state with job on domain.
+        # Check domain control interface state with job on domain.
         process = get_subprocess(action, vm_name, tmp_file)
         while process.poll() is None:
             if vm.is_alive():

@@ -34,7 +34,7 @@ def run(test, params, env):
     vmxml = VMXML.new_from_inactive_dumpxml(vm_name)
     backup_xml = vmxml.copy()
 
-    # Get varialbles about image.
+    # Get variables about image.
     img_label = params.get('svirt_save_restore_disk_label')
     # Label the disks of VM with img_label.
     disks = vm.get_disk_devices()
@@ -67,7 +67,7 @@ def run(test, params, env):
             if not status_error:
                 error_msg = "Test failed in positive case.\n error: %s\n" % e
                 if str(e).count("getfd"):
-                    error_msg += ("More info pleass refer to"
+                    error_msg += ("For more info please refer to"
                                   " https://bugzilla.redhat.com/show_bug.cgi?id=976632")
                 test.fail(error_msg)
     finally:

@@ -13,7 +13,7 @@ def run(test, params, env):
 
     This command allows to show or modify description or title of a domain.
     1). For running domain, get/set description&title with options.
-    2). For shut off domian, get/set description&title with options.
+    2). For shut off domain, get/set description&title with options.
     3). For persistent/transient domain, get/set description&title with options.
     """
     vm_name = params.get("main_vm")
@@ -147,7 +147,7 @@ def run(test, params, env):
         if domain == "ID":
             vm_name = vm.get_id()
         run_test()
-        # Recvoer the vm and shutoff it
+        # Recover the vm and shutoff it
         if persistent_vm == "yes" and domain != "ID":
             vm.define(original_xml)
             vm.destroy()

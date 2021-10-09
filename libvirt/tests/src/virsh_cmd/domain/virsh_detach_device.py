@@ -158,7 +158,7 @@ def run(test, params, env):
             func_name = virsh.detach_device_alias if by_alias else virsh.detach_device
             func_name(vm_ref, detach_target,
                       extra=dt_options,
-                      wait_remove_event=True,
+                      wait_for_event=True,
                       event_timeout=7,
                       debug=True)
 

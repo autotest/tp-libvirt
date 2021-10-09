@@ -347,7 +347,8 @@ def run(test, params, env):
                     return False
             return True
 
-        result = virsh.detach_device(vm_name, new_iface.xml)
+        result = utils_misc.wait_for(
+            lambda: virsh.detach_device(vm_name, new_iface.xml), 30, first=10)
         utils_test.libvirt.check_exit_status(result, expect_error=False)
         if vf_type == "hostdev":
             check_ret = utils_misc.wait_for(check_addr_attrs, timeout=60)
@@ -452,7 +453,7 @@ def run(test, params, env):
 
         :param nic_num: number of nic card bond to numa node
         :param controller_index: index num used to create controllers
-        :param ctl_models: contoller topo for numa bond
+        :param ctl_models: controller topo for numa bond
         """
         index = controller_index
         if nic_num == 2:

@@ -158,7 +158,7 @@ def run(test, params, env):
         if virsh_edit_cmd:
             status = libvirt.exec_virsh_edit(vm_name, virsh_edit_cmd.split(","))
             if status == status_error:
-                test.fail("Virsh edit got unexpect result.")
+                test.fail("Virsh edit got unexpected result.")
 
         # Check if vm could start successfully
         if not status_error:

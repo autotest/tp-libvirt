@@ -275,7 +275,7 @@ def run(test, params, env):
                         test.fail("Failed to find the enabled vcpu{} in {}."
                                   .format(vcpu_id, cg_path))
     finally:
-        # Recover libvirtd configration
+        # Recover libvirtd configuration
         if config_libvirtd:
             config.restore()
             if os.path.exists(config_path):

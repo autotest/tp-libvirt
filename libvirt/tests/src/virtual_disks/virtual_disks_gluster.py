@@ -107,7 +107,7 @@ def run(test, params, env):
         if vm.is_dead():
             vm.start()
             vm.wait_for_login()
-        # Create swap partition if nessesary.
+        # Create swap partition if necessary.
         if not vm.has_swap():
             swap_path = os.path.join(data_dir.get_data_dir(), 'swap.img')
             vm.create_swap_partition(swap_path)
@@ -262,7 +262,7 @@ def run(test, params, env):
         if start_vm and not default_pool:
             if gluster_disk:
                 ret = virsh.detach_device(vm_name, custom_disk.xml,
-                                          flagstr=attach_option, dargs=virsh_dargs, wait_remove_event=True)
+                                          flagstr=attach_option, dargs=virsh_dargs, wait_for_event=True)
                 libvirt.check_exit_status(ret)
 
     finally:

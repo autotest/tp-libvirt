@@ -247,7 +247,7 @@ def get_domiftune_parameter(params, test, libvirtd):
             test.fail("Unexpected result, get domiftune: %s" %
                       result.stderr)
         else:
-            logging.info("getdominfo return succesfully")
+            logging.info("getdominfo return successfully")
 
 
 def set_domiftune_parameter(params, test, libvirtd):

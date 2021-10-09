@@ -1040,7 +1040,7 @@ def run(test, params, env):
 
     virt_disk_with_boot_nfs_pool = "yes" == params.get("virt_disk_with_boot_nfs_pool", "no")
     iso_url = ("https://dl.fedoraproject.org/pub/fedora/linux/releases",
-               "/30/Everything/x86_64/os/images/boot.iso")
+               "/34/Everything/x86_64/os/images/boot.iso")
     default_iso_url = ''.join(iso_url)
     boot_iso_url = params.get("boot_iso_url")
     if virt_disk_with_boot_nfs_pool and 'EXAMPLE_BOOT_ISO_URL' in boot_iso_url:
@@ -1704,7 +1704,7 @@ def run(test, params, env):
                 test.fail("Test disk block size in VM failed")
 
         if test_disk_option_cmd:
-            # Check if disk options take affect in qemu commmand line.
+            # Check if disk options take affect in qemu command line.
             cmd = ("ps -ef | grep %s | grep -v grep " % vm_name)
             logging.debug("VM cmdline: %s", process.system_output(cmd, shell=True))
             if test_with_boot_disk:
@@ -2011,7 +2011,7 @@ def run(test, params, env):
                 for counter in range(0, iteration_times):
                     logging.info("Begin to execute attach or detach %d operations", counter)
                     ret = virsh.detach_device(vm_name, disks_xml[0].xml,
-                                              flagstr=attach_option, debug=True, wait_remove_event=True)
+                                              flagstr=attach_option, debug=True, wait_for_event=True)
                     libvirt.check_exit_status(ret)
                     # Sleep 10 seconds to let VM really cleanup devices.
                     time.sleep(10)
@@ -2030,7 +2030,7 @@ def run(test, params, env):
                     if device_attach_error[i] == "yes":
                         continue
                 ret = virsh.detach_device(vm_name, disks_xml[i].xml,
-                                          flagstr=attach_option, wait_remove_event=True, **virsh_dargs)
+                                          flagstr=attach_option, wait_for_event=True, **virsh_dargs)
                 os.remove(disks_xml[i].xml)
                 libvirt.check_exit_status(ret)
 
@@ -2043,7 +2043,7 @@ def run(test, params, env):
     finally:
         # Delete snapshots.
         if virsh.domain_exists(vm_name):
-            #To Delet snapshot, destroy vm first.
+            #To Delete snapshot, destroy vm first.
             if vm.is_alive():
                 vm.destroy()
             libvirt.clean_up_snapshots(vm_name, domxml=vmxml_backup)

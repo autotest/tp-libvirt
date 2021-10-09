@@ -70,9 +70,9 @@ def run(test, params, env):
 
     def _get_maxium_sve_length(vm):
         """
-        Get the maxium supported sve length of guest
+        Get the maximum supported sve length of guest
 
-        : return maxium vector length. Format: e.g sve512
+        : return maximum vector length. Format: e.g sve512
         """
         try:
             session = None
@@ -80,7 +80,7 @@ def run(test, params, env):
                 vm.start()
             session = vm.wait_for_login(timeout=120)
             ret = session.cmd(get_maxium_sve_length).strip()
-            # dmesg record maxium sve length in bytes
+            # dmesg record maximum sve length in bytes
             sve_length_byte = re.search("length (\d+) bytes", ret).groups()[0]
             # Change max_length into sve + length(bit) E.g. sve512
             sve_length_bit = "sve" + str(int(sve_length_byte) * 8)

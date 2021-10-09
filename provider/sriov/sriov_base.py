@@ -70,14 +70,13 @@ def get_ping_dest(vm_session, mac_addr="", restart_network=False):
     utils_misc.wait_for(
          lambda: utils_net.get_net_if_addrs(
             iface_name, vm_session.cmd_output).get('ipv4'), 20)
-    cmd = ("ip route |awk -F '/' '/^[0-9]/, /dev %s/ {print $1}' |tail -1"
-           % iface_name)
+    cmd = ("ip route |awk -F '/' '/^[0-9]/, /dev %s/ {print $1}'" % iface_name)
     status, output = utils_misc.cmd_status_output(cmd, shell=True,
                                                   session=vm_session)
     if status or not output:
         raise exceptions.TestError("Failed to run cmd - {}, status - {}, "
                                    "output - {}.".format(cmd, status, output))
-    return re.sub('\d+$', '1', output.strip())
+    return re.sub('\d+$', '1', output.strip().splitlines()[-1])
 
 
 def check_vm_network_accessed(vm_session, ping_count=3, ping_timeout=5):

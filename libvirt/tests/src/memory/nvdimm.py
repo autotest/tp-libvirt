@@ -48,7 +48,7 @@ def run(test, params, env):
 
     def check_file_in_vm(session, path, expect=True):
         """
-        Check whether the existance of file meets expectation
+        Check whether the existence of file meets expectation
         """
         exist = session.cmd_status('ls %s' % path)
         logging.debug(exist)

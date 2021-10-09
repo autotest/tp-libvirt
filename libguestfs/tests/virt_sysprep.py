@@ -208,7 +208,7 @@ def run(test, params, env):
         sysprep_action(vm_clone_name, test_image, sysprep_target,
                        sysprep_hostname)
         if not result_confirm(new_vm):
-            test.fail("Test Falied!")
+            test.fail("Test Failed!")
     finally:
         clean_clone_vm()
         if "resize_image" in dir():

@@ -121,7 +121,7 @@ def run(test, params, env):
         source_ip = None
         source_pwd = None
     else:
-        test.cancel("Unspported hypervisor: %s" % hypervisor)
+        test.cancel("Unsupported hypervisor: %s" % hypervisor)
 
     # Create libvirt URI
     v2v_uri = utils_v2v.Uri(hypervisor)
@@ -251,7 +251,7 @@ def run(test, params, env):
 
     def check_floppy_exist(vmcheck):
         """
-        Check if floppy exists after convertion
+        Check if floppy exists after conversion
         """
         blk = vmcheck.session.cmd('lsblk')
         logging.info(blk)
@@ -433,20 +433,25 @@ def run(test, params, env):
         """
         Create a large file to make left space of root less than $left_space MB
         """
-        cmd_df = "df -m / --output=avail"
+        cmd_guestfish = "guestfish get-cachedir"
+        tmp_dir = session.cmd_output(cmd_guestfish).split()[-1]
+        logging.debug('Command output of tmp_dir: %s', tmp_dir)
+        cmd_df = "df -m %s --output=avail" % tmp_dir
         df_output = session.cmd(cmd_df).strip()
         logging.debug('Command output: %s', df_output)
         avail = int(df_output.strip().split('\n')[-1])
         logging.info('Available space: %dM' % avail)
-        if avail > left_space - 1:
-            tmp_dir = data_dir.get_tmp_dir()
-            if session.cmd_status('ls %s' % tmp_dir) != 0:
-                session.cmd('mkdir %s' % tmp_dir)
-            large_file = os.path.join(tmp_dir, 'file.large')
-            cmd_create = 'dd if=/dev/zero of=%s bs=1M count=%d' % \
-                         (large_file, avail - left_space + 2)
-            session.cmd(cmd_create, timeout=v2v_timeout)
-        logging.info('Available space: %sM' % session.cmd(cmd_df).strip())
+        if avail <= left_space - 1:
+            return None
+        if not os.path.exists(tmp_dir):
+            os.mkdir(tmp_dir)
+        large_file = os.path.join(tmp_dir, 'file.large')
+        cmd_create = 'dd if=/dev/zero of=%s bs=1M count=%d' % \
+                     (large_file, avail - left_space + 2)
+        session.cmd(cmd_create, timeout=v2v_timeout)
+        newAvail = int(session.cmd(cmd_df).strip().split('\n')[-1])
+        logging.info('New Available space: %sM' % newAvail)
+        return large_file
 
     @vm_shell
     def corrupt_rpmdb(**kwargs):
@@ -527,7 +532,7 @@ def run(test, params, env):
     @vm_shell
     def vm_cmd(cmd_list, **kwargs):
         """
-        Excecute a list of commands on guest.
+        Execute a list of commands on guest.
         """
         session = kwargs['session']
         for cmd in cmd_list:
@@ -543,7 +548,7 @@ def run(test, params, env):
 
     def check_time_keep(vmcheck):
         """
-        Check time drift after convertion.
+        Check time drift after conversion.
         """
         logging.info('Check time drift')
         output = vmcheck.session.cmd('chronyc tracking')
@@ -598,7 +603,7 @@ def run(test, params, env):
                     virsh.start(vm_name, debug=True, ignore_status=False)
                 except Exception as e:
                     test.fail('Start vm failed: %s' % str(e))
-            # Check guest following the checkpoint document after convertion
+            # Check guest following the checkpoint document after conversion
             if params.get('skip_vm_check') != 'yes':
                 ret = vmchecker.run()
                 if len(ret) == 0:
@@ -608,7 +613,7 @@ def run(test, params, env):
                 check_boot_kernel(vmchecker.checker)
                 check_vmlinuz_initramfs(output)
             if checkpoint == 'floppy':
-                # Convert to rhv will remove all removeable devices(floppy,
+                # Convert to rhv will remove all removable devices(floppy,
                 # cdrom)
                 if output_mode in ['local', 'libvirt']:
                     check_floppy_exist(vmchecker.checker)
@@ -781,7 +786,7 @@ def run(test, params, env):
             check_boot()
         if checkpoint.startswith('host_no_space'):
             session = aexpect.ShellSession('sh')
-            create_large_file(session, 1000)
+            large_file = create_large_file(session, 1000)
             if checkpoint == 'host_no_space_setcache':
                 logging.info('Set LIBGUESTFS_CACHEDIR=/home')
                 os.environ['LIBGUESTFS_CACHEDIR'] = '/home'
@@ -903,7 +908,7 @@ def run(test, params, env):
             params['vmchecker'].cleanup()
         if hypervisor == "xen":
             # Restore crypto-policies to DEFAULT, the setting is impossible to be
-            # other values by default in testing envrionment.
+            # other values by default in testing environment.
             process.run(
                 'update-crypto-policies --set DEFAULT',
                 verbose=True,
@@ -930,8 +935,7 @@ def run(test, params, env):
                 else:
                     service_mgr.stop('firewalld')
         if checkpoint.startswith('host_no_space'):
-            large_file = os.path.join(data_dir.get_tmp_dir(), 'file.large')
-            if os.path.isfile(large_file):
+            if large_file and os.path.isfile(large_file):
                 os.remove(large_file)
         # Cleanup constant files
         utils_v2v.cleanup_constant_files(params)

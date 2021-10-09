@@ -410,7 +410,7 @@ def run(test, params, env):
         """
         Handle option '--timeout --timeout-suspend'.
         As the migration thread begins to execute, this function is executed
-        at same time almostly. It will sleep the specified seconds and check
+        at same time almost. It will sleep the specified seconds and check
         the VM state on both hosts. Both should be 'paused'.
 
         :param timeout: The seconds for timeout
@@ -709,7 +709,7 @@ def run(test, params, env):
             free_mem = host_numa_node.read_from_node_meminfo(each_node,
                                                              'MemFree')
             if (int(free_mem) < int(vmxml.max_mem)):
-                logging.debug("Host Numa node: %s doesnt have enough "
+                logging.debug("Host Numa node: %s doesn't have enough "
                               "memory", each_node)
                 host_numa_node_list.remove(each_node)
         memory_mode = params.get("memory_mode", 'strict')

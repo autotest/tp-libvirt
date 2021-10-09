@@ -13,7 +13,7 @@ def run(test, params, env):
     2) power on the VM, write some fixed length data to
        the second disk.
     3) power off the VM, query the changes and compare
-       the lenght of changed area.
+       the length of changed area.
     """
 
     def safe_power_off(conn):

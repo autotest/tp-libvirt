@@ -69,7 +69,7 @@ def run(test, params, env):
             """
             Get set and get value to compare
 
-            :param xml_set: seting xml object
+            :param xml_set: setting xml object
             :param xml_get: getting xml object
             :param rng_attr: attribute of rng device
             :return: set and get value in xml
@@ -489,7 +489,7 @@ def run(test, params, env):
         rngd_conf = "/etc/sysconfig/rngd"
         rngd_srv = "/usr/lib/systemd/system/rngd.service"
         if os.path.exists(rngd_conf):
-            # For rhel6 host, add extraoptions
+            # For rhel6 host, add extra options
             with open(rngd_conf, 'w') as f_rng:
                 f_rng.write('EXTRAOPTIONS="--rng-device /dev/urandom"')
         elif os.path.exists(rngd_srv):

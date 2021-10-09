@@ -176,7 +176,7 @@ def run(test, params, env):
             vm.start()
             vm.wait_for_login().close()
     elif pre_vm_state == "shutoff":
-        logging.info("Shuting down %s..." % vm_name)
+        logging.info("Shutting down %s..." % vm_name)
         if vm.is_alive():
             vm.destroy(gracefully=False)
     elif pre_vm_state == "paused":
@@ -185,13 +185,13 @@ def run(test, params, env):
             vm.start()
             vm.wait_for_login().close()
         if not vm.pause():
-            raise exceptions.TestSkipError("Cann't pause the domain")
+            raise exceptions.TestSkipError("Can't pause the domain")
     elif pre_vm_state == "transient":
         logging.info("Creating %s..." % vm_name)
         vm.undefine()
         if virsh.create(backup_xml.xml, **virsh_dargs).exit_status:
             backup_xml.define()
-            raise exceptions.TestSkipError("Cann't create the domain")
+            raise exceptions.TestSkipError("Can't create the domain")
         vm.wait_for_login().close()
 
     # Test.
@@ -244,7 +244,7 @@ def run(test, params, env):
         # Detach the disk.
         if pre_vm_state == "paused":
             if not vm.pause():
-                raise exceptions.TestFail("Cann't pause the domain")
+                raise exceptions.TestFail("Can't pause the domain")
         disk_xml = libvirt.create_disk_xml(disk_params)
         ret = virsh.detach_device(vm_ref, disk_xml,
                                   flagstr=dt_options, debug=True)

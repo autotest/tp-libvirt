@@ -81,7 +81,7 @@ def create_secret_volume(test, params):
     result = virsh.secret_define(sec_file)
     status = result.exit_status
 
-    # Remove temprorary file
+    # Remove temporary file
     os.unlink(sec_file)
 
     if status:
@@ -141,7 +141,7 @@ def get_secret_value(test, params):
 
 def set_secret_value(test, params):
     """
-    Set the secet value
+    Set the secret value
     :params: the parameter dictionary
     """
     uuid = params.get("secret_ref")

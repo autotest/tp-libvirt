@@ -1,6 +1,7 @@
 import os
 import logging
 import time
+import threading
 
 from avocado.utils import process
 
@@ -10,6 +11,7 @@ from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import utils_memory
 from virttest.utils_test import libvirt_device_utils
+from virttest.utils_test import libvirt
 
 
 def run(test, params, env):
@@ -95,6 +97,32 @@ def run(test, params, env):
         process.run("chown qemu:qemu %s" % source_socket, ignore_status=False)
         process.run('chcon -t svirt_image_t %s' % source_socket, ignore_status=False, shell=True)
 
+    def prepare_stress_script(script_path, script_content):
+        """
+        Refer to xfstest generic/531. Create stress test script to create a lot of unlinked files.
+
+        :param source_path: The path of script
+        :param content: The content of stress script
+        """
+        logging.debug("stress script path: %s content: %s" % (script_path, script_content))
+        script_lines = script_content.split(';')
+        try:
+            with open(script_path, 'w') as fd:
+                fd.write('\n'.join(script_lines))
+            os.chmod(script_path, 0o777)
+        except Exception as e:
+            test.error("Prepare the guest stress script failed %s" % e)
+
+    def run_stress_script(session, script_path):
+        """
+        Run stress script in the guest
+
+        :param session: guest session
+        :param script_path: The path of script in the guest
+        """
+        # Set ULIMIT_NOFILE to increase the number of unlinked files
+        session.cmd("ulimit -n 500000 && /usr/bin/python3 %s" % script_path, timeout=120)
+
     start_vm = params.get("start_vm", "no")
     vm_names = params.get("vms", "avocado-vt-vm1").split()
     cache_mode = params.get("cache_mode", "none")
@@ -123,6 +151,9 @@ def run(test, params, env):
     with_memfd = params.get("with_memfd", "no") == "yes"
     source_socket = params.get("source_socket", "/var/tmp/vm001.socket")
     launched_mode = params.get("launched_mode", "auto")
+    destroy_start = params.get("destroy_start", "no") == "yes"
+    bug_url = params.get("bug_url", "")
+    script_content = params.get("stress_script", "")
 
     fs_devs = []
     vms = []
@@ -138,6 +169,9 @@ def run(test, params, env):
 
     if not libvirt_version.version_compare(7, 0, 0) and not with_numa:
         test.cancel("Not supported without NUMA before 7.0.0")
+
+    if not libvirt_version.version_compare(7, 6, 0) and destroy_start:
+        test.cancel("Bug %s is not fixed on current build" % bug_url)
 
     try:
         # Define filesystem device xml
@@ -222,6 +256,22 @@ def run(test, params, env):
                 virsh.suspend(vm_names[0], debug=True, ignore_status=False)
                 time.sleep(30)
                 virsh.resume(vm_names[0], debug=True, ignore_statue=False)
+            elif destroy_start:
+                session = vm.wait_for_login(timeout=120)
+                # Prepare the guest test script
+                script_path = os.path.join(fs_devs[0].source["dir"], "test.py")
+                script_content %= (fs_devs[0].source["dir"], fs_devs[0].source["dir"])
+                prepare_stress_script(script_path, script_content)
+                # Run guest stress script
+                stress_script_thread = threading.Thread(target=run_stress_script,
+                                                        args=(session, script_path))
+                stress_script_thread.setDaemon(True)
+                stress_script_thread.start()
+                # Create a lot of unlink files
+                time.sleep(60)
+                virsh.destroy(vm_names[0], debug=True, ignore_status=False)
+                ret = virsh.start(vm_names[0], debug=True)
+                libvirt.check_exit_status(ret)
             elif edit_start:
                 vmxml_virtio_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm_names[0])
                 if vm.is_alive():

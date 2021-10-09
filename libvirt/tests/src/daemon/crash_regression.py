@@ -175,7 +175,7 @@ def run_invalid_mac_net(params, libvirtd, vm):
 
 def run_cpu_compare(params, libvirtd, vm):
     """
-    Comprare a cpu without model property.
+    Compare a cpu without model property.
     """
     cpu_xml = VMCPUXML()
     cpu_xml.topology = {"sockets": 1, "cores": 1, "threads": 1}

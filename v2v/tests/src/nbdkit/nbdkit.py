@@ -140,7 +140,7 @@ nbdkit -rfv -U - --exportname / \
 
     if version_requried and not multiple_versions_compare(
             version_requried):
-        test.cancel("Testing requries version: %s" % version_requried)
+        test.cancel("Testing requires version: %s" % version_requried)
 
     if checkpoint == 'filter_stats_fd_leak':
         test_filter_stats_fd_leak()

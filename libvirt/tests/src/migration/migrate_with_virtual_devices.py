@@ -197,7 +197,7 @@ class MigrationWithRng(MigrationVirtualDevicesBase):
             self._create_tcp_rng_source(self.migrate_source_host,
                                         mode='server')
 
-        # Remove rng devices from vm xml defination
+        # Remove rng devices from vm xml definition
         self._remove_rng_from_vmxml(self.main_vm)
 
     def _post_start_vm(self):
@@ -337,7 +337,7 @@ class MigrationWithRng(MigrationVirtualDevicesBase):
         elif mode == 'client':
             cmd = "cat /dev/urandom | nc %s 1024" % server
         else:
-            self.test.error("Uknown rng source mode")
+            self.test.error("Unknown rng source mode")
             return
         rngjob = utils_misc.AsyncJob(cmd, kill_func=self.func_kill_rng_source)
         self.bgjobs.append(rngjob)
@@ -349,11 +349,11 @@ class MigrationWithRng(MigrationVirtualDevicesBase):
 
     def _remove_rng_from_vmxml(self, vm):
         """
-        Remove rng device from domain xml defination
+        Remove rng device from domain xml definition
 
         :param vm: vm object
         """
-        logging.debug("Remove rng device from domain xml defination")
+        logging.debug("Remove rng device from domain xml definition")
 
         vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
         vmxml.remove_all_device_by_type("rng")

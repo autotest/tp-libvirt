@@ -166,7 +166,7 @@ def run(test, params, env):
     # Initialize one NbdExport object
     nbd = None
 
-    # Start VM and get all partions in VM.
+    # Start VM and get all partitions in VM.
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
@@ -279,7 +279,7 @@ def run(test, params, env):
         # Unplug disk.
         if hotplug_disk:
             result = virsh.detach_device(vm_name, disk_xml.xml,
-                                         ignore_status=True, debug=True, wait_remove_event=True)
+                                         ignore_status=True, debug=True, wait_for_event=True)
             libvirt.check_exit_status(result, status_error)
     finally:
         if enable_private_key_encryption:

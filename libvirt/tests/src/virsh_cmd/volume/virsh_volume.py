@@ -78,7 +78,7 @@ def run(test, params, env):
         """
         Normalize the capacity values to bytes
         """
-        # Normaize all values to bytes
+        # Normalize all values to bytes
         norm_capacity = {}
         des = {'B': 'B', 'bytes': 'B', 'b': 'B', 'kib': 'K',
                'KiB': 'K', 'K': 'K', 'k': 'K', 'KB': 'K',

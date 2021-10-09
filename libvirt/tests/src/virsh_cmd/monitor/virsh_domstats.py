@@ -59,7 +59,7 @@ def prepare_vm_state(vm, vm_state):
             vm.pause()
     elif vm_state == "shutoff":
         vm.destroy()
-    elif vm_state == "paniced":
+    elif vm_state == "panicked":
         if vm.state() != "running":
             vm.destroy()
             vm.start()

@@ -28,7 +28,7 @@ def check_host_down_time(remote_ip, timeout=300):
     Test for how long a target host went down.
 
     :param remote_ip: IP address or hostname of target host.
-    :param timeout: For how long will return a timeout expection
+    :param timeout: For how long will return a timeout exception
                     if host is not recovered.
     :return: Time elapsed before target host is pingable.
     :raise TimeoutExpection: :
@@ -82,7 +82,7 @@ def run(test, params, env):
     virtual) with testing version of libvirt daemon running. After that change
     the remote_xxx parameters in configuration file to corresponding value.
     """
-    # Retrive parameters
+    # Retrieve parameters
     remote_ip = params.get('nodesuspend_remote_ip',
                            'ENTER.YOUR.REMOTE.EXAMPLE.COM')
     remote_user = params.get('nodesuspend_remote_user', 'root')

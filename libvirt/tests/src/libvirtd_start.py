@@ -23,7 +23,7 @@ def run(test, params, env):
     """
     def _error_handler(line, errors):
         """
-        A callback function called when new error lines appares in libvirtd
+        A callback function called when new error lines appears in libvirtd
         log, then this line is appended to list 'errors'
 
         :param errors: A list to contain all error lines.

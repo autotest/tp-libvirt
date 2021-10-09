@@ -17,7 +17,7 @@ def run(test, params, env):
     """
     Test command: virsh shutdown.
 
-    The conmand can gracefully shutdown a domain.
+    The command can gracefully shutdown a domain.
 
     1.Prepare test environment.
     2.When the libvirtd == "off", stop the libvirtd service.

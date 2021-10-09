@@ -132,7 +132,7 @@ def run(test, params, env):
     try:
         run_test()
     finally:
-        logging.info("Recover test enviroment.")
+        logging.info("Recover test environment.")
         if vm.is_alive():
             vm.destroy(gracefully=False)
         if libvirt_guests.status():

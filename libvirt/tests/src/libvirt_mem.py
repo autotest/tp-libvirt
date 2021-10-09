@@ -551,7 +551,7 @@ def run(test, params, env):
             if virsh.create(vmxml_for_test.xml,
                             **virsh_dargs).exit_status:
                 vmxml_backup.define()
-                test.fail("Cann't create the domain")
+                test.fail("Can't create the domain")
         elif vm.is_dead():
             try:
                 vm.start()
@@ -673,7 +673,7 @@ def run(test, params, env):
                             known_error = known_error[1:-1]
                         if known_error in ret.stderr:
                             unplug_failed_with_known_error = True
-                            logging.debug("Known error occured in Host, while"
+                            logging.debug("Known error occurred in Host, while"
                                           " hot unplug: %s", known_error)
                 if unplug_failed_with_known_error:
                     break
@@ -702,7 +702,7 @@ def run(test, params, env):
                             test.fail(detail)
                         unplug_failed_with_known_error = True
                         os.remove(dmesg_file)
-            # Check whether a known error occured or not
+            # Check whether a known error occurred or not
             dmesg_file = tempfile.mktemp(dir=data_dir.get_tmp_dir())
             try:
                 session = vm.wait_for_login()
@@ -722,7 +722,7 @@ def run(test, params, env):
                     with open(dmesg_file, 'r') as f:
                         if known_error in f.read():
                             unplug_failed_with_known_error = True
-                            logging.debug("Known error occured, while hot"
+                            logging.debug("Known error occurred, while hot"
                                           " unplug: %s", known_error)
             if test_dom_xml and not unplug_failed_with_known_error:
                 check_dom_xml(dt_mem=detach_device)

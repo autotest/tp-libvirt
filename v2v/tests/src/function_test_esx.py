@@ -298,7 +298,7 @@ def run(test, params, env):
             if vmcheck.session:
                 vmcheck.session.close()
                 vmcheck.session = None
-            # VM boots up is extremly slow when all testing in running on
+            # VM boots up is extremely slow when all testing in running on
             # rhv server simultaneously, so set timeout to 1200.
             vmcheck.create_session(timeout=1200)
             res = utils_misc.wait_for(
@@ -332,8 +332,8 @@ def run(test, params, env):
             """
             Get qemu-guest-agent version in VM
             """
-            vender = vmcheck.get_vm_os_vendor()
-            if vender in ['Ubuntu', 'Debian']:
+            vendor = vmcheck.get_vm_os_vendor()
+            if vendor in ['Ubuntu', 'Debian']:
                 cmd = 'dpkg -l qemu-guest-agent'
             else:
                 cmd = 'rpm -q qemu-guest-agent'
@@ -360,7 +360,7 @@ def run(test, params, env):
         all_pkgs = get_pkgs(qemu_guest_agent_dir)
         logging.debug('The installing qemu-guest-agent is: %s' % all_pkgs)
         vm_pkg_ver = get_pkg_version_vm()
-        logging.debug('qemu-guest-agent verion in vm: %s' % vm_pkg_ver)
+        logging.debug('qemu-guest-agent version in vm: %s' % vm_pkg_ver)
 
         # Check the service status of qemu-guest-agent in VM
         status_ptn = r'Active: active \(running\)|qemu-ga \(pid +[0-9]+\) is running'
@@ -533,7 +533,7 @@ def run(test, params, env):
                 shell=True).stdout_text.split()[0]
 
             if not val:
-                test.error('Get checksume failed')
+                test.error('Get checksum failed')
             logging.info('%s: Expect %s: %s', file, tool_exec, val)
             return val
 
@@ -600,11 +600,11 @@ def run(test, params, env):
             elif output_mode == 'libvirt':
                 virsh.start(vm_name, debug=True)
 
-            # Check guest following the checkpoint document after convertion
+            # Check guest following the checkpoint document after conversion
             logging.info('Checking common checkpoints for v2v')
             if 'ogac' in checkpoint:
                 # windows guests will reboot at any time after qemu-ga is
-                # installed. The process cannot be controled. In order to
+                # installed. The process cannot be controlled. In order to
                 # don't break vmchecker.run() process, It's better to put
                 # check_windows_ogac before vmchecker.run(). Because in
                 # check_windows_ogac, it waits until rebooting completes.
@@ -680,7 +680,7 @@ def run(test, params, env):
         if 'fstrim_warning' in checkpoint:
             # Actually, fstrim has no relationship with v2v, it may be related
             # to kernel, this warning really doesn't matter and has no harm to
-            # the convertion.
+            # the conversion.
             V2V_FSTRIM_SUCESS_VER = "[virt-v2v-1.45.1-1.el9,)"
             if utils_v2v.multiple_versions_compare(V2V_FSTRIM_SUCESS_VER):
                 params.update({'expect_msg': None})
@@ -695,7 +695,7 @@ def run(test, params, env):
     try:
         if version_requried and not utils_v2v.multiple_versions_compare(
                 version_requried):
-            test.cancel("Testing requries version: %s" % version_requried)
+            test.cancel("Testing requires version: %s" % version_requried)
 
         # See man virt-v2v-input-xen(1)
         if enable_legacy_cp:
@@ -815,7 +815,7 @@ def run(test, params, env):
                         export_path, os.W_OK) and qa_url:
                     logging.debug(
                         'Not found qemu-guest-agent in virtio-win or rhv-guest-tools-iso,'
-                        ' Try to prepare it manually. This is not a permanant step, once'
+                        ' Try to prepare it manually. This is not a permanent step, once'
                         ' the official build includes it, this step should be removed.')
                     os.makedirs(qemu_guest_agent_dir)
                     rpm_name = os.path.basename(qa_url)

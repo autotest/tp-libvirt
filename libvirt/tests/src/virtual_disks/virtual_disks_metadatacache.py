@@ -172,7 +172,7 @@ def run(test, params, env):
     disk_format = params.get("disk_format", "qcow2")
     device_bus = params.get("device_bus", "virtio")
 
-    # blockcopy,snapshot,blockcommit related paremeter
+    # blockcopy,snapshot,blockcommit related parameter
     max_cache_size = params.get("max_cache_size", "10")
     max_blockcopy_size = params.get("mirror_max_cache_size", "1000")
     max_snapshot_size = params.get("snapshot_max_cache_size", "100")
@@ -225,7 +225,7 @@ def run(test, params, env):
         # Detach hot plugged device.
         if hot_plug:
             virsh.detach_device(vm_name, custom_disk.xml,
-                                flagstr=attach_option, dargs=virsh_dargs, ignore_status=False, wait_remove_event=True)
+                                flagstr=attach_option, dargs=virsh_dargs, ignore_status=False, wait_for_event=True)
     finally:
         # Recover VM.
         if vm.is_alive():

@@ -383,7 +383,7 @@ def run(test, params, env):
             logging.info("Check disk operation in VM:\n, %s, %s", s, o)
             # Readonly fs, check the error messages.
             # The command may return True, read-only
-            # messges can be found from the command output
+            # messages can be found from the command output
             if read_only:
                 if "Read-only file system" not in o:
                     return False
@@ -546,7 +546,7 @@ def run(test, params, env):
     if rbd_blockcopy and not libvirt_version.version_compare(6, 0, 0):
         test.cancel("blockcopy rbd backend is not supported in current libvirt version")
 
-    # Start vm and get all partions in vm.
+    # Start vm and get all partitions in vm.
     if vm.is_dead():
         vm.start()
     session = vm.wait_for_login()
@@ -718,8 +718,8 @@ def run(test, params, env):
             targetbus = params.get("disk_target_bus", "scsi")
             # Add virtio-scsi controller for sd* test
             controller_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
-            condict = {'controller_type': targetbus}
-            ctrl = libvirt.create_controller_xml(condict)
+            conduct = {'controller_type': targetbus}
+            ctrl = libvirt.create_controller_xml(conduct)
             libvirt.add_controller(vm.name, ctrl)
             logging.debug("Controller XML is:%s", ctrl)
         # To be compatible with create_disk_xml function,
@@ -866,7 +866,8 @@ def run(test, params, env):
                 disk_cmd = ("rbd -m %s %s create %s --size 400M 2> /dev/null"
                             % (mon_host, key_opt, disk_src_name))
                 process.run(disk_cmd, ignore_status=False, shell=True)
-                slice_dict = {"slice_type": "storage", "slice_offset": "12345", "slice_size": "105185280"}
+                slice_dict = {"slice_type": "storage", "slice_offset": "12345",
+                              "slice_size": "52428800"}
                 params.update({"disk_slice": slice_dict})
                 logging.debug('create one volume on ceph backend storage for slice testing')
             # Create one file on VM before doing blockcopy
@@ -970,10 +971,10 @@ def run(test, params, env):
         # Detach the device.
         if attach_device:
             xml_file = libvirt.create_disk_xml(params)
-            ret = virsh.detach_device(vm_name, xml_file, wait_remove_event=True)
+            ret = virsh.detach_device(vm_name, xml_file, wait_for_event=True)
             libvirt.check_exit_status(ret)
             if additional_guest:
-                ret = virsh.detach_device(guest_name, xml_file, wait_remove_event=True)
+                ret = virsh.detach_device(guest_name, xml_file, wait_for_event=True)
                 libvirt.check_exit_status(ret)
         elif attach_disk:
             ret = virsh.detach_disk(vm_name, targetdev, wait_remove_event=True)

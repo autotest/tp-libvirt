@@ -18,7 +18,7 @@ def run(test, params, env):
 
     def get_pci_info():
         """
-        Get infomation for all PCI devices including:
+        Get information for all PCI devices including:
         1) whether device has reset under its sysfs dir.
         2) Whether device has driver dir under its sysfs dir.
 
@@ -59,7 +59,7 @@ def run(test, params, env):
             # Check whether exit code match expectation.
             libvirt.check_exit_status(result, expect_error)
 
-    # Retrive parameters
+    # Retrieve parameters
     expect_error = params.get('expect_error', 'no') == 'yes'
     device_option = params.get('device_option', 'valid')
     unspecified = 'REPLACE_WITH_TEST_DEVICE'
@@ -74,7 +74,7 @@ def run(test, params, env):
     # Get whether PCI devices are resettable from sysfs.
     devices = get_pci_info()
 
-    # Devide PCI devices into to catagories.
+    # Divide PCI devices into to categories.
     resettable_nodes = []
     unresettable_nodes = []
     for device in devices:
