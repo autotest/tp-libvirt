@@ -194,8 +194,7 @@ def run(test, params, env):
         else:
             file_to_del.append(new_image)
             snapshot_image_list = [new_image.replace('img', i) for i in params['snapshot_list']]
-
-        cmd_create_img = 'qemu-img create -f %s -b %s %s' % (driver_type, disk_target, new_image)
+        cmd_create_img = 'qemu-img create -f %s -b %s %s -F raw' % (driver_type, disk_target, new_image)
         if disk_type == 'block' and driver_type == 'raw':
             pass
         else:
