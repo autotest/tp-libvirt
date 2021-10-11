@@ -146,8 +146,7 @@ def run(test, params, env):
         mac_addr = utils_net.generate_mac_address_simple()
         if_dict['mac'] = mac_addr
         iface_add_xml = libvirt.modify_vm_iface(vm_name, 'get_xml', if_dict)
-        virsh.attach_device(vm_name, iface_add_xml, wait_remove_event=True,
-                            debug=True, ignore_status=False)
+        virsh.attach_device(vm_name, iface_add_xml, debug=True, ignore_status=False)
         time.sleep(2)
         logging.debug("3. Check tap name after hotplug an interface:")
         check_target_name(counter, test_macvtap)
@@ -163,8 +162,7 @@ def run(test, params, env):
             # the counter is not initialized to -1 as the vm is running and
             # first tap name is occupied
             counter = counter - 1
-        virsh.attach_device(vm_name, iface_add_xml, wait_remove_event=True,
-                            debug=True, ignore_status=False)
+        virsh.attach_device(vm_name, iface_add_xml, debug=True, ignore_status=False)
         logging.debug("4 Check tap name after detach and reattach with "
                       "flushed: %s:", flush_after_detach)
         check_target_name(counter, test_macvtap)
