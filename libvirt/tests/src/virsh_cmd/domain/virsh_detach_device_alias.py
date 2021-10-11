@@ -109,8 +109,10 @@ def run(test, params, env):
 
     try:
         dump_option = ""
+        wait_event = True
         if "--config" in detach_options:
             dump_option = "--inactive"
+            wait_event = False
 
         # Attach xml to domain
         logging.info("Attach xml is %s" % process.run("cat %s" % device_xml.xml).stdout_text)
@@ -122,7 +124,9 @@ def run(test, params, env):
 
         # Detach xml with alias
         result = virsh.detach_device_alias(vm_name, device_alias, detach_options,
-                                           wait_for_event=True, debug=True)
+                                           wait_for_event=wait_event,
+                                           event_timeout=20,
+                                           debug=True)
         libvirt.check_exit_status(result)
         if not utils_misc.wait_for(check_detached_xml_noexist,
                                    60,
