@@ -122,7 +122,8 @@ def run(test, params, env):
 
         # Detach xml with alias
         result = virsh.detach_device_alias(vm_name, device_alias, detach_options,
-                                           wait_for_event=True, debug=True)
+                                           wait_for_event=True, event_timeout=60,
+                                           debug=True)
         libvirt.check_exit_status(result)
         if not utils_misc.wait_for(check_detached_xml_noexist,
                                    60,
