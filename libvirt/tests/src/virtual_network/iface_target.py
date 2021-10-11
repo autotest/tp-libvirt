@@ -152,8 +152,9 @@ def run(test, params, env):
         check_target_name(counter, test_macvtap)
         # one interface with same iface type attached, counter increase by 1
         counter = counter + 1
+        # Make sure the guest boots up. Otherwise detach_device won't complete
+        vm.wait_for_serial_login(timeout=180).close()
         # detach the new attached interface
-        time.sleep(10)
         virsh.detach_device(vm_name, iface_add_xml, wait_for_event=True,
                             debug=True, ignore_status=False)
         if flush_after_detach:
