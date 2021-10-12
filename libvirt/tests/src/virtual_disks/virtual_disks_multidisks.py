@@ -2030,7 +2030,7 @@ def run(test, params, env):
                     if device_attach_error[i] == "yes":
                         continue
                 ret = virsh.detach_device(vm_name, disks_xml[i].xml,
-                                          flagstr=attach_option, wait_for_event=True, **virsh_dargs)
+                                          flagstr=attach_option, wait_for_event=False, **virsh_dargs)
                 os.remove(disks_xml[i].xml)
                 libvirt.check_exit_status(ret)
 
