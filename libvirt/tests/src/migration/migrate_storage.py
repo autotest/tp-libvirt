@@ -71,8 +71,8 @@ def run(test, params, env):
         process.run(disk_cmd, ignore_status=False, verbose=True)
         local_image_list.append("%s/%s" % (mnt_path, backingfile_img))
         logging.debug("Create a local image backing on NFS.")
-        disk_cmd = ("qemu-img create -f %s -b %s/%s %s" %
-                    (disk_format, mnt_path, backingfile_img, disk_img))
+        disk_cmd = ("qemu-img create -f %s -F %s -b %s/%s %s" %
+                    (disk_format, disk_format, mnt_path, backingfile_img, disk_img))
         process.run(disk_cmd, ignore_status=False, verbose=True)
         local_image_list.append(disk_img)
         if precreation:
