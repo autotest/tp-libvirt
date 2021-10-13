@@ -829,14 +829,13 @@ def run(test, params, env):
                     contr_dict.update({'controller_target': cntl_target})
                     addr = None
                     if 'bus' in one_contrl:
-                        addr = '{"bus": %s' % one_contrl['bus']
+                        addr = {'bus': one_contrl['bus']}
                         if 'slot' in one_contrl:
-                            addr = addr + ', "slot": %s' % one_contrl['slot']
+                            addr.update({'slot': one_contrl['slot']})
                             if 'func' in one_contrl:
-                                addr = addr + ', "function": %s' % one_contrl['func']
-                        addr = addr + '}'
+                                addr.update({'function': one_contrl['func']})
                     if addr:
-                        contr_dict.update({'controller_addr': addr})
+                        contr_dict.update({'controller_addr': str(addr)})
                     logging.debug(contr_dict)
                     controller_add = libvirt.create_controller_xml(contr_dict)
                     vm_xml.add_device(controller_add)
