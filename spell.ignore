@@ -26,6 +26,7 @@ attribs
 attrs
 augeas
 augpath
+ausearch
 auth
 Auth
 autodestroy
