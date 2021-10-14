@@ -1,5 +1,4 @@
 import os
-import time
 import logging
 import shutil
 import uuid
@@ -303,7 +302,14 @@ def run(test, params, env):
         # If status_error is False, then wait for seconds to let detach operation accomplish complete.
         if not status_error:
             utils_misc.wait_for(lambda: not libvirt.device_exists(vm, device_target), timeout=40)
-        time.sleep(2)
+            # Allow attached interface device to really detached
+            if device == "iface":
+                def __interface_exists():
+                    interface_vmxml = vm_xml.VMXML.new_from_dumpxml(vm_name)
+                    xml_devices = interface_vmxml.devices
+                    device_index = xml_devices.by_device_tag('interface')
+                    return len(device_index) == 2
+                utils_misc.wait_for(lambda: not __interface_exists(), timeout=40)
         # Resume guest after command. On newer libvirt this is fixed as it has
         # been a bug. The change in xml file is done after the guest is
         # resumed.
