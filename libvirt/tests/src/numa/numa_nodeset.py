@@ -9,6 +9,7 @@ from virttest import virsh
 def update_xml(vm_name, params):
     numa_info = utils_misc.NumaInfo()
     online_nodes = numa_info.get_all_nodes()
+    cpu_mode = params.get('cpu_mode', 'host-model')
     # Prepare a memnode list
     numa_memnode = [{
         'mode': params.get('memory_mode', 'strict'),
@@ -29,7 +30,7 @@ def update_xml(vm_name, params):
 
     vmxml.setup_attrs(**{
         'numa_memnode': numa_memnode,
-        'cpu': {'reset_all': True, 'mode': 'host-model', 'numa_cell': numa_cells}
+        'cpu': {'reset_all': True, 'mode': cpu_mode, 'numa_cell': numa_cells}
     })
 
     logging.debug("vm xml is %s", vmxml)
