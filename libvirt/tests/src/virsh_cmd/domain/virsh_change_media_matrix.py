@@ -300,7 +300,7 @@ def run(test, params, env):
                 wait_for_event = True
             ret = virsh.change_media(vm_ref, target_device, all_options,
                                      wait_for_event=wait_for_event,
-                                     event_timeout=14,
+                                     event_timeout=40,
                                      ignore_status=True, debug=True)
             status_error = False
             if pre_vm_state == "shutoff":
