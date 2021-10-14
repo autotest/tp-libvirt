@@ -232,9 +232,11 @@ def run(test, params, env):
             test.fail("Cannot operate the newly added disk in vm.")
 
         # Detach the disk from vm
+        wait_for_event = False if coldplug else True
         result = virsh.detach_device(vm_name, disk_xml.xml,
                                      flagstr=attach_options,
-                                     ignore_status=True, debug=True, wait_for_event=True)
+                                     ignore_status=True, debug=True,
+                                     wait_for_event=wait_for_event)
         libvirt.check_exit_status(result, status_error)
 
         # Check the detached disk in vm
