@@ -267,8 +267,10 @@ def run(test, params, env):
             # kill the daemon with SIGHUP
             if os.path.exists(hook_log):
                 os.remove(hook_log)
-            utils_misc.signal_program('libvirtd', 1,
-                                      '/var/run')
+
+            daemon_process = utils_libvirtd.Libvirtd().service_name
+            utils_misc.signal_program(daemon_process, 1, '/var/run')
+
             hook_str = hook_file + " - reload begin SIGHUP"
             assert check_hooks(hook_str)
 
