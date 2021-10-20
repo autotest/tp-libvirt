@@ -85,7 +85,9 @@ def prepare_host_for_test(params, test):
     return numa_memory, oversize, undersize, memory_to_eat, neighbour, nodeset_string
 
 
-def prepare_guest_for_test(vm_name, session, test, oversize, nodeset_string):
+def prepare_guest_for_test(
+        vm_name, session, test, oversize,
+        nodeset_string, memory_to_eat):
     """
     Setup guest
 
@@ -94,6 +96,7 @@ def prepare_guest_for_test(vm_name, session, test, oversize, nodeset_string):
     :param test: test object
     :param oversize: memory to be taken
     :param nodeset_string: nodeset string with nodes to be spread on
+    :param memory_to_eat: The memory guest will use
     """
     result = virsh.numatune(vm_name, debug=True)
     if result.exit_status:
@@ -106,6 +109,16 @@ def prepare_guest_for_test(vm_name, session, test, oversize, nodeset_string):
     if result.exit_status:
         test.fail("Something went wrong during the 'virsh setmem {}' "
                   "command.".format(oversize))
+
+    def _check_mem(memory_to_eat):
+        dommemstat_output = virsh.dommemstat(vm_name).stdout_text.strip()
+        actual_mem = re.search("actual (\d*)", dommemstat_output).groups()[0]
+        logging.debug("actual_mem is {}".format(actual_mem))
+        return int(actual_mem) > int(memory_to_eat)
+    if not utils_misc.wait_for(lambda: _check_mem(memory_to_eat),
+                               300, first=5):
+        test.error("Failed to increase specific guest memory in time")
+
     # Turn off a swap on guest
     session.cmd_status('swapoff -a', timeout=10)
     # Install the numactl package on the guest for a memhog program
@@ -185,7 +198,9 @@ def run(test, params, env):
             vm.start()
         session = vm.wait_for_login()
         # Prepare guest
-        prepare_guest_for_test(vm_name, session, test, oversize, nodeset_string)
+        prepare_guest_for_test(
+            vm_name, session, test, oversize,
+            nodeset_string, memory_to_eat)
         # And get the numastat prior the test
         total_prior = get_qemu_total_for_nodes()
         # Start test
