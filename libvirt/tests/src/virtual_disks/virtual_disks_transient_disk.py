@@ -109,11 +109,11 @@ def run(test, params, env):
     hotplug = "yes" == params.get("virt_disk_vms_hotplug", "no")
     status_error = params.get("status_error").split()
     sharebacking = params.get("share_transient").split()
-    # After libvirt 7.4.0, support for sharing base image of ``<transient/>``
-    if not libvirt_version.version_compare(7, 4, 0):
-        test.cancel("Sharing base image of transient disk is not supported for this libvirt version")
+    on_reboot_destroy = "yes" == params.get("on_reboot_destroy", "no")
     disk_source_path = data_dir.get_data_dir()
     disk_path = ""
+
+    libvirt_version.is_libvirt_feature_supported(params)
 
     # Backup vm xml files.
     vms_backup = []
@@ -149,6 +149,8 @@ def run(test, params, env):
 
             if sharebacking[i] == "yes":
                 disk_xml.sharebacking = "yes"
+                if on_reboot_destroy:
+                    vmxml.on_reboot = "destroy"
             else:
                 disk_xml.transient = "yes"
 
@@ -158,6 +160,7 @@ def run(test, params, env):
                 # If we are not testing hotplug,
                 # add disks to domain xml and sync.
                 vmxml.add_device(disk_xml)
+                logging.debug("vm xml is {}".format(vmxml))
                 vmxml.sync()
             vms_list.append({"name": vm_names[i], "vm": vm,
                              "status": "yes" == status_error[i],
