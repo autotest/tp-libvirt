@@ -8,6 +8,7 @@ from virttest import virsh
 from virttest import remote
 from virttest import data_dir
 from virttest import utils_misc
+from virttest import libvirt_version
 
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_pcicontr
@@ -767,6 +768,8 @@ def run(test, params, env):
     auto_indexes_dict = {}
     auto_index = params.get('auto_index', 'no') == 'yes'
     auto_slot = params.get('auto_slot', 'no') == 'yes'
+
+    libvirt_version.is_libvirt_feature_supported(params)
 
     if index and index_second:
         if int(index) > int(index_second):
