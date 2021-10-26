@@ -342,7 +342,7 @@ def run(test, params, env):
         rng_currt = session.cmd_output("cat %s" % rng_files[1],
                                        timeout=timeout).strip()
         logging.debug("rng avail:%s, current:%s", rng_avail, rng_currt)
-        if not rng_currt.count("virtio") or rng_currt not in rng_avail:
+        if "virtio" not in rng_avail or not rng_currt.strip():
             test.fail("Failed to check rng file on guest")
 
         # Read the random device
