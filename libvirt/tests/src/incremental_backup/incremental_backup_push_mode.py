@@ -269,7 +269,7 @@ def run(test, params, env):
             error_operation = params.get("error_operation")
             if error_operation:
                 if "destroy_vm" in error_operation:
-                    vm.destroy(gracefully=False)
+                    virsh.destroy(vm_name, debug=True)
                 if "kill_qemu" in error_operation:
                     utils_misc.safe_kill(vm.get_pid(), signal.SIGKILL)
                 if utils_misc.wait_for(lambda: utils_backup.is_backup_canceled(vm_name),
