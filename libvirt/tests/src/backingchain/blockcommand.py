@@ -168,9 +168,7 @@ def run(test, params, env):
         # Setup gluster
         elif disk_src == 'gluster':
             host_ip = gluster.setup_or_cleanup_gluster(
-                is_setup=True, vol_name=vol_name,
-                brick_path=brick_path, pool_name=pool_name
-            )
+                is_setup=True, brick_path=brick_path, **params)
             logging.debug(host_ip)
             gluster_img = 'test.img'
             img_create_cmd = "qemu-img create -f raw /mnt/%s 10M" % gluster_img
@@ -310,6 +308,7 @@ def run(test, params, env):
                     process.run("pvremove %s" % pv_name, verbose=True, ignore_status=True)
             libvirt.setup_or_cleanup_iscsi(is_setup=False)
         elif disk_src == 'gluster':
-            gluster.setup_or_cleanup_gluster(is_setup=False, vol_name=vol_name, brick_path=brick_path, pool_name=pool_name)
+            gluster.setup_or_cleanup_gluster(
+                is_setup=False, brick_path=brick_path, **params)
         if 'multipathd_status' in locals() and multipathd_status:
             multipathd.start()
