@@ -23,9 +23,10 @@ def run(test, params, env):
         """
         device_source = os.path.join(data_dir.get_tmp_dir(), disk_name)
         libvirt.create_local_disk("file", device_source, size='1')
+        extra_option = "--serial %s" % serial_num
         try:
-            res = virsh.attach_disk(vm_name, device_source,
-                                    disk_target_name, debug=True)
+            res = virsh.attach_disk(vm_name, device_source, disk_target_name,
+                                    extra=extra_option, debug=True)
             utils_misc.wait_for(lambda: (res.stdout ==
                                 "Disk attached successfully"), 10)
         except Exception:
@@ -46,7 +47,8 @@ def run(test, params, env):
             try:
                 if disk_info[prefix + 'alias'] == target_name:
                     if (disk_info[prefix + 'name'] == disk_logical_name and
-                            disk_info[prefix + 'partition'] == 'no'):
+                            disk_info[prefix + 'partition'] == 'no' and
+                            disk_info[prefix + 'serial'] == serial_num):
                         attached_disk_info_reported = True
                         break
             except KeyError:
@@ -254,6 +256,7 @@ def run(test, params, env):
     prepare_channel = ("yes" == params.get("prepare_channel", "yes"))
     disk_target_name = params.get("disk_target_name")
     disk_name = params.get("disk_name")
+    serial_num = params.get("serial_num")
     readonly_mode = ("yes" == params.get("readonly_mode"))
 
     if not libvirt_version.version_compare(6, 0, 0):
