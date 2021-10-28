@@ -699,12 +699,22 @@ def run(test, params, env):
         dev_cfg = eval(device_cfg_dict)
         if device_type == 'sound':
             dev_obj.model_type = dev_cfg.get("model")
+        elif device_type == 'rng':
+            dev_obj.rng_model = dev_cfg.get("model")
+            rng_backend = dev_obj.Backend()
+            rng_backend.backend_model = "random"
+            dev_obj.backend = rng_backend
         elif device_type == 'memballoon':
             dev_obj.model = dev_cfg.get("model")
         if 'bus' in dev_cfg:
-            dev_obj.address = {'bus': dev_cfg.get("bus"),
-                               'type': dev_cfg.get("type", "pci"),
-                               'slot': dev_cfg.get("slot", "0x00")}
+            addr_dict = {'bus': dev_cfg.get("bus"),
+                         'type': dev_cfg.get("type", "pci"),
+                         'slot': dev_cfg.get("slot", "0x00")}
+            if device_type == 'rng':
+                dev_obj.address = dev_obj\
+                    .new_rng_address(**{"attrs": addr_dict})
+            else:
+                dev_obj.address = addr_dict
         vm_xml.add_device(dev_obj)
 
     def check_multifunction():
@@ -755,6 +765,7 @@ def run(test, params, env):
     check_cntrls_list = params.get("check_cntrls_list")
     sound_dict = params.get("sound_dict")
     balloon_dict = params.get("balloon_dict")
+    rng_dict = params.get("rng_dict")
     guest_patterns = params.get("guest_patterns")
     attach_option = params.get("attach_option")
     detach_option = params.get("detach_option")
@@ -864,6 +875,8 @@ def run(test, params, env):
                 vmxml_cpu = vm_xml.cpu
                 logging.debug("Existing cpu configuration in guest xml:\n%s", vmxml_cpu)
                 vmxml_cpu.mode = 'host-model'
+                if platform.machine() == 'aarch64':
+                    vmxml_cpu.mode = 'host-passthrough'
                 vmxml_cpu.remove_elem_by_xpath('/model')
                 vmxml_cpu.remove_elem_by_xpath('/numa')
             vmxml_cpu.numa_cell = VMCPUXML.dicts_to_cells(eval(cpu_numa_cells))
@@ -871,6 +884,8 @@ def run(test, params, env):
             vm_xml.vcpu = int(params.get('vcpu_count', 4))
         if sound_dict:
             add_device_xml(vm_xml, 'sound', sound_dict)
+        if rng_dict:
+            add_device_xml(vm_xml, 'rng', rng_dict)
         if balloon_dict:
             add_device_xml(vm_xml, 'memballoon', balloon_dict)
 
