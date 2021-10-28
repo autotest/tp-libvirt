@@ -26,9 +26,12 @@ def install_pkgs(session, cpuid_uri, test):
     if cpuid_uri:
         if not utils_package.package_install('wget', session=session):
             test.error("Fail to install 'wget' tool via repo")
-        utils_misc.cmd_status_output('wget %s' % cpuid_uri, shell=True,
-                                     ignore_status=False, verbose=True,
-                                     session=session)
+        status, _o = utils_misc.cmd_status_output(
+            'wget %s' % cpuid_uri, shell=True, ignore_status=False,
+            verbose=True, session=session)
+        if status:
+            test.error("Fail to download the package %s!"
+                       % os.path.basename(cpuid_uri))
         if not utils_package.package_install('cpuid*.rpm', session=session):
             test.error("Fail to install package "
                        "'%s'" % os.path.basename(cpuid_uri))
