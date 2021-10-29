@@ -8,6 +8,7 @@ from virttest import utils_net
 from virttest import utils_libvirtd
 from virttest import utils_misc
 from virttest import data_dir
+from virttest import libvirt_version
 from virttest import virsh
 from virttest.utils_test import libvirt
 from virttest.utils_libvirt import libvirt_network
@@ -131,6 +132,7 @@ def run(test, params, env):
     net_inbound = params.get("net_bandwidth_inbound", "{'average':'0'}")
     net_outbound = params.get("net_bandwidth_outbound", "{'average':'0'}")
 
+    libvirt_version.is_libvirt_feature_supported(params)
     vms = params.get("vms").split()
     vm1_name = vms[0]
     vm1 = env.get_vm(vm1_name)
