@@ -6,9 +6,10 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import utils_config
+from virttest import utils_split_daemons
+from virttest import virt_admin
 from virttest.utils_libvirtd import LibvirtdSession
 from virttest.utils_libvirtd import Libvirtd
-from virttest.libvirt_xml import capability_xml
 
 from virttest import libvirt_version
 
@@ -42,7 +43,7 @@ def run(test, params, env):
         Check whether the output is libvirtd version.
         """
         expected_version = params.get('expected_version', 'no') == 'yes'
-        is_version = log[0].startswith('{} (libvirt)'.format(Libvirtd().service_list[0]))
+        is_version = log[0].startswith('{} (libvirt)'.format(daemon_name))
         if expected_version != is_version:
             test.fail(
                 'Expected output version is %s, but get output:\n%s' %
@@ -76,7 +77,7 @@ def run(test, params, env):
 
         with open(pid_path) as pid_file:
             pid = int(pid_file.readline())
-        result = process.run('pgrep %s' % Libvirtd().service_list[0],
+        result = process.run('pgrep %s' % daemon_name,
                              ignore_status=True, shell=True)
         expected_pid = int(result.stdout_text.strip().split()[0])
 
@@ -86,12 +87,20 @@ def run(test, params, env):
 
     def check_config_file():
         """
-        Check whether the config file take effects by checking UUID.
+        Check whether the config file take effects by checking max_clients.
         """
-        cur_uuid = capability_xml.CapabilityXML()['uuid']
-        if cur_uuid != check_uuid:
-            test.fail('Expected host UUID is %s, but got %s' %
-                      (check_uuid, cur_uuid))
+        if daemon_name == "libvirtd":
+            connect_uri = "qemu:///system"
+        else:
+            connect_uri = daemon_name + ":///system"
+        vp = virt_admin.VirtadminPersistent(uri=connect_uri)
+        result = vp.srv_clients_info(daemon_name, uri=connect_uri, ignore_status=True, debug=True)
+        output = result.stdout.strip().splitlines()
+        out_split = [item.split(':') for item in output]
+        out_dict = dict([[item[0].strip(), item[1].strip()] for item in out_split])
+        if int(out_dict["nclients_max"]) != check_max_clients:
+            test.fail('Expected max_clients is %s, but got %s' %
+                      (check_max_clients, out_dict["nclients_max"]))
 
     MAX_TIMEOUT = 10
     arg_str = params.get("libvirtd_arg", "")
@@ -99,7 +108,11 @@ def run(test, params, env):
     expected_exit_time = float(params.get("expected_exit_time", 'inf'))
     config_path = params.get('expected_config_path', "")
     pid_path = params.get('expected_pid_path', "")
+    daemon_name = params.get('daemon_name', "")
+    test_config = params.get('test_config', "no") == "yes"
+    require_modular_daemon = params.get('require_modular_daemon', "no") == "yes"
 
+    utils_split_daemons.daemon_mode_check(require_modular_daemon)
     if expected_exit_time == float('inf'):
         timeout = MAX_TIMEOUT
     else:
@@ -109,21 +122,21 @@ def run(test, params, env):
                             'there exists living domain')
         timeout = expected_exit_time + time_tolerance
 
-    libvirtd = LibvirtdSession(
-        logging_handler=_logger,
-    )
+    libvirtd = LibvirtdSession(service_name=daemon_name, logging_handler=_logger)
 
     # Setup config file.
-    check_uuid = '13371337-1337-1337-1337-133713371337'
-    if config_path:
-        open(config_path, 'a').close()
-        config = utils_config.LibvirtdConfig(config_path)
-        config.host_uuid = check_uuid
+    check_max_clients = int(101)
+    if test_config:
+        config = utils_config.get_conf_obj(daemon_name)
+        logging.debug(config.conf_path)
+        config_path = config.conf_path
+        config.max_clients = check_max_clients
+        arg_str = arg_str + config_path
 
     try:
         check_unix_socket_files()
 
-        Libvirtd().stop()
+        Libvirtd(daemon_name).stop()
         libvirtd.start(arg_str=arg_str, wait_for_working=False)
 
         start = time.time()
@@ -150,20 +163,19 @@ def run(test, params, env):
                           (expected_exit_time, time_tolerance, wait_time))
 
         not libvirt_version.version_compare(5, 6, 0) and check_unix_socket_files()
-        if config_path:
+        if test_config:
             check_config_file()
         if pid_path:
             check_pid_file()
     finally:
         libvirtd.exit()
-        Libvirtd().stop()
-        Libvirtd("libvirtd.socket").restart()
-        Libvirtd().start()
+        Libvirtd(daemon_name).stop()
+        socket_name = daemon_name + ".socket"
+        Libvirtd(socket_name).restart()
+        Libvirtd(daemon_name).start()
 
         # Clean up config file
-        if config_path:
+        if test_config:
             config.restore()
-            if os.path.exists(config_path):
-                os.remove(config_path)
         if os.path.exists(pid_path):
             os.remove(pid_path)
