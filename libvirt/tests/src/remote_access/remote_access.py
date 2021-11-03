@@ -60,8 +60,15 @@ def remote_access(params, test):
                 fp.close()
             logging.info("Succeed to connect libvirt daemon.")
         else:
-            test.fail("Failed to connect libvirt daemon!!output: {}"
-                      .format(output))
+            if error_pattern:
+                if error_pattern in output:
+                    logging.info("Expected libvirt output!!")
+                else:
+                    test.fail("Unexpected output: {}, when looking for: {} "
+                              "pattern".format(output, error_pattern))
+            else:
+                test.fail("Failed to connect libvirt daemon!!output: {}"
+                          .format(output))
     else:
         if not ret:
             if error_pattern:
