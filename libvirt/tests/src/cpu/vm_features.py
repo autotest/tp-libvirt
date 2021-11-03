@@ -1,37 +1,29 @@
 import logging
-import os
 import re
 
 from avocado.core import exceptions
 from avocado.utils import distro
 
+from virttest import libvirt_version
 from virttest import utils_package
 from virttest import utils_misc
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.utils_test import libvirt
 
-from virttest import libvirt_version
 
-
-def install_pkgs(session, cpuid_uri, test):
+def install_pkgs(session, pkgs, test):
     """
     Install packages within the vm
 
     :param session: vm session
-    :param params: dict for tests
+    :param pkgs: str or list, package names to install
     :param test: the test object
     :raises: test.error if installation fails
     """
-    if cpuid_uri:
-        if not utils_package.package_install('wget', session=session):
-            test.error("Fail to install 'wget' tool via repo")
-        utils_misc.cmd_status_output('wget %s' % cpuid_uri, shell=True,
-                                     ignore_status=False, verbose=True,
-                                     session=session)
-        if not utils_package.package_install('cpuid*.rpm', session=session):
-            test.error("Fail to install package "
-                       "'%s'" % os.path.basename(cpuid_uri))
+    if pkgs:
+        if not utils_package.package_install(pkgs, session=session):
+            test.error("Fail to install package '%s'" % pkgs)
 
 
 def check_cmd_in_guest(cmd_in_guest, vm_session, params, test):
@@ -75,6 +67,7 @@ def run(test, params, env):
     qemu_include = params.get('qemu_include', '')
     qemu_exclude = params.get('qemu_exclude', '')
     cmd_in_guest = params.get('cmd_in_guest')
+    pkgs = params.get('pkgs')
 
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
     bkxml = vmxml.copy()
@@ -119,7 +112,7 @@ def run(test, params, env):
             else:
                 test.fail('VM failed to start:\n%s' % details)
         vm_session = vm.wait_for_login()
-        install_pkgs(vm_session, params.get("cpuid_uri"), test)
+        install_pkgs(vm_session, pkgs, test)
         if hyperv_attr:
             # Check hyperv settings in qemu command line
             for attr in hyperv_attr:
