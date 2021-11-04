@@ -5,6 +5,7 @@ from virttest import virsh
 from virttest import libvirt_vm
 from virttest import libvirt_version
 from virttest import utils_libvirtd
+from virttest import utils_split_daemons
 from virttest.libvirt_xml import network_xml, IPXML
 from virttest.staging import service
 from virttest.utils_test import libvirt
@@ -35,6 +36,8 @@ def run(test, params, env):
                         " libvirt version.")
 
     virsh_uri = params.get("virsh_uri")
+    if virsh_uri and not utils_split_daemons.is_modular_daemon():
+        virsh_uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
