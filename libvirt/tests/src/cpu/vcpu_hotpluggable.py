@@ -10,7 +10,6 @@ from avocado.utils.software_manager import SoftwareManager
 
 from virttest import libvirt_cgroup
 from virttest import virsh
-from virttest import utils_config
 from virttest import utils_libvirtd
 from virttest import cpu
 from virttest import data_dir
@@ -104,11 +103,10 @@ def run(test, params, env):
             config_path = os.path.join(data_dir.get_tmp_dir(), log_file)
             with open(config_path, 'a') as f:
                 pass
-            config = utils_config.LibvirtdConfig()
-            log_outputs = "1:file:%s" % config_path
-            config.log_outputs = log_outputs
-            config.log_level = 1
-            config.log_filters = "1:json 1:libvirt 1:qemu 1:monitor 3:remote 4:event"
+            daemon_conf_dict = {"log_level": "1",
+                                "log_filters": "\"1:json 1:libvirt 1:qemu 1:monitor 3:remote 4:event\"",
+                                "log_outputs": "\"1:file:{}\"".format(config_path)}
+            daemon_conf = libvirt.customize_libvirt_config(daemon_conf_dict)
 
             # Restart libvirtd to make the changes take effect in libvirt
             libvirtd.restart()
@@ -276,10 +274,10 @@ def run(test, params, env):
                                   .format(vcpu_id, cg_path))
     finally:
         # Recover libvirtd configuration
-        if config_libvirtd:
-            config.restore()
-            if os.path.exists(config_path):
-                os.remove(config_path)
+        if config_libvirtd and 'daemon_conf' in locals():
+            libvirt.customize_libvirt_config(None, remote_host=False,
+                                             is_recover=True,
+                                             config_object=daemon_conf)
 
         if vm.is_alive():
             vm.destroy(gracefully=False)
