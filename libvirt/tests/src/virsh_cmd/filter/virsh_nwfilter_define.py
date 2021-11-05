@@ -4,6 +4,7 @@ import logging
 from virttest import virsh
 from virttest import xml_utils
 from virttest import libvirt_xml
+from virttest import utils_split_daemons
 from virttest.utils_test import libvirt as utlv
 
 from virttest import libvirt_version
@@ -52,6 +53,8 @@ def run(test, params, env):
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):

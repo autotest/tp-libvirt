@@ -12,6 +12,7 @@ from virttest import virsh
 from virttest import libvirt_storage
 from virttest import libvirt_xml
 from virttest import test_setup
+from virttest import utils_split_daemons
 from virttest import virt_vm
 from virttest.utils_test import libvirt as utlv
 from virttest.staging import service
@@ -91,6 +92,8 @@ def run(test, params, env):
             test.cancel("API acl test not supported in current"
                         " libvirt version.")
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):

@@ -7,11 +7,12 @@ import aexpect
 
 from avocado.utils import process
 
-from virttest import virsh
 from virttest import data_dir
 from virttest import libvirt_xml
-from virttest import utils_misc
 from virttest import remote
+from virttest import utils_misc
+from virttest import utils_split_daemons
+from virttest import virsh
 from virttest import virt_vm
 
 from virttest.libvirt_xml import vm_xml
@@ -179,6 +180,8 @@ def run(test, params, env):
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unpri_user = params.get('unprivileged_user')
     if unpri_user:
         if unpri_user.count('EXAMPLE'):
