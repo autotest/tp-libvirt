@@ -6,6 +6,7 @@ from avocado.utils import process
 from virttest import virsh
 from virttest.libvirt_xml import nodedev_xml
 from virttest import libvirt_version
+from virttest import utils_split_daemons
 from virttest.utils_test import libvirt
 
 
@@ -93,6 +94,8 @@ def run(test, params, env):
 
     # acl polkit params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):

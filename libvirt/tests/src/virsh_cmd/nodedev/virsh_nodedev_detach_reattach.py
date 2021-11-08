@@ -3,6 +3,7 @@ import logging
 from virttest import virsh
 from virttest.libvirt_xml import nodedev_xml
 from virttest import libvirt_version
+from virttest import utils_split_daemons
 from virttest.utils_test import libvirt
 from avocado.utils import process
 from avocado.core import exceptions
@@ -49,6 +50,8 @@ def run(test, params, env):
         """
         # Libvirt acl polkit related params
         uri = params.get("virsh_uri")
+        if uri and not utils_split_daemons.is_modular_daemon():
+            uri = "qemu:///system"
         unprivileged_user = params.get('unprivileged_user')
         readonly = (params.get('nodedev_detach_readonly', 'no') == 'yes')
         if unprivileged_user:
