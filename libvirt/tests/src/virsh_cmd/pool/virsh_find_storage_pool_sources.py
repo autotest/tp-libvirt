@@ -4,6 +4,7 @@ from avocado.utils import process
 from avocado.core import exceptions
 
 from virttest import xml_utils
+from virttest import utils_split_daemons
 from virttest import utils_test
 from virttest import virsh
 from virttest.staging import lv_utils
@@ -31,6 +32,8 @@ def run(test, params, env):
     ro_flag = "yes" == params.get("readonly_mode", "no")
     status_error = "yes" == params.get("status_error", "no")
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):

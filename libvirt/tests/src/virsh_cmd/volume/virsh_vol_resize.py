@@ -9,6 +9,7 @@ from avocado.core import exceptions
 
 from virttest import libvirt_storage
 from virttest import utils_misc
+from virttest import utils_split_daemons
 from virttest import virsh
 from virttest import libvirt_xml
 from virttest.utils_test import libvirt
@@ -259,6 +260,8 @@ def run(test, params, env):
 
     # libvirt acl polkit related params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unpri_user = params.get('unprivileged_user')
     if unpri_user:
         if unpri_user.count('EXAMPLE'):
