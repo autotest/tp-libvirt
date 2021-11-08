@@ -1,14 +1,18 @@
-import re
 import logging
 import os
-from virttest import data_dir
+import re
+
 from avocado.utils import process
-from virttest import virsh
+
+from virttest import data_dir
 from virttest import libvirt_version
-from virttest import utils_test
-from virttest.libvirt_xml import vm_xml
 from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import utils_split_daemons
+from virttest import utils_test
+from virttest import virsh
+
+from virttest.libvirt_xml import vm_xml
 
 
 def run(test, params, env):
@@ -42,6 +46,8 @@ def run(test, params, env):
                         " libvirt version.")
 
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):

@@ -6,6 +6,7 @@ from avocado.utils import process
 
 from virttest import virsh
 from virttest import data_dir
+from virttest import utils_split_daemons
 from virttest.libvirt_xml.secret_xml import SecretXML
 from virttest.utils_test import libvirt
 
@@ -43,6 +44,8 @@ def run(test, params, env):
 
     # libvirt acl related params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     define_acl = "yes" == params.get("define_acl", "no")
     undefine_acl = "yes" == params.get("undefine_acl", "no")
