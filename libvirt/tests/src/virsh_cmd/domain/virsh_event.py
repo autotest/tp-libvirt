@@ -539,6 +539,10 @@ def run(test, params, env):
                     ret = virsh.domstate(dom.name, "--reason", **virsh_dargs)
                     if ret.stdout.strip() != "paused (I/O error)":
                         test.fail("Domain state should still be paused due to I/O error!")
+                elif event == "kill_qemu":
+                    os.kill(dom.get_pid(), getattr(signal, signal_name))
+                    expected_events_list.append("'lifecycle' for %s:"
+                                                " Stopped Failed")
                 else:
                     test.error("Unsupported event: %s" % event)
                 # Event may not received immediately
