@@ -136,10 +136,11 @@ def run(test, params, env):
         dom_state = virsh.domstate(vm_name).stdout.strip()
 
         # Create disk snapshot before all to make the origin image clean
-        virsh.snapshot_create_as(vm_name, "--disk-only")
+        virsh.snapshot_create_as(vm_name, "--disk-only", timeout=300)
 
         # Create snapshot with options
         snapshot_result = virsh.snapshot_create_as(vm_name, snap_opt,
+                                                   timeout=300,
                                                    readonly=readonly)
         if snapshot_result.exit_status:
             if status_error == "no":
