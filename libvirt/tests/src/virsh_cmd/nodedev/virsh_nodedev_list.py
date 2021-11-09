@@ -7,6 +7,7 @@ from avocado.utils import path as utils_path
 from virttest import virsh
 
 from virttest import libvirt_version
+from virttest import utils_split_daemons
 
 
 def get_avail_caps(all_caps):
@@ -253,6 +254,8 @@ def run(test, params, env):
 
     # acl polkit params
     uri = params.get("virsh_uri")
+    if uri and not utils_split_daemons.is_modular_daemon():
+        uri = "qemu:///system"
     unprivileged_user = params.get('unprivileged_user')
     if unprivileged_user:
         if unprivileged_user.count('EXAMPLE'):
