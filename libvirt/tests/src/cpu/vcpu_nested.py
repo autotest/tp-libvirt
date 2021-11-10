@@ -1,7 +1,6 @@
 import logging
 import os
 
-from virttest import libvirt_remote
 from virttest import virsh
 
 from virttest.libvirt_xml import vm_xml
@@ -68,38 +67,16 @@ def get_timestamp_in_vm(virsh_dargs, vm_session, cmd_timestamp, test):
     return timestamp
 
 
-def configure_libvirtd(config_args):
-    """
-    Configure the libvirtd.conf file
-
-    :param config_args: dict, the parameters to be used
-    :return: RemoteFile object
-    """
-    libvirtd_conf_dict = config_args.get('libvirtd_conf_dict')
-    server_params = {'server_ip': config_args.get('remote_ip'),
-                     'server_user': config_args.get('remote_user'),
-                     'server_pwd': config_args.get('remote_pwd')}
-    libvirtd_conf_remote = libvirt_remote.update_remote_file(
-        server_params, libvirtd_conf_dict, "/etc/libvirt/libvirtd.conf")
-
-    return libvirtd_conf_remote
-
-
 def run(test, params, env):
     """
     Run the cpu tests with nested virt environment setup
     """
-    enable_libvirtd_debug_in_vm = params.get('enable_libvirtd_debug_in_vm')
-    log_file = params.get("libvirtd_log", "/var/log/libvirt/libvirtd.log")
     new_mode = params.get('cpu_new_mode')
     old_mode = params.get('cpu_old_mode')
-    search_str_in_vm_libvirtd = params.get('search_str_in_vm_libvirtd')
     the_case = params.get('case')
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(vm_name)
-
-    libvirtd_conf_in_vm = None
 
     # Backup domain XML
     vmxml = vm_xml.VMXML.new_from_inactive_dumpxml(vm_name)
@@ -121,11 +98,12 @@ def run(test, params, env):
                        'ssh_remote_auth': True}
 
         libvirt_nested.install_virt_pkgs(vm_session)
-        if enable_libvirtd_debug_in_vm:
-            cmd = 'rm -f %s' % log_file
-            run_cmd_in_guest(vm_session, cmd, test)
-            virsh_dargs.update({'libvirtd_conf_dict': params.get('libvirtd_conf_dict')})
-            libvirtd_conf_in_vm = configure_libvirtd(virsh_dargs)
+        vm_session.close()
+        # Reboot the vm to make sure default libvirt daemons start automatically
+        vm.destroy()
+        vm.start()
+        vm_session = vm.wait_for_login()
+
         if the_case == 'change_vm_cpu':
             cmd_timestamp = params.get('cmd_in_guest')
             old_timestamp = get_timestamp_in_vm(virsh_dargs,
@@ -147,12 +125,6 @@ def run(test, params, env):
             if old_timestamp == new_timestamp:
                 test.fail("The timestamp '{}' fails to be changed "
                           "from '{}'".format(new_timestamp, old_timestamp))
-            if search_str_in_vm_libvirtd:
-                cmd = "grep -E '{}' {}".format(search_str_in_vm_libvirtd, log_file)
-                run_cmd_in_guest(vm_session, cmd, test)
     finally:
-        if libvirtd_conf_in_vm:
-            del libvirtd_conf_in_vm
-
         logging.info("Recover VM XML configuration")
         vmxml_backup.sync()
