@@ -836,9 +836,10 @@ def run(test, params, env):
             os.environ['VIRTIO_WIN'] = free_loop_dev
 
         if 'block_dev' in checkpoint:
-            os_directory = params_get(params, 'os_directory')
+            base_os_directory = params_get(params, 'base_os_directory')
+            os_directory = None
             block_count = params_get(params, 'block_count')
-            os_directory = tempfile.TemporaryDirectory(prefix='v2v_test_', dir=os_directory)
+            os_directory = tempfile.TemporaryDirectory(prefix='v2v_test_', dir=base_os_directory)
             diskimage = '%s/diskimage' % os_directory.name
             # Update 'os_directory' for '-os' option
             params['os_directory'] = os_directory.name
