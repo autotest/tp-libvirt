@@ -316,8 +316,8 @@ class VMChecker(object):
         # Video model will change to QXL for Windows2008r2 and windows7
         if self.target == 'libvirt':
             video_model = _when_target_libvirt(has_qxldod)
-            if not has_virtio_win:
-                video_model = 'cirrus'
+        if not has_virtio_win:
+            video_model = 'cirrus'
 
         return video_model
 
