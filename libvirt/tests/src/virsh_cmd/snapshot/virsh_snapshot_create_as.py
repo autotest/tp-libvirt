@@ -547,12 +547,14 @@ def run(test, params, env):
                 vp = virsh.VirshPersistent()
                 vp.create(vmxml_backup['xml'], '--autodestroy')
                 cmd_result = vp.snapshot_create_as(vm_name, options,
+                                                   timeout=300,
                                                    ignore_status=True,
                                                    debug=True)
                 vp.close_session()
                 vmxml_backup.define()
             else:
                 cmd_result = virsh.snapshot_create_as(vm_name, options,
+                                                      timeout=300,
                                                       unprivileged_user=usr,
                                                       uri=uri,
                                                       ignore_status=True,
