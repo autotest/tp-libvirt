@@ -447,6 +447,11 @@ def run(test, params, env):
                     without_ip_dhcp == "no"):
                 test_xml.del_element(element="/ip/dhcp", index=section_index)
 
+            if error_type == "index-nonexist":
+                for idx in [3, 2, 1]:
+                    test_xml.del_element(element="/ip", index=idx)
+                test_xml.del_element(element="/route")
+
             if loop == 0:
                 try:
                     # Define and start network
@@ -563,6 +568,10 @@ def run(test, params, env):
                     # range-mismatch error info
                     err_dic["range-mismatch"] = "couldn't locate a matching dhcp " + \
                                                 "range entry in network "
+                    # index-nonexist error info
+                    err_dic["index-nonexist"] = "couldn't update dhcp host entry " + \
+                                                "- no <ip.* element found at index 1 in network"
+
                     # host-mismatch error info
                     err_dic["host-mismatch"] = "couldn't locate a matching dhcp " + \
                                                "host entry in network "
