@@ -120,6 +120,7 @@ def run(test, params, env):
     libvirt_version.is_libvirt_feature_supported(params)
     matrix_cap = 'ap_matrix'
     device_file = None
+    mask_helper = None
 
     info = CryptoDeviceInfoBuilder.get()
     if int(info.entries[0].hwtype) < HWTYPE:
@@ -132,7 +133,7 @@ def run(test, params, env):
             load_vfio_ap()
         if find_devices_by_cap(test, matrix_cap):
             devices = [info.domains[0]]
-            APMaskHelper.from_infos(devices)
+            mask_helper = APMaskHelper.from_infos(devices)
             device_file = create_nodedev_from_xml(uuid, adapter, domain)
         else:
             raise test.fail("Could not get %s correctly through nodedev-API" %
@@ -143,6 +144,8 @@ def run(test, params, env):
         destroy_nodedev(dev_name)
         check_device_was_destroyed(test)
     finally:
+        if mask_helper:
+            mask_helper.return_to_host_all()
         unload_vfio_ap()
         if device_file:
             os.remove(device_file)
