@@ -46,12 +46,30 @@ def run(test, params, env):
         with open(cpu_xmlfile, 'w') as xmlfile:
             xmlfile.write(content)
 
+    def validate_host(to_file, test_feature):
+        """
+        Validate the host meets the test requirement which includes a
+        certain feature
+
+        :param to_file: the output to be written to
+        :param test_feature: feature name to be searched
+        :raises: test.cancel if the host does not include the tested feature
+        """
+
+        output = virsh.capabilities(to_file=to_file,
+                                    ignore_status=False,
+                                    debug=True)
+        if not check_xml(output, test_feature):
+            test.cancel("The capabilities do not include feature '%s'. "
+                        "Skip the test" % test_feature)
+
     def check_xml(xml_output, test_feature):
         """
         Check if result output contains tested feature.
 
         :param xml_output: virsh cpu-baseline command's result.
         :param test_feature: Test feature element.
+        :return: a match object if the feature exists, otherwise None
         """
         feature_name = ""
         dom = parseString(xml_output)
@@ -59,8 +77,7 @@ def run(test, params, env):
         for names in feature:
             feature_name += names.getAttribute("name")
         dom.unlink()
-        if not re.search(test_feature, feature_name):
-            test.fail("Cannot see '%s' feature" % test_feature)
+        return re.search(test_feature, feature_name)
 
     # Get all parameters.
     file_name = params.get("cpu_baseline_cpu_file", "cpu.xml")
@@ -69,9 +86,13 @@ def run(test, params, env):
     test_feature = params.get("cpu_baseline_test_feature", "acpi")
     status_error = "yes" == params.get("status_error", "no")
     cpu_xmlfile = os.path.join(data_dir.get_tmp_dir(), file_name)
+    exp_feature_exist = "yes" == params.get("feature_exist", "yes")
 
-    # Prepare a xml file.
-    create_attach_xml(cpu_xmlfile, test_feature)
+    if '--migratable' not in extra:
+        # Prepare a xml file.
+        create_attach_xml(cpu_xmlfile, test_feature)
+    else:
+        validate_host(cpu_xmlfile, test_feature)
 
     if cpu_ref == "file":
         cpu_ref = cpu_xmlfile
@@ -92,7 +113,11 @@ def run(test, params, env):
     else:
         if status != 0:
             test.fail("Run failed with right command")
-        check_xml(output, test_feature)
+        feature_found = check_xml(output, test_feature)
+        if exp_feature_exist and not feature_found:
+            test.fail("Cannot see '%s' feature" % test_feature)
+        if not exp_feature_exist and feature_found:
+            test.fail("Can see '%s' feature, but not expected" % test_feature)
 
     # Use the output to config VM
     config_guest = "yes" == params.get("config_guest", "no")
