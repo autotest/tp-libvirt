@@ -153,10 +153,17 @@ def run(test, params, env):
     setup_tls = "yes" == params.get("setup_tls", "no")
     qemu_conf_dest = params.get("qemu_conf_dest", "{}")
     migrate_tls_force_default = "yes" == params.get("migrate_tls_force_default", "no")
-    server_params = {'server_ip': params.get("migrate_dest_host"),
-                     'server_user': params.get("remote_user", "root"),
-                     'server_pwd': params.get("migrate_dest_pwd")}
     poweroff_src_vm = "yes" == params.get("poweroff_src_vm", "no")
+    check_port = "yes" == params.get("check_port", "no")
+    server_ip = params.get("migrate_dest_host")
+    server_user = params.get("remote_user", "root")
+    server_pwd = params.get("migrate_dest_pwd")
+    server_params = {'server_ip': server_ip,
+                     'server_user': server_user,
+                     'server_pwd': server_pwd}
+    qemu_conf_list = eval(params.get("qemu_conf_list", "[]"))
+    qemu_conf_path = params.get("qemu_conf_path")
+    min_port = params.get("min_port")
 
     vm_session = None
     qemu_conf_remote = None
@@ -181,6 +188,13 @@ def run(test, params, env):
             # Setup migrate_tls_force default value on local
             remove_key_local = libvirt_config.remove_key_in_conf(value_list,
                                                                  "qemu")
+
+        if check_port:
+            server_params['file_path'] = qemu_conf_path
+            remove_key_remote = libvirt_config.remove_key_in_conf(qemu_conf_list,
+                                                                  "qemu",
+                                                                  remote_params=server_params)
+
         # Update only remote qemu conf
         if qemu_conf_dest:
             qemu_conf_remote = libvirt_remote.update_remote_file(
@@ -198,6 +212,13 @@ def run(test, params, env):
         else:
             remote_file_list.append(libvirt_disk.create_remote_disk_by_same_metadata(vm,
                                                                                      params))
+        if check_port:
+            # Create a remote runner
+            runner_on_target = remote_old.RemoteRunner(host=server_ip,
+                                                       username=server_user,
+                                                       password=server_pwd)
+            cmd = "nc -l -p %s &" % min_port
+            remote_old.run_remote_cmd(cmd, params, runner_on_target, ignore_status=False)
 
         if not vm.is_alive():
             vm.start()
@@ -230,6 +251,10 @@ def run(test, params, env):
         logging.debug("Migration returns function results:%s", func_returns)
         if return_port:
             port_used = get_used_port(func_returns)
+        if check_port:
+            port_used = get_used_port(func_returns)
+            if int(port_used) != int(min_port) + 1:
+                test.fail("Wrong port for migration.")
 
         if vm_state_after_abort:
             check_vm_state_after_abort(vm_name, vm_state_after_abort,
