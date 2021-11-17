@@ -5,6 +5,7 @@ from avocado.utils import process
 
 from virttest import utils_libvirtd
 from virttest import utils_misc
+from virttest import libvirt_version
 from virttest.libvirt_xml import vm_xml
 from virttest.staging import utils_memory
 from virttest.staging.utils_memory import drop_caches
@@ -86,7 +87,10 @@ def run(test, params, env):
         result = process.run("ls -ld %s" % filename, shell=True).stdout_text.strip().split(' ')
         ownership = "%s:%s" % (result[2], result[3])
         logging.debug(ownership)
-        expect_result = "qemu:qemu"
+        if libvirt_version.version_compare(7, 8, 0) and filename == "/var/cache/libvirt/qemu":
+            expect_result = "root:root"
+        else:
+            expect_result = "qemu:qemu"
         if ownership != expect_result:
             test.fail("The ownership of %s is %s" % (filename, ownership))
 
