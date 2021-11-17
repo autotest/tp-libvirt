@@ -119,6 +119,7 @@ def run(test, params, env):
         errors = []
         # Run libvirt session and collect errors in log.
         libvirtd_session = utils_libvirtd.LibvirtdSession(
+            service_name="virtnetworkd",
             logging_handler=_error_handler,
             logging_params=(errors,),
             logging_pattern=r'[-\d]+ [.:+\d]+ [:\d]+ error :',
@@ -143,6 +144,8 @@ def run(test, params, env):
         _check_errors()
     finally:
         logging.info('Recovering services status')
+        #Restart socket service after starting process at foreground
+        utils_libvirtd.Libvirtd("virtnetworkd.socket").restart()
         # If service do not exists, then backup status and current status
         # will all be none and nothing will be done
         if service_mgr.status('iptables') != backup_iptables_status:
