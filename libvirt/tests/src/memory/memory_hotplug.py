@@ -103,7 +103,7 @@ def run(test, params, env):
         """
         Execute test case of 'report failure'
         """
-        virsh_session = virsh.EventTracker.start_get_event(vm_name)
+        virsh_session = virsh.EventTracker.start_get_event()
         mem_xml = create_mem_device(params)
         start_vm(vm)
         virsh.attach_device(vm_name, mem_xml.xml, **virsh_args)
