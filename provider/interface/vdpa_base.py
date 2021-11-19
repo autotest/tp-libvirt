@@ -31,13 +31,14 @@ def config_vdpa_conn(vm_session, vm_iface, br_name,
            .format(vm_iface, vm_ip, cidr))
     vm_session.cmd(cmd)
     logging.debug("Set ip address of the bridge.")
-    cmd = ("ip addr add {0}/{1} dev {2}; sleep 5;ip link set {2} up"
-           .format(br_ip_addr, cidr, br_name))
+    cmd = ("ip addr del {0}/{1} dev {2}; sleep 5; ip addr add {0}/{1} dev {2};"
+           "sleep 5;ip link set {2} up".format(br_ip_addr, cidr, br_name))
     process.run(cmd, shell=True)
 
 
 def check_vdpa_network(vm_session, vm_iface, br_name,
-                       ping_dest="100.100.100.100"):
+                       ping_dest="100.100.100.100",
+                       config_vdpa=True):
     """
     Check vdpa network connection
 
@@ -45,8 +46,10 @@ def check_vdpa_network(vm_session, vm_iface, br_name,
     :param vm_iface: VM's interface
     :param br_name: Bridge name
     :param ping_dest: The ip address to ping
+    :config_vdpa: Whether to config vDPA connection
     """
-    config_vdpa_conn(vm_session, vm_iface, br_name)
+    if config_vdpa:
+        config_vdpa_conn(vm_session, vm_iface, br_name)
 
     if not utils_misc.wait_for(lambda: not utils_test.ping(
            ping_dest, count=3, timeout=5, output_func=logging.debug,
@@ -75,16 +78,18 @@ def check_rx_tx_packages(vm_session, vm_iface):
         raise exceptions.TestFail("The value of rx and tx should be same.")
 
 
-def check_vdpa_conn(vm_session, test_target, br_name=None):
+def check_vdpa_conn(vm_session, test_target, br_name=None, config_vdpa=True):
     """
     Check vDPA connection
 
     :param vm_session: An session to VM
     :param test_target: Test target env, eg, "mellanox" or "simulator"
     :param br_name: Bridge name
+    :config_vdpa: Whether to config vDPA connection
     """
     vm_iface = interface_base.get_vm_iface(vm_session)
     if test_target == "mellanox":
-        check_vdpa_network(vm_session, vm_iface, br_name)
+        check_vdpa_network(vm_session, vm_iface, br_name,
+                           config_vdpa=config_vdpa)
     elif test_target == "simulator":
         check_rx_tx_packages(vm_session, vm_iface)
