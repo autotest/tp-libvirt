@@ -58,7 +58,8 @@ def run(test, params, env):
         if status_error:
             if not status:
                 # Return status is 0 with unknown command
-                if "unknown command:" in output:
+                # From libvirt-7.9.0, return status is 0 with CommandNotFound
+                if "unknown command:" in output or "CommandNotFound" in output:
                     logging.debug("Command failed: %s" % output)
                 else:
                     test.fail("Expect fail, but run successfully.")
