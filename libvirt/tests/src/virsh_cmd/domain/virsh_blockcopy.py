@@ -443,7 +443,7 @@ def run(test, params, env):
     extra_dict = {'uri': uri, 'unprivileged_user': unprivileged_user,
                   'debug': True, 'ignore_status': True, 'timeout': timeout}
 
-    libvirtd_utl = utils_libvirtd.Libvirtd()
+    libvirtd_utl = utils_libvirtd.Libvirtd('virtqemud')
     libvirtd_log_path = os.path.join(data_dir.get_tmp_dir(), "libvirt_daemons.log")
     libvirtd_conf_dict = {"log_filter": '"3:json 1:libvirt 1:qemu"',
                           "log_outputs": '"1:file:%s"' % libvirtd_log_path}
