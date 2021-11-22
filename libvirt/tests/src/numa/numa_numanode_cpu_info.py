@@ -40,13 +40,13 @@ def setup_host(online_nodes, pages_list):
         for pages in pages_list:
             ret = process.run(
                 'echo {} > /sys/devices/system/node/node{}/hugepages/hugepages-2048kB/nr_hugepages'.
-                format(pages, online_nodes[index]))
+                format(pages, online_nodes[index]), shell=True)
             if ret.exit_status:
                 raise TestError('Cannot set {} hugepages on node {}'.
                                 format(pages, online_nodes[index]))
             ret = process.run(
                 'cat /sys/devices/system/node/node{}/hugepages/hugepages-2048kB/nr_hugepages'.
-                format(online_nodes[index]))
+                format(online_nodes[index]), shell=True)
             if pages not in ret.stdout_text:
                 raise TestError('Setting {} hugepages on node {} was unsuccessful'.
                                 format(pages, online_nodes[index]))
