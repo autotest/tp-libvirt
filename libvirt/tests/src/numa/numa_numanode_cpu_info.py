@@ -28,16 +28,21 @@ def update_xml(vm_name, online_nodes, params):
     vmxml.sync()
 
 
-def setup_host(online_nodes, pages_list):
+def setup_host(online_nodes, pages_list, ori_page_set):
     """
     Setup host for test - update number of hugepages and check
 
     :param online_nodes: List of all online nodes with memory available
     :param pages_list: List of required number of pages for particular nodes
+    :param ori_page_set: A dict used to save original node page
     """
     index = 0
     if len(online_nodes) > 2:
         for pages in pages_list:
+            ori_page_set[online_nodes[index]] = process.run(
+                'cat /sys/devices/system/node/node{}/hugepages/hugepages-2048kB/nr_hugepages'.
+                format(online_nodes[index]), shell=True).stdout_text.strip()
+            logging.debug("ori_page_set is {}".format(ori_page_set))
             ret = process.run(
                 'echo {} > /sys/devices/system/node/node{}/hugepages/hugepages-2048kB/nr_hugepages'.
                 format(pages, online_nodes[index]), shell=True)
@@ -67,7 +72,8 @@ def run(test, params, env):
     backup_xml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
     numa_info = utils_misc.NumaInfo()
     online_nodes = numa_info.get_online_nodes_withmem()
-    setup_host(online_nodes, pages_list)
+    ori_page_set = {}
+    setup_host(online_nodes, pages_list, ori_page_set)
     try:
         if vm.is_alive():
             vm.destroy()
@@ -80,4 +86,8 @@ def run(test, params, env):
     except Exception as e:
         test.error("Unexpected error: {}".format(e))
     finally:
+        for node_index, ori_page in ori_page_set.items():
+            process.run(
+                'echo {} > /sys/devices/system/node/node{}/hugepages/hugepages-2048kB/nr_hugepages'.
+                format(ori_page, node_index), shell=True)
         backup_xml.sync()
