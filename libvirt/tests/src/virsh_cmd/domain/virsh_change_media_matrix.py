@@ -298,6 +298,8 @@ def run(test, params, env):
                 wait_for_event = False
             else:
                 wait_for_event = True
+            if vm.is_alive():
+                vm.wait_for_login().close()
             ret = virsh.change_media(vm_ref, target_device, all_options,
                                      wait_for_event=wait_for_event,
                                      event_timeout=40,
