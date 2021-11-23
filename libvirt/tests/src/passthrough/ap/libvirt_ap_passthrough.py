@@ -51,6 +51,7 @@ def run(test, params, env):
         load_vfio_ap()
 
         info = CryptoDeviceInfoBuilder.get()
+        logging.debug("Host lszcrypt got %s", info)
 
         if not info.entries or int(info.domains[0].hwtype) < MIN_HWTYPE:
             test.error("vfio-ap requires at least HWTYPE %s." % MIN_HWTYPE)
