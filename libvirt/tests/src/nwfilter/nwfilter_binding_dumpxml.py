@@ -6,6 +6,7 @@ from virttest import libvirt_xml
 from virttest import data_dir
 from virttest.utils_test import libvirt as utlv
 from virttest.libvirt_xml.devices import interface
+from virttest.utils_libvirt import libvirt_pcicontr
 
 from avocado.utils import process
 
@@ -67,8 +68,11 @@ def run(test, params, env):
         set two interface with different network filter
         and change interface type
         """
-        virsh.attach_interface(vm_name, option)
+        # Add enough PCI to attach interface
+        libvirt_pcicontr.reset_pci_num(vm_name)
+        virsh.attach_interface(vm_name, option, debug=True)
         vmxml = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
+        logging.debug("Guest xml is {}".format(vmxml))
         devices = vmxml.get_devices('interface')
         iface_xml = devices[0]
         iface_xml_2 = devices[1]

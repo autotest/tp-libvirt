@@ -14,6 +14,7 @@ from virttest import libvirt_storage
 from virttest import utils_libvirtd
 from virttest import gluster
 from virttest.utils_test import libvirt as utlv
+from virttest.utils_libvirt import libvirt_pcicontr
 
 from virttest import libvirt_version
 
@@ -189,6 +190,8 @@ def run(test, params, env):
             extra = "--persistent --subdriver %s" % image_format
 
         if not multi_gluster_disks:
+            # Fix No more available PCI slots
+            libvirt_pcicontr.reset_pci_num(vm_name, 15)
             # Do the attach action.
             out = process.run("qemu-img info %s" % img_path, shell=True)
             logging.debug("The img info is:\n%s" % out.stdout.strip())
