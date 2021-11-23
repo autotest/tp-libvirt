@@ -143,6 +143,7 @@ def run(test, params, env):
     stress_package = params.get("stress_package")
     action_during_mig = params.get("action_during_mig")
     migrate_speed = params.get("migrate_speed")
+    migrate_speed_again = params.get("migrate_speed_again")
     migrate_again = "yes" == params.get("migrate_again", "no")
     vm_state_after_abort = params.get("vm_state_after_abort")
     return_port = "yes" == params.get("return_port", "no")
@@ -235,8 +236,8 @@ def run(test, params, env):
 
         if stress_package:
             migration_test.run_stress_in_vm(vm, params)
+        mode = 'both' if '--postcopy' in postcopy_options else 'precopy'
         if migrate_speed:
-            mode = 'both' if '--postcopy' in postcopy_options else 'precopy'
             migration_test.control_migrate_speed(vm_name,
                                                  int(migrate_speed),
                                                  mode)
@@ -277,6 +278,11 @@ def run(test, params, env):
                 conn_obj_list.append(migration_base.setup_conn_obj('tls',
                                                                    params,
                                                                    test))
+
+            if migrate_speed_again:
+                migration_test.control_migrate_speed(vm_name,
+                                                     int(migrate_speed_again),
+                                                     mode)
 
             migration_base.do_migration(vm, migration_test, None, dest_uri,
                                         options, virsh_options,
