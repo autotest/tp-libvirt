@@ -369,7 +369,7 @@ def run(test, params, env):
                                 for index, v in enumerate(rule):
                                     if v.find("secret") >= 0:
                                         nextline = rule[index + 1]
-                                        s = nextline.replace("QEMU", "secret").replace(
+                                        s = re.sub("QEMU|storage", "secret", nextline).replace(
                                                 "pool_name", "secret_uuid").replace(
                                                         "virt-dir-pool", "%s" % luks_secret_uuid)
                                         rule[index + 1] = s
