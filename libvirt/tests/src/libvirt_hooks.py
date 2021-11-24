@@ -11,6 +11,7 @@ from virttest import virsh
 from virttest import utils_misc
 from virttest import data_dir
 from virttest import utils_libvirtd
+from virttest import utils_split_daemons
 from virttest import libvirt_version
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
@@ -50,6 +51,8 @@ def run(test, params, env):
 
         # restart libvirtd
         libvirtd.restart()
+        if utils_split_daemons.is_modular_daemon() and test_network:
+            utils_libvirtd.Libvirtd("virtnetworkd").restart()
 
     def check_hooks(opt):
         """
