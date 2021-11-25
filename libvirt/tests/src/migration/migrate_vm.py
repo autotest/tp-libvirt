@@ -1189,6 +1189,7 @@ def run(test, params, env):
     test_dict = dict(params)
     vm_name = test_dict.get("main_vm")
     vm = env.get_vm(vm_name)
+    uri = params.get("desuri")
     start_vm = test_dict.get("start_vm", "no")
     transport = test_dict.get("transport")
     plus = test_dict.get("conn_plus", "+")
