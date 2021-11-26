@@ -129,6 +129,8 @@ TIMEOUT 3"""
             source['dev'] = net_ifs[0]
         del iface.source
         iface.source = source
+        if iface_vlan:
+            iface.vlan = iface.new_vlan(**iface_vlan)
         if iface_model:
             iface.model = get_iface_model(iface_model, host_arch)
         if iface_rom:
@@ -617,6 +619,7 @@ TIMEOUT 3"""
     iface_boot = params.get("iface_boot")
     iface_model = params.get("iface_model")
     iface_driver = params.get("iface_driver")
+    iface_vlan = eval(params.get("iface_vlan", "None"))
     multiple_guests = params.get("multiple_guests")
     create_network = "yes" == params.get("create_network", "no")
     attach_iface = "yes" == params.get("attach_iface", "no")
