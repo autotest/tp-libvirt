@@ -123,6 +123,20 @@ def run(test, params, env):
         # Set ULIMIT_NOFILE to increase the number of unlinked files
         session.cmd("ulimit -n 500000 && /usr/bin/python3 %s" % script_path, timeout=120)
 
+    def umount_fs(vm):
+        """
+        Unmount the filesystem in guest
+
+        :param vm: filesystem in this vm that should be unmounted
+        """
+        if vm.is_alive():
+            session = vm.wait_for_login()
+            for fs_dev in fs_devs:
+                mount_dir = '/var/tmp/' + fs_dev.target['dir']
+                session.cmd('umount -f %s' % mount_dir, ignore_all_errors=True)
+                session.cmd('rm -rf %s' % mount_dir, ignore_all_errors=True)
+            session.close()
+
     start_vm = params.get("start_vm", "no")
     vm_names = params.get("vms", "avocado-vt-vm1").split()
     cache_mode = params.get("cache_mode", "none")
@@ -144,6 +158,8 @@ def run(test, params, env):
     suspend_resume = params.get("suspend_resume", "no") == "yes"
     managedsave = params.get("managedsave", "no") == "yes"
     coldplug = params.get("coldplug", "no") == "yes"
+    hotplug_unplug = params.get("hotplug_unplug", "no") == "yes"
+    detach_device_alias = params.get("detach_device_alias", "no") == "yes"
     extra_hugepages = params.get_numeric("extra_hugepages")
     edit_start = params.get("edit_start", "no") == "yes"
     with_hugepages = params.get("with_hugepages", "yes") == "yes"
@@ -230,11 +246,19 @@ def run(test, params, env):
                                           flagstr='--config', debug=True)
                 utils_test.libvirt.check_exit_status(ret, expect_error=False)
             else:
-                for fs in fs_devs:
-                    vmxml.add_device(fs)
-                    vmxml.sync()
+                if not hotplug_unplug:
+                    for fs in fs_devs:
+                        vmxml.add_device(fs)
+                        vmxml.sync()
             logging.debug(vmxml)
             result = virsh.start(vm_names[index], debug=True)
+            if hotplug_unplug:
+                for fs_dev in fs_devs:
+                    ret = virsh.attach_device(vm_names[index], fs_dev.xml,
+                                              ignore_status=True, debug=True)
+                    libvirt.check_exit_status(ret, status_error)
+                if status_error:
+                    return
             if status_error and not managedsave:
                 expected_error = error_msg_start
                 utils_test.libvirt.check_exit_status(result, expected_error)
@@ -308,17 +332,21 @@ def run(test, params, env):
                         status2 = process.run('ls -l %s' % expected_sock, shell=True).exit_status
                         if not (status1 and status2):
                             test.fail("The socket and pid file is not as expected")
-
+            elif hotplug_unplug:
+                for vm in vms:
+                    umount_fs(vm)
+                    if detach_device_alias:
+                        alias = fs_dev.alias['name']
+                        ret = virsh.detach_device_alias(vm.name, alias,
+                                                        ignore_status=True, debug=True)
+                    else:
+                        ret = virsh.detach_device(vm.name, fs_dev.xml,
+                                                  ignore_status=True, debug=True)
+                    libvirt.check_exit_status(ret, status_error)
     finally:
         for vm in vms:
             if vm.is_alive():
-                session = vm.wait_for_login()
-                for fs_dev in fs_devs:
-                    mount_dir = '/var/tmp/' + fs_dev.target['dir']
-                    logging.debug(mount_dir)
-                    session.cmd('umount -f %s' % mount_dir, ignore_all_errors=True)
-                    session.cmd('rm -rf %s' % mount_dir, ignore_all_errors=True)
-                session.close()
+                umount_fs(vm)
                 vm.destroy(gracefully=False)
         for vmxml_backup in vmxml_backups:
             vmxml_backup.sync()
