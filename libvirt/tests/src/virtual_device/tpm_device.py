@@ -482,7 +482,10 @@ def run(test, params, env):
         for test_sh in ["test_smoke.sh", "test_space.sh"]:
             pattern = "ok .* selftests: tpm2: %s" % test_sh
             if not re.search(pattern, output) or ("not ok" in output):
-                test.fail("test suite check failed.")
+                if "ERROR" in output:
+                    test.fail("test suite check failed: %s" % re.findall(r'test_.* ... ERROR', output))
+                else:
+                    test.fail("test suite check failed.")
         logging.info("------PASS on kernel test suite check------")
 
     def persistent_test(vm, vm_xml):
