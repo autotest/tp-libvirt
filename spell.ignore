@@ -480,6 +480,7 @@ libvird
 libvirt
 Libvirt
 libvirtd
+libvirtdconf
 libvirtd's
 libvirt's
 libvirts
@@ -935,6 +936,7 @@ sys
 sysconfig
 sysfs
 sysinfo
+syslibvirtd
 syslog
 syspath
 sysprep
