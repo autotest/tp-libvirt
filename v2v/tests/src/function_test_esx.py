@@ -1024,5 +1024,7 @@ def run(test, params, env):
             os.environ.pop('https_proxy')
         if unprivileged_user:
             process.system("userdel -fr %s" % unprivileged_user)
+        if params.get('os_directory') and os.path.isdir(params['os_directory']):
+            shutil.rmtree(params['os_directory'], ignore_errors=True)
         # Cleanup constant files
         utils_v2v.cleanup_constant_files(params)
