@@ -144,7 +144,7 @@ def run(test, params, env):
                 snapshot_external_disks.append(disk_external)
                 options += " %s,snapshot=external,file=%s" % (disk,
                                                               disk_external)
-
+                clean_snap_file(disk_external)
             if is_check_snapshot_tree:
                 options = options.replace("--no-metadata", "")
             cmd_result = virsh.snapshot_create_as(vm_name, options,
@@ -195,6 +195,33 @@ def run(test, params, env):
         # If check_snapshot_tree is True, check snapshot tree output.
         if is_check_snapshot_tree:
             check_snapshot_tree()
+
+    def check_vm_disk_file(vm):
+        """
+        Check current vm disk source.
+
+        :param vm: The vm to be checked
+        """
+        image_name1, image_format = params.get("image_name", "image"), params.get("image_format", "qcow2")
+        image_dir = os.path.join(data_dir.get_data_dir(), image_name1)
+        original_image_path = image_dir + "." + image_format
+        logging.debug("Source file should be : %s", original_image_path)
+
+        vmxml = vm_xml.VMXML.new_from_dumpxml(vm.name)
+        disk = vmxml.get_devices('disk')[0]
+        logging.debug("Current disk info is : %s", disk)
+        if disk.source.attrs['file'] != original_image_path:
+            test.error("Please check current vm disk source")
+
+    def clean_snap_file(snap_path):
+        """
+        Clean the existed duplicate snap file.
+
+        :param snap_path: snap file path
+        """
+        if os.path.exists(snap_path):
+            os.remove(snap_path)
+            logging.debug("Cleaned snap file before creating :%s" % snap_path)
 
     def get_first_disk_source():
         """
@@ -389,7 +416,7 @@ def run(test, params, env):
     if len(exsiting_snaps) != 0:
         test.fail("There are snapshots created for %s already" %
                   vm_name)
-
+    check_vm_disk_file(vm)
     snapshot_external_disks = []
     cmd_session = None
     # Prepare a blank params to confirm if delete the configure at the end of the test
