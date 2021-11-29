@@ -7,6 +7,7 @@ from virttest import utils_net
 from virttest import virsh
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import interface
+from virttest.utils_libvirt import libvirt_misc
 from virttest.utils_libvirt import libvirt_vmxml
 from virttest.utils_test import libvirt
 
@@ -38,6 +39,22 @@ def get_vm_iface(vm_session):
     if not vm_iface:
         raise exceptions.TestFail("Failed to get vm's iface!")
     return vm_iface[0]
+
+
+def get_vm_iface_info(vm_session):
+    """
+    Get VM's interface info using 'ethtool' command
+
+    :param vm_session: VM's session
+    :return: Dict, vm's interface infomation
+    """
+    vm_iface = get_vm_iface(vm_session)
+    cmd = 'ethtool -i %s' % vm_iface
+    output_str = vm_session.cmd_output(cmd).strip()
+    if_info = libvirt_misc.convert_to_dict(
+        output_str, pattern=r'(\S+): +(\S+)')
+    logging.debug("VM interface info: %s.", if_info)
+    return if_info
 
 
 def attach_iface_device(vm_name, dev_type, params):
