@@ -192,6 +192,7 @@ def run(test, params, env):
         if not multi_gluster_disks:
             # Fix No more available PCI slots
             libvirt_pcicontr.reset_pci_num(vm_name, 15)
+            vm.start()
             # Do the attach action.
             out = process.run("qemu-img info %s" % img_path, shell=True)
             logging.debug("The img info is:\n%s" % out.stdout.strip())
