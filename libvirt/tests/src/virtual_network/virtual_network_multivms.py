@@ -1,5 +1,6 @@
 import logging
 import time
+import re
 
 from avocado.utils import process
 
@@ -7,30 +8,9 @@ from virttest import libvirt_version
 from virttest import virsh
 from virttest import utils_net
 from virttest import utils_misc
-from virttest import utils_package
 from virttest.utils_test import libvirt
 from virttest.libvirt_xml import vm_xml
 from virttest.libvirt_xml.devices import interface
-
-
-def create_bridge(br_name, iface_name):
-    """
-    Create bridge attached to physical interface
-
-    :param br_name: bridge to be created
-    :param iface_name: physical interface name
-    :return:
-    """
-    # Make sure the bridge not exist
-    if libvirt.check_iface(br_name, "exists", "--all"):
-        return
-
-    # Create bridge using commands
-    utils_package.package_install('tmux')
-    cmd = 'tmux -c "ip link add name {0} type bridge; ip link set {1} up;' \
-          ' ip link set {1} master {0}; ip link set {0} up; pkill dhclient; ' \
-          'sleep 6; dhclient {0}; ifconfig {1} 0"'.format(br_name, iface_name)
-    process.run(cmd, shell=True, verbose=True)
 
 
 def ping_func(session, **expect):
@@ -78,6 +58,18 @@ def prepare_network(net_name, **kwargs):
     logging.debug(virsh.net_dumpxml(net_name).stdout_text)
 
 
+def get_host_ip_addr():
+    """
+    Get host's ipv4 address as a target to ping
+    """
+    net_dev = utils_net.get_default_gateway(iface_name=True)
+    cmd = "ip addr show %s" % net_dev
+    out = process.run(cmd, shell=True, ignore_status=True).stdout_text.strip()
+    ip_addr = re.search(r'inet (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', out, re.M).group(1)
+    logging.debug("Get host ip address as %s", ip_addr)
+    return ip_addr
+
+
 def run(test, params, env):
     """
     Test network/interface function on 2 vms:
@@ -120,7 +112,7 @@ def run(test, params, env):
                             ' > 6.2.0 to support port isolated')
 
             if case.startswith('set_iface'):
-                create_bridge(bridge_name, iface_name)
+                utils_net.create_linux_bridge_tmux(bridge_name, iface_name)
                 bridge_created = True
                 iface_type = case.split('_')[-1]
                 if iface_type == 'network':
@@ -203,7 +195,7 @@ def run(test, params, env):
                     session.close()
 
             if case == 'set_network':
-                create_bridge(bridge_name, iface_name)
+                utils_net.create_linux_bridge_tmux(bridge_name, iface_name)
                 bridge_created = True
                 net_dict = {
                     'net_forward': "{'mode': 'bridge'}",
@@ -225,7 +217,9 @@ def run(test, params, env):
             for vm_i in vm_list:
                 if vm_i.is_dead():
                     vm_i.start()
-            host_ip = utils_net.get_host_ip_address()
+            host_ip = get_host_ip_addr()
+            if not host_ip:
+                test.cancel("Skip to ping as get host ip address as None!")
             ping_expect = {
                 host_ip: expect_ping_host,
                 out_ip: expect_ping_out,
@@ -237,6 +231,8 @@ def run(test, params, env):
                 mac = vm_i.get_mac_address()
                 sess = vm_i.wait_for_serial_login()
                 vm_ip = utils_net.get_guest_ip_addr(sess, mac)
+                if not vm_ip:
+                    test.fail("Get vm2's ip as %s" % vm_ip)
                 session_n_ip[sess] = vm_ip
                 logging.debug('Vm %s ip: %s', vm_i.name, vm_ip)
 
@@ -279,7 +275,4 @@ def run(test, params, env):
 
         # Remove test bridge
         if bridge_created:
-            cmd = 'tmux -c "ip link set {1} nomaster;  ip link delete {0};' \
-                  'pkill dhclient; sleep 6; dhclient {1}"'.format(
-                   bridge_name, iface_name)
-            process.run(cmd, shell=True, verbose=True, ignore_status=True)
+            utils_net.delete_linux_bridge_tmux(bridge_name, iface_name)
