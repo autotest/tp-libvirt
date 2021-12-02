@@ -159,6 +159,17 @@ def run(test, params, env):
         disk_params['driver_name'] = params.get("virt_disk_drive_name", "qemu")
         disk_params['driver_type'] = params.get("virt_disk_device_format", "raw")
         disk_xml = libvirt.create_disk_xml(disk_params)
+
+        def _verify_multipathd_alive():
+            """
+            Verify whether multipathd statue is active, return bool value
+            """
+            host_session = aexpect.ShellSession("sh")
+            return utils_misc.get_guest_service_status(
+                host_session, 'multipathd') == 'active'
+        # Allow time to enable multipathd alive after restart
+        utils_misc.wait_for(_verify_multipathd_alive, 40)
+
         # Test disk operation with newly added disk xml
         attach_option = ""
         if not hotplug_disk:
