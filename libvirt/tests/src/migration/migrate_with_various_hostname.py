@@ -109,16 +109,16 @@ def run(test, params, env):
 
         if set_src_and_dst_hostname:
             old_dst_hostname = get_hostname(test, remote_params=server_params)
-            set_hostname(dst_hostname, test, remote_params=server_params)
+            old_source_hostname = get_hostname(test)
             dst_session = remote_old.wait_for_login('ssh', server_ip, '22',
                                                     server_user, server_pwd,
                                                     r"[\#\$]\s*$")
             dst_libvirtd = utils_libvirtd.Libvirtd(session=dst_session)
-            dst_libvirtd.restart()
-            old_source_hostname = get_hostname(test)
-            set_hostname(src_hostname, test)
             src_libvirtd = utils_libvirtd.Libvirtd()
+            set_hostname(src_hostname, test)
             src_libvirtd.restart()
+            set_hostname(dst_hostname, test, remote_params=server_params)
+            dst_libvirtd.restart()
 
         if not vm.is_alive():
             vm.start()
