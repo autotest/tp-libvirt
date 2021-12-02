@@ -434,16 +434,24 @@ def run(test, params, env):
                                    options="",
                                    key=metadata_key,
                                    **virsh_dargs)
-                    expected_events_list.append("'metadata-change' for %s: "
-                                                "element http://app.org/")
+                    if not libvirt_version.version_compare(7, 10, 0):
+                        expected_events_list.append("'metadata-change' for %s: "
+                                                    "element http://app.org/")
+                    else:
+                        expected_events_list.append("'metadata-change' for %s: "
+                                                    "type element, uri http://app.org/")
                 elif event == "metadata_remove":
                     virsh.metadata(dom.name,
                                    metadata_uri,
                                    options="--remove",
                                    key=metadata_key,
                                    **virsh_dargs)
-                    expected_events_list.append("'metadata-change' for %s: "
-                                                "element http://app.org/")
+                    if not libvirt_version.version_compare(7, 10, 0):
+                        expected_events_list.append("'metadata-change' for %s: "
+                                                    "element http://app.org/")
+                    else:
+                        expected_events_list.append("'metadata-change' for %s: "
+                                                    "type element, uri http://app.org/")
                 elif event == "blockcommit":
                     disk_path = dom.get_blk_devices()['vda']['source']
                     virsh.snapshot_create_as(dom.name, "s1 --disk-only --no-metadata", **virsh_dargs)
