@@ -93,9 +93,14 @@ def run(test, params, env):
         """
         process.run('chcon -t virtd_exec_t %s' % path, ignore_status=False, shell=True)
         cmd = "systemd-run %s --socket-path=%s -o source=%s" % (path, source_socket, source_dir)
-        process.run(cmd, ignore_status=False, shell=True)
-        process.run("chown qemu:qemu %s" % source_socket, ignore_status=False)
-        process.run('chcon -t svirt_image_t %s' % source_socket, ignore_status=False, shell=True)
+        try:
+            process.run(cmd, ignore_status=False, shell=True)
+            process.run("chown qemu:qemu %s" % source_socket, ignore_status=False)
+            process.run('chcon -t svirt_image_t %s' % source_socket, ignore_status=False, shell=True)
+        except Exception as err:
+            cmd = "pkill virtiofsd"
+            process.run(cmd, shell=True)
+            test.fail("{}".format(err))
 
     def prepare_stress_script(script_path, script_content):
         """
