@@ -48,6 +48,18 @@ def run(test, params, env):
         if isinstance(v, string_types) and v.count("EXAMPLE"):
             test.cancel("Please set real value for %s" % v)
 
+    # Back up vm name for recovery in finally
+    vm_name_backup = params.get("migrate_main_vm")
+    # Get a vm object for migration
+    logging.debug("Get a vm object for migration")
+    vm = env.get_vm(vm_name_backup)
+
+    # Back up vm xml for recovery in finally
+    logging.debug("Backup vm xml before migration")
+    vm_xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
+    if not vm_xml_backup:
+        test.error("Backing up xmlfile failed.")
+
     # Params for virsh migrate options:
     live_migration = params.get("live_migration") == "yes"
     offline_migration = params.get("offline_migration") == "yes"
@@ -153,19 +165,6 @@ def run(test, params, env):
         elif transport == 'tcp':
             transport_port = '16509'
         obj_migration.migrate_pre_setup(dest_uri, params, ports=transport_port)
-
-        # Back up vm name for recovery in finally
-        vm_name_backup = params.get("migrate_main_vm")
-
-        # Get a vm object for migration
-        logging.debug("Get a vm object for migration")
-        vm = env.get_vm(vm_name_backup)
-
-        # Back up vm xml for recovery in finally
-        logging.debug("Backup vm xml before migration")
-        vm_xml_backup = vm_xml.VMXML.new_from_inactive_dumpxml(vm.name)
-        if not vm_xml_backup:
-            test.error("Backing up xmlfile failed.")
 
         # Prepare shared disk in vm xml for live migration:
         # Change the source of the first disk of vm to shared disk
