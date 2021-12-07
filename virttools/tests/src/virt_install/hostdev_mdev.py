@@ -1,3 +1,4 @@
+from time import sleep
 from uuid import uuid4
 from avocado.core.exceptions import TestError
 from avocado.core.exceptions import TestFail
@@ -98,6 +99,9 @@ class CcwMdevHandler(MdevHandler):
             ccw.stop_device(self.uuid)
         if self.schid:
             ccw.unset_override(self.schid)
+            # need to sleep to avoid issue with setting device offline
+            # adding a wait_for would likely be more complicated
+            sleep(1)
         if self.device_id:
             ccw.set_device_offline(self.device_id)
 
