@@ -137,6 +137,21 @@ def mount(session):
         raise TestError("Couldn't mount partition. %s" % out)
 
 
+def set_device_offline(device_id, session=None):
+    """
+    Sets device offline
+
+    :param device_id: cssid.ssid.devno, e.g. 0.0.560a
+    :param session: guest session, command is run on host if None
+    :raises TestError: if the device can't be set online
+    """
+
+    cmd = "chccwdev -d %s" % device_id
+    err, out = cmd_status_output(cmd, shell=True, session=session)
+    if err:
+        raise TestError("Could not set device offline. %s" % out)
+
+
 def set_device_online(device_id, session=None):
     """
     Sets device online
