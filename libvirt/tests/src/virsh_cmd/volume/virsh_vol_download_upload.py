@@ -384,6 +384,7 @@ def run(test, params, env):
             result = virsh.vol_download(file_name, download_file_path, options,
                                         unprivileged_user=unpri_user,
                                         uri=uri, debug=True)
+            libvirt.check_exit_status(result)
 
             #Check download image size.
             one_g_in_bytes = 1073741824
