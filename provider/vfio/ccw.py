@@ -72,12 +72,14 @@ def make_dasd_part(path, session):
 
     :param path: dasd disk path, e.g. /dev/dasda
     :param session: guest session
+    :return: True if partitioning succeeded
     """
 
     cmd = "fdasd -a %s" % path
     err, out = cmd_status_output(cmd, shell=True, session=session)
     if err:
         raise TestError("Couldn't create partition. %s" % out)
+    return True
 
 
 def make_dasd_fs(path, part, session):
@@ -101,12 +103,14 @@ def format_dasd(path, session):
     :param path: dasd disk path, e.g. /dev/dasda
     :param session: guest session
     :raises TestError: if disk can't be formatted
+    :return: True if formatting succeeded
     """
 
     cmd = "dasdfmt -b 4096 -M quick --force -p -y %s" % path
     err, out = cmd_status_output(cmd, shell=True, session=session)
     if err:
         raise TestError("Couldn't format disk. %s" % out)
+    return True
 
 
 def umount(session):
