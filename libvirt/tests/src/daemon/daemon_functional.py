@@ -89,10 +89,7 @@ def run(test, params, env):
         """
         Check whether the config file take effects by checking max_clients.
         """
-        if daemon_name == "libvirtd":
-            connect_uri = "qemu:///system"
-        else:
-            connect_uri = daemon_name + ":///system"
+        connect_uri = daemon_name + ":///system"
         vp = virt_admin.VirtadminPersistent(uri=connect_uri)
         result = vp.srv_clients_info(daemon_name, uri=connect_uri, ignore_status=True, debug=True)
         output = result.stdout.strip().splitlines()
