@@ -192,7 +192,7 @@ def run(test, params, env):
             logging.info("Try to restart libvirtd")
             # Remove the autostart management file
             utils_libvirtd.unmark_storage_autostarted()
-            libvirtd = utils_libvirtd.Libvirtd()
+            libvirtd = utils_libvirtd.Libvirtd("virtstoraged")
             libvirtd.restart()
             check_pool(pool_name, pool_type, checkpoint="State",
                        expect_value="active", expect_error=status_error)
@@ -216,7 +216,7 @@ def run(test, params, env):
 
                 # Repeat step (3)
                 logging.debug("Try to restart libvirtd")
-                libvirtd = utils_libvirtd.Libvirtd()
+                libvirtd = utils_libvirtd.Libvirtd('virtstoraged')
                 libvirtd.restart()
                 check_pool(pool_name, pool_type, checkpoint='State',
                            expect_value="inactive", expect_error=status_error)
@@ -236,6 +236,6 @@ def run(test, params, env):
             if os.path.exists(p_xml):
                 os.remove(p_xml)
         except exceptions.TestFail as details:
-            libvirtd = utils_libvirtd.Libvirtd()
+            libvirtd = utils_libvirtd.Libvirtd('virtstoraged')
             libvirtd.restart()
             logging.error(str(details))
