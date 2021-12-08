@@ -64,7 +64,7 @@ def run(test, params, env):
                 # turned into
                 # -blockdev {"driver":"file",...,"discard":"unmap"} in order to
                 # match the qemu command line format
-                if e in ['-blockdev', '-object']:
+                if e in ['-blockdev', '-object', '-compat', '-audiodev']:
                     enext = enext.strip("'")
                 # Append this and the next and set our skip flag
                 retlist.append(e + " " + enext)
