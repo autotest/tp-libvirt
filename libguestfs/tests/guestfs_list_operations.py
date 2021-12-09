@@ -244,4 +244,5 @@ def run(test, params, env):
         vm.destroy()
 
     operation = params.get("list_operation")
-    eval("test_%s(vm, params)" % operation)
+    testcase = globals()["test_%s" % operation]
+    testcase(test, vm, params)
