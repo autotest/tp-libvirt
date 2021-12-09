@@ -41,8 +41,7 @@ def run(test, params, env):
 
         # Check number of CPUs, nodeinfo CPUs represent online threads in the
         # system, check all online cpus in sysfs
-        cpus_nodeinfo = _check_nodeinfo(nodeinfo_output, "CPU(s)", 2)
-        cpus_nodeinfo = int(cpus_nodeinfo)
+        cpus_nodeinfo = int(_check_nodeinfo(nodeinfo_output, "CPU(s)", 2))
 
         if not os.path.exists('/sys/devices/system/cpu/cpu0/online'):
             cpus_online = 1
